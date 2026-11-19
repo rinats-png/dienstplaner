@@ -1,10 +1,11 @@
 import { getStore } from "../lib/ablage.mjs";
-import { createHash, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { bremse, kennung, herkunftErlaubt, zuVielAntwort, protokoll } from "../lib/schutz.mjs";
 import { ablageSchluessel } from "../lib/codes.mjs";
 import { kontoSchreiben } from "../lib/konten.mjs";
 import { testbetriebAnlegen } from "../lib/provisionierung.mjs";
 import { TESTTAGE } from "../lib/aufraeumen.mjs";
+import { erstleitungVermerk } from "../lib/erstleitung.mjs";
 
 /* ==========================================================================
    SELBST STARTEN
@@ -27,7 +28,6 @@ import { TESTTAGE } from "../lib/aufraeumen.mjs";
    ========================================================================== */
 
 const store = () => getStore({ name: "centric", consistency: "strong" });
-const hash = (s) => createHash("sha256").update(String(s)).digest("hex");
 
 const antwort = (d, status = 200) => new Response(JSON.stringify(d), {
   status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
@@ -121,7 +121,7 @@ export default async (req) => {
     });
     if (!erstellt.ok)
       return antwort({ fehler: "Bitte noch einmal versuchen." }, 409);
-    const { raum, laeuftAb, angelegt } = erstellt;
+    const { raum, laeuftAb, angelegt, mandantId } = erstellt;
 
     /* Zugänge erzeugen */
     const alphabet = "ACDEFGHJKLMNPQRTUVWXY34679";
@@ -132,9 +132,12 @@ export default async (req) => {
       const code = `${block()}-${block()}-${block()}`;
       await kontoSchreiben(store(), ablageSchluessel(code), {
         name: String(name).trim(), bestand: raum, rolle,
-        person: null, betrieb: 0, demo: false, gruppe: null, hinweis: null,
+        person: null, betrieb: 0, mandantId, demo: false, gruppe: null, hinweis: null,
         selbstAngelegt: true, laeuftAb,
         angelegt,
+        /* A-3 (lib/erstleitung.mjs): Der Leitungscode des eben angelegten, leeren Betriebs ist sein Erstanmeldecode —
+           er allein legt bei der ersten Anmeldung die Leitungsperson an. Die übrigen Codes legen nie eine Person an. */
+        ...(rolle === "leitung" ? { erstleitung: erstleitungVermerk(mandantId) } : {}),
       });
       zugaenge.push({ rolle, code });
     }
@@ -153,7 +156,7 @@ export default async (req) => {
 
     return antwort({ ok: true, raum, zugaenge, branche: br,
       laeuftAb, testtage: TESTTAGE });
-  } catch (e) {
+  } catch {
     return antwort({ fehler: "Das hat nicht geklappt. Versuch es noch einmal." }, 500);
   }
 };

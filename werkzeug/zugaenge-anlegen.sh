@@ -55,6 +55,14 @@ if [ -z "${CENTRIC_ADMIN:-}" ]; then
   exit 1
 fi
 
+# WP-32d: In der Auslieferung ist der zweite Faktor auch für den Verwalterschlüssel Pflicht. Einen Nachweis (15 Minuten,
+# nur für diesen Schlüssel) stellt POST /einrichten/zweifaktor {"aktion":"nachweis","zweifaktor":"<Code>"} aus; er geht
+# als Kopf mit. Ohne CENTRIC_ZWEIFAKTOR_NACHWEIS wird nichts mitgeschickt.
+ZF_KOPF=()
+if [ -n "${CENTRIC_ZWEIFAKTOR_NACHWEIS:-}" ]; then
+  ZF_KOPF=(-H "x-centric-zweifaktor-nachweis: ${CENTRIC_ZWEIFAKTOR_NACHWEIS}")
+fi
+
 for werkzeug in curl jq; do
   if ! command -v "$werkzeug" >/dev/null 2>&1; then
     echo "$werkzeug fehlt. Bitte installieren (apt install $werkzeug)." >&2
@@ -70,7 +78,7 @@ fi
 
 # Ein Aufruf gegen /einrichten. Gibt die rohe Antwort aus.
 einrichten() {
-  curl -sS -X POST "$SITE/einrichten" \
+  curl -sS ${ZF_KOPF[@]+"${ZF_KOPF[@]}"} -X POST "$SITE/einrichten" \
     -H "content-type: application/json" \
     -H "authorization: Bearer $CENTRIC_ADMIN" \
     -d "$1"
@@ -96,7 +104,7 @@ code_aus() {
 # Selbststarts. Ohne Codes, ohne Prüfsummen — nur das, was zum Vergleich
 # nötig ist.
 # --------------------------------------------------------------------------
-UEBERSICHT=$(curl -sS "$SITE/einrichten/uebersicht?bestand=$RAUM" \
+UEBERSICHT=$(curl -sS ${ZF_KOPF[@]+"${ZF_KOPF[@]}"} "$SITE/einrichten/uebersicht?bestand=$RAUM" \
   -H "authorization: Bearer $CENTRIC_ADMIN")
 if ! printf '%s' "$UEBERSICHT" | jq -e '.zugaenge' >/dev/null 2>&1; then
   echo "FEHLGESCHLAGEN: Übersicht von $SITE nicht lesbar." >&2
@@ -151,6 +159,10 @@ else
     echo "  Code:  $BETREIBER"
     echo "  Raum:  $RAUM"
     echo "  Weg:   $SITE → Code eingeben"
+    echo "  2FA:   In der Auslieferung (NODE_ENV=production) ist der zweite Faktor Pflicht (WP-32d)."
+    echo "         Vor der ersten Anmeldung einrichten: Anmeldemaske → Code → Zwei-Faktor einrichten"
+    echo "         (oder zweifaktorAktion beginnen/bestaetigen an /api/anmelden), Wiederherstellungscodes sichern."
+    echo "         Verloren? werkzeug/betreiber-2fa-zuruecksetzen.mjs (docs/acc45/wp32d-nachweis.md)."
     echo
   } >> "$AUSGABE"
 fi
@@ -191,12 +203,33 @@ demo() {                       # index  name  gruppe  hinweis
   } >> "$AUSGABE"
 }
 
-demo 0 "Nordwacht Sicherheitsdienste" "Sicherheitsdienst" \
-  "Zwei Standorte, Rufbereitschaft, Sachkunde nach 34a GewO"
-demo 1 "Seniorenzentrum Lindenhof" "Pflege" \
-  "Drei Wohnbereiche, Pflegefachkraftquote, Wechselschicht"
-demo 2 "Steinbach Fertigung" "Produktion" \
-  "Vollkonti im Werk, Staplerschein mit Ablaufdatum"
+# Seit Oktober 2026 entstehen Codes nur für einen eingerichteten Raum, und
+# den Demobestand legt der Betreiber an: mit seinem Code anmelden,
+# „Demo-Bestand anlegen" wählen (/api/bestand-anlegen, Vorlage demo — der
+# Server prüft die drei Kennungen m-nordwacht, m-lindenhof, m-steinbach in
+# dieser Reihenfolge). Vorher entstanden die Codes hier, und der erste
+# Browser, der hineinkam, schrieb den Bestand.
+AUSSTEHEND=0
+RAUMSTATUS=$(curl -sS ${ZF_KOPF[@]+"${ZF_KOPF[@]}"} -o /dev/null -w "%{http_code}" "$SITE/einrichten/bindung?bestand=$RAUM" \
+  -H "authorization: Bearer $CENTRIC_ADMIN")
+if [ "$RAUMSTATUS" = "409" ]; then
+  AUSSTEHEND=1
+  echo "→ Demobetriebe: Raum $RAUM ist noch nicht eingerichtet — ausstehend"
+  {
+    echo "DEMO — ausstehend"
+    echo "  Der Raum $RAUM ist noch nicht eingerichtet. Mit dem Betreibercode"
+    echo "  anmelden, „Demo-Bestand anlegen\" wählen und dieses Skript danach"
+    echo "  erneut aufrufen. Erst dann entstehen die drei Demozugänge."
+    echo
+  } >> "$AUSGABE"
+else
+  demo 0 "Nordwacht Sicherheitsdienste" "Sicherheitsdienst" \
+    "Zwei Standorte, Rufbereitschaft, Sachkunde nach 34a GewO"
+  demo 1 "Seniorenzentrum Lindenhof" "Pflege" \
+    "Drei Wohnbereiche, Pflegefachkraftquote, Wechselschicht"
+  demo 2 "Steinbach Fertigung" "Produktion" \
+    "Vollkonti im Werk, Staplerschein mit Ablaufdatum"
+fi
 
 # --------------------------------------------------------------------------
 # 3. Der leere Testbetrieb
@@ -222,7 +255,7 @@ if [ -n "$VORHANDEN" ]; then
     echo
   } >> "$AUSGABE"
 else
-  START=$(curl -sS -X POST "$SITE/starten" \
+  START=$(curl -sS ${ZF_KOPF[@]+"${ZF_KOPF[@]}"} -X POST "$SITE/starten" \
     -H "content-type: application/json" \
     -d "$(jq -cn --arg n "$TESTBETRIEB" '{name: $n, branche: "sonstige", land: "HE", rollen: ["mitarbeiter"]}')")
 
@@ -251,6 +284,10 @@ fi
 echo
 echo "Fertig: $ANGELEGT angelegt, $UEBERSPRUNGEN übersprungen. Alle Codes stehen in: $AUSGABE"
 echo
+if [ "$AUSSTEHEND" -eq 1 ]; then
+  echo "Ausstehend: Raum $RAUM einrichten (Betreibercode → „Demo-Bestand anlegen\"),"
+  echo "  danach dieses Skript erneut aufrufen."
+fi
 if [ "$ANGELEGT" -gt 0 ]; then
   echo "Noch zu tun:"
   echo "  1. $AUSGABE an einen sicheren Ort, dann löschen."

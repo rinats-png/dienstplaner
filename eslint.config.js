@@ -16,7 +16,9 @@ import hooks from "eslint-plugin-react-hooks";
 import globals from "globals";
 
 export default [
-  { ignores: ["dist/**", "node_modules/**"] },
+  /* design/canvas: exportierte Artboards samt fremder Laufzeit (support.js) —
+     Vorlage für die Umsetzung, kein Quelltext der Anwendung. */
+  { ignores: ["dist/**", "node_modules/**", "design/canvas/**"] },
 
   /* --- Oberfläche --- */
   {
@@ -35,6 +37,12 @@ export default [
       ...hooks.configs.recommended.rules,
       /* React 18 mit automatischem JSX braucht kein React im Geltungsbereich */
       "react/react-in-jsx-scope": "off",
+      /* Ohne diese Regel gilt eine Komponente, die nur im JSX vorkommt, als
+         „nie benutzt": no-unused-vars kennt JSX nicht. Rund neun von zehn
+         Warnungen waren dieses Missverständnis und verdeckten die echten. */
+      "react/jsx-uses-vars": "warn",
+      /* Nach Extraktionen (WP-39) blieben fehlende Komponenten-Imports unentdeckt bis zum Render-Test */
+      "react/jsx-no-undef": "error",
       "react/prop-types": "off",
       /* Ungenutzte Argumente sind oft Absicht (Signaturen), ungenutzte
          Variablen selten. */
@@ -58,6 +66,25 @@ export default [
       ...js.configs.recommended.rules,
       "no-unused-vars": ["warn", { args: "none" }],
       "no-empty": ["error", { allowEmptyCatch: true }],
+    },
+  },
+
+  /* --- Playwright-Suite (WP-33 Teil 3) --- Node-Prozess; Rückrufe für
+     page.evaluate laufen im Browser, daher beide Globalsätze. */
+  {
+    files: ["e2e/**/*.mjs", "playwright.config.mjs"],
+    ...js.configs.recommended,
+    languageOptions: {
+      ecmaVersion: 2023,
+      sourceType: "module",
+      globals: { ...globals.node, ...globals.browser },
+    },
+    rules: {
+      ...js.configs.recommended.rules,
+      "no-unused-vars": ["warn", { args: "none" }],
+      "no-empty": ["error", { allowEmptyCatch: true }],
+      /* Playwright verlangt für Tests ohne Fixtures ein leeres Objektmuster. */
+      "no-empty-pattern": "off",
     },
   },
 ];

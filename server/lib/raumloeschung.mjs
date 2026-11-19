@@ -31,6 +31,11 @@
    gelöschten Raum ist folgenlos.
    ========================================================================== */
 
+import { unterRaumsperre, KONTEN_SPERRE } from "./raumsperre.mjs";
+import { journalSchluessel } from "./bestand.mjs";
+
+export { KONTEN_SPERRE };
+
 /**
  * @typedef {{ raum: string, geloescht: number, vollstaendig: boolean,
  *   fehler: Array<{ schluessel: string, grund: string }> }} Loeschergebnis
@@ -45,7 +50,7 @@ const grundVon = (e) => String((e && e.message) || e || "unbekannt").slice(0, 16
  * @param {string} raum
  * @returns {Promise<Loeschergebnis>}
  */
-export async function raumLoeschen(store, sitzungen, raum) {
+export async function raumLoeschen(store, sitzungen, raum, opt = undefined) {
   const fehler = [];
   let geloescht = 0;
 
@@ -64,13 +69,94 @@ export async function raumLoeschen(store, sitzungen, raum) {
     return blobs;
   };
 
-  /* 1. Scherben, Stände, Sicherungen */
-  for (const praefix of [`scherbe:${raum}:`, `stand:${raum}:`, `sicherung:${raum}:`])
+  /* 0. Die Marke der begonnenen Löschung (loeschung:<raum>) — vor allem anderen, für jeden Aufrufer (Betreiberkonsole,
+        Löschlauf, Rückbau der Provisionierung). Der Löschlauf (aufraeumen.mjs) setzt sie schon selbst; dann bleibt
+        seine stehen. Sie geht erst ganz am Ende, wenn nichts liegen blieb. Solange sie steht, ist der Raum für den
+        Kundenraumschutz (kundenraumschutz.mjs) kein „neuer“ Raum: Ein Teilabbruch nimmt Konten, Mitgliedschaften und
+        Vermerk womöglich schon mit, Kern und Personal bleiben — der Betreiber dürfte sonst für die verbliebenen
+        Kundendaten neue Leitungscodes erzeugen (Review SI-P6, Befund 1). Lässt sie sich nicht setzen, wird nichts
+        gelöscht: lieber gar nicht als halb und unmarkiert. */
+  const marke = `loeschung:${raum}`;
+  try {
+    const inhalt = { begonnen: new Date().toISOString(), durch: "raumloeschung" };
+    if (typeof store.setJSONWennNeu === "function") await store.setJSONWennNeu(marke, inhalt);
+    else if ((await store.get(marke, { type: "json" })) == null) await store.setJSON(marke, inhalt);
+  } catch (e) {
+    return { raum, geloescht: 0, vollstaendig: false, fehler: [{ schluessel: marke, grund: grundVon(e) }] };
+  }
+
+  /* 1. Ein liegengebliebenes Schreibjournal zuerst (bestand.mjs). Bliebe es
+        stehen, legte jeder Leser es über das, was noch da ist — und der
+        Kern des gelöschten Raums erschiene wieder. Dann Scherben, Stände,
+        Sicherungen. */
+  try { await store.delete(journalSchluessel(raum)); }                // fehlt es, ist nichts zu tun
+  catch (e) { fehler.push({ schluessel: journalSchluessel(raum), grund: grundVon(e) }); }
+  for (const praefix of [`scherbe:${raum}:`, `stand:${raum}:`, `sicherung:${raum}:`,
+    `journal-beiseite:${raum}:`,           // beiseitegelegte Journale (werkzeug/journal-pruefen.mjs)
+    `beiseite:${raum}:`])                  // beiseitegelegte Dateien (werkzeug/ablage-pruefen.mjs)
     await praefixWeg(praefix);
 
-  /* 2. Zugangscodes des Raums — einzeln abgelegte und die im Sammelblob.
-        Gelesen wird gezielt über das Präfix, nicht über alleKonten(): Ein
-        unlesbares Konto darf den Lauf nicht beenden, es landet als Fehler. */
+  /* 2. Zugangscodes des Raums — erst der Sammelblob, dann die einzeln
+        abgelegten.
+
+        Der Sammelblob „konten" gehört allen Räumen zugleich. Lesen, Ändern
+        und Zurückschreiben unter einer festen, raumübergreifenden Sperre
+        (KONTEN_SPERRE): Zwei gleichzeitige Löschungen lasen sonst beide den
+        alten Blob, und der zweite schrieb die Codes des ersten Raums wieder
+        hinein. Reihenfolge stets Raum, dann „@konten" — nie umgekehrt,
+        damit sich zwei Löschungen nicht gegenseitig festhalten.
+
+        Erst der Sammelblob, weil die Anmeldung aus ihm Einzelkonten macht
+        (kontoVereinzeln, konten.mjs — ebenfalls unter „@konten"). In der
+        umgekehrten Reihenfolge konnte eine Anmeldung zwischen den beiden
+        Schritten konto:X aus dem noch vollen Sammelblob neu anlegen, und der
+        Code zeigte danach auf einen gelöschten Raum. So entsteht ein
+        Einzelkonto nur noch vor der Bereinigung des Sammelblobs — und wird
+        dann im nächsten Schritt mit gelöscht.
+
+        Die Einzelkonten gezielt über das Präfix, nicht über alleKonten():
+        Ein unlesbares Konto darf den Lauf nicht beenden, es landet als
+        Fehler. */
+  /* 2a. E-M6: Die Codes des Raums ERST ins Widerrufbuch (außerhalb der gesicherten Ablage), dann löschen. Sonst lebten
+        sie nach dem Zurückspielen einer älteren Sicherung mit dem Raum wieder auf. Hier steht das Buch VORN, weil die
+        Ablage die Codes danach nicht mehr kennt (nichts bliebe einzusammeln).
+        Lässt sich das Buch nicht lesen oder schreiben, werden die Codes TROTZDEM gelöscht — eine Löschung hinterlässt
+        keine Codes (loeschsperre.test.js, Fälle 9 und WP-45/2) —, vorher aber in der Ablage gesperrt (scheitert das
+        Löschen danach, bleibt kein gültiger Code) und danach als NACHTRAG festgehalten (widerrufbuch.mjs,
+        nachtragAufnehmen: in der Ablage und im Speicher). Der nächste Widerruf, der Serverstart und das
+        Wiederherstellungswerkzeug (vor dem Tausch) tragen ihn ins Buch; bis dahin gilt ohnehin kein Code (Buch nicht
+        prüfbar → Anmeldung 503), /gesund meldet „Nachtrag offen“. Fehler, `vollstaendig` falsch.
+        Ein Schlüssel, den das Buch nicht eintragen kann (unbekannte Gestalt — kein Code führt zu ihm), wird nur gelöscht. */
+  const W = await import("./widerrufbuch.mjs");
+  const { alleKontenStreng, kontoSchreiben } = await import("./konten.mjs");
+  /** @type {Set<string>} */ const imBuch = new Set();
+  let buchFehler = false;
+  /** @type {Array<[string, any]>} */ let eigeneKonten = [];
+  try {
+    eigeneKonten = Object.entries(await alleKontenStreng(store)).filter(([, k]) => k && k.bestand === raum);
+    const eintragbare = eigeneKonten.map(([s]) => s).filter(W.eintragbar);
+    if (eintragbare.length) for (const s of await W.widerrufen(store, eintragbare, "raum-geloescht")) imBuch.add(s);
+  } catch (e) {
+    buchFehler = true;
+    fehler.push({ schluessel: "widerrufbuch", grund: grundVon(e) });
+    try {
+      for (const [s, k] of eigeneKonten) if (!k.gesperrt) await kontoSchreiben(store, s, W.gesperrtesKonto(k, "raumloeschung"));
+    } catch (e2) { fehler.push({ schluessel: "konto:*", grund: grundVon(e2) }); }
+  }
+  /** @type {Set<string>} */ const codesDesRaums = new Set(eigeneKonten.map(([s]) => s));
+  try {
+    await unterRaumsperre(KONTEN_SPERRE, async () => {
+      const sammel = await store.get("konten", { type: "json" });
+      if (sammel && typeof sammel === "object") {
+        const eigene = Object.entries(sammel).filter(([, k]) => k && k.bestand === raum).map(([s]) => s);
+        if (eigene.length) {
+          for (const s of eigene) { delete sammel[s]; codesDesRaums.add(s); }
+          await store.setJSON("konten", sammel);
+          geloescht += eigene.length;
+        }
+      }
+    });
+  } catch (e) { fehler.push({ schluessel: "konten", grund: grundVon(e) }); }
   const zuLoeschen = [];
   try {
     const { blobs } = await store.list({ prefix: "konto:" });
@@ -82,17 +168,34 @@ export async function raumLoeschen(store, sitzungen, raum) {
     }
   } catch (e) { fehler.push({ schluessel: "konto:*", grund: grundVon(e) }); }
   for (const schl of zuLoeschen) await weg(`konto:${schl}`);
-  try {
-    const sammel = await store.get("konten", { type: "json" });
-    if (sammel && typeof sammel === "object") {
-      const eigene = Object.entries(sammel).filter(([, k]) => k && k.bestand === raum).map(([s]) => s);
-      if (eigene.length) {
-        for (const s of eigene) delete sammel[s];
-        await store.setJSON("konten", sammel);
-        geloescht += eigene.length;
-      }
+  /* 2a'. Was nicht im Buch steht (Buch scheiterte, oder ein Code kam nach dem Lesen hinzu): jetzt eintragen, sonst als
+         Nachtrag festhalten. Erst NACH dem Löschen — die Ablage ist dann schon sicher. */
+  for (const s of zuLoeschen) codesDesRaums.add(s);
+  const offen = [...codesDesRaums].filter((s) => W.eintragbar(s) && !imBuch.has(s));
+  if (offen.length) {
+    let eingetragen = false;
+    if (!buchFehler) {
+      try { await W.widerrufen(store, offen, "raum-geloescht"); eingetragen = true; }
+      catch (e) { fehler.push({ schluessel: "widerrufbuch", grund: grundVon(e) }); }
     }
-  } catch (e) { fehler.push({ schluessel: "konten", grund: grundVon(e) }); }
+    if (!eingetragen) {
+      try { await W.nachtragAufnehmen(store, offen, "raum-geloescht"); }
+      catch (e) { fehler.push({ schluessel: W.NACHTRAG_SCHLUESSEL, grund: grundVon(e) }); }
+    }
+  }
+
+  /* 2c. E-M6/PR #281: Die Marken „Erstanmeldung festgelegt“ dieses Raums (erstleitung-marke:<raum>:<mandantId>) sind
+         Daten des Raums und gehen mit. Nur exakt dieser Raum (Zerlegung, nicht bloß das Präfix — „r“ trifft nie „r-x“).
+         Der Abschluss im Widerrufbuch BLEIBT (das Buch wird nur fortgeschrieben, nie gekürzt): Spielt jemand eine
+         ältere Sicherung mit diesem Raum zurück, zieht das Werkzeug bzw. der Serverstart die Marke aus dem Buch nach,
+         und die Ersteinrichtung öffnet sich nicht wieder (em6-rollback-codes.test.js, Raumlöschung und Rücksprung). */
+  try {
+    const { blobs } = await store.list({ prefix: `${W.MARKE_PRAEFIX}${raum}:` });
+    for (const b of blobs) {
+      const z = W.markeZerlegen(b.key);
+      if (z && z.raum === raum) await weg(b.key);
+    }
+  } catch (e) { fehler.push({ schluessel: `${W.MARKE_PRAEFIX}*`, grund: grundVon(e) }); }
 
   /* 2b. Persönliche Mitgliedschaften dieses Raums — und der Raumindex dazu.
 
@@ -132,12 +235,24 @@ export async function raumLoeschen(store, sitzungen, raum) {
         zuordnen konnte. Das Präfix endet auf einem Doppelpunkt, damit ein Raum
         „t-ab" nicht die Anmeldungen von „t-a" mitnimmt. */
   await praefixWeg(`push:${raum}:`);
+  /* Seit Commit 4 auch push:<raum>:<mandantId>:<personId> (dasselbe Präfix)
+     und der Zustellstatus samt Versand-Claims je Mitteilung (versand.mjs). */
+  await praefixWeg(`zustellung:${raum}:`);
+  await praefixWeg(`zustellclaim:${raum}:`);
+  /* WP-30: Warteschlange, Adresssperren und Tageskontingente je Raum. */
+  await praefixWeg(`zustellwarte:${raum}:`);
+  await praefixWeg(`unzustellbar:${raum}:`);
+  await praefixWeg(`zustellquote:${raum}:`);
+  await praefixWeg(`mailbest:${raum}:`);         // E-9: Bestätigungen der Personenadressen (lib/mailbestaetigung.mjs)
+  await praefixWeg(`mailbestcode:${raum}:`);     // E-9: offene Bestätigungscodes (nur Hash)
+  await praefixWeg(`importerledigt:${raum}:`);   // IMP-3: Wiederholschutz-Vermerke des Imports (lib/import/uebernahme.mjs)
+  await praefixWeg(`teilanfrage:${raum}:`);      // WP-48.3: Wiederholschutz der Teilspeicherung (lib/teilweg.mjs)
 
   /* 3. Sitzungen des Raums — die gewöhnlichen (t:) und die
         Sicherungsschlüssel (sk:). Letztere fehlten bisher: Ein
         Sicherungsschlüssel eines gelöschten Raums las danach ins Leere,
-        aber er existierte noch. */
-  for (const praefix of ["t:", "sk:"]) {
+        aber er existierte noch. Ebenso die Widerrufsvermerke (skw:, SI-P1): Sie tragen Raum und Namen des Erstellers. */
+  for (const praefix of ["t:", "sk:", "skw:", "skraum:"]) {
     let blobs;
     try { ({ blobs } = await sitzungen.list({ prefix: praefix })); }
     catch (e) { fehler.push({ schluessel: `sitzungen ${praefix}*`, grund: grundVon(e) }); continue; }
@@ -168,6 +283,12 @@ export async function raumLoeschen(store, sitzungen, raum) {
       }
     }
   } catch (e) { fehler.push({ schluessel: "feed:*", grund: grundVon(e) }); }
+  /* WP-24: Die Indizes feedperson:<raum>:<mandantId>:<personId> (je Person der Hash ihres aktiven Feeds)
+     gehören zum Raum und blieben bisher liegen — auch wenn der Feed selbst schon weg war. */
+  await praefixWeg(`feedperson:${raum}:`);
+
+  /* WP-27: Das eingefrorene Ist der Betriebsrat-Auswertung (brist:<raum>:…) gehört zum Raum. */
+  await praefixWeg(`brist:${encodeURIComponent(raum)}:`);
 
   /* 5. Der Vermerk in der Nachfassliste */
   try {
@@ -178,15 +299,40 @@ export async function raumLoeschen(store, sitzungen, raum) {
     }
   } catch (e) { fehler.push({ schluessel: "selbststarts", grund: grundVon(e) }); }
 
+  /* 5b. WP-I14: Ergebnisse und Decision Contexts der Intelligence (ki:erg:/ki:ktx: im Store centric-ki-lauf). Der Kern
+        importiert nie aus dem Intelligence-Baum (Architekturtest): der Aufrufer übergibt einen Haken `kiBereinigen(raum)`
+        (`kiRaumBereinigen` aus gateway/loeschlauf.mjs). Fehler machen die Löschung unvollständig (Kern bleibt als Marker). */
+  if (opt && typeof opt.kiBereinigen === "function") {
+    try {
+      const k = await opt.kiBereinigen(raum);
+      geloescht += Number(k && k.geloescht) || 0;
+      for (const f of (k && k.fehler) || []) fehler.push(f);
+      if (!k || k.vollstaendig !== true) { if (!((k && k.fehler) || []).length) fehler.push({ schluessel: "ki:*", grund: "unvollständig" }); }
+    } catch (e) { fehler.push({ schluessel: "ki:*", grund: grundVon(e) }); }
+  }
+
   /* 6. Zuletzt der alte Ganzbestand, dann der Kern — jeder Schritt nur,
         wenn bis dahin nichts liegen geblieben ist. Der Kern ist der Marker:
         Solange er steht, findet der nächste Lauf den Raum und räumt nach. */
   if (fehler.length === 0) await weg(`bestand:${raum}`);
+  /* SI-P6: Der Vermerk der Ersteinrichtung (kundenraumschutz.mjs) gehört zum Raum. Bliebe er liegen, wäre ein später
+     unter demselben Namen neu angelegter Betrieb dauerhaft als „Fenster abgelaufen“ gesperrt. Er geht erst, wenn alles
+     andere weg ist, aber VOR dem Kern: Scheitert er, steht der Kern noch, und der nächste Lauf (Löschlauf über kern:t-*,
+     Konsole) findet den Raum wieder. Gesperrt bleibt der Raum bis dahin ohnehin durch die Marke (Schritt 0). Nach dem
+     Kern bleibt nur noch die Marke — scheitert allein sie, räumt ein erneuter Aufruf (Konsole, /api/raum-loeschen,
+     auch ohne Kern) sie ab. */
+  /* E-D2 (lib/erstleitung.mjs): die Marken der Erstanmeldung gehören zum Raum — wie der Vermerk oben. Ein später
+     unter demselben Namen neu angelegter Betrieb ist ein neuer Betrieb. */
+  if (fehler.length === 0) await praefixWeg(`erstleitung-marke:${raum}:`);
+  if (fehler.length === 0) await weg(`ersteinrichtung:${raum}`);
   if (fehler.length === 0) await weg(`kern:${raum}`);
-  /* 7. Die Marke des Löschlaufs (aufraeumen.mjs) — erst, wenn der Kern weg
-        ist; bis dahin sagt sie dem nächsten Lauf, dass hier eine begonnene
-        Löschung zu Ende zu bringen ist. */
-  if (fehler.length === 0) await weg(`loeschung:${raum}`);
+  /* Regime-Marken (lib/erstleitung.mjs, Delta-Review e8b9b93d): erst nach dem Kern — bis dahin bleibt ein nur halb
+     gelöschter Raum streng. Ein später unter demselben Namen angelegter Betrieb bekommt beim Anlegen eine neue. */
+  if (fehler.length === 0) await praefixWeg(`erstleitung-regime:${raum}:`);
+  /* 7. Die Marke der begonnenen Löschung (Schritt 0, aufraeumen.mjs) — erst, wenn der Kern weg ist; bis dahin sagt
+        sie dem nächsten Lauf, dass hier eine begonnene Löschung zu Ende zu bringen ist, und dem Kundenraumschutz,
+        dass der Raum nicht neu ist. */
+  if (fehler.length === 0) await weg(marke);
 
   return { raum, geloescht, vollstaendig: fehler.length === 0, fehler };
 }

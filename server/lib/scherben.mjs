@@ -28,14 +28,30 @@
    zwei Planer in verschiedenen Monaten stören einander nicht mehr.
    ========================================================================== */
 
-/** Felder, die je Monat abgelegt werden. Alle drei tragen Schlüssel der
-    Form "personId|JJJJ-MM-TT". */
-export const MONATSFELDER = ["abweichungen", "erfassung", "einstempeln"];
+import { createHash } from "node:crypto";
 
-/** Aus "p3|2026-08-14" den Monat "2026-08" holen. */
-function monatVon(schluessel) {
-  const teil = String(schluessel).split("|")[1] || "";
-  return /^\d{4}-\d{2}/.test(teil) ? teil.slice(0, 7) : null;
+/** Felder, die je Monat abgelegt werden. Alle tragen Schlüssel der
+    Form "personId|JJJJ-MM-TT". */
+export const MONATSFELDER = ["abweichungen", "erfassung", "einstempeln", "istEingefroren"];
+/** Erst mit dem Monatsabschluss entstanden (WP-16, Review H1: das eingefrorene Ist je Person und Tag).
+    Ein Betrieb ohne dieses Feld bekommt es beim Zusammensetzen nur, wenn eine Scherbe Einträge trägt. */
+const SPAETE_FELDER = new Set(["istEingefroren"]);
+
+/* Ziffer 0–9 (wie \d ohne u-Flag) und Bindestrich, über den Zeichencode. */
+const ziffer = (c) => c >= 48 && c <= 57;
+
+/** Aus "p3|2026-08-14" den Monat "2026-08" holen (null ohne erkennbares Datum).
+    WP-48.6: ohne split/RegExp, gleichwertig zu
+      teil = String(s).split("|")[1] || "";  /^\d{4}-\d{2}/.test(teil) ? teil.slice(0, 7) : null
+    Die sieben geprüften Zeichen (Ziffern, Bindestrich) enthalten nie „|“ — sie liegen also ganz im Teil
+    nach dem ersten Strich (pruefungen/wp48-6-kette.test.js vergleicht beide Fassungen). */
+export function monatVon(schluessel) {
+  const s = String(schluessel);
+  const i = s.indexOf("|");
+  if (i < 0 || s.length < i + 8) return null;
+  const c = (n) => s.charCodeAt(i + 1 + n);
+  return ziffer(c(0)) && ziffer(c(1)) && ziffer(c(2)) && ziffer(c(3)) && c(4) === 45 && ziffer(c(5)) && ziffer(c(6))
+    ? s.slice(i + 1, i + 8) : null;
 }
 
 export const scherbenSchluessel = (raum, mandantId, monat) =>
@@ -90,6 +106,49 @@ export function zerlegen(bestand) {
 }
 
 /**
+ * Nur die Kennungen „betriebId::JJJJ-MM“ der Scherben, die zerlegen(bestand) bilden würde — ohne Kern und
+ * Inhalte zu bauen (WP-48.6). Dieselbe Zuordnung wie zerlegen: gleiche Betriebe, Felder und Schlüssel.
+ * @returns {Set<string>}
+ */
+export function scherbenKennungen(bestand) {
+  const ids = new Set();
+  if (!bestand || !Array.isArray(bestand.mandanten)) return ids;
+  for (const m of bestand.mandanten) {
+    if (!m || typeof m !== "object") continue;
+    for (const feld of MONATSFELDER) {
+      const inhalt = m[feld];
+      if (!inhalt || typeof inhalt !== "object") continue;
+      for (const k of Object.keys(inhalt)) {
+        const monat = monatVon(k);
+        if (monat) ids.add(`${m.id}::${monat}`);
+      }
+    }
+  }
+  return ids;
+}
+
+/**
+ * Tragen zwei Scherben denselben Abdrucktext (abdruckText) — geprüft ohne ihn zu bauen? true nur, wenn je
+ * Monatsfeld dieselben Schlüssel stehen und jeder Wert DASSELBE Objekt bzw. derselbe einfache Wert ist (===).
+ * Dann sind sortierte Schlüssel und JSON-Texte gleich, also auch der Abdruck. false heißt „nicht bewiesen“
+ * (der Aufrufer rechnet den Abdruck dann wie bisher). WP-48.6.
+ */
+export function gleicheEintraege(a, b) {
+  if (!a || !b) return false;
+  const fa = a.felder || {}, fb = b.felder || {};
+  for (const feld of MONATSFELDER) {
+    const x = fa[feld] || {}, y = fb[feld] || {};
+    if (x === y) continue;
+    const kx = Object.keys(x);
+    if (kx.length !== Object.keys(y).length) return false;
+    for (const k of kx) {
+      if (!Object.prototype.hasOwnProperty.call(y, k) || x[k] !== y[k]) return false;
+    }
+  }
+  return true;
+}
+
+/**
  * Setzt Kern und Scherben wieder zu einem vollständigen Bestand zusammen.
  * Die Oberfläche bekommt genau das, was sie vorher auch bekam.
  */
@@ -112,6 +171,8 @@ export function zusammensetzen(kern, scherbenListe) {
       if (!meine || !meine.length) return m;
       const zusammen = { ...m };
       for (const feld of MONATSFELDER) {
+        if (SPAETE_FELDER.has(feld) && !(feld in m)
+          && !meine.some((s) => s.felder && s.felder[feld] && Object.keys(s.felder[feld]).length)) continue;
         const ziel = { ...(m[feld] || {}) };
         for (const s of meine) Object.assign(ziel, (s.felder || {})[feld] || {});
         zusammen[feld] = ziel;
@@ -125,17 +186,76 @@ export function zusammensetzen(kern, scherbenListe) {
  * Fingerabdruck einer Scherbe. Wird zum Erkennen von Änderungen benutzt —
  * eine Scherbe, deren Abdruck gleich bleibt, wird nicht geschrieben.
  *
- * Bewusst kein Hash: Ein stabil sortierter JSON-Text genügt, ist billig zu
- * vergleichen und beim Nachsehen im Protokoll lesbar.
+ * Seit WP-48.2 ein SHA-256-Präfix (32 Hex-Zeichen) über den stabil
+ * sortierten Text (abdruckText). Vorher war der Abdruck der Text selbst
+ * („bewusst kein Hash") — damit war jeder Standvermerk so groß wie der
+ * Bestand, bis zu zehn davon lagen auf der Platte, und das Journal jedes
+ * Schreibvorgangs trug ihn noch einmal (docs/acc45/WP48-TEILSPEICHERUNG.md
+ * 1.2: 14 MB je Vermerk bei 150 Personen × 12 Monaten). Alte Vermerke mit
+ * Text übersetzt abdruckNormal in denselben Hash.
  */
 export function abdruck(scherbe) {
+  if (!scherbe) return "";
+  return praefix(abdruckText(scherbe));
+}
+
+/** Der Abdruck des Kerns: SHA-256-Präfix seines JSON-Texts (vorher der Text selbst). */
+export function kernAbdruck(kern) {
+  return praefix(JSON.stringify(kern) ?? "undefined");
+}
+
+const praefix = (text) => createHash("sha256").update(text).digest("hex").slice(0, 32);
+const ABDRUCK_FORM = /^[0-9a-f]{32}$/;
+
+/**
+ * Ein Abdruck aus einem gespeicherten Standvermerk in der heutigen Form —
+ * oder null, wenn er sich nicht sicher deuten lässt.
+ *
+ * - 32 Hex-Zeichen: schon ein Hash.
+ * - Ein Text, wie ihn der Server vor WP-48.2 schrieb: Scherbe
+ *   („abweichungen:…", siehe abdruckText) oder Kern (JSON eines Objekts,
+ *   „{…"). Er wird gehasht — derselbe Inhalt ergibt denselben Hash wie
+ *   abdruck/kernAbdruck heute, der Vergleich bleibt also gültig.
+ * - Alles andere: null. Der Aufrufer behandelt den ganzen Vermerk dann wie
+ *   einen fehlenden (fail-closed: Konflikt statt Abgleich, bzw. Neuberechnung
+ *   aus dem, was auf der Platte liegt).
+ * @returns {string|null}
+ */
+export function abdruckNormal(wert) {
+  if (typeof wert !== "string") return null;
+  if (ABDRUCK_FORM.test(wert)) return wert;
+  if (wert.startsWith("{")) return praefix(wert);
+  if (wert.startsWith(`${MONATSFELDER[0]}:`)) {
+    /* Ein Text aus der Zeit zwischen WP-16 und WP-48 trägt das späte Feld auch leer;
+       abdruckText lässt ein leeres spätes Feld weg (wie jeder Text davor). */
+    const ohneLeeres = wert.replace(/\|istEingefroren:0:$/, "");
+    return praefix(ohneLeeres);
+  }
+  return null;
+}
+
+/** Ein Schlüssel im Abdrucktext. Gewöhnliche Schlüssel („p3|2026-08-14") stehen unverändert da —
+    damit bleibt der Abdruck gleich dem früherer Versionen. Einer mit Trenner (Komma, Gleichheitszeichen,
+    Anführungszeichen, Zeilenumbruch, mehr als ein senkrechter Strich) oder mit führender Tilde steht als
+    „~" + JSON-Text; so lässt sich der Text eindeutig zurücklesen (WP-48 Review M4: vorher konnten zwei
+    verschiedene Inhalte denselben Text ergeben, z. B. der Schlüssel „a=1,b" und die zwei Schlüssel „a", „b"). */
+function schluesselText(k) {
+  const sicher = !/[,="\r\n]/.test(k) && !k.startsWith("~") && k.split("|").length <= 2;
+  return sicher ? k : `~${JSON.stringify(k)}`;
+}
+
+/** Der stabil sortierte Text einer Scherbe — die Grundlage des Abdrucks (und der Abdruck vor WP-48.2).
+    Ein spätes Feld (SPAETE_FELDER) ohne Einträge fehlt im Text: Eine Scherbe ohne dieses Feld und eine mit
+    leerem Feld haben denselben Abdruck, und Vermerke vor WP-16 bleiben gültig. */
+export function abdruckText(scherbe) {
   if (!scherbe) return "";
   const teile = [];
   for (const feld of MONATSFELDER) {
     const inhalt = (scherbe.felder || {})[feld] || {};
     const schluessel = Object.keys(inhalt).sort();
+    if (!schluessel.length && SPAETE_FELDER.has(feld)) continue;
     teile.push(`${feld}:${schluessel.length}:`
-      + schluessel.map((k) => `${k}=${JSON.stringify(inhalt[k])}`).join(","));
+      + schluessel.map((k) => `${schluesselText(k)}=${JSON.stringify(inhalt[k])}`).join(","));
   }
   return teile.join("|");
 }

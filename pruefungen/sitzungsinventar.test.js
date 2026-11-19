@@ -81,6 +81,10 @@ describe("Wer spricht die Sitzungsspeicher an?", () => {
     expect(ohneZusatz(dateienMit(/centric-sitzungen|sitzungsSpeicher/))).toEqual([
       "server.mjs",                              // Verdrahtung des Löschlaufs
       "server/funktionen/daten.mjs",             // sk:-Schlüssel und das Beenden gesperrter Sitzungen
+      "server/lib/kundenraumschutz.mjs",         // SI-P6: nur LESEN — Kundensitzung im offenen Fenster der Ersteinrichtung schließt das Fenster
+      "server/lib/schluesselepoche.mjs",         // Bindung skbindung (Wiederherstellungsschutz der sk:)
+      "server/lib/schreibhalt.mjs",              // WP-28c: nur der Name, zur Einordnung „nie halten“ (kein Zugriff)
+      "server/lib/sicherungsschluessel.mjs",     // Widerruf der sk:-Schlüssel mit Vermerk (SI-P1)
       "server/lib/sitzungen.mjs",                // die Primitive
     ]);
   });
@@ -88,6 +92,7 @@ describe("Wer spricht die Sitzungsspeicher an?", () => {
   it("centric-accountsitzungen: nur die Account-Sitzungen selbst (und das Aufräumen)", () => {
     const erlaubt = [
       "server/lib/accountsitzungen.mjs",
+      "server/lib/schreibhalt.mjs",   // WP-28c: nur der Name, zur Einordnung „nie halten“ (kein Zugriff)
     ];
     const gefunden = ohneZusatz(dateienMit(/centric-accountsitzungen|accountSitzungsSpeicher/));
     expect(gefunden).toEqual(erlaubt);
@@ -97,12 +102,21 @@ describe("Wer spricht die Sitzungsspeicher an?", () => {
     const t = ohneZusatz(dateienMit(/[`"']t:/));
     const sk = dateienMit(/[`"']sk:/);
     const as = ohneZusatz(dateienMit(/[`"']as:/));
-    /* t: — Primitive und Raumlöschung; nie in einem Endpunkt. */
-    expect(t, "t:").toEqual(["server/lib/raumloeschung.mjs", "server/lib/sitzungen.mjs"]);
-    /* sk: — Primitive, daten.mjs (Sicherungsschlüssel verwalten), Raumlöschung. */
+    /* t: — Primitive, Raumlöschung und (SI-P6, nur lesend) der Kundenraumschutz; nie in einem Endpunkt. */
+    expect(t, "t:").toEqual(["server/lib/kundenraumschutz.mjs", "server/lib/raumloeschung.mjs", "server/lib/sitzungen.mjs"]);
+    /* sk: — Primitive, daten.mjs (Sicherungsschlüssel verwalten), Raumlöschung, Widerruf (SI-P1). */
+    /* schreibhalt.mjs (WP-28c): nur als Präfix der Einordnung, was gehalten wird — kein Zugriff auf die Ablage. */
     expect(sk, "sk:").toEqual(["server/funktionen/daten.mjs", "server/lib/raumloeschung.mjs",
-      "server/lib/sitzungen.mjs"]);
+      "server/lib/schreibhalt.mjs", "server/lib/sicherungsschluessel.mjs", "server/lib/sitzungen.mjs"]);
     expect(as, "as:").toEqual(["server/lib/accountsitzungen.mjs"]);
+  });
+  it("schreibhalt.mjs nennt die Sitzungsspeicher nur zur Einordnung: kein getStore, kein Import der Ablage", () => {
+    const q = quellen.get("server/lib/schreibhalt.mjs");
+    expect(q).toBeTruthy();
+    /* getStore( mit Argument = Ablage; AsyncLocalStorage#getStore() hat keines. */
+    expect(q).not.toMatch(/getStore\(\s*[^)\s]|sitzungsSpeicher|accountSitzungsSpeicher/);
+    expect(q).not.toMatch(/from\s+["']\.\/(ablage|sitzungen|accountsitzungen)\.mjs["']/);
+    expect(q).not.toMatch(/import\(\s*["']\.\/(ablage|sitzungen|accountsitzungen)\.mjs["']\s*\)/);
   });
 });
 
@@ -123,6 +137,7 @@ describe("Der Aufräumlauf", () => {
 describe("Der gemeinsame Prüfpunkt", () => {
   const BEARER_DATEIEN = [
     "server/funktionen/daten.mjs",
+    "server/funktionen/einladung.mjs",   // WP-18
     "server/funktionen/kalender.mjs",
     "server/funktionen/lage.mjs",
     "server/funktionen/zustellung.mjs",
@@ -159,7 +174,7 @@ describe("Der gemeinsame Prüfpunkt", () => {
   });
 
   it("die Sitzung eines Endpunkts kommt nie aus einem eigenen Speicherzugriff", () => {
-    for (const d of ["server/funktionen/kalender.mjs", "server/funktionen/lage.mjs",
+    for (const d of ["server/funktionen/einladung.mjs", "server/funktionen/kalender.mjs", "server/funktionen/lage.mjs",
       "server/funktionen/zustellung.mjs"]) {
       expect(quellen.get(d), d).not.toMatch(/centric-sitzungen/);
       expect(quellen.get(d), d).not.toMatch(/[`"']t:/);

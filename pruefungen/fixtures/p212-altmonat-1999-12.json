@@ -1,0 +1,442 @@
+{
+ "quelle": "Erzeugt mit dem Code der Basis 32951445 (server/lib/monatsabschluss.mjs: abschliessen + lohnexportBestaetigen), feste Uhr 2026-03-10T12:00:00Z; P2-12 Delta-Review #344 A1-K1.",
+ "geschlossen": {
+  "id": "m-a",
+  "personen": [
+   {
+    "id": "p1",
+    "personalnummer": "100",
+    "vorname": "V",
+    "nachname": "N",
+    "rolle": "mitarbeiter",
+    "status": "aktiv",
+    "wochenstunden": 39,
+    "eintritt": "1990-01-01",
+    "zugehoerigkeit": [
+     {
+      "ab": "1990-01-01",
+      "einheitId": "e1"
+     }
+    ],
+    "qualifikationen": []
+   }
+  ],
+  "einheiten": [
+   {
+    "id": "e1",
+    "name": "E"
+   }
+  ],
+  "zyklus": [],
+  "anker": "2026-01-05",
+  "dienstarten": [
+   {
+    "id": "N",
+    "name": "Nacht",
+    "start": "22:00",
+    "ende": "06:00",
+    "pause": 0
+   },
+   {
+    "id": "F",
+    "name": "Früh",
+    "start": "06:00",
+    "ende": "14:00",
+    "pause": 30
+   }
+  ],
+  "abweichungen": {
+   "p1|1999-12-10": "N",
+   "p1|1999-12-11": "F"
+  },
+  "erfassung": {},
+  "einstempeln": {},
+  "abwesenheiten": [],
+  "zuschlaege": [],
+  "einstellungen": {},
+  "istEingefroren": {
+   "p1|1999-12-10": {
+    "d": 0,
+    "std": 8
+   },
+   "p1|1999-12-11": {
+    "d": 1,
+    "std": 7.5
+   },
+   "p1|1999-12": {
+    "s": 179.4,
+    "z": [
+     7,
+     0,
+     0,
+     14
+    ],
+    "nn": 1,
+    "i": 1,
+    "u": "e1",
+    "g": 15.5,
+    "gg": 0,
+    "ig": 15.5,
+    "br": [
+     0,
+     0
+    ],
+    "ue": 0,
+    "k": -1981.3,
+    "nm": [
+     "100",
+     "N",
+     "V"
+    ]
+   },
+   "*|1999-12": {
+    "v": 3,
+    "da": {
+     "0": {
+      "id": "N",
+      "name": "Nacht",
+      "start": "22:00",
+      "ende": "06:00",
+      "pause": 0
+     },
+     "1": {
+      "id": "F",
+      "name": "Früh",
+      "start": "06:00",
+      "ende": "14:00",
+      "pause": 30
+     }
+    },
+    "la": {
+     "grund": {
+      "nr": "1000",
+      "text": "Gehalt"
+     },
+     "nacht": {
+      "nr": "1400",
+      "text": "Nachtzuschlag steuerfrei"
+     },
+     "sonntag": {
+      "nr": "1410",
+      "text": "Sonntagszuschlag steuerfrei"
+     },
+     "feiertag": {
+      "nr": "1420",
+      "text": "Feiertagszuschlag steuerfrei"
+     },
+     "samstag": {
+      "nr": "1430",
+      "text": "Samstagszuschlag"
+     },
+     "bereitschaft": {
+      "nr": "1500",
+      "text": "Bereitschaftsdienst"
+     },
+     "ruf": {
+      "nr": "1510",
+      "text": "Rufbereitschaft"
+     },
+     "mehrarbeit": {
+      "nr": "1200",
+      "text": "Mehrarbeit"
+     }
+    },
+    "zs": [],
+    "rv": 3,
+    "vo": [
+     "1999-01",
+     "1999-02",
+     "1999-03",
+     "1999-04",
+     "1999-05",
+     "1999-06",
+     "1999-07",
+     "1999-08",
+     "1999-09",
+     "1999-10",
+     "1999-11"
+    ]
+   }
+  },
+  "monatsabschluss": {
+   "1999-12": {
+    "abgeschlossen": true,
+    "am": "2026-03-10T12:00:00.000Z",
+    "wer": {
+     "personId": "l1",
+     "name": "L",
+     "rolle": "leitung"
+    },
+    "abdruck": "f4d60ed082d5d60fbeceb7c7f6a0cd4d",
+    "stand": "a1",
+    "schema": 3,
+    "revision": 1,
+    "verlauf": [
+     {
+      "id": "a1",
+      "art": "abschluss",
+      "am": "2026-03-10T12:00:00.000Z",
+      "wer": {
+       "personId": "l1",
+       "name": "L",
+       "rolle": "leitung"
+      },
+      "grund": "",
+      "abdruck": "f4d60ed082d5d60fbeceb7c7f6a0cd4d"
+     }
+    ]
+   }
+  }
+ },
+ "exportiert": {
+  "id": "m-a",
+  "personen": [
+   {
+    "id": "p1",
+    "personalnummer": "100",
+    "vorname": "V",
+    "nachname": "N",
+    "rolle": "mitarbeiter",
+    "status": "aktiv",
+    "wochenstunden": 39,
+    "eintritt": "1990-01-01",
+    "zugehoerigkeit": [
+     {
+      "ab": "1990-01-01",
+      "einheitId": "e1"
+     }
+    ],
+    "qualifikationen": []
+   }
+  ],
+  "einheiten": [
+   {
+    "id": "e1",
+    "name": "E"
+   }
+  ],
+  "zyklus": [],
+  "anker": "2026-01-05",
+  "dienstarten": [
+   {
+    "id": "N",
+    "name": "Nacht",
+    "start": "22:00",
+    "ende": "06:00",
+    "pause": 0
+   },
+   {
+    "id": "F",
+    "name": "Früh",
+    "start": "06:00",
+    "ende": "14:00",
+    "pause": 30
+   }
+  ],
+  "abweichungen": {
+   "p1|1999-12-10": "N",
+   "p1|1999-12-11": "F"
+  },
+  "erfassung": {},
+  "einstempeln": {},
+  "abwesenheiten": [],
+  "zuschlaege": [],
+  "einstellungen": {},
+  "istEingefroren": {
+   "p1|1999-12-10": {
+    "d": 0,
+    "std": 8
+   },
+   "p1|1999-12-11": {
+    "d": 1,
+    "std": 7.5
+   },
+   "p1|1999-12": {
+    "s": 179.4,
+    "z": [
+     7,
+     0,
+     0,
+     14
+    ],
+    "nn": 1,
+    "i": 1,
+    "u": "e1",
+    "g": 15.5,
+    "gg": 0,
+    "ig": 15.5,
+    "br": [
+     0,
+     0
+    ],
+    "ue": 0,
+    "k": -1981.3,
+    "nm": [
+     "100",
+     "N",
+     "V"
+    ]
+   },
+   "*|1999-12": {
+    "v": 3,
+    "da": {
+     "0": {
+      "id": "N",
+      "name": "Nacht",
+      "start": "22:00",
+      "ende": "06:00",
+      "pause": 0
+     },
+     "1": {
+      "id": "F",
+      "name": "Früh",
+      "start": "06:00",
+      "ende": "14:00",
+      "pause": 30
+     }
+    },
+    "la": {
+     "grund": {
+      "nr": "1000",
+      "text": "Gehalt"
+     },
+     "nacht": {
+      "nr": "1400",
+      "text": "Nachtzuschlag steuerfrei"
+     },
+     "sonntag": {
+      "nr": "1410",
+      "text": "Sonntagszuschlag steuerfrei"
+     },
+     "feiertag": {
+      "nr": "1420",
+      "text": "Feiertagszuschlag steuerfrei"
+     },
+     "samstag": {
+      "nr": "1430",
+      "text": "Samstagszuschlag"
+     },
+     "bereitschaft": {
+      "nr": "1500",
+      "text": "Bereitschaftsdienst"
+     },
+     "ruf": {
+      "nr": "1510",
+      "text": "Rufbereitschaft"
+     },
+     "mehrarbeit": {
+      "nr": "1200",
+      "text": "Mehrarbeit"
+     }
+    },
+    "zs": [],
+    "rv": 3,
+    "vo": [
+     "1999-01",
+     "1999-02",
+     "1999-03",
+     "1999-04",
+     "1999-05",
+     "1999-06",
+     "1999-07",
+     "1999-08",
+     "1999-09",
+     "1999-10",
+     "1999-11"
+    ]
+   }
+  },
+  "monatsabschluss": {
+   "1999-12": {
+    "abgeschlossen": true,
+    "am": "2026-03-10T12:00:00.000Z",
+    "wer": {
+     "personId": "l1",
+     "name": "L",
+     "rolle": "leitung"
+    },
+    "abdruck": "f4d60ed082d5d60fbeceb7c7f6a0cd4d",
+    "stand": "a1",
+    "schema": 3,
+    "revision": 1,
+    "verlauf": [
+     {
+      "id": "a1",
+      "art": "abschluss",
+      "am": "2026-03-10T12:00:00.000Z",
+      "wer": {
+       "personId": "l1",
+       "name": "L",
+       "rolle": "leitung"
+      },
+      "grund": "",
+      "abdruck": "f4d60ed082d5d60fbeceb7c7f6a0cd4d"
+     },
+     {
+      "id": "le1",
+      "art": "lohnexport",
+      "am": "2026-03-10T12:00:00.000Z",
+      "wer": {
+       "personId": "l1",
+       "name": "L",
+       "rolle": "leitung"
+      },
+      "abdruck": "f4d60ed082d5d60fbeceb7c7f6a0cd4d",
+      "revision": 1,
+      "stand": "a1",
+      "zeilen": "fa9133c740fd4033596dedd84188757c",
+      "n": 2,
+      "grund": "Altbestand Pruefung",
+      "trotzVormonat": {
+       "kategorie": "vor_inbetriebnahme",
+       "offen": [
+        "1999-01",
+        "1999-02",
+        "1999-03",
+        "1999-04",
+        "1999-05",
+        "1999-06",
+        "1999-07",
+        "1999-08",
+        "1999-09",
+        "1999-10",
+        "1999-11"
+       ],
+       "geaendert": []
+      }
+     }
+    ],
+    "lohnexport": {
+     "am": "2026-03-10T12:00:00.000Z",
+     "wer": {
+      "personId": "l1",
+      "name": "L",
+      "rolle": "leitung"
+     },
+     "abdruck": "f4d60ed082d5d60fbeceb7c7f6a0cd4d",
+     "revision": 1,
+     "stand": "a1",
+     "zeilen": "fa9133c740fd4033596dedd84188757c",
+     "n": 2,
+     "trotzVormonat": {
+      "kategorie": "vor_inbetriebnahme",
+      "offen": [
+       "1999-01",
+       "1999-02",
+       "1999-03",
+       "1999-04",
+       "1999-05",
+       "1999-06",
+       "1999-07",
+       "1999-08",
+       "1999-09",
+       "1999-10",
+       "1999-11"
+      ],
+      "geaendert": []
+     }
+    }
+   }
+  }
+ }
+}

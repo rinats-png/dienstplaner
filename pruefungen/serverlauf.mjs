@@ -34,7 +34,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const WURZEL = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const ADMIN = process.env.CENTRIC_ADMIN || "testgeheim";
@@ -100,6 +100,10 @@ const server = spawn(process.execPath, ["server.mjs"], {
   cwd: WURZEL,
   env: { ...process.env, PORT: String(port), CENTRIC_STATIK: statik, CENTRIC_DATEN: daten,
     CENTRIC_ABLAGE: "dateien", CENTRIC_ADMIN: ADMIN, CENTRIC_PFEFFER: PFEFFER,
+    /* Die Proben schicken je Fall ein eigenes X-Forwarded-For, damit sie sich
+       nicht gegenseitig in die Bremse treiben. Das gilt nur von einem
+       vertrauten Absender (B-XFF-1) — hier die eigene Maschine. */
+    CENTRIC_VERTRAUTE_PROXYS: "127.0.0.1,::1",
     /* Rechte- und Demoprüfung nutzen den Demozugang; er ist ab Werk aus. */
     CENTRIC_DEMO: "true", CENTRIC_SELBSTSTART: "true", NODE_ENV: "production" },
   stdio: ["ignore", "pipe", "pipe"],
@@ -113,14 +117,18 @@ try {
     console.error(`Server kam nicht hoch:\n${serverLog}`);
   } else {
     console.log(`→ ${path.relative(WURZEL, pruefung)} gegen frischen Server ${basis}, Ablage ${daten}`);
-    status = await laufen(process.execPath, [pruefung], {
+    /* WP-32d: Betreibercodes brauchen in production einen zweiten Faktor; der Vorlauf richtet ihn über die API ein. */
+    status = await laufen(process.execPath, ["--import", pathToFileURL(path.join(WURZEL, "werkzeug", "betreiber-faktor-vorlauf.mjs")).href, pruefung], {
       ...process.env, CENTRIC_BASIS: basis, CENTRIC_ADMIN: ADMIN,
+      /* Für den Vorlauf (werkzeug/betreiber-faktor-vorlauf.mjs): derselbe Datenordner und Pfeffer wie der Server. */
+      CENTRIC_DATEN: daten, CENTRIC_ABLAGE: "dateien", CENTRIC_PFEFFER: PFEFFER,
     });
     if (status !== 0) console.error(`Serverprotokoll:\n${serverLog}`);
   }
 } finally {
   await beenden(server);
   await rm(daten, { recursive: true, force: true });
+  await rm(`${daten}-zustand`, { recursive: true, force: true });   // Schlüsselepoche (schluesselepoche.mjs)
   await rm(statik, { recursive: true, force: true });
 }
 process.exit(status);

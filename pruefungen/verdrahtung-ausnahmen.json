@@ -1,0 +1,6 @@
+[
+  {
+    "datei": "bildersatz.mjs",
+    "grund": "Browser-Werkzeug (Playwright, laufender Dev-Server), erzeugt Bilder und prüft nichts; im Kopf der Datei steht ausdrücklich: läuft nicht in CI."
+  }
+]

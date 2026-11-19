@@ -9,7 +9,22 @@
 
      node werkzeug/ablage-sicherung.mjs sichern --quelle /data --ziel /sicherungen
      node werkzeug/ablage-sicherung.mjs pruefen --sicherung /sicherungen/centric-sicherung-…
-     node werkzeug/ablage-sicherung.mjs wiederherstellen --sicherung … --ziel /data [--ersetzen]
+     node werkzeug/ablage-sicherung.mjs wiederherstellen --sicherung … --ziel /data [--ersetzen] [--zustand <Ordner>]
+     node werkzeug/ablage-sicherung.mjs schluessel-erneuern --zustand <Ordner>
+     node werkzeug/ablage-sicherung.mjs widerrufbuch-neu --zustand <Ordner> [--daten /data]
+     node werkzeug/ablage-sicherung.mjs kontowiderrufbuch-neu --zustand <Ordner> [--daten /data]
+     node werkzeug/ablage-sicherung.mjs widerrufbuch-pruefen --zustand <Ordner> [--vorher <Kopie>]
+     node werkzeug/ablage-sicherung.mjs widerrufbuch-vereinen --zustand <Ordner> --kopie <Kopie> [--kopie …]
+
+   BE-3 (2026-11-14): Die Widerrufbücher (zugang-widerrufe.json, konto-widerrufe.json)
+   sichert ein eigener Job (deploy/sicherung/widerrufbuch-sicherung.sh). Eine
+   Kopie wird nie über das Buch gelegt, sondern VEREINIGT: beide Bücher enthalten
+   nur Einschränkungen, mehr Einträge heißen nie mehr Zugang. `widerrufbuch-vereinen`
+   prüft vorher jedes Siegel und die Herkunft (gemeinsame Kennung, Anker der Ablage),
+   hebt die Eingaben unter <Zustand>/vereinen-sicherung/ auf und schreibt atomar;
+   nichts Neues: nichts geschrieben. `widerrufbuch-pruefen --vorher` erkennt einen
+   zurückgelegten älteren Stand (Exit 3). `wiederherstellen --widerrufbuch-kopie`
+   vereinigt vor dem Tausch (Hostverlust: das Buch entsteht aus der Kopie).
 
    ---------------------------------------------------------------------------
    Was gesichert wird — und was nicht
@@ -63,10 +78,70 @@
    Konsistenz: Der Server darf laufen. Jede einzelne Datei ist durch die
    Ablage atomar, aber zwei zusammengehörige (Konto und Mitgliedschaft)
    können beim Kopieren auseinanderlaufen. Deshalb wird die Quelle nach dem
-   Kopieren noch einmal angesehen; hat sich in dieser Zeit eine gesicherte
-   Datei geändert oder ist eine dazugekommen, wird verworfen und neu
-   begonnen (dreimal), danach mit Fehler abgebrochen. Wer sicher gehen will,
-   stoppt den Server vorher — dann gibt es nie einen zweiten Anlauf.
+   Kopieren noch einmal angesehen. Hat sich dabei eine gesicherte Datei
+   geändert, ist eine dazugekommen oder weggefallen, werden NUR diese
+   Dateien neu kopiert und die Quelle erneut angesehen (bis zu zwölf Runden
+   je Versuch). Gilt erst, wenn ein vollständiger Durchlauf jede Kopie
+   unverändert bestätigt: dann hat sich seit dem Lesen nichts verändert, das
+   sich an Größe, Änderungszeit, Inode oder Dateimenge zeigt (kein Beweis eines
+   je bestehenden Zustands: Dateien, die nur zwischen zwei Listen existieren
+   oder zwischen Stores wandern, sieht dieses Verfahren nicht). Gelingt das nicht, wird der
+   Versuch verworfen und neu begonnen (dreimal), danach mit Fehler
+   abgebrochen (Code 3, nichts angelegt).
+
+   Grenzen dieser Zusicherung (WP-28b/2): Sie gilt für das Dateisystem, nicht
+   für Anwendungsvorgänge. Schreibt die Anwendung zwei zusammengehörige Dateien
+   nacheinander, kann ein Schnitt zwischen ihnen liegen. Deshalb muss nach der
+   Ruhezeit `--ruhe` (Vorgabe 1000 ms) ein zweiter Durchlauf dasselbe zeigen;
+   so sind Lücken unter dieser Zeit ausgeschlossen, längere nicht. Unter
+   Dauerlast gelingt das nicht (Code 3). Eine Zusicherung für beliebige
+   Dauerlast gibt es nur mit Schreib-Halt im Server, nicht in diesem Werkzeug.
+   Wer sicher gehen will, stoppt den Server vorher — dann gibt es nie einen
+   zweiten Anlauf.
+
+   Schreib-Halt (WP-28c, --schreibhalt <Ordner>, server/lib/schreibhalt.mjs):
+   Kopiert wird zuerst ohne Halt. Für den letzten Durchgang bittet das
+   Werkzeug den laufenden Server über den Ordner `schreibhalt` seines
+   Zustandsverzeichnisses um einen kurzen, befristeten Halt: Der Server lässt
+   keine neuen Vorgänge mehr beginnen und bestätigt, sobald die laufenden
+   fertig sind. Dann werden die geänderten Dateien nachkopiert und die Quelle
+   geprüft — sie steht still, und keine Transaktion ist halb. Gilt nur, wenn
+   der Server danach bestätigt, dass der Halt bis zur Freigabe galt; läuft
+   die Frist vorher ab, zählt der Durchgang nicht (nächste Runde, am Ende
+   Code 3). Antwortet kein Server, gilt der Weg mit Ruhezeit oben. Das
+   Manifest vermerkt den Weg (`konsistenz`: "schreibhalt" | "ruhezeit").
+
+   Sicherungsschlüssel nach einer Wiederherstellung (Betreiberentscheidung
+   2026-11-07): Nach jeder vollständigen Wiederherstellung gilt KEIN früherer
+   Sicherungsschlüssel mehr. Die Autorität dafür liegt außerhalb der Ablage
+   (server/lib/schluesselepoche.mjs): die Schlüsselepoche im Zustandsverzeichnis
+   (CENTRIC_ZUSTAND) und ihr Gegenstück `skbindung` in centric-sitzungen, das
+   NIE in eine Sicherung kommt. Fehlt es nach dem Zurückspielen, beginnt der
+   Server eine neue Epoche. Kennt dieses Werkzeug das Zustandsverzeichnis
+   (--zustand oder CENTRIC_ZUSTAND), erneuert es die Epoche zusätzlich selbst,
+   BEVOR es die Daten tauscht; misslingt das, wird nichts angefasst. Eine
+   Sicherung, die `skbindung` oder sonst etwas Flüchtiges enthält, wird
+   abgelehnt. Wer ein altes /data per Verzeichniskopie zurückspielt (ohne
+   dieses Werkzeug), ruft danach `schluessel-erneuern` auf.
+
+   Widerrufene Zugangscodes nach einer Wiederherstellung (E-M6, 2026-11-13,
+   server/lib/widerrufbuch.mjs): Mit Zustandsverzeichnis übernimmt das Werkzeug
+   vor dem Tausch alle in der bisherigen Ablage gesperrten Codes ins Widerrufbuch,
+   sperrt alles, was dort steht, in der zurückzuspielenden Kopie (`gesperrt`,
+   das auch ältere Bilder kennen) und vermerkt die Wiederherstellung. Buch
+   beschädigt, fremd oder fehlend bei vorhandenem Anker: Abbruch, nichts
+   angefasst. `widerrufbuch-neu` legt ein verlorenes Buch nur bewusst neu an.
+
+   Gesperrte Konten und entzogene Mitgliedschaften nach einer Wiederherstellung
+   (BE-1, 2026-11-14, server/lib/kontowiderrufbuch.mjs): dasselbe mit dem
+   Konto-Widerrufbuch (eigene Datei konto-widerrufe.json): einsammeln, in der
+   Kopie nachziehen (Konto „gesperrt“, Lauf angehoben, Mitgliedschaft
+   „entzogen“), vermerken; jeder Zweifel bricht ab. `kontowiderrufbuch-neu`
+   legt ein verlorenes Konto-Buch nur bewusst neu an.
+   BE-2 A1 (2026-11-14): im selben Buch „Faktor war aktiv“ und verbrauchte
+   Wiederherstellungscodes; in der Kopie wird ein fehlender Pflicht-Faktor
+   durch einen gesperrten Platzhalter ersetzt (kein Geheimnis zurückgelegt)
+   und ein verbrauchter Code als verbraucht vermerkt.
 
    Wiederherstellen: Der Server muss stehen (es wird versucht, /gesund zu
    erreichen; antwortet es, wird abgelehnt). Ein nicht leeres Ziel wird nur
@@ -74,10 +149,24 @@
    wandert nach `.vor-wiederherstellung-<UTC>/` im Ziel.
    ========================================================================== */
 
-import { createHash } from "node:crypto";
-import { mkdir, open, readdir, readFile, rename, rm, stat } from "node:fs/promises";
+import { createHash, randomBytes } from "node:crypto";
+import { lstat, mkdir, open, readdir, readFile, rename, rm, stat } from "node:fs/promises";
 import path from "node:path";
+import { hostname } from "node:os";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { BINDUNG_SCHLUESSEL, epocheDateiErneuern, ueberlappen } from "../server/lib/schluesselepoche.mjs";
+import { haltAnfordern } from "../server/lib/schreibhalt.mjs";
+import { dateiname } from "../server/lib/ablage.mjs";
+import { ANKER_SCHLUESSEL, MARKE_PRAEFIX, VERWALTER_PRAEFIX, buchLesen, buchNeu, buchSchreiben, einsammeln, nachzuziehen,
+  verwalterNachzuziehen, markenNachzuziehen, markeZerlegen, gesperrtesKonto, NACHTRAG_SCHLUESSEL, nachtragSchluessel,
+  REGIME_PRAEFIX, regimeNachzuziehen, BESTAND_PRAEFIXE, bestandRaum, bestandBetriebe }
+  from "../server/lib/widerrufbuch.mjs";
+import { SPERRDATEI, VERALTET_MS } from "../server/lib/prozesssperre.mjs";
+import { KONTOBUCH_ANKER, KONTOBUCH_NACHTRAG, ACCOUNT_PRAEFIX, MITGLIED_PRAEFIX, MITGLIEDLAUF_PRAEFIX, kontobuchLesen,
+  kontobuchNeu, kontobuchSchreiben, kontobuchEinsammeln, kontobuchNormalisieren, kontoFaktorSchluessel,
+  faktorZahlen, passwortZahlen } from "../server/lib/kontowiderrufbuch.mjs";
+import { BUECHER, vereinen as vereinenNach, fehlendeEintraege, eintragZahl, gemeinsameHerkunft }
+  from "../server/lib/widerrufbuchsicherung.mjs";
 
 /** Dieselbe Fassung wie server/lib/ablage.mjs (FASSUNG). */
 const ABLAGE_FASSUNG = 1;
@@ -89,12 +178,15 @@ const FORMAT = 1;
  * Ohne Angabe wird der Store ganz gesichert; `klasse: "C"` heißt: gar nicht.
  */
 export const STORES = {
-  "centric":                  { klasse: "A", ohne: ["token:", "tokencode:"] },
-  "centric-sitzungen":        { klasse: "B", nur: ["sk:"] },
+  "centric":                  { klasse: "A", ohne: ["token:", "tokencode:", "zweifaktor-nachweis:"] },
+  "centric-sitzungen":        { klasse: "B", nur: ["sk:", "skw:", "skraum:"] },
   "centric-spur":             { klasse: "B" },
   "centric-accountsitzungen": { klasse: "C" },
   "centric-takt":             { klasse: "C" },
 };
+
+/** Wie viele Dateien quelleAnsehen gleichzeitig mit stat ansieht. */
+const STAT_BLOCK = 64;
 
 const sha256 = (/** @type {Buffer|string} */ b) => createHash("sha256").update(b).digest("hex");
 
@@ -124,7 +216,7 @@ async function ordnerFest(/** @type {string} */ ordner) {
 }
 
 /** @param {string} datei @param {Buffer} inhalt */
-function umschlagPruefen(datei, inhalt) {
+export function umschlagPruefen(datei, inhalt) {
   let u;
   try { u = JSON.parse(inhalt.toString("utf8")); }
   catch { throw new SicherungsFehler(`${datei} ist kein gültiger JSON-Umschlag (beschädigt?)`); }
@@ -137,16 +229,21 @@ function umschlagPruefen(datei, inhalt) {
    --------------------------------------------------------------------------- */
 
 /**
- * Listet, was in die Sicherung gehört, und was bewusst fehlt.
+ * Listet, was in die Sicherung gehört, und was bewusst fehlt. Auch für
+ * werkzeug/ablage-pruefen.mjs: Was hier oder in umschlagPruefen scheitert,
+ * bricht die Sicherung ab.
  * @param {string} quelle
  */
-async function quelleAnsehen(quelle) {
+export async function quelleAnsehen(quelle) {
   let eintraege;
   try { eintraege = await readdir(quelle, { withFileTypes: true }); }
   catch (e) { throw new SicherungsFehler(`Quelle ${quelle} nicht lesbar: ${/** @type {any} */ (e).message}`); }
 
   /** @type {{store: string, name: string, pfad: string, bytes: number, mtimeMs: number}[]} */
   const dateien = [];
+  /** @type {{store: string, name: string, pfad: string}[]} */
+  const kandidaten = [];
+  let veraendert = false;
   /** @type {Record<string, {klasse: string, dateien: number, bytes: number}>} */
   const stores = {};
   /** @type {Record<string, Record<string, number>>} */
@@ -167,7 +264,17 @@ async function quelleAnsehen(quelle) {
         + "Sicherung abgebrochen — sonst fehlte er unbemerkt.", 2);
     const dir = path.join(quelle, e.name);
     stores[e.name] = { klasse: regel.klasse, dateien: 0, bytes: 0 };
-    for (const d of await readdir(dir, { withFileTypes: true })) {
+    let inhaltDir;
+    try { inhaltDir = await readdir(dir, { withFileTypes: true }); }
+    catch (fehler) {
+      // Das Verzeichnis ist zwischen der Wurzelliste und hier verschwunden (verschoben, ersetzt): Veränderung.
+      if (/** @type {any} */ (fehler).code === "ENOENT") { veraendert = true; delete stores[e.name]; continue; }
+      throw fehler;
+    }
+    for (const d of inhaltDir) {
+      /* Ein Link (auch kaputt) ist kein Schlüssel-Datei: abbrechen, nie als „verändert“ melden. */
+      if (d.isSymbolicLink())
+        throw new SicherungsFehler(`Symbolischer Link ${e.name}/${d.name}. Sicherung abgebrochen — bitte von Hand ansehen.`, 2);
       if (d.isDirectory())
         throw new SicherungsFehler(`Unerwartetes Verzeichnis ${e.name}/${d.name}. Sicherung abgebrochen.`, 2);
       if (d.name.endsWith(".tmp")) { merke(e.name, "unfertige Zwischendatei (.tmp)"); continue; }
@@ -182,32 +289,64 @@ async function quelleAnsehen(quelle) {
       }
       const vom = (regel.ohne || []).find((/** @type {string} */ p) => schluessel.startsWith(p));
       if (vom) { merke(e.name, `flüchtig (${vom})`); continue; }
-      const st = await stat(path.join(dir, d.name));
-      dateien.push({ store: e.name, name: d.name, pfad: path.join(dir, d.name),
-        bytes: st.size, mtimeMs: st.mtimeMs });
-      stores[e.name].dateien += 1;
-      stores[e.name].bytes += st.size;
+      kandidaten.push({ store: e.name, name: d.name, pfad: path.join(dir, d.name) });
     }
   }
+  /* stat in Blöcken gleichzeitig: Die Liste ist zugleich die Gegenprobe der Sicherung, und je kürzer sie
+     dauert, desto kleiner ist das Fenster, in dem eine Änderung sie stört (5000 Dateien: sonst ~220 ms). */
+  for (let i = 0; i < kandidaten.length; i += STAT_BLOCK) {
+    const block = kandidaten.slice(i, i + STAT_BLOCK);
+    const ergebnisse = await Promise.all(block.map((k) => stat(k.pfad).then((st) => ({ st }), (err) => ({ err }))));
+    ergebnisse.forEach((r, j) => {
+      const k = block[j];
+      if ("err" in r) {
+        // Zwischen readdir und stat ersetzt oder entfernt: Veränderung der Quelle, kein Fehler.
+        if (/** @type {any} */ (r.err).code === "ENOENT") { veraendert = true; return; }
+        throw r.err;
+      }
+      dateien.push({ ...k, bytes: r.st.size, mtimeMs: r.st.mtimeMs, ino: r.st.ino });
+      stores[k.store].dateien += 1;
+      stores[k.store].bytes += r.st.size;
+    });
+  }
   dateien.sort((a, b) => (a.store + "/" + a.name).localeCompare(b.store + "/" + b.name));
-  return { dateien, stores, ausgelassen };
+  return { dateien, stores, ausgelassen, veraendert };
 }
 
-const fingerabdruck = (/** @type {{store:string,name:string,bytes:number,mtimeMs:number}[]} */ l) =>
-  l.map((d) => `${d.store}/${d.name}|${d.bytes}|${d.mtimeMs}`).join("\n");
+/** Fingerabdruck einer Datei aus der Liste: Größe, Änderungszeit und Inode. Die Ablage ersetzt eine Datei immer
+    durch eine neue (Zwischendatei + rename = neue Inode); so fällt auch ein Austausch auf, der Größe und mtime
+    zufällig gleich lässt (mtime-Takt). Ein Fehlalarm kostet nur ein Nachkopieren. */
+const fp = (/** @type {{bytes:number,mtimeMs:number,ino?:number}} */ d) => `${d.bytes}|${d.mtimeMs}|${d.ino ?? ""}`;
+const idVon = (/** @type {{store:string,name:string}} */ d) => `${d.store}/${d.name}`;
 
 /* ---------------------------------------------------------------------------
    Sichern
    --------------------------------------------------------------------------- */
 
 /**
- * @param {{quelle: string, ziel: string, jetzt?: Date, versuche?: number,
- *          pause?: number, meldung?: (s: string) => void}} o
+ * @param {{quelle: string, ziel: string, jetzt?: Date, versuche?: number, runden?: number,
+ *          pause?: number, ruhe?: number, meldung?: (s: string) => void,
+ *          schreibhalt?: (null|string|{anfordern: () => Promise<any>})}} o
+ *   `ruhe` (ms): Bestätigungspause vor dem Abschluss, siehe unten. Als Bibliotheksaufruf 0 (Tests, kurze Läufe);
+ *   die Kommandozeile setzt 1000, wenn nichts anderes verlangt wird (`--ruhe`).
+ *   `schreibhalt`: Ordner des Halte-Kanals (oder ein Objekt mit `anfordern()` wie haltAnfordern) — siehe Kopf.
  * @returns {Promise<{pfad: string, manifest: any}>}
  */
-export async function sichern({ quelle, ziel, jetzt = new Date(), versuche = 3, pause = 1000,
-  meldung = () => {} }) {
+export async function sichern({ quelle, ziel, jetzt = new Date(), versuche = 3, runden = 12, pause = 1000,
+  ruhe = 0, meldung = () => {}, schreibhalt = null }) {
   quelle = path.resolve(quelle); ziel = path.resolve(ziel);
+  const haltKanal = typeof schreibhalt === "string"
+    ? { anfordern: () => haltAnfordern(/** @type {string} */ (schreibhalt)) } : schreibhalt;
+  if (typeof schreibhalt === "string") {
+    if (ueberlappen(schreibhalt, quelle))
+      throw new SicherungsFehler(`Der Halte-Ordner ${schreibhalt} liegt in der Quelle oder umgekehrt.`, 2);
+    if (!(await stat(schreibhalt).then((st) => st.isDirectory(), () => false)))
+      throw new SicherungsFehler(`Halte-Ordner ${schreibhalt} fehlt (er entsteht beim Serverstart im Zustandsverzeichnis).`, 2);
+  }
+  /** Ohne Server (keine Antwort) für den Rest des Laufs ohne Halt: nicht in jeder Runde warten. */
+  let haltAus = !haltKanal;
+  /** Unbestätigte Halte (Drain-Grenze, abgelehnt): nach dem zweiten für diesen Lauf ohne Halt weiter. */
+  let haltUnbestaetigt = 0;
   if (ziel === quelle || ziel.startsWith(quelle + path.sep))
     throw new SicherungsFehler("Das Ziel darf nicht innerhalb der Quelle liegen — die Sicherung würde sich selbst sichern.", 2);
   await mkdir(ziel, { recursive: true, mode: 0o700 });
@@ -222,58 +361,164 @@ export async function sichern({ quelle, ziel, jetzt = new Date(), versuche = 3, 
   if (!pruefwert) meldung("Warnung: CENTRIC_PFEFFER ist nicht gesetzt — die Sicherung kann den Pfeffer nicht gegenprüfen.");
 
   let letzterGrund = "";
-  for (let versuch = 1; versuch <= versuche; versuch++) {
-    await rm(werkstatt, { recursive: true, force: true });
-    const vorher = await quelleAnsehen(quelle);
-    await mkdir(path.join(werkstatt, "daten"), { recursive: true, mode: 0o700 });
-    for (const s of Object.keys(vorher.stores))
-      await mkdir(path.join(werkstatt, "daten", s), { recursive: true, mode: 0o700 });
-
-    const liste = [];
-    let verschwunden = false;
-    for (const d of vorher.dateien) {
-      let inhalt;
-      try { inhalt = await readFile(d.pfad); }
-      catch (e) {
-        if (/** @type {any} */ (e).code === "ENOENT") { verschwunden = true; break; }
-        throw e;
+  /** @type {"schreibhalt"|"ruhezeit"|null} */
+  let konsistenz = null;
+  try {
+    for (let versuch = 1; versuch <= versuche; versuch++) {
+      await rm(werkstatt, { recursive: true, force: true });
+      let ansicht = await quelleAnsehen(quelle);
+      if (ansicht.veraendert) {
+        letzterGrund = "Die Ablage hat sich während der Sicherung verändert.";
+        meldung(`Versuch ${versuch}/${versuche}: ${letzterGrund}`);
+        if (versuch < versuche) await new Promise((r) => setTimeout(r, pause));
+        continue;
       }
-      if (inhalt.length !== d.bytes) { verschwunden = true; break; }   // zwischen Listen und Lesen geändert
-      umschlagPruefen(`${d.store}/${d.name}`, inhalt);
-      await schreibenFest(path.join(werkstatt, "daten", d.store, d.name), inhalt);
-      liste.push({ pfad: `${d.store}/${d.name}`, bytes: inhalt.length, sha256: sha256(inhalt) });
-    }
-    const nachher = verschwunden ? null : await quelleAnsehen(quelle);
-    if (verschwunden || !nachher || fingerabdruck(nachher.dateien) !== fingerabdruck(vorher.dateien)) {
-      letzterGrund = "Die Ablage hat sich während der Sicherung verändert.";
-      meldung(`Versuch ${versuch}/${versuche}: ${letzterGrund}`);
-      await rm(werkstatt, { recursive: true, force: true });
-      if (versuch < versuche) await new Promise((r) => setTimeout(r, pause));
-      continue;
-    }
+      await mkdir(path.join(werkstatt, "daten"), { recursive: true, mode: 0o700 });
 
-    const summe = { dateien: liste.length, bytes: liste.reduce((a, d) => a + d.bytes, 0) };
-    const manifest = {
-      format: FORMAT, werkzeug: "ablage-sicherung", erstellt: jetzt.toISOString(),
-      pfefferPruefwert: pruefwert, stores: vorher.stores, ausgelassen: vorher.ausgelassen,
-      summe, dateien: liste,
-    };
-    const text = JSON.stringify(manifest, null, 2) + "\n";
-    await schreibenFest(path.join(werkstatt, "MANIFEST.json"), text);
-    await schreibenFest(path.join(werkstatt, "MANIFEST.sha256"), sha256(text) + "\n");
-    // Erst jetzt gilt die Sicherung als vollständig.
-    await schreibenFest(path.join(werkstatt, "FERTIG"), `FERTIG ${sha256(text)}\n`);
-    await ordnerFest(werkstatt);
+      /* Kopieren in Runden. Eine Datei gilt als gesichert, wenn ihre Kopie zu dem Fingerabdruck gehört, den die
+         Liste VOR dem Lesen hatte. Danach wird die Quelle neu angesehen: stimmt jede Datei der neuen Liste mit
+         ihrer Kopie überein (und nichts fehlt oder ist dazugekommen), hat sich zwischen Lesen und Prüfdurchlauf
+         nichts verändert, das sich an Größe, Änderungszeit, Inode oder Dateimenge zeigt — gemeinsam für alle
+         Dateien, nicht nur je Datei. (Kein Beweis eines je existierenden Zustands bei Dateien, die zyklisch
+         hin- und herwandern; dasselbe galt für den Vorher/Nachher-Vergleich zuvor.)
+         Sonst werden nur die abweichenden Dateien in der nächsten Runde neu gelesen. */
+      /** @type {Map<string, {fp: string, bytes: number, sha256: string}>} */
+      const kopien = new Map();
+      const storeAngelegt = new Set();
+      /* Eine Kopie, die nicht mehr zum Stand der Quelle gehört, wird sofort samt Datei verworfen:
+         in der Werkstatt liegt nie etwas, das nicht in `kopien` steht (pruefen() wacht darüber). */
+      const verwerfen = async (/** @type {string} */ id) => {
+        kopien.delete(id);
+        await rm(path.join(werkstatt, "daten", id), { force: true });
+      };
+      /** Bringt die Kopien auf den Stand der Liste. true: unterwegs Unruhe gesehen. */
+      const kopieren = async (/** @type {Awaited<ReturnType<typeof quelleAnsehen>>} */ liste) => {
+        let unruhig = false;
+        const aktuell = new Set(liste.dateien.map(idVon));
+        for (const id of [...kopien.keys()]) if (!aktuell.has(id)) await verwerfen(id);   // gelöscht oder verschoben
+        for (const d of liste.dateien) {
+          const id = idVon(d);
+          if (kopien.get(id)?.fp === fp(d)) continue;                       // Kopie gehört schon zu diesem Stand
+          await verwerfen(id);
+          let inhalt;
+          try { inhalt = await readFile(d.pfad); }
+          catch (e) {
+            if (/** @type {any} */ (e).code === "ENOENT") { unruhig = true; continue; }
+            throw e;
+          }
+          if (inhalt.length !== d.bytes) { unruhig = true; continue; }     // zwischen Listen und Lesen geändert
+          umschlagPruefen(id, inhalt);
+          if (!storeAngelegt.has(d.store)) {
+            await mkdir(path.join(werkstatt, "daten", d.store), { recursive: true, mode: 0o700 });
+            storeAngelegt.add(d.store);
+          }
+          await schreibenFest(path.join(werkstatt, "daten", d.store, d.name), inhalt);
+          kopien.set(id, { fp: fp(d), bytes: inhalt.length, sha256: sha256(inhalt) });
+        }
+        return unruhig;
+      };
+      /** Stimmt die Liste mit den Kopien überein (Menge und Fingerabdrücke)? */
+      const gleich = (/** @type {Awaited<ReturnType<typeof quelleAnsehen>>} */ l) => !l.veraendert
+        && l.dateien.length === kopien.size && l.dateien.every((d) => kopien.get(idVon(d))?.fp === fp(d));
+      let stabil = false;
+      for (let runde = 1; runde <= runden && !stabil; runde++) {
+        let unruhig = await kopieren(ansicht);
+        if (!haltAus) {
+          /* Letzter Durchgang unter Schreib-Halt (siehe Kopf). */
+          const h = await /** @type {{anfordern: () => Promise<any>}} */ (haltKanal).anfordern();
+          if (h.gehalten) {
+            let ok = false;
+            let gehaltenBisZuletzt = false;
+            /** @type {Awaited<ReturnType<typeof quelleAnsehen>>|null} */
+            let unterHalt = null;
+            try {
+              const vorher = await quelleAnsehen(quelle);
+              const u = vorher.veraendert || await kopieren(vorher);
+              unterHalt = await quelleAnsehen(quelle);
+              ok = !u && gleich(unterHalt);
+            } finally {
+              gehaltenBisZuletzt = await h.freigeben();
+            }
+            ansicht = unterHalt || await quelleAnsehen(quelle);
+            if (ok && gehaltenBisZuletzt) { stabil = true; konsistenz = "schreibhalt"; break; }
+            meldung(`Versuch ${versuch}/${versuche}, Runde ${runde}/${runden}: ${gehaltenBisZuletzt
+              ? "Ablage hat sich unter dem Schreib-Halt verändert (Schreiber außerhalb des Servers?)"
+              : "Schreib-Halt vor dem Abschluss abgelaufen — dieser Durchgang zählt nicht"}.`);
+            continue;
+          }
+          if (h.keinServer) {
+            haltAus = true;
+            meldung(`Schreib-Halt nicht verfügbar (${h.grund}) — weiter mit Ruhezeit, ohne Halt.`);
+          } else {
+            haltUnbestaetigt += 1;
+            if (haltUnbestaetigt >= 2) haltAus = true;
+            meldung(`Versuch ${versuch}/${versuche}, Runde ${runde}/${runden}: Schreib-Halt nicht bestätigt (${h.grund}) — ${haltAus
+              ? "für den Rest des Laufs ohne Halt, mit Ruhezeit" : "diese Runde mit Ruhezeit"}.`);
+          }
+        }
+        let jetztListe = await quelleAnsehen(quelle);
+        if (jetztListe.veraendert) unruhig = true;
+        stabil = !unruhig && gleich(jetztListe);
+        /* Ruhezeit: Eine Transaktion über mehrere Dateien (Konto, dann Mitgliedschaft) kann zwischen zwei
+           Schreibvorgängen im Schnitt liegen. Nach `ruhe` ms (Monotonzeit, unabhängig von der Dateiuhr) muss ein
+           zweiter vollständiger Durchlauf dasselbe zeigen: Dann war die erste Datei schon vor dem ersten und
+           die zweite noch nicht nach dem zweiten Durchlauf geschrieben — Lücken kürzer als `ruhe` sind
+           ausgeschlossen. Längere Lücken (z. B. Warten auf eine Raumsperre) bleiben möglich. */
+        if (stabil && ruhe > 0) {
+          await new Promise((r) => setTimeout(r, ruhe));
+          jetztListe = await quelleAnsehen(quelle);
+          stabil = gleich(jetztListe);
+        }
+        if (stabil) konsistenz = "ruhezeit";
+        ansicht = jetztListe;
+        if (!stabil && runde < runden) meldung(`Versuch ${versuch}/${versuche}, Runde ${runde}/${runden}: Ablage hat sich verändert — geänderte Dateien werden nachkopiert.`);
+      }
+      if (!stabil) {
+        letzterGrund = "Die Ablage hat sich während der Sicherung verändert.";
+        meldung(`Versuch ${versuch}/${versuche}: ${letzterGrund}`);
+        await rm(werkstatt, { recursive: true, force: true });
+        if (versuch < versuche) await new Promise((r) => setTimeout(r, pause));
+        continue;
+      }
 
-    // Gegenprobe, bevor sie ihren Namen bekommt: das, was auf der Platte liegt.
-    const probe = await pruefen(werkstatt);
-    if (!probe.ok) {
-      await rm(werkstatt, { recursive: true, force: true });
-      throw new SicherungsFehler(`Die frisch geschriebene Sicherung besteht die Prüfung nicht:\n  ${probe.fehler.join("\n  ")}`);
+      /* Stores im Endstand bekommen ihr Verzeichnis auch ohne Dateien (die Wiederherstellung braucht es);
+         ein Store, der zwischendurch ganz weggefallen ist, bleibt nicht als leeres Verzeichnis zurück. */
+      for (const sName of Object.keys(ansicht.stores))
+        await mkdir(path.join(werkstatt, "daten", sName), { recursive: true, mode: 0o700 });
+      for (const sName of await readdir(path.join(werkstatt, "daten")))
+        if (!Object.hasOwn(ansicht.stores, sName)) await rm(path.join(werkstatt, "daten", sName), { recursive: true, force: true });
+      const liste = ansicht.dateien.map((d) => {
+        const k = /** @type {{bytes: number, sha256: string}} */ (kopien.get(idVon(d)));
+        return { pfad: idVon(d), bytes: k.bytes, sha256: k.sha256 };
+      });
+
+      const summe = { dateien: liste.length, bytes: liste.reduce((a, d) => a + d.bytes, 0) };
+      const manifest = {
+        format: FORMAT, werkzeug: "ablage-sicherung", erstellt: jetzt.toISOString(),
+        pfefferPruefwert: pruefwert, stores: ansicht.stores, ausgelassen: ansicht.ausgelassen,
+        konsistenz, summe, dateien: liste,
+      };
+      const text = JSON.stringify(manifest, null, 2) + "\n";
+      await schreibenFest(path.join(werkstatt, "MANIFEST.json"), text);
+      await schreibenFest(path.join(werkstatt, "MANIFEST.sha256"), sha256(text) + "\n");
+      // Erst jetzt gilt die Sicherung als vollständig.
+      await schreibenFest(path.join(werkstatt, "FERTIG"), `FERTIG ${sha256(text)}\n`);
+      await ordnerFest(werkstatt);
+
+      // Gegenprobe, bevor sie ihren Namen bekommt: das, was auf der Platte liegt.
+      const probe = await pruefen(werkstatt);
+      if (!probe.ok) {
+        await rm(werkstatt, { recursive: true, force: true });
+        throw new SicherungsFehler(`Die frisch geschriebene Sicherung besteht die Prüfung nicht:\n  ${probe.fehler.join("\n  ")}`);
+      }
+      await rename(werkstatt, endgueltig);
+      await ordnerFest(ziel);
+      return { pfad: endgueltig, manifest };
     }
-    await rename(werkstatt, endgueltig);
-    await ordnerFest(ziel);
-    return { pfad: endgueltig, manifest };
+  } catch (e) {
+    // Jeder Abbruch (auch Code 1/2) hinterlässt nichts Halbes im Ziel.
+    await rm(werkstatt, { recursive: true, force: true }).catch(() => {});
+    throw e;
   }
   throw new SicherungsFehler(
     `${letzterGrund} Nach ${versuche} Versuchen aufgegeben, keine Sicherung angelegt. `
@@ -352,18 +597,577 @@ async function serverLaeuft(/** @type {string} */ url) {
   } catch { return false; }
 }
 
+/** Name des Vermerks der Wiederherstellungen im Datenverzeichnis (Punktdatei: nicht gesichert). */
+export const WIEDERHERSTELL_VERMERK = ".wiederhergestellt.json";
+
+/**
+ * Alle vermerkten Wiederherstellungen eines Datenverzeichnisses, älteste
+ * zuerst: [{ zeit, sicherungErstellt }]. Keine Datei: []. Die frühere Form
+ * (ein einzelnes Objekt) wird als Liste mit einem Eintrag gelesen.
+ * Vorhanden, aber unlesbar oder unvollständig: Fehler — nie still „keine".
+ * @param {string} wurzel
+ * @returns {Promise<Array<{zeit: string, sicherungErstellt: string}>>}
+ */
+export async function wiederherstellVermerkeLesen(wurzel) {
+  const datei = path.join(wurzel, WIEDERHERSTELL_VERMERK);
+  let roh;
+  try { roh = await readFile(datei, "utf8"); }
+  catch (e) {
+    if (/** @type {any} */ (e).code === "ENOENT") return [];
+    throw new SicherungsFehler(`${datei} ist nicht lesbar (${/** @type {any} */ (e).code || e}). Erst klären — siehe BETRIEB-SICHERUNG §4a.`, 2);
+  }
+  let o;
+  try { o = JSON.parse(roh); } catch { o = null; }
+  const liste = Array.isArray(o?.wiederherstellungen) ? o.wiederherstellungen
+    : (o && typeof o === "object" && o.zeit && o.sicherungErstellt ? [o] : null);
+  if (!liste || !liste.every((w) => w && Number.isFinite(Date.parse(w.zeit)) && Number.isFinite(Date.parse(w.sicherungErstellt))))
+    throw new SicherungsFehler(`${datei} ist beschädigt — die Standfolge der Wiederherstellungen ist nicht bekannt. `
+      + "Erst klären — siehe BETRIEB-SICHERUNG §4a.", 2);
+  return liste.map((w) => ({ zeit: w.zeit, sicherungErstellt: w.sicherungErstellt }));
+}
+
+/**
+ * Gehört diese Datei der Sicherung nach STORES überhaupt hinein? Sonst ist die Sicherung fremd oder manipuliert.
+ * Diese Prüfung ist nur so streng wie STORES: Die Positivliste von centric-sitzungen darf nie Flüchtiges aufnehmen
+ * (t:, ta:, skbindung) — sonst nähme auch das Zurückspielen es an (Test: sicherungsschluessel-wiederherstellung).
+ * STORES darf nur strenger werden; wird es strenger, bleiben ältere Sicherungen wegen des nicht geprüften
+ * `ohne` (unten) zurückspielbar.
+ */
+export function gehoertInSicherung(/** @type {string} */ pfad) {
+  const [store, datei] = pfad.split("/");
+  const regel = /** @type {Record<string, any>} */ (STORES)[store];
+  if (!regel || regel.klasse === "C") return false;
+  let schluessel;
+  try { schluessel = decodeURIComponent(datei.slice(0, -5)); } catch { return false; }
+  if (store === "centric-sitzungen" && schluessel === BINDUNG_SCHLUESSEL) return false;
+  /* `ohne` wird hier nicht geprüft: Ältere Sicherungen enthielten Präfixe, die erst später ausgeschlossen wurden
+     (z. B. zweifaktor-nachweis:), und sollen sich weiter zurückspielen lassen. Die Sitzungsablage dagegen nur mit
+     ihrer festen Positivliste. */
+  return !regel.nur || regel.nur.some((/** @type {string} */ p) => schluessel.startsWith(p));
+}
+
+/** Das Zustandsverzeichnis darf nicht in der Ablage liegen (es würde sonst mit ihr gesichert und zurückgespielt).
+    Verglichen werden die echten Pfade (Links und Junctions aufgelöst). */
+function zustandOrtPruefen(/** @type {string} */ zustand, /** @type {string} */ ziel) {
+  const z = path.resolve(zustand);
+  if (ueberlappen(z, ziel))
+    throw new SicherungsFehler(`Das Zustandsverzeichnis ${z} liegt in der Ablage ${ziel} oder umgekehrt. Nichts wurde angefasst.`, 2);
+  return z;
+}
+
+/**
+ * Nach dem Zurückspielen eines alten /data ohne dieses Werkzeug (Verzeichniskopie): neue Schlüsselepoche, damit kein
+ * früherer Sicherungsschlüssel mehr gilt.
+ * Wie beim Wiederherstellen muss der Server stehen: Ein laufender Server schriebe sofort eine Bindung zur alten Ablage.
+ * @param {{zustand: string, daten?: string, serverUrl?: string, serverPruefen?: boolean}} o
+ */
+export async function schluesselErneuern({ zustand, daten, serverUrl, serverPruefen = true }) {
+  const z = zustandOrtPruefen(zustand, path.resolve(daten || process.env.CENTRIC_DATEN || "/data"));
+  if (serverPruefen) {
+    const url = serverUrl || `http://127.0.0.1:${process.env.PORT || 3000}/gesund`;
+    if (await serverLaeuft(url))
+      throw new SicherungsFehler(`Unter ${url} antwortet ein Server. Erst stoppen, dann die Schlüsselepoche erneuern. Nichts wurde angefasst.`);
+  }
+  try { return await epocheDateiErneuern(z, "von-hand-nach-wiederherstellung"); }
+  catch (e) { throw new SicherungsFehler(`Schlüsselepoche nicht erneuert: ${/** @type {Error} */ (e).message}`); }
+}
+
+/* ---------------------------------------------------------------------------
+   Widerrufbuch (E-M6) — Zugangscodes einer Ablage auf der Platte lesen und sperren
+   --------------------------------------------------------------------------- */
+
+const KONTO_PRAEFIX = "konto%3A";
+
+/** Den Inhalt (`daten`) eines Umschlags lesen; fehlt die Datei: null. Beschädigt: wirft (fail-closed). */
+async function umschlagDaten(/** @type {string} */ datei) {
+  let roh;
+  try { roh = await readFile(datei); }
+  catch (e) { if (/** @type {any} */ (e).code === "ENOENT") return null; throw e; }
+  umschlagPruefen(datei, roh);
+  const u = JSON.parse(roh.toString("utf8"));
+  return u.typ === "json" ? u.daten : JSON.parse(u.daten);
+}
+
+/** Einen JSON-Umschlag wie server/lib/ablage.mjs schreiben (überschreibt; nur in der Stufe oder einem stillen Ziel). */
+async function umschlagSchreiben(/** @type {string} */ datei, /** @type {any} */ daten, /** @type {object} */ metadata = {}) {
+  const serialisiert = JSON.stringify(daten);
+  const inhalt = JSON.stringify({ fassung: ABLAGE_FASSUNG, etag: `"${sha256(serialisiert).slice(0, 32)}"`, typ: "json", metadata, daten });
+  const tmp = `${datei}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`;
+  await schreibenFest(tmp, inhalt);
+  try { await rename(tmp, datei); } catch (e) { await rm(tmp, { force: true }); throw e; }
+}
+
+const VERWALTER_DATEI = dateiname(`${VERWALTER_PRAEFIX}x`).slice(0, -"x.json".length);
+const MARKE_DATEI = dateiname(`${MARKE_PRAEFIX}x`).slice(0, -"x.json".length);
+const REGIME_DATEI = dateiname(`${REGIME_PRAEFIX}x`).slice(0, -"x.json".length);
+const BESTAND_DATEIEN = BESTAND_PRAEFIXE.map((p) => dateiname(`${p}x`).slice(0, -"x.json".length));
+
+/**
+ * Alle Zugänge (konto:* und der alte Sammelblob „konten"), Verwalterschlüssel (verwalter:*), Marken
+ * „Erstanmeldung festgelegt" (erstleitung-marke:*, PR #281), Regime-Marken (erstleitung-regime:*, PR #281) und die
+ * Betriebe aller Bestände (kern:*, bestand:* — nur Raum und Betriebskennung) eines Store-Verzeichnisses `centric`.
+ * Beschädigt: wirft.
+ * @param {string} dir
+ * @returns {Promise<{konten: Record<string, any>, verwalter: Record<string, any>,
+ *   marken: Array<{raum: string, mandantId: string, personId: string}>, regime: Array<{raum: string, mandantId: string}>,
+ *   betriebe: Array<{raum: string, mandantId: string}>, nachtrag?: string[]}>}
+ */
+async function kontenImOrdner(dir) {
+  /** @type {Record<string, any>} */ const konten = {};
+  /** @type {Record<string, any>} */ const verwalter = {};
+  /** @type {Array<{raum: string, mandantId: string, personId: string}>} */ const marken = [];
+  /** @type {Array<{raum: string, mandantId: string}>} */ const regime = [];
+  /** @type {Array<{raum: string, mandantId: string}>} */ const betriebe = [];
+  let namen = [];
+  try { namen = await readdir(dir); }
+  catch (e) { if (/** @type {any} */ (e).code === "ENOENT") return { konten, verwalter, marken, regime, betriebe }; throw e; }
+  const sammel = namen.includes("konten.json") ? await umschlagDaten(path.join(dir, "konten.json")) : null;
+  if (sammel && typeof sammel === "object") Object.assign(konten, sammel);
+  for (const n of namen) {
+    if (!n.endsWith(".json")) continue;
+    if (n.startsWith(KONTO_PRAEFIX)) {
+      const k = await umschlagDaten(path.join(dir, n));
+      if (k) konten[decodeURIComponent(n.slice(KONTO_PRAEFIX.length, -5))] = k;
+    } else if (n.startsWith(VERWALTER_DATEI)) {
+      const e = await umschlagDaten(path.join(dir, n));
+      if (e) verwalter[decodeURIComponent(n.slice(VERWALTER_DATEI.length, -5))] = e;
+    } else if (n.startsWith(MARKE_DATEI)) {
+      const z = markeZerlegen(decodeURIComponent(n.slice(0, -5)));
+      const m = z ? await umschlagDaten(path.join(dir, n)) : null;
+      if (z && m !== null && m !== undefined)
+        marken.push({ ...z, personId: m && typeof m === "object" && typeof m.personId === "string" ? m.personId : "" });
+    } else if (n.startsWith(REGIME_DATEI)) {
+      /* Review C1: vorhandene Regime-Marken (ins Buch einsammeln; keine doppelt nachziehen). */
+      const z = markeZerlegen(decodeURIComponent(n.slice(0, -5)), REGIME_PRAEFIX);
+      const m = z ? await umschlagDaten(path.join(dir, n)) : null;
+      if (z && m !== null && m !== undefined) regime.push(z);
+    } else if (BESTAND_DATEIEN.some((p) => n.startsWith(p))) {
+      /* Review C2: Betriebe aus den Beständen — Marken werden für JEDEN Betrieb nachgezogen, nicht nur für einen mit
+         Erstanmeldecode (eine Sicherung von vor dem ersten Code kennt keinen). */
+      const raum = bestandRaum(decodeURIComponent(n.slice(0, -5)));
+      if (raum) betriebe.push(...bestandBetriebe(raum, await umschlagDaten(path.join(dir, n))));
+    }
+  }
+  /* Nachtrag einer Raumlöschung bei nicht schreibbarem Buch (widerrufbuch.mjs, nachtragAufnehmen): Codes, die die
+     Ablage schon gelöscht hat — vor dem Tausch ins Buch, sonst lebten sie mit einer älteren Sicherung wieder auf. */
+  const nachtragDatei = dateiname(NACHTRAG_SCHLUESSEL);
+  const nachtrag = namen.includes(nachtragDatei) ? nachtragSchluessel(await umschlagDaten(path.join(dir, nachtragDatei))) : [];
+  return { konten, verwalter, marken, regime, betriebe, nachtrag };
+}
+
+/**
+ * Hält ein lebender Prozess die Ablage (Prozesssperre .prozess, server/lib/prozesssperre.mjs)? Dann wird nichts
+ * angefasst — auch mit --ohne-serverpruefung (Review E-M6, Befund 5: Werkzeug und Server haben keine gemeinsame
+ * Sperre; das ersetzt sie für einen Server, dessen /gesund nicht erreichbar ist). Derselbe Rechner: lebt die PID, ist
+ * sie belegt; ist sie tot, nicht (auch wenn die Datei frisch ist — ein hart beendeter Server). Ein anderer Rechner
+ * (zweiter Container): belegt, solange der Puls frisch ist. Unlesbar: belegt.
+ * @param {string} daten
+ */
+export async function ablageBelegt(daten) {
+  const datei = path.join(daten, SPERRDATEI);
+  let roh, st;
+  try { [roh, st] = await Promise.all([readFile(datei, "utf8"), stat(datei)]); }
+  catch (e) { if (/** @type {any} */ (e).code === "ENOENT") return false; return true; }
+  let halter = null;
+  try { halter = JSON.parse(roh); } catch { /* unten */ }
+  const frisch = Date.now() - st.mtimeMs < VERALTET_MS;
+  if (halter && halter.rechner === hostname() && Number.isInteger(halter.pid) && halter.pid > 0) {
+    if (halter.pid === process.pid) return false;
+    try { process.kill(halter.pid, 0); return true; }
+    catch (e) { return /** @type {any} */ (e).code === "EPERM"; }
+  }
+  return frisch;
+}
+
+/**
+ * Vor dem Tausch: Widerrufbuch prüfen, aus der laufenden Ablage einsammeln, in der Stufe sperren, Wiederherstellung
+ * vermerken, Buch schreiben. Wirft bei jedem Zweifel (dann wird nichts getauscht).
+ * @param {{zustandsVerz: string, stufe: string, ziel: string, manifest: any, jetzt: Date}} o
+ */
+export async function widerrufbuchVorbereiten({ zustandsVerz, stufe, ziel, manifest, jetzt }) {
+  const buchVorher = await buchLesen(zustandsVerz);
+  const ankerDatei = path.join(stufe, "centric", dateiname(ANKER_SCHLUESSEL));
+  const anker = await umschlagDaten(ankerDatei).catch(() => { throw new SicherungsFehler("Der Anker des Widerrufbuchs in der Sicherung ist beschädigt. Nichts wurde angefasst.", 2); });
+  if (!buchVorher && anker)
+    throw new SicherungsFehler(`Das Widerrufbuch fehlt in ${zustandsVerz}, die Sicherung kennt aber eines. Ohne es lebten `
+      + "widerrufene Zugangscodes wieder auf. Erst die Kopie des Widerrufbuchs zurücklegen (BEREITSTELLUNG.md §5.4) "
+      + "oder bewusst `widerrufbuch-neu` aufrufen. Nichts wurde angefasst.", 2);
+  if (buchVorher && anker && !buchVorher.ids.includes(anker.id))
+    throw new SicherungsFehler("Die Sicherung gehört zu einem anderen Widerrufbuch (andere Umgebung?). Nichts wurde angefasst.", 2);
+  const buch = buchVorher ? structuredClone(buchVorher) : buchNeu();
+  /* Was die bisherige Ablage gesperrt oder abgeschlossen kennt (auch aus einem älteren Bild, das das Buch nicht schrieb). */
+  const jetzigeAblage = await kontenImOrdner(path.join(ziel, "centric"));
+  const eingesammelt = einsammeln(buch, jetzigeAblage.konten, jetzigeAblage);
+  /* Was in der Sicherung selbst schon gesperrt ist, ebenso — und dann alles im Buch in der Stufe sperren. */
+  const stufeAblage = await kontenImOrdner(path.join(stufe, "centric"));
+  einsammeln(buch, stufeAblage.konten, stufeAblage);
+  const offen = nachzuziehen(buch, stufeAblage.konten);
+  const vOffen = verwalterNachzuziehen(buch, stufeAblage.verwalter);
+  const mOffen = markenNachzuziehen(buch, stufeAblage.konten, stufeAblage.marken, stufeAblage.betriebe, stufeAblage.regime);
+  const rOffen = regimeNachzuziehen(buch, stufeAblage.konten, stufeAblage.regime, stufeAblage.betriebe, stufeAblage.marken);
+  await mkdir(path.join(stufe, "centric"), { recursive: true, mode: 0o700 });
+  for (const h of offen)
+    await umschlagSchreiben(path.join(stufe, "centric", dateiname(`konto:${h}`)), gesperrtesKonto(stufeAblage.konten[h], "wiederherstellung", jetzt.toISOString()));
+  for (const h of vOffen)
+    await umschlagSchreiben(path.join(stufe, "centric", dateiname(`${VERWALTER_PRAEFIX}${h}`)), gesperrtesKonto(stufeAblage.verwalter[h], "wiederherstellung", jetzt.toISOString()));
+  /* Marken „Erstanmeldung festgelegt" (PR #281), die die ältere Sicherung noch nicht kannte: Ohne sie legte ein offener
+     Erstanmeldecode eines schon eingerichteten Betriebs erneut eine erste Leitung an. Kein Code wird dafür gesperrt. */
+  for (const m of mOffen) await umschlagSchreiben(path.join(stufe, "centric", dateiname(m.schluessel)), m.wert);
+  /* Review C1: Regime-Marken (PR #281), die die ältere Sicherung nicht kannte: Ohne sie fiele ein schon strenger Betrieb
+     auf die alten Regeln zurück — ein Leitungscode ohne Person bekäme wieder Leitungsrechte. Kein Code wird gesperrt. */
+  for (const m of rOffen) await umschlagSchreiben(path.join(stufe, "centric", dateiname(m.schluessel)), m.wert);
+  if (!anker) await umschlagSchreiben(ankerDatei, { id: buch.id });
+  buch.wiederherstellungen.push({ zeit: jetzt.toISOString(), sicherungErstellt: String(manifest.erstellt) });
+  await buchSchreiben(zustandsVerz, buch);
+  return { eintraege: Object.keys(buch.eintraege).length + Object.keys(buch.verwalter || {}).length, eingesammelt,
+    nachgezogen: offen.length + vOffen.length, marken: mOffen.length, regime: rOffen.length };
+}
+
+/* ---------------------------------------------------------------------------
+   Konto-Widerrufbuch (BE-1) — Konten, Mitgliedschaften und Läufe einer Ablage auf der Platte
+   --------------------------------------------------------------------------- */
+
+const ACCOUNT_DATEI = dateiname(`${ACCOUNT_PRAEFIX}x`).slice(0, -"x.json".length);
+const MITGLIED_DATEI = dateiname(`${MITGLIED_PRAEFIX}x`).slice(0, -"x.json".length);
+const MITGLIEDLAUF_DATEI = dateiname(`${MITGLIEDLAUF_PRAEFIX}x`).slice(0, -"x.json".length);
+
+/**
+ * Konten (account:*), Mitgliedschaften (mitglied:*), Läufe (mitgliedlauf:*) und den Nachtrag eines Store-Verzeichnisses
+ * `centric`, je mit Ablageschlüssel. Beschädigt: wirft.
+ * @param {string} dir
+ */
+async function kontoStandImOrdner(dir) {
+  /** @type {{konten: any[], mitglieder: any[], laeufe: any[], nachtrag: any}} */
+  const aus = { konten: [], mitglieder: [], laeufe: [], nachtrag: null };
+  let namen = [];
+  try { namen = await readdir(dir); }
+  catch (e) { if (/** @type {any} */ (e).code === "ENOENT") return aus; throw e; }
+  for (const n of namen) {
+    if (!n.endsWith(".json")) continue;
+    /* „mitgliedlauf%3A“ beginnt nicht mit „mitglied%3A“: getrennte Namensräume. */
+    const ziel = n.startsWith(ACCOUNT_DATEI) ? aus.konten : n.startsWith(MITGLIEDLAUF_DATEI) ? aus.laeufe
+      : n.startsWith(MITGLIED_DATEI) ? aus.mitglieder : null;
+    if (!ziel) continue;
+    const wert = await umschlagDaten(path.join(dir, n));
+    if (wert !== null && wert !== undefined) ziel.push({ schluessel: decodeURIComponent(n.slice(0, -5)), wert });
+  }
+  const nd = dateiname(KONTOBUCH_NACHTRAG);
+  if (namen.includes(nd)) aus.nachtrag = await umschlagDaten(path.join(dir, nd));
+  /* BE-2 A1: der Faktor jedes Kontos (zweifaktor:<kontoFaktorId>), streng wie oben. */
+  /** @type {Array<{schluessel: string, wert: any, accountId: string}>} */ const faktoren = [];
+  for (const { wert: a } of aus.konten) {
+    if (!a || typeof a !== "object" || typeof a.id !== "string" || !a.id) continue;
+    const schluessel = kontoFaktorSchluessel(a.id);
+    const wert = namen.includes(dateiname(schluessel)) ? await umschlagDaten(path.join(dir, dateiname(schluessel))) : null;
+    if (wert !== null && wert !== undefined) faktoren.push({ schluessel, wert, accountId: a.id });
+  }
+  return { ...aus, faktoren };
+}
+
+/**
+ * Nur prüfen (vor jedem Schreiben, auch vor dem Buch der Codes): Konto-Widerrufbuch lesbar und unversehrt, passt zum
+ * Anker der Sicherung. Wirft SicherungsFehler oder KontoWiderrufbuchFehler.
+ * @param {{zustandsVerz: string, stufe: string}} o
+ */
+export async function kontobuchVorpruefen({ zustandsVerz, stufe }) {
+  const buchVorher = await kontobuchLesen(zustandsVerz);
+  const ankerDatei = path.join(stufe, "centric", dateiname(KONTOBUCH_ANKER));
+  const anker = await umschlagDaten(ankerDatei).catch(() => { throw new SicherungsFehler("Der Anker des Konto-Widerrufbuchs in der Sicherung ist beschädigt. Nichts wurde angefasst.", 2); });
+  if (!buchVorher && anker)
+    throw new SicherungsFehler(`Das Konto-Widerrufbuch fehlt in ${zustandsVerz}, die Sicherung kennt aber eines. Ohne es lebten `
+      + "gesperrte Konten und entzogene Mitgliedschaften wieder auf. Erst die Kopie des Konto-Widerrufbuchs zurücklegen "
+      + "(BEREITSTELLUNG.md §5.4) oder bewusst `kontowiderrufbuch-neu` aufrufen. Nichts wurde angefasst.", 2);
+  if (buchVorher && anker && !buchVorher.ids.includes(anker.id))
+    throw new SicherungsFehler("Die Sicherung gehört zu einem anderen Konto-Widerrufbuch (andere Umgebung?). Nichts wurde angefasst.", 2);
+  return { buchVorher, anker, ankerDatei };
+}
+
+/**
+ * Vor dem Tausch (wie widerrufbuchVorbereiten): Konto-Widerrufbuch prüfen, aus der laufenden Ablage und der Sicherung
+ * einsammeln, in der Stufe nachziehen (Konto gesperrt, Lauf angehoben, Mitgliedschaft entzogen), Wiederherstellung
+ * vermerken, Buch schreiben. Wirft bei jedem Zweifel (dann wird nichts getauscht).
+ * @param {{zustandsVerz: string, stufe: string, ziel: string, manifest: any, jetzt: Date}} o
+ */
+export async function kontobuchVorbereiten({ zustandsVerz, stufe, ziel, manifest, jetzt }) {
+  const { buchVorher, anker, ankerDatei } = await kontobuchVorpruefen({ zustandsVerz, stufe });
+  const buch = buchVorher ? structuredClone(buchVorher) : kontobuchNeu();
+  const eingesammelt = kontobuchEinsammeln(buch, await kontoStandImOrdner(path.join(ziel, "centric")));
+  const stufeStand = await kontoStandImOrdner(path.join(stufe, "centric"));
+  kontobuchEinsammeln(buch, stufeStand);
+  const n = kontobuchNormalisieren(buch, stufeStand, { am: jetzt.toISOString() });
+  await mkdir(path.join(stufe, "centric"), { recursive: true, mode: 0o700 });
+  /* Reihenfolge wie beim Entzug: Lauf vor Status (für einen Abbruch hier ohne Belang — die Stufe wird dann verworfen).
+     BE-2 A1: danach die Faktoren — fehlender Pflicht-Faktor → gesperrter Platzhalter (kein Geheimnis wird
+     zurückgelegt), verbrauchter Wiederherstellungscode → als verbraucht vermerkt. */
+  for (const x of [...n.konten, ...n.laeufe, ...n.mitglieder, ...n.faktoren])
+    await umschlagSchreiben(path.join(stufe, "centric", dateiname(x.schluessel)), x.wert);
+  if (!anker) await umschlagSchreiben(ankerDatei, { id: buch.id });
+  buch.wiederherstellungen.push({ zeit: jetzt.toISOString(), sicherungErstellt: String(manifest.erstellt) });
+  await kontobuchSchreiben(zustandsVerz, buch);
+  return { konten: Object.keys(buch.konten).length, mitglieder: Object.keys(buch.mitglieder).length, eingesammelt,
+    nachgezogen: n.gesperrt + n.mitglieder.length, laeufe: n.laeufe.length, ...faktorZahlen(buch, n.faktoren),
+    ...passwortZahlen(buch, n) };
+}
+
+/**
+ * Bewusster Neuanfang des Konto-Widerrufbuchs, wenn es verloren ist (wie widerrufbuch-neu): nur bei stehendem Server
+ * und nur, wenn es KEINES gibt. Eingesammelt wird, was die Ablage gesperrt bzw. entzogen kennt; was nur im verlorenen
+ * Buch stand, ist danach nicht mehr geschützt (Restrisiko, BE-3).
+ * @param {{zustand: string, daten: string, serverUrl?: string, serverPruefen?: boolean}} o
+ */
+export async function kontowiderrufbuchNeu({ zustand, daten, serverUrl, serverPruefen = true }) {
+  const z = zustandOrtPruefen(zustand, path.resolve(daten));
+  if (serverPruefen) {
+    const url = serverUrl || `http://127.0.0.1:${process.env.PORT || 3000}/gesund`;
+    if (await serverLaeuft(url)) throw new SicherungsFehler(`Unter ${url} antwortet ein Server. Erst stoppen. Nichts wurde angefasst.`);
+  }
+  let vorhanden = null;
+  try { vorhanden = await kontobuchLesen(z); } catch { vorhanden = "kaputt"; }
+  if (vorhanden) throw new SicherungsFehler("Es gibt schon ein Konto-Widerrufbuch (oder ein beschädigtes) — es wird nie ersetzt. Beschädigt: die Kopie zurücklegen.", 2);
+  if (await ablageBelegt(path.resolve(daten)))
+    throw new SicherungsFehler("Die Ablage ist in Benutzung (Prozesssperre .prozess: ein Server läuft). Erst stoppen. Nichts wurde angefasst.");
+  const buch = kontobuchNeu();
+  const ankerAlt = await umschlagDaten(path.join(path.resolve(daten), "centric", dateiname(KONTOBUCH_ANKER))).catch(() => null);
+  if (ankerAlt && /^[0-9a-f]{32}$/.test(ankerAlt.id)) buch.ids.push(ankerAlt.id);
+  const n = kontobuchEinsammeln(buch, await kontoStandImOrdner(path.join(path.resolve(daten), "centric")));
+  await kontobuchSchreiben(z, buch);
+  return { eintraege: n };
+}
+
+/**
+ * Bewusster Neuanfang des Widerrufbuchs, wenn es verloren ist (Server neu aufgesetzt, Zustandsverzeichnis weg, keine
+ * Kopie). Nur bei stehendem Server und nur, wenn es KEIN Buch gibt. Eingesammelt wird, was die Ablage gesperrt kennt;
+ * was nur im verlorenen Buch stand, ist damit nicht mehr geschützt (Restrisiko, BEREITSTELLUNG.md §5.4).
+ * @param {{zustand: string, daten: string, serverUrl?: string, serverPruefen?: boolean}} o
+ */
+export async function widerrufbuchNeu({ zustand, daten, serverUrl, serverPruefen = true }) {
+  const z = zustandOrtPruefen(zustand, path.resolve(daten));
+  if (serverPruefen) {
+    const url = serverUrl || `http://127.0.0.1:${process.env.PORT || 3000}/gesund`;
+    if (await serverLaeuft(url)) throw new SicherungsFehler(`Unter ${url} antwortet ein Server. Erst stoppen. Nichts wurde angefasst.`);
+  }
+  let vorhanden = null;
+  try { vorhanden = await buchLesen(z); } catch { vorhanden = "kaputt"; }
+  if (vorhanden) throw new SicherungsFehler("Es gibt schon ein Widerrufbuch (oder ein beschädigtes) — es wird nie ersetzt. Beschädigt: die Kopie zurücklegen.", 2);
+  const buch = buchNeu();
+  const ankerAlt = await umschlagDaten(path.join(path.resolve(daten), "centric", dateiname(ANKER_SCHLUESSEL))).catch(() => null);
+  if (ankerAlt && /^[0-9a-f]{32}$/.test(ankerAlt.id)) buch.ids.push(ankerAlt.id);
+  if (await ablageBelegt(path.resolve(daten)))
+    throw new SicherungsFehler("Die Ablage ist in Benutzung (Prozesssperre .prozess: ein Server läuft). Erst stoppen. Nichts wurde angefasst.");
+  const a = await kontenImOrdner(path.join(path.resolve(daten), "centric"));
+  const n = einsammeln(buch, a.konten, a);
+  await buchSchreiben(z, buch);
+  return { eintraege: n };
+}
+
+/* ---------------------------------------------------------------------------
+   BE-3 — Kopien der Widerrufbücher prüfen und VEREINIGEN (nie ersetzen)
+   (server/lib/widerrufbuchsicherung.mjs; deploy/sicherung/widerrufbuch-sicherung.sh)
+   --------------------------------------------------------------------------- */
+
+/** Art eines Buchs nach seinem Dateinamen. */
+const ART_VON_DATEI = Object.fromEntries(Object.entries(BUECHER).map(([art, datei]) => [datei, art]));
+/** @type {Record<string, (verz: string) => Promise<any>>} */
+const BUCH_LESER = { codes: (verz) => buchLesen(verz), konten: (verz) => kontobuchLesen(verz) };
+/** @type {Record<string, (verz: string, b: any) => Promise<any>>} */
+const BUCH_SCHREIBER = { codes: (verz, b) => buchSchreiben(verz, b), konten: (verz, b) => kontobuchSchreiben(verz, b) };
+const BUCH_ANKER = { codes: ANKER_SCHLUESSEL, konten: KONTOBUCH_ANKER };
+/** Unterordner des Zustandsverzeichnisses mit den Eingaben jeder Vereinigung (nie gelöscht). */
+export const VEREINEN_SICHERUNG = "vereinen-sicherung";
+
+/** Ohne Pfeffer lässt sich kein Siegel prüfen — und jede Kopie fiele als „falsches Siegel“ durch. */
+function pfefferPflicht() {
+  if (!process.env.CENTRIC_PFEFFER)
+    throw new SicherungsFehler("CENTRIC_PFEFFER fehlt — ohne ihn lässt sich kein Siegel eines Widerrufbuchs prüfen. Nichts wurde angefasst.", 2);
+}
+
+/**
+ * Kopien finden: eine Datei mit dem Namen eines Buchs (zugang-widerrufe.json, konto-widerrufe.json) oder ein Ordner,
+ * der rekursiv durchsucht wird (z. B. das Ziel von `restic restore`; symbolische Verweise unterhalb werden übergangen).
+ * @param {string[]} pfade @param {{leerErlaubt?: boolean}} [o]
+ * @returns {Promise<Array<{art: string, datei: string}>>}
+ */
+async function kopienFinden(pfade, { leerErlaubt = false } = {}) {
+  /** @type {Array<{art: string, datei: string}>} */ const aus = [];
+  const besuchen = async (/** @type {string} */ p, /** @type {number} */ tiefe) => {
+    let st;
+    try { st = tiefe === 0 ? await stat(p) : await lstat(p); }
+    catch (e) { throw new SicherungsFehler(`Kopie ${p} nicht lesbar (${/** @type {any} */ (e).code || e}). Nichts wurde angefasst.`, 2); }
+    if (st.isSymbolicLink()) return;
+    if (st.isDirectory()) {
+      if (tiefe > 24) return;
+      for (const n of (await readdir(p)).sort()) await besuchen(path.join(p, n), tiefe + 1);
+      return;
+    }
+    const art = ART_VON_DATEI[path.basename(p)];
+    if (st.isFile() && art) aus.push({ art, datei: p });
+  };
+  for (const p of pfade) {
+    const vorher = aus.length;
+    await besuchen(path.resolve(p), 0);
+    if (aus.length === vorher && !leerErlaubt)
+      throw new SicherungsFehler(`In ${p} liegt kein Widerrufbuch (${Object.values(BUECHER).join(", ")}). Nichts wurde angefasst.`, 2);
+  }
+  return aus;
+}
+
+/** Eine Kopie mit Siegelprüfung lesen (der Name der Datei ist der des Buchs, also liest der Leser ihr Verzeichnis). */
+async function kopieLesen(/** @type {{art: string, datei: string}} */ k) {
+  try {
+    const b = await BUCH_LESER[k.art](path.dirname(k.datei));
+    if (!b) throw new Error("verschwunden");
+    return b;
+  } catch (e) {
+    const grund = String(/** @type {Error} */ (e).message || e).replace(/ — kein (Zugangscode|Konto-Zugang) gilt.*$/, "");
+    throw new SicherungsFehler(`Kopie ${k.datei}: ${grund} Es wird nicht vereinigt. Nichts wurde angefasst.`, 2);
+  }
+}
+
+/**
+ * Nur lesend: Sind beide Bücher in `zustand` lesbar, unversehrt und gesiegelt? Mit `vorher` (Datei oder Ordner, etwa
+ * die zuletzt gesicherte Kopie): Fehlt im aktuellen Buch ein Eintrag, den die Kopie kennt? Dann wurde ein älterer
+ * Stand zurückgelegt („ruecksprung“). Kopie fremder Herkunft oder beschädigt: Fehler (Code 2).
+ * @param {{zustand: string, vorher?: (string|null)}} o
+ */
+export async function widerrufbuchPruefen({ zustand, vorher = null }) {
+  pfefferPflicht();
+  const z = path.resolve(zustand);
+  /** @type {Record<string, any>} */ const aktuell = {};
+  for (const art of Object.keys(BUECHER)) {
+    try { aktuell[art] = await BUCH_LESER[art](z); }
+    catch (e) { throw new SicherungsFehler(`${BUECHER[art]}: ${/** @type {Error} */ (e).message}`, 2); }
+  }
+  let fehlend = 0;
+  if (vorher) {
+    for (const k of await kopienFinden([vorher], { leerErlaubt: true })) {
+      const alt = await kopieLesen(k);
+      if (aktuell[k.art] && !gemeinsameHerkunft(aktuell[k.art], alt))
+        throw new SicherungsFehler(`Die Kopie ${k.datei} stammt aus einer anderen Umgebung (keine gemeinsame Kennung).`, 2);
+      fehlend += fehlendeEintraege(aktuell[k.art], alt, /** @type {"codes"|"konten"} */ (k.art));
+    }
+  }
+  return { ergebnis: fehlend ? "ruecksprung" : "ok", buecher: Object.values(aktuell).filter(Boolean).length,
+    codes: eintragZahl(aktuell.codes, "codes"), konten: eintragZahl(aktuell.konten, "konten"), fehlend };
+}
+
+/**
+ * Der Kern der Vereinigung (Server steht; der Aufrufer hat das geprüft). Erst ALLES lesen und prüfen — aktuelles Buch
+ * und jede Kopie mit Siegel, Herkunft (gemeinsame Kennung; Anker der Ablage) —, dann die Eingaben unter
+ * <zustand>/vereinen-sicherung/<Zeit>/ ablegen, dann jedes Buch atomar neu gesiegelt schreiben. Ein Zweifel: nichts
+ * angefasst. Kein Eintrag geht verloren (nachgeprüft); nichts Neues: nichts geschrieben (idempotent).
+ * @param {{z: string, kopien: string[], anker: Record<string, string[]>, jetzt: Date}} o
+ */
+async function vereinenKern({ z, kopien, anker, jetzt }) {
+  pfefferPflicht();
+  const gefunden = await kopienFinden(kopien);
+  const plan = [];
+  for (const art of Object.keys(BUECHER)) {
+    let aktuell;
+    try { aktuell = await BUCH_LESER[art](z); }
+    catch (e) {
+      throw new SicherungsFehler(`Das aktuelle ${BUECHER[art]} ist nicht in Ordnung (${/** @type {Error} */ (e).message}) `
+        + "— ein beschädigtes Buch wird nicht vereinigt. Erst klären (BEREITSTELLUNG.md §5.4). Nichts wurde angefasst.", 2);
+    }
+    const quellen = [];
+    for (const k of gefunden.filter((x) => x.art === art)) quellen.push({ datei: k.datei, buch: await kopieLesen(k) });
+    if (!quellen.length) continue;
+    const ankerIds = (anker[art] || []).filter((i) => /^[0-9a-f]{32}$/.test(i));
+    if (aktuell && ankerIds.some((i) => !aktuell.ids.includes(i)))
+      throw new SicherungsFehler(`Das aktuelle ${BUECHER[art]} gehört nicht zu dieser Ablage (Kennung des Ankers unbekannt). Nichts wurde angefasst.`, 2);
+    const bezug = aktuell || (ankerIds.length ? { ids: ankerIds } : quellen[0].buch);
+    for (const q of quellen)
+      if (!gemeinsameHerkunft(bezug, q.buch))
+        throw new SicherungsFehler(`Die Kopie ${q.datei} stammt aus einer anderen Umgebung (keine gemeinsame Kennung mit `
+          + `${aktuell ? "dem aktuellen Buch" : "der Ablage"}). Es wird nicht vereinigt. Nichts wurde angefasst.`, 2);
+    const basis = aktuell || (quellen.find((q) => ankerIds.some((i) => q.buch.ids.includes(i))) || quellen[0]).buch;
+    const ergebnis = structuredClone(basis);
+    let neu = 0;
+    for (const q of quellen) neu += vereinenNach(art, ergebnis, q.buch);
+    /* Nie etwas verlieren: Jede Eingabe muss im Ergebnis vollständig enthalten sein. */
+    for (const e of [aktuell, ...quellen.map((q) => q.buch)])
+      if (e && fehlendeEintraege(ergebnis, e, /** @type {"codes"|"konten"} */ (art)))
+        throw new SicherungsFehler("Vereinigung unvollständig (interner Fehler). Nichts wurde angefasst.");
+    plan.push({ art, aktuell, quellen, ergebnis, neu, schreiben: !aktuell || neu > 0 });
+  }
+  const zuSchreiben = plan.filter((p) => p.schreiben);
+  let sicherung = null;
+  if (zuSchreiben.length) {
+    /* Eingaben aufheben (das aktuelle Buch und jede Kopie) — vor dem ersten Schreiben, je Datei atomar. */
+    sicherung = path.join(z, VEREINEN_SICHERUNG, `${stempel(jetzt)}-${randomBytes(4).toString("hex")}`);
+    await mkdir(sicherung, { recursive: true, mode: 0o700 });
+    const ablegen = async (/** @type {string} */ name, /** @type {Buffer} */ inhalt) => {
+      const ziel = path.join(/** @type {string} */ (sicherung), name);
+      const tmp = `${ziel}.${process.pid}.tmp`;
+      await schreibenFest(tmp, inhalt);
+      await rename(tmp, ziel);
+    };
+    for (const p of zuSchreiben) {
+      if (p.aktuell) await ablegen(`aktuell-${BUECHER[p.art]}`, await readFile(path.join(z, BUECHER[p.art])));
+      let i = 0;
+      for (const q of p.quellen) await ablegen(`kopie-${++i}-${BUECHER[p.art]}`, await readFile(q.datei));
+    }
+    await ordnerFest(sicherung);
+    for (const p of zuSchreiben) await BUCH_SCHREIBER[p.art](z, p.ergebnis);
+  }
+  return { sicherung, buecher: plan.map((p) => ({ art: p.art, datei: BUECHER[p.art], neu: p.neu, geschrieben: p.schreiben,
+    neuAngelegt: !p.aktuell, kopien: p.quellen.length, eintraege: eintragZahl(p.ergebnis, /** @type {"codes"|"konten"} */ (p.art)) })) };
+}
+
+/**
+ * `widerrufbuch-vereinen`: Kopien (aus der Sicherung der Widerrufbücher) mit dem aktuellen Buch vereinigen — bei
+ * stehendem Server. Fehlt das aktuelle Buch (Hostverlust), entsteht es aus den Kopien; deren Herkunft muss dann zum
+ * Anker der Ablage passen.
+ * @param {{zustand: string, kopien: string[], daten: string, serverUrl?: string, serverPruefen?: boolean, jetzt?: Date}} o
+ */
+export async function widerrufbuchVereinen({ zustand, kopien, daten, serverUrl, serverPruefen = true, jetzt = new Date() }) {
+  const d = path.resolve(daten);
+  const z = zustandOrtPruefen(zustand, d);
+  if (serverPruefen) {
+    const url = serverUrl || `http://127.0.0.1:${process.env.PORT || 3000}/gesund`;
+    if (await serverLaeuft(url)) throw new SicherungsFehler(`Unter ${url} antwortet ein Server. Erst stoppen. Nichts wurde angefasst.`);
+  }
+  if (await ablageBelegt(d))
+    throw new SicherungsFehler("Die Ablage ist in Benutzung (Prozesssperre .prozess: ein Server läuft). Erst stoppen. Nichts wurde angefasst.");
+  /** @type {Record<string, string[]>} */ const anker = { codes: [], konten: [] };
+  for (const [art, schluessel] of Object.entries(BUCH_ANKER)) {
+    const a = await umschlagDaten(path.join(d, "centric", dateiname(schluessel)))
+      .catch(() => { throw new SicherungsFehler(`Der Anker von ${BUECHER[art]} in der Ablage ist beschädigt. Nichts wurde angefasst.`, 2); });
+    if (a && typeof a.id === "string") anker[art].push(a.id);
+  }
+  return vereinenKern({ z, kopien, anker, jetzt });
+}
+
+/** Meldung einer Vereinigung (nur Anzahlen und der Ordner der aufgehobenen Eingaben). */
+function vereinenMeldung(/** @type {Awaited<ReturnType<typeof vereinenKern>>} */ r) {
+  const teile = r.buecher.map((b) => `${b.datei}: ${b.kopien} Kopie(n), ${b.neu} neu, ${b.eintraege} Einträge`
+    + (b.neuAngelegt ? " (neu aus den Kopien)" : b.geschrieben ? "" : " (nichts Neues)"));
+  return `Widerrufbuch vereinigt — ${teile.join("; ") || "keine Kopie"}.`
+    + (r.sicherung ? ` Eingaben aufgehoben in ${r.sicherung}.` : " Nichts geschrieben.");
+}
+
 /**
  * @param {{sicherung: string, ziel: string, ersetzen?: boolean, serverUrl?: string,
- *          serverPruefen?: boolean, jetzt?: Date, meldung?: (s: string) => void}} o
+ *          serverPruefen?: boolean, jetzt?: Date, meldung?: (s: string) => void, zustand?: (string|null),
+ *          widerrufbuchKopien?: string[]}} o
+ *   `zustand`: Zustandsverzeichnis (CENTRIC_ZUSTAND) — dann wird die Schlüsselepoche vor dem Tausch erneuert.
+ *   `widerrufbuchKopien` (BE-3): Kopien der Widerrufbücher, die VOR dem Tausch mit dem Buch vereinigt werden.
  */
 export async function wiederherstellen({ sicherung, ziel, ersetzen = false, serverUrl,
-  serverPruefen = true, jetzt = new Date(), meldung = () => {} }) {
+  serverPruefen = true, jetzt = new Date(), meldung = () => {}, zustand = null, widerrufbuchKopien = [] }) {
   sicherung = path.resolve(sicherung); ziel = path.resolve(ziel);
+  const zustandsVerz = zustand ? zustandOrtPruefen(zustand, ziel) : null;
+  if (widerrufbuchKopien.length && !zustandsVerz)
+    throw new SicherungsFehler("--widerrufbuch-kopie braucht --zustand (das Zustandsverzeichnis mit den Widerrufbüchern). Nichts wurde angefasst.", 2);
 
   const probe = await pruefen(sicherung);
   if (!probe.ok)
     throw new SicherungsFehler(`Die Sicherung ist nicht in Ordnung, nichts wurde angefasst:\n  ${probe.fehler.join("\n  ")}`);
   const manifest = probe.manifest;
+  /* Nichts Flüchtiges zurückspielen, vor allem nicht die Schlüsselbindung: Sie ist das, woran der Server eine
+     Wiederherstellung erkennt. */
+  const fremd = manifest.dateien.map((/** @type {any} */ d) => d.pfad).filter((/** @type {string} */ p) => !gehoertInSicherung(p));
+  if (fremd.length)
+    throw new SicherungsFehler(`Die Sicherung enthält Dateien, die nie gesichert werden (${fremd.slice(0, 3).join(", ")}). Nichts wurde angefasst.`);
 
   if (manifest.pfefferPruefwert) {
     const jetztWert = pfefferPruefwert(process.env.CENTRIC_PFEFFER);
@@ -380,16 +1184,26 @@ export async function wiederherstellen({ sicherung, ziel, ersetzen = false, serv
     if (await serverLaeuft(url))
       throw new SicherungsFehler(`Unter ${url} antwortet ein Server. Erst stoppen, dann wiederherstellen. Nichts wurde angefasst.`);
   }
+  /* Auch ohne Serverprüfung über HTTP: Hält ein lebender Prozess die Ziel-Ablage (.prozess), wird nichts angefasst. */
+  if (await ablageBelegt(ziel))
+    throw new SicherungsFehler("Die Ziel-Ablage ist in Benutzung (Prozesssperre .prozess: ein Server läuft). Erst stoppen, dann wiederherstellen. Nichts wurde angefasst.");
 
   await mkdir(ziel, { recursive: true, mode: 0o700 });
   const vorhanden = (await readdir(ziel)).filter((n) => !n.startsWith("."));
   if (vorhanden.length && !ersetzen)
     throw new SicherungsFehler(`Das Ziel ${ziel} ist nicht leer (${vorhanden.join(", ")}). Mit --ersetzen wird der Inhalt beiseitegelegt, nicht gelöscht.`);
+  /* Frühere Wiederherstellungen dieses Ziels — ein unlesbarer Vermerk
+     bricht ab, bevor etwas angefasst ist (fail-closed). */
+  const fruehere = await wiederherstellVermerkeLesen(ziel);
+
+  /* Eindeutige Namen für Stufe und Beiseite-Ordner: Zeit plus Zufall. Vorher nur die Sekunde — zwei Wiederherstellungen
+     derselben Wurzel in derselben Sekunde benannten in einen schon gefüllten Beiseite-Ordner um (Linux: ENOTEMPTY,
+     halb verschoben). Angelegt wird ohne `recursive`: Gibt es den Namen schon, bricht es ab, statt etwas zu überschreiben. */
+  const kennung = `${stempel(jetzt)}-${randomBytes(4).toString("hex")}`;
 
   // 1. neben dem Ziel aufbauen und nachprüfen — noch ist nichts angefasst
-  const stufe = path.join(ziel, `.wiederherstellung-${stempel(jetzt)}`);
-  await rm(stufe, { recursive: true, force: true });
-  await mkdir(stufe, { recursive: true, mode: 0o700 });
+  const stufe = path.join(ziel, `.wiederherstellung-${kennung}`);
+  await mkdir(stufe, { mode: 0o700 });
   try {
     for (const s of Object.keys(manifest.stores))
       await mkdir(path.join(stufe, s), { recursive: true, mode: 0o700 });
@@ -407,15 +1221,132 @@ export async function wiederherstellen({ sicherung, ziel, ersetzen = false, serv
     throw e;
   }
 
+  /* 1b. Schlüsselepoche erneuern, BEVOR die alten Daten an ihren Platz kommen: Misslingt das, bleibt alles, wie es war.
+     Ohne Zustandsverzeichnis erkennt der Server die Wiederherstellung selbst (skbindung fehlt in jeder Sicherung). */
+  if (zustandsVerz) {
+    try { await epocheDateiErneuern(zustandsVerz, "wiederherstellung"); }
+    catch (e) {
+      await rm(stufe, { recursive: true, force: true });
+      throw new SicherungsFehler(`Schlüsselepoche nicht erneuert (${/** @type {Error} */ (e).message}). Nichts wurde angefasst.`);
+    }
+    meldung("Schlüsselepoche erneuert: Kein früherer Sicherungsschlüssel gilt mehr.");
+  } else {
+    meldung("Hinweis: Kein Zustandsverzeichnis angegeben. Der Server beginnt beim ersten Gebrauch eines Schlüssels eine neue Epoche.");
+  }
+
+  /* 1c. E-M6: Widerrufbuch (server/lib/widerrufbuch.mjs), nach der Epoche (deren Erneuerung bleibt bei einem Abbruch:
+     sichere Richtung). Was die LAUFENDE Ablage gesperrt kennt, kommt ins Buch; alles,
+     was im Buch steht, wird in der zurückzuspielenden Kopie gesperrt — so belebt auch ein älteres Bild, das das Buch
+     nicht kennt, keinen widerrufenen oder ersetzten Code. Jeder Zweifel bricht ab, bevor etwas angefasst ist. */
+  /* 1c-0. BE-3: Kopien der Widerrufbücher (aus deren eigener Sicherung) zuerst mit dem Buch VEREINIGEN — nie ersetzen.
+     Nach einem Hostverlust entsteht das Buch so aus den Kopien; nach einem Rücksprung über Ablage UND Zustand kehren
+     die Widerrufe zurück, die nur die Kopie kennt. Herkunft: Anker der Sicherung und der bisherigen Ablage. */
+  if (zustandsVerz && widerrufbuchKopien.length) {
+    try {
+      /** @type {Record<string, string[]>} */ const anker = { codes: [], konten: [] };
+      for (const [art, schluessel] of Object.entries(BUCH_ANKER))
+        for (const wurzel of [stufe, ziel]) {
+          const a = await umschlagDaten(path.join(wurzel, "centric", dateiname(schluessel)))
+            .catch(() => { throw new SicherungsFehler(`Der Anker von ${BUECHER[art]} ist beschädigt. Nichts wurde angefasst.`, 2); });
+          if (a && typeof a.id === "string" && !anker[art].includes(a.id)) anker[art].push(a.id);
+        }
+      meldung(vereinenMeldung(await vereinenKern({ z: zustandsVerz, kopien: widerrufbuchKopien, anker, jetzt })));
+    } catch (e) {
+      await rm(stufe, { recursive: true, force: true });
+      throw e instanceof SicherungsFehler ? e
+        : new SicherungsFehler(`Widerrufbuch vereinigen: ${/** @type {Error} */ (e).message} Nichts wurde angefasst.`, 2);
+    }
+  }
+
+  if (zustandsVerz) {
+    /* BE-1: Das Konto-Widerrufbuch wird VOR jedem Schreiben geprüft — ein Zweifel dort soll auch das Buch der Codes
+       unberührt lassen (kein Vermerk einer Wiederherstellung, die nicht stattfand). */
+    try { await kontobuchVorpruefen({ zustandsVerz, stufe }); }
+    catch (e) {
+      await rm(stufe, { recursive: true, force: true });
+      throw e instanceof SicherungsFehler ? e
+        : new SicherungsFehler(`Konto-Widerrufbuch: ${/** @type {Error} */ (e).message} Nichts wurde angefasst.`, 2);
+    }
+    try {
+      const w = await widerrufbuchVorbereiten({ zustandsVerz, stufe, ziel, manifest, jetzt });
+      meldung(`Widerrufbuch: ${w.eintraege} widerrufene Zugänge, ${w.eingesammelt} aus der bisherigen Ablage übernommen, `
+        + `${w.nachgezogen} in der Sicherung gesperrt, ${w.marken} Marken der Ersteinrichtung und ${w.regime} Regime-Marken wiederhergestellt.`);
+    } catch (e) {
+      await rm(stufe, { recursive: true, force: true });
+      throw e instanceof SicherungsFehler ? e
+        : new SicherungsFehler(`Widerrufbuch: ${/** @type {Error} */ (e).message} Nichts wurde angefasst.`, 2);
+    }
+  } else {
+    meldung("Hinweis: Kein Zustandsverzeichnis angegeben. Widerrufene Zugangscodes sperrt erst der Server dieser Fassung "
+      + "beim Start nach — vor einem Rücksprung auf ein älteres Bild mit --zustand wiederherstellen (BEREITSTELLUNG.md §5.4).");
+  }
+
+  /* 1d. BE-1: Konto-Widerrufbuch (server/lib/kontowiderrufbuch.mjs), eigene Datei neben dem Buch der Codes. Was die
+     laufende Ablage gesperrt/entzogen kennt, kommt ins Buch; was im Buch steht, wird in der Kopie nachgezogen (Konto
+     gesperrt, Lauf angehoben, Mitgliedschaft entzogen). Jeder Zweifel bricht ab, bevor etwas getauscht ist. */
+  if (zustandsVerz) {
+    try {
+      const w = await kontobuchVorbereiten({ zustandsVerz, stufe, ziel, manifest, jetzt });
+      meldung(`Konto-Widerrufbuch: ${w.konten} gesperrte Konten, ${w.mitglieder} entzogene Beziehungen, ${w.eingesammelt} `
+        + `aus der bisherigen Ablage übernommen, ${w.nachgezogen} in der Sicherung nachgezogen, ${w.laeufe} Läufe angehoben.`);
+      /* BE-2 A1: nur Anzahlen. */
+      meldung(`Zweiter Faktor (BE-2 A1): ${w.faktorpflicht} Konten mit Pflicht-Faktor, ${w.whverbraucht} verbrauchte `
+        + `Wiederherstellungscodes im Buch; ${w.whNachgezogen} Faktoren in der Sicherung nachgezogen, ${w.faktorGesperrt} `
+        + "Pflicht-Faktoren fehlen in der Sicherung und sind gesperrt.");
+      /* BE-1 Rest: nur Anzahlen. */
+      meldung(`Passwörter (BE-1): ${w.passwoerterImBuch} abgelöste im Buch; ${w.passwoerterZurueckgesetzt} Konten trugen in der `
+        + "Sicherung ein abgelöstes Passwort und sind ohne Passwort (die Personen setzen es neu).");
+      if (w.faktorGesperrt)
+        meldung(`ACHTUNG: ${w.faktorGesperrt} Konto/Konten hatten einen aktiven zweiten Faktor, den die Sicherung nicht kennt. Ihre `
+          + "Anmeldung bleibt gesperrt (kein Geheimnis wird zurückgelegt). Erst eine jüngere Sicherung prüfen, die den Faktor "
+          + "enthält; sonst Betreiberschritt laut BETRIEBSHANDBUCH.md (Wiederherstellung, Zweiter Faktor).");
+    } catch (e) {
+      await rm(stufe, { recursive: true, force: true });
+      throw e instanceof SicherungsFehler ? e
+        : new SicherungsFehler(`Konto-Widerrufbuch: ${/** @type {Error} */ (e).message} Nichts wurde angefasst.`, 2);
+    }
+  } else {
+    meldung("Hinweis: Kein Zustandsverzeichnis angegeben. Gesperrte Konten und entzogene Mitgliedschaften zieht erst der "
+      + "Server dieser Fassung beim Start nach — vor einem Rücksprung auf ein älteres Bild mit --zustand wiederherstellen.");
+  }
+
   // 2. alten Inhalt beiseite, neuen an seinen Platz — Umbenennen, nichts löschen
   let beiseite = null;
-  if (vorhanden.length) {
-    beiseite = path.join(ziel, `.vor-wiederherstellung-${stempel(jetzt)}`);
-    await mkdir(beiseite, { recursive: true, mode: 0o700 });
-    for (const n of vorhanden) await rename(path.join(ziel, n), path.join(beiseite, n));
+  /** @type {string[]} */ const verschoben = [];
+  /** @type {string[]} */ const eingesetzt = [];
+  try {
+    if (vorhanden.length) {
+      beiseite = path.join(ziel, `.vor-wiederherstellung-${kennung}`);
+      await mkdir(beiseite, { mode: 0o700 });                        // neu und leer, nie ein vorhandener
+      for (const n of vorhanden) { await rename(path.join(ziel, n), path.join(beiseite, n)); verschoben.push(n); }
+    }
+    for (const s of Object.keys(manifest.stores)) { await rename(path.join(stufe, s), path.join(ziel, s)); eingesetzt.push(s); }
+  } catch (e) {
+    /* Zurückrollen: Die Ablage soll aussehen wie vorher. (Eine schon erneuerte Schlüsselepoche bleibt — sichere Richtung.) */
+    const rest = [];
+    for (const s of eingesetzt.reverse()) await rename(path.join(ziel, s), path.join(stufe, s)).catch(() => rest.push(s));
+    for (const n of verschoben.reverse())
+      await rename(path.join(/** @type {string} */ (beiseite), n), path.join(ziel, n)).catch(() => rest.push(n));
+    await rm(stufe, { recursive: true, force: true }).catch(() => {});
+    if (beiseite && !rest.length) await rm(beiseite, { recursive: true, force: true }).catch(() => {});
+    throw new SicherungsFehler(rest.length
+      ? `Tausch misslungen (${/** @type {Error} */ (e).message}); NICHT vollständig zurückgerollt: ${rest.join(", ")} — von Hand prüfen (${beiseite}).`
+      : `Tausch misslungen (${/** @type {Error} */ (e).message}); zurückgerollt, die Ablage ist unverändert.`);
   }
-  for (const s of Object.keys(manifest.stores)) await rename(path.join(stufe, s), path.join(ziel, s));
   await rm(stufe, { recursive: true, force: true });
+  /* Vermerk der Wiederherstellung (WP-45b): Ab hier zählen die Standnummern
+     ab dem Stand dieser Sicherung neu. Sicherungen, die NACH dieser, aber VOR
+     der Wiederherstellung entstanden, gehören zu der verworfenen Folge —
+     gleiche Nummer, anderer Inhalt. werkzeug/ablage-pruefen.mjs lehnt sie
+     deshalb ab. Punktdatei: nicht in der Sicherung, für die Ablage unsichtbar. */
+  /* Fortgeschrieben, nicht überschrieben: Jede frühere Wiederherstellung
+     hat ihre eigene verworfene Folge (WP-45d, W1). */
+  const vermerk = path.join(ziel, WIEDERHERSTELL_VERMERK);
+  const vermerkTmp = `${vermerk}.${process.pid}.tmp`;
+  await rm(vermerkTmp, { force: true });
+  await schreibenFest(vermerkTmp, JSON.stringify({ wiederherstellungen: [...fruehere,
+    { zeit: jetzt.toISOString(), sicherungErstellt: manifest.erstellt }] }));
+  await rename(vermerkTmp, vermerk);
   await ordnerFest(ziel);
 
   if (typeof process.getuid === "function" && process.getuid() === 0)
@@ -427,34 +1358,74 @@ export async function wiederherstellen({ sicherung, ziel, ersetzen = false, serv
    Kommandozeile
    --------------------------------------------------------------------------- */
 
+/** Schalter, die mehrfach angegeben werden dürfen (BE-3: mehrere Kopien). */
+const MEHRFACH = ["kopie", "widerrufbuch-kopie"];
+
 function argumente(/** @type {string[]} */ a) {
   /** @type {Record<string, string|true>} */ const o = {};
+  /** @type {Record<string, string[]>} */ const mehr = {};
   for (let i = 0; i < a.length; i++) {
     if (!a[i].startsWith("--")) throw new SicherungsFehler(`Unerwartetes Argument: ${a[i]}`, 2);
     const k = a[i].slice(2);
     if (["ersetzen", "ohne-serverpruefung"].includes(k)) o[k] = true;
-    else if (i + 1 < a.length && !a[i + 1].startsWith("--")) o[k] = a[++i];
-    else throw new SicherungsFehler(`--${k} braucht einen Wert`, 2);
+    else if (i + 1 < a.length && !a[i + 1].startsWith("--")) {
+      if (MEHRFACH.includes(k)) (mehr[k] ||= []).push(a[++i]);
+      else o[k] = a[++i];
+    } else throw new SicherungsFehler(`--${k} braucht einen Wert`, 2);
   }
-  return o;
+  return { o, mehr };
 }
 
 const HILFE = `Aufruf:
-  ablage-sicherung.mjs sichern          [--quelle /data] --ziel <Ordner>
+  ablage-sicherung.mjs sichern          [--quelle /data] --ziel <Ordner> [--ruhe <ms, Vorgabe 1000>]
+                                        [--schreibhalt <Zustandsverzeichnis>/schreibhalt]
   ablage-sicherung.mjs pruefen          --sicherung <Ordner>
   ablage-sicherung.mjs wiederherstellen --sicherung <Ordner> [--ziel /data] [--ersetzen]
+                                        [--server-url <URL>] [--ohne-serverpruefung] [--zustand <Ordner>]
+                                        [--widerrufbuch-kopie <Datei|Ordner> …]
+  ablage-sicherung.mjs schluessel-erneuern --zustand <Ordner> [--daten /data] [--server-url <URL>] [--ohne-serverpruefung]
+  ablage-sicherung.mjs widerrufbuch-neu --zustand <Ordner> [--daten /data] [--server-url <URL>] [--ohne-serverpruefung]
+  ablage-sicherung.mjs kontowiderrufbuch-neu --zustand <Ordner> [--daten /data] [--server-url <URL>] [--ohne-serverpruefung]
+  ablage-sicherung.mjs widerrufbuch-pruefen --zustand <Ordner> [--vorher <Datei|Ordner>]
+  ablage-sicherung.mjs widerrufbuch-vereinen --zustand <Ordner> --kopie <Datei|Ordner> [--kopie …] [--daten /data]
                                         [--server-url <URL>] [--ohne-serverpruefung]`;
 
 export async function main(/** @type {string[]} */ argv) {
   const [befehl, ...rest] = argv;
   const say = (/** @type {string} */ s) => console.error(s);
   try {
-    const o = argumente(rest);
+    const { o, mehr } = argumente(rest);
+    if (befehl === "widerrufbuch-pruefen") {
+      const zustand = typeof o.zustand === "string" ? o.zustand : process.env.CENTRIC_ZUSTAND;
+      if (!zustand) throw new SicherungsFehler(HILFE, 2);
+      const r = await widerrufbuchPruefen({ zustand, vorher: typeof o.vorher === "string" ? o.vorher : null });
+      /* Eine Zeile zum Auswerten (Job, Status): nur Anzahlen, nie eine Kennung. */
+      console.log(`WIDERRUFBUCH-PRUEFUNG ergebnis=${r.ergebnis} buecher=${r.buecher} codes=${r.codes} konten=${r.konten} fehlend=${r.fehlend}`);
+      if (r.ergebnis === "ruecksprung")
+        say(`RÜCKSPRUNG ERKANNT: ${r.fehlend} Einträge der Vergleichskopie fehlen im aktuellen Widerrufbuch. Server stoppen und `
+          + "`widerrufbuch-vereinen` mit der Kopie ausführen (BEREITSTELLUNG.md §5.4).");
+      return r.ergebnis === "ok" ? 0 : 3;
+    }
+    if (befehl === "widerrufbuch-vereinen") {
+      const zustand = typeof o.zustand === "string" ? o.zustand : process.env.CENTRIC_ZUSTAND;
+      if (!zustand || !(mehr.kopie || []).length) throw new SicherungsFehler(HILFE, 2);
+      const r = await widerrufbuchVereinen({ zustand, kopien: mehr.kopie, daten: String(o.daten || process.env.CENTRIC_DATEN || "/data"),
+        serverUrl: typeof o["server-url"] === "string" ? o["server-url"] : undefined, serverPruefen: !o["ohne-serverpruefung"] });
+      console.log(vereinenMeldung(r));
+      return 0;
+    }
     if (befehl === "sichern") {
       if (!o.ziel) throw new SicherungsFehler(HILFE, 2);
+      // Nur reine Dezimalzahlen: Number("") ist 0 und würde die Bestätigung still abschalten (z. B. --ruhe "$LEER").
+      const ruhe = o.ruhe === undefined ? 1000 : (/^\d{1,6}$/.test(String(o.ruhe)) ? Number(o.ruhe) : NaN);
+      if (!Number.isInteger(ruhe) || ruhe > 600000)
+        throw new SicherungsFehler("--ruhe: ganze Zahl in Millisekunden, 0 bis 600000", 2);
       const r = await sichern({ quelle: String(o.quelle || process.env.CENTRIC_DATEN || "/data"),
-        ziel: String(o.ziel), meldung: say });
+        ziel: String(o.ziel), ruhe, meldung: say,
+        schreibhalt: typeof o.schreibhalt === "string" ? o.schreibhalt : null });
       const m = r.manifest;
+      say(m.konsistenz === "schreibhalt" ? "Konsistenz: unter Schreib-Halt des Servers abgeschlossen."
+        : "Konsistenz: ohne Schreib-Halt (Ruhezeit).");
       console.log(`Sicherung vollständig: ${r.pfad}`);
       console.log(`  ${m.summe.dateien} Dateien, ${m.summe.bytes} Bytes`);
       for (const [s, v] of Object.entries(m.stores))
@@ -476,10 +1447,37 @@ export async function main(/** @type {string[]} */ argv) {
       const r = await wiederherstellen({ sicherung: String(o.sicherung),
         ziel: String(o.ziel || process.env.CENTRIC_DATEN || "/data"), ersetzen: !!o.ersetzen,
         serverUrl: typeof o["server-url"] === "string" ? o["server-url"] : undefined,
-        serverPruefen: !o["ohne-serverpruefung"], meldung: say });
+        serverPruefen: !o["ohne-serverpruefung"], meldung: say,
+        zustand: typeof o.zustand === "string" ? o.zustand : (process.env.CENTRIC_ZUSTAND || null),
+        widerrufbuchKopien: mehr["widerrufbuch-kopie"] || [] });
       console.log(`Wiederhergestellt: ${r.dateien} Dateien nach ${r.ziel}`);
+      console.log("Sicherungsschlüssel: Alle früheren sind ungültig. Eine Leitung legt in der App neue an; Automatisierungen danach kontrolliert umstellen.");
       if (r.beiseite) console.log(`Alter Inhalt liegt in ${r.beiseite} — nach erfolgreichem Start prüfen und dann von Hand entfernen.`);
       console.log("Server jetzt starten und die Anmeldung ausprobieren.");
+      return 0;
+    }
+    if (befehl === "schluessel-erneuern") {
+      const zustand = typeof o.zustand === "string" ? o.zustand : process.env.CENTRIC_ZUSTAND;
+      if (!zustand) throw new SicherungsFehler(HILFE, 2);
+      await schluesselErneuern({ zustand, daten: typeof o.daten === "string" ? o.daten : undefined,
+        serverUrl: typeof o["server-url"] === "string" ? o["server-url"] : undefined, serverPruefen: !o["ohne-serverpruefung"] });
+      console.log("Schlüsselepoche erneuert: Kein früherer Sicherungsschlüssel gilt mehr. Eine Leitung legt in der App neue an.");
+      return 0;
+    }
+    if (befehl === "widerrufbuch-neu") {
+      const zustand = typeof o.zustand === "string" ? o.zustand : process.env.CENTRIC_ZUSTAND;
+      if (!zustand) throw new SicherungsFehler(HILFE, 2);
+      const r = await widerrufbuchNeu({ zustand, daten: String(o.daten || process.env.CENTRIC_DATEN || "/data"),
+        serverUrl: typeof o["server-url"] === "string" ? o["server-url"] : undefined, serverPruefen: !o["ohne-serverpruefung"] });
+      console.log(`Widerrufbuch neu angelegt: ${r.eintraege} gesperrte Zugänge aus der Ablage übernommen. Was nur im verlorenen Buch stand, ist nicht mehr geschützt.`);
+      return 0;
+    }
+    if (befehl === "kontowiderrufbuch-neu") {
+      const zustand = typeof o.zustand === "string" ? o.zustand : process.env.CENTRIC_ZUSTAND;
+      if (!zustand) throw new SicherungsFehler(HILFE, 2);
+      const r = await kontowiderrufbuchNeu({ zustand, daten: String(o.daten || process.env.CENTRIC_DATEN || "/data"),
+        serverUrl: typeof o["server-url"] === "string" ? o["server-url"] : undefined, serverPruefen: !o["ohne-serverpruefung"] });
+      console.log(`Konto-Widerrufbuch neu angelegt: ${r.eintraege} Sperren und Entzüge aus der Ablage übernommen. Was nur im verlorenen Buch stand, ist nicht mehr geschützt.`);
       return 0;
     }
     throw new SicherungsFehler(HILFE, 2);

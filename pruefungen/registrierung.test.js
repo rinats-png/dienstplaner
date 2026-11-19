@@ -1250,3 +1250,30 @@ describe("Der Anspruch auf einen kostenlosen Testbetrieb", () => {
     }
   });
 });
+
+
+/* ==========================================================================
+   BE-1 Auflage 2: Eine Sperre im Konto-Widerrufbuch gilt auch im Registrierungsweg
+   ========================================================================== */
+
+describe("Konto-Widerrufbuch im Registrierungsweg (BE-1, Auflage 2)", () => {
+  it("Bestätigen und Passwort setzen weisen ein im Buch gesperrtes Konto ab, auch wenn die Ablage es nicht sperrt", async () => {
+    const K = await import("../server/lib/kontowiderrufbuch.mjs");
+    const s = laden();
+    const pf = postfach();
+    const start = await R.registrierungStarten(s, { ...PROFIL, email: "buch@example.org", versand: pf.versand, jetzt: uhr(T0) });
+    expect(start.ok).toBe(true);
+    const konto = await A.accountLesenPerMail(s, "buch@example.org");
+    const token = tokenAus(pf.letzter().text);
+    /* Nur das Buch sperrt (Ablage zeigt weiter „eingeladen“, wie nach einem Rücksprung). */
+    expect((await K.kontoSperreVermerken(s, konto.id)).geschrieben).toBe(true);
+    expect((await A.accountLesenPerId(s, konto.id)).status).toBe("eingeladen");
+    const v = await R.emailVerifizieren(s, { token, jetzt: uhr(T0 + STUNDE) });
+    expect(v.ok).toBe(false);
+    expect(v.grund).toBe("gesperrt");
+    const p = await R.registrierungPasswortSetzen(s, { accountId: konto.id, passwort: GUT });
+    expect(p.ok).toBe(false);
+    expect(p.grund).toBe("gesperrt");
+    expect((await A.accountLesenPerId(s, konto.id)).passwort).toBe(null);
+  });
+});

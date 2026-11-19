@@ -539,12 +539,19 @@ describe("Speicherfehler", () => {
     if (!e.ok) expect(e.grund).toBe("lauf");
   }, LIMIT);
 
-  it("weist ab, wenn der Bestand nicht lesbar ist", async () => {
+  it("weist ab, wenn der Bestand nicht lesbar ist — als vorübergehender Fehler, nicht als „Bestand fehlt“", async () => {
+    /* Seit WP-45 (N3): Ein unlesbarer Kern ist „gerade nicht lesbar"
+       (BESTAND_UNLESBAR → 503), nicht „Bestand fehlt". Bis dahin wurde er
+       zu „fehlt", und die Absage räumte eine gültige Sitzung weg, weil die
+       Platte kurz hakte. Die Tür bleibt trotzdem zu: Die Prüfung wirft,
+       durchgelassen wird nichts — und mit lesbarem Bestand gilt dieselbe
+       Sitzung danach wieder. */
     const { token } = await arbeitsbereich("fehler-bestand");
-    const e = await AS.arbeitssitzungPruefen(/** @type {any} */ (blind(/^kern:/)),
-      await satz(token));
-    expect(e.ok).toBe(false);
-    if (!e.ok) expect(e.grund).toBe("bestand-fehlt");
+    const kaputt = { ...blind(/^kern:/), getMetadata: async () => { throw new Error("Platte kaputt"); } };
+    await expect(AS.arbeitssitzungPruefen(/** @type {any} */ (kaputt), await satz(token)))
+      .rejects.toMatchObject({ code: "BESTAND_UNLESBAR" });
+    const danach = await AS.arbeitssitzungPruefen(laden(), await satz(token));
+    expect(danach.ok).toBe(true);
   }, LIMIT);
 
   it("verweigert bei einem Fehler im durchgegebenen Bestandslader", async () => {
@@ -635,7 +642,10 @@ describe("Jeder produktive Zugriffspfad prüft mit", () => {
          `t:`. Beide sind den Endpunkten verschlossen. */
       if (/sitzungLesen/.test(text) || /`t:\$\{/.test(text)) roh.push(d);
     }
-    expect(leser.sort()).toEqual(["daten.mjs", "kalender.mjs", "lage.mjs",
+    /* einladung.mjs (WP-18): Einladung ausstellen braucht die Sitzung der Leitung.
+       import.mjs (IMP-3): Der Importendpunkt liest die Sitzung über arbeitssitzungLesen (technisch und fachlich). */
+    /* hilfe.mjs (WP-I23): Hilfe-Assistent; liest die Sitzung über arbeitssitzungLesen vor dem Rumpf (Sonde: hilfe-assistent-i23.test.js, S1). */
+    expect(leser.sort()).toEqual(["daten.mjs", "einladung.mjs", "hilfe.mjs", "import.mjs", "kalender.mjs", "lage.mjs",
       "zustellung.mjs"]);
     expect(roh, "Dateien, die eine Sitzung auf dem alten Weg lesen").toEqual([]);
     /* Und die Primitive gibt es genau einmal. */
@@ -671,14 +681,26 @@ describe("Sitzungen aus Zugangscodes bleiben unberührt", () => {
       };
       const { token } = await legacySitzung();
       const e = await AS.arbeitssitzungPruefen(/** @type {any} */ (beobachtet),
-        await satz(token));
+        await satz(token), { bestandLader: async () => ({
+          bestand: { mandanten: [{ id: "m1", personen: [person("p_1", "Alt", "Zugang", "leitung")] }] } }) });
       expect(e).toEqual({ ok: true, art: "legacy" });
-      expect(gesehen).toEqual([]);
+      /* Seit SI-P2 liest die Prüfung einer personengebundenen Code-Sitzung
+         den Zugang (gesperrt?) und den Bestand (Person noch gültig?; hier über den
+         Lader) — sonst
+         nichts. Account, Mitgliedschaft und Lauf bleiben tabu. */
+      expect(gesehen.every((g) => g.startsWith("konto:") || g === "konten")).toBe(true);
       for (const praefix of ["account:", "kontoId:", "mitglied:", "mitgliedlauf:",
         "kern:", "raummitglied:"]) {
         expect(gesehen.filter((g) => g.includes(praefix)), praefix).toEqual([]);
       }
     }, LIMIT);
+
+  it("derselbe Lader ohne die Person beendet die Sitzung (die Personenprüfung läuft wirklich)", async () => {
+    const { token } = await legacySitzung();
+    const e = await AS.arbeitssitzungPruefen(/** @type {any} */ (laden()), await satz(token),
+      { bestandLader: async () => ({ bestand: { mandanten: [{ id: "m1", personen: [] }] } }) });
+    expect(e).toEqual({ ok: false, grund: "person-fort" });
+  }, LIMIT);
 
   it("führt eine Zugangscode-Sitzung unverändert durch die Pfade", async () => {
     /* Ein vollständiger Betrieb, eine Sitzung der alten Art — und keine

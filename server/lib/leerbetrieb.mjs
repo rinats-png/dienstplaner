@@ -19,6 +19,8 @@
 import { MATRIX } from "./rechte.mjs";
 import { brancheVon, einheitLabel, qualifikationenFuer, dienstartenFuer, quoteFuer, paketFuer }
   from "./branchen.mjs";
+import { paketFuerNeubuchung } from "./paketstand.mjs";
+import { montagDerWoche } from "./betriebszeit.mjs";
 
 /* Muss zu VERSION in src/migration.js passen. Weicht es ab, zieht die
    Migration den Bestand beim ersten Öffnen hoch — unschön, aber harmlos. */
@@ -29,12 +31,12 @@ export const VERSION = 9;
    branchen.mjs — eine Branche ist dort ein Datensatz, keine über drei
    Dateien verteilte Tabelle. Die Oberfläche liest dieselbe Quelle. */
 
-/** Montag der laufenden Woche — Ankerpunkt für die Schichtfolge. */
-function ankerMontag(jetzt) {
-  const d = new Date(jetzt);
-  const versatz = (d.getDay() + 6) % 7;
-  d.setDate(d.getDate() - versatz);
-  return d.toISOString().slice(0, 10);
+/** Montag der laufenden Woche — Ankerpunkt für die Schichtfolge. Gerechnet auf dem betrieblichen
+ *  Kalendertag (Europe/Berlin), nicht in der Prozesszeitzone: Bis WP-ZEIT bestimmte die Ortszeit den
+ *  Wochentag, ausgegeben wurde aber das UTC-Datum — östlich von UTC kurz nach Mitternacht der Sonntag
+ *  davor, in UTC zwischen 00:00 und 01:00/02:00 Berlin am Montag noch der Montag der Vorwoche. */
+export function ankerMontag(jetzt) {
+  return montagDerWoche(jetzt);
 }
 
 /**
@@ -47,8 +49,12 @@ function ankerMontag(jetzt) {
  * @param {string} [o.land]    Bundesland-Kürzel für die Feiertage
  * @param {string} [o.raum]    Raumname, wird zur Betriebskennung
  * @param {string} [o.laeuftAb] Ende des Testzeitraums
+ * @param {boolean} [o.selbstAngelegt] nur der Selbstanlegeweg (/starten,
+ *   Registrierung: provisionierung.mjs testbetriebAnlegen) setzt true. Betreiber-
+ *   Vorlagen „leer“/„test“ nicht — sonst gälte ein vom Betreiber eingerichteter Kundenbetrieb als Testraum
+ *   und bekäme keine Mail (SI-P3, lib/testraum.mjs).
  */
-export function baueLeerenBetrieb({ name, branche, email, land, raum, laeuftAb }) {
+export function baueLeerenBetrieb({ name, branche, email, land, raum, laeuftAb, selbstAngelegt = false }) {
   const jetzt = new Date();
   const profil = brancheVon(branche);
   const br = profil.id;
@@ -96,6 +102,7 @@ export function baueLeerenBetrieb({ name, branche, email, land, raum, laeuftAb }
     /* Lenk- und Ruhezeiten des Fahrpersonals, aus dem Kontrollgerät. */
     fahrzeiten: {},
     unterschreitungen: [],
+    bestaetigungen: [],
     dienstbuch: [],
     erfassung: {},
     einstempeln: {},
@@ -105,7 +112,9 @@ export function baueLeerenBetrieb({ name, branche, email, land, raum, laeuftAb }
       { id: "z2", name: "Sonntagsarbeit", art: "sonntag", prozent: 50, aktiv: true },
       { id: "z3", name: "Feiertagsarbeit", art: "feiertag", prozent: 125, aktiv: true },
     ],
-    standorte: [{ id: "st1", name: `${String(name).trim()}`, land: land || "HE",
+    /* bundesland wie in der Oberfläche; land bleibt für ältere Leser. Keine
+       Koordinaten — die trägt die Leitung ein (Geo V1). */
+    standorte: [{ id: "st1", name: `${String(name).trim()}`, bundesland: land || "HE", land: land || "HE",
       lat: undefined, lon: undefined, radius: 200 }],
     einheiten,
 
@@ -125,6 +134,11 @@ export function baueLeerenBetrieb({ name, branche, email, land, raum, laeuftAb }
     /* Gesetzliche Grundwerte. Bewusst die Mindestanforderungen des
        Arbeitszeitgesetzes, damit die Prüfung von Anfang an etwas prüft. */
     einstellungen: {
+      /* Geo-Prüfung beim Stempeln: Vorgabe aus (E7); einschalten nur die Leitung. */
+      geoPruefung: false,
+      /* Planfreigabe (WP-23): Beschäftigte sehen Entwürfe nicht. Neue Betriebe starten mit
+         der Pflicht; bestehende ohne Freigabe behalten das alte Verhalten (planfreigabe.mjs). */
+      planFreigabePflicht: true,
       wochenstunden: 40,
       /* Dieselbe Größe unter zwei Namen: Die Oberfläche liest fast überall
          sollWochenstunden, angelegt wurde nur wochenstunden. Folge: Das Feld
@@ -147,7 +161,9 @@ export function baueLeerenBetrieb({ name, branche, email, land, raum, laeuftAb }
       maxTagesstunden: 10,
       pausen: { ab6h: 30, ab9h: 45 },
       quote: quoteFuer(br),
-      pakete: paketFuer(br) ? [paketFuer(br)] : [],
+      /* G9: ein Paket ohne nutzbare Funktion wird nicht automatisch zugebucht
+         (kein Preis für Unfertiges). Bestehende Betriebe behalten ihre Buchung. */
+      pakete: paketFuerNeubuchung(paketFuer(br)) ? [paketFuerNeubuchung(paketFuer(br))] : [],
     },
 
     /* Aufbewahrung — siehe src/migration.js, Stufe 5 → 6. */
@@ -158,7 +174,7 @@ export function baueLeerenBetrieb({ name, branche, email, land, raum, laeuftAb }
       zuletztGeraeumt: null,
     },
 
-    selbstAngelegt: true,
+    selbstAngelegt: selbstAngelegt === true,
     laeuftAb: laeuftAb || null,
   };
 

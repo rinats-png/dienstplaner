@@ -54,6 +54,7 @@
 
 import { getStore } from "./ablage.mjs";
 import { ablaufUrteil, verlaengernFaellig } from "./lebendigkeit.mjs";
+import { betreiberZweifaktorPflicht } from "./umgebung.mjs";
 import { createHash, randomBytes } from "node:crypto";
 
 /** Die Ablage der Sitzungen. Auch für die Aufrufer, die `sk:`-Schlüssel
@@ -97,6 +98,11 @@ export async function sitzungLesen(req, { jetzt = Date.now } = {}) {
   const sk = await sitzungen.get(`sk:${hash(token)}`, { type: "json" }).catch(() => null);
   if (sk) {
     if (sk.bis < jetzt()) { await sitzungen.delete(`sk:${hash(token)}`); return null; }
+    /* SI-P1: Für einen widerrufenen Schlüssel besteht ein Vermerk (skw:), der ihn endgültig ausschließt, auch wenn
+       sein Datensatz wieder da ist (zurückgespieltes Konto, nicht gelöschter Rest). Ein Lesefehler am Vermerk ist
+       keine Erlaubnis: im Zweifel nicht anmelden. */
+    const vermerkt = await sitzungen.get(`skw:${hash(token)}`, { type: "json" }).then((v) => !!v, () => true);
+    if (vermerkt) return null;
     return { ...sk, nurSicherung: true };
   }
 
@@ -126,6 +132,14 @@ export async function sitzungLesen(req, { jetzt = Date.now } = {}) {
     { streng: false, ruhe: gebunden ? Infinity : RUHE, aktivitaet: aktiv });
   if (urteil.grund === "frist" || urteil.grund === "untaetig") {
     await sitzungWeg(sitzungen, id);
+    return null;
+  }
+  /* WP-32d: Unter Pflicht trägt eine Betreibersitzung nur, wenn sie mit bestandenem zweitem Faktor entstand
+     (`zweifaktor: true`, gesetzt allein von /api/anmelden nach betreiberZweifaktor). Jede andere — aus der Zeit vor
+     der Pflicht, aus einem Lauf als development/test auf derselben Ablage, oder weil die Bereinigung beim Start
+     scheiterte — gilt bei JEDER Anfrage nicht und wird entfernt. Unabhängig vom Endpunkt, fail-closed. */
+  if (s.rolle === "betreiber" && s.zweifaktor !== true && betreiberZweifaktorPflicht()) {
+    await sitzungWeg(sitzungen, id).catch(() => {});
     return null;
   }
   /* Ein Planer klickt sich durch einen Monat — das wären hunderte
@@ -175,6 +189,12 @@ export async function sitzungBeenden(token) {
     await sitzungsSpeicher().delete(`ta:${hash(token)}`).catch(() => {});
     return true;
   } catch { return false; }
+}
+
+/** Einen Sicherungsschlüssel endgültig entfernen (SI-P1: sein Ersteller gilt nicht mehr). Fehler stören nicht. */
+export async function sicherungsschluesselEntfernen(token) {
+  if (!token) return false;
+  try { await sitzungsSpeicher().delete(`sk:${hash(token)}`); return true; } catch { return false; }
 }
 
 /** Autorität zuerst, dann Aktivität; Fehler stören den Aufrufer nicht. */

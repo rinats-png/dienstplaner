@@ -3,11 +3,14 @@ import {
   generationStimmt, accountLesenPerId, raumErlaubt,
 } from "./accounts.mjs";
 import { HERKUNFT_KONTO } from "./arbeitssitzung.mjs";
-import { bestandLesen } from "./bestand.mjs";
-import { wirksameRolle, eigenerMandant } from "./rechte.mjs";
+import { bestandLesen, voruebergehend } from "./bestand.mjs";
+import { wirksameRolle, eigenerMandant, sitzungsRolleBekannt } from "./rechte.mjs";
 import { sitzungAnlegen, sitzungBeenden, sitzungsSchluessel, dauerFuer } from "./sitzungen.mjs";
 import { kontoSitzungFuerArbeit, kennungBrauchbar, markerAnlegen, markerLoeschen }
   from "./accountsitzungen.mjs";
+import { rollenPflicht, zweifaktorRolle } from "./betreiber-zweifaktor.mjs";
+import { kontoFaktorAktiv } from "./kontofaktor.mjs";
+import { kontoZugangImBuch } from "./kontowiderrufbuch.mjs";
 
 /* ==========================================================================
    VOM ACCOUNT IN EINEN BETRIEB
@@ -124,10 +127,26 @@ export async function mitgliedschaftenFuerAuswahl(store, accountId) {
       const mandant = gelesen && gelesen.bestand
         ? eigenerMandant(gelesen.bestand, { betrieb: m.betrieb }) : null;
       if (mandant && mandant.name) name = String(mandant.name);
-    } catch { /* Name unbekannt, Raum bleibt anwählbar */ }
+    } catch { /* Name unbekannt (auch bei vorübergehendem Lesefehler), Raum bleibt anwählbar */ }
     aus.push({ raum: m.raum, name });
   }
   return { ok: true, mitgliedschaften: aus };
+}
+
+/**
+ * Darf die Arbeitssitzung die Kennung des gewählten Betriebs tragen? (WP-18-Nachtrag, siehe betriebWaehlen)
+ * @param {Record<string, any>} felder  die Felder der neuen Arbeitssitzung
+ * @param {any} m  die frisch gelesene Mitgliedschaft
+ * @param {string|null} rolle  die wirksame Rolle der Person
+ * @param {any} mandant  der Betrieb, auf den Index und Kennung der Mitgliedschaft zeigen
+ */
+function kennungZulaessig(felder, m, rolle, mandant) {
+  if (!m || m.status !== "aktiv") return false;
+  if (felder.demo !== undefined || felder.nurSicherung !== undefined) return false;
+  if (m.rolle === "betreiber" || rolle === "betreiber") return false;
+  if (!zweifaktorRolle(m.rolle) || !zweifaktorRolle(rolle)) return false;
+  if (!mandant || typeof mandant.id !== "string" || !mandant.id) return false;
+  return mandant.id === String(m.mandantId);
 }
 
 /**
@@ -174,6 +193,10 @@ export async function betriebWaehlen(store,
   if (!m) return absage("keine-mitgliedschaft");
   if (m.status !== "aktiv") return absage(`status:${m.status}`);
   if (!m.person) return absage("ohne-person");
+  /* Eine Mitgliedschaft mit einer Rolle, die es nicht gibt (Altbestand),
+     ergibt keine Arbeitssitzung (Commit D1e). Nach außen dieselbe Absage
+     wie jede andere. */
+  if (!sitzungsRolleBekannt(m.rolle)) return absage("rolle");
 
   /* Die Generation dieser Beziehung muss stimmen, bevor irgendetwas
      entsteht: Eine Mitgliedschaft, deren Generation nicht die aktuelle ist,
@@ -191,10 +214,15 @@ export async function betriebWaehlen(store,
   const konto = await accountLesenPerId(store, accountId).catch(() => null);
   if (!konto) return absage("konto-fehlt");
   if (konto.status !== "aktiv") return absage("konto-status");
+  /* BE-1 (kontowiderrufbuch.mjs): Kontosperre oder Entzug im Konto-Widerrufbuch gilt, auch wenn eine zurückgespielte
+     Ablage beides „aktiv“ mit passender Generation zeigt. Nicht prüfbar → wirft (fail-closed, 503). */
+  if (await kontoZugangImBuch(store, accountId, { raum, generation: m.generation })) return absage("widerrufen");
   const epoche = Number(konto.epoche);
   if (!Number.isInteger(epoche) || epoche < 1) return absage("epoche");
 
-  const gelesen = await bestandLesen(store, raum).catch(() => null);
+  /* „Nicht lesbar" oder „gerade gesperrt" ist nicht „kein Bestand": weiterreichen
+     (→ 503), statt den Betrieb als fehlend abzulehnen (bestand.mjs, voruebergehend). */
+  const gelesen = await bestandLesen(store, raum).catch((e) => { if (voruebergehend(e)) throw e; return null; });
   if (!gelesen || !gelesen.bestand) return absage("kein-bestand");
 
   /* Der Betriebsindex aus der Mitgliedschaft muss auf denselben Mandanten
@@ -215,7 +243,9 @@ export async function betriebWaehlen(store,
   /* Die Felder der Arbeitssitzung. Gespeichert wird die Rolle der
      Mitgliedschaft; was gilt, entscheidet `wirksameRolle` bei jeder Anfrage
      neu gegen den Bestand. Kein `konto` — es gibt keinen Zugangscode, auf
-     den sich eine Sperrung beziehen könnte —, und kein `demo`. */
+     den sich eine Sperrung beziehen könnte —, und kein `demo`. Die Betriebskennung (`mandantId`) kommt nur unter den
+     Bedingungen von kennungZulaessig dazu (unten). */
+  /** @type {Record<string, any>} */
   const felder = {
     bestand: raum,
     name: `${person.vorname || ""} ${person.nachname || ""}`.trim() || String(person.id),
@@ -238,6 +268,50 @@ export async function betriebWaehlen(store,
      eine Oberfläche weiß, was sie anzeigen darf; verbindlich ist sie
      ohnehin erst wieder bei der nächsten Anfrage. */
   const rolle = wirksameRolle(felder, gelesen.bestand) || m.rolle;
+
+  /* SI-P4, Review-Auflage M1: Ein Konto kennt (noch) keinen zweiten Faktor. Unter Pflicht
+     (CENTRIC_ROLLEN_ZWEIFAKTOR_PFLICHT=1) öffnet dieser Weg deshalb keinen Betrieb mit den Rechten von Leitung,
+     Planung oder Kunde — maßgeblich sind die Rolle der Mitgliedschaft UND die wirksame Rolle der Person. Abgewiesen
+     wird, statt eine Sitzung ohne zweiten Faktor anzulegen; der Weg in diese Rolle ist der Zugangscode mit Faktor.
+     Ohne Pflicht bleibt es wie bisher. Die Account-Anmeldung selbst ist nur eine Identität ohne Rolle und ohne
+     Bestand (anmeldung.mjs) — die Rechte entstehen erst hier, also wird hier geprüft. */
+  /* OPT-1-F: Seit es einen zweiten Faktor am Konto gibt (kontofaktor.mjs), öffnet dieser Weg unter Pflicht auch
+     Leitung, Planung und Kunde — aber nur, wenn BEIDES stimmt:
+       - die Account-Sitzung ist mit bestandenem Faktor entstanden (`zweifaktor: true` im Datensatz der Sitzung,
+         frisch gelesen über ihre Kennung, nie aus der Anfrage und nie aus dem Parameter `kontoSitzung`), und
+       - der Faktor des Kontos ist jetzt aktiv (ein Lesefehler ist kein Ja).
+     Sonst bleibt es bei der Absage oben. Die Arbeitssitzung trägt dann `zweifaktor: true`; damit hält sie auch die
+     Prüfung jeder Anfrage (rollenSitzungOhneFaktor) — auf demselben Feld wie eine Sitzung aus Zugangscode + Faktor. */
+  const kontoMitFaktor = await kontoSitzungFuerArbeit(String(asId), { accountId, epoche },
+    { ablage: kontoAblage, jetzt }).catch(() => null);
+  /* OPT-1-F, Befund 3 (Zusatzprüfung): Der Faktor des Kontos wird immer gelesen. Ist er aktiv oder nicht lesbar,
+     öffnet eine Sitzung OHNE bestandenen Faktor keinen Betrieb — in keiner Rolle, mit oder ohne Pflicht. Sonst würde
+     eine ältere, schwächer geschützte Sitzung (vor der Aktivierung entstanden, Abmelden gescheitert) wieder gelten. */
+  /** @type {boolean|null} */
+  let faktorAktiv = null;
+  try { faktorAktiv = await kontoFaktorAktiv(store, accountId); } catch { faktorAktiv = null; }
+  const mitFaktor = faktorAktiv === true && !!(kontoMitFaktor && kontoMitFaktor.ok && kontoMitFaktor.zweifaktor === true);
+  if (faktorAktiv !== false && !mitFaktor) return absage("zweifaktor-pflicht");
+  /* OPT-4: Die Pflicht gilt auch je Konto (`faktorPflicht`, gesetzt mit dem Ersteinrichtungscode) — unabhängig vom
+     Schalter, wie `pflichtErzwungen` für einen Zugang aus der Ersteinrichtung. Maßgeblich sind wieder beide Rollen. */
+  const kontoPflicht = konto.faktorPflicht === true;
+  if ((rollenPflicht() || kontoPflicht) && (zweifaktorRolle(m.rolle) || zweifaktorRolle(rolle)) && !mitFaktor)
+    return absage("zweifaktor-pflicht");
+  if (mitFaktor) felder.zweifaktor = true;
+
+  /* Kontositzung mit Betriebskennung (WP-18-Nachtrag). Eine Sitzung aus einem Zugangscode trägt seit Oktober 2026 die
+     Kennung ihres Betriebs (mandantId); Einladungen verlangen sie (einladungen.mjs, leitungPruefen). Die Arbeitssitzung
+     aus einem Konto bekommt sie hier — für genau den gewählten, oben geprüften Betrieb und nur, wenn:
+       - die Mitgliedschaft existiert und aktiv ist (oben: Status, Generation, Person, Betriebsindex = Kennung),
+       - die Rolle der Mitgliedschaft UND die wirksame Rolle der Person eine Funktionsrolle sind (leitung, planer,
+         subplaner, kunde — dieselbe Menge wie beim zweiten Faktor, betreiber-zweifaktor.mjs). Beide, nicht eine von
+         beiden: Die Kennung soll aus keiner der zwei Angaben allein entstehen,
+       - es keine Demo-, keine Sicherungs- und keine Betreibersitzung ist (Demoräume schließt raumErlaubt oben aus; die
+         Felder tragen weder `demo` noch `nurSicherung`; „betreiber" ist keine Funktionsrolle).
+     Die Kennung ist keine Rolle und kein Recht: Gespeichert bleibt die Rolle der Mitgliedschaft, und jede Anfrage
+     entscheidet weiter über `wirksameRolle` gegen den Bestand. Bei jeder Anfrage prüft arbeitssitzungPruefen, dass sie
+     noch die Kennung der Mitgliedschaft ist. Nach außen geht sie nicht (Antwort unten unverändert). */
+  if (kennungZulaessig(felder, m, rolle, mandant)) felder.mandantId = String(mandant.id);
 
   /* Die Arbeit überlebt ihre Anmeldung nicht: Die Dauer endet spätestens mit
      der Account-Sitzung. */

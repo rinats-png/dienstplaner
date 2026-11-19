@@ -1,0 +1,5 @@
+Personalnummer;Nachname;Vorname;Funktion;Einheit
+TP-4001;=1+1;Fiktiv;=HYPERLINK("https://example.invalid/x";"klick");Wohnbereich 1
+TP-4002;+Testperson 32;Fiktiv;+SUMME(A1:A9);Wohnbereich 1
+TP-4003;-Testperson 33;Fiktiv;-2+3;Wohnbereich 1
+TP-4004;@Testperson 34;Fiktiv;@SUMME(1);Wohnbereich 1

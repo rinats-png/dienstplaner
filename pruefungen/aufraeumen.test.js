@@ -286,17 +286,15 @@ describe("Manipulationsschutz", () => {
     expect(aus.mandanten[0].laeuftAb).toBe(ABLAUF);
     expect(aus.mandanten[0].selbstAngelegt).toBe(true);
     expect(aus.mandanten[0].status).toBe("test");
-    /* Und ein Betrieb, den es gespeichert nicht gibt, kommt ohne Vertragsfelder an;
-       der gespeicherte bleibt mitsamt seinen Merkmalen erhalten. */
+    /* Ein Betrieb, den es gespeichert nicht gibt, kommt gar nicht erst an:
+       Seit Oktober 2026 schreibt die Leitung genau ihren gespeicherten
+       Betrieb (rechte.mjs). Vorher wurde er ohne Vertragsfelder übernommen. */
     const eingeschleust = { ...gespeichert, mandanten: [{ id: "neu", name: "Neu", status: "aktiv",
       selbstAngelegt: true, laeuftAb: "2099-01-01T00:00:00.000Z", personen: [] }] };
     const aus2 = zusammenfuehren(gespeichert, eingeschleust, sitzungLeitung);
-    const neu = aus2.mandanten.find((m) => m.id === "neu");
-    expect(neu.status).toBeUndefined();
-    expect(neu.selbstAngelegt).toBeUndefined();
-    expect(neu.laeuftAb).toBeUndefined();
-    const echt = aus2.mandanten.find((m) => m.id === "m1");
-    expect(echt).toMatchObject({ status: "test", selbstAngelegt: true, laeuftAb: ABLAUF });
+    expect(aus2.verweigert).toBeTruthy();
+    const nebenbei = { ...gespeichert, mandanten: [gespeichert.mandanten[0], eingeschleust.mandanten[0]] };
+    expect(zusammenfuehren(gespeichert, nebenbei, sitzungLeitung).verweigert).toBeTruthy();
   });
 });
 

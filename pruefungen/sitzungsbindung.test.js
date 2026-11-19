@@ -308,6 +308,9 @@ describe("Die Bindung selbst (Spezifikation)", () => {
     for (let i = 0; i < 23; i++) {
       uhr.vor(28 * MINUTE);
       expect((await Z.sitzungsstand(a.keks)).status, `Schritt ${i}`).toBe(200);
+      /* Das Fortschreiben von `zuletzt` läuft ohne await; ohne dieses Warten
+         ist der nächste Uhrsprung unter Last schneller als die Platte. */
+      await Z.aktivitaetAbwarten({ keks: a.keks });
     }
     const w = await Z.betriebOeffnen(a.keks, raum);
     expect(w.status).toBe(200);
@@ -353,9 +356,14 @@ describe("Sicherungsschlüssel (sk:)", () => {
     const raum = Z.raum("sk");
     await Z.betriebAnlegen(raum);
     const roh = `sicherungsschluessel-fuer-die-pruefung-${raum}`;
+    /* Seit SI-P1 trägt ein Schlüssel seinen Ersteller (hier: ein Zugang „leitung" dieses Betriebs); ohne ihn gilt er nicht.
+       Seit dem Wiederherstellungsschutz auch die gültige Schlüsselepoche (schluesselepoche.mjs). */
+    const ersteller = await Z.zugangskonto(raum, { rolle: "leitung", person: "p_1" });
+    const { epoche } = await (await import("../server/lib/schluesselepoche.mjs")).schluesselEpoche();
     await Z.ablageArbeit().setJSON(Z.S.sicherungsSchluessel(roh), {
-      bestand: raum, rolle: "leitung", nurSicherung: true,
+      bestand: raum, rolle: "leitung", nurSicherung: true, betrieb: 0, mandantId: "m1",
       name: "Sicherungsschlüssel (Leitung)", angelegt: new Date().toISOString(),
+      ersteller: { art: "code", konto: ersteller, person: "p_1", name: "Leitung" }, epoche,
       bis: Date.now() + 24 * 3600 * 1000,
     });
     for (const p of [Z.HAUPTPFADE[1], Z.HAUPTPFADE[2], Z.HAUPTPFADE[3], ...Z.VORABPFADE(raum)]) {
@@ -383,6 +391,7 @@ describe("Aktivität und Untätigkeit des Login-Kontexts", () => {
       uhr.vor(10 * MINUTE);
       const r = await Z.HAUPTPFADE[0].ruf(b.token);
       expect(r.status, `Arbeitsanfrage nach ${i * 10} Minuten`).not.toBe(401);
+      await Z.aktivitaetAbwarten({ keks: b.keks });
     }
     /* Vierzig Minuten nach der Anmeldung, nie an den Account-Endpunkten
        gewesen: Der Kontext lebt, weil in ihm gearbeitet wurde. */
@@ -414,6 +423,8 @@ describe("Aktivität und Untätigkeit des Login-Kontexts", () => {
     for (let i = 0; i < 25; i++) {
       uhr.vor(29 * MINUTE);
       await Z.HAUPTPFADE[0].ruf(b.token);
+      /* Sonst stürbe die Sitzung unter Last an der Untätigkeit, nicht an der Frist. */
+      if (i < 24) await Z.aktivitaetAbwarten({ keks: b.keks });
     }
     /* 25 × 29 Minuten = 12 h 05: Dauerbetrieb verlängert die Untätigkeit,
        nie die Gesamtdauer. */

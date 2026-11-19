@@ -1,7 +1,7 @@
 /* ==========================================================================
    RECHTETABELLEN VERGLEICHEN
 
-   Die Tabelle steht doppelt: MATRIX_STD in src/App.jsx steuert, was die
+   Die Tabelle steht doppelt: MATRIX_STD in src/lib/rollen.js steuert, was die
    Oberfläche anbietet, MATRIX in server/lib/rechte.mjs entscheidet, was der
    Server zulässt. Die Doppelung ist Absicht — was im Browser läuft, gehört
    dem Browser.
@@ -22,7 +22,7 @@ import { dirname, join } from "node:path";
 import { MATRIX } from "../server/lib/rechte.mjs";
 
 const hier = dirname(fileURLToPath(import.meta.url));
-const quelle = readFileSync(join(hier, "..", "src", "App.jsx"), "utf8");
+const quelle = readFileSync(join(hier, "..", "src", "lib", "rollen.js"), "utf8");
 
 const ergebnisse = [];
 const pruef = (name, bedingung, detail) => {

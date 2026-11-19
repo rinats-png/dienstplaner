@@ -31,6 +31,43 @@
    ========================================================================== */
 
 import { standortzuschlaege } from "./standorte.js";
+import { BRANCHENMODULE } from "../server/lib/branchenmodule.mjs";
+import { PAKET_MERKMALE, PAKET_FREIGABEN, PAKET_ZUSTAENDE, merkmalNutzbar, merkmaleInVorbereitung,
+  paketNutzbar, paketZustand, paketBuchbar, paketAnzeige, pilotAktiv }
+  from "../server/lib/paketstand.mjs";
+
+import { PAKETE_ROH, PAKETE, paketVon, mitModulstand, inVorbereitungModule } from "../server/lib/paketliste.mjs";
+export { PAKETE, paketVon, inVorbereitungModule };
+
+/* Interne Vorgaben (WP-I4, E-21): aktive Vorgaben je Stufe — Basis 5, Business 25, Enterprise unbegrenzt (server/lib/vorgaben.mjs). */
+export { VORGABEN_STUFENGRENZE, vorgabenGrenze } from "../server/lib/vorgaben.mjs";
+
+export { paketNutzbar, merkmalNutzbar, merkmaleInVorbereitung, paketZustand, paketBuchbar,
+  paketAnzeige, pilotAktiv, PAKET_ZUSTAENDE };
+
+/* Werbung folgt dem Zustand (G9, Review F2): „enthalten" nur, solange mindestens ein
+   Branchenpaket Zustand 5 hat. Sonst steht dort, was stimmt: noch nicht verfügbar. */
+const BRANCHENPAKETE_ENTHALTEN = "Zwei Branchenpakete enthalten";
+const BRANCHENPAKETE_BALD = "Zwei Branchenpakete – sobald verfügbar";
+const einPaketBuchbar = (liste, freigaben) => Object.keys(PAKET_MERKMALE)
+  .some((id) => id !== "kern" && paketBuchbar(id, liste, freigaben));
+
+/** Leistungszeile zu den in Enterprise enthaltenen Branchenpaketen, passend zum Paketstand. */
+export const branchenpaketeZeile = (liste = BRANCHENMODULE, freigaben = PAKET_FREIGABEN) =>
+  einPaketBuchbar(liste, freigaben) ? BRANCHENPAKETE_ENTHALTEN : BRANCHENPAKETE_BALD;
+
+/** Hinweis unter der Paketauswahl des Rechners, passend zum Paketstand. */
+export const branchenpaketeHinweis = (liste = BRANCHENMODULE, freigaben = PAKET_FREIGABEN) =>
+  einPaketBuchbar(liste, freigaben)
+    ? "In Enterprise sind zwei Pakete enthalten — angerechnet werden die beiden teuersten."
+    : "Branchenpakete sind in Vorbereitung und noch nicht buchbar. Sobald ein Paket verfügbar ist, "
+      + "gehören in Enterprise zwei Pakete dazu — angerechnet werden dann die beiden teuersten. "
+      + "Kein Paket wird ohne Ihre ausdrückliche Auswahl gebucht.";
+
+/** Leistungsliste für die Anzeige: auch ein gespeicherter älterer Tariftext folgt dem Paketstand. */
+export const leistungenAnzeige = (leistungen, liste = BRANCHENMODULE, freigaben = PAKET_FREIGABEN) =>
+  (leistungen || []).map((z) => (z === BRANCHENPAKETE_ENTHALTEN || z === BRANCHENPAKETE_BALD
+    ? branchenpaketeZeile(liste, freigaben) : z));
 
 export const STUFEN = [
   { id: "basis", name: "Basis", grund: 89, planerInklusive: 1, standorteInklusive: 1,
@@ -43,7 +80,7 @@ export const STUFEN = [
       "Belastbarkeitsanalyse", "Lohnausgabe — ein Klick zur Lohnbuchhaltung"] },
   { id: "enterprise", name: "Enterprise", grund: 279, planerInklusive: 8, standorteInklusive: 4,
     paketeFrei: 2,
-    leistungen: ["Alles aus Business", "Zwei Branchenpakete enthalten",
+    leistungen: ["Alles aus Business", branchenpaketeZeile(),
       "Leistungsnachweis für Auftraggeber", "Auftragsverarbeitung nach Artikel 28",
       "Bevorzugter Rückruf"] },
 ];
@@ -72,37 +109,27 @@ export const KONTAKT_AB_ZUSCHLAGSSTANDORTE = 9;
    der Liste, weil die Merkmalsprüfung (`kann()` in App.jsx) dieselbe
    Liste liest.
    ========================================================================== */
-export const PAKETE = [
-  /* „sperreGesetz" steht bewusst im Kern und nicht in einem Zusatzpaket.
+/**
+ * Das Angebot der Pakete für Auswahl und Anzeige (Website-Rechner, Konsole).
+ * Betreiberentscheidung G9: Nur Zustand 5 (buchbar und abrechenbar) ist
+ * wählbar, beworben und mit Preis genannt; die Zielpreise bleiben, gelten
+ * aber erst dann. Zustände 1–4: „In Vorbereitung" mit Zustand, ohne Preis.
+ */
+export function paketeAngebot(liste = BRANCHENMODULE, freigaben = PAKET_FREIGABEN) {
+  return PAKETE_ROH.filter((p) => !p.pflicht).map((p) => {
+    const zustand = paketZustand(p.id, liste, freigaben);
+    const buchbar = zustand === 5;
+    return { id: p.id, name: p.name, zustand, zustandName: PAKET_ZUSTAENDE[zustand],
+      nutzbar: paketNutzbar(p.id, liste), buchbar,
+      aufpreis: buchbar ? p.aufpreis : null,
+      inVorbereitung: inVorbereitungModule(p, liste).map((x) => x.name) };
+  });
+}
 
-     Das gesetzliche Minimum ist kein Mehrwert, den man verkauft — es ist die
-     Voraussetzung dafür, dass eine Dienstplanung ihren Zweck erfüllt. Eine
-     Anwendung, die erkennt, dass jemand ohne die nach § 4 PflBG vorbehaltene
-     Qualifikation eingeteilt ist, und schweigt, weil der Betrieb die kleinere
-     Stufe gebucht hat, wäre nach einem Vorfall nicht zu verteidigen.
-
-     Verkauft wird, was darüber liegt: eigene Regeln durchsetzen. Das ist
-     „sperreEigen" und bleibt im Paket. */
-  { id: "kern", name: "Kernplattform", pflicht: true,
-    beschreibung: "Schichtplanung, Anträge, Zeiten, Stundenkonten, Auswertungen. "
-      + "Gesetzlich zwingende Qualifikationen sperren den Einsatz in jeder Stufe.",
-    merkmale: ["plan", "antraege", "zeiten", "konten", "qualifikationen", "export", "sperreGesetz"] },
-  { id: "sicherheit", name: "Sicherheitsdienst", aufpreis: 79,
-    beschreibung: "Objektbezogene Posten, Wachbuch, Standortprüfung beim Stempeln, "
-      + "und eigene Vorgaben als harte Sperre durchsetzen.",
-    merkmale: ["posten", "wachbuch", "sperreEigen", "geofence", "objektbericht"] },
-  { id: "pflege", name: "Pflege und Rettungsdienst", aufpreis: 89,
-    beschreibung: "Fachkraftquote je Dienst, Übergabeprotokoll, Bereichs- und Wachabteilungsplanung, Betreuungskräfte nach § 43b.",
-    merkmale: ["fachkraftquote", "uebergabe", "bereichsplan", "pflegequal"] },
-  { id: "klinik", name: "Klinik", aufpreis: 129,
-    beschreibung: "Bereitschaftsdienst und Rufbereitschaft mit eigener Anrechnung, geteilte Dienste, Funktionsdienste, Rotationen.",
-    merkmale: ["bereitschaftsdienst", "geteilterdienst", "funktionsdienst", "rotation", "uebergabe", "fachkraftquote"] },
-  { id: "industrie", name: "Industrie, Technik und Anlagen", aufpreis: 59,
-    beschreibung: "Anlagenbindung, Maschinenqualifikationen, Kontischichtmodelle mit Stufenversatz.",
-    merkmale: ["anlagen", "maschinenqual", "kontimodelle"] },
-];
-
-export const paketVon = (id) => PAKETE.find((p) => p.id === id) || PAKETE[0];
+/** Aus einer Auswahl nur das, was buchbar ist (Rechner, automatische Buchung): Zustand 5. */
+export const buchbareAuswahl = (ids, liste = BRANCHENMODULE, freigaben = PAKET_FREIGABEN) =>
+  (ids || []).filter((id) => id !== "kern" && PAKETE_ROH.some((p) => p.id === id)
+    && paketBuchbar(id, liste, freigaben));
 
 /**
  * Was die gewählten Branchenpakete kosten.
@@ -112,17 +139,30 @@ export const paketVon = (id) => PAKETE.find((p) => p.id === id) || PAKETE[0];
  * Falle: Wer Pflege und Klinik bucht und Industrie dazunimmt, dürfte
  * sonst schlechter dastehen als vorher.
  *
+ * Ein Paket unter Zustand 5 (G9) oder in einem Pilotbetrieb wird nicht
+ * berechnet und belegt keinen der freien Plätze; es bleibt in `gewaehlt`
+ * (der Bestand verliert nichts) und steht zusätzlich in `nichtBerechnet`.
+ *
  * @param ids        gewählte Paket-Kennungen (ohne „kern")
  * @param paketeFrei wie viele davon in der Stufe enthalten sind
+ * @param liste      Registry-Stand (Vorgabe: BRANCHENMODULE)
+ * @param freigaben  Betreiberfreigaben (Vorgabe: PAKET_FREIGABEN)
+ * @param pilot      Pilotbetrieb: nichts wird berechnet
+ * @param abrechenbar  Abrechnungsgrund je Paket (Zustimmung oder Vertrag, paketstand.mjs). Vorgabe:
+ *                     alles — nur für ein Angebot (Rechner) ohne Betrieb; jede Abrechnung eines
+ *                     Betriebs geht über mandantPaketkosten (paketlogik.js) und übergibt den Grund.
  */
-export function paketkosten(ids, paketeFrei = 0) {
-  const gewaehlt = PAKETE
-    .filter((p) => !p.pflicht && (ids || []).includes(p.id))
+export function paketkosten(ids, paketeFrei = 0, liste = BRANCHENMODULE, freigaben = PAKET_FREIGABEN, pilot = false,
+  abrechenbar = () => true) {
+  const alle = PAKETE_ROH.filter((p) => !p.pflicht && (ids || []).includes(p.id)).map((p) => mitModulstand(p));
+  const zaehlt = (p) => !pilot && paketBuchbar(p.id, liste, freigaben) && abrechenbar(p.id);
+  const nichtBerechnet = alle.filter((p) => !zaehlt(p));
+  const gewaehlt = alle.filter(zaehlt)
     .sort((a, b) => (b.aufpreis || 0) - (a.aufpreis || 0));
   const frei = gewaehlt.slice(0, Math.max(0, paketeFrei));
   const zahlend = gewaehlt.slice(Math.max(0, paketeFrei));
   return {
-    gewaehlt, frei, zahlend,
+    gewaehlt: [...gewaehlt, ...nichtBerechnet], frei, zahlend, nichtBerechnet,
     summe: zahlend.reduce((a, p) => a + (p.aufpreis || 0), 0),
   };
 }
@@ -134,12 +174,16 @@ export function paketkosten(ids, paketeFrei = 0) {
  * @param planerGesamt     Planer-Zugänge insgesamt, nicht nur die zusätzlichen
  * @param standortPersonen Personenzahl je Standort, beliebige Reihenfolge
  * @param paketIds         gewählte Branchenpakete
+ * @param liste            Registry-Stand (Vorgabe: BRANCHENMODULE)
+ * @param freigaben        Betreiberfreigaben je Paket (Vorgabe: PAKET_FREIGABEN)
+ * @param pilot            kostenloser Pilotbetrieb: keine Paketpreise
  */
-export function preisFuer(stufe, planerGesamt, standortPersonen, paketIds = []) {
+export function preisFuer(stufe, planerGesamt, standortPersonen, paketIds = [], liste = BRANCHENMODULE,
+  freigaben = PAKET_FREIGABEN, pilot = false) {
   const zusatzPlaner = Math.max(0, planerGesamt - stufe.planerInklusive);
   const summePlaner = zusatzPlaner * ZUSATZ_PLANER;
   const zuschlaege = standortzuschlaege(standortPersonen, stufe.standorteInklusive);
-  const pakete = paketkosten(paketIds, stufe.paketeFrei || 0);
+  const pakete = paketkosten(paketIds, stufe.paketeFrei || 0, liste, freigaben, pilot);
   const gesamt = Math.round(
     (stufe.grund + summePlaner + zuschlaege.summe + pakete.summe) * 100) / 100;
   const kontaktEmpfohlen = planerGesamt > KONTAKT_AB_PLANER

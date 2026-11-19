@@ -8,11 +8,20 @@ import React from "react";
 
 import { C, C_DUNKEL, C_HELL } from "./farben.js";
 import { ANWENDUNG_URL } from "./kontakt.js";
+import { PAKETE, branchenpaketeZeile } from "./stufen.js";
+import { kannMerkmal, mandantPaketkosten, paketPositionen } from "./paketlogik.js";
 /* Diese Datei trägt an vielen Stellen eigene Kopien aus App.jsx. Die
    Verbindlichkeit einer Anforderung gehört ausdrücklich nicht dazu: Eine
    zweite, abweichende Auslegung davon, was gesetzlich zwingend ist, wäre
    genau der Fehler, den das Merkmal verhindern soll. */
 import { verbindlichkeit } from "./regelwerk.js";
+/* Die Ortsprüfung beim Stempeln gibt es nur einmal (server/lib/geo.mjs). */
+import { abstandMeter, geoUrteil } from "../server/lib/geo.mjs";
+import { vergebbareRollen, RANG as ROLLEN_RANG } from "../server/lib/rollenvergabe.mjs";
+/* WP-I12c: Den Szenarienvergleich (planKennzahlen) gibt es nur einmal, im Rechenkern
+   (server/lib/engine/kennzahlen.mjs, weitergereicht über src/lib/fachlogik.js). Die frühere
+   Kopie hier rief verteilung mit einem Monat statt von/bis auf (spanne undefined, wochenenden NaN). */
+import { planKennzahlen } from "./lib/fachlogik.js";
 let _dunkel = false;
 const istDunkel = () => _dunkel;
 function themaSetzen(dunkel) {
@@ -39,269 +48,6 @@ const TON = (farbe, staerke = 1) => ({
 
 const FONT = "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, system-ui, sans-serif";
 const NUM = { fontVariantNumeric: "tabular-nums", fontFeatureSettings: "'tnum'" };
-
-/** Globale Gestaltung. Hover- und Glaseffekte brauchen echtes CSS. */
-const bauStyles = () => `
-:root{
-  /* Dichte — systemweit umschaltbar zwischen Komfortabel und Kompakt */
-  --zeile: 48px; --pad-y: 14px; --pad-x: 20px; --luft: 32px; --schrift: 14.5px;
-  --block: 48px;                 /* Abstand zwischen Abschnitten — bewusst großzügig */
-  --r: 12px; --r-gross: 16px;
-  --schatten: 0 1px 3px rgba(7,19,23,.06), 0 1px 2px rgba(7,19,23,.04);
-  --schatten-hoch: 0 4px 12px -2px rgba(7,19,23,.10), 0 16px 32px -12px rgba(7,19,23,.14);
-  --sidebar-breite: 252px;
-}
-.dicht{ --zeile: 36px; --pad-y: 8px; --pad-x: 14px; --luft: 20px; --block: 26px; --schrift: 13.5px; }
-
-*{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
-/* Sichtbarer Fokusring für Tastaturbedienung — überall, nicht nur bei Knöpfen */
-:focus-visible{outline:2px solid ${C.accent}; outline-offset:2px; border-radius:4px;}
-/* Nur für Bildschirmleser */
-.nurLeser{position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden;
-  clip:rect(0,0,0,0); white-space:nowrap; border:0;}
-/* Sprungmarke zum Inhalt */
-.sprung{position:absolute; left:8px; top:-48px; z-index:100; background:${C.accent}; color:#fff;
-  padding:10px 16px; border-radius:8px; font-size:13.5px; font-weight:600; text-decoration:none;
-  transition:top .16s;}
-.sprung:focus{top:8px;}
-body{margin:0;}
-.sw-root{
-  min-height:100vh; background:${C.bg}; color:${C.text}; font-family:${FONT};
-  font-size:var(--schrift); -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
-}
-
-/* ------------------------------- Gerüst -------------------------------- */
-.huelle{display:flex; min-height:100vh;}
-.seitenleiste{
-  width:var(--sidebar-breite); flex-shrink:0; background:${C.sidebar}; color:#fff;
-  display:flex; flex-direction:column; position:fixed; left:0; top:0; bottom:0; z-index:40;
-  transition:transform .24s cubic-bezier(.4,0,.2,1);
-}
-.inhalt{flex:1; margin-left:var(--sidebar-breite); min-width:0; display:flex; flex-direction:column;
-  transition:margin-left .24s cubic-bezier(.4,0,.2,1);}
-.fokus .seitenleiste{transform:translateX(-100%);}
-.fokus .inhalt{margin-left:0;}
-.fokus .kopfleiste{display:none;}
-
-.marke{padding:22px 20px 18px; display:flex; align-items:center; gap:11px;
-  border-bottom:1px solid rgba(255,255,255,.08);}
-.marke b{font-size:16px; font-weight:700; letter-spacing:-.02em;}
-
-.snav{flex:1; overflow-y:auto; padding:14px 12px 20px;}
-.snav::-webkit-scrollbar{width:5px;}
-.snav::-webkit-scrollbar-thumb{background:rgba(255,255,255,.16); border-radius:3px;}
-.sgruppe{font-size:10.5px; font-weight:700; letter-spacing:.11em; text-transform:uppercase;
-  color:rgba(255,255,255,.40); padding:20px 14px 8px;}
-.slink{
-  display:flex; align-items:center; gap:12px; width:100%; border:none; background:transparent;
-  color:rgba(255,255,255,.74); font-family:inherit; font-size:14px; font-weight:500;
-  padding:11px 14px; border-radius:10px; cursor:pointer; text-align:left;
-  transition:background .14s, color .14s; margin-bottom:1px; position:relative;
-}
-.slink:hover{background:rgba(255,255,255,.07); color:#fff;}
-/* Aktiv über helle Fläche statt Akzentfarbe — Teal auf Anthrazit erreicht nur 2,7:1 */
-.slink.on{background:rgba(255,255,255,.13); color:#fff; font-weight:600;}
-.slink.on::before{content:""; position:absolute; left:0; top:9px; bottom:9px; width:3px;
-  border-radius:0 3px 3px 0; background:${C.accentOrig};}
-.slink .zahl{margin-left:auto; font-size:11px; font-weight:700; padding:2px 7px; border-radius:999px;
-  background:rgba(255,255,255,.14); ${'' /* Zähler */}}
-.slink .zahl.warn{background:${C.danger}; color:#fff;}
-.sfuss{padding:14px 16px; border-top:1px solid rgba(255,255,255,.08); font-size:12px;
-  color:rgba(255,255,255,.55);}
-
-.kopfleiste{
-  position:sticky; top:0; z-index:30; background:rgba(255,255,255,.92);
-  backdrop-filter:saturate(180%) blur(12px); -webkit-backdrop-filter:saturate(180%) blur(12px);
-  border-bottom:1px solid ${C.line}; padding:0 var(--luft); height:56px;
-  display:flex; align-items:center; gap:14px;
-}
-.suchknopf{
-  display:flex; align-items:center; gap:9px; border:1px solid ${C.line}; background:${C.bg};
-  border-radius:var(--r); padding:7px 12px; cursor:pointer; font-family:inherit;
-  font-size:13px; color:${C.dim}; min-width:210px; transition:border-color .14s;
-}
-.suchknopf:hover{border-color:${C.lineStark};}
-.suchknopf kbd{margin-left:auto; font-size:10.5px; font-family:inherit; padding:2px 6px;
-  border-radius:5px; background:#fff; border:1px solid ${C.line}; color:${C.dim};}
-
-main.bereich{flex:1; padding:var(--luft) var(--luft) 96px; max-width:1720px; width:100%;}
-
-/* ------------------------------ Bausteine ------------------------------ */
-/* Auf Sea Salt hebt sich Weiß nur mit 1,3:1 ab. Der Rand macht die Kante
-   sichtbar, der Schatten gibt die Ebene — beides zusammen trägt. */
-.karte{background:${C.flaeche}; border:1px solid ${C.line}; border-radius:var(--r-gross);
-  box-shadow:0 1px 3px rgba(7,19,23,.06), 0 1px 2px rgba(7,19,23,.04);}
-/* Typografische Sprünge statt gleichmäßiger Stufen — das Auge soll sofort
-   wissen, wo es anfängt. */
-h1.titel{font-size:38px; font-weight:300; letter-spacing:-.045em; line-height:1.08;
-  margin:0 0 10px; color:${C.text};}
-h1.titel b{font-weight:680;}
-.untertitel{font-size:15.5px; color:${C.dim}; line-height:1.6; max-width:680px; margin:0;}
-.abschnitt{margin-top:var(--block);}
-.abschnitt-titel{font-size:19px; font-weight:640; letter-spacing:-.02em; margin:0 0 4px;}
-.abschnitt-sub{font-size:13.5px; color:${C.dim}; line-height:1.5; margin:0 0 18px;}
-/* Aufklapper für Zweitrangiges */
-.mehr{border:none; background:transparent; color:${C.accent}; font-family:inherit; font-size:13.5px;
-  font-weight:600; cursor:pointer; padding:8px 0; display:inline-flex; align-items:center; gap:7px;}
-.mehr:hover{color:${C.accentDeep};}
-.mehr span{transition:transform .18s;}
-.mehr.auf span{transform:rotate(90deg);}
-.karte-kopf{display:flex; align-items:center; justify-content:space-between; gap:14px;
-  padding:var(--pad-y) var(--pad-x); border-bottom:1px solid ${C.line};}
-.karte-hover{transition:box-shadow .16s, border-color .16s;}
-.karte-hover:hover{box-shadow:var(--schatten-hoch); border-color:${C.lineStark};}
-
-.btn{
-  display:inline-flex; align-items:center; justify-content:center; gap:7px;
-  padding:10px 18px; font-size:13.5px; font-weight:560; font-family:inherit; cursor:pointer;
-  border-radius:10px; border:1px solid ${C.line}; background:${C.flaeche}; color:${C.text};
-  transition:background .14s, border-color .14s, color .14s; white-space:nowrap; line-height:1.2;
-}
-.btn:hover{background:${C.bg}; border-color:${C.lineStark};}
-.btn:active{transform:translateY(.5px);}
-.btn:disabled{opacity:.45; cursor:not-allowed; transform:none;}
-.btn:focus-visible{outline:2px solid ${C.accent}; outline-offset:2px;}
-.btn-primary{background:${C.accent}; border-color:${C.accent}; color:#fff;}
-.btn-primary:hover{background:${C.accentHi}; border-color:${C.accentHi};}
-.btn-quiet{background:transparent; border-color:transparent; color:${C.dim};}
-.btn-quiet:hover{background:${C.bg}; color:${C.text};}
-.btn-danger{background:#fff; border-color:${C.danger}; color:${C.danger};}
-.btn-danger:hover{background:${C.dangerLight};}
-.btn-ok{background:${C.ok}; border-color:${C.ok}; color:#fff;}
-.btn-ok:hover{filter:brightness(1.08);}
-.btn-sm{padding:7px 14px; font-size:12.5px; border-radius:8px;}
-
-.inp,.sel,textarea.inp{
-  width:100%; padding:9px 12px; border-radius:var(--r); border:1px solid ${C.line};
-  background:${C.flaeche}; color:${C.text}; font-size:13.5px; font-family:inherit;
-  transition:border-color .14s, box-shadow .14s;
-}
-.inp:hover,.sel:hover{border-color:${C.lineStark};}
-.inp:focus,.sel:focus,textarea.inp:focus{outline:none; border-color:${C.accent};
-  box-shadow:0 0 0 3px ${C.accentLight};}
-.inp::placeholder{color:${C.dim}; opacity:.72;}
-.sel{appearance:none; padding-right:32px;
-  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='7' viewBox='0 0 11 7'%3E%3Cpath d='M1 1l4.5 4.5L10 1' stroke='%236B7280' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
-  background-repeat:no-repeat; background-position:right 12px center;}
-
-.pille{display:inline-flex; align-items:center; gap:5px; padding:5px 12px; border-radius:999px;
-  font-size:12px; font-weight:600; background:${C.flaecheStill}; color:${C.dim};
-  border:1px solid transparent; white-space:nowrap;}
-.pille-ok{background:${C.okLight}; color:${C.ok}; border-color:#BBF7D0;}
-.pille-warn{background:${C.warnLight}; color:${C.warn}; border-color:#FEF08A;}
-.pille-danger{background:${C.dangerLight}; color:${C.danger}; border-color:#FECACA;}
-.pille-accent{background:${C.accentLight}; color:${C.accent}; border-color:#9FC2AC;}
-
-/* Rundes Namenszeichen — ersetzt Fotos, die wir nicht haben */
-.avatar{width:38px; height:38px; border-radius:50%; flex-shrink:0; display:flex;
-  align-items:center; justify-content:center; font-size:13px; font-weight:650;
-  background:${C.flaecheStill}; color:${C.dim}; letter-spacing:-.02em;}
-.avatar-sm{width:30px; height:30px; font-size:11.5px;}
-/* Schichtmarke mit linkem Akzentstrich statt voller Farbfläche */
-.schicht{display:flex; flex-direction:column; gap:1px; padding:7px 10px; border-radius:9px;
-  line-height:1.25; min-width:0;}
-.schicht b{font-size:12px; font-weight:640;}
-.schicht span{font-size:11px; opacity:.78; white-space:nowrap;}
-/* Freie Zelle im Plan — sichtbar, aber ruhig */
-.leerzelle{border:1.5px dashed ${C.line}; border-radius:9px; background:transparent;}
-
-.rubrik{font-size:11px; font-weight:700; letter-spacing:.10em; text-transform:uppercase; color:${C.dim};}
-
-/* Tabellen — der Kern jeder Planungsansicht */
-table.raster{border-collapse:separate; border-spacing:0; width:100%;}
-table.raster th{font-size:11.5px; font-weight:600; letter-spacing:.04em; text-transform:uppercase;
-  color:${C.dim}; padding:10px var(--pad-x); border-bottom:1px solid ${C.line}; text-align:left;
-  background:${C.bg}; position:sticky; top:0; z-index:2;}
-table.raster td{padding:0 var(--pad-x); height:var(--zeile); border-bottom:1px solid ${C.lineSoft};
-  font-size:13.5px; vertical-align:middle;}
-table.raster tbody tr:hover td{background:${C.bg};}
-table.raster tbody tr[data-gewaehlt="1"] td{background:${C.accentLight};}
-
-/* Filter als einzelne Pillen statt als Schalterleiste — luftiger und
-   auf dem Telefon leichter zu treffen. */
-.seg{display:inline-flex; gap:8px; max-width:100%; overflow-x:auto; padding:2px;}
-.seg button{border:1px solid ${C.line}; background:${C.flaeche}; cursor:pointer;
-  font-family:inherit; font-size:13px; font-weight:550; color:${C.dim};
-  padding:8px 16px; border-radius:999px; white-space:nowrap; flex-shrink:0;
-  transition:background .14s, color .14s, border-color .14s;}
-.seg button:hover{border-color:${C.lineStark};}
-.seg button.on{background:${C.accentLight}; color:${C.accent}; border-color:${C.accent}; font-weight:620;}
-
-.reiterreihe{display:flex; gap:7px; flex-wrap:nowrap; overflow-x:auto; padding-bottom:5px;
-  margin-bottom:14px; scrollbar-width:thin;}
-.reiterreihe::-webkit-scrollbar{height:4px;}
-.reiterreihe::-webkit-scrollbar-thumb{background:${C.lineStark}; border-radius:2px;}
-.reiterreihe > *{flex-shrink:0;}
-
-.hakenliste{list-style:none; padding:0; margin:0;}
-.hakenliste li{display:flex; gap:10px; align-items:flex-start; padding:7px 0; font-size:13.5px;}
-.hakenliste li::before{content:"✓"; color:${C.ok}; font-weight:700; flex-shrink:0;}
-
-.schalter{width:40px; height:23px; border-radius:999px; border:none; cursor:pointer; padding:0;
-  position:relative; transition:background .18s; flex-shrink:0; background:${C.lineStark};}
-.schalter.on{background:${C.accent};}
-.schalter i{position:absolute; top:2.5px; left:2.5px; width:18px; height:18px; border-radius:50%;
-  background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.2); transition:transform .18s;}
-.schalter.on i{transform:translateX(17px);}
-
-/* Tastaturkürzel als Marke im Text */
-kbd.taste{display:inline-flex; align-items:center; justify-content:center; min-width:19px; height:19px;
-  padding:0 5px; border-radius:5px; background:${C.bg}; border:1px solid ${C.line};
-  font-family:inherit; font-size:11px; font-weight:600; color:${C.dim};}
-
-/* Blätter und Überlagerungen */
-.blatt{background:${C.flaeche}; border-radius:var(--r-gross); box-shadow:0 20px 48px rgba(17,24,39,.18);
-  border:1px solid ${C.line};}
-.zeile-hover:hover{background:${C.bg};}
-
-/* Meldungsstreifen mit Rücknahme */
-.toast{position:fixed; bottom:24px; left:50%; transform:translateX(-50%); z-index:95;
-  background:${C.text}; color:#fff; padding:12px 16px; border-radius:var(--r); font-size:13.5px;
-  box-shadow:0 12px 32px rgba(17,24,39,.28); display:flex; align-items:center; gap:14px;
-  max-width:92vw; animation:auf .2s cubic-bezier(.4,0,.2,1);}
-@keyframes auf{from{opacity:0; transform:translate(-50%,10px);} to{opacity:1; transform:translate(-50%,0);}}
-.toast button{border:none; background:transparent; color:${C.accentGlanz}; font-family:inherit;
-  font-size:13px; font-weight:650; cursor:pointer; padding:0;}
-/* Fünf Sekunden Rücknahmefrist, sichtbar als schrumpfender Ring */
-.toast-uhr{width:16px; height:16px; border-radius:50%; border:2px solid rgba(255,255,255,.22);
-  position:relative; flex-shrink:0;}
-.toast-uhr i{position:absolute; inset:-2px; border-radius:50%; border:2px solid ${C.accentGlanz};
-  border-right-color:transparent; border-bottom-color:transparent;
-  animation:uhr 5s linear forwards;}
-@keyframes uhr{from{transform:rotate(0deg); opacity:1;} to{transform:rotate(360deg); opacity:.25;}}
-@keyframes pulsieren{0%,100%{opacity:.55;} 50%{opacity:1;}}
-@media (prefers-reduced-motion: reduce){
-  *{animation-duration:.01ms !important; animation-iteration-count:1 !important;
-    transition-duration:.01ms !important;}
-  .toast-uhr i{animation:none; opacity:.5;}
-  .toast{animation:none;}
-  *{scroll-behavior:auto !important;}
-}
-
-::-webkit-scrollbar{width:10px; height:10px;}
-::-webkit-scrollbar-thumb{background:${C.lineStark}; border-radius:5px; border:3px solid ${C.bg};}
-::-webkit-scrollbar-track{background:transparent;}
-
-/* Kontrastmodus für den Feldeinsatz */
-.feldmodus{--schrift:16px;}
-.feldmodus .karte{border-color:${C.lineStark};}
-.feldmodus table.raster td{border-bottom-color:${C.line};}
-
-@media (max-width: 1024px){
-  .seitenleiste{transform:translateX(-100%); box-shadow:0 0 40px rgba(0,0,0,.3);}
-  .seitenleiste.offen{transform:translateX(0);}
-  .inhalt{margin-left:0;}
-  main.bereich{padding:16px 14px 96px;}
-}
-@media (min-width: 1025px){ .nur-schmal{display:none !important;} }
-
-@media print{
-  .seitenleiste,.kopfleiste,.noprint,.toast{display:none !important;}
-  .inhalt{margin-left:0;}
-  .sw-root{background:#fff;}
-  .karte{border-color:#D1D5DB; box-shadow:none; break-inside:avoid;}
-}
-`;
 
 /* --------------------------------- Datum --------------------------------- */
 const pad = (n) => String(n).padStart(2, "0");
@@ -451,7 +197,7 @@ const TARIFE_STD = [
   { id: "enterprise", name: "Enterprise", jeStandort: 239, bisPersonen: null,
     grenzen: { einheiten: 200, personen: 100000 },
     paketeFrei: 2,
-    leistungen: ["Alles aus Professional", "Zwei Branchenpakete enthalten",
+    leistungen: ["Alles aus Professional", branchenpaketeZeile(),
       "Beliebig viele Personen je Standort", "Leistungsnachweis für Auftraggeber",
       "Auftragsverarbeitung nach Artikel 28", "Bevorzugter Rückruf"] },
 ];
@@ -985,8 +731,8 @@ function absIdx(m) {
   c.abs = x; return x;
 }
 
-function einheitAm(p, d) { let t = null; for (const z of p.zugehoerigkeit) if (z.ab <= d) t = z; return t ? t.einheitId : null; }
-function imDienst(p, d) { if (p.eintritt && d < p.eintritt) return false; if (p.austritt && d > p.austritt) return false; return p.status !== "gesperrt"; }
+function einheitAm(p, d) { let t = null; for (const z of p.zugehoerigkeit) if (!z.ab || z.ab <= d) t = z; return t ? t.einheitId : null; }
+function imDienst(p, d) { if (p.eintritt === null || p.eintritt === "") return false; if (p.eintritt && d < p.eintritt) return false; if (p.austritt && d > p.austritt) return false; return p.status !== "gesperrt"; }
 const aktive = (m, d) => memo(m, `akt|${d}`, () => m.personen.filter((p) => imDienst(p, d)));
 
 function abwesenheitAm(m, pid, d) {
@@ -1384,15 +1130,19 @@ function preis(db, m) {
   const st = staffel(zeilen.length);
   for (const z of zeilen) z.netto = Math.round(z.einzel * (1 - st.rabatt) * 100) / 100;
   const summeStandorte = Math.round(zeilen.reduce((a, z) => a + z.netto, 0) * 100) / 100;
-  // Branchenpakete werden je Betrieb berechnet, nicht je Standort
-  const pakete = PAKETE.filter((p) => (m.pakete || []).includes(p.id));
-  const summePakete = pakete.reduce((a, p) => a + (p.aufpreis || 0), 0);
+  const t = zeilen.length ? zeilen.reduce((a, z) =>
+    (a.tarif.jeStandort > z.tarif.jeStandort ? a : z)).tarif : db.tarife[0];
+  // Branchenpakete werden je Betrieb berechnet, nicht je Standort. Dieselbe Logik wie die
+  // Betreiberkonsole (paketlogik.js): Zustand < 5 und Pilot berechnen nichts, die in der
+  // Stufe enthaltenen Pakete sind frei.
+  const pk = mandantPaketkosten(m, (t && t.paketeFrei) || 0);
+  const pakete = pk.gewaehlt;
+  const summePakete = pk.summe;
   const gesamt = Math.round((summeStandorte + summePakete) * 100) / 100;
   const zahlt = stat(m.status).zahlt;
   const personen = aktiv.length;
-  const t = zeilen.length ? zeilen.reduce((a, z) =>
-    (a.tarif.jeStandort > z.tarif.jeStandort ? a : z)).tarif : db.tarife[0];
   return { t, zeilen, standorte: zeilen.length, st, pakete, summeStandorte, summePakete,
+    paketeFrei: pk.frei, paketeNichtBerechnet: pk.nichtBerechnet,
     gesamt, zahlt, wirksam: zahlt ? gesamt : 0, personen,
     jeKopf: personen ? Math.round((gesamt / personen) * 100) / 100 : 0,
     ueberEinheiten: m.einheiten.length > t.grenzen.einheiten,
@@ -1569,9 +1319,7 @@ function baueRechnung(db, m, monatISO) {
   if (p.st.rabatt > 0)
     positionen.push({ text: `Mengenstaffel ${p.st.label}`, menge: "", einzel: "",
       betrag: `−${Math.round(p.st.rabatt * 100)} %` });
-  for (const pk of p.pakete)
-    positionen.push({ text: `Branchenpaket ${pk.name}`, menge: "", einzel: eur(pk.aufpreis),
-      betrag: eur(Math.round(pk.aufpreis * p.anteil * 100) / 100) });
+  positionen.push(...paketPositionen(p, eur));
   if (p.anteil < 1)
     positionen.push({ text: `Anteilig ${p.tage} von ${p.gesamtTage} Tagen`, menge: "",
       einzel: "", betrag: "" });
@@ -1597,7 +1345,7 @@ function baueRechnung(db, m, monatISO) {
 function rolleAm(p, d) {
   if (!p.rolleVerlauf || !p.rolleVerlauf.length) return (!p.rolleSeit || p.rolleSeit <= d) ? p.rolle : "mitarbeiter";
   let t = null;
-  for (const z of p.rolleVerlauf) if (z.ab <= d) t = z;
+  for (const z of p.rolleVerlauf) if (!z.ab || z.ab <= d) t = z;   // ohne Datum (Eintritt unbekannt): von Anfang an
   return t ? t.rolle : p.rolle;
 }
 const einschr = (p) => p.einschraenkungen || {};
@@ -2373,32 +2121,67 @@ function importZuordnen(kopf, zeilen) {
   return { zu, herkunft };
 }
 
+/** Eintrittsdatum prüfen (Logik aus acc45/person/eintritt, Commit 4414084). Gibt nie das heutige Datum zurück.
+ *  leer, optional -> { ok: true, wert: null }; leer, pflicht -> Fehler; gültig (TT.MM.JJJJ, ISO) -> "JJJJ-MM-TT";
+ *  ungültig -> { ok: false, wert: null, fehler }. */
+function eintrittPruefen(roh, { pflicht = false } = {}) {
+  const t = roh === null || roh === undefined ? "" : String(roh).trim();
+  if (!t) {
+    return pflicht
+      ? { ok: false, wert: null, fehler: "Bitte das Eintrittsdatum eingeben." }
+      : { ok: true, wert: null };
+  }
+  let j, mo, tg;
+  const iso = t.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const de = t.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+  if (iso) [, j, mo, tg] = iso.map(Number); else if (de) [, tg, mo, j] = de.map(Number);
+  else return { ok: false, wert: null, fehler: `Eintrittsdatum „${t}" ungültig (erwartet TT.MM.JJJJ oder JJJJ-MM-TT).` };
+  const d = new Date(Date.UTC(j, mo - 1, tg));
+  if (d.getUTCFullYear() !== j || d.getUTCMonth() !== mo - 1 || d.getUTCDate() !== tg)
+    return { ok: false, wert: null, fehler: `Eintrittsdatum „${t}" ungültig: Das Datum gibt es nicht.` };
+  return { ok: true, wert: `${j}-${pad(mo)}-${pad(tg)}` };
+}
+/* IMP-1 Auflagen C/D/E/F: Hilfen der Importprüfung. */
+/** Rollen, die ein Anwender über den Import vergeben darf — abgeleitet aus vergebbareRollen() in
+ *  server/lib/rollenvergabe.mjs (Datenreview PR #130, wie fachlogik.js). */
+const IMPORT_VERGEBBAR = Object.freeze(Object.fromEntries(Object.keys(ROLLEN_RANG)
+  .map((r) => [r, vergebbareRollen(r)]).filter(([, l]) => l.length)));
+/** Personalnummer ohne Groß-/Kleinschreibung, Trennzeichen und führende Nullen. */
+const importNrLose = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "").replace(/^0+(?=.)/, "");
+/** Name normalisiert: Umlaute, ß, Bindestriche, Mehrfach-Leerzeichen, Groß-/Kleinschreibung. */
+const importNameNorm = (s) => String(s || "").toLowerCase().replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue")
+  .replace(/ß/g, "ss").replace(/[-‐‑–]/g, " ").replace(/\s+/g, " ").trim();
+const importNameSchluessel = (nach, vor) => (nach && vor ? [importNameNorm(nach), importNameNorm(vor)] : null);
+const importNameGleich = (a, b) => !!a && !!b && ((a[0] === b[0] && a[1] === b[1]) || (a[0] === b[1] && a[1] === b[0]));
 /** Ein Feld ohne Zuordnung, das gebraucht wird? */
 const importFehlend = (zu) => ["nachname"].filter((f) => zu[f] === undefined);
 /** Baut aus den Rohzeilen Personendatensätze und meldet, was fehlt. */
-function importPruefen(m, kopf, daten, zu) {
+/* IMP-1: Kopie von fachlogik.js — dieselbe Korrektur; die Kopie soll entfallen (siehe docs/acc45/IMP-1-NACHWEIS.md). */
+function importPruefen(m, kopf, daten, zu, entscheidungen = {}, optionen = {}) {
   const rollen = ROLLEN.filter((r) => !r.extern).map((r) => r.id);
-  const zeilen = daten.map((f, i) => {
+  /* Auflage D: Rolle des Anwenders; ohne Angabe gilt die niedrigste Rolle, die importieren darf (Planung). */
+  const vergebbar = IMPORT_VERGEBBAR[optionen.vergeber || "planer"] || [];
+  const roh = daten.map((f, i) => {
     const hol = (k) => (zu[k] !== undefined ? (f[zu[k]] || "").trim() : "");
     const nachname = hol("nachname"), vorname = hol("vorname");
     const einheitName = hol("einheit");
     const einheit = m.einheiten.find((e) => e.name.toLowerCase() === einheitName.toLowerCase());
     const std = parseFloat((hol("wochenstunden") || "").replace(",", ".")) || m.einstellungen.sollWochenstunden;
     const rolleRoh = hol("rolle").toLowerCase();
-    const rolleId = rollen.find((x) => x === rolleRoh)
-      || (ROLLEN.find((x) => x.label.toLowerCase() === rolleRoh) || {}).id || "mitarbeiter";
+    const rolleErkannt = rollen.find((x) => x === rolleRoh)
+      || (ROLLEN.find((x) => x.label.toLowerCase() === rolleRoh) || {}).id || null;
+    const rolleId = rolleRoh ? rolleErkannt : "mitarbeiter";
     const qualNamen = hol("qualifikationen").split(/[,/|]/).map((x) => x.trim()).filter(Boolean);
     const quals = qualNamen.map((q) => (m.qualifikationen.find((x) =>
       x.name.toLowerCase() === q.toLowerCase() || x.kurz.toLowerCase() === q.toLowerCase()) || {}).id).filter(Boolean);
     const fehlendeQuals = qualNamen.filter((q) => !m.qualifikationen.some((x) =>
       x.name.toLowerCase() === q.toLowerCase() || x.kurz.toLowerCase() === q.toLowerCase()));
-    const eintritt = (() => {
-      const roh = hol("eintritt");
-      if (/^\d{4}-\d{2}-\d{2}$/.test(roh)) return roh;
-      const de = roh.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
-      if (de) return `${de[3]}-${pad(Number(de[2]))}-${pad(Number(de[1]))}`;
-      return heute();
-    })();
+    /* Auflage C: leer bleibt leer (null, nicht heute); ungültig ist ein Fehler. */
+    const eintrittRoh = hol("eintritt");
+    const eintrittErgebnis = eintrittPruefen(eintrittRoh);
+    const eintritt = eintrittErgebnis.wert;
+    const personalnummer = hol("personalnummer");
+    const email = hol("email");
     const tzRoh = hol("teilzeit").toLowerCase();
     const teilzeit = (tzRoh === "ja" || tzRoh === "x" || tzRoh === "1" || std < (m.einstellungen.sollWochenstunden || 40) - .1)
       ? { aktiv: true, modus: "quote", wochentage: [0, 1, 2, 3, 4] } : null;
@@ -2407,12 +2190,112 @@ function importPruefen(m, kopf, daten, zu) {
     if (!vorname) fehler.push("Vorname fehlt");
     if (einheitName && !einheit) fehler.push(`Einheit „${einheitName}" unbekannt`);
     if (!einheitName) fehler.push("Einheit fehlt");
-    const doppelt = m.personen.some((p) => p.nachname.toLowerCase() === nachname.toLowerCase()
-      && p.vorname.toLowerCase() === vorname.toLowerCase());
+    if (!eintrittErgebnis.ok) fehler.push(eintrittErgebnis.fehler);
+    /* Auflage D: Rolle, die der Anwender nicht vergeben darf, ist ein Fehler. Ohne Rollenspalte gilt
+       „mitarbeiter“; wer gar keine Rolle vergeben darf (Beschäftigte, abgelöste Rolle „kunde“: in
+       IMPORT_VERGEBBAR wie in vergebbareRollen() ohne Eintrag), legt auch so niemanden an. */
+    if (!rolleId) fehler.push(`Rolle „${rolleRoh}“ nicht erkannt`);
+    else if (!vergebbar.includes(rolleId))
+      fehler.push(rolleRoh ? `Rolle „${rolleRoh}" nicht vergebbar` : "Keine Berechtigung, Zugänge anzulegen");
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) fehler.push(`E-Mail „${email}" ungültig`);
+    /* Exaktvergleich: beide Seiten getrimmt (Import und Bestand), Schreibweise egal. */
+    const nrNorm = personalnummer.trim().toLowerCase();
+    const nameKey = importNameSchluessel(nachname, vorname);
+    let treffer = nrNorm ? m.personen.find((p) => String(p.personalnummer || "").trim().toLowerCase() === nrNorm) : null;
+    let dublette = treffer ? { grund: "personalnummer", personId: treffer.id, inDatei: false } : null;
+    /* Nur ein exakter Personalnummer-Treffer ist ein sicherer Treffer; Nummern, die sich nur in führenden
+       Nullen oder Trennzeichen unterscheiden (01001/1001, P-1001/P1001), sind ein möglicher Treffer. */
+    if (!dublette && nrNorm && importNrLose(nrNorm)) {
+      treffer = m.personen.find((p) => importNrLose(p.personalnummer) === importNrLose(nrNorm));
+      if (treffer) dublette = { grund: "personalnummer_aehnlich", personId: treffer.id, inDatei: false };
+    }
+    /* Auflage F: Namensvergleich normalisiert (Umlaute, Leerzeichen, Bindestriche, Schreibweise);
+       vertauschter Vor-/Nachname gilt als möglicher Treffer. Immer "klaeren", nie Aktualisierung. */
+    if (!dublette && nameKey) {
+      treffer = m.personen.find((p) => importNameGleich(nameKey, importNameSchluessel(p.nachname, p.vorname)));
+      if (treffer) {
+        const tk = importNameSchluessel(treffer.nachname, treffer.vorname);
+        dublette = { grund: "name", personId: treffer.id, inDatei: false,
+          vertauscht: !(nameKey[0] === tk[0] && nameKey[1] === tk[1]),
+          nummerAbweicht: !!nrNorm && importNrLose(treffer.personalnummer) !== importNrLose(nrNorm) };
+      }
+    }
+    return { f, i, nachname, vorname, einheitName, einheit, std, rolleId, quals, fehlendeQuals, eintritt, eintrittRoh,
+      personalnummer, email, teilzeit, fehler, nrNorm, nameKey, dublette, hol };
+  });
+  /* Auflage E: Doppelte Zeilen in der Datei — BEIDE (alle) Zeilen werden zum Klären markiert, kein stiller
+     Vorrang. Nummern über importNrLose (führende Nullen, Trennzeichen, Schreibweise), sonst über den Namen.
+     Tragen beide Zeilen eine Nummer, entscheidet allein die Nummer; hat nur eine (oder keine) eine Nummer,
+     entscheidet der Name (IMP-1 Review: „Zed Oli“ und „Zed Oli Q9“ werden beide gemeldet). */
+  const inDateiGruppe = (r) => {
+    const nr = importNrLose(r.nrNorm);
+    return roh.filter((x) => {
+      if (x === r) return false;
+      const nx = importNrLose(x.nrNorm);
+      if (nr && nx) return nr === nx;
+      return importNameGleich(r.nameKey, x.nameKey);
+    });
+  };
+  const zeilen = roh.map((r) => {
+    const { i, nachname, vorname, einheitName, einheit, std, rolleId, quals, fehlendeQuals, eintritt, personalnummer,
+      email, teilzeit, fehler, nrNorm, hol } = r;
+    let dublette = r.dublette;
+    const andere = inDateiGruppe(r);
+    if (!dublette && andere.length) {
+      const nr = importNrLose(nrNorm);
+      const perNummer = !!nr && andere.some((x) => importNrLose(x.nrNorm) === nr);
+      dublette = { grund: perNummer ? "personalnummer" : "name", personId: null, inDatei: true,
+        zeile: andere[0].i + 1, zeilen: andere.map((x) => x.i + 1) };
+    }
+    /* Auflage B: Aktualisieren ist über den Import nie möglich. Die Zuordnung bleibt für die Rückmeldung bestehen,
+       die Zeile ist aber nie übernehmbar (ok false). */
+    const sicherTreffer = !!dublette && dublette.grund === "personalnummer";
+    const darfAktualisieren = sicherTreffer && !dublette.inDatei;
+    /* Auflage A/G: Exakter Personalnummer-Treffer (P4711 = p4711): nie "neu", nie übernehmbar. */
+    const hinweis = darfAktualisieren
+      ? `Personalnummer „${personalnummer}" vorhanden, nicht über den Import änderbar`
+      : (dublette && dublette.inDatei && dublette.grund === "personalnummer"
+        ? `Personalnummer „${personalnummer}" kommt in der Datei mehrfach vor` : null);
+    if (hinweis) fehler.push(hinweis);
+    const doppelt = !!dublette;
+    const nrLose = importNrLose(nrNorm);
+    const namensgleich = dublette ? [] : roh.filter((x) => x !== r && importNameGleich(r.nameKey, x.nameKey)
+      && !!nrLose && !!importNrLose(x.nrNorm) && importNrLose(x.nrNorm) !== nrLose);
+    const klaeren = doppelt || namensgleich.length > 0;
+    const wahl = klaeren ? entscheidungen[i + 1] : null;
+    let aktion = !wahl ? null : (typeof wahl === "string" ? wahl : wahl.aktion);
+    const bestaetigt = !!(wahl && typeof wahl === "object" && wahl.bestaetigt === true);
+    /* Vorgabe ist nie "aktualisieren" und nie "neu"; ein Aktualisierungswunsch ohne Nummerntreffer wird zu "klaeren". */
+    const aktualisierungAbgelehnt = aktion === "aktualisieren" && !darfAktualisieren;
+    if (aktualisierungAbgelehnt) aktion = "klaeren";
+    const neuAbgelehnt = aktion === "neu" && sicherTreffer;
+    if (neuAbgelehnt) aktion = "klaeren";
+    const vorgabe = klaeren ? "klaeren" : null;
+    const neuGewaehlt = aktion === "neu";
+    /* IMP-1 Review: Grund der Dublette für die Rückmeldung (eine Wahl bietet die Oberfläche erst mit IMP-4).
+       Die Personalnummer-Fälle stehen schon als hinweis in fehler. */
+    const dublettenGrund = !dublette && namensgleich.length
+      ? `Namensgleichheit mit abweichender Nummer in der Datei (Zeile ${namensgleich.map((x) => x.i + 1).join(", ")}), bitte klären`
+      : !dublette || hinweis ? null
+      : dublette.inDatei ? `Name kommt in der Datei mehrfach vor (Zeile ${dublette.zeilen.join(", ")}), bitte klären`
+        : dublette.grund === "personalnummer_aehnlich" ? `Ähnliche Personalnummer bereits vorhanden, bitte klären`
+          : dublette.vertauscht ? "Name (Vor-/Nachname vertauscht) bereits vorhanden, bitte klären"
+            : "Name bereits vorhanden, bitte klären";
     return { nr: i + 1, nachname, vorname, einheitName, einheitId: einheit ? einheit.id : null,
       funktion: hol("funktion") || "Fachkraft", wochenstunden: std,
       urlaubsanspruch: parseInt(hol("urlaubsanspruch"), 10) || 30, eintritt, rolle: rolleId,
-      qualifikationen: quals, fehlendeQuals, teilzeit, fehler, doppelt, ok: fehler.length === 0 };
+      /* Auflage C: eintrittLeer heißt „Zelle leer“, nicht „kein gültiges Datum“ (ungültig ist ein Fehler, nicht
+         leer). Der Speicherpfad (importieren in src/app/aktionen/stammdaten.js) legt zugehoerigkeit.ab und
+         rolleSeit dann bewusst als null an; die Leser lesen leeres ab als „von Anfang an“. */
+      eintrittLeer: !r.eintrittRoh,
+      qualifikationen: quals, fehlendeQuals, teilzeit, fehler, doppelt, dublette, dublettenGrund,
+      personalnummer, email, aktion, aktualisierungBestaetigt: aktion === "aktualisieren" && bestaetigt,
+      vorgabe, aktualisierungAbgelehnt, neuAbgelehnt, hinweis,
+      /* zielId ist nur Rückmeldung (welche Person gemeint wäre). Solche Zeilen sind nie ok; der Speicherpfad
+         nimmt nur ok-Zeilen und liest zielId nicht. */
+      zielId: aktion === "aktualisieren" && bestaetigt && darfAktualisieren ? dublette.personId : null,
+      namensgleichheit: namensgleich.map((x) => x.i + 1),
+      ok: fehler.length === 0 && (!klaeren || neuGewaehlt) };
   });
   return { zeilen, gut: zeilen.filter((z) => z.ok).length, fehlerhaft: zeilen.filter((z) => !z.ok).length,
     doppelt: zeilen.filter((z) => z.doppelt).length,
@@ -2516,31 +2399,10 @@ function nachweisLage(m) {
 }
 
 /* ------------------------ Standortprüfung beim Stempeln ------------------ */
-/** Abstand zweier Koordinaten in Metern (Haversine). */
-function abstandMeter(lat1, lon1, lat2, lon2) {
-  const R = 6371000, rad = (x) => (x * Math.PI) / 180;
-  const dLat = rad(lat2 - lat1), dLon = rad(lon2 - lon1);
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(rad(lat1)) * Math.cos(rad(lat2)) * Math.sin(dLon / 2) ** 2;
-  return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
-}
-/**
- * Bewertet einen Stempelvorgang gegen den hinterlegten Einsatzort.
- * Bewusst nur als Ereignis: kein Verlauf, keine Hintergrundortung.
- * Gespeichert wird ausschließlich das Ergebnis, nicht die Koordinate.
- */
-function stempelPruefen(m, p, datum, koord) {
-  const t = personTag(m, p, datum);
-  const da = t.dienstId && m.dienstarten.find((x) => x.id === t.dienstId);
-  const eid = einheitAm(p, datum);
-  const e = m.einheiten.find((x) => x.id === eid);
-  const st = e && m.standorte.find((x) => x.id === e.standortId);
-  if (!koord || !st || st.lat === undefined)
-    return { geprueft: false, text: "Ohne Standortfreigabe erfasst" };
-  const d = abstandMeter(koord.lat, koord.lon, st.lat, st.lon);
-  const radius = st.radius || 200;
-  return { geprueft: true, abstand: d, radius, innerhalb: d <= radius, standort: st.name,
-    text: d <= radius ? `Am Einsatzort (${d} m)` : `Abweichend, ${d > 1500 ? `${n1(d / 1000)} km` : `${d} m`} entfernt` };
-}
+/* Selbsttest gegen die eine Prüfung (server/lib/geo.mjs), mit eingeschaltetem
+   Betriebsschalter — keine eigene Kopie mehr. */
+const stempelPruefen = (m, p, datum, messung) => geoUrteil({
+  m: { ...m, einstellungen: { ...(m.einstellungen || {}), geoPruefung: true } }, person: p, datum, messung });
 const stempelStand = (m, p, datum) => (m.einstempeln || {})[`${p.id}|${datum}`] || null;
 
 /* -------------------------------- Auslastung ----------------------------- */
@@ -3018,34 +2880,11 @@ function antragUmsetzen(m, a) {
    freigeschaltet — der Rechenkern bleibt für alle derselbe.
    ========================================================================== */
 
-/**
- * Pakete bestimmen, welche Ansichten und Regeln ein Betrieb sieht.
- * Bewusst grob geschnitten: fünf Pakete statt fünfzig einzelner Schalter.
- */
-const PAKETE = [
-  { id: "kern", name: "Kernplattform", pflicht: true,
-    beschreibung: "Schichtplanung, Anträge, Zeiten, Stundenkonten, Auswertungen.",
-    merkmale: ["plan", "antraege", "zeiten", "konten", "qualifikationen", "export", "sperreGesetz"] },
-  { id: "sicherheit", name: "Sicherheitsdienst", aufpreis: 79,
-    beschreibung: "Objektbezogene Posten, Sachkundenachweis mit harter Sperre, Wachbuch, Standortprüfung beim Stempeln.",
-    merkmale: ["posten", "wachbuch", "sperreEigen", "geofence", "objektbericht"] },
-  { id: "pflege", name: "Pflege", aufpreis: 89,
-    beschreibung: "Fachkraftquote je Dienst, Übergabeprotokoll, Wohnbereichsplanung, Betreuungskräfte nach § 43b.",
-    merkmale: ["fachkraftquote", "uebergabe", "bereichsplan", "pflegequal"] },
-  { id: "klinik", name: "Klinik", aufpreis: 129,
-    beschreibung: "Bereitschaftsdienst und Rufbereitschaft mit eigener Anrechnung, geteilte Dienste, Funktionsdienste, Rotationen.",
-    merkmale: ["bereitschaftsdienst", "geteilterdienst", "funktionsdienst", "rotation", "uebergabe", "fachkraftquote"] },
-  { id: "industrie", name: "Industrie und Anlagen", aufpreis: 59,
-    beschreibung: "Anlagenbindung, Maschinenqualifikationen, Kontischichtmodelle mit Stufenversatz.",
-    merkmale: ["anlagen", "maschinenqual", "kontimodelle"] },
-];
-
-const paketVon = (id) => PAKETE.find((p) => p.id === id) || PAKETE[0];
+/* PAKETE und paketVon stehen in stufen.js (eine Fassung, G9). Die frühere
+   Kopie an dieser Stelle war veraltet: andere Namen und Texte, und sie
+   bewarb Geplantes als verfügbar. */
 /** Ist ein Merkmal für diesen Betrieb freigeschaltet? */
-const kann = (m, merkmal) => {
-  const aktiv = ["kern", ...(m.pakete || [])];
-  return PAKETE.filter((p) => aktiv.includes(p.id)).some((p) => p.merkmale.includes(merkmal));
-};
+const kann = kannMerkmal;   // paketlogik.js: gebuchtes Paket UND nutzbares Merkmal (G9/G10)
 /** Welche Pakete schlägt eine Branche vor? */
 const paketeFuerBranche = (b) => ({
   sicherheit: ["sicherheit"], pflege: ["pflege"], klinik: ["klinik"],
@@ -3386,29 +3225,6 @@ function rangGruende(m, x, datum, dienstId) {
     g.push({ art: "plus", text: "ist in den letzten zwei Monaten nicht eingesprungen" });
 
   return g;
-}
-
-/* ==========================================================================
-   SZENARIENVERGLEICH
-   Zwei Planvarianten nebeneinander, mit denselben Kennzahlen gemessen.
-   ========================================================================== */
-function planKennzahlen(m, von, bis) {
-  const bef = pruefen(m, von, bis);
-  const schwer = bef.filter((x) => x.schwere === "danger").length;
-  let unterbesetzt = 0, ueberbesetzt = 0, dienste = 0, stunden = 0;
-  for (let d = von; d <= bis; d = addDays(d, 1)) {
-    for (const [k, e] of Object.entries(besetzung(m, d))) {
-      if (e.soll === 0) continue;
-      dienste += e.anzahl;
-      if (e.diff < 0) unterbesetzt++;
-      if (e.diff > 1) ueberbesetzt++;
-      if (e.da) stunden += e.anzahl * dauer(e.da);
-    }
-  }
-  const v = verteilung(m, von.slice(0, 7));
-  return { befunde: bef.length, schwer, unterbesetzt, ueberbesetzt, dienste,
-    stunden: Math.round(stunden), spanne: v.spanne,
-    wochenenden: v.zeilen.reduce((a, z) => a + z.wochenendNaechte, 0) };
 }
 
 /* ==========================================================================
@@ -3849,7 +3665,7 @@ const HANDBUCH = [
           "Anliegen: Anträge, Krankmeldung, Tauschbörse, Stundenkonto.",
           "Mehr: Verfügbarkeit, Wunschdienste, Nachweise, Schwarzes Brett, Feldmodus.",
         ],
-        merke: "Beim Stempeln wird der Standort einmalig geprüft. Gespeichert wird nur, ob jemand am Einsatzort war — keine Koordinate, kein Verlauf, keine Dauerortung.",
+        merke: "Beim Stempeln wird der Standort einmalig geprüft. Gespeichert werden Ergebnis, grob gerundete Entfernung, Messgenauigkeit und Prüfort — keine Koordinate, kein Verlauf, keine Dauerortung.",
       },
       {
         titel: "Häufige Fragen",
@@ -3859,7 +3675,7 @@ const HANDBUCH = [
           "„Wie viele Urlaubstage habe ich noch?\" — Mehr, oben in den Kennzahlen.",
           "„Kann ich tauschen?\" — Mein Plan, Tag antippen, Tausch suchen. Das Gesuch sehen alle.",
           "„Warum steht mein Konto im Minus?\" — Anliegen, Stundenkonto, mit Verlauf über sechs Monate.",
-          "„Sieht der Chef, wo ich bin?\" — Nein. Nur ob du beim Stempeln am Einsatzort warst.",
+          "„Sieht der Chef, wo ich bin?\" — Nein. Nur Ergebnis, grob gerundete Entfernung, Messgenauigkeit und Prüfort beim Stempeln.",
         ],
       },
     ],
@@ -3898,7 +3714,8 @@ const HANDBUCH = [
   /* ------------------------------------------------------------------ */
   {
     id: "sicherheit", titel: "Besonderheiten Sicherheitsdienst", dauer: "8 Minuten",
-    nurWenn: (m) => kann(m, "sperreEigen") || kann(m, "posten"),
+    /* Nur das Paketmerkmal des Bestands, kein Branchenmodul (G10, WP-19.0) — „posten" liegt im selben Paket. */
+    nurWenn: (m) => kann(m, "sperreEigen"),
     einleitung: "Was im Bewachungsgewerbe zusätzlich gilt.",
     abschnitte: [
       {
@@ -4950,7 +4767,7 @@ const TOUR = {
           pruefen: "Steht dort „frei\", hast du heute keinen Dienst." },
         { titel: "Ein- und ausstempeln", ziel: "heute",
           text: "Der große Knopf auf der Startseite. Beim Stempeln wird einmalig geprüft, ob du am Einsatzort bist.",
-          merke: "Gespeichert wird nur, ob du dort warst — keine Koordinate, kein Verlauf, keine Dauerortung." },
+          merke: "Gespeichert werden Ergebnis, grob gerundete Entfernung, Messgenauigkeit und Prüfort — keine Koordinate, kein Verlauf, keine Dauerortung." },
         { titel: "Mein Plan", ziel: "meinplan",
           text: "Kommende Dienste als Liste oder Monatsansicht. Filter für nur Dienste, nur frei, Nachtdienste, Wochenende.",
           tun: "Wechsle einmal zwischen Liste und Monat." },
@@ -6161,7 +5978,7 @@ const EINFUEHRUNG = {
     { titel: "Willkommen bei CENTRIC", ziel: null,
       text: "Hier findest du deinen Dienstplan, stempelst ein und stellst Anträge. Der Rundgang dauert eine Minute." },
     { titel: "Heute", ziel: null,
-      text: "Der Startbildschirm zeigt deinen Dienst des Tages mit einem großen Knopf zum Ein- und Ausstempeln. Beim Stempeln wird einmalig der Standort geprüft — gespeichert wird nur, ob du am Einsatzort warst, keine Koordinate und kein Verlauf." },
+      text: "Der Startbildschirm zeigt deinen Dienst des Tages mit einem großen Knopf zum Ein- und Ausstempeln. Beim Stempeln wird einmalig der Standort geprüft — gespeichert werden Ergebnis, grob gerundete Entfernung, Messgenauigkeit und Prüfort, keine Koordinate und kein Verlauf." },
     { titel: "Mein Plan", ziel: null,
       text: "Kommende Dienste als Liste oder Monatsansicht. Ein Tipp auf einen Tag öffnet die Möglichkeiten: Tausch suchen, frei beantragen oder einen Wunsch hinterlegen." },
     { titel: "Anliegen", ziel: null,
@@ -6801,9 +6618,9 @@ function selbsttest() {
     const km = abstandMeter(50.1109, 8.6821, 52.3759, 9.7320) / 1000;
     return km > 255 && km < 270; })());
   ok("Stempel am Einsatzort wird erkannt", true,
-    stempelPruefen(m, m.personen[3], heute(), { lat: 50.1112, lon: 8.6825 }).innerhalb);
+    stempelPruefen(m, m.personen[3], heute(), { lat: 50.1112, lon: 8.6825, accuracy: 10 }).innerhalb);
   ok("Stempel abseits wird erkannt", false,
-    stempelPruefen(m, m.personen[3], heute(), { lat: 50.15, lon: 8.72 }).innerhalb);
+    stempelPruefen(m, m.personen[3], heute(), { lat: 50.15, lon: 8.72, accuracy: 10 }).innerhalb);
   ok("Ohne Standortfreigabe wird nicht geprueft", false,
     stempelPruefen(m, m.personen[3], heute(), null).geprueft);
 
@@ -7508,6 +7325,10 @@ function selbsttest() {
   const pk = planKennzahlen(m, `${ym}-01`, `${ym}-14`);
   ok("Kennzahlen zaehlen Dienste", true, pk.dienste > 0);
   ok("Kennzahlen zaehlen Stunden", true, pk.stunden > 0);
+  /* WP-I12c: keine Fehlwerte (undefined, NaN) im Szenarienvergleich */
+  ok("Kennzahlen: Spanne ist eine endliche Zahl", true, Number.isFinite(pk.spanne));
+  ok("Kennzahlen: Wochenenden sind eine endliche Zahl", true, Number.isFinite(pk.wochenenden));
+  ok("Kennzahlen: jeder Wert ist eine endliche Zahl", true, Object.values(pk).every((w) => Number.isFinite(w)));
 
   /* --- Farbsystem der neuen Palette --- */
   ok("Grundflaeche ist warm getoent", true, C.bg !== "#FFFFFF" && C.bg !== "#F5F4F2");
@@ -7548,7 +7369,7 @@ function selbsttest() {
   /* Hell ist die Vorgabe — nicht das Systemthema. Ein Betriebsprogramm soll
      bei jedem gleich aussehen. */
   ok("C traegt die hellen Werte", C_HELL.bg, C.bg);
-  ok("Die helle Grundflaeche ist Sea Salt", "#D9E4E8", C_HELL.bg);
+  ok("Die helle Grundflaeche ist die V4-Grundflaeche", "#f0f3ed", C_HELL.bg);
   ok("Hell und Dunkel sind verschieden", true, C_HELL.bg !== C_DUNKEL.bg);
   ok("Die helle Flaeche ist wirklich hell", true, kon(C_HELL.bg, "#000000") > 10);
   ok("Die dunkle Flaeche ist wirklich dunkel", true, kon(C_DUNKEL.bg, "#FFFFFF") > 10);

@@ -20,6 +20,12 @@
    Accountweg. Eine Funktion, die beides täte, wäre die Stelle, an der
    später aus Versehen ein Zugangscode für einen Account entsteht.
 
+   Ausnahme mit Absicht (OPT-1): Auf ausdrücklichen Wunsch des Aufrufers
+   (`ersteinrichtung: true`) entsteht ein Ersteinrichtungscode für die
+   Leitungsperson — befristet, nur zum Einrichten des zweiten Faktors, eigenes
+   Modul (zugangscode-ersteinrichtung.mjs). Ohne den Wunsch bleibt es beim
+   Account ohne Zugangscode.
+
    ---------------------------------------------------------------------------
    Die Transaktionsgrenze
 
@@ -64,14 +70,18 @@
 
 import { randomBytes } from "node:crypto";
 import { baueLeerenBetrieb } from "./leerbetrieb.mjs";
-import { bestandSchreiben, bestandLesen, raumBelegt } from "./bestand.mjs";
+import { bestandSchreiben, bestandLesen, raumBelegt, voruebergehend } from "./bestand.mjs";
 import { raumLoeschen } from "./raumloeschung.mjs";
+import { unterRaumsperre } from "./raumsperre.mjs";
 import { TESTTAGE } from "./aufraeumen.mjs";
 import {
   accountLesenPerId, accountAendern, testbetriebOffen, testbetriebVerbrauchen,
   profilPruefen, mitgliedschaftAnlegen, mitgliedschaftLesen,
   raummitgliedSchluessel,
 } from "./accounts.mjs";
+import { vorgang } from "./schreibhalt.mjs";
+import { ersteinrichtungscodeAnlegen } from "./zugangscode-ersteinrichtung.mjs";
+import { erstleitungRegimeVermerken } from "./erstleitung.mjs";
 
 const TAG_MS = 86400000;
 
@@ -145,19 +155,28 @@ export async function testbetriebAnlegen(store, { name, branche, email, land,
   const start = new Date(jetzt());
   const laeuftAb = new Date(start.getTime() + TESTTAGE * TAG_MS);
 
-  /* Bei fünf Zufallszeichen praktisch ausgeschlossen, aber geprüft wird
-     trotzdem — und ein belegter Raum wird niemals überschrieben. */
-  if (await raumBelegt(store, kennung)) return { ok: false, grund: "belegt" };
-
   const leer = baueLeerenBetrieb({
     name: /** @type {string} */ (name), branche,
     email: /** @type {string} */ (email), land,
-    raum: kennung, laeuftAb: laeuftAb.toISOString(),
+    raum: kennung, laeuftAb: laeuftAb.toISOString(), selbstAngelegt: true,
   });
   const personen = personenBauen ? personenBauen(leer.mandanten[0]) : null;
   if (personen && personen.length) leer.mandanten[0].personen = personen;
 
-  await bestandSchreiben(store, kennung, leer, { durch });
+  /* Bei fünf Zufallszeichen praktisch ausgeschlossen, aber geprüft wird
+     trotzdem — und ein belegter Raum wird niemals überschrieben. Prüfung
+     und Anlegen unter einer Sperre (raumsperre.mjs): Zwei gleichzeitige
+     Anlagen desselben Raums sahen sonst beide einen freien Raum, und die
+     zweite überschrieb die erste — beide meldeten Erfolg. */
+  const angelegt = await unterRaumsperre(kennung, async () => {
+    if (await raumBelegt(store, kennung)) return false;
+    /* Delta-Review e8b9b93d, Punkt 1 (erstleitung.mjs, Regime-Marke): ein neuer Betrieb — streng ab der Anlage, vor
+       dem Bestand geschrieben. Scheitert sie, entsteht kein Betrieb. */
+    await erstleitungRegimeVermerken(store, kennung, leer.mandanten[0].id, { durch });
+    await bestandSchreiben(store, kennung, leer, { durch });
+    return true;
+  });
+  if (!angelegt) return { ok: false, grund: "belegt" };
 
   return { ok: true, raum: kennung,
     mandantId: leer.mandanten[0].id,
@@ -228,7 +247,12 @@ export function leitungsperson(profil, einheitId) {
    -------------------------------------------------------------------------- */
 const reihe = new Map();
 
+/* Schreib-Halt (schreibhalt.mjs, WP-28c): gehalten wird vor dem Eintritt in die Reihe; wer darin steht, läuft durch. */
 function nacheinander(schluessel, arbeit) {
+  return vorgang(() => nacheinanderInReihe(schluessel, arbeit));
+}
+
+function nacheinanderInReihe(schluessel, arbeit) {
   const davor = reihe.get(schluessel) || Promise.resolve();
   const lauf = davor.then(arbeit, arbeit);
   const warten = lauf.then(() => {}, () => {});
@@ -249,12 +273,15 @@ const textVon = (e) => String((e && e.message) || e || "unbekannt").slice(0, 200
  * Der Account selbst wird nicht angefasst: kein Passwort, kein
  * Verifizierungsstand, kein Status, keine Kennung.
  *
+ * Exportiert nur für die Prüfungen (pruefungen/loeschsperre.test.js).
+ *
  * @returns {Promise<{ok: boolean, grund?: string}>}
  */
-async function zurueckrollen(store, sitzungen, accountId, raum) {
+export async function zurueckrollen(store, sitzungen, accountId, raum) {
   let fehler = null;
   try {
-    const e = await raumLoeschen(store, sitzungen, raum);
+    /* Unter der Sperre des Raums — wie jede Löschung (raumsperre.mjs). */
+    const e = await unterRaumsperre(raum, () => raumLoeschen(store, sitzungen, raum));
     if (!e.vollstaendig) {
       fehler = e.fehler.map((f) => `${f.schluessel}: ${f.grund}`).join("; ").slice(0, 300);
     }
@@ -277,15 +304,19 @@ async function zurueckrollen(store, sitzungen, accountId, raum) {
  * diesem Menschen kommt. Ohne beides darf dieser Vorgang nicht öffentlich
  * erreichbar sein.
  *
+ * `ersteinrichtung: true` (OPT-1): zusätzlich ein Ersteinrichtungscode für
+ * die Leitungsperson; das Ergebnis trägt dann `ersteinrichtung: {code, bis}`.
+ * Der Aufrufer zeigt den Code genau einmal an und verschickt ihn nicht.
+ *
  * @param {object} store      Ablage „centric"
  * @param {object} sitzungen  Ablage „centric-sitzungen" — nur für ein Rollback
- * @param {{accountId?: unknown, jetzt?: () => number}} [o]
+ * @param {{accountId?: unknown, jetzt?: () => number, ersteinrichtung?: boolean}} [o]
  * @returns {Promise<{ok: boolean, grund?: string, raum?: string,
  *   mitgliedschaft?: object, person?: string, wiederaufgenommen?: boolean,
- *   rollback?: string}>}
+ *   rollback?: string, ersteinrichtung?: {code: string, bis: string}}>}
  */
 export async function testbetriebFuerAccountAnlegen(store, sitzungen,
-  { accountId, jetzt = Date.now } = {}) {
+  { accountId, jetzt = Date.now, ersteinrichtung = false } = {}) {
   if (!accountId || typeof accountId !== "string") return { ok: false, grund: "konto" };
 
   /* Vor der Reihe: Wer offensichtlich nicht berechtigt ist, wartet nicht
@@ -311,7 +342,7 @@ export async function testbetriebFuerAccountAnlegen(store, sitzungen,
     /* Ein begonnener Vorgang? Dann diesen zu Ende bringen, nicht einen
        zweiten anfangen. */
     if (konto.testbetriebRaum) {
-      const wieder = await wiederaufnehmen(store, sitzungen, konto);
+      const wieder = await wiederaufnehmen(store, sitzungen, konto, { ersteinrichtung, jetzt });
       if (wieder) return wieder;
     }
 
@@ -380,6 +411,28 @@ export async function testbetriebFuerAccountAnlegen(store, sitzungen,
         ...(weg.ok ? {} : { rollback: weg.grund }) };
     }
 
+    /* OPT-1 (auf Wunsch des Aufrufers): ein Ersteinrichtungscode für die
+       Leitungsperson — einmal im Klartext im Ergebnis, befristet, nur für die
+       Einrichtung des zweiten Faktors (zugangscode-ersteinrichtung.mjs). Er
+       gehört zum Vorgang: Scheitert er, wird alles zurückgenommen und der
+       Anspruch bleibt offen. Verschickt wird hier nichts. */
+    let ersteinrichtungCode = null;
+    if (ersteinrichtung === true) {
+      /** @type {{ok: boolean, grund?: string, code?: string, bis?: string}} */
+      const ec = await ersteinrichtungscodeAnlegen(store, {
+        raum, mandantId: erstellt.mandantId, betrieb: erstellt.betrieb, person: person.id,
+        name: profil.betriebsname, laeuftAb: erstellt.laeuftAb, jetzt,
+        /* OPT-1-F: an genau dieses Konto gebunden — der Code richtet nur dessen Faktor ein. */
+        accountId: konto.id,
+      }).catch((e) => ({ ok: false, grund: textVon(e) }));
+      if (!ec.ok || !ec.code) {
+        const weg = await zurueckrollen(store, sitzungen, konto.id, raum);
+        return { ok: false, grund: `ersteinrichtung: ${grundVon(ec)}`,
+          ...(weg.ok ? {} : { rollback: weg.grund }) };
+      }
+      ersteinrichtungCode = { code: ec.code, bis: ec.bis };
+    }
+
     /* Der letzte Schritt: Der kostenlose Testbetrieb ist verbraucht. Erst
        jetzt — vorher wäre ein abgebrochener Vorgang ein verlorener
        Anspruch. */
@@ -398,7 +451,8 @@ export async function testbetriebFuerAccountAnlegen(store, sitzungen,
 
     return { ok: true, raum, mitgliedschaft: nachgelesen, person: person.id,
       mandantId: erstellt.mandantId, betrieb: erstellt.betrieb,
-      laeuftAb: erstellt.laeuftAb };
+      laeuftAb: erstellt.laeuftAb,
+      ...(ersteinrichtungCode ? { ersteinrichtung: ersteinrichtungCode } : {}) };
   });
 }
 
@@ -406,9 +460,12 @@ export async function testbetriebFuerAccountAnlegen(store, sitzungen,
  * Bringt einen begonnenen Vorgang zu Ende — oder räumt ihn ab.
  * @returns {Promise<object|null>} ein Ergebnis, oder null für „neu beginnen"
  */
-async function wiederaufnehmen(store, sitzungen, konto) {
+async function wiederaufnehmen(store, sitzungen, konto, { ersteinrichtung = false, jetzt = Date.now } = {}) {
   const raum = konto.testbetriebRaum;
-  const gelesen = await bestandLesen(store, raum).catch(() => null);
+  /* Nur ein Raum, den es wirklich nicht gibt, wird abgeräumt. Ein
+     vorübergehender Lesefehler hätte sonst den Vermerk gelöscht und einen
+     zweiten Testbetrieb angelegt (bestand.mjs, voruebergehend). */
+  const gelesen = await bestandLesen(store, raum).catch((e) => { if (voruebergehend(e)) throw e; return null; });
   if (!gelesen) {
     /* Der Raum ist nicht (mehr) da: Der Vermerk ist eine Absicht, die nie
        Wirklichkeit wurde. Abräumen und neu beginnen. */
@@ -424,10 +481,24 @@ async function wiederaufnehmen(store, sitzungen, konto) {
     : false;
 
   if (m && index && person) {
+    /* OPT-1-F (Review #166, Blocker 3): Verlangt der Aufrufer die Ersteinrichtung, liefert auch ein
+       wiederaufgenommener Vorgang den an dieses Konto gebundenen Code — sonst bliebe die Leitung unter Pflicht
+       ausgesperrt. Er entsteht vor dem Verbrauch des Anspruchs; scheitert er, bleibt alles, wie es war. */
+    let ersteinrichtungCode = null;
+    if (ersteinrichtung === true) {
+      /** @type {{ok: boolean, grund?: string, code?: string, bis?: string}} */
+      const ec = await ersteinrichtungscodeAnlegen(store, {
+        raum, mandantId: String(m.mandantId), betrieb: m.betrieb, person: String(m.person),
+        name: (gelesen.bestand.mandanten[m.betrieb] || {}).name || raum, jetzt, accountId: konto.id,
+      }).catch((e) => ({ ok: false, grund: textVon(e) }));
+      if (!ec.ok || !ec.code) return { ok: false, grund: `ersteinrichtung: ${grundVon(ec)}` };
+      ersteinrichtungCode = { code: ec.code, bis: ec.bis };
+    }
     /* Alles da, nur der Verbrauch fehlt: nachziehen. */
     const verbraucht = await testbetriebVerbrauchen(store, konto.id);
     if (!verbraucht.ok) return { ok: false, grund: `verbrauch: ${grundVon(verbraucht)}` };
-    return { ok: true, raum, mitgliedschaft: m, person: m.person, wiederaufgenommen: true };
+    return { ok: true, raum, mitgliedschaft: m, person: m.person, wiederaufgenommen: true,
+      ...(ersteinrichtungCode ? { ersteinrichtung: ersteinrichtungCode } : {}) };
   }
 
   /* Etwas fehlt: Der Raum wird abgeräumt, der Anspruch bleibt offen. */

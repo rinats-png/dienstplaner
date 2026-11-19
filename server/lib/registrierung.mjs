@@ -129,6 +129,8 @@ import {
   accountAnlegen, accountLesenPerMail, accountLesenPerId,
   emailBestaetigen, tokenNrErhoehen, passwortSetzen, profilPruefen,
 } from "./accounts.mjs";
+import { vorgang } from "./schreibhalt.mjs";
+import { kontoZugangImBuch } from "./kontowiderrufbuch.mjs";
 
 /**
  * Der Absagegrund eines Ergebnisses — oder eine leere Zeichenkette.
@@ -244,6 +246,19 @@ async function bestaetigungSenden(store, konto, { jetzt = Date.now, versand = se
      Versandschlüssel, niemals in einer Auslieferung). Sonst bleibt es in
      der Mail — und nur dort. */
   return { ok: true, trocken: !!post.trocken, ...(pruefLinkErlaubt() ? { pruefToken: token } : {}) };
+}
+
+/** BE-1 (Auflage 2): Eine Sperre im Konto-Widerrufbuch gilt auch hier, selbst wenn eine zurückgespielte Ablage das
+    Konto nicht „gesperrt“ zeigt. Fail-closed: Ist das Buch nicht prüfbar, gewährt dieser Weg nichts.
+    `null`: frei, sonst die fertige Absage. */
+async function buchAbsage(store, accountId) {
+  try {
+    if (await kontoZugangImBuch(store, accountId))
+      return { ok: false, grund: "gesperrt", hinweis: "Dieser Zugang ist gesperrt." };
+    return null;
+  } catch {
+    return { ok: false, grund: "nicht-pruefbar", hinweis: "Das hat nicht geklappt. Bitte versuch es später noch einmal." };
+  }
 }
 
 /**
@@ -396,6 +411,7 @@ export async function emailVerifizieren(store, { token, jetzt = Date.now } = {})
   if (konto.id !== eintrag.accountId) return absage("konto-fremd");
   if (eintrag.emailNorm && konto.emailNorm !== eintrag.emailNorm) return absage("adresse-fremd");
   if (konto.status === "gesperrt") return absage("gesperrt");
+  if (await buchAbsage(store, konto.id)) return absage("gesperrt");
   /* Die Laufnummer: Ein neuerer Link hat diesen entwertet. Gezählt wird mit
      derselben Funktion, die die Nummern schreibt (token.mjs). */
   if (laufnummer(konto.tokenNr, ZWECK) !== (Number(eintrag.nr) || 0)) return absage("entwertet");
@@ -455,7 +471,12 @@ export async function emailVerifizieren(store, { token, jetzt = Date.now } = {})
    -------------------------------------------------------------------------- */
 const kontoReihe = new Map();
 
+/* Schreib-Halt (schreibhalt.mjs, WP-28c): gehalten wird vor dem Eintritt in die Reihe; wer darin steht, läuft durch. */
 function jeKonto(schluessel, arbeit) {
+  return vorgang(() => jeKontoInReihe(schluessel, arbeit));
+}
+
+function jeKontoInReihe(schluessel, arbeit) {
   const davor = kontoReihe.get(schluessel) || Promise.resolve();
   const lauf = davor.then(arbeit, arbeit);
   const warten = lauf.then(() => {}, () => {});
@@ -500,6 +521,7 @@ export async function registrierungPasswortSetzen(store, { accountId, passwort }
   if (!konto) return { ok: false, grund: "konto", hinweis: "Dieser Vorgang ist nicht mehr gültig." };
   if (konto.status === "gesperrt")
     return { ok: false, grund: "gesperrt", hinweis: "Dieser Zugang ist gesperrt." };
+  { const b = await buchAbsage(store, konto.id); if (b) return b; }
   if (!konto.emailVerifiziertAm) {
     return { ok: false, grund: "unbestaetigt",
       hinweis: "Bitte bestätige zuerst deine E-Mail-Adresse." };
@@ -594,6 +616,7 @@ export async function passwortMitNachweisSetzen(store, { fortsetzung, passwort,
   /* 2. Der Zustand des Kontos. */
   if (konto.status === "gesperrt")
     return { ok: false, grund: "gesperrt", hinweis: "Dieser Zugang ist gesperrt." };
+  { const b = await buchAbsage(store, konto.id); if (b) return b; }
   if (!konto.emailVerifiziertAm) {
     return { ok: false, grund: "unbestaetigt",
       hinweis: "Bitte bestätige zuerst deine E-Mail-Adresse." };
@@ -620,6 +643,7 @@ export async function passwortMitNachweisSetzen(store, { fortsetzung, passwort,
     if (!stand) return absageNachweis();
     if (stand.status === "gesperrt")
       return { ok: false, grund: "gesperrt", hinweis: "Dieser Zugang ist gesperrt." };
+    { const b = await buchAbsage(store, stand.id); if (b) return b; }
     if (stand.passwort) {
       return { ok: false, grund: "vorhanden",
         hinweis: "Für diesen Zugang ist schon ein Passwort gesetzt. "

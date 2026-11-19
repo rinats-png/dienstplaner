@@ -1,0 +1,893 @@
+{
+ "umgebung": {
+  "profil": "kurz",
+  "plattform": "win32",
+  "kerne": 4,
+  "cpu": "Intel(R) Celeron(R) N4120 CPU @ 1.10GHz",
+  "speicherGB": 12,
+  "node": "v24.18.0",
+  "heute": "2026-11-03",
+  "ci": false
+ },
+ "ablageVorher": {
+  "dateien": 1679,
+  "mb": 14.49,
+  "stores": {
+   ".gesund": {
+    "dateien": 0,
+    "mb": 0
+   },
+   "centric": {
+    "dateien": 658,
+    "mb": 14.21
+   },
+   "centric-sitzungen": {
+    "dateien": 1021,
+    "mb": 0.27
+   }
+  }
+ },
+ "S0": {
+  "groesse-250": {
+   "lesen": {
+    "n": 10,
+    "p50": 52,
+    "p95": 321,
+    "p99": 321,
+    "max": 321,
+    "fehlerquote": 0,
+    "status": {
+     "200": 10
+    }
+   },
+   "stempel": {
+    "n": 20,
+    "p50": 783,
+    "p95": 1851,
+    "p99": 1851,
+    "max": 1851,
+    "fehlerquote": 0,
+    "status": {
+     "200": 20
+    }
+   },
+   "bestandKB": 45,
+   "burst20": {
+    "n": 20,
+    "p50": 12659,
+    "p95": 17425,
+    "p99": 17425,
+    "max": 17425,
+    "fehlerquote": 25,
+    "status": {
+     "200": 15,
+     "503": 5
+    },
+    "gesamtMs": 17437,
+    "haltedauerMs": 872,
+    "stempelProMinute": 69
+   },
+   "server": {
+    "eldP99Max": 227.8,
+    "eldMax": 227.8,
+    "rssStart": 69,
+    "rssEnde": 89,
+    "rssMax": 89,
+    "heapMax": 21,
+    "sekunden": 34,
+    "cpuMittel": 16,
+    "cpuMax": 59,
+    "fs": {
+     "readFile": {
+      "n": 732,
+      "ms": 30008,
+      "msJeAufruf": 40.99
+     },
+     "mkdir": {
+      "n": 4,
+      "ms": 31,
+      "msJeAufruf": 7.75
+     },
+     "readdir": {
+      "n": 175,
+      "ms": 2895,
+      "msJeAufruf": 16.54
+     },
+     "fh.writeFile": {
+      "n": 297,
+      "ms": 4425,
+      "msJeAufruf": 14.9
+     },
+     "fh.sync": {
+      "n": 589,
+      "ms": 7174,
+      "msJeAufruf": 12.18
+     },
+     "rename": {
+      "n": 294,
+      "ms": 5904,
+      "msJeAufruf": 20.08
+     },
+     "unlink": {
+      "n": 149,
+      "ms": 2025,
+      "msJeAufruf": 13.59
+     }
+    }
+   }
+  },
+  "groesse-1000": {
+   "lesen": {
+    "n": 10,
+    "p50": 261,
+    "p95": 748,
+    "p99": 748,
+    "max": 748,
+    "fehlerquote": 0,
+    "status": {
+     "200": 10
+    }
+   },
+   "stempel": {
+    "n": 20,
+    "p50": 891,
+    "p95": 1259,
+    "p99": 1259,
+    "max": 1259,
+    "fehlerquote": 0,
+    "status": {
+     "200": 20
+    }
+   },
+   "bestandKB": 177,
+   "burst20": {
+    "n": 20,
+    "p50": 11754,
+    "p95": 16748,
+    "p99": 16748,
+    "max": 16748,
+    "fehlerquote": 20,
+    "status": {
+     "200": 16,
+     "503": 4
+    },
+    "gesamtMs": 16758,
+    "haltedauerMs": 838,
+    "stempelProMinute": 72
+   },
+   "server": {
+    "eldP99Max": 115.6,
+    "eldMax": 115.6,
+    "rssStart": 94,
+    "rssEnde": 116,
+    "rssMax": 133,
+    "heapMax": 44,
+    "sekunden": 35,
+    "cpuMittel": 21,
+    "cpuMax": 64,
+    "fs": {
+     "readFile": {
+      "n": 678,
+      "ms": 25349,
+      "msJeAufruf": 37.39
+     },
+     "fh.writeFile": {
+      "n": 303,
+      "ms": 4642,
+      "msJeAufruf": 15.32
+     },
+     "fh.sync": {
+      "n": 605,
+      "ms": 7036,
+      "msJeAufruf": 11.63
+     },
+     "rename": {
+      "n": 303,
+      "ms": 5337,
+      "msJeAufruf": 17.61
+     },
+     "readdir": {
+      "n": 159,
+      "ms": 2873,
+      "msJeAufruf": 18.07
+     },
+     "unlink": {
+      "n": 161,
+      "ms": 1963,
+      "msJeAufruf": 12.19
+     }
+    }
+   }
+  },
+  "groesse-2000": {
+   "lesen": {
+    "n": 10,
+    "p50": 173,
+    "p95": 932,
+    "p99": 932,
+    "max": 932,
+    "fehlerquote": 0,
+    "status": {
+     "200": 10
+    }
+   },
+   "stempel": {
+    "n": 20,
+    "p50": 1362,
+    "p95": 3731,
+    "p99": 3731,
+    "max": 3731,
+    "fehlerquote": 0,
+    "status": {
+     "200": 20
+    }
+   },
+   "bestandKB": 355,
+   "burst20": {
+    "n": 20,
+    "p50": 16430,
+    "p95": 18275,
+    "p99": 18275,
+    "max": 18275,
+    "fehlerquote": 35,
+    "status": {
+     "200": 13,
+     "503": 7
+    },
+    "gesamtMs": 18282,
+    "haltedauerMs": 914,
+    "stempelProMinute": 66
+   },
+   "server": {
+    "eldP99Max": 237.2,
+    "eldMax": 237.2,
+    "rssStart": 118,
+    "rssEnde": 150,
+    "rssMax": 167,
+    "heapMax": 57,
+    "sekunden": 48,
+    "cpuMittel": 18,
+    "cpuMax": 69,
+    "fs": {
+     "readFile": {
+      "n": 632,
+      "ms": 52003,
+      "msJeAufruf": 82.28
+     },
+     "fh.writeFile": {
+      "n": 271,
+      "ms": 7205,
+      "msJeAufruf": 26.59
+     },
+     "fh.sync": {
+      "n": 541,
+      "ms": 12604,
+      "msJeAufruf": 23.3
+     },
+     "rename": {
+      "n": 271,
+      "ms": 7531,
+      "msJeAufruf": 27.79
+     },
+     "readdir": {
+      "n": 144,
+      "ms": 4648,
+      "msJeAufruf": 32.28
+     },
+     "unlink": {
+      "n": 131,
+      "ms": 2399,
+      "msJeAufruf": 18.31
+     }
+    }
+   }
+  },
+  "groesse-4000": {
+   "lesen": {
+    "n": 10,
+    "p50": 469,
+    "p95": 653,
+    "p99": 653,
+    "max": 653,
+    "fehlerquote": 0,
+    "status": {
+     "200": 10
+    }
+   },
+   "stempel": {
+    "n": 20,
+    "p50": 1874,
+    "p95": 3421,
+    "p99": 3421,
+    "max": 3421,
+    "fehlerquote": 0,
+    "status": {
+     "200": 20
+    }
+   },
+   "bestandKB": 710,
+   "burst20": {
+    "n": 20,
+    "p50": 17511,
+    "p95": 18416,
+    "p99": 18416,
+    "max": 18416,
+    "fehlerquote": 40,
+    "status": {
+     "200": 12,
+     "503": 8
+    },
+    "gesamtMs": 18424,
+    "haltedauerMs": 921,
+    "stempelProMinute": 65
+   },
+   "server": {
+    "eldP99Max": 411.8,
+    "eldMax": 411.8,
+    "rssStart": 153,
+    "rssEnde": 213,
+    "rssMax": 265,
+    "heapMax": 120,
+    "sekunden": 54,
+    "cpuMittel": 26,
+    "cpuMax": 91,
+    "fs": {
+     "readFile": {
+      "n": 633,
+      "ms": 65512,
+      "msJeAufruf": 103.49
+     },
+     "readdir": {
+      "n": 144,
+      "ms": 7034,
+      "msJeAufruf": 48.85
+     },
+     "fh.writeFile": {
+      "n": 265,
+      "ms": 6920,
+      "msJeAufruf": 26.11
+     },
+     "fh.sync": {
+      "n": 529,
+      "ms": 10142,
+      "msJeAufruf": 19.17
+     },
+     "rename": {
+      "n": 264,
+      "ms": 9077,
+      "msJeAufruf": 34.38
+     },
+     "unlink": {
+      "n": 125,
+      "ms": 1812,
+      "msJeAufruf": 14.5
+     }
+    }
+   }
+  }
+ },
+ "S1": {
+  "auftraege": 600,
+  "n": 600,
+  "p50": 17508,
+  "p95": 20854,
+  "p99": 23915,
+  "max": 25312,
+  "fehlerquote": 58,
+  "status": {
+   "200": 252,
+   "500": 2,
+   "503": 346
+  },
+  "verloren": 0,
+  "falschGespeichert": 2,
+  "server": {
+   "eldP99Max": 492.8,
+   "eldMax": 492.8,
+   "rssStart": 231,
+   "rssEnde": 387,
+   "rssMax": 395,
+   "heapMax": 194,
+   "sekunden": 186,
+   "cpuMittel": 45,
+   "cpuMax": 97,
+   "fs": {
+    "rename": {
+     "n": 3158,
+     "ms": 145802,
+     "msJeAufruf": 46.17
+    },
+    "fh.sync": {
+     "n": 6168,
+     "ms": 214196,
+     "msJeAufruf": 34.73
+    },
+    "fh.writeFile": {
+     "n": 3085,
+     "ms": 113430,
+     "msJeAufruf": 36.77
+    },
+    "unlink": {
+     "n": 1856,
+     "ms": 41390,
+     "msJeAufruf": 22.3
+    },
+    "readFile": {
+     "n": 8687,
+     "ms": 1136126,
+     "msJeAufruf": 130.78
+    },
+    "readdir": {
+     "n": 1870,
+     "ms": 96492,
+     "msJeAufruf": 51.6
+    }
+   }
+  },
+  "einBetrieb": {
+   "auftraege": 200,
+   "n": 200,
+   "p50": 6881,
+   "p95": 16248,
+   "p99": 16909,
+   "max": 17296,
+   "fehlerquote": 42.5,
+   "status": {
+    "200": 115,
+    "429": 60,
+    "500": 1,
+    "503": 24
+   }
+  }
+ },
+ "S2": {
+  "put": {
+   "n": 162,
+   "p50": 4042,
+   "p95": 24347,
+   "p99": 25997,
+   "max": 26055,
+   "fehlerquote": 4.32,
+   "status": {
+    "200": 155,
+    "503": 7
+   }
+  },
+  "putGrosserBetrieb": {
+   "n": 31,
+   "p50": 5666,
+   "p95": 25770,
+   "p99": 26055,
+   "max": 26055,
+   "fehlerquote": 0,
+   "status": {
+    "200": 31
+   }
+  },
+  "get": {
+   "n": 162,
+   "p50": 932,
+   "p95": 6869,
+   "p99": 8922,
+   "max": 10236,
+   "fehlerquote": 0,
+   "status": {
+    "200": 162
+   }
+  },
+  "konflikte409": 0,
+  "server": {
+   "eldP99Max": 469.5,
+   "eldMax": 469.5,
+   "rssStart": 316,
+   "rssEnde": 247,
+   "rssMax": 341,
+   "heapMax": 150,
+   "sekunden": 159,
+   "cpuMittel": 28,
+   "cpuMax": 84,
+   "fs": {
+    "readFile": {
+     "n": 10650,
+     "ms": 854135,
+     "msJeAufruf": 80.2
+    },
+    "fh.writeFile": {
+     "n": 1371,
+     "ms": 25107,
+     "msJeAufruf": 18.31
+    },
+    "fh.sync": {
+     "n": 2742,
+     "ms": 48764,
+     "msJeAufruf": 17.78
+    },
+    "rename": {
+     "n": 1396,
+     "ms": 30692,
+     "msJeAufruf": 21.99
+    },
+    "readdir": {
+     "n": 1173,
+     "ms": 31614,
+     "msJeAufruf": 26.95
+    },
+    "unlink": {
+     "n": 839,
+     "ms": 16223,
+     "msJeAufruf": 19.34
+    }
+   }
+  }
+ },
+ "S3": {
+  "bestandMB": 4.63,
+  "jeRolle": {
+   "leitung": {
+    "n": 5,
+    "p50": 3580,
+    "p95": 3841,
+    "p99": 3841,
+    "max": 3841,
+    "fehlerquote": 0,
+    "status": {
+     "200": 5
+    },
+    "antwortKB": 4739
+   },
+   "planer": {
+    "n": 5,
+    "p50": 3081,
+    "p95": 3554,
+    "p99": 3554,
+    "max": 3554,
+    "fehlerquote": 0,
+    "status": {
+     "200": 5
+    },
+    "antwortKB": 4739
+   },
+   "subplaner": {
+    "n": 5,
+    "p50": 3209,
+    "p95": 3664,
+    "p99": 3664,
+    "max": 3664,
+    "fehlerquote": 0,
+    "status": {
+     "200": 5
+    },
+    "antwortKB": 4953
+   },
+   "mitarbeiter": {
+    "n": 5,
+    "p50": 2272,
+    "p95": 2345,
+    "p99": 2345,
+    "max": 2345,
+    "fehlerquote": 0,
+    "status": {
+     "200": 5
+    },
+    "antwortKB": 4709
+   },
+   "betriebsrat": {
+    "n": 5,
+    "p50": 2940,
+    "p95": 3295,
+    "p99": 3295,
+    "max": 3295,
+    "fehlerquote": 0,
+    "status": {
+     "200": 5
+    },
+    "antwortKB": 4709
+   }
+  },
+  "dauerlast": {
+   "leser": 10,
+   "n": 34,
+   "p50": 18604,
+   "p95": 21033,
+   "p99": 22490,
+   "max": 22490,
+   "fehlerquote": 0,
+   "status": {
+    "200": 34
+   },
+   "server": {
+    "eldP99Max": 2082.5,
+    "eldMax": 2082.5,
+    "rssStart": 268,
+    "rssEnde": 442,
+    "rssMax": 460,
+    "heapMax": 226,
+    "sekunden": 56,
+    "cpuMittel": 66,
+    "cpuMax": 106,
+    "fs": {
+     "readFile": {
+      "n": 455,
+      "ms": 413150,
+      "msJeAufruf": 908.02
+     },
+     "fh.writeFile": {
+      "n": 37,
+      "ms": 10173,
+      "msJeAufruf": 274.95
+     },
+     "fh.sync": {
+      "n": 74,
+      "ms": 12645,
+      "msJeAufruf": 170.88
+     },
+     "rename": {
+      "n": 37,
+      "ms": 7987,
+      "msJeAufruf": 215.86
+     },
+     "readdir": {
+      "n": 69,
+      "ms": 21825,
+      "msJeAufruf": 316.3
+     },
+     "unlink": {
+      "n": 64,
+      "ms": 22431,
+      "msJeAufruf": 350.48
+     }
+    }
+   }
+  }
+ },
+ "S4": {
+  "gueltig": {
+   "n": 63,
+   "p50": 123,
+   "p95": 1629,
+   "p99": 1900,
+   "max": 1900,
+   "fehlerquote": 33.33,
+   "status": {
+    "200": 42,
+    "429": 21
+   }
+  },
+  "rater": {
+   "n": 30,
+   "p50": 31,
+   "p95": 293,
+   "p99": 301,
+   "max": 301,
+   "fehlerquote": 100,
+   "status": {
+    "401": 8,
+    "429": 22
+   },
+   "erster429": 9
+  },
+  "ok200": 42,
+  "gebremst429": 21,
+  "gesamtgrenze": {
+   "versuche": 455,
+   "ok200": 359,
+   "gebremst429": 96,
+   "ersteB429": 40,
+   "sekunden": 93.7
+  },
+  "server": {
+   "eldP99Max": 1191.2,
+   "eldMax": 1191.2,
+   "rssStart": 442,
+   "rssEnde": 262,
+   "rssMax": 453,
+   "heapMax": 265,
+   "sekunden": 113,
+   "cpuMittel": 50,
+   "cpuMax": 106,
+   "fs": {
+    "readFile": {
+     "n": 5559,
+     "ms": 304588,
+     "msJeAufruf": 54.79
+    },
+    "readdir": {
+     "n": 2175,
+     "ms": 51516,
+     "msJeAufruf": 23.69
+    },
+    "fh.writeFile": {
+     "n": 2200,
+     "ms": 39584,
+     "msJeAufruf": 17.99
+    },
+    "fh.sync": {
+     "n": 4397,
+     "ms": 70146,
+     "msJeAufruf": 15.95
+    },
+    "rename": {
+     "n": 2197,
+     "ms": 42297,
+     "msJeAufruf": 19.25
+    },
+    "unlink": {
+     "n": 1212,
+     "ms": 21057,
+     "msJeAufruf": 17.37
+    }
+   }
+  }
+ },
+ "S5": {
+  "stempel": {
+   "auftraege": 100,
+   "n": 100,
+   "p50": 19592,
+   "p95": 25030,
+   "p99": 26589,
+   "max": 26589,
+   "fehlerquote": 52,
+   "status": {
+    "200": 48,
+    "503": 52
+   },
+   "verloren": 0,
+   "falschGespeichert": 0
+  },
+  "put": {
+   "n": 66,
+   "p50": 18969,
+   "p95": 34310,
+   "p99": 35800,
+   "max": 35800,
+   "fehlerquote": 27.27,
+   "status": {
+    "200": 48,
+    "500": 1,
+    "503": 17
+   }
+  },
+  "konflikte409": 0,
+  "get": {
+   "n": 66,
+   "p50": 4730,
+   "p95": 11101,
+   "p99": 19787,
+   "max": 19787,
+   "fehlerquote": 0,
+   "status": {
+    "200": 66
+   }
+  },
+  "sicherung": {
+   "exit": 1,
+   "sekunden": 5.3,
+   "versuche": 1,
+   "letzteZeile": "    at async main (file:///<pfad> |     at async file:///<pfad>"
+  },
+  "server": {
+   "eldP99Max": 485.2,
+   "eldMax": 485.2,
+   "rssStart": 263,
+   "rssEnde": 307,
+   "rssMax": 344,
+   "heapMax": 162,
+   "sekunden": 104,
+   "cpuMittel": 30,
+   "cpuMax": 109,
+   "fs": {
+    "rename": {
+     "n": 1051,
+     "ms": 65394,
+     "msJeAufruf": 62.22
+    },
+    "readFile": {
+     "n": 6440,
+     "ms": 1211859,
+     "msJeAufruf": 188.18
+    },
+    "fh.writeFile": {
+     "n": 1026,
+     "ms": 54416,
+     "msJeAufruf": 53.04
+    },
+    "readdir": {
+     "n": 834,
+     "ms": 55890,
+     "msJeAufruf": 67.01
+    },
+    "fh.sync": {
+     "n": 2054,
+     "ms": 109092,
+     "msJeAufruf": 53.11
+    },
+    "unlink": {
+     "n": 883,
+     "ms": 34873,
+     "msJeAufruf": 39.49
+    }
+   }
+  }
+ },
+ "ablageNachher": {
+  "dateien": 6150,
+  "mb": 40.8,
+  "stores": {
+   ".gesund": {
+    "dateien": 0,
+    "mb": 0
+   },
+   "centric": {
+    "dateien": 823,
+    "mb": 39.72
+   },
+   "centric-sitzungen": {
+    "dateien": 2437,
+    "mb": 0.52
+   },
+   "centric-spur": {
+    "dateien": 1776,
+    "mb": 0.46
+   },
+   "centric-takt": {
+    "dateien": 1114,
+    "mb": 0.1
+   }
+  }
+ },
+ "serverGesamt": {
+  "eldP99Max": 2082.5,
+  "eldMax": 2082.5,
+  "rssStart": 69,
+  "rssEnde": 260,
+  "rssMax": 460,
+  "heapMax": 265,
+  "sekunden": 970,
+  "cpuMittel": 36,
+  "cpuMax": 112,
+  "fs": {
+   "mkdir": {
+    "n": 6,
+    "ms": 89,
+    "msJeAufruf": 14.83
+   },
+   "fh.writeFile": {
+    "n": 10014,
+    "ms": 278664,
+    "msJeAufruf": 27.83
+   },
+   "readdir": {
+    "n": 7517,
+    "ms": 288434,
+    "msJeAufruf": 38.37
+   },
+   "writeFile": {
+    "n": 1,
+    "ms": 4,
+    "msJeAufruf": 4
+   },
+   "fh.sync": {
+    "n": 20023,
+    "ms": 515258,
+    "msJeAufruf": 25.73
+   },
+   "readFile": {
+    "n": 38276,
+    "ms": 4252473,
+    "msJeAufruf": 111.1
+   },
+   "unlink": {
+    "n": 7873,
+    "ms": 159725,
+    "msJeAufruf": 20.29
+   },
+   "rename": {
+    "n": 10142,
+    "ms": 336346,
+    "msJeAufruf": 33.16
+   }
+  }
+ },
+ "dauerMin": 18.4
+}

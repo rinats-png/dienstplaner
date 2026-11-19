@@ -67,6 +67,7 @@
 
 import { protokoll } from "./schutz.mjs";
 import { raumLoeschen } from "./raumloeschung.mjs";
+import { unterRaumsperre } from "./raumsperre.mjs";
 import { sitzungenAufraeumen } from "./sitzungsaufraeumen.mjs";
 
 export const TESTTAGE = 30;
@@ -229,7 +230,11 @@ export async function testbetriebeAufraeumen(store, sitzungen, { jetzt = new Dat
         /* Erst die Marke, dann löschen — sonst wäre ein Teilabbruch nach
            den Konten beim nächsten Lauf nicht mehr als Löschung erkennbar. */
         await store.setJSON(LOESCHMARKE(raum), { begonnen: new Date(t).toISOString() });
-        ergebnis = await raumLoeschen(store, sitzungen, raum);
+        /* Unter der Sperre des Raums (raumsperre.mjs): Ein Schreiber, der
+           gerade mitten in seiner Folge steckt, legte sonst nach dem Löschen
+           wieder Scherben und Standvermerke ab — Waisen ohne Kern, die kein
+           späterer Lauf mehr findet, weil er Räume an ihrem Kern erkennt. */
+        ergebnis = await unterRaumsperre(raum, () => raumLoeschen(store, sitzungen, raum));
       }
       catch (e) { ergebnis = { raum, geloescht: 0, vollstaendig: false,
         fehler: [{ schluessel: "?", grund: String(e && e.message || e).slice(0, 160) }] }; }

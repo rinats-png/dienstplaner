@@ -16,6 +16,8 @@
    still auf den Einzelschlüssel.
    ========================================================================== */
 
+import { unterRaumsperre, KONTEN_SPERRE } from "./raumsperre.mjs";
+
 const PRAEFIX = "konto:";
 const SAMMEL = "konten";
 
@@ -32,9 +34,48 @@ export async function kontoLesen(store, schluessel) {
   } catch { return null; }
 }
 
+/**
+ * Wie kontoLesen, aber ein Lesefehler wird weitergereicht statt als „gibt es nicht" oder als Rückfall auf
+ * den Sammelblob gewertet. Für Prüfungen, die bei Zweifel Nein sagen müssen (SI-P1): Ein Zugang, der einzeln
+ * gesperrt wurde, aber noch ungesperrt im Sammelblob steht, darf bei einem Lesefehler nicht wieder gelten.
+ * @throws wenn die Ablage nicht lesbar ist
+ */
+export async function kontoLesenStreng(store, schluessel) {
+  if (!schluessel) return null;
+  const einzeln = await store.get(PRAEFIX + schluessel, { type: "json" });
+  if (einzeln) return einzeln;
+  const sammel = (await store.get(SAMMEL, { type: "json" })) || {};
+  return sammel[schluessel] || null;
+}
+
 /** Ein Konto schreiben — immer einzeln. */
 export async function kontoSchreiben(store, schluessel, konto) {
   await store.setJSON(PRAEFIX + schluessel, konto);
+}
+
+/** Sperre je Konto (kontoAendern). Reihenfolge, wo beide nötig sind: erst der Raum, dann das Konto — nie umgekehrt. */
+export const kontoSperre = (schluessel) => `@konto:${schluessel}`;
+
+/**
+ * Ein Konto ändern, ohne eine ältere Kopie zurückzuschreiben (A-3, Review 227f633e Punkt 4; Betreibervorgabe
+ * 2026-11-13): Lesen, Ändern und Schreiben unter der Sperre DIESES Kontos, frisch und streng gelesen. Wer ein Feld
+ * setzt (Sperre, zweiter Faktor, Bindung, Erstanmeldung), behält alle übrigen — auch die, die ein gleichzeitiger
+ * Vorgang eben geschrieben hat. Bis 2026-11 schrieben mehrere Wege eine früher gelesene Kopie zurück; eine
+ * gleichzeitige Sperre (`gesperrt`) oder Bindung konnte so verloren gehen.
+ * @param {any} store
+ * @param {string} schluessel
+ * @param {(alt: any) => any} aendern  bekommt den frischen Stand (null, wenn es keinen gibt); gibt den neuen zurück —
+ *   `undefined` oder denselben Gegenstand: nichts schreiben
+ * @returns {Promise<any>} der danach gültige Stand
+ */
+export function kontoAendern(store, schluessel, aendern) {
+  return unterRaumsperre(kontoSperre(schluessel), async () => {
+    const alt = await kontoLesenStreng(store, schluessel);
+    const neu = await aendern(alt);
+    if (neu === undefined || neu === alt) return alt;
+    await kontoSchreiben(store, schluessel, neu);
+    return neu;
+  });
 }
 
 /**
@@ -60,17 +101,42 @@ export async function alleKonten(store) {
 }
 
 /**
+ * Wie alleKonten, aber ein Lesefehler wird weitergereicht statt als „keine Konten" gewertet (WP-18, Review-Auflage
+ * M2). Für Prüfungen, die bei Zweifel Nein sagen müssen: „Hat diese Person schon einen Zugang?" darf bei einer
+ * unlesbaren Ablage nicht „nein" heißen — sonst entstünde ein zweiter Code für dieselbe Person.
+ * Ein fehlender Sammelblob ist kein Fehler (die Ablage liefert dann null).
+ * @throws wenn die Ablage nicht lesbar ist
+ */
+export async function alleKontenStreng(store) {
+  const aus = {};
+  Object.assign(aus, (await store.get(SAMMEL, { type: "json" })) || {});
+  const { blobs } = await store.list({ prefix: PRAEFIX });
+  for (const b of blobs) {
+    const konto = await store.get(b.key, { type: "json" });
+    if (konto) aus[b.key.slice(PRAEFIX.length)] = konto;
+  }
+  return aus;
+}
+
+/**
  * Ein Konto aus dem Sammelblob auf einen Einzelschlüssel heben.
  * Läuft beiläufig bei der Anmeldung; ein Fehler bleibt folgenlos.
  */
 export async function kontoVereinzeln(store, schluessel) {
+  /* Unter der Sperre des Sammelblobs (KONTEN_SPERRE, raumsperre.mjs) — wie
+     dessen Bereinigung bei der Raumlöschung (raumloeschung.mjs). Ohne sie
+     konnte eine Anmeldung während der Löschung konto:X aus dem noch vollen
+     Sammelblob neu anlegen, und der Code zeigte danach auf einen gelöschten
+     Raum. */
   try {
-    const einzeln = await store.get(PRAEFIX + schluessel, { type: "json" });
-    if (einzeln) return false;
-    const sammel = (await store.get(SAMMEL, { type: "json" })) || {};
-    if (!sammel[schluessel]) return false;
-    await store.setJSON(PRAEFIX + schluessel, sammel[schluessel]);
-    return true;
+    return await unterRaumsperre(KONTEN_SPERRE, async () => {
+      const einzeln = await store.get(PRAEFIX + schluessel, { type: "json" });
+      if (einzeln) return false;
+      const sammel = (await store.get(SAMMEL, { type: "json" })) || {};
+      if (!sammel[schluessel]) return false;
+      await store.setJSON(PRAEFIX + schluessel, sammel[schluessel]);
+      return true;
+    });
   } catch { return false; }
 }
 
@@ -93,8 +159,8 @@ export async function raumUebersicht(store, raum, { eigen = null } = {}) {
   const zugaenge = Object.entries(konten)
     .filter(([, k]) => k && k.bestand === raum)
     .map(([h, k]) => ({
-      kennung: h.slice(-8), id: k.id || null, rolle: k.rolle || "kunde",
-      betrieb: k.betrieb ?? 0, person: k.person ?? null, demo: !!k.demo,
+      kennung: h.slice(-8), id: k.id || null, rolle: k.rolle || null,
+      betrieb: k.betrieb ?? 0, mandantId: k.mandantId || null, person: k.person ?? null, demo: !!k.demo,
       gruppe: k.gruppe || null, name: k.name || null, gesperrt: !!k.gesperrt,
       selbstAngelegt: !!k.selbstAngelegt, laeuftAb: k.laeuftAb || null,
       angelegt: k.angelegt || null,

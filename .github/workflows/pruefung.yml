@@ -12,17 +12,23 @@ on:
   # Auslieferung (deploy.yml) ruft dieses Gate auf, bevor sie ein Bild baut.
   workflow_call:
 
+# SI-P9: Vorgabe für alle Jobs: nur lesen (der Bau bleibt lokal, ohne Push).
+permissions:
+  contents: read
+
 jobs:
   pruefen:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 40
     env:
       # Das Bild, gegen das die serverseitigen Prüfungen laufen (siehe unten).
       BILD: centric-pruefung:${{ github.sha }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "22"
           cache: npm
@@ -32,6 +38,261 @@ jobs:
       # Findet undefinierte Bezeichner und Verstöße gegen die Hook-Regeln.
       - name: Linter
         run: npm run lint
+
+      # Verdrahtung: jede Prüfdatei unter pruefungen/ muss in package.json oder hier vorkommen (Ausnahmen mit Grund in pruefungen/verdrahtung-ausnahmen.json).
+      - name: Verdrahtung der Prüfdateien
+        run: npm run pruefung:verdrahtung
+
+      # CI-Abdeckung: jedes Skript der Sammelprüfung `pruefung` läuft hier oder ist in pruefungen/ci-abdeckung-ausnahmen.json begründet ausgenommen (docs/acc45/CI-ABDECKUNG.md).
+      - name: CI-Abdeckung der Sammelprüfung
+        run: npm run pruefung:ci-abdeckung
+
+      # Sammelpruefung: Kette 'pruefung' lesen, gegen package.json und diesen Workflow abgleichen, Laufwerkzeug testen (WP-33). Der volle Lauf aller Glieder ist `npm run sammelpruefung` (lokal).
+      - name: Sammelprüfung (Kette und Laufwerkzeug)
+        run: npm run pruefung:sammelpruefung
+
+      - name: Koordination (atomare Lease)
+        run: npm run pruefung:koordination
+
+      - name: G9-Nachträge, Verkauf, Preisgestaltung, Stufen
+        run: npm run pruefung:g9
+
+      - name: Rechtstexte, Social-Vorschau, Art.-9-Katalog
+        run: npm run pruefung:rechtstexte
+
+      - name: Selbstauskunft und Einbindung
+        run: npm run pruefung:selbstauskunft-ui
+
+      - name: Nachträge und Folgebefunde einzelner Pakete
+        run: npm run pruefung:wp-nachtraege
+
+      - name: WP-16c Messung des Korrekturpfads (kleiner Maßstab)
+        run: npm run pruefung:wp16c-messung
+
+      - name: Querschnittsprüfungen (bisher nicht verdrahtet)
+        run: npm run pruefung:querschnitt
+
+      # WP-35 (Abrechnungsdaten ohne Querscrollen) und WP-21 (Telefon/Tablet:
+      # Seitenleiste, Zielgrößen, Scrollbereiche). Beide liefen bisher nur in der
+      # Sammelkette, nicht in der CI.
+      - name: Darstellung Telefon und Tablet (WP-35, WP-21)
+        run: npm run pruefung:darstellung && npm run pruefung:geraete
+
+      # WP-21 Teil 2: Bedienabläufe, Querformat, Fokus der Seitenleiste (Vertragsprüfung
+      # ohne Browser; die Messung selbst läuft von Hand: pruefung:geraete-ablaeufe-browser).
+      - name: Telefon und Tablet, Bedienabläufe (WP-21 Teil 2)
+        run: npm run pruefung:geraete-ablaeufe
+
+      # WP-21 Teil 3: dieselben Abläufe gerendert, je Viewport mit den echten Stilregeln und Rollen.
+      - name: Telefon und Tablet, Abläufe gerendert (WP-21 Teil 3)
+        run: npm run pruefung:geraete-ablaeufe-render
+
+      # WP-21-SV: Uebergabe und Krankmeldung der Schichtverantwortung (Absturz bei offenem Nachtdienst von gestern).
+      - name: Telefon, Schichtverantwortung Uebergabe und Krankmeldung (WP-21-SV)
+        run: npm run pruefung:geraete-sv-uebergabe
+
+      # Nachtdienst von gestern ohne Einstempeln: Dienstende-Pfad durch den echten Handler (nach #213).
+      - name: Nachtdienst ohne Einstempeln, Dienstende stempeln
+        run: npm run pruefung:nachtdienst-ohne-einstempeln
+
+      # Intelligence-Oberfläche browserfähig: KiAntwort und Bytezählung ohne Buffer.
+      - name: Intelligence-Oberfläche ohne Node-APIs (Browser)
+        run: npm run pruefung:intelligence-browser
+
+      # WP-19.13 Teil: Abnahmematrix der zwölf Branchenmodule (Rollen, Prüfmodus nur im Test, Oberflächen je Viewport; Status bleibt geplant).
+      - name: Branchenmodule, Abnahmematrix im Prüfmodus (WP-19.13 Teil)
+        run: npm run pruefung:modulabnahme
+
+      # WP-19 B1: Schreibwege der fünf älteren Module bei Status „geplant“ geschlossen (echte Handler, alle Rollen, voller PUT und Teilweg).
+      - name: Branchenmodule, Schreibweg geschlossen bei „geplant“ (WP-19 B1)
+        run: npm run pruefung:modul-b1
+
+      # WP-19 B4: modulAktiv nur für Status der Allowlist (vorlaeufig, freigegeben) — unbekannt/unsinnig fail-closed, alle zwölf Module.
+      - name: Branchenmodule, modulAktiv nur Allowlist-Status (WP-19 B4)
+        run: npm run pruefung:modulaktiv
+
+      # WP-19 B5: Ansichten Betriebsmittel und Kompetenzen zeigen für Module im Status geplant keine aktive Schreibaktion (Server: 403).
+      - name: Branchenmodule, Oberfläche ohne Schreibaktionen bei Status geplant (WP-19 B5)
+        run: npm run pruefung:modul-altwege-oberflaeche
+
+      # Abnahme V4 Strang B: Wiederholung kritischer Vorgänge (Doppelstempel, Krankmeldung zweistufig, Monatsabschluss, veralteter ETag) über die echten Handler.
+      - name: Abnahme V4 Strang B, Wiederholung kritischer Vorgänge
+        run: npm run pruefung:abnahme-b
+
+      # Erkennung gestrandeter Betriebe (M1–M6, unklar): nur lesendes Skript gegen synthetische Sicherungen;
+      # Eingabe bytegleich, Ausgabe ohne Personendaten, Ablehnung benutzter Ablagen.
+      - name: Erkennung gestrandeter Betriebe, nur lesend, synthetische Sicherungen
+        run: npm run pruefung:erkennung
+
+      # Prozess: Rechenfunktionen des Durchsatz-Dashboards (ohne Netz) und Wächter gegen wiederkehrende Fehlerklassen
+      # (Kettenreihenfolge, Zeilenenden, freie Uhr und Kurzliterale in neuen Tests).
+      - name: Durchsatz-Werkzeug und Prozess-Wächter
+        run: npm run pruefung:durchsatz
+
+      # E-M6 (Betreiberentscheidung 2026-11-13): widerrufene und ersetzte Zugangscodes bleiben nach jedem Rücksprung
+      # ungültig — echte Serverprozesse, echtes Sicherungswerkzeug, Neustart, Altbilder (Merge-Basis, 274bfa0) auf neuen
+      # Daten (öffentlicher Abruf der beiden Altstände per git fetch), Manipulation fail-closed.
+      - name: E-M6, widerrufene Zugangscodes nach Rücksprung ungültig
+        run: npm run pruefung:em6-rollback-codes
+
+      # BE-1 (Betreiberentscheidung 2026-11-14, Option A): Kontosperren und entzogene Mitgliedschaften bleiben nach jedem
+      # Rücksprung wirksam — eigenes, gesiegeltes Konto-Widerrufbuch; echte Server, echtes Werkzeug, harter Abbruch
+      # zwischen Ablage und Buch, Altbild vor BE-1 (git fetch), Manipulation fail-closed, keine mandantenübergreifende Sperre.
+      - name: BE-1, Kontosperren und entzogene Mitgliedschaften nach Rücksprung wirksam
+        run: npm run pruefung:be1-konto-widerrufbuch
+
+      # BE-2 Stufe A1 (Betreiberentscheidung 2026-11-14): ein einmal aktiver Konto-Faktor verschwindet durch keinen
+      # Rücksprung (Platzhalter, 403), eingelöste Wiederherstellungscodes bleiben verbraucht — Abschnitte im
+      # Konto-Widerrufbuch; echte Server, echtes Werkzeug, harter Abbruch zwischen Ablage und Buch, Altbild vor A1.
+      - name: BE-2 A1, Pflicht-Faktor und verbrauchte Wiederherstellungscodes nach Rücksprung
+        run: npm run pruefung:be2-a1-zweiter-faktor
+
+      # BE-3 (Betreiberentscheidung 2026-11-14, Option A): eigener Sicherungsjob der Widerrufbücher (Stub-restic und
+      # Stub-docker, lokales Repository, kein Netz), Nachweis, Rücksprung über Ablage UND Zustand erkannt, Vereinigung
+      # statt Ersetzen (Siegel, Herkunft, idempotent, SIGKILL), Alterswarnung in /gesund ohne Anmeldesperre, 503 bei unklarem Buch.
+      - name: BE-3, Sicherung und Vereinigung der Widerrufbücher
+        run: npm run pruefung:be3-widerrufbuch-sicherung
+
+      # WP-ZEIT, ZEIT-E / E6 (Befund Z47): Sonn-/Feiertags-/Samstagsanteile in den Umstellungsnächten mit wirklichen
+      # Minuten (Europe/Berlin) für offene Monate; abgeschlossene Monate bytegleich (Freeze, DATEV-Datei).
+      - name: ZEIT-E, Zuschläge in den Umstellungsnächten
+        run: npm run pruefung:zeit-e
+
+      # QS-ZEIT (docs/acc45/QS-ZEITABHAENGIGKEIT.md): B8 der Browserabnahme auf fester Zeitbasis, Ruhezeit-Gegenprobe
+      # sperrend; geo.test.js zusätzlich unter den Grenzuhren 23:59:50 und 00:30 Berlin (TZ=UTC).
+      - name: QS-ZEIT, feste Zeitbasis und Grenzuhren
+        run: npm run pruefung:qs-zeitbasis && npm run pruefung:geo-uhren
+
+      # WP-ZEIT-Rest (QS-ZEITABHAENGIGKEIT.md § 3): lokale Berlin-Tagesformeln in erstleitung/paketstand/planfreigabe/
+      # zeiterfassung über betriebszeit.mjs; Differenzialtest alt gegen neu (Umstellungsnächte, Mitternachten, Zonenmatrix).
+      - name: WP-ZEIT, Berlin-Tagesformeln über die zentrale Zeitbasis
+        run: npm run pruefung:zeit-tagesformeln
+
+      # Staging O2 (C1/C2): Offline-Prüfung von deploy/staging-o2/ und dem Staging-Gate-Workflow
+      # (Compose, Platzhalter, Caddyfile, Betriebsskript, Gate nur per Hand und nur lesend; kein Docker, kein Netz).
+      - name: Staging O2, Vorbereitung offline
+        run: npm run pruefung:staging-o2
+
+      # WP-33 Rest: Vertrag der axe-Flächen der Playwright-Suite (Navigationseinträge, Rollen, Ausnahmen; ohne Browser).
+      - name: WP-33 Rest, axe-Flächen der Browserabnahme
+        run: npm run pruefung:e2e-flaechen
+
+      # WP-40: Bewertungslogik der Browser-Abnahme und Fehlertext-Verknüpfung (ohne Browser;
+      # die Messung selbst läuft von Hand, siehe pruefungen/browser/wcag-wp40.mjs).
+      - name: Barrierefreiheit WP-40, Browser-Abnahme ohne Browser
+        run: npm run pruefung:wcag-wp40
+
+      # Personalimport: serverseitiger Schalter CENTRIC_IMPORT_AKTIV (Vorgabe aus, fail-closed, 404 vor dem Rumpf).
+      - name: Personalimport Serverschalter aus (CENTRIC_IMPORT_AKTIV)
+        run: npm run pruefung:import-schalter
+
+      - name: Personalimport (IMP-1)
+        run: npm run pruefung:import-bestand
+
+      - name: Personalimport Organisationseinheiten nur mit org.edit (IMP-5)
+        run: npm run pruefung:import-org
+
+      - name: Import KI-Schnittstelle ohne Aktivierung (IMP-9)
+        run: npm run pruefung:import-ki
+
+      - name: Schichtmodelle und Schichtzyklen (IMP-6)
+        run: npm run pruefung:import-schichtmodelle
+
+      - name: Schichtmodell-Vorschau im Import, ohne Schreiben (IMP-6)
+        run: npm run pruefung:import-schichtmodell-vorschau
+
+      - name: Schichtmodell-Ergebnis je Vorgang zwischengespeichert (IMP-6)
+        run: npm run pruefung:import-analyse-cache
+
+      # IMP-6 Teil 2: mehrere Schichtmodelle je Person (serverseitig, ohne Aktivierung) — Klärung statt stiller Auflösung,
+      # historischer Schutz, Rollen mit manipulierten Rümpfen, Teilweg, Protokoll, Importvorschau.
+      - name: Mehrere Schichtmodelle je Person (IMP-6 Teil 2)
+        run: npm run pruefung:imp6-mehrfachmodelle
+
+      # Abnahme V4 Strang A (lokale Integrationsabnahme): ein Ablauf über den echten Server — Betreiber legt zwei Betriebe an,
+      # Leitung richtet ein, lädt ein, Personal, Schichtmodell (IMP-6), Plan, Freigabe (plan.publish), Mandantentrennung.
+      - name: Abnahme V4 Strang A, Geschäftsablauf über zwei Betriebe
+        run: npm run pruefung:abnahme-a-ablauf
+
+      # A-3: Die Erstanmeldung der Leitung legt die erste Leitungsperson serverseitig, atomar und dauerhaft an (echter Server).
+      # E-D1/E-D2/E-Mail (Betreiberentscheidungen 2026-11-13) und echter Prozessabbruch (SIGKILL, Vorladehilfe) mit Neustart.
+      # Differenzgarantie Bestandsbetriebe: Szenarienkatalog gegen die Golden-Aufzeichnung der Basis ohne #281, Schalter
+      # ungesetzt und verbogen (pruefungen/erstleitung-bestand-differenz.test.js).
+      - name: Erstanmeldung der Leitung im leeren Betrieb (A-3, serverseitig)
+        run: npm run pruefung:erstleitung
+
+      - name: Import Oberfläche, Parser und Vertrag stimmen überein (IMP-11)
+        run: npm run pruefung:import-abweichungen
+
+      - name: Objektbericht-Dienstzeit aus der bestätigten Ist-Zeit (WP-19.3, OB-2)
+        run: npm run pruefung:objektbericht-dienstzeit
+
+      - name: Synthetische Testdateien und Testmatrix des Imports (IMP-8)
+        run: npm run pruefung:imp8-testmatrix
+
+      - name: Teilspeicherung je Segment mit Versionen (WP-48.3)
+        run: npm run pruefung:wp48-teilweg
+
+      # WP-48.7 Stufe a: Abschluss/Wiederöffnen/Lohnexport segmentweise (Schalter) gegen den vollen Weg, Zugriff unter der Sperre.
+      - name: Monatsabschluss segmentweise (WP-48.7)
+        run: npm run pruefung:wp48-abschluss
+
+      # WP-48-GB: Öffnen ohne Eingabe schreibt nicht; zwei Sitzungen (Leitung, Planung) gegen den echten Handler.
+      - name: Öffnen des Plans schreibt nicht (WP-48-GB)
+        run: npm run pruefung:wp48-gb-oeffnen
+
+      - name: Hilfe-Assistent (WP-I23, Schalter aus, Rollen, Datenschutz)
+        run: npm run pruefung:hilfe-assistent
+
+      - name: Eintrittsdatum ohne stille Ersetzung
+        run: npm run pruefung:person-eintritt
+
+      - name: Live-Prüfung Schichtfolge-Editor (WP-I2)
+        run: npm run pruefung:schichtfolge-live
+
+      # Bewertungsfunktionen der lokalen Browser-Abnahme (ohne Browser). Das Skript
+      # selbst (npm run abnahme:browser-v4) läuft nur lokal mit Chromium.
+      - name: Browser-Abnahme V4, reine Bewertung
+        run: npm run pruefung:browser-abnahme-kern
+
+      # Bisher nicht verdrahtete Skripte der Sammelprüfung `pruefung` (docs/acc45/CI-ABDECKUNG.md).
+      # Alle laufen ohne Browser, Netz und Geheimnisse (eigene Wegwerf-Ablagen, ggf. eigener Server auf 127.0.0.1).
+      - name: Design-Tokens V4
+        run: npm run pruefung:v4-tokens
+
+      # WP-39: App und alle Aktionsfabriken rendern nach der Aufteilung von App.jsx weiter.
+      - name: Aufbau der Anwendung (WP-39)
+        run: npm run pruefung:app-aufbau
+
+      # Personalimport: Parser (IMP-2, ZIP-Bombe, Makros), Endpunkt (IMP-3) und Oberfläche samt Ende-zu-Ende (IMP-4).
+      - name: Personalimport, Parser
+        run: npm run pruefung:import-parser
+
+      - name: Personalimport, Endpunkt
+        run: npm run pruefung:import-endpunkt
+
+      - name: Personalimport, Oberfläche
+        run: npm run pruefung:import-oberflaeche
+
+      # Der Schreibhalt hält die Ablage für Sicherungen an, ohne Schreiber zu verlieren; die Last-Probe
+      # läuft allein, weil sie neben anderen Dateien zu wenig Durchsatz misst.
+      - name: Schreibhalt unter Last
+        run: npm run pruefung:schreibhalt-last
+
+      - name: Konto-Wiederherstellung, Kern
+        run: npm run pruefung:konto-wiederherstellung
+
+      # Staging-Abnahme 3.1-3.4: ohne Ziel reine Abdeckung, mit Ziel nur lesende Proben gegen einen
+      # frischen lokalen Server (Port 3917, Wegwerf-Ablage, nichts wird geschrieben).
+      - name: Staging-Abnahme 3, Proben
+        run: npm run pruefung:staging-abnahme-3
+
+      - name: Pilot-Tagesbericht
+        run: npm run pruefung:pilot-tagesbericht
+
+      # Synthetische Seeds SD-P/SD-S: Erzeugung, Schutz des Laders (nur Testumgebung), Rechenkern darüber.
+      - name: Pilot-Seeds
+        run: npm run pruefung:pilot-seeds
 
       # Typprüfung ohne TypeScript. Deckt die reinen Kernmodule und die
       # Serverbausteine ab — dort, wo ein vertippter Feldname rechtliche
@@ -44,19 +305,84 @@ jobs:
       - name: Regelwerk
         run: npm run pruefung:regeln
 
-      # Stempelereignisse sind personenbezogen: Beschäftigte sehen nur die
-      # eigenen, der Betriebsrat keine.
-      - name: Stempeldaten
-        run: npm run pruefung:stempeldaten
+      # E1: Stempel und Ist-Zeiten nur für die eigene Person, Betriebsrat keine; keine Planzeit als Ist-Zeit.
+      - name: Stempel- und Ist-Daten unter Rollenschutz
+        run: npm run pruefung:stempeldaten && npm run pruefung:istdaten
 
-      # Fehlen Ist-Daten aus Datenschutzgründen, wird nie die Planzeit als
-      # tatsächliche Arbeitszeit gezeigt, geprüft oder ausgegeben.
-      - name: Ist-Daten
-        run: npm run pruefung:istdaten
+      # Geo V1: Standortprüfung beim Stempeln — drei Zustände, Genauigkeit, gerundete Entfernung, Schalter (Vorgabe aus).
+      - name: Standortprüfung beim Stempeln
+        run: npm run pruefung:geo
+      # Warnen statt sperren: Stufen (Hinweis, Achtung, Rechtsverstoß),
+      # Bestätigungsprotokoll, Sicht des Betriebsrats.
+      - name: Warnstufen
+        run: npm run pruefung:warnen
+
+      # Regelregister: Kennung, Quelle, Fundstelle, Prüfstatus, Gültigkeit.
+      # Die Rechtsquellen-Tabelle muss mit der früheren übereinstimmen, und
+      # eine vorläufige Regel darf höchstens einen Hinweis erzeugen.
+      - name: Regelregister
+        run: npm run pruefung:register
+
+      # Regelbaukasten: Zähl-, Grenz-, Besetzungs- und Paarregel. Fehlende
+      # Daten sind „offen", nie „erfüllt".
+      - name: Regelbaukasten
+        run: npm run pruefung:baukasten
+
+      # Beschäftigungsmodelle und Abwesenheitsarten: Bestandsdaten ohne das
+      # neue Feld bleiben gültig, ungeklärtes Entgelt wird nie gutgeschrieben.
+      - name: Beschäftigungsmodelle
+        run: npm run pruefung:beschaeftigung
+
+      # Planprüfung und Warndialog sagen über dieselbe Person dasselbe;
+      # „nicht bewertbar" geht nie als „erfüllt" durch.
+      - name: Konsistenz
+        run: npm run pruefung:konsistenz
+
+      # Prüfstatus der Quelle ist nicht die Laufzeit eines Bestandsrechners:
+      # Fahrzeit, PPP-RL und Tarife werden nicht herabgestuft.
+      - name: Laufzeit
+        run: npm run pruefung:laufzeit
+
+      # Schutzmerkmale (Mutterschutz, Schwerbehinderung) bei fremden Personen
+      # und im Betriebsratsprotokoll.
+      - name: Schutzdaten
+        run: npm run pruefung:schutzdaten
+      # Auslieferung: Entwürfe, Marketing und Dokumente bleiben aus dem Produkt.
+      - name: Auslieferung ohne Entwürfe
+        run: npm run pruefung:auslieferung
+
+      # Genau eine Schutzprüfung im Code, und der Server setzt sie durch (WP-11).
+      - name: Eine Schutzprüfung
+        run: npm run pruefung:schutz-eine
+
+      # Fachprüfungen auf dem Server: Qualifikation, Ruhezeit, Tagesgrenze, Mindestbesetzung, Dienstarten nur mit org.edit (WP-22).
+      - name: Fachprüfungen Server
+        run: npm run pruefung:fachpruefung
+
+      # Auswertung für den Betriebsrat: nur Aggregate, Mindestgruppe 3 (WP-27).
+      - name: Betriebsrat-Auswertung
+        run: npm run pruefung:br-auswertung
+
+      # Kontrast nach WCAG 2.1: Ein Farbwert, der in beiden Paletten gut
+      # aussieht, kann trotzdem unter 4,5:1 liegen. Die Messung fand fünf
+      # Paarungen, darunter weiße Schrift auf Türkis mit 2,23:1.
+      - name: Kontrast
+        run: npm run pruefung:kontrast
+
+      # Gestalt: keine externen Ressourcen, Icons aus dem Satz, und keine
+      # neuen harten Hexwerte in der Oberfläche.
+      - name: Gestalt
+        run: npm run pruefung:gestalt
 
       # Branchenprofile: Kataloge, Rechtsgrundlagen, Paketzuordnung.
       - name: Branchenprofile
         run: npm run pruefung:branchen
+
+      # Branchenmodule (WP-19): Registry, Aktivierung je Betrieb, Rechte,
+      # Katalog-Erweiterungspunkt — Vertrag zwischen Kern und Modul; dazu
+      # jede Modulprüfung pruefungen/modul-<id>.test.js (Filter „modul-“).
+      - name: Branchenmodule
+        run: npm run pruefung:branchenmodule
 
       # Pflegepersonaluntergrenzen: Verhältniszahlen, Hilfskraftanteil,
       # und der Unterschied zwischen „eingehalten" und „nicht bewertbar".
@@ -75,6 +401,12 @@ jobs:
       # oder zu wenig — beides ist nicht zurückzunehmen.
       - name: Aufbewahrung
         run: npm run pruefung:aufbewahrung
+
+      # WP-26: Auskunft nach Art. 15 serverseitig (vollständig, Rechte geprüft),
+      # Löschlauf nach Aufbewahrungsfristen auf dem Server, Sicherungen und Spur
+      # nach festem Plan.
+      - name: DSGVO serverseitig
+        run: npm run pruefung:dsgvo-server
 
       # Läuft ohne Server: Schlüsselwechsel der Zugangscodes.
       - name: Zugangscodes
@@ -101,6 +433,18 @@ jobs:
       - name: Bremse im Prozess
         run: npm run pruefung:bremse-lokal
 
+      # WP-47: Bremsenkonzept für den Echtbetrieb — Schichtwechsel (130 Stempel in
+      # einem Betrieb), Anmeldewelle (gelungene Anmeldungen zählen nicht gegen
+      # Ziel/Gesamt), Fehlversuche weiter streng, Lastgrenzen mit Retry-After,
+      # Wiederholung der Oberfläche bei 429.
+      - name: Bremsen im Echtbetrieb (WP-47)
+        run: npm run pruefung:bremse-wp47
+
+      # SI-P7: Anmeldesperre. Gültige Codes kommen trotz gesperrter Herkunft durch, Fehlversuche
+      # bleiben begrenzt (auch bei Code-Rotation), IPv6 zählt je /64, parallele Anfragen.
+      - name: Anmeldesperre (SI-P7)
+        run: npm run pruefung:anmeldesperre
+
       # Der eigene Server: Ausliefern, Rückfall, Routing,
       # 6-MB-Grenze, kaputte Anfragen, sauberes Beenden.
       - name: Server
@@ -112,9 +456,245 @@ jobs:
       - name: Bereitstellungsskript
         run: npm run pruefung:zugaenge
 
+      # WP-18: Leitung lädt ein → Einlösen → Anmeldung mit richtiger Rolle; ein Code = eine Person.
+      - name: Einladungen
+        run: npm run pruefung:einladungen
+
       # Die Rechtetabellen in Oberfläche und Server dürfen nicht driften.
       - name: Rechtetabellen vergleichen
         run: npm run pruefung:matrix
+
+      # Was Beschäftigte und Betriebsrat von anderen Personen lesen: keine
+      # fremden Mitteilungen, Notrufe, Zustellwege oder Kalender-Geheimnisse.
+      - name: Leserechte
+        run: npm run pruefung:leserechte
+
+      # Das View-Modell für Beschäftigte und Betriebsrat: Jedes Feld braucht
+      # eine Entscheidung im Katalog (server/lib/sicht.mjs).
+      - name: Sicht der Beschäftigten
+        run: npm run pruefung:sicht
+
+      # Intelligence-Faktenpaket (WP-I11): Datenverträge, Positivliste je
+      # Funktion (Abdruck), Alias (keyed HMAC), Leck-Prüfung fail closed,
+      # Mandantentrennung, Property-Tests. Kein Modellaufruf, kein Netz.
+      - name: Intelligence-Faktenpaket (Positivliste, Alias, Leck-Prüfung)
+        run: npm run pruefung:intelligence
+
+      # Krankmeldung, Selbstplanung und Notruf von Beschäftigten: genau der
+      # vorgesehene Vorgang wird gespeichert, sonst nichts.
+      - name: Selbstservice der Beschäftigten
+        run: npm run pruefung:selbstservice
+
+      # Die Oberfläche benutzt den Selbstservice richtig und verspricht keine
+      # Zustellung, die es nicht gibt (Quelltextprüfung, kein Browser).
+      - name: Oberfläche Selbstservice
+        run: npm run pruefung:oberflaeche
+
+      # Gerenderte Ansichten (react-dom/server, echte Komponenten): ohne
+      # Ist-Daten kein Absturz und keine 0 (F1); ein offener Beginn bleibt
+      # unabhängig vom Plan sichtbar und beendbar (F2).
+      - name: Oberfläche gerendert
+        run: npm run pruefung:render
+
+      # WP-23: Entwürfe (nicht freigegebene Monate) gehen nicht an Beschäftigte.
+      - name: Entwürfe nicht an Beschäftigte
+        run: npm run pruefung:entwuerfe
+
+      # RB-1 (Betreiberentscheidung 2026-11-11): Dienstpläne verbindlich freigeben nur Leitung und Planung.
+      - name: Planfreigabe nur Leitung und Planung (RB-1)
+        run: npm run pruefung:rb1-plan-publish
+
+      # WP-25: Sicherungen in der Oberfläche (Regeln, Rendern, Server-Handler, ETag).
+      - name: Sicherungen in der Oberfläche
+        run: npm run pruefung:wiederherstellen-ui
+
+      # SI-P1/P2: Sicherungsschlüssel überleben weder Ersteller noch Wiederherstellung;
+      # Code-Sitzung endet mit dem Betrieb. Enthält den SIGTERM-Test (nur Linux).
+      - name: Sicherungsschlüssel und Code-Sitzung
+        run: npm run pruefung:sicherungsschluessel
+
+      # SI-P6: POST /api/zugaenge nur mit frischer Anmeldung und frischem zweiten Faktor;
+      # Leitung-Code nicht in Räumen mit wirksamer Leitung. Enthält den Lauf gegen einen
+      # echten Server im Produktionsmodus (Vorlauf).
+      - name: Zugangsanlage mit frischem Faktor und Kundenraumschutz
+        run: npm run pruefung:zugaenge-faktor
+
+      # Personen ohne gültige qualifikationen-Liste: fehlend/null wird [],
+      # ein falscher Typ in einer Eingabe 422; ein Altbestand wird beim
+      # Lesen nur in der Antwort angeglichen (gestalt.mjs).
+      - name: Personendaten
+        run: npm run pruefung:personendaten
+
+      # Mandantenstruktur beim Schreiben: genau ein Betrieb, der eigene, an
+      # seiner Stelle. Doppelte und ungültige Kennungen werden abgewiesen.
+      - name: Mandanten-Integrität
+        run: npm run pruefung:mandanten
+
+      # Sicherung, Vollausgabe und Wiederherstellung: nur der eigene Betrieb,
+      # getrennte Kontingente, sicheres Zurückspielen.
+      - name: Sicherungen
+        run: npm run pruefung:sicherungen
+
+      # Wiederherstellen mit derselben Grenze wie Speichern: Betreiberstamm, verborgene Personen- und Betriebsfelder aus dem jetzigen Stand.
+      - name: Wiederherstellung schützt Verborgenes
+        run: npm run pruefung:wiederherstellung-schutz
+
+      # WP-12: Kette A + B zusammen über die Schnittstelle und die Dateiablage (Rundreise je Rolle × Feld).
+      - name: Integrationsabnahme Kette A + B
+        run: npm run pruefung:abnahme-ab
+
+      # Abnahme V4 Strang C: echter Server — SIGKILL mitten im Schreiben und Wiederanlauf, Sicherung → Schaden →
+      # Wiederherstellung byteweise, SIGTERM (nur Linux); Branchenmodule über PUT je Rolle nicht einschaltbar;
+      # Import/KI/Teilweg/Hilfe/Demo/Registrierung bei verstümmelten Schaltern aus, kein ausgehender Netzverkehr.
+      - name: Abnahme V4 Strang C (Sicherung, Fehlerzustände, Module, KI/Import aus)
+        run: npm run pruefung:abnahme-c
+
+      # Preisanzeige: Leitung mit korrekter Preisgrundlage, Planung ohne Preise (B2).
+      - name: Preisanzeige nach Rolle
+        run: npm run pruefung:preisanzeige
+
+      # Leere Räume richtet nur der Betreiber ein (Demo mit fester Gestalt);
+      # Zugangscodes tragen die Kennung ihres Betriebs, alte werden gebunden.
+      - name: Erstbefüllung
+        run: npm run pruefung:erstbefuellung
+
+      # Die Schichtverantwortung schreibt nur in ihrem Bereich: Plan, Anträge,
+      # Krankmeldungen; Protokoll und Änderungen nur anhängend; keine
+      # Stempelzeiten, keine Zeiterfassung, kein Dienstbuch.
+      - name: Schichtverantwortung
+        run: npm run pruefung:schichtverantwortung
+
+      # Zeiten: Selbstauskunft nur neu, vergangen, mit geplantem Dienst;
+      # Stempeluhr nur heute oder gestern mit Nachtdienstbezug.
+      - name: Zeiterfassung
+        run: npm run pruefung:zeiterfassung
+
+      # WP-02: Schreiben unter der Sperre je Raum. Gleichzeitige Stempel und
+      # Speichervorgänge verlieren nichts; ein Konflikt endet in 409, nie in
+      # einem stillen „ok". Unlesbares wird nie überschrieben oder gelöscht
+      # (503), ein Abbruch mitten im Schreiben heilt beim nächsten Schreiben,
+      # Löschungen und Sicherungen laufen unter derselben Sperre.
+      # Dazu die Prozesssperre: ein Prozess je Ablage.
+      - name: Datenintegrität bei gleichzeitigem Schreiben
+        run: npm run pruefung:datenintegritaet
+      - name: Prozesssperre der Ablage
+        run: npm run pruefung:prozesssperre
+      # WP-28c: Schreib-Halt für die Sicherung unter Last (Drain, Frist,
+      # Wiedereintritt, Dateikanal), Mess-Skript in Kurzfassung (0 Schnitte
+      # mitten in einer Transaktion, 100 % Erfolg, >= 50 Schreibvorgänge/s)
+      # und die Sicherung unter parallelen Schreibvorgängen (WP-28b).
+      - name: Schreib-Halt und Sicherung unter Last
+        run: npm run pruefung:schreibhalt
+      # ACC45-Werkzeuge: Backlog-Unterbefehle, Vorprüfung, test-kurz (Exit-Code).
+      # Die Vorprüfung legt dafür ein Wegwerf-Git-Repo an.
+      - name: ACC45-Werkzeuge
+        run: npm run pruefung:acc45-werkzeuge
+
+      # ACC45-Status (eine Quelle): work-packages.json gültig, STATUS/DEPENDENCIES/
+      # GESAMTPLAN/ROADMAP-Zahlen aus der Quelle erzeugt, keine Statusschönung.
+      - name: ACC45-Status aus einer Quelle
+        run: npm run pruefung:acc45-status
+
+      # PWA (WP-37): Verknüpfungen, Fassung des Dienstarbeiters aus dem Bau,
+      # Zwischenspeicher je Sitzung und nach Anmeldung leer.
+      - name: PWA (Verknüpfungen, Dienstarbeiter, Zwischenspeicher)
+        run: npm run pruefung:pwa
+
+      # Personen in der Sicht der Schichtverantwortung: eigene Person, eigener
+      # Bereich, Springer-Pool, fremd — Positivliste, Rückfüllung beim Schreiben.
+      - name: Sicht der Schichtverantwortung
+        run: npm run pruefung:sicht-schicht
+
+      # Betreiberfelder oben und im Betrieb: für alle außer dem Betreiber
+      # wirkungslos; Notruf-Mitteilungen nur mit eigenem Notruf.
+      - name: Betreiberfelder
+        run: npm run pruefung:betreiberfelder
+
+      # Planung und Leitung: Positivkatalog, keine Geheimnisse fremder Personen,
+      # keine Betreiber- und Rechnungsdaten; Zustellfelder bis Commit 4.
+      - name: Sicht von Planung und Leitung
+        run: npm run pruefung:sicht-pl
+
+      # Vollausgabe: Umfang Leitung und Sicherungsschlüssel, keine Geheimnisse,
+      # keine Betreiberinterna.
+      - name: Vollausgabe
+        run: npm run pruefung:vollausgabe
+
+      # Sicherungsschlüssel und Zugang sperren: nur der eigene Betrieb.
+      - name: Verwaltungswege
+        run: npm run pruefung:verwaltungswege
+
+      # Rechtematrix: jede Datenklasse je Rolle und Lesepfad (RECHTEMATRIX.md).
+      - name: Rechtematrix
+        run: npm run pruefung:rechtematrix
+
+      # Kalender: nur die eigene Person, Rotation, keine Wirkung fremder Geheimnisse.
+      - name: Kalender-Rechte
+        run: npm run pruefung:kalender-rechte
+
+      # Versand und Zustellung auf dem Server: Rollen, Mandanten, kein Orakel,
+      # Notruf und Tausch vom Server, genau einmal je Kanal (Commit 4).
+      - name: Zustellung-Rechte
+        run: npm run pruefung:zustellung-rechte
+
+      # WP-30 Mail und Push in Produktion: Warteschlange mit Backoff, keine Doppelzustellung, Bounce,
+      # Abos (410, SSRF-Schutz, Logout, Löschung), Inhalte ohne Personendaten, Entwurfsregel, Bremsen.
+      # Alles gegen Attrappen: nichts geht hinaus, keine Schlüssel.
+      - name: Mail und Push (WP-30)
+        run: npm run pruefung:mail-push-produktion && npm run pruefung:mail-push-anbieter && npm run pruefung:mail-push-handler
+
+      # SI-P3: keine Mail aus Test- und Demoräumen ohne Freigabe (CENTRIC_TESTRAUM_MAIL),
+      # mit Freigabe Tagesobergrenze je Raum; HTTP-Sonde über /zustellung/senden. Gegen Attrappen.
+      - name: Mail aus Testräumen (SI-P3)
+        run: npm run pruefung:testraum-mail
+
+      # Ausschreibungen: verantwortende Einheit, Bewerbungen nur bei eigener Einheit (C1).
+      - name: Bereich Ausschreibungen
+        run: npm run pruefung:bereich-ausschreibungen
+
+      # Dienstbuch und Übergaben: nur die eigene Einheit, Übergabe je Tag, Dienst und Einheit (C2).
+      - name: Bereich Dienstbuch und Übergaben
+        run: npm run pruefung:bereich-dienstbuch-uebergaben
+
+      # Tagesnotizen: nur die eigene Einheit, Rückfüllung je Tagesliste (C3).
+      - name: Bereich Tagesnotizen
+        run: npm run pruefung:bereich-tagesnotizen
+
+      # Schutzmerkmale: Einsatzregeln statt Rohdaten für die Schichtverantwortung (S1).
+      - name: Schutzmerkmale Sicht
+        run: npm run pruefung:schutzmerkmale-sicht
+
+      # Ersatzsuche: harte Schutzregeln sperren, auf Rohdaten und Einsatzregeln (S2).
+      - name: Schutzregeln Ersatzsuche
+        run: npm run pruefung:schutzregeln-ersatzsuche
+
+      # Betreiber: Positivliste statt des ganzen Raums, keine Personaldaten (D1).
+      - name: Betreibersicht
+        run: npm run pruefung:betreiber-sicht
+
+      # session ganz oben ist kein Bestandsfeld: verworfen, null für jede Rolle, Altbestand bereinigt (D1b).
+      - name: Session-Kanal
+        run: npm run pruefung:session-kanal
+
+      # session am Betrieb ebenso: nie ausgeliefert, verworfen, Altbestand bereinigt — auch Vollausgabe, Wiederherstellung (D1c).
+      - name: Session am Betrieb
+        run: npm run pruefung:mandanten-session
+
+      # Unbekannte Rolle: kein Bestand, 403 außer Abmelden; /einrichten nur bekannte Rollen (D1d).
+      - name: Unbekannte Rollen
+        run: npm run pruefung:rollen-failclosed
+
+      # Unbekannte Rolle schon an den Eintrittspunkten: keine Sitzung; Kalender und Zustellung 403 (D1e).
+      - name: Unbekannte Rollen an Eintrittspunkten
+        run: npm run pruefung:rollen-eintritt
+
+      # Kalenderfeed: bei jedem Abruf Raum, Betrieb, Person, Status und Rolle prüfen; Altfeeds widerrufen (D1f, #14).
+      - name: Kalenderfeed-Autorität
+        run: npm run pruefung:kalender-feed-autoritaet
+
+      # Kalenderfeed live aus dem Bestand, nur eigene Dienste, Herkunft (Konto/Mitgliedschaft/Code), DTSTAMP, raumLoeschen, Entwürfe (WP-24).
+      - name: Kalenderfeed live und gebunden
+        run: npm run pruefung:kalender-feed-live
 
       # Das Fundament der persönlichen Konten. Fünf Module, die noch kein
       # Endpunkt aufruft — geprüft werden sie trotzdem hier und nicht erst,
@@ -135,6 +715,31 @@ jobs:
       # gleichzeitigen Einlösungen genau eine gewinnt.
       - name: Einmal-Token
         run: npm run pruefung:token
+
+      # WP-32: Zweiter Faktor (TOTP, RFC 6238) für Verwalterschlüssel —
+      # Referenzvektoren, Fenster ±1, keine Wiederverwendung, Bremse,
+      # Pflicht, Abschalten nur mit Code, kein Geheimnis in Antworten.
+      - name: Zwei-Faktor für Verwalterschlüssel
+        run: npm run pruefung:zweifaktor
+
+      # WP-05: /gesund-Stufen, Fehlerzählung, Alarm-Entprellung,
+      # Healthcheck-Kompatibilität.
+      - name: Überwachung (/gesund, Alarm)
+        run: npm run pruefung:gesund
+
+      # WP-41: Verweise der Betriebs- und Nutzerdokumentation, jede
+      # Umgebungsvariable im Betriebshandbuch, keine Geheimnisse.
+      - name: Dokumentation
+        run: npm run pruefung:doku
+
+      # WP-32b (B-XFF-1): X-Forwarded-For nur von vertrauten Proxys, von
+      # rechts gelesen; gefälschter Kopf ändert die Herkunft nicht.
+      - name: Herkunft und X-Forwarded-For
+        run: npm run pruefung:herkunft
+
+      # WP-32b: Zweiter Faktor für die Anmeldung mit Betreibercode.
+      - name: Zwei-Faktor für Betreibercodes
+        run: npm run pruefung:betreiber-zweifaktor
 
       # Die aus daten.mjs herausgezogene Sitzungslogik, unverändert im
       # Verhalten: Fristen, Untätigkeit, Drosselung, Sicherungsschlüssel.
@@ -216,6 +821,60 @@ jobs:
       - name: Betriebsauswahl
         run: npm run pruefung:betriebsauswahl
 
+      # OPT-1-F: Leitungskonto nach der Ersteinrichtung — Passwort plus zweiter
+      # Faktor am Konto, Sitzung mit Faktor, Fehlversuchs-Sperre; verbrauchte
+      # Einrichtungscodes wirken nie als Anmeldung.
+      - name: Konto-Anmeldeweg mit zweitem Faktor
+        run: npm run pruefung:konto-anmeldeweg
+
+      # OPT-4: Faktorpflicht je Konto (nur setzbar, nie entfernbar) gilt in der
+      # Betriebsauswahl und bei jeder Arbeitssitzung, auch nach Rollenwechsel.
+      - name: Faktorpflicht je Konto (OPT-4)
+        run: npm run pruefung:konto-faktor-pflicht
+
+      # WR-2: Neugenerierung der Wiederherstellungscodes über alle Eingänge nur
+      # mit frischem Faktor, ein Schritt unter einer Sperre, Schlüsselepoche.
+      - name: Wiederherstellungscodes neu erzeugen (WR-2)
+        run: npm run pruefung:wiederherstellung-neu
+
+      # WR-3: Verlustfall mit Vier-Augen-Freigabe — 24 h Antrag, Token 15 min,
+      # frischer TOTP je Freigabe, nur Leitung desselben Mandanten, keine
+      # Selbstfreigabe, Einheitsregel, Gleichzeitigkeit, Schlüsselepoche.
+      - name: Kontowiederherstellung Verlustfall (WR-3)
+        run: npm run pruefung:kontowiederherstellung-verlust
+
+      # WR-6: Oberfläche zum Verlustweg (Antrag, Freigabe, Codeanzeige) ohne Browser; die
+      # Messung am Telefon läuft von Hand: pruefung:verlustweg-browser.
+      - name: Kontowiederherstellung Oberfläche (WR-6)
+        run: npm run pruefung:verlustweg-oberflaeche
+
+      # RB-2 (Betreiberentscheidung 2026-11-11): Krankmeldung in zwei Stufen — vorläufig Schichtverantwortung, endgültig Planung/Leitung.
+      - name: Krankmeldung zweistufig (RB-2)
+        run: npm run pruefung:rb2-krankmeldung
+
+      # RB-3 (Betreiberentscheidung 2026-11-11, Ergänzung): Altrolle „kunde" ohne plan.publish und ohne
+      # endgültige Krankmeldungsbestätigung; Demo nur über ausdrücklich zugewiesene Rollen.
+      - name: Kundenrolle ohne Freigabe und endgültige Krankmeldung (RB-3)
+        run: npm run pruefung:rb3-kunde-ohne-publish
+
+      # RB-4 (Betreiberentscheidung 2026-11-11): Benachrichtigung bei Eingang einer Krankmeldung — Planung, Leitung,
+      # Schichtverantwortung nur bei Dienst im Bereich; Push und E-Mail ohne Gesundheitsangaben.
+      - name: Krankmeldung Benachrichtigung (RB-4)
+        run: npm run pruefung:rb4-krankmeldung-benachrichtigung
+
+      # RB-5 (Betreiberentscheidung 2026-11-11): offener Fall — Plan unverändert, interne Markierung
+      # „Besetzung klärungsbedürftig“, Ersatz nur vorbereitet (nie geschrieben).
+      - name: Klärungsbedürftige Besetzung (RB-5)
+        run: npm run pruefung:rb5-klaerung
+
+      # SI-P4: Passwortfelder im Betreiber-2FA-Block (wie WR-6), ohne Browser.
+      - name: Betreiber-Passwortfelder (SI-P4)
+        run: npm run pruefung:betreiber-passwortfelder
+
+      # Smoke: Tageswechsel zwischen Skript und Server (Berlin-Tag, kein eingefrorener Tag).
+      - name: Smoke-Tageswechsel
+        run: npm run pruefung:smoke-tageswechsel
+
       # Die Generation einer Account-Raum-Beziehung: Sie zählt beim Entzug
       # weiter, damit nichts Altes zu einer neuen Mitgliedschaft passt.
       - name: Mitgliedschaftsgeneration
@@ -294,6 +953,14 @@ jobs:
       - name: Sicherung und Wiederherstellung
         run: npm run pruefung:sicherung-ablage
 
+      # Die festen Gate-Proben (werkzeug/staging-*.mjs) gegen einen frisch
+      # gestarteten Server auf 127.0.0.1:3000 mit leerer Ablage: Smoke, Geo,
+      # Aufräumen samt Nachweis in der Ablage, Altlasten-Abbruch, Schutz
+      # fremder und namensähnlicher Räume, kein untergeschobenes Ziel.
+      # Läuft vor dem Container-Teil, der Port 3000 danach belegt.
+      - name: Gate-Proben gegen frischen Server
+        run: npm run pruefung:staging-proben
+
       - name: Übersetzen
         run: npm run build
 
@@ -301,10 +968,10 @@ jobs:
       # ausgeliefert wird — nicht gegen den Entwicklungsserver. Der Aufbau
       # ist derselbe wie in deploy.yml: bauen, gehärtet starten, /gesund
       # abwarten. Das Bild bleibt hier; nach GHCR lädt nur deploy.yml.
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
       - name: Bild bauen (lokal, für die Prüfung)
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: .
           load: true
@@ -331,7 +998,9 @@ jobs:
             -e CENTRIC_SELBSTSTART=true \
             -e CENTRIC_DEMO=true \
             -e CENTRIC_BASIS=http://127.0.0.1:3000 \
+            -e CENTRIC_VERTRAUTE_PROXYS=127.0.0.1,::1,172.16.0.0/12 \
             --user 1000:1000 --read-only --tmpfs /tmp --cap-drop ALL \
+            -e CENTRIC_ZUSTAND=/zustand --tmpfs /zustand:uid=1000,gid=1000,mode=0700 \
             --security-opt no-new-privileges:true --memory 512m \
             "$BILD"
           for i in $(seq 1 30); do
@@ -339,6 +1008,22 @@ jobs:
             sleep 1
           done
           curl -sf http://127.0.0.1:3000/gesund
+          # WP-32d: In production ist der zweite Faktor auch für den Verwalterschlüssel Pflicht. Wie ein Betreiber
+          # richtet der Vorlauf ihn ein — hier direkt in der Ablage des Containers (docker exec: Datenordner, Pfeffer
+          # und Schlüssel sind dort gesetzt), ohne die Bremse von /einrichten zu belasten — und stellt den Nachweis
+          # aus. Ihn tragen alle folgenden Schritte als CENTRIC_ZWEIFAKTOR_NACHWEIS (gilt 15 Minuten, nur für
+          # diesen Schlüssel, nur für diesen Container; der nächste frische Container überschreibt ihn).
+          NACHWEIS="$(docker exec centric-pruefung node --input-type=module -e '
+            import "/app/werkzeug/betreiber-faktor-vorlauf.mjs";
+            const n = await globalThis.__verwalterEinrichten(process.env.CENTRIC_ADMIN);
+            if (!n) { console.error("kein Nachweis"); process.exit(1); }
+            console.log(n.nachweis + " " + n.geheimnis);' | tail -n 1)"
+          test -n "$NACHWEIS"
+          GEHEIMNIS="${NACHWEIS#* }"; NACHWEIS="${NACHWEIS%% *}"
+          echo "::add-mask::$NACHWEIS"; echo "::add-mask::$GEHEIMNIS"
+          echo "CENTRIC_ZWEIFAKTOR_NACHWEIS=$NACHWEIS" >> "$GITHUB_ENV"
+          # Das Geheimnis braucht nur die Prüfung der Verwalterkonten (Konten anlegen verlangt einen frischen Code).
+          echo "CENTRIC_ZWEIFAKTOR_GEHEIMNIS=$GEHEIMNIS" >> "$GITHUB_ENV"
           SKRIPT
           chmod +x "$RUNNER_TEMP/container-neu.sh"
 
@@ -352,18 +1037,255 @@ jobs:
           CENTRIC_ADMIN: ci-geheim
           CENTRIC_HERKUNFT: 10.9.8.9
 
+      # Dieselben Gate-Proben im gebauten Bild, so aufgerufen wie später auf
+      # Staging: docker exec, gehärteter Container (read-only, 1000:1000),
+      # eigener frischer Container — die Rechteprüfung hat das Kontingent
+      # für /einrichten gerade verbraucht.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Gate-Proben im Bild (docker exec)
+        run: |
+          # Der Nachweis kommt aus dem Start des Containers (CENTRIC_ZWEIFAKTOR_NACHWEIS in der Umgebung dieses Schritts).
+          docker exec -e CENTRIC_ZWEIFAKTOR_NACHWEIS centric-pruefung node /app/werkzeug/staging-smoke.mjs
+          docker exec -e CENTRIC_ZWEIFAKTOR_NACHWEIS centric-pruefung node /app/werkzeug/staging-geo.mjs
+          docker exec centric-pruefung node /app/werkzeug/staging-aufraeumen.mjs
+          # Kein untergeschobenes Ziel; im Bild nur die drei Proben aus werkzeug/.
+          if docker exec centric-pruefung node /app/werkzeug/staging-smoke.mjs http://192.0.2.1:3000; then
+            echo "Probe nahm ein Argument an"; exit 1; fi
+          if docker exec centric-pruefung test -e /app/werkzeug/zugaenge-anlegen.sh; then
+            echo "werkzeug/zugaenge-anlegen.sh im Bild"; exit 1; fi
+          if docker exec centric-pruefung test -e /app/pruefungen; then
+            echo "pruefungen/ im Bild"; exit 1; fi
+          docker exec centric-pruefung ls /app/werkzeug
+
+      # Rückweg bei unlesbarer Datei (WP-45b, B3): ablage-pruefen und
+      # journal-pruefen im Bild, aufgerufen wie in BETRIEB-SICHERUNG §4a
+      # (docker run, uid 1000, ohne Netz) — eigenes Wegwerf-Volume.
+      - name: Rückweg-Werkzeuge im Bild
+        run: bash pruefungen/werkzeuge-im-bild.sh "$BILD"
+
+      # Doppelter Betrieb und Reihenfolge im Raum mit drei Betrieben — gegen
+      # den echten Anfrageweg, im eigenen frischen Container.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Mandanten-Integrität (HTTP)
+        run: npm run pruefung:mandanten-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.9.8.6
+
+      # Rollen, Umfang, Bremse, Konfliktschutz und Protokoll von Sicherung und
+      # Wiederherstellung — im eigenen frischen Container.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Sicherungen (HTTP)
+        run: npm run pruefung:sicherungen-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.9.7.
+
+      # Kein Code für Kundenrollen im leeren Raum, kein PUT auf den leeren
+      # Raum, Demo-Prüfung und Bindung an die Kennung — im frischen Container.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Erstbefüllung (HTTP)
+        run: npm run pruefung:erstbefuellung-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.9.6.
+
+      # Zwei Bereiche, echte Schreibwege, Nachlesen als Leitung.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Schichtverantwortung (HTTP)
+        run: npm run pruefung:schichtverantwortung-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.9.5.
+
+      # Selbstauskunft und Stempeln über die echten Wege, Angriffe per PUT.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Zeiterfassung (HTTP)
+        run: npm run pruefung:zeiterfassung-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.9.4.
+
+      # Lesen als Schichtverantwortung, Rundweg der gekürzten Sicht, Nachlesen als Leitung.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Sicht der Schichtverantwortung (HTTP)
+        run: npm run pruefung:sicht-schicht-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.9.3.
+
+      # Planung und Leitung schicken veränderte Betreiberfelder; der Betreiber liest nach.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Betreiberfelder (HTTP)
+        run: npm run pruefung:betreiberfelder-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.9.2.
+
+      # Lesen als Planung und Leitung, Rundweg, Nachlesen als Betreiber.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Sicht von Planung und Leitung (HTTP)
+        run: npm run pruefung:sicht-pl-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.9.1.
+
+      # Leitung und Sicherungsschlüssel holen die Vollausgabe; der Betreiber liest nach.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Vollausgabe (HTTP)
+        run: npm run pruefung:vollausgabe-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.9.0.
+
+      # Zwei Betriebe in einem Raum: A greift nicht in B ein.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Verwaltungswege (HTTP)
+        run: npm run pruefung:verwaltungswege-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.8.9.
+
+      # Kalender über echte Anmeldung: zwei Betriebe, fremde Geheimnisse, Rotation.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Kalender-Rechte (HTTP)
+        run: npm run pruefung:kalender-rechte-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.8.8.
+
+      # Versand über echte Anmeldung: zwei Betriebe, Notruf, Tausch, Sichten.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Zustellung-Rechte (HTTP)
+        run: npm run pruefung:zustellung-rechte-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.8.7.
+
+      # Ausschreibungen über echte Anmeldung: Sicht, Anlegen, Vergeben, Rundweg.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Bereich Ausschreibungen (HTTP)
+        run: npm run pruefung:bereich-ausschreibungen-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.8.6.
+
+      # Dienstbuch und Übergaben über echte Anmeldung.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Bereich Dienstbuch und Übergaben (HTTP)
+        run: npm run pruefung:bereich-dienstbuch-uebergaben-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.8.5.
+
+      # Tagesnotizen über echte Anmeldung.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Bereich Tagesnotizen (HTTP)
+        run: npm run pruefung:bereich-tagesnotizen-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.8.4.
+
+      # Schutzmerkmale über echte Anmeldung: Sicht, Rundweg, Manipulation.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Schutzmerkmale Sicht (HTTP)
+        run: npm run pruefung:schutzmerkmale-sicht-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.8.3.
+
+      # Fachprüfungen über echte Anmeldung: 403, 409 mit Befundliste, Bestätigung, org.edit (WP-22).
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Fachprüfungen Server (HTTP)
+        run: npm run pruefung:fachpruefung-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.7.1.
+
+      # Betreibersicht über echte Anmeldung: GET, 409, Rundweg, Anlegen und Löschen.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Betreibersicht (HTTP)
+        run: npm run pruefung:betreiber-sicht-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.8.2.
+
+      # session ganz oben: Betrieb A schreibt, B und Betreiber sehen nichts; 409 ebenso (D1b).
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Session-Kanal (HTTP)
+        run: npm run pruefung:session-kanal-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.8.1.
+
+      # Geo V1 über HTTP: Schalter mit Bestätigung, drei Zustände, Standortvalidierung, keine Rohkoordinate.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Standortprüfung beim Stempeln (HTTP)
+        run: npm run pruefung:geo-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.8.0.
+
       # Der Sicherungsschlüssel lebt außerhalb des Browsers und muss genau
       # eines können. Die Prüfung fand hier eine Lücke, die es fast in den
       # Betrieb geschafft hätte.
       # Benannte Verwalterkonten statt eines Geheimnisses für alle.
       - name: Container frisch starten
         run: "$RUNNER_TEMP/container-neu.sh"
+      # Die Verwalterprüfung legt ein benanntes Konto an, dessen zweiten Faktor der Vorlauf einrichten muss; das
+      # allein sprengte über die API die Gesamtgrenze von /einrichten (20 je 10 Minuten, die Prüfung braucht 18).
+      # Deshalb läuft sie über serverlauf.mjs: frischer Server (NODE_ENV=production, eigene Wegwerfablage), der Vorlauf
+      # richtet den Faktor direkt in dieser Ablage ein. Die Bremse bleibt unverändert; der Container-Nachweis der
+      # vorigen Schritte gehört nicht hierher.
       - name: Verwalterkonten
-        run: npm run pruefung:verwalter
+        run: node pruefungen/serverlauf.mjs verwalter
         env:
-          CENTRIC_BASIS: http://127.0.0.1:3000
           CENTRIC_ADMIN: ci-geheim
+          CENTRIC_PFEFFER: ci-pfeffer-nur-zum-pruefen
           CENTRIC_HERKUNFT: 10.9.8.8
+          CENTRIC_ZWEIFAKTOR_NACHWEIS: ""
+          CENTRIC_ZWEIFAKTOR_GEHEIMNIS: ""
 
       # Ein Demozugang steht ohne Code offen. Das Zurückziehen muss deshalb
       # sofort wirken — es wirkte nicht: Die Sperre stand im Datensatz und
@@ -397,3 +1319,43 @@ jobs:
       - name: Container-Logs (bei Fehler)
         if: failure()
         run: docker logs centric-pruefung
+
+  # WP-33 Teil 3: Browserabnahme mit Playwright und axe-core (WCAG 2.2 AA) an den acht
+  # Viewports der Gerätematrix WP-21 (src/ui/geraete.js). Eigener Job neben `pruefen`,
+  # damit die vitest-Kette unverändert bleibt. Keine Geheimnisse: Server, Verwalterschlüssel
+  # und Zugänge entstehen zufällig je Lauf in e2e/global-setup.mjs (Demo-Bestand, erfundene
+  # Personen). Chromium kommt in der zur gepinnten @playwright/test-Fassung passenden Version
+  # (Lockfile), nur in diesem Job. Anleitung: docs/acc45/WP-33-PLAYWRIGHT-AXE.md.
+  browser-abnahme:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
+
+      - name: Chromium für Playwright installieren
+        run: npx --no-install playwright install --with-deps chromium
+
+      - name: Browserabnahme (Playwright, axe, 8 Viewports)
+        run: npm run e2e
+
+      # Vollständige axe-Befunde je Fläche und Viewport (alle Schweregrade) und der JSON-Bericht.
+      # Keine Bildschirmfotos, Spuren oder Videos (playwright.config.mjs).
+      - name: Befunde als Artefakt
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: browser-abnahme
+          path: |
+            e2e/ergebnisse/axe
+            e2e/ergebnisse/ergebnis.json
+          retention-days: 14
+          if-no-files-found: warn

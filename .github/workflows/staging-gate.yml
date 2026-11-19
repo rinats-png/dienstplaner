@@ -1,0 +1,168 @@
+# Staging-Gate (C2, Vorbereitung): testet den tatsächlichen Release-Kandidaten per UNVERÄNDERLICHEM Digest.
+#
+# Stand: VORBEREITET, AUSGESCHALTET. Nichts hiervon läuft, bis der Betreiber die Repository-Variable
+# STAGING_GATE_AKTIV auf "true" setzt (Betreiberaufgabe, docs/acc45/STAGING-O2-VORBEREITUNG.md). Ohne sie
+# wird der Job übersprungen.
+#
+# Grenzen (per Prüfung festgenagelt, pruefungen/staging-o2.test.js):
+#   - nur von Hand (workflow_dispatch); kein push, kein schedule, kein workflow_run, kein workflow_call;
+#   - keine automatische Auslieferung: es gibt keinen Schritt, der den VPS, SSH oder die Umgebung "produktion"
+#     berührt, und kein anderer Workflow ruft dieses Gate auf; deploy.yml bleibt unverändert;
+#   - Rechte: contents: read; der Job zusätzlich packages: read (nur zum Ziehen des Bilds). Kein write;
+#   - keine eigenen Geheimnisse: Verwalterschlüssel und Pfeffer entstehen zufällig je Lauf, werden maskiert und nie
+#     ausgegeben; das GITHUB_TOKEN geht nur per Standardeingabe an docker login;
+#   - das Bild wird per Digest gezogen und nach dem Ziehen gegen den Digest und gegen den Commit (Label
+#     org.opencontainers.image.revision = geprüfter Quellstand) abgeglichen; ein Tag ist nie zulässig;
+#   - es wird kein Bild veröffentlicht, kein DNS und keine Infrastruktur verändert.
+# Der Lauf ist KEIN Ersatz für die Abnahme auf der Staging-VM (O2); er belegt dasselbe Bild vorab auf einem
+# Wegwerf-Runner. Nachweis: Artefakt staging-nachweis.json (Digest, Commit, Lauf, Ergebnisse).
+name: Staging-Gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      digest:
+        description: "Digest des Release-Kandidaten (sha256:<64 hex>), kein Tag"
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  BILD_REPO: ghcr.io/${{ github.repository }}
+
+jobs:
+  gate:
+    if: ${{ vars.STAGING_GATE_AKTIV == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: read
+    env:
+      DIGEST: ${{ inputs.digest }}
+    steps:
+      - name: Eingabe prüfen (nur Digest)
+        run: |
+          [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::Eingabe digest ist kein Digest (sha256:<64 hex>); Tags sind nicht zulässig."; exit 1; }
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
+
+      - name: Chromium für Playwright installieren
+        run: npx --no-install playwright install --with-deps chromium
+
+      - name: Bild per Digest ziehen und abgleichen
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin >/dev/null
+          docker pull "$BILD_REPO@$DIGEST" >/dev/null
+          docker logout ghcr.io >/dev/null
+          gezogen="$(docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$BILD_REPO@$DIGEST")"
+          echo "$gezogen" | grep -qx "$BILD_REPO@$DIGEST" || { echo "::error::gezogenes Bild trägt den erwarteten Digest nicht"; exit 1; }
+          rev="$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$BILD_REPO@$DIGEST")"
+          [ "$rev" = "$GITHUB_SHA" ] || { echo "::error::Bild-Commit ($rev) ist nicht der geprüfte Quellstand ($GITHUB_SHA). Workflow auf dem Commit des Bilds starten."; exit 1; }
+          echo "REVISION=$rev" >> "$GITHUB_ENV"
+          echo "BILD=$BILD_REPO@$DIGEST" >> "$GITHUB_ENV"
+
+      # Container 1: wie auf der Produktion (NODE_ENV=production, gehärtet), Gate-Proben im Bild wie in pruefung.yml.
+      - name: Container starten (Produktionsmodus, gehärtet)
+        run: |
+          set -euo pipefail
+          ADMIN="$(openssl rand -hex 24)"; PFEFFER="$(openssl rand -hex 24)"
+          echo "::add-mask::$ADMIN"; echo "::add-mask::$PFEFFER"
+          docker run -d --name staging-gate-prod -p 127.0.0.1:3000:3000 \
+            -e CENTRIC_ADMIN="$ADMIN" -e CENTRIC_PFEFFER="$PFEFFER" \
+            -e CENTRIC_BASIS=http://127.0.0.1:3000 \
+            -e CENTRIC_VERTRAUTE_PROXYS=127.0.0.1,::1,172.16.0.0/12 \
+            --user 1000:1000 --read-only --tmpfs /tmp --cap-drop ALL \
+            -e CENTRIC_ZUSTAND=/zustand --tmpfs /zustand:uid=1000,gid=1000,mode=0700 \
+            --security-opt no-new-privileges:true --memory 512m \
+            "$BILD" >/dev/null
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:3000/gesund >/dev/null && break; sleep 1; done
+          curl -sf http://127.0.0.1:3000/gesund >/dev/null
+          NACHWEIS="$(docker exec staging-gate-prod node --input-type=module -e '
+            import "/app/werkzeug/betreiber-faktor-vorlauf.mjs";
+            const n = await globalThis.__verwalterEinrichten(process.env.CENTRIC_ADMIN);
+            if (!n) { console.error("kein Nachweis"); process.exit(1); }
+            console.log(n.nachweis + " " + n.geheimnis);' | tail -n 1)"
+          test -n "$NACHWEIS"
+          GEHEIMNIS="${NACHWEIS#* }"; NACHWEIS="${NACHWEIS%% *}"
+          echo "::add-mask::$NACHWEIS"; echo "::add-mask::$GEHEIMNIS"
+          echo "CENTRIC_ZWEIFAKTOR_NACHWEIS=$NACHWEIS" >> "$GITHUB_ENV"
+
+      - name: Gate-Proben im Bild (Smoke, Geo, Aufräumen)
+        run: |
+          docker exec -e CENTRIC_ZWEIFAKTOR_NACHWEIS staging-gate-prod node /app/werkzeug/staging-smoke.mjs
+          docker exec -e CENTRIC_ZWEIFAKTOR_NACHWEIS staging-gate-prod node /app/werkzeug/staging-geo.mjs
+          docker exec staging-gate-prod node /app/werkzeug/staging-aufraeumen.mjs
+          if docker exec staging-gate-prod test -e /app/pruefungen; then echo "pruefungen/ im Bild"; exit 1; fi
+
+      - name: Container 1 entfernen
+        if: ${{ always() }}
+        run: docker rm -fv staging-gate-prod >/dev/null 2>&1 || true
+
+      # Container 2: dasselbe Bild, nur NODE_ENV=development und Demo/Selbststart, damit die vorhandene Playwright-Suite
+      # (WP-33, e2e/) ihren synthetischen Demo-Bestand anlegen kann. Sie läuft gegen 127.0.0.1:3231, nie gegen Staging oder Produktion.
+      - name: Browserabnahme (Playwright, axe, 8 Viewports) gegen das Bild
+        env:
+          E2E_PORT: "3231"
+        run: |
+          set -euo pipefail
+          ADMIN="$(openssl rand -hex 24)"; PFEFFER="$(openssl rand -hex 24)"
+          echo "::add-mask::$ADMIN"; echo "::add-mask::$PFEFFER"
+          docker run -d --name staging-gate-e2e -p 127.0.0.1:3231:3000 \
+            -e NODE_ENV=development -e CENTRIC_DEMO=true -e CENTRIC_SELBSTSTART=true \
+            -e CENTRIC_ADMIN="$ADMIN" -e CENTRIC_PFEFFER="$PFEFFER" \
+            -e CENTRIC_BASIS=http://127.0.0.1:3231 \
+            -e CENTRIC_VERTRAUTE_PROXYS=127.0.0.1,::1,172.16.0.0/12 \
+            --user 1000:1000 --read-only --tmpfs /tmp --cap-drop ALL \
+            -e CENTRIC_ZUSTAND=/zustand --tmpfs /zustand:uid=1000,gid=1000,mode=0700 \
+            --security-opt no-new-privileges:true --memory 512m \
+            "$BILD" >/dev/null
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:3231/gesund >/dev/null && break; sleep 1; done
+          curl -sf http://127.0.0.1:3231/gesund >/dev/null
+          E2E_EXTERN_ADMIN="$ADMIN" npm run e2e
+
+      - name: Container 2 entfernen
+        if: ${{ always() }}
+        run: docker rm -fv staging-gate-e2e >/dev/null 2>&1 || true
+
+      - name: Nachweis zusammenstellen (ohne Geheimnisse)
+        if: ${{ always() }}
+        env:
+          ERGEBNIS: ${{ job.status }}
+          LAUF: ${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          mkdir -p staging-nachweis
+          node -e '
+            const fs = require("fs");
+            let e2e = null;
+            try { const r = JSON.parse(fs.readFileSync("e2e/ergebnisse/ergebnis.json", "utf8")); e2e = r.stats || null; } catch {}
+            fs.writeFileSync("staging-nachweis/staging-nachweis.json", JSON.stringify({
+              digest: process.env.DIGEST, commit: process.env.GITHUB_SHA, lauf: process.env.LAUF,
+              ergebnis: process.env.ERGEBNIS, browserabnahme: e2e, erstellt: new Date().toISOString(),
+            }, null, 2) + "\n");'
+
+      - name: Nachweis und axe-Befunde als Artefakt
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: staging-nachweis
+          path: |
+            staging-nachweis/staging-nachweis.json
+            e2e/ergebnisse/axe
+            e2e/ergebnisse/ergebnis.json
+          retention-days: 30
+          if-no-files-found: warn

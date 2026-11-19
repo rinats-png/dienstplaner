@@ -8,3 +8,7 @@ dist
 
 # Wegwerfablage für die lokale Entwicklung (ENTWICKLUNG.md)
 daten-dev
+
+# Abnahmebilder des Design-Befehls (lokal, groß)
+design/abnahme
+__pycache__

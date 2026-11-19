@@ -1,0 +1,6 @@
+Personalnummer;Nachname;Vorname;E-Mail;Einheit;Eintritt;Wochenstunden
+TP-1001;Testperson 01;Fiktiv;testperson01@example.invalid;Wohnbereich 1;01.02.2026;38,5
+TP-1002;Testperson 02;Fiktiv;testperson02@example.invalid;Wohnbereich 1;2026-03-01;30
+TP-1003;Testperson 03;Fiktiv;;Wohnbereich 1;;20
+TP-1004;Testperson 04;Fiktiv;testperson04@example.invalid;Wohnbereich 1;15.04.2026;40
+TP-1005;Testperson 05;Fiktiv;;Wohnbereich 1;01.05.2026;

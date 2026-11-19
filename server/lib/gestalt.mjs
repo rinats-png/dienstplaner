@@ -15,18 +15,412 @@
    Gründe, viel zu löschen — aber rückholbar gemacht.
    ========================================================================== */
 
+import { aufbewahrungFehler, aufbewahrungGeaendert } from "./aufbewahrung.mjs";
+import { kalendertagEcht, UNGUELTIGER_KALENDERTAG } from "./betriebszeit.mjs";
+import { FAELLE_TAGESFELDER } from "./krankmeldung.mjs";
+import { pauseAngabe, PAUSE_MAX } from "./zeiterfassung.mjs";
+import { pauseZuLang } from "./zeitregeln.mjs";
+
 /** Felder, die ein Bestand haben muss, um überhaupt einer zu sein. */
 const PFLICHT = ["mandanten"];
 
 /** Listen je Betrieb, die ein Array sein müssen, wenn sie vorhanden sind. */
 const LISTEN = ["personen", "einheiten", "dienstarten", "abwesenheiten",
-  "anfragen", "qualifikationen", "standorte"];
+  "anfragen", "qualifikationen", "standorte", "einsatzorte", "uebergaben"];
+
+/**
+ * Altform angleichen (Commit C2): Über die Betreiberkonsole angelegte
+ * Betriebe trugen `uebergaben: {}` statt einer Liste. Inhalt konnte darin
+ * nie stehen — das Speichern einer Übergabe scheiterte daran schon im
+ * Browser. Ein leeres Objekt wird zur leeren Liste, bevor die Gestalt
+ * geprüft wird; alles andere bleibt, wie es ist (und fällt dann auf).
+ * @param {any} bestand
+ */
+export function uebergabenAngleichen(bestand) {
+  if (!bestand || typeof bestand !== "object" || !Array.isArray(bestand.mandanten)) return bestand;
+  const leer = (u) => !!u && typeof u === "object" && !Array.isArray(u) && Object.keys(u).length === 0;
+  if (!bestand.mandanten.some((m) => m && leer(m.uebergaben))) return bestand;
+  return { ...bestand, mandanten: bestand.mandanten.map((m) => (m && leer(m.uebergaben) ? { ...m, uebergaben: [] } : m)) };
+}
+
+/* --------------------------------------------------------------------------
+   PERSONEN: qualifikationen
+
+   Die Oberfläche liest `person.qualifikationen` an vielen Stellen als Liste
+   (Tagesaufgaben, Nachweise, Personal). Fehlte das Feld — eine über die
+   Schnittstelle angelegte Person —, stürzte die Startseite jeder Rolle ab
+   („reading 'map'"). Die Gestaltprüfung sah es nicht: Sie prüft die Listen
+   eines Betriebs, nicht die Felder einer Person.
+
+   Zwei Fälle, bewusst getrennt:
+   - fehlt oder null: eine fehlende optionale Liste → []. Das ist keine
+     Aussage, die verloren ginge.
+   - ein anderer Typ in einer Eingabe (Text, Zahl, Objekt): ein Fehler des
+     Absenders. Er wird abgewiesen (personenFehler), nicht still zu []
+     gemacht — sonst verschwänden Angaben, ohne dass es jemand merkt.
+   Ein schon gespeicherter Altbestand mit falschem Typ ist keine Eingabe:
+   Beim Lesen und beim Zusammenführen wird er zu [], damit er weder die
+   Oberfläche abstürzen lässt noch jeden künftigen Schreibvorgang sperrt.
+   -------------------------------------------------------------------------- */
+
+/** Ist das eine Person, deren Liste angeglichen werden muss? */
+const qualAngleichen = (p) => !!p && typeof p === "object" && !Array.isArray(p.qualifikationen);
+
+/**
+ * Setzt bei jeder Person ohne gültige Liste `qualifikationen: []`.
+ * Gültige Listen und alle anderen Felder bleiben unverändert; ohne Bedarf
+ * kommt dasselbe Objekt zurück (nichts wird verändert, nichts kopiert).
+ * @param {any} bestand
+ */
+export function personenAngleichen(bestand) {
+  if (!bestand || typeof bestand !== "object" || !Array.isArray(bestand.mandanten)) return bestand;
+  const braucht = (m) => !!m && Array.isArray(m.personen) && m.personen.some(qualAngleichen);
+  if (!bestand.mandanten.some(braucht)) return bestand;
+  return { ...bestand, mandanten: bestand.mandanten.map((m) => (braucht(m)
+    ? { ...m, personen: m.personen.map((p) => (qualAngleichen(p) ? { ...p, qualifikationen: [] } : p)) }
+    : m)) };
+}
+
+/**
+ * Prüft eine übermittelte Eingabe: `qualifikationen` darf fehlen, null oder
+ * eine Liste sein — jeder andere Typ ist ein Fehler des Absenders.
+ * Gibt null oder { grund, feld } zurück.
+ * @param {any} bestand
+ */
+export function personenFehler(bestand) {
+  if (!bestand || typeof bestand !== "object" || !Array.isArray(bestand.mandanten)) return null;
+  for (const [i, m] of bestand.mandanten.entries()) {
+    if (!m || !Array.isArray(m.personen)) continue;
+    for (const [j, p] of m.personen.entries()) {
+      if (!p || typeof p !== "object") continue;
+      const q = p.qualifikationen;
+      if (q !== undefined && q !== null && !Array.isArray(q))
+        return { grund: `Bei Person ${p.id ?? j} ist qualifikationen keine Liste.`, feld: `mandanten[${i}].personen[${j}].qualifikationen` };
+    }
+  }
+  return null;
+}
+
+/* --------------------------------------------------------------------------
+   DIENSTARTEN: mindest (Abnahme V4, A-4; Betreiberentscheidung 2026-11-13)
+
+   Die Oberfläche rechnet mit `dienstart.mindest.{mo_do,fr,sa,so}` (Zyklus-
+   lücken, Einrichtungsschritte, Selbstplanung, Soll je Tag). Eine über die
+   Schnittstelle geschriebene Dienstart ohne `mindest` nahm der Server an —
+   danach stürzte die Oberfläche ab („reading 'fr'").
+
+   Regel (docs/acc45/ABNAHME-V4-A4-MINDEST.md):
+   - Eine fehlende Mindestbesetzung wird NIE still als 0 gelesen oder
+     gespeichert. Eine NEUE Dienstart ohne `mindest` (fehlt oder null) ist
+     ein Fehler (422). „Keine Mindestbesetzung" heißt ausdrücklich
+     { mo_do: 0, fr: 0, sa: 0, so: 0 }.
+   - Ein `mindest`, das neu ist oder sich gegenüber dem gespeicherten Stand
+     ändert, muss ein geschlossenes Objekt mit genau den vier Feldern als
+     ganze Zahlen 0..MINDEST_MAX sein (keine Kommazahl, nichts Negatives,
+     kein Text — auch nicht "2"). Sonst 422 mit Text.
+   - NEU heißt: Im gespeicherten Stand desselben Betriebs gibt es keine
+     Dienstart mit dieser Kennung (Typ und Wert) — oder es gibt sie schon so
+     oft, wie sie im neuen Stand bereits vorkam (eine zweite Kopie mit einer
+     gespeicherten Kennung ist neu). Eine Kennung aus einem anderen Betrieb
+     zählt nicht.
+   - Eine GESPEICHERTE Dienstart ohne Angabe (fehlt oder null) behält, was
+     gespeichert ist — auch das Fehlen (byte-gleich). Ein veralteter oder
+     unveränderter Vollstand mit einem Altstand ohne `mindest` wird also
+     angenommen; die Planungsreife meldet „Besetzungsbedarf fehlt", die
+     Oberfläche zeigt „Mindestbesetzung fehlt".
+   - Gespeicherter Altstand mit Text ("2") bleibt, wie er ist, und liest
+     sich wie bisher als Zahl (mindestWerte in isteinfrieren.mjs). Erst wer
+     diese Dienstart speichert, schreibt ganze Zahlen (die Oberfläche
+     übernimmt die gelesenen Werte als Zahlen in den Dialog).
+   -------------------------------------------------------------------------- */
+
+/** Felder der Mindestbesetzung — mehr nimmt der Server nicht an. */
+export const MINDEST_FELDER = ["mo_do", "fr", "sa", "so"];
+/** Obergrenze je Feld: weit über jedem echten Dienst, unter jeder Rechenlast. */
+export const MINDEST_MAX = 999;
+
+/** Grund, warum `mindest` ungültig ist, oder null. */
+export function mindestFehler(md) {
+  if (md === undefined || md === null)
+    return "fehlt die Mindestbesetzung (mindest) — sie ist Pflicht, 0 ist erlaubt";
+  if (typeof md !== "object" || Array.isArray(md))
+    return "ist die Mindestbesetzung kein Objekt mit mo_do, fr, sa und so";
+  const fremd = Object.keys(md).filter((k) => !MINDEST_FELDER.includes(k));
+  if (fremd.length) return `kennt die Mindestbesetzung kein Feld ${fremd.join(", ")}`;
+  for (const f of MINDEST_FELDER) {
+    const v = md[f];
+    if (v === undefined || v === null) return `fehlt die Mindestbesetzung ${f} — sie ist Pflicht, 0 ist erlaubt`;
+    if (!Number.isInteger(v) || v < 0 || v > MINDEST_MAX)
+      return `ist die Mindestbesetzung ${f} keine ganze Zahl von 0 bis ${MINDEST_MAX}`;
+  }
+  return null;
+}
+
+/** Ein Feld einer HISTORISCHEN Mindestbesetzung gleich? Zahl und Zahl-als-Text ("2" = 2) sind gleich, sonst streng. */
+function mindestFeldGleich(a, b) {
+  if (a === b) return true;
+  const z = (v) => (typeof v === "number" ? v : typeof v === "string" && /^\s*\d+\s*$/.test(v) ? Number(v) : null);
+  const x = z(a), y = z(b);
+  return x !== null && y !== null && x === y;
+}
+
+/**
+ * Ist `mindest` im Rumpf dasselbe wie das gespeicherte? Feld für Feld (mo_do, fr, sa, so), unabhängig von der
+ * Reihenfolge der Schlüssel; eine Zahl als Text zählt als dieselbe Zahl. Fehlen/null zählt nur gegen Fehlen/null
+ * gleich (dieselbe Art). Fremde Schlüssel müssen wertgleich vorhanden sein.
+ */
+export function mindestGleich(a, b) {
+  const leer = (v) => v === undefined || v === null;
+  if (leer(a) || leer(b)) return a === b || (leer(a) && leer(b) && (a === undefined) === (b === undefined));
+  if (typeof a !== "object" || typeof b !== "object" || Array.isArray(a) !== Array.isArray(b)) return a === b;
+  if (Array.isArray(a)) return JSON.stringify(a) === JSON.stringify(b);
+  for (const f of MINDEST_FELDER) {
+    if (!(f in a) !== !(f in b)) return false;
+    if (f in a && !mindestFeldGleich(a[f], b[f])) return false;
+  }
+  const fremd = (o) => Object.keys(o).filter((k) => !MINDEST_FELDER.includes(k)).sort();
+  const fa = fremd(a), fb = fremd(b);
+  return fa.length === fb.length && fa.every((k, i) => k === fb[i] && JSON.stringify(a[k]) === JSON.stringify(b[k]));
+}
+
+/** Schlüssel einer Dienstart im Betrieb: Betrieb, Typ und Wert der Kennung (1 und "1" sind zwei). */
+const daSchluessel = (m, d) => `${m.id}\u0000${typeof d.id}\u0000${String(d.id)}`;
+
+/**
+ * Ordnet jeder Dienstart des neuen Stands die gespeicherte zu (oder null: neu).
+ * Dieselbe Kennung zählt so oft als gespeichert, wie sie gespeichert ist — eine weitere Kopie ist neu.
+ * @returns {Array<{ i: number, j: number, m: any, d: any, gespeichert: any }>}
+ */
+function dienstartenZuordnen(bestand, vorher) {
+  const alt = new Map();
+  for (const m of (vorher && Array.isArray(vorher.mandanten) ? vorher.mandanten : [])) {
+    if (!m || typeof m !== "object" || !Array.isArray(m.dienstarten)) continue;
+    for (const d of m.dienstarten) {
+      if (!d || typeof d !== "object" || Array.isArray(d)) continue;
+      const k = daSchluessel(m, d);
+      if (!alt.has(k)) alt.set(k, []);
+      alt.get(k).push(d);
+    }
+  }
+  const verbraucht = new Map();
+  const aus = [];
+  if (!bestand || typeof bestand !== "object" || !Array.isArray(bestand.mandanten)) return aus;
+  for (const [i, m] of bestand.mandanten.entries()) {
+    if (!m || typeof m !== "object" || !Array.isArray(m.dienstarten)) continue;
+    for (const [j, d] of m.dienstarten.entries()) {
+      if (!d || typeof d !== "object" || Array.isArray(d)) { aus.push({ i, j, m, d, gespeichert: null }); continue; }
+      const k = daSchluessel(m, d);
+      const n = verbraucht.get(k) || 0;
+      const kandidaten = alt.get(k) || [];
+      const gespeichert = n < kandidaten.length ? kandidaten[n] : null;
+      verbraucht.set(k, n + 1);
+      aus.push({ i, j, m, d, gespeichert });
+    }
+  }
+  return aus;
+}
+
+/**
+ * Bei GESPEICHERTEN Dienstarten ohne Angabe (`mindest` fehlt oder null) bleibt die gespeicherte Vorgabe —
+ * auch ihr Fehlen. Neue Dienstarten bekommen nichts (sie prüft dienstartenFehler). Verändert die
+ * Dienstart-Objekte an Ort und Stelle: Der Bestand bleibt dasselbe Objekt (am Schreibweg hängt an ihm
+ * die offene Fachprüfung, WeakMap in rechte.mjs). Gibt die Anzahl der übernommenen Vorgaben zurück.
+ * @param {any} bestand
+ * @param {any} [vorher]
+ */
+export function dienstartenAngleichen(bestand, vorher = null) {
+  let n = 0;
+  for (const { d, gespeichert } of dienstartenZuordnen(bestand, vorher)) {
+    if (!gespeichert || !d || typeof d !== "object" || Array.isArray(d)) continue;
+    if (d.mindest !== undefined && d.mindest !== null) {
+      /* Ein veraltetes Exemplar (gleicher Inhalt, nur Schlüsselreihenfolge oder Zahl/Text anders) behält den
+         gespeicherten Wortlaut: nichts wird umgeschrieben. */
+      if (gespeichert.mindest !== undefined && gespeichert.mindest !== null && mindestGleich(d.mindest, gespeichert.mindest)
+        && JSON.stringify(d.mindest) !== JSON.stringify(gespeichert.mindest)) d.mindest = JSON.parse(JSON.stringify(gespeichert.mindest));
+      continue;
+    }
+    if (gespeichert.mindest !== undefined && gespeichert.mindest !== null) {
+      d.mindest = JSON.parse(JSON.stringify(gespeichert.mindest)); n += 1;
+    } else if (gespeichert.mindest === null) d.mindest = null;
+    else delete d.mindest;
+  }
+  return n;
+}
+
+/**
+ * Prüft neue und in `mindest` geänderte Dienstarten. Gibt null oder { grund, feld } zurück.
+ * Eine gespeicherte Dienstart mit unverändertem `mindest` (auch einem fehlenden oder alten) wird nicht geprüft.
+ * @param {any} bestand  der zu schreibende Stand
+ * @param {any} [vorher] der gespeicherte Stand (null: alles ist neu)
+ */
+export function dienstartenFehler(bestand, vorher = null) {
+  for (const { i, j, d, gespeichert } of dienstartenZuordnen(bestand, vorher)) {
+    if (!d || typeof d !== "object" || Array.isArray(d))
+      return { grund: "Eine Dienstart ist kein Objekt.", feld: `mandanten[${i}].dienstarten[${j}]` };
+    if (gespeichert && mindestGleich(gespeichert.mindest, d.mindest)) continue;
+    const f = mindestFehler(d.mindest);
+    if (f) return { grund: `Bei Dienstart ${d.name || d.id || j} ${f}.`, feld: `mandanten[${i}].dienstarten[${j}].mindest` };
+  }
+  return null;
+}
+
+/* --- P2-12 (Variante B, Betreiberentscheidung 2026-11-18): Kalendertage, die es nicht gibt ---
+   Ein Datumsschlüssel „personId|2026-02-30" in erfassung/abweichungen oder ein von/bis „2026-02-30" einer Abwesenheit
+   (Folgepunkte Review #344: ebenso von/bis eines Antrags in anfragen, der Tag einer Ausschreibung und von/bis eines
+   Krankmeldungsfalls; ein Tag ohne führende Nullen wie „2026-2-30")
+   wird nicht still korrigiert und nicht unbemerkt angenommen: Ein NEU eingeführter oder GEÄNDERTER Eintrag mit einem
+   solchen Tag wird abgewiesen (422, nur diese Anfrage). Ein gespeicherter Alteintrag bleibt, wie er ist, unverändert
+   speicherbar — er wird weder normalisiert noch gefiltert noch gelöscht (das änderte den Abdruck abgeschlossener
+   Monate), und er blockiert keine unabhängigen Speichervorgänge. */
+const TAG_VORN = /^\d{4}-\d{2}-\d{2}/;
+/* Folgepunkt (4) aus Review #344: ein Tag ohne führende Nullen („2026-2-30", „2026-02-3") ist nie ein gelesener Tag —
+   die Anwendung schreibt und liest nur JJJJ-MM-TT. Er wurde bisher still angenommen. Neu oder geändert: wie ein
+   unechter Tag (422); gespeicherte Alteinträge bleiben wie oben unverändert speicherbar. Werte mit der vollen Form
+   vorn (TAG_VORN) behalten ihre bisherige Prüfung unverändert. */
+const TAG_LOSE = /^\d{1,4}-\d{1,2}-\d{1,2}(?!\d)/;
+const KALENDERTAG_FELDER = ["erfassung", "abweichungen"];
+
+/** Beginnt `s` mit einem Tag, den es nicht gibt (JJJJ-MM-TT unecht) oder der nicht die Form JJJJ-MM-TT hat (2026-2-3)? */
+const unechterTag = (s) => typeof s === "string" && (TAG_VORN.test(s) ? !kalendertagEcht(s.slice(0, 10)) : TAG_LOSE.test(s));
+/** Der Tag am Anfang von `s` für die Meldung. */
+const tagText = (s) => { const t = String(s); const m = TAG_VORN.exec(t) || TAG_LOSE.exec(t); return m ? m[0] : t.slice(0, 10); };
+
+/** JSON mit sortierten Objektschlüsseln: unverändert heißt inhaltsgleich, nicht reihenfolgegleich. Schlüssel mit
+    undefined zählen nicht (wie im gespeicherten JSON — eine Zusammenführung, die `antwort: undefined` setzt, ändert nichts). */
+function stabil(x) {
+  if (Array.isArray(x)) return `[${x.map((e) => (e === undefined ? "null" : stabil(e))).join(",")}]`;
+  if (x && typeof x === "object") return `{${Object.keys(x).filter((k) => x[k] !== undefined).sort()
+    .map((k) => `${JSON.stringify(k)}:${stabil(x[k])}`).join(",")}}`;
+  return JSON.stringify(x) ?? "undefined";
+}
+
+/** Eine Liste als Menge (Reihenfolge egal, fehlend = leer) — für Felder, die die Rechtezusammenführung umordnet. */
+const alsMenge = (l) => (Array.isArray(l) ? l : []).map(stabil).sort();
+
+/* Listen mit Kalendertagen (Folgepunkt (2) aus Review #344): je Feld die Tagesangaben und, wo die Rechtezusammenführung
+   (rechte.mjs) einen unveränderten Eintrag umordnet, die Normalform für den Vergleich. Beschäftigte: Interessenten an
+   einem fremden Tauschgesuch (anfragenZusammen hängt die eigene Meldung hinten an) und Bewerbungen auf eine Ausschreibung
+   (ausschreibungenZusammen: fremde vor der eigenen) — sonst gälte ein unveränderter Alteintrag als geändert (falsches 422).
+   Die Krankmeldungsfälle gehören dem Server (rechte.mjs nimmt sie nie aus der Übermittlung); neu sind dort nur Fälle
+   aus einer Krankmeldung per Speichern (krankAlsFaelle), die bisher nur die Form JJJJ-MM-TT prüfte. Feld und
+   Tagesangaben kommen aus krankmeldung.mjs (Import oben) — diese Datei liest das Feld nicht selbst. */
+/** @type {Array<[string, string[], ((x: any) => any) | null]>} */
+const KALENDERTAG_LISTEN = [
+  ["abwesenheiten", ["von", "bis"], null],
+  ["anfragen", ["von", "bis"], (x) => ({ ...x, interessenten: alsMenge(x.interessenten) })],
+  ["ausschreibungen", ["datum"], (x) => ({ ...x, bewerbungen: alsMenge(x.bewerbungen) })],
+  [FAELLE_TAGESFELDER[0], [...FAELLE_TAGESFELDER[1]], null],
+];
+
+/**
+ * Neue oder geänderte Einträge mit einem Kalendertag, den es nicht gibt. Gibt null oder { grund, feld, code } zurück.
+ * @param {any} bestand  der zu schreibende Stand
+ * @param {any} [vorher] der gespeicherte Stand (null: alles ist neu)
+ */
+export function kalendertagFehler(bestand, vorher = null) {
+  const mandanten = bestand && Array.isArray(bestand.mandanten) ? bestand.mandanten : [];
+  const altNachId = new Map((vorher && Array.isArray(vorher.mandanten) ? vorher.mandanten : [])
+    .filter((x) => x && typeof x === "object").map((x) => [x.id, x]));
+  const fehler = (feld, tag) => ({ code: UNGUELTIGER_KALENDERTAG, feld,
+    grund: TAG_VORN.test(String(tag)) ? `Den Kalendertag ${tagText(tag)} gibt es nicht.`
+      : `Das Datum ${tagText(tag)} hat nicht die Form JJJJ-MM-TT.` });
+  for (let i = 0; i < mandanten.length; i++) {
+    const m = mandanten[i];
+    if (!m || typeof m !== "object") continue;
+    const alt = altNachId.get(m.id) || null;
+    for (const f of KALENDERTAG_FELDER) {
+      const w = m[f];
+      if (!w || typeof w !== "object" || Array.isArray(w)) continue;
+      const a = alt && alt[f] && typeof alt[f] === "object" && !Array.isArray(alt[f]) ? alt[f] : null;
+      for (const k of Object.keys(w)) {
+        const tag = String(k).split("|")[1] || "";
+        if (!unechterTag(tag)) continue;
+        if (a && Object.hasOwn(a, k) && stabil(a[k]) === stabil(w[k])) continue;   // Alteintrag, unverändert
+        return fehler(`mandanten[${i}].${f}`, tag);
+      }
+    }
+    for (const [f, tage, normal] of KALENDERTAG_LISTEN) {
+      if (!Array.isArray(m[f])) continue;
+      /* Multimenge (Review #344 A2): Ein Eintrag mit unechtem Tag gilt nur als unverändert, solange es im neuen Stand
+         nicht mehr inhaltsgleiche Kopien (GANZER Eintrag, mit oder ohne Kennung) gibt als im gespeicherten. Eine neue
+         Kopie, eine geänderte Angabe (auch personId/art/status) oder ein bisher echter Eintrag mit nun unechtem Tag ist
+         neu. Ein unechter Alteintrag lässt sich also löschen, aber nicht ändern (auch nicht entscheiden). */
+      const unecht = (x) => tage.some((t) => unechterTag(x[t]));
+      const schluessel = (x) => stabil(normal ? normal(x) : x);
+      const altAnzahl = new Map();
+      for (const x of (alt && Array.isArray(alt[f]) ? alt[f] : []))
+        if (x && typeof x === "object" && unecht(x)) { const k = schluessel(x); altAnzahl.set(k, (altAnzahl.get(k) || 0) + 1); }
+      const neuAnzahl = new Map();
+      for (let j = 0; j < m[f].length; j++) {
+        const x = m[f][j];
+        if (!x || typeof x !== "object" || !unecht(x)) continue;
+        const k = schluessel(x);
+        const n = (neuAnzahl.get(k) || 0) + 1;
+        neuAnzahl.set(k, n);
+        if (n <= (altAnzahl.get(k) || 0)) continue;                                  // Alteintrag, unverändert
+        for (const t of tage) {
+          if (!unechterTag(x[t])) continue;
+          return fehler(`mandanten[${i}].${f}[${j}].${t}`, x[t]);
+        }
+      }
+    }
+  }
+  return null;
+}
+
+/* --- WP-14c-Nachbesserung: Pause einer Ist-Zeit im allgemeinen Speichern ---
+   Stempeln, Selbstauskunft, Korrektur und Antrag prüfen die Pause (ganze Minuten 0 bis PAUSE_MAX, kürzer als die
+   Anwesenheit). Das allgemeine Speichern (PUT /api/bestand und Teilweg) nahm eine Ist-Zeit eines ungestempelten Tages
+   bisher ungeprüft an: eine negative Pause (-30) zählte als zusätzliche Arbeitszeit (istZeitFuer: Anwesenheit minus
+   Pause), ein Text oder eine zu lange Pause ebenso still. Jetzt: Ein NEU eingeführter oder GEÄNDERTER Eintrag in
+   erfassung mit einer ungültigen Pause oder einer Pause, die die Anwesenheit (Beginn bis Ende, mit Zeitumstellung)
+   erreicht, ist 422 (fail-closed, nur diese Anfrage). Ein gespeicherter Alteintrag bleibt unverändert speicherbar
+   (weder korrigiert noch gefiltert; wie er zu behandeln ist, ist eine offene Betreiberfrage, ENTSCHEIDUNGSLISTE P2-16).
+   Ohne Pausenangabe (Feld fehlt, undefined, null) gilt wie bisher die Pause der Dienstart. Eine LEERE Pause ("") ist keine
+   „keine Angabe“: istZeitFuer liest Number("") = 0 und rechnete still ohne Pause (Review #368, M1) — neu oder geändert 422;
+   gespeicherte Alteinträge mit "" bleiben unverändert speicherbar (P2-16). */
+export const PAUSE_UNGUELTIG = "PAUSE_UNGUELTIG";
+const UHR_ERFASSUNG = /^(([01]\d|2[0-3]):[0-5]\d|24:00)$/;
+
+/**
+ * Neue oder geänderte Ist-Zeiten mit ungültiger Pause. Gibt null oder { grund, feld, code } zurück.
+ * @param {any} bestand  der zu schreibende Stand
+ * @param {any} [vorher] der gespeicherte Stand (null: alles ist neu)
+ */
+export function erfassungPauseFehler(bestand, vorher = null) {
+  const mandanten = bestand && Array.isArray(bestand.mandanten) ? bestand.mandanten : [];
+  const altNachId = new Map((vorher && Array.isArray(vorher.mandanten) ? vorher.mandanten : [])
+    .filter((x) => x && typeof x === "object").map((x) => [x.id, x]));
+  for (let i = 0; i < mandanten.length; i++) {
+    const m = mandanten[i];
+    if (!m || typeof m !== "object" || !m.erfassung || typeof m.erfassung !== "object" || Array.isArray(m.erfassung)) continue;
+    const alt = altNachId.get(m.id) || null;
+    const a = alt && alt.erfassung && typeof alt.erfassung === "object" && !Array.isArray(alt.erfassung) ? alt.erfassung : null;
+    for (const [k, e] of Object.entries(m.erfassung)) {
+      if (!e || typeof e !== "object" || Array.isArray(e)) continue;
+      if (e.pause === undefined || e.pause === null) continue;                             // keine Angabe: Pause der Dienstart
+      if (a && Object.hasOwn(a, k) && stabil(a[k]) === stabil(e)) continue;                  // Alteintrag, unverändert
+      const tag = String(k).split("|")[1] || "";
+      const pause = pauseAngabe(e.pause);
+      if (pause === null || pause === undefined)
+        return { code: PAUSE_UNGUELTIG, feld: `mandanten[${i}].erfassung`,
+          grund: `Die Pause einer Ist-Zeit (${tag}) in ganzen Minuten angeben (0 bis ${PAUSE_MAX}).` };
+      if (UHR_ERFASSUNG.test(String(e.start)) && UHR_ERFASSUNG.test(String(e.ende)) && pauseZuLang(e.start, e.ende, pause, tag))
+        return { code: PAUSE_UNGUELTIG, feld: `mandanten[${i}].erfassung`,
+          grund: `Die Pause einer Ist-Zeit (${tag}) muss kürzer sein als die Anwesenheit von ${e.start} bis ${e.ende} Uhr.` };
+    }
+  }
+  return null;
+}
 
 /**
  * Prüft die Form eines Bestands.
  * Gibt { ok: true } oder { ok: false, grund, feld } zurück.
+ * @param {any} bestand
+ * @param {{ vorher?: any }} [o]  der gespeicherte Stand: Aufbewahrungsfristen
+ *   werden dann nur bei Betrieben geprüft, die sie ändern oder neu sind.
  */
-export function pruefeGestalt(bestand) {
+export function pruefeGestalt(bestand, { vorher = null } = {}) {
   if (!bestand || typeof bestand !== "object" || Array.isArray(bestand))
     return { ok: false, grund: "Kein Bestandsobjekt." };
 
@@ -43,11 +437,11 @@ export function pruefeGestalt(bestand) {
   if (!bestand.mandanten.length)
     return { ok: false, grund: "Ein Bestand ohne Betrieb wird nicht gespeichert.", feld: "mandanten" };
 
+  const ids = mandantenKennungenGeprueft(bestand.mandanten);
+  if (ids) return ids;
+  const geaendert = aufbewahrungGeaendert(vorher);
+
   for (const m of bestand.mandanten) {
-    if (!m || typeof m !== "object")
-      return { ok: false, grund: "Ein Betrieb ist kein Objekt.", feld: "mandanten" };
-    if (!m.id)
-      return { ok: false, grund: "Einem Betrieb fehlt die Kennung.", feld: "mandanten[].id" };
     for (const liste of LISTEN) {
       if (liste in m && !Array.isArray(m[liste]))
         return { ok: false, grund: `${m.id}.${liste} ist keine Liste.`, feld: liste };
@@ -67,12 +461,51 @@ export function pruefeGestalt(bestand) {
 
     const zuViel = mengeGeprueft(m);
     if (zuViel) return zuViel;
+    /* Aufbewahrungsfristen (WP-26, H1): ganze Zahlen in festen Grenzen.
+       Bis November 2026 ungeprüft — „Infinity" ließ den Datenschutzlauf
+       ewig rechnen und hielt damit den ganzen Server an. */
+    /* Nur geänderte oder neue Betriebe streng (N-1): Ein ungültiger Altwert
+       in einem anderen Betrieb desselben Raums (z. B. 1.5 aus der früheren
+       Oberfläche) sperrte sonst das Speichern für alle. Der Datenschutzlauf
+       überspringt und meldet ihn. */
+    const frist = geaendert(m) ? aufbewahrungFehler(m.aufbewahrung) : null;
+    if (frist) return { ok: false, grund: `${m.id}: ${frist}`, feld: "aufbewahrung" };
   }
 
   const uferlos = laengeGeprueft(bestand);
   if (uferlos) return uferlos;
 
   return { ok: true };
+}
+
+/* --------------------------------------------------------------------------
+   KENNUNGEN DER BETRIEBE
+
+   Zwei Betriebe mit derselben Kennung hielt bis Oktober 2026 nichts auf.
+   Genau das ließ sich ausnutzen: Neben dem eigenen Betrieb ein zweites
+   Exemplar mit derselben Kennung mitschicken — die Einheitsprüfung sah nur
+   das erste, beim Zerlegen in Monatsscherben verschmolzen beide, und die
+   Änderungen am zweiten standen danach im echten Betrieb.
+
+   Kennungen sind im ganzen Produkt Zeichenketten (uid, Raumname, „m-…").
+   Alles andere wird abgewiesen, ebenso leere. Verglichen wird ohne
+   Leerraum am Rand, damit „A" und „ A " nicht als zwei Betriebe
+   durchgehen. Die Kennung selbst wird nicht verändert.
+   -------------------------------------------------------------------------- */
+export function mandantenKennungenGeprueft(mandanten) {
+  if (!Array.isArray(mandanten)) return null;
+  const gesehen = new Set();
+  for (const m of mandanten) {
+    if (!m || typeof m !== "object" || Array.isArray(m))
+      return { ok: false, grund: "Ein Betrieb ist kein Objekt.", feld: "mandanten" };
+    if (typeof m.id !== "string" || !m.id.trim())
+      return { ok: false, grund: "Einem Betrieb fehlt eine gültige Kennung.", feld: "mandanten[].id" };
+    const vergleich = m.id.trim();
+    if (gesehen.has(vergleich))
+      return { ok: false, grund: "Zwei Betriebe tragen dieselbe Kennung.", feld: "mandanten[].id" };
+    gesehen.add(vergleich);
+  }
+  return null;
 }
 
 /* --------------------------------------------------------------------------
@@ -96,8 +529,8 @@ const TEXT_MAX = 100_000;
 
 /** Wie viele Einträge darf eine Liste je Betrieb tragen? */
 const MENGEN = {
-  personen: 20_000, einheiten: 2_000, dienstarten: 500, standorte: 500,
-  qualifikationen: 500, kompetenzen: 5_000, aufgaben: 500, betriebsmittel: 50_000,
+  personen: 20_000, einheiten: 2_000, dienstarten: 500, standorte: 500, einsatzorte: 5_000,
+  qualifikationen: 500, kompetenzen: 5_000, aufgaben: 500, betriebsmittel: 50_000, objekte: 500,
   abwesenheiten: 200_000, anfragen: 100_000,
   nachrichten: 100_000, wuensche: 200_000, ausschreibungen: 20_000,
   uebergaben: 100_000, protokoll: 50_000, aenderungen: 100_000,

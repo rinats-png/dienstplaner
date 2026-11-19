@@ -1,5 +1,33 @@
 # Sicherheit — Stand und Nachweis
 
+> **Einordnung (2. November 2026, Review WP-10):** Die Bewertungen unten stammen überwiegend aus
+> **September 2026** (Netlify-Zeit) und sind **kein aktueller Nachweis**. Maßgeblich für Lese- und
+> Schreibrechte ist heute `RECHTEMATRIX.md` mit den zugehörigen Prüfungen
+> (`pruefungen/rechtematrix-zeilen.test.js` u. a.). Wo diese Datei etwas anderes sagt, gilt die
+> Rechtematrix; die Abschnitte hier sind bei Gelegenheit zu überarbeiten und neu zu datieren.
+>
+> **Fachprüfungen auf dem Server (Stand 2. November 2026, WP-22; vorher Lücke aus WP-11):** Der Server prüft jede neue
+> oder geänderte Einteilung mit derselben Fachprüfung wie die Oberfläche (`einteilungsBefunde`,
+> `server/lib/fachpruefung.mjs`) — ausdrücklich in `abweichungen` und mittelbar über Dienstarten, Dienstzeiten,
+> Schichtfolge, Versatz, Zugehörigkeit, Teilzeit, Ein- und Austritt (120 Tage voraus, nur geänderte Einteilungen).
+> Sperrend und damit abgewiesen (403): Schutzregeln, Bestand, Einschränkungen an der Person (keine Nacht, kein
+> Alleindienst, Höchstzahl Dienste je Woche), gesetzliche Qualifikationen, Einweisung je Gerät, Ruhezeit unter 11
+> Stunden. Warnend und nur mit Bestätigung im selben Speichervorgang (sonst 409 mit neutraler Befundliste):
+> betriebliche Qualifikation, Ruhezeit unter der Vorgabe des Betriebs, unterschrittene Mindestbesetzung, weiche
+> Schutzbefunde — bei strukturellen Änderungen auch als Sammelbestätigung je Regel, Einheit und Zeitraum (Review B1).
+> Ein Dienst über zehn Stunden ist nur ein Hinweis (Nutzerentscheidung; § 7 ArbZG verantwortet der Betrieb);
+> Rufbereitschaft zählt nicht als Arbeitszeit. Dienstarten schreiben Leitung und Planung (`org.edit` oder
+> `pattern.edit`), alle anderen werden abgewiesen. Die Nachrechnung gibt der Event-Loop nach (höchstens 20 ms am Stück),
+> bricht nach 8 s mit 503 ab und ist je Raum auf 10 Strukturänderungen je Minute gebremst (429; Review B2). Die
+> Schichtverantwortung sieht in einer 409 nie Fremdes: Wirkt ihre Änderung außerhalb ihres Bereichs, sperrt sie ohne
+> Kennung (Review B4). Schutzangaben werden immer gespeichert (Nachprüfung 9717ddf). **Grenzen:**
+> Posten (aus einem Gruppendienst besetzt) und die Feiertagsanhebung der Mindestbesetzung rechnet nur die Oberfläche;
+> der Durchschnitt von acht Stunden über sechs Monate (§ 3 Satz 2 ArbZG) wird nicht je Einteilung geprüft; Tage
+> jenseits von 120 prüft die Planprüfung. Nachweis: `docs/acc45/wp22-nachweis.md`.
+> Nachprüfung WP-11: Jugendliche ab 16 sperrt der Server nur für 23–6 Uhr (20–23 Uhr „Achtung" oder, mit der per
+> `org.edit` oder `pattern.edit` schaltbaren Einstellung `jugendschutz.mehrschichtig`, ein Hinweis); eine noch verwendete Dienstart lässt
+> sich nicht löschen. Die Laufzeit jeder Nachrechnung gibt der Server ohne Personenbezug aus.
+
 Diese Datei ist das Gegenstück zu zwei Prüfvorlagen: der „Security
 Master Checkliste" für KI-gestützt entwickelte Anwendungen und dem
 „Master Web Application Security & QA Handbook"
@@ -12,6 +40,12 @@ Stand: September 2026. Geprüft durch: Rechteprüfung (`npm run
 pruefung:rechte`, 87 Negativ- und Positivtests gegen den laufenden
 Server), Sonden mit fünf Rollen-Tokens, Tastatur- und Ablaufproben im
 Browser, statische Durchsicht.
+
+Ergänzend liegt ein eigener **Penetrationstest** nach der Strix-Methodik
+vor (OWASP Top 10:2025 + API Security Top 10:2023) — siehe
+[`PENTEST.md`](PENTEST.md). Ergebnis: null ausnutzbare Schwachstellen,
+34 belegt abgewehrte Angriffe. Wiederholbar mit `npm run pruefung:pentest`
+gegen einen laufenden Dienst.
 
 ## Grundsatz
 
@@ -32,7 +66,7 @@ was er nicht auch mit der ehrlichen Oberfläche dürfte.
 | **Rollen** | Rollen serverseitig; die Rolle einer Sitzung ergibt sich aus der Person im Betrieb, nicht aus dem Code (`wirksameRolle`). Rollenwechsel nur nach Rang (`rollenvergabe.mjs`), Selbstbeförderung wird verworfen. Beschäftigten-Codes ohne Person entstehen nicht. | `rechte.mjs`, `rollenvergabe.mjs`, `einrichten.mjs` |
 | **Privilegierte Aktionen** | Zugänge sperren, Sicherungsschlüssel anlegen, Wiederherstellen, Datenraum löschen verlangen eine Anmeldung, die jünger als 20 Minuten ist (`frisch`). Betreibersitzungen laufen nach 2 h ab und werden nie im Browser gemerkt. | `daten.mjs`, `speicher.js` |
 | **Anmeldung** | Kein Kennwort, ein Zugangscode mit ~9,5·10¹⁶ Möglichkeiten. Abgelegt als HMAC-SHA256 mit Pfeffer aus der Umgebung (`CENTRIC_PFEFFER`); ohne Pfeffer als SHA-256 (Übergang). Zeitkonstanter Vergleich, gleichlange Antwortzeit für falsche Codes, keine Kontenauflistung. | `codes.mjs`, `daten.mjs` |
-| **Brute Force** | Bremse in drei Dimensionen (Herkunft, Zielbetrieb, Gesamt) mit steigender Sperre; optional atomar über Redis (`REDIS_REST_URL`). Anmelden 8/5 min, Einrichten 5/10 min, Selbststart 3/h. | `schutz.mjs` |
+| **Brute Force** | Bremse in drei Dimensionen (Herkunft, Zielbetrieb, Gesamt) mit steigender Sperre; optional atomar über Redis (`REDIS_REST_URL`). Anmelden 8/5 min (Fehlversuche; gelungene Anmeldungen werden bei Ziel und Gesamt zurückgenommen, WP-47), Einrichten 5/10 min, Selbststart 3/h. Lastgrenzen für ehrliche Spitzen: Stempeln 10/min je Person und Raumdeckel nach Betriebsgröße, gelungene Anmeldungen 1000/5 min je Betrieb — jede Abweisung mit `Retry-After`. | `schutz.mjs` |
 | **Sitzungen** | Zufälliges 256-Bit-Merkmal, nur der Hash liegt im Speicher. 12 h absolut, 30 min Untätigkeit, Betreiber 2 h. Abmelden löscht serverseitig; Sperren eines Zugangs beendet dessen Sitzungen. Merkmal im `sessionStorage`, nur auf Wunsch im `localStorage` (nie für Betreiber). | `daten.mjs`, `speicher.js` |
 | **Datenablage** | Dateien unter `/data` im Container (Bind-Mount, Rechte 700, Dateien 600), nur über die Funktionen erreichbar, kein Port, kein Fremddienst. Kein SQL, also keine Injektion; Schlüssel werden zu Dateinamen kodiert (kein Zeichen außer `A–Z a–z 0–9 _ -` bleibt roh, kein Schlüssel verlässt sein Verzeichnis) und aus Sitzungsdaten gebaut, nie aus freiem Text (Ausnahme: Raumname des Betreibers, geprüft gegen `^[a-z0-9][a-z0-9_-]{2,79}$`). Schreiben ist atomar (Zwischendatei, fsync, umbenennen). Form des Bestands wird vor dem Schreiben geprüft (`pruefeGestalt`); Schrumpfung über 34 % löst eine Sicherung aus. | `ablage.mjs`, `bestand.mjs`, `gestalt.mjs` |
 | **Container** | Schreibgeschütztes Dateisystem, alle Capabilities abgelegt, `no-new-privileges`, Benutzer 1000, Speichergrenze, kein veröffentlichter Port — erreichbar nur für Caddy über das Docker-Netz `proxy`. Geheimnisse kommen aus einer `.env` mit Rechten 600, nie aus dem Bild. | `deploy/compose.yml`, `Dockerfile` |
@@ -65,9 +99,9 @@ Auslieferung. Was davon hier zutrifft:
 | **Waisen** | Es gibt keine. Personen werden nie gelöscht, sondern tragen ein Austrittsdatum; der Löschlauf nach Art. 17 DSGVO anonymisiert sie, statt sie aus der Liste zu nehmen. Ein gelöschter Betrieb nimmt seinen ganzen Datenraum mit. |
 | **Transaktionen** | Kein Mehrschritt-Schreiben: Ein Bestand wird als Kern und Monatsscherben abgelegt, der Zeiger auf den neuen Stand wird zuletzt gesetzt. Bricht etwas dazwischen ab, gilt weiter der alte Stand. |
 | **Pagination** | Bewusst anders: Die Anwendung arbeitet offline-fähig auf dem ganzen Betrieb. Statt Seitenweise gibt es die Zerlegung in Monatsscherben — geschrieben wird nur der geänderte Monat, und zwei Planer an verschiedenen Monaten stören einander nicht. |
-| **Tastaturbedienung** | Blätter fangen den Fokus, geben ihn beim Schließen zurück und schließen mit Escape — auch wenn der Fokus daneben liegt. Klickbare Zellen und Zeilen der Telefonansicht sind Schaltflächen mit Fokus, Enter und Leertaste. |
-| **Vorlesesoftware** | Blätter sind `role="dialog"` mit `aria-modal`; Zustände tragen `aria-pressed`, `aria-expanded`, `aria-current`; Meldungen laufen über `aria-live`. Wunschzellen tragen eine Beschriftung mit Datum und Zustand. |
-| **Kontrast** | Eigene Palette; zusätzlich ein Feldmodus mit größerer Schrift und maximalem Kontrast für die Arbeit draußen. Zustände werden nie allein über Farbe gezeigt, sondern zusätzlich über Wort und Zeichen. |
+| **Tastaturbedienung** | Blätter fangen den Fokus, geben ihn beim Schließen zurück und schließen mit Escape — auch wenn der Fokus daneben liegt. Jede klickbare Zelle, Karte und Zeile ist eine Schaltfläche mit Fokus, Enter und Leertaste (`klickbar()`); liegt darin ein eigenes Bedienelement, gehört der Tastendruck ihm. Der Monatsplan ist ein `role="grid"` mit Pfeiltastensteuerung. Ein Tastaturlauf über 90 Sprünge fand keine Falle und keinen Halt ohne sichtbaren Fokus. |
+| **Vorlesesoftware** | Blätter sind `role="dialog"` mit `aria-modal`, die Befehlssuche ist eine `combobox` mit `listbox` und `aria-activedescendant`; Zustände tragen `aria-pressed`, `aria-expanded`, `aria-current`; Meldungen laufen über `aria-live`. Jede Fläche ohne eigenen Text trägt eine Beschriftung — Planzelle, Balken, Kalendertag, Fortschrittspunkt. |
+| **Kontrast** | Gemessen statt geschätzt: `npm run pruefung:kontrast` rechnet die relative Leuchtkraft nach WCAG 2.1 nach und prüft jede Paarung, die tatsächlich vorkommt, in beiden Paletten — 4,5:1 für Text, 3:1 für Bedienelemente. Die erste Messung fand fünf Verstöße, darunter weiße Schrift auf Türkis mit 2,23:1 auf jeder Hauptschaltfläche im Dunkelmodus. Dazu ein Feldmodus mit größerer Schrift für die Arbeit draußen; Zustände werden nie allein über Farbe gezeigt. |
 | **Dateiuploads** | Es gibt keine. Nachweise werden als Fundstelle geführt — damit entfallen MIME-Prüfung, Pfadwanderung und Schadsoftware im Speicher als Angriffsfläche. |
 | **CI/CD** | Drei Läufe: `Prüfung` (jeder Push: alle Prüfungen, Bild bauen, serverseitige Prüfungen gegen den Container), `Sicherheit` (Audit, Secret-Scan, verbotene Muster) und `Auslieferung` (von Hand: Bild bauen, Rechteprüfung gegen den Container, nach GHCR). Ein roter Lauf blockiert. Auf dem VPS: `docker compose pull && up -d`, Rollback über das vorige Bild. |
 

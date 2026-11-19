@@ -16,7 +16,9 @@
 
    Umgebung
      PORT                Vorgabe 3000
-     CENTRIC_DATEN       Ablage der Daten, Vorgabe /data (siehe server/lib/ablage.mjs)
+     CENTRIC_DATEN       Ablage der Daten, Vorgabe /data (siehe server/lib/ablage.mjs);
+                         beim Start belegt mit CENTRIC_DATEN/.prozess — ein
+                         Prozess je Ablage (server/lib/prozesssperre.mjs)
      CENTRIC_STATIK      Ordner der gebauten Oberfläche, Vorgabe dist/ (nur für Prüfungen)
      CENTRIC_AUFRAEUMEN  „aus" schaltet den täglichen Löschlauf für abgelaufene
                          Testbetriebe ab (Vorgabe: an, siehe server/lib/aufraeumen.mjs)
@@ -31,10 +33,32 @@ import { readdir, stat } from "node:fs/promises";
 import { Readable } from "node:stream";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { getStore } from "./server/lib/ablage.mjs";
+import { getStore, ablageWurzel } from "./server/lib/ablage.mjs";
+import { ablageBelegen, VERLUST_WARTEN_MS } from "./server/lib/prozesssperre.mjs";
+import { betreiberSitzungenOhneFaktorBeenden } from "./server/lib/betreiber-zweifaktor.mjs";
+import { schreibstopp, alleFrei } from "./server/lib/raumsperre.mjs";
 import { testbetriebeAufraeumen } from "./server/lib/aufraeumen.mjs";
+import { datenschutzLauf, modusAusUmgebung } from "./server/lib/datenschutzlauf.mjs";
+import { zustand, oeffentlich, detailErlaubt, ueberwachungStarten } from "./server/lib/gesund.mjs";
+import { nachfassen, zustellungAufraeumen } from "./server/lib/versand.mjs";
+import { ereignis } from "./server/lib/gesund-zaehler.mjs";
+import { voruebergehend } from "./server/lib/bestand.mjs";
+import { bindungErneuern, zustandPruefen, zustandsVerzeichnis } from "./server/lib/schluesselepoche.mjs";
+import { widerrufbuchStart, buchGeprueft } from "./server/lib/widerrufbuch.mjs";
+import { kontobuchStart, kontobuchGeprueft } from "./server/lib/kontowiderrufbuch.mjs";
+import { kanalStarten, haltObergrenze, HALT_ORDNER } from "./server/lib/schreibhalt.mjs";
+import { vertrauteListe, herkunftBestimmen, xffOhneVertrauenMelden, adresseFuersProtokoll } from "./server/lib/schutz.mjs";
 
 const PORT = Number(process.env.PORT) || 3000;
+
+/* Wem glaubt der Server X-Forwarded-For? (B-XFF-1, docs/CADDY-UND-XFF.md)
+   Eine ungültige Liste hält den Start an — lieber kein Dienst als einer,
+   der still jedem oder niemandem vertraut. */
+const VERTRAUT = vertrauteListe(process.env.CENTRIC_VERTRAUTE_PROXYS);
+if (!VERTRAUT.anzahl)
+  console.warn("Herkunft: CENTRIC_VERTRAUTE_PROXYS ist leer — X-Forwarded-For wird ignoriert, es zählt "
+    + "die Adresse der Gegenstelle. Hinter Caddy MUSS das Netz des Caddy-Containers eingetragen sein.");
+else console.log(`Herkunft: X-Forwarded-For wird von ${VERTRAUT.anzahl} vertrauten Einträgen angenommen.`);
 const WURZEL = path.dirname(fileURLToPath(import.meta.url));
 /* CENTRIC_STATIK gibt es nur, damit die Prüfung einen eigenen, kleinen
    Ordner statt dist/ unterschieben kann. Im Betrieb bleibt es bei dist/. */
@@ -45,6 +69,10 @@ const FUNKTIONEN = path.join(WURZEL, "server", "funktionen");
    sie schon beim Einlesen durchgesetzt, damit ein zu großer Rumpf gar nicht
    erst im Speicher landet. */
 const RUMPF_MAX = 6 * 1024 * 1024;
+/* IMP-3: Eine Funktion darf mit `config.rumpfMax` eine eigene Grenze nennen, mit `config.rumpfMaxJeWeg`
+   ({ "/pfad": Bytes }) je Weg eine eigene (der Import nimmt nur auf /api/import/upload Dateien bis 10 MB an,
+   server/funktionen/import.mjs; seine JSON-Wege bleiben bei 2 MB). Obergrenze 16 MB; ohne Angabe RUMPF_MAX. */
+const RUMPF_HOECHST = 16 * 1024 * 1024;
 
 /* Die Sicherheitsköpfe der Anwendung. Sie gelten für jede Antwort, die
    nicht selbst einen gleichnamigen Kopf setzt; Caddy ergänzt davor HSTS
@@ -83,7 +111,8 @@ const INHALT = {
    --------------------------------------------------------------------------- */
 
 /**
- * @typedef {{ name: string, muster: string, exakt: string|null, praefix: string|null,
+ * @typedef {{ name: string, muster: string, exakt: string|null, praefix: string|null, rumpfMax: number,
+ *             aktiv: (() => boolean)|null,
  *             handler: (req: Request, context: object) => Promise<Response>|Response }} Route
  */
 
@@ -107,6 +136,14 @@ async function funktionenLaden() {
         exakt: muster.endsWith("/*") ? null : muster,
         praefix: muster.endsWith("/*") ? muster.slice(0, -1) : null,   // "/api/*" -> "/api/"
         handler: modul.default,
+        /* Abschaltbarer Weg (z. B. Import, CENTRIC_IMPORT_AKTIV): `config.aktiv()` wird je Anfrage gefragt;
+           falsch → 404, bevor ein Rumpf gelesen oder die Funktion aufgerufen wird. */
+        aktiv: typeof modul.config.aktiv === "function" ? modul.config.aktiv : null,
+        rumpfMax: (() => {   // IMP-3: Grenze je Weg, sonst der Wert der Funktion, sonst RUMPF_MAX
+          const je = modul.config.rumpfMaxJeWeg && modul.config.rumpfMaxJeWeg[muster];
+          const g = Number.isInteger(je) && je > 0 ? je : modul.config.rumpfMax;
+          return Number.isInteger(g) && g > 0 ? Math.min(g, RUMPF_HOECHST) : RUMPF_MAX;
+        })(),
       });
     }
   }
@@ -143,13 +180,13 @@ function routeFuer(routen, pfad) {
  * @param {import("node:http").IncomingMessage} req
  * @returns {Promise<Buffer|null>}  null = zu groß
  */
-function rumpfEinlesen(req) {
+function rumpfEinlesen(req, grenze = RUMPF_MAX) {
   return new Promise((erfuellt, verworfen) => {
     const teile = [];
     let groesse = 0;
     const beiDaten = (stueck) => {
       groesse += stueck.length;
-      if (groesse > RUMPF_MAX) {
+      if (groesse > grenze) {
         /* Ab hier wird nichts mehr behalten, aber weiter gelesen und
            verworfen. Nur so bleibt der HTTP-Parser bis zum Ende der
            Nachricht im Takt, und dieselbe Verbindung kann danach die nächste
@@ -199,11 +236,14 @@ function webRequest(req, url, rumpf) {
     if (Array.isArray(wert)) for (const w of wert) kopf.append(name, w);
     else kopf.set(name, wert);
   }
-  /* Hinter Caddy steht die Adresse des Aufrufers in x-forwarded-for. Läuft
-     der Server einmal ohne Proxy — in der Prüfung etwa — trägt er sie selbst
-     ein, damit die Bremse in schutz.mjs etwas zum Zählen hat. */
-  if (!kopf.has("x-forwarded-for") && req.socket.remoteAddress)
-    kopf.set("x-forwarded-for", req.socket.remoteAddress);
+  /* Die Herkunft bestimmt der Server, nicht der Client (B-XFF-1). Ein
+     mitgeschicktes x-forwarded-for zählt nur, wenn die Gegenstelle in
+     CENTRIC_VERTRAUTE_PROXYS steht, und dann von rechts gelesen. Danach
+     steht im Kopf genau eine Adresse — die, die Bremse und Protokoll
+     (schutz.mjs, herkunft()) verwenden. */
+  const xff = kopf.get("x-forwarded-for");
+  if (xff && !VERTRAUT.anzahl) xffOhneVertrauenMelden();
+  kopf.set("x-forwarded-for", herkunftBestimmen(req.socket.remoteAddress, xff, VERTRAUT));
 
   const proto = String(kopf.get("x-forwarded-proto") || "http").split(",")[0].trim();
   const host = String(kopf.get("host") || `localhost:${PORT}`).split(",")[0].trim();
@@ -318,6 +358,10 @@ async function statisch(req, res, pfad) {
     "last-modified": info.mtime.toUTCString(),
     etag,
   };
+  /* WP-18 (B4): Die Einlöseseite einer Einladung gibt ihre Adresse nirgends weiter. Das Token steht im Fragment
+     (nie im Referrer), die Seite wird es sofort los — und ein Referrer wird hier gar nicht erst gesendet. Caddy
+     ergänzt nur fehlende Köpfe (`?Referrer-Policy`), dieser bleibt. */
+  if (pfad === "/einladung") kopf["referrer-policy"] = "no-referrer";
   const gesehen = String(req.headers["if-none-match"] || "").split(",").map((e) => e.trim());
   if (gesehen.includes(etag) || gesehen.includes("*")) { res.writeHead(304, kopf); res.end(); return; }
   kopf["content-length"] = info.size;
@@ -335,6 +379,105 @@ async function statisch(req, res, pfad) {
    Zusammenbau
    --------------------------------------------------------------------------- */
 
+/* Erst die Ablage belegen, dann alles andere (server/lib/prozesssperre.mjs).
+   Die Sperre je Raum, die verlorene Änderungen verhindert, gilt nur in
+   diesem Prozess — ein zweiter auf derselben Ablage höbe sie wieder auf.
+   Hält ein lebender Prozess die Ablage, startet dieser hier nicht: kein
+   Port, kein Löschlauf, kein einziger Schreibvorgang. Geht die Sperre im
+   Betrieb verloren (übernommen, weil der Puls ausblieb), beendet sich der
+   Prozess lieber, als neben einem zweiten weiterzuschreiben.
+
+   Aber nicht mitten in einem Schreibvorgang: Ein sofortiges process.exit
+   zwischen Kern und Standzeiger hinterließ einen halben Stand. Deshalb in
+   drei Schritten — keine neuen Schreibvorgänge mehr (503, raumsperre.mjs
+   schreibstopp), die laufenden höchstens VERLUST_WARTEN_MS lang zu Ende
+   kommen lassen, dann beenden. Die Prozesssperre selbst wartet ohnehin
+   drei Fehlschläge ab, bevor sie „verloren" meldet (prozesssperre.mjs). */
+const ablagesperre = await ablageBelegen(ablageWurzel(), {
+  verloren: async (grund) => {
+    console.error(`Ablagesperre verloren (${grund}) — keine neuen Schreibvorgänge, `
+      + "laufende werden abgewartet, dann wird der Prozess beendet.");
+    schreibstopp(`Ablagesperre verloren: ${grund}`);
+    const frei = await alleFrei(VERLUST_WARTEN_MS);
+    if (!frei) console.error(`Nach ${VERLUST_WARTEN_MS} ms noch Schreibvorgänge offen — Beenden trotzdem.`);
+    process.exit(1);
+  },
+});
+if (!ablagesperre.ok) {
+  console.error(`${ablagesperre.grund} Start verweigert — es darf nur ein Prozess je Ablage laufen.`);
+  process.exit(1);
+}
+if (ablagesperre.uebernommen) console.log("Ablagesperre: veraltete Sperre eines beendeten Prozesses übernommen");
+process.on("exit", () => ablagesperre.freigebenSofort());
+
+/* Schreib-Halt für die Sicherung unter Last (server/lib/schreibhalt.mjs, WP-28c): ein kleiner Dateikanal im
+   Zustandsverzeichnis (außerhalb der Ablage, kein Netz). Erst nach der Ablagesperre: nur der Prozess, der die Ablage
+   hält, darf halten. Ohne Kanal läuft alles wie bisher; die Sicherung fällt dann auf ihre Ruhezeit zurück. */
+try {
+  const k = await kanalStarten({ verzeichnis: path.join(zustandsVerzeichnis(), HALT_ORDNER) });
+  if (k.ok) console.log(`Schreibhalt: Kanal bereit (höchstens ${haltObergrenze()} ms je Halt)`);
+  else console.log(`Schreibhalt: kein Kanal — ${k.grund}. Sicherung unter Last nur mit Ruhezeit.`);
+} catch (e) {
+  console.error("Schreibhalt: kein Kanal —", e && e.message ? e.message : e, "Sicherung unter Last nur mit Ruhezeit.");
+}
+
+/* WP-32d: Betreibersitzungen ohne zweiten Faktor enden beim Start der Auslieferung. */
+try {
+  const r = await betreiberSitzungenOhneFaktorBeenden(getStore({ name: "centric", consistency: "strong" }));
+  if (r.beendet || r.fehler) console.log(`Betreibersitzungen ohne zweiten Faktor: ${r.beendet} beendet, ${r.fehler} Fehler`);
+} catch (e) { console.error("Betreibersitzungen ohne zweiten Faktor ließen sich nicht prüfen:", e && e.message); }
+
+/* E-M6 (server/lib/widerrufbuch.mjs): Widerrufene und ersetzte Zugangsdaten bleiben nach jedem Rücksprung ungültig. Beim
+   Start: Stand des Widerrufbuchs feststellen, was die Ablage gesperrt kennt einsammeln, und jeden Zugang und Verwalter-
+   schlüssel, der im Buch steht, in der Ablage sperren (auch für ein älteres Bild, das das Buch nicht kennt); fehlende
+   Marken abgeschlossener Ersteinrichtungen anlegen. Vor dem ersten Anfrageweg. Scheitert das, sagt die Warnung genau,
+   was gilt (Review E-M6, Befund 4) — zwei Fälle:
+     Buch nicht prüfbar (fehlt bei vorhandenem Anker, beschädigt, fremd, falsches Siegel): kein Zugangscode gilt
+       (Anmeldung, laufende Code-Sitzungen und Kalenderfeeds aus Codes 503), kein benannter Verwalterschlüssel.
+     Buch prüfbar, aber Ablage nicht lesbar oder nicht nachziehbar: Was im Buch steht, bleibt abgewiesen; die Ablage
+       ist aber nicht nachgezogen — ein älteres Bild auf diesen Daten nähme dort ungesperrte Codes an. */
+try {
+  const r = await widerrufbuchStart(getStore({ name: "centric", consistency: "strong" }));
+  console.log(`Widerrufbuch: ${r.eintraege} Einträge, ${r.eingesammelt} aus der Ablage eingesammelt, ${r.nachgezogen} in der Ablage nachgezogen, ${r.marken} Marken, ${r.regime} Regime-Marken angelegt`);
+} catch (e) {
+  const grund = e && e.message ? e.message : String(e);
+  const pruefbar = await buchGeprueft(getStore({ name: "centric", consistency: "strong" })).then(() => true, () => false);
+  console.error(pruefbar
+    ? `WARNUNG Widerrufbuch: ${grund} Das Buch ist prüfbar: Was darin steht, bleibt abgewiesen. Die Ablage ist aber NICHT `
+      + "nachgezogen — vor einem Rücksprung auf ein älteres Bild beheben und neu starten (BEREITSTELLUNG.md §5.4)."
+    : `WARNUNG Widerrufbuch: ${grund} Bis zur Klärung gilt kein Zugangscode und kein benannter Verwalterschlüssel `
+      + "(Anmeldung, Code-Sitzungen, Kalenderfeeds aus Codes: 503; BEREITSTELLUNG.md §5.4).");
+}
+
+/* BE-1 (server/lib/kontowiderrufbuch.mjs): Kontosperren und entzogene Mitgliedschaften bleiben nach jedem Rücksprung
+   wirksam. Beim Start: Stand des Konto-Widerrufbuchs feststellen, aus der Ablage einsammeln (holt auch einen Eintrag
+   nach, dessen Schreiben zwischen Ablage und Buch abbrach) und das Buch in die Ablage nachziehen (Konto gesperrt, Lauf
+   angehoben, Mitgliedschaft entzogen — Felder, die auch ein älteres Bild kennt). Getrennt vom Buch der Zugangscodes:
+   Scheitert das hier, gilt kein Konto-Zugang (Anmeldung mit Passwort, Betriebsauswahl, Konto-Arbeitssitzungen, Feeds
+   aus Konten: 503); Zugangscodes bleiben unberührt. */
+try {
+  const r = await kontobuchStart(getStore({ name: "centric", consistency: "strong" }));
+  console.log(`Konto-Widerrufbuch: ${r.konten} gesperrte Konten, ${r.mitglieder} entzogene Beziehungen, ${r.eingesammelt} aus der Ablage eingesammelt, ${r.nachgezogen} in der Ablage nachgezogen, ${r.laeufe} Läufe angehoben`
+    /* BE-2 A1: Pflicht-Faktoren und verbrauchte Wiederherstellungscodes (nur Anzahlen). */
+    + `; Faktoren: ${r.faktorpflicht} Pflicht, ${r.faktorGesperrt} nach Rücksprung gesperrt, ${r.whverbraucht} verbrauchte Wiederherstellungscodes, ${r.whNachgezogen} Faktoren nachgezogen`
+    /* BE-1 Rest: abgelöste Passwörter (nur Anzahlen). */
+    + `; Passwörter: ${r.passwoerterImBuch} abgelöste im Buch, ${r.passwoerterZurueckgesetzt} in der Ablage zurückgesetzt`);
+  if (r.passwoerterZurueckgesetzt)
+    console.error(`WARNUNG Konto-Widerrufbuch: ${r.passwoerterZurueckgesetzt} Konto/Konten trugen ein abgelöstes Passwort (Rücksprung) — `
+      + "Passwort zurückgesetzt, die Personen setzen es neu (BETRIEBSHANDBUCH.md, Wiederherstellung; ABNAHME-V4-BE1 §8).");
+  if (r.faktorGesperrt)
+    console.error(`WARNUNG Konto-Widerrufbuch: ${r.faktorGesperrt} Konto/Konten mit Pflicht-Faktor ohne Faktor in der Ablage — Anmeldung `
+      + "gesperrt (403), bis der Betreiber den Fall klärt (BETRIEBSHANDBUCH.md, Wiederherstellung; ABNAHME-V4-BE2-A1).");
+} catch (e) {
+  const grund = e && e.message ? e.message : String(e);
+  const pruefbar = await kontobuchGeprueft(getStore({ name: "centric", consistency: "strong" })).then(() => true, () => false);
+  console.error(pruefbar
+    ? `WARNUNG Konto-Widerrufbuch: ${grund} Das Buch ist prüfbar: Was darin steht, bleibt abgewiesen. Die Ablage ist aber `
+      + "NICHT nachgezogen — vor einem Rücksprung auf ein älteres Bild beheben und neu starten (BEREITSTELLUNG.md §5.4)."
+    : `WARNUNG Konto-Widerrufbuch: ${grund} Bis zur Klärung gilt kein Konto-Zugang (Anmeldung mit Passwort, `
+      + "Betriebsauswahl, Konto-Arbeitssitzungen, Kalenderfeeds aus Konten: 503; BEREITSTELLUNG.md §5.4).");
+}
+
 const routen = await funktionenLaden();
 console.log("Funktionen: " + routen.map((r) => `${r.name} ${r.muster}`).join(", "));
 
@@ -343,15 +486,34 @@ const server = createServer(async (req, res) => {
     const url = new URL(req.url || "/", "http://x");
     const pfad = url.pathname;
 
-    if (pfad === "/gesund") { json(res, 200, { status: "ok" }); return; }
+    /* /gesund (WP-05, server/lib/gesund.mjs): Stufen ok/warnung/kritisch.
+       Nach außen nur die Stufe; 503 nur bei kritisch (Raumsperre hängt,
+       Schreibstopp, Ablage nicht beschreibbar, Platz kritisch). Die
+       Einzelheiten (?detail=1) nur direkt von der eigenen Maschine. */
+    if (pfad === "/gesund") {
+      const e = await zustand();
+      if (url.searchParams.get("detail") === "1" && detailErlaubt(req.socket.remoteAddress, req.headers)) {
+        json(res, oeffentlich(e).status, e);
+        return;
+      }
+      const o = oeffentlich(e);
+      json(res, o.status, o.inhalt);
+      return;
+    }
 
     const route = routeFuer(routen, pfad);
     if (route) {
+      if (route.aktiv && !route.aktiv()) {
+        /* Ausgeschalteter Weg: den Rumpf nicht behalten, nur verwerfen (die Verbindung bleibt im Takt). */
+        req.resume();
+        json(res, 404, { fehler: "Gibt es nicht." });
+        return;
+      }
       let rumpf;
       if (req.method !== "GET" && req.method !== "HEAD") {
         const laenge = Number(req.headers["content-length"] || 0);
-        if (laenge > RUMPF_MAX) { zuGross(res); return; }
-        rumpf = await rumpfEinlesen(req);
+        if (laenge > route.rumpfMax) { zuGross(res); return; }
+        rumpf = await rumpfEinlesen(req, route.rumpfMax);
         if (rumpf === null) { zuGross(res); return; }
       }
       const anfrage = webRequest(req, url, rumpf);
@@ -359,6 +521,7 @@ const server = createServer(async (req, res) => {
       const kontext = { ip: anfrage.headers.get("x-forwarded-for") };
       const antwort = await route.handler(anfrage, kontext);
       if (!(antwort instanceof Response)) throw new Error(`Funktion ${route.name}: keine Response`);
+      if (antwort.status >= 500) ereignis("5xx");
       await antwortSenden(antwort, res, req.method === "HEAD");
       return;
     }
@@ -368,7 +531,18 @@ const server = createServer(async (req, res) => {
     /* Hat der Aufrufer selbst aufgelegt, gibt es niemanden mehr, dem eine
        Antwort oder ein Protokolleintrag nützen würde. */
     if (req.destroyed || res.destroyed) return;
-    console.error(`${new Date().toISOString()} ${req.method} ${req.url}:`, e && e.stack ? e.stack : e);
+    ereignis("5xx");
+    /* Nie die rohe Adresse: Der Pfad eines Kalender-Feeds trägt dessen Geheimnis (WP-24, Befund 9). */
+    console.error(`${new Date().toISOString()} ${req.method} ${adresseFuersProtokoll(req.url)}:`, e && e.stack ? e.stack : e);
+    /* Vorübergehend nicht lesbar oder gerade gesperrt (lib/bestand.mjs,
+       voruebergehend): 503 mit Wiederholungshinweis, nicht 500 — und erst
+       recht nicht „gibt es nicht". Für alle Funktionen, die solche Fehler
+       nicht selbst beantworten (Kalender, Zustellung, Anmeldung …). */
+    if (!res.headersSent && voruebergehend(e)) {
+      json(res, 503, { fehler: "Gerade nicht verfügbar.", text: "Bitte in einigen Sekunden noch einmal versuchen.",
+        code: e.code });
+      return;
+    }
     if (!res.headersSent) json(res, 500, { fehler: "Interner Fehler." });
     else res.destroy();
   }
@@ -389,6 +563,27 @@ server.keepAliveTimeout = 65_000;
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`CENTRIC läuft auf Port ${PORT}, Daten: ${process.env.CENTRIC_DATEN || "/data"}`);
 });
+
+/* Wiederherstellungsschutz der Sicherungsschlüssel (server/lib/schluesselepoche.mjs): Beim Start, jede Minute und beim
+   Beenden wird die Bindung zwischen Ablage und Zustandsverzeichnis erneuert. Eine Kopie der Ablage, die älter ist als
+   die letzte Erneuerung, passt danach nicht mehr: Es beginnt eine neue Epoche, und alle früheren Schlüssel werden sofort
+   widerrufen. Nur wenn es schon eine Epoche oder Bindung gibt. Ein Fehler betrifft allein die Sicherungsschlüssel
+   (sie gelten dann nicht), nie den übrigen Betrieb. */
+let bindungFehlerGemeldet = false;
+const bindungTakt = () => bindungErneuern({ nurWennVorhanden: true }).then(() => { bindungFehlerGemeldet = false; }, (e) => {
+  if (!bindungFehlerGemeldet) console.error("Sicherungsschlüssel: Schlüsselepoche nicht prüfbar, Schlüssel gelten nicht:", e && e.message ? e.message : e);
+  bindungFehlerGemeldet = true;
+});
+zustandPruefen().then((z) => {
+  if (z.stufe !== "ok") console.error(`WARNUNG Sicherungsschlüssel: ${z.text} (CENTRIC_ZUSTAND). Bis zur Behebung gilt kein Sicherungsschlüssel; alles andere läuft.`);
+  else console.log(`Sicherungsschlüssel: Zustandsverzeichnis nutzbar${z.text ? ` (${z.text})` : ""}`);
+}, () => {});
+bindungTakt();
+setInterval(bindungTakt, 60_000).unref();
+
+/* Regelmäßige Zustandsprüfung mit Alarm (WP-05). Vorgabe: prüfen und im Log
+   vermerken; ein Alarmkanal erst mit CENTRIC_ALARM_WEBHOOK. */
+if ((process.env.CENTRIC_UEBERWACHUNG || "an").trim().toLowerCase() !== "aus") ueberwachungStarten();
 
 /* ---------------------------------------------------------------------------
    Täglicher Löschlauf für abgelaufene Testbetriebe
@@ -415,11 +610,69 @@ if ((process.env.CENTRIC_AUFRAEUMEN || "an").trim().toLowerCase() !== "aus") {
     } catch (e) {
       console.error("Löschlauf fehlgeschlagen:", e && e.message ? e.message : e);
     }
+    /* Datenschutzlauf (WP-26, server/lib/datenschutzlauf.mjs): Aufbewahrungs-
+       fristen jedes Betriebs, In-App-Sicherungen nach festem Plan, Spur nach
+       30 Tagen — auf dem Server, nicht erst, wenn jemand in der Oberfläche
+       den Löschlauf anstößt. */
+    try {
+      /* Schalter CENTRIC_DATENSCHUTZLAUF: aus | vorschau (Vorgabe) | an. In
+         der Vorschau wird nur berichtet — gelöscht wird erst nach bewusster
+         Aktivierung (.env.example). */
+      const modus = modusAusUmgebung();
+      const d = await datenschutzLauf(getStore({ name: "centric", consistency: "strong" }), { modus });
+      if (d.uebersprungen) console.log(`Datenschutzlauf: ${modus === "aus" ? "abgeschaltet" : "übersprungen, ein anderer läuft noch"}`);
+      else console.log(`Datenschutzlauf (${modus}): ${d.raeume} Räume, ${d.geaendert.length} Betriebe bereinigt, `
+        + `${d.faellig.length} fällig (Vorschau), ${d.sicherungenGeloescht} Sicherungen entfernt, `
+        + `${d.sicherungenFaellig} Sicherungen fällig (Vorschau), ${d.sicherungenAelterHoechstalter} Sicherungen älter als 90 Tage `
+        + `(${d.sicherungenAelterHoechstalterBehalten} davon behalten), `
+        + `${d.feeddatenGeloescht} alte Kalender-Termine entfernt (${d.feeddatenFaellig} fällig), ${d.fehler.length} Fehler`);
+    } catch (e) {
+      console.error("Datenschutzlauf fehlgeschlagen:", e && e.message ? e.message : e);
+    }
+    /* Zustellprotokoll, Kontingentplätze, verwaiste Push-Anmeldungen (WP-30).
+       Gleicher Schalter wie der Datenschutzlauf: aus | vorschau | an. Frist:
+       CENTRIC_ZUSTELLPROTOKOLL_TAGE (Vorgabe 30, höchstens 365). */
+    try {
+      const modus = modusAusUmgebung();
+      if (modus !== "aus") {
+        const t = Number(process.env.CENTRIC_ZUSTELLPROTOKOLL_TAGE);
+        const tage = Number.isInteger(t) && t >= 1 && t <= 365 ? t : 30;
+        const z = await zustellungAufraeumen(getStore({ name: "centric", consistency: "strong" }),
+          { tage, trocken: modus !== "an",
+            /* Betreiberschalter nach einem Konfigurationsfix (Absender, Domain):
+               alle Adresssperren aufheben (docs/MAIL-PUSH-EINRICHTUNG.md). */
+            sperrenAufheben: (process.env.CENTRIC_ZUSTELL_SPERREN_AUFHEBEN || "").trim().toLowerCase() === "ja" });
+        console.log(`Zustellaufräumen (${modus}): ${z.protokoll} Protokolleinträge, ${z.kontingent} Kontingentplätze, `
+          + `${z.waisen} verwaiste Anmeldungen, ${z.sperren} Adresssperren aufgehoben, ${z.fehler} Fehler`);
+      }
+    } catch (e) {
+      console.error("Zustellaufräumen fehlgeschlagen:", e && e.message ? e.message : e);
+    }
   };
   setTimeout(lauf, AUFRAEUMEN_START_MS).unref();
   setInterval(lauf, AUFRAEUMEN_TAKT_MS).unref();
 } else {
   console.log("Löschlauf: abgeschaltet (CENTRIC_AUFRAEUMEN=aus)");
+}
+
+/* ---------------------------------------------------------------------------
+   Zustell-Warteschlange (WP-30): Wiederholungen nach einem Fehler holt der
+   Server selbst ab, nicht erst, wenn eine Oberfläche nachfragt. Alle 60
+   Sekunden, höchstens ein Lauf zugleich; ein Fehler nimmt den Server nicht mit.
+   Schalter CENTRIC_ZUSTELL_TAKT=aus (nur für Wartung).
+   --------------------------------------------------------------------------- */
+if ((process.env.CENTRIC_ZUSTELL_TAKT || "an").trim().toLowerCase() !== "aus") {
+  let nachfassenLaeuft = false;
+  const takt = async () => {
+    if (nachfassenLaeuft) return;
+    nachfassenLaeuft = true;
+    /* Nachtrag 2 (F2): Ein Durchgang beginnt nach 50 s keinen Satz mehr; Mail
+       und Push haben eigene Fristen. Der Merker fällt in jedem Fall (finally). */
+    try { await nachfassen(getStore({ name: "centric", consistency: "strong" }), { bis: Date.now() + 50_000 }); }
+    catch (e) { console.error("Zustell-Warteschlange fehlgeschlagen:", e && e.message ? e.message : e); }
+    finally { nachfassenLaeuft = false; }
+  };
+  setInterval(takt, 60_000).unref();
 }
 
 /* Sauber aufhören: keine neuen Verbindungen, laufende zu Ende, dann Schluss.
@@ -429,7 +682,11 @@ function beenden(signal) {
   if (beendet) return;
   beendet = true;
   console.log(`${signal}: Server wird beendet`);
-  server.close(() => process.exit(0));
+  /* Wiederherstellungsschutz: Bindung noch einmal erneuern, damit eine Kopie aus diesem Lauf nach dem Zurückspielen
+     erkannt wird. Bei SIGKILL oder Absturz fehlt dieser Schritt; dann bleibt der Minutentakt. */
+  const bindungFertig = bindungErneuern({ nurWennVorhanden: true }).catch((e) =>
+    console.error("Sicherungsschlüssel: Bindung beim Beenden nicht erneuert:", e && e.message ? e.message : e));
+  server.close(() => { bindungFertig.finally(() => process.exit(0)); });
   if (typeof server.closeIdleConnections === "function") server.closeIdleConnections();
   setTimeout(() => { console.warn("Beenden erzwungen"); process.exit(0); }, 8_000).unref();
 }

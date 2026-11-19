@@ -15,7 +15,7 @@
    schalten ihn ausdrücklich ab.
    ========================================================================== */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
 import { mkdtemp, rm, readFile, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -1037,7 +1037,23 @@ describe("Die Bremse fällt nicht ins Unbegrenzte aus", () => {
     return { runden, letzte: n };
   }
 
-  it("deckelt bei blinder Hauptbremse auch das Gesamtaufkommen", async () => {
+  /**
+   * QS-2: Die Notbremse zählt in Zeitfenstern von 300 s, die an der Uhr
+   * ausgerichtet sind (Date.now). Läuft eine Messung über eine Fenstergrenze,
+   * verschiebt sich der gleitende Stand und die Erwartung kippt — das war die
+   * Flanke dieser Prüfungen. Deshalb steht die Uhr (nur Date, keine Timer)
+   * für die Dauer der Messung mitten im Fenster. Die Grenzen selbst bleiben
+   * unverändert und werden weiter durch echte Aufrufe geprüft.
+   */
+  async function imFensterMitte(fn) {
+    const f = SCH.NOTGRENZEN["anmelden-konto"].fenster * 1000;
+    const jetzt = Date.now();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Math.floor(jetzt / f) * f + Math.floor(f / 2));
+    try { return await fn(); } finally { vi.useRealTimers(); }
+  }
+
+  it("deckelt bei blinder Hauptbremse auch das Gesamtaufkommen", async () => imFensterMitte(async () => {
     /* Der verteilte Fall: jede Anfrage aus einer anderen Herkunft, also je
        Herkunft unauffällig — und bei kaputter Ablage zählt die Hauptbremse
        still null, auch für das Ziel und das Gesamtaufkommen. Bliebe es dabei,
@@ -1069,9 +1085,9 @@ describe("Die Bremse fällt nicht ins Unbegrenzte aus", () => {
     /* Und danach geht es wieder. */
     expect((await anfrage({ rumpf: { email: k.email, passwort: GUT },
       herkunft: "10.91.9.9" })).status).toBe(200);
-  }, 90000);
+  }), 90000);
 
-  it("lässt gelungene Anmeldungen nicht auf die Gesamtgrenze zählen", async () => {
+  it("lässt gelungene Anmeldungen nicht auf die Gesamtgrenze zählen", async () => imFensterMitte(async () => {
     /* Sonst wäre die Notbremse eine Grenze für alle Anmeldungen: Ein
        Schichtwechsel, bei dem sich zweihundert Menschen in fünf Minuten
        anmelden, bremste sich selbst aus. Gemessen wird der Abstand zur
@@ -1099,7 +1115,7 @@ describe("Die Bremse fällt nicht ins Unbegrenzte aus", () => {
     expect(fehlversuche.runden).toBe(vorher.runden - 5);
     /* Und wieder aufräumen, damit die folgenden Prüfungen Luft haben. */
     for (let i = 0; i < 10; i++) SCH.notentlasten("anmelden-konto", "a:abbau");
-  }, 90000);
+  }), 90000);
 
   it("bremst ohne Redis-Konfiguration", async () => {
     /* Ohne Fremddienst zählt die Hauptbremse prozesslokal und über Vermerke

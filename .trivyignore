@@ -1,0 +1,17 @@
+# Ausnahmen für den Bild-Scan (.github/workflows/lieferkette.yml, WP-32)
+#
+# Regeln:
+#   - Eine Zeile je Befund: Kennung, dann exp:JJJJ-MM-TT. Nach dem Datum
+#     gilt der Befund wieder und hält den Lauf auf — eine Ausnahme ist eine
+#     Frist, kein Freibrief.
+#   - Darüber ein Kommentar: Paket, warum es CENTRIC nicht trifft oder
+#     warum der Fix noch nicht eingespielt werden kann, und wer entschieden
+#     hat.
+#   - Höchstens 90 Tage. Verlängern heißt neu begründen.
+#
+# Beispiel (nicht aktiv):
+#   # zlib im Basisbild; betroffen ist nur minizip, das Node nicht lädt.
+#   # Entschieden: rinats-png, 2026-11-02.
+#   # CVE-0000-00000 exp:2027-01-31
+#
+# Stand 2026-11-02: keine Ausnahmen.

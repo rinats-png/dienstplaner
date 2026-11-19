@@ -33,6 +33,22 @@ const pruef = (t, b, z) => { if (b) { ok++; console.log("  BESTANDEN ", t, z ? "
 const kopf = (extra = {}) => ({ "content-type": "application/json",
   "x-forwarded-for": HERKUNFT, ...extra });
 
+/* --- Den Demoraum einrichten ---
+   Seit Oktober 2026 gibt es Codes nur für einen eingerichteten Raum, und
+   einrichten darf ihn nur der Betreiber (/api/bestand-anlegen). */
+const betreiberCode = (await (await fetch(`${BASIS}/einrichten`, { method: "POST",
+  headers: kopf({ authorization: `Bearer ${ADMIN}` }),
+  body: JSON.stringify({ name: "Betreiber Prüfung", bestand: "demo-pruefung", rolle: "betreiber" }),
+})).json()).zugangscode;
+const betreiber = await (await fetch(`${BASIS}/api/anmelden`, { method: "POST", headers: kopf(),
+  body: JSON.stringify({ zugangscode: betreiberCode }) })).json();
+const raumAngelegt = await fetch(`${BASIS}/api/bestand-anlegen`, { method: "POST",
+  headers: kopf({ authorization: `Bearer ${betreiber.token}` }),
+  body: JSON.stringify({ bestand: "demo-pruefung", inhalt: { version: 9, stand: 1, mandanten: [
+    { id: "m-pruef-0", name: "Prüfbetrieb", personen: [] }, { id: "m-pruef-1", name: "Prüfbetrieb Zwei", personen: [] }] } }),
+});
+pruef("Demoraum eingerichtet", raumAngelegt.status === 200, `Status ${raumAngelegt.status}`);
+
 /* --- Einen Demozugang anlegen --- */
 const anlegen = await (await fetch(`${BASIS}/einrichten`, {
   method: "POST", headers: kopf({ authorization: `Bearer ${ADMIN}` }),
@@ -83,6 +99,19 @@ const auf = await fetch(`${BASIS}/api/demo`, { method: "POST",
 const aufD = await auf.json();
 pruef("lässt sich ohne Code öffnen", auf.status === 200 && !!aufD.token, aufD.fehler || "");
 pruef("die Sitzung trägt die Rolle des Zugangs", aufD.rolle === "leitung", aufD.rolle);
+pruef("die Antwort trägt das Merkmal demo (steuert den Rollenwähler im Client)", aufD.demo === true, String(aufD.demo));
+const bestD = await (await fetch(`${BASIS}/api/bestand`, { headers: kopf({ authorization: `Bearer ${aufD.token}` }) })).json();
+pruef("auch /api/bestand meldet demo für die Demo-Sitzung", bestD.demo === true, String(bestD.demo));
+for (const [p, m] of [["/api/zugang-sperren", "POST"], ["/api/vollausgabe", "GET"], ["/api/sicherungsschluessel", "POST"], ["/api/wiederherstellen", "POST"]]) {
+  const r = await fetch(`${BASIS}${p}`, { method: m, headers: kopf({ authorization: `Bearer ${aufD.token}` }), ...(m === "POST" ? { body: JSON.stringify({ alleDesBetriebs: true }) } : {}) });
+  pruef(`Demo-Sitzung (Rollenwähler) bekommt auf ${p} kein Verwaltungsrecht`, r.status === 403, `Status ${r.status}`);
+}
+/* Zugang mit Code zu einem Demokonto: ebenfalls Demo-Sitzung (keine Verwaltungswege) */
+const codeDemo = await fetch(`${BASIS}/api/anmelden`, { method: "POST", headers: kopf(), body: JSON.stringify({ zugangscode: anlegen.zugangscode }) });
+const codeDemoD = await codeDemo.json();
+pruef("Anmeldung mit dem Code eines Demokontos meldet demo", codeDemoD.demo === true, String(codeDemoD.demo));
+const codeSperre = await fetch(`${BASIS}/api/zugang-sperren`, { method: "POST", headers: kopf({ authorization: `Bearer ${codeDemoD.token}` }), body: JSON.stringify({ alleDesBetriebs: true }) });
+pruef("und darf damit keine Zugänge sperren", codeSperre.status === 403, `Status ${codeSperre.status}`);
 
 /* --- Genau einen Eintrag über seine öffentliche Kennung zurückziehen ---
 
@@ -91,8 +120,15 @@ pruef("die Sitzung trägt die Rolle des Zugangs", aufD.rolle === "leitung", aufD
    den Code, den nach dem Anlegen niemand mehr hat.                       */
 const aufB = await (await fetch(`${BASIS}/api/demo`, { method: "POST",
   headers: kopf(), body: JSON.stringify({ id: anderer?.id }) })).json();
-const sperrId = await (await fetch(`${BASIS}/api/zugang-sperren`, {
+/* Seit 1e.4b: Die Leitung von Betrieb 0 greift nicht in Betrieb 1 ein. */
+const quer = await (await fetch(`${BASIS}/api/zugang-sperren`, {
   method: "POST", headers: kopf({ authorization: `Bearer ${aufD.token}` }),
+  body: JSON.stringify({ id: anderer?.id }),
+})).json();
+pruef("die Demo-Leitung von Betrieb 0 zieht den Demozugang von Betrieb 1 nicht zurück", !quer.gesperrt,
+  JSON.stringify(quer));
+const sperrId = await (await fetch(`${BASIS}/api/zugang-sperren`, {
+  method: "POST", headers: kopf({ authorization: `Bearer ${betreiber.token}` }),
   body: JSON.stringify({ id: anderer?.id }),
 })).json();
 pruef("ein Demozugang lässt sich über seine Kennung zurückziehen",
@@ -106,13 +142,13 @@ pruef("der andere steht noch drin", (listeId.demos || []).some((d) => d.id === m
 const nachId = await fetch(`${BASIS}/api/bestand`, { headers: kopf({ authorization: `Bearer ${aufB.token}` }) });
 pruef("seine Sitzung ist wertlos", nachId.status === 401, `Status ${nachId.status}`);
 const nochEinmal = await (await fetch(`${BASIS}/api/zugang-sperren`, {
-  method: "POST", headers: kopf({ authorization: `Bearer ${aufD.token}` }),
+  method: "POST", headers: kopf({ authorization: `Bearer ${betreiber.token}` }),
   body: JSON.stringify({ id: anderer?.id }),
 })).json();
 pruef("ein zweites Zurückziehen sperrt nichts mehr", nochEinmal.gesperrt === 0,
   `${nochEinmal.gesperrt} gesperrt`);
 const erfunden = await (await fetch(`${BASIS}/api/zugang-sperren`, {
-  method: "POST", headers: kopf({ authorization: `Bearer ${aufD.token}` }),
+  method: "POST", headers: kopf({ authorization: `Bearer ${betreiber.token}` }),
   body: JSON.stringify({ id: "d00000000" }),
 })).json();
 pruef("eine unbekannte Kennung trifft nichts", erfunden.fehler === "Kein Zugang angegeben."
@@ -126,24 +162,33 @@ const wieder = await (await fetch(`${BASIS}/einrichten`, {
 })).json();
 pruef("nach dem Zurückziehen geht Neuanlegen wieder", !!wieder.zugangscode, wieder.fehler || "");
 
-/* --- Alle Zugänge des Raums zurückziehen — aus einer anderen Sitzung ---
+/* --- „Alle des Betriebs" aus der Sitzung des zweiten Betriebs ---
 
    Der eigene Zugang bleibt dabei bestehen, sonst sperrt man sich selbst
-   aus. Das galt für Demositzungen bisher nur auf dem Papier: Sie trugen
-   keine Kontoprüfsumme, also wusste der Server nicht, welcher der eigene
-   ist — und sperrte ihn mit. Jetzt trägt sie ihn; deshalb läuft dieser
-   Schritt aus der Sitzung des zweiten Betriebs und trifft den ersten.    */
+   aus. Bis Oktober 2026 traf dieser Schritt den ersten Betrieb mit — die
+   Leitung eines Betriebs sperrte die Zugänge eines anderen im selben Raum.
+   Seit 1e.4b nur noch den eigenen Betrieb; den ersten zieht danach der
+   Betreiber über seine Kennung zurück (der Weg der Konsole).            */
 const listeW = await (await fetch(`${BASIS}/api/demos`,
   { headers: { "x-forwarded-for": HERKUNFT } })).json();
 const wiederEintrag = (listeW.demos || []).find((d) => d.bestand === "demo-pruefung" && d.betrieb === 1);
 const aufW = await (await fetch(`${BASIS}/api/demo`, { method: "POST",
   headers: kopf(), body: JSON.stringify({ id: wiederEintrag?.id }) })).json();
-const sperr = await (await fetch(`${BASIS}/api/zugang-sperren`, {
+/* Seit D.2 (2026-11-07) darf eine Demo-Sitzung nichts sperren — auch nicht den eigenen Betrieb. */
+const sperrR = await fetch(`${BASIS}/api/zugang-sperren`, {
   method: "POST", headers: kopf({ authorization: `Bearer ${aufW.token}` }),
   body: JSON.stringify({ alleDesBetriebs: true }),
+});
+pruef("„alle des Betriebs“ aus einer Demo-Sitzung wird abgewiesen", sperrR.status === 403, `Status ${sperrR.status}`);
+const listeQuer = await (await fetch(`${BASIS}/api/demos`,
+  { headers: { "x-forwarded-for": HERKUNFT } })).json();
+pruef("… der Demozugang von Betrieb 0 steht weiter in der Liste", (listeQuer.demos || []).some((d) => d.id === meiner?.id));
+const sperrBetreiber = await (await fetch(`${BASIS}/api/zugang-sperren`, {
+  method: "POST", headers: kopf({ authorization: `Bearer ${betreiber.token}` }),
+  body: JSON.stringify({ id: meiner?.id }),
 })).json();
-pruef("Zugänge lassen sich zurückziehen", sperr.ok === true && sperr.gesperrt >= 1,
-  `${sperr.gesperrt} gesperrt`);
+pruef("Zugänge lassen sich zurückziehen (Betreiber)", sperrBetreiber.ok === true && sperrBetreiber.gesperrt === 1,
+  `${sperrBetreiber.gesperrt} gesperrt`);
 const eigeneNoch = await fetch(`${BASIS}/api/bestand`, { headers: kopf({ authorization: `Bearer ${aufW.token}` }) });
 pruef("die eigene Sitzung bleibt dabei bestehen", eigeneNoch.status === 200, `Status ${eigeneNoch.status}`);
 
@@ -174,7 +219,7 @@ pruef("und sagt auch, warum", /nicht mehr bereit/.test(nochmalD.fehler || ""),
    So bleibt kein aktiver Prüfzugang zurück, und ein zweiter Lauf gegen
    denselben Server läuft nicht in den 409.                               */
 const letzter = await (await fetch(`${BASIS}/api/zugang-sperren`, {
-  method: "POST", headers: kopf({ authorization: `Bearer ${aufW.token}` }),
+  method: "POST", headers: kopf({ authorization: `Bearer ${betreiber.token}` }),
   body: JSON.stringify({ id: wiederEintrag?.id }),
 })).json();
 pruef("der eigene Zugang lässt sich über die Kennung zurückziehen", letzter.gesperrt === 1,

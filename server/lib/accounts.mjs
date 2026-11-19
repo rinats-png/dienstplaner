@@ -56,6 +56,19 @@ import { randomBytes } from "node:crypto";
 import { mailNormieren, mailBrauchbar } from "./adressen.mjs";
 import { neuHash, altHash } from "./codes.mjs";
 import { RANG } from "./rollenvergabe.mjs";
+import { herkunftsloseFeedsWiderrufen } from "./feedwiderruf.mjs";
+import { schluesselDesKontos, schluesselWiderrufenWenn } from "./sicherungsschluessel.mjs";
+import { vorgang } from "./schreibhalt.mjs";
+import { kontoSperreVermerken, mitgliedEntzugVermerken, passwortAbloesungVermerken } from "./kontowiderrufbuch.mjs";
+
+/** Sicherungsschlüssel eines Kontos endgültig widerrufen (SI-P1). Ein Fehler lässt den Anlass nicht scheitern: Die
+    Prüfung beim Gebrauch widerruft ohnehin. Das Ergebnis steht in der Antwort, damit ein Fehler nicht unsichtbar bleibt. */
+async function schluesselDesKontosWiderrufen(accountId, grund, raum = null) {
+  try {
+    const kontoGleich = schluesselDesKontos(accountId);
+    return await schluesselWiderrufenWenn((sk) => kontoGleich(sk) && (raum === null || sk.bestand === raum), grund);
+  } catch { return { widerrufen: 0, fehler: 1 }; }
+}
 
 /* --------------------------------------------------------------------------
    SCHLÜSSEL
@@ -110,7 +123,12 @@ export const mitgliedlaufSchluessel = (accountId, raum) =>
    -------------------------------------------------------------------------- */
 const reihe = new Map();
 
+/* Schreib-Halt (schreibhalt.mjs, WP-28c): gehalten wird vor dem Eintritt in die Reihe; wer darin steht, läuft durch. */
 function nacheinander(schluessel, arbeit) {
+  return vorgang(() => nacheinanderInReihe(schluessel, arbeit));
+}
+
+function nacheinanderInReihe(schluessel, arbeit) {
   const davor = reihe.get(schluessel) || Promise.resolve();
   const lauf = davor.then(arbeit, arbeit);
   const warten = lauf.then(() => {}, () => {});
@@ -449,7 +467,11 @@ export async function accountLesenPerId(store, accountId) {
 
 const AENDERBAR = new Set(["emailVerifiziertAm", "passwort", "status",
   "tokenNr", "epoche", "passwortGeaendert", "letzteAnmeldung",
-  "profil", "testbetriebOffenSeit", "testbetriebVerbrauchtAm", "testbetriebRaum"]);
+  "profil", "testbetriebOffenSeit", "testbetriebVerbrauchtAm", "testbetriebRaum",
+  /* OPT-4: Für dieses Konto ist der zweite Faktor Pflicht, wo es Rechte von Leitung, Planung oder Kunde trägt
+     (betriebsauswahl.mjs, arbeitssitzung.mjs) — unabhängig vom Schalter CENTRIC_ROLLEN_ZWEIFAKTOR_PFLICHT. Nur
+     setzbar, nie zurücknehmbar (unten). */
+  "faktorPflicht"]);
 
 /**
  * Ändert einen Account feldweise. Unbekannte oder geschützte Felder führen
@@ -472,6 +494,10 @@ export async function accountAendern(store, accountId, felder) {
     return { ok: false, grund: "passwortform" };
   if ("epoche" in felder && (!Number.isInteger(felder.epoche) || felder.epoche < 1))
     return { ok: false, grund: "epoche" };
+  /* OPT-4: Die Pflicht des zweiten Faktors am Konto lässt sich nur einschalten. Ein Weg, sie über dieses Ändern
+     wieder abzuschalten, wäre eine Ausnahme vom zweiten Faktor ohne jede Prüfung. */
+  if ("faktorPflicht" in felder && felder.faktorPflicht !== true)
+    return { ok: false, grund: "faktorPflicht" };
   if ("profil" in felder && felder.profil !== null) {
     const g = profilPruefen(felder.profil);
     if (!g.ok) return { ok: false, grund: `profil:${g.grund}` };
@@ -511,6 +537,17 @@ export async function accountAendern(store, accountId, felder) {
     } catch (e) {
       throw new AblageFehler(`Account konnte nicht geändert werden: ${e && e.message}`, e);
     }
+    /* BE-1 Rest (kontowiderrufbuch.mjs): Wird ein vorhandener Prüfwert ABGELÖST (anderer Wert oder null), kommt seine
+       HMAC-Kennung ins Konto-Widerrufbuch — ZUERST die Ablage (oben, der neue Wert gilt sofort), DANN das Buch, in der
+       Reihe dieses Kontos, damit genau der Wert vermerkt wird, der ersetzt wurde (auch bei gleichzeitigen Änderungen).
+       Scheitert das Buch, bleibt die Änderung wirksam: `kontobuch.geschrieben: false` („Widerruf wirksam,
+       Widerrufbuch nicht beschrieben“), Nachtrag, /gesund-Warnung, der nächste Eintrag oder Start holt nach. Das erste
+       Passwort (vorher keins) trägt nichts ein. Weder Prüfwert noch Kennung gehen in das Ergebnis. */
+    if ("passwort" in felder && typeof stand.passwort === "string" && stand.passwort.startsWith("s1$")
+        && stand.passwort !== neu.passwort) {
+      const kontobuch = await passwortAbloesungVermerken(store, stand.id, stand.passwort);
+      return { ok: true, account: neu, kontobuch, ...(kontobuch.geschrieben ? {} : { widerrufWirksam: true }) };
+    }
     return { ok: true, account: neu };
   });
 }
@@ -520,12 +557,20 @@ export async function accountAendern(store, accountId, felder) {
 export async function passwortSetzen(store, accountId, prueftext) {
   const a = await accountLesenPerId(store, accountId);
   if (!a) return { ok: false, grund: "unbekannt" };
-  return accountAendern(store, accountId, {
+  const erg = await accountAendern(store, accountId, {
     passwort: prueftext,
     passwortGeaendert: jetztISO(),
     epoche: (Number(a.epoche) || 1) + 1,
     ...(a.status === "eingeladen" ? { status: "aktiv" } : {}),
   });
+  /* SI-P1: Eine ÄNDERUNG des Passworts (es gab schon eins) beendet die Sicherungsschlüssel des Kontos dauerhaft.
+     Das erste Passwort ändert nichts: Es gibt noch keine Schlüssel. Vor der Änderung muss die Warnung erscheinen
+     (sicherungsschluessel.mjs, SK_WARNUNG_PASSWORT, schluesselDesKontosZaehlen). */
+  if (erg && erg.ok && a.passwort) {
+    const sk = await schluesselDesKontosWiderrufen(accountId, "passwort-geaendert");
+    return { ...erg, sicherungsschluessel: sk };
+  }
+  return erg;
 }
 
 /** Die Adresse ist als erreichbar bestätigt. */
@@ -540,7 +585,10 @@ export async function emailBestaetigen(store, accountId) {
 export async function epocheErhoehen(store, accountId) {
   const a = await accountLesenPerId(store, accountId);
   if (!a) return { ok: false, grund: "unbekannt" };
-  return accountAendern(store, accountId, { epoche: (Number(a.epoche) || 1) + 1 });
+  const erg = await accountAendern(store, accountId, { epoche: (Number(a.epoche) || 1) + 1 });
+  /* SI-P1: Ein Sicherheitsreset beendet die Sicherungsschlüssel des Kontos dauerhaft (wie eine Passwortänderung). */
+  if (erg && erg.ok) return { ...erg, sicherungsschluessel: await schluesselDesKontosWiderrufen(accountId, "sicherheitsreset") };
+  return erg;
 }
 
 /**
@@ -604,9 +652,35 @@ export async function testbetriebOeffnen(store, accountId) {
     ist nicht ausgetreten, und eine Dienstplanung, aus der seine Rolle
     verschwindet, wäre hinterher nicht mehr nachvollziehbar. Was eine Sperre
     für laufende Sitzungen bedeutet, entscheidet die Anmeldung, nicht der
-    Speicher. */
-export const accountSperren = (store, accountId) =>
-  accountAendern(store, accountId, { status: "gesperrt" });
+    Speicher.
+
+    WP-24 (Review-Auflage A4a): Ein Kalender-Feed aus der Zeit vor WP-24
+    trägt keine Herkunft und hinge sonst nur an der Person. Die Sperre
+    widerruft darum zusätzlich den herkunftslosen Feed jeder Person, an die
+    dieses Konto gebunden ist (Index feedperson:, feedwiderruf.mjs). Ein
+    Fehler dabei lässt die Sperre selbst nicht scheitern. */
+export async function accountSperren(store, accountId) {
+  const erg = await accountAendern(store, accountId, { status: "gesperrt" });
+  let sk = null;
+  if (erg && erg.ok) {
+    /* SI-P1: Die Sperre beendet die Sicherungsschlüssel dieses Kontos dauerhaft; eine spätere Entsperrung belebt sie nicht. */
+    sk = await schluesselDesKontosWiderrufen(accountId, "konto-gesperrt");
+    try {
+      const bindungen = (await mitgliedschaftenDesAccounts(store, accountId))
+        .filter((m) => m && m.person !== null && m.person !== undefined && typeof m.mandantId === "string")
+        .map((m) => ({ raum: m.raum, mandantId: m.mandantId, personId: String(m.person) }));
+      await herkunftsloseFeedsWiderrufen(store, bindungen);
+    } catch { /* die Sperre gilt; der Altfeed bleibt bis zur Prüfung der Person */ }
+    /* BE-1 (kontowiderrufbuch.mjs): ZUERST die Ablage (oben, wirkt sofort), DANN das Konto-Widerrufbuch, damit die
+       Sperre jeden Rücksprung überlebt. Scheitert das Buch, bleibt die Sperre wirksam: `kontobuch.geschrieben: false`
+       heißt „Widerruf wirksam, Widerrufbuch nicht beschrieben“ (ein Endpunkt antwortet 503); Nachtrag, /gesund-Warnung
+       und der nächste Start holen es nach. */
+    const kontobuch = await kontoSperreVermerken(store, accountId);
+    return { ...erg, ...(sk ? { sicherungsschluessel: sk } : {}), kontobuch,
+      ...(kontobuch.geschrieben ? {} : { widerrufWirksam: true }) };
+  }
+  return sk ? { ...erg, sicherungsschluessel: sk } : erg;
+}
 
 /** Zeitpunkt der letzten Anmeldung. */
 export const anmeldungVermerken = (store, accountId) =>
@@ -1044,6 +1118,21 @@ export const mitgliedschaftAktivieren = (store, accountId, raum) =>
   statusSetzen(store, accountId, raum, "aktiv", { aktiviertAm: jetztISO() });
 
 /** Eingeladen oder aktiv → entzogen. Der Datensatz bleibt. */
-export const mitgliedschaftEntziehen = (store, accountId, raum) =>
-  statusSetzen(store, accountId, raum, "entzogen", { entzogenAm: jetztISO() },
+export const mitgliedschaftEntziehen = async (store, accountId, raum) => {
+  const erg = await statusSetzen(store, accountId, raum, "entzogen", { entzogenAm: jetztISO() },
     { laufWeiterZaehlen: true });
+  /* SI-P1: Mit der Mitgliedschaft enden die Sicherungsschlüssel, die dieses Konto für diesen Raum angelegt hat. */
+  if (erg && erg.ok) {
+    const sk = await schluesselDesKontosWiderrufen(accountId, "ersteller-berechtigung", raum);
+    /* BE-1 (kontowiderrufbuch.mjs): Lauf und Status stehen schon in der Ablage (statusSetzen); jetzt die
+       Mindestgeneration der Beziehung ins Konto-Widerrufbuch — der Lauf nach dem Entzug, mindestens die Generation des
+       Grabsteins + 1. Scheitert das Buch, bleibt der Entzug wirksam (siehe accountSperren). */
+    const lauf = await mitgliedlaufLesen(store, accountId, raum).catch(() => ({ ok: false }));
+    const grab = Number.isInteger(erg.mitgliedschaft && erg.mitgliedschaft.generation) ? erg.mitgliedschaft.generation + 1 : 2;
+    const ausLauf = "generation" in lauf && Number.isInteger(lauf.generation) ? lauf.generation : 0;
+    /* Generationen, keine Ränge: der größere der beiden Werte (das Buch senkt ohnehin nie). */
+    const kontobuch = await mitgliedEntzugVermerken(store, accountId, raum, ausLauf > grab ? ausLauf : grab);
+    return { ...erg, sicherungsschluessel: sk, kontobuch, ...(kontobuch.geschrieben ? {} : { widerrufWirksam: true }) };
+  }
+  return erg;
+};

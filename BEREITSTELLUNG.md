@@ -18,8 +18,10 @@ zu bringen — in der Reihenfolge, in der es zu tun ist.
     GitHub (main)
       → Actions „Prüfung" (jeder Push)             Linter, Typen, alle Prüfungen, Bild bauen
       → Actions „Auslieferung" (von Hand)          Bild bauen, gegen den Container prüfen, nach GHCR
-      → ghcr.io/rinats-png/dienstplaner:<sha>, :latest
-      → VPS: docker compose pull && docker compose up -d
+      → ghcr.io/rinats-png/dienstplaner:<sha>   (Label org.opencontainers.image.revision = <sha>)
+      → deploy/FREIGEGEBENE-IMAGES.md            Digest, Commit, Bericht, Status aktiv/vorherig/gesperrt
+      → VPS: docker pull …@sha256:<digest> → ./digest-pruefen.sh → IMAGE_DIGEST in .env
+             → docker compose up -d --pull never      (nie latest, nie ein Tag)
 
 Ein einziger Node-Prozess je Container, kein Port nach außen: Caddy erreicht
 ihn über das Docker-Netz `proxy` als `centric-dp-web:3000`. Der Container
@@ -29,6 +31,8 @@ und `/tmp` sind beschreibbar (`deploy/compose.yml`).
 | Ort auf dem VPS | Inhalt | Im Git? |
 |---|---|---|
 | `/opt/apps/centric-dienstplanung/compose.yml` | Container-Definition (Kopie von `deploy/compose.yml`) | ja |
+| `/opt/apps/centric-dienstplanung/FREIGEGEBENE-IMAGES.md`, `*.sh` | Freigabeliste und Betriebsskripte (`digest-pruefen.sh`, `ruecksprung.sh`, `abschalten.sh`, `freigabe-lib.sh`; Kopien aus `deploy/`) | ja |
+| `/opt/apps/centric-dienstplanung/betrieb-protokoll.log` | Protokoll von Rücksprung und R0 | nein |
 | `/opt/apps/centric-dienstplanung/.env` | Laufzeitumgebung, Rechte 600 | **nie** |
 | `/opt/apps/centric-dienstplanung/data/` | alle Anwendungsdaten | **nie** |
 | `/opt/proxy/Caddyfile`, `/opt/proxy/sites/app.centric-dienstplanung.de.caddy` | Caddy: `reverse_proxy centric-dp-web:3000`, Sicherheitsköpfe | nein |
@@ -84,7 +88,12 @@ Der Lauf baut das Bild mit `VITE_ANWENDUNG_URL` und `VITE_KONTAKT_MAIL` aus
 den Repository-Variablen, startet es genau so gehärtet wie auf dem VPS,
 lässt die Rechteprüfung dagegen laufen und lädt es dann nach GHCR — als
 `<vollständiger Commit-Hash>` und als `latest`. Erst wenn beide Kennzeichen
-da sind, geht es weiter mit Schritt 3.
+da sind, geht es weiter mit Schritt 3. Das Bild trägt das Label
+`org.opencontainers.image.revision` = Commit (seit WP-03; ältere Bilder haben
+es nicht). **Betrieben wird nie über ein Kennzeichen**, sondern nur über den
+Digest aus dem Lauf (Schritt 3, „Freigegebene Images pflegen“). Das Kennzeichen
+`latest` in GHCR ist bequem zum Nachsehen, auf dem VPS aber ohne Bedeutung — das
+lokale `latest` dort zeigte 2026-11 auf ein altes Bild (`0861adee…`).
 
 Zu jedem veröffentlichten Stand gehört damit ein Commit. Ob das laufende Bild
 wirklich zu ihm gehört, lässt sich auf dem VPS belegen:
@@ -102,7 +111,7 @@ Der Container liest sie beim Start; nach jeder Änderung `docker compose up -d`
 |---|---|---|
 | `CENTRIC_PFEFFER` | **ja** | `openssl rand -base64 32` — **vor dem ersten Zugangscode setzen, danach nie ändern** |
 | `CENTRIC_DATEN`, `CENTRIC_ABLAGE`, `PORT`, `NODE_ENV` | gesetzt durch Compose | `/data`, `dateien`, `3000`, `production` |
-| `IMAGE_TAG` | nein | Kennzeichen des Bilds, Vorgabe `latest`; für einen Rollback der Commit-Hash |
+| `IMAGE_DIGEST` | **ja** | `sha256:<64 hex>` — Manifest-Digest des Bilds, muss in `FREIGEGEBENE-IMAGES.md` als `aktiv` (oder beim Rücksprung `vorherig`) stehen. Keine Vorgabe: fehlt er, startet Compose nicht. Das frühere `IMAGE_TAG` wird nicht mehr gelesen (Migration in Schritt 3) |
 | `CENTRIC_ADMIN` | **nur vorübergehend** | `openssl rand -base64 24` — nur bis das erste benannte Verwalterkonto angelegt ist (Schritt 5.1), dann entfernen |
 | `VAPID_PUBLIC`, `VAPID_PRIVATE`, `VAPID_KONTAKT` | nein | aus `npx web-push generate-vapid-keys`; beide Hälften gehören zusammen |
 | `RESEND_API_KEY`, `CENTRIC_ABSENDER` | nein | E-Mail-Versand; der Absender braucht eine bei Resend verifizierte Domain |
@@ -111,6 +120,7 @@ Der Container liest sie beim Start; nach jeder Änderung `docker compose up -d`
 | `CENTRIC_PUBLIC_REGISTRATION` | nein | **Vorgabe: aus.** Nur genau `true` öffnet die öffentliche Selbstregistrierung (`/api/registrierung*`); jeder andere Wert lässt sie zu. Erst setzen, wenn das Account-Onboarding steht — siehe 5.8 |
 | `CENTRIC_SELBSTSTART` | nein | **Vorgabe: aus.** Nur genau `true` öffnet den öffentlichen Selbststart (`/starten`, „Eigenen Betrieb anlegen"); jeder andere Wert lässt ihn aus. Im internen Piloten nicht setzen — siehe `docs/SELBSTSTART-SCHALTER.md` |
 | `CENTRIC_DEMO` | nein | **Vorgabe: aus.** Nur genau `true` öffnet den öffentlichen Demozugang (`POST /api/demo`, `GET /api/demos`, die drei Beispielbetriebe auf der Anmeldeseite); sonst 403 bzw. leere Liste, ohne Sitzung und ohne Datei. Siehe `docs/DEMO-SCHALTER.md`. |
+| `CENTRIC_HILFE_ASSISTENT` | nein | **Vorgabe: aus.** `suche` öffnet die Hilfe-Suche über die festen Hilfetexte (`GET /api/hilfe/status`, `POST /api/hilfe/frage`); `an` erlaubt zusätzlich eine vom Gateway formulierte Antwort — nur, wenn ein Gateway eingehängt ist (heute keines; Voraussetzung E-25/E-26). Jeder andere Wert bedeutet aus. WP-I23. |
 
 Die Anwendung **läuft auch ohne die optionalen Variablen**. Was fehlt:
 
@@ -147,6 +157,15 @@ Vor dem Echtbetrieb eine eigene Domain bei Resend verifizieren.
 Laufzeit — sie stehen als Repository-Variablen in GitHub, nicht in der
 `.env`. Nach einer Änderung muss ein neues Bild gebaut werden (Schritt 1).
 
+### Pflicht hinter Caddy: `CENTRIC_VERTRAUTE_PROXYS`
+
+Ab WP-32b wertet der Server `X-Forwarded-For` nur von vertrauten Proxys aus.
+Ohne diese Variable zählen alle Nutzer unter der Adresse des Caddy-Containers
+— die Bremse träfe alle gemeinsam. Vor dem Ausliefern dieses Stands **nur
+Caddys feste Adresse** im Netz `proxy` eintragen (das ganze Subnetz ist nicht
+empfohlen: jeder Container dort könnte seine Herkunft frei wählen);
+Festlegen, Wert und Probe: `docs/CADDY-UND-XFF.md`, Abschnitt 7.
+
 ### Optional, härtet die Fehlversuchsbremse
 
 | Variable | Wirkung |
@@ -180,15 +199,49 @@ erst, wenn nach Ablauf erneut fünf Fehlversuche zusammenkommen.
 
 ## Schritt 3 — Auf den VPS ausliefern
 
-Im Verzeichnis `/opt/apps/centric-dienstplanung`:
+**Grundsatz (WP-03):** Auf der Produktion läuft nur ein Bild, das per Digest
+benannt ist und in `deploy/FREIGEGEBENE-IMAGES.md` steht. Nie `latest`, nie ein
+Kennzeichen, nie ein Bild mit Status `gesperrt`. `deploy/compose.yml` verlangt
+`IMAGE_DIGEST` ohne Vorgabe — fehlt er, startet Compose gar nicht.
 
-    docker compose pull
-    docker compose up -d
+Neben `compose.yml` liegen in `/opt/apps/centric-dienstplanung` (Kopien aus
+`deploy/`, ausführbar): `FREIGEGEBENE-IMAGES.md`, `freigabe-lib.sh`,
+`digest-pruefen.sh`, `ruecksprung.sh`, `abschalten.sh`. Die Skripte schreiben ihr
+Protokoll nach `betrieb-protokoll.log` im selben Verzeichnis.
+
+Im Verzeichnis `/opt/apps/centric-dienstplanung`, Digest aus dem Lauf
+„Auslieferung“ (`sha256:…`, Kennzeichen = Commit):
+
+    # 0. vorher: Zeile in FREIGEGEBENE-IMAGES.md (Status aktiv) im Repo, Kopie hier
+    printenv IMAGE_DIGEST IMAGE_TAG                 # muss LEER sein, sonst: unset IMAGE_DIGEST IMAGE_TAG
+    docker pull ghcr.io/rinats-png/dienstplaner@sha256:<digest>     # bewusst, nur per Digest
+    ./digest-pruefen.sh sha256:<digest>                               # muss „in Ordnung“ melden
+    cp -p .env .env.vor-<UTC>                                         # Kopie der .env
+    # in .env: IMAGE_DIGEST=sha256:<digest>   (Editor; Rechte 600 bleiben)
+    docker compose up -d --pull never centric-dp-web
     docker compose ps            # centric-dp-web … (healthy)
+
+`digest-pruefen.sh` prüft Format, Eintrag und Status in der Liste, Sperre (auch
+per Präfix und auf die Bild-ID), ob das Bild lokal liegt, und ob das Label
+`org.opencontainers.image.revision` zum Commit der Liste passt. Bilder vor WP-03
+haben kein Label; sie gehen nur mit `--ohne-label` durch, nachdem die Herkunft
+anders belegt ist (Registry-Kennzeichen, Dateivergleich wie in Schritt 1). Ein
+**abweichendes** Label lässt nichts durch, ein Label auf einen gesperrten Commit
+gilt als gesperrt. Zusätzlich zur Liste kennen die Skripte eine fest eingebaute
+Mindest-Sperrliste (`f03a8514…`, `0861adee…`), die auch bei fehlender oder
+bearbeiteter Liste gilt.
+
+**Shell-Variablen gehen der `.env` vor.** Docker Compose nimmt `IMAGE_DIGEST` aus
+der Shell, wenn es dort gesetzt ist, und ignoriert dann die `.env`. Deshalb
+`IMAGE_DIGEST` nie exportieren (`printenv` oben). `ruecksprung.sh` bricht ab, wenn
+die Variable in der Shell steht, und setzt sie für seinen eigenen Aufruf
+ausdrücklich auf das Ziel. `compose.yml` hat `pull_policy: never`: Compose zieht
+nie selbst, ein fehlendes Bild lässt den Start scheitern.
 
 Danach prüfen — jeder Punkt einzeln:
 
     docker inspect centric-dp-web --format '{{.State.Health.Status}} {{.Image}}'
+    docker image inspect --format '{{.Id}}' ghcr.io/rinats-png/dienstplaner@sha256:<digest>   # = .Image oben
     docker run --rm --network proxy curlimages/curl -sS http://centric-dp-web:3000/gesund
     curl -sS https://app.centric-dienstplanung.de/gesund
     curl -sS -o /dev/null -w '%{http_code}\n' https://app.centric-dienstplanung.de/
@@ -198,21 +251,143 @@ Danach prüfen — jeder Punkt einzeln:
 `/gesund` antwortet `{"status":"ok"}`; die Startseite 200; das Startlog des
 Containers nennt die Funktionen und „Ablage: Dateien unter /data".
 
-**Rollback:** Das vorige Bild bleibt lokal liegen. `IMAGE_TAG=<voriger
-Commit-Hash>` in die `.env`, `docker compose up -d`, nach dem Prüfen wieder
-auf `latest`. Die Daten unter `/data` sind von einem Bildwechsel nie
+### 3.1 Wenn ein Release schiefgeht: R0 oder Rücksprung
+
+Die vereinbarte Fehlerstrategie ist **R0: Dienst anhalten.** Lieber kein Dienst
+als ein Bild mit bekannter Lücke. Es gibt **keinen** automatischen Rücksprung und
+keinen Weg zurück auf `latest`.
+
+    ./abschalten.sh --trocken     # zeigt Zustand und was geschähe
+    ./abschalten.sh               # docker compose stop centric-dp-web, prüft „exited“, beobachtet
+
+`abschalten.sh` hält den Container an (scheitert Compose — etwa weil `.env` noch
+kein `IMAGE_DIGEST` hat —, mit `docker stop`), prüft, dass er angehalten ist und
+nicht wieder anläuft, schreibt ins Protokoll und nennt die Schritte zur
+Wiederinbetriebnahme. Daten und `.env` bleiben unberührt.
+
+Ein **Rücksprung** ist nur auf den Eintrag `vorherig` der Liste möglich und nur,
+wenn er nicht gesperrt ist:
+
+    ./ruecksprung.sh --trocken    # zeigt Ziel, .env-Änderung, Befehl — ändert nichts
+    ./ruecksprung.sh              # .env sichern, IMAGE_DIGEST=<vorherig>, up -d --pull never,
+                                  # warten auf healthy, Bild-ID vergleichen, Protokoll
+
+Gibt es keinen Eintrag `vorherig`, ist er gesperrt oder fällt er in
+`digest-pruefen.sh` durch, verweigert das Skript mit Verweis auf R0. Schlägt der
+Start fehl (unhealthy, Zeitüberschreitung, falsches Bild), meldet es den Fehlschlag
+und verweist ebenfalls auf R0 — es hält nicht selbst an. Danach die Liste
+anpassen (Ziel → `aktiv`, verlassenes Bild → `gesperrt` mit Grund).
+
+**Stand 2026-11-02:** Es gibt **keinen** Eintrag `vorherig`. Das einzige ältere
+Produktivbild `f03a8514…` (`64d08a4`) hat die Datenschutzlücke P0-0 und ist
+gesperrt, ebenso `0861adee…` (auf das das lokale `latest` des VPS zeigt). Im
+Fehlerfall gilt also R0. Die Daten unter `/data` sind von einem Bildwechsel nie
 betroffen.
 
-Der Schritt auf den VPS aus GitHub Actions heraus (`deploy.yml`, Job `vps`
-über SSH und `/opt/bin/deploy.sh` mit Healthcheck und Rollback) ist
-vorbereitet, aber nicht scharf: Er läuft erst, wenn `DEPLOY_HOST` und
-`DEPLOY_SSH_KEY` hinterlegt sind und das Skript auf dem VPS liegt. Bis dahin
-gilt der Weg oben.
+### 3.2 Freigegebene Images pflegen
+
+`deploy/FREIGEGEBENE-IMAGES.md` ist die einzige Quelle für zulässige Bilder; die
+Tabelle hat eine feste Spaltenreihenfolge (`Digest | Commit | Datum |
+Abnahmebericht | Status | Grund`) und wird von den Skripten und der CI gelesen.
+Bei jedem Produktivwechsel, **vor** dem Wechsel, im Repository:
+
+1. bisherige Zeile `aktiv` → `vorherig` — nur wenn sie ein zulässiges Rücksprungziel
+   ist; sonst → `gesperrt` mit Grund;
+2. bisherige Zeile `vorherig` → `gesperrt` (Grund z. B. „überholt“);
+3. neue Zeile: voller Digest, voller Commit, Datum, Abnahmebericht, `aktiv`;
+4. PR, CI grün („Betrieb: Deploy-Skripte“ prüft die Liste mit), Kopie auf den VPS.
+
+Höchstens eine Zeile `aktiv`, höchstens eine `vorherig`; Zeilen werden nie
+gelöscht. Wird an einem Bild ein Befund bekannt, wird es **sofort** `gesperrt`,
+auch wenn es `vorherig` war. Bei `gesperrt` darf ein Digest-Präfix stehen, wenn
+der volle Digest nicht belegt ist (`0861adee`); gesperrt ist dann jedes Bild,
+dessen Digest oder Bild-ID damit beginnt.
+
+### 3.3 Migration der Produktions-`.env` (IMAGE_TAG → IMAGE_DIGEST)
+
+Die neue `compose.yml` liest `IMAGE_TAG` nicht mehr. Bis zur Einführung (im
+nächsten Deploy-Fenster, gesondert freizugeben) läuft die Produktion mit der
+alten `compose.yml` und `IMAGE_TAG=<commit>@sha256:<digest>` weiter. Beim
+Einführen, in dieser Reihenfolge — **nicht vorher und nicht ohne Freigabe**:
+
+Jeder Schritt hängt mit `&&` am vorigen; bricht einer ab, passiert danach nichts.
+Neue Dateien aus `deploy/` (compose.yml, Liste, Skripte) liegen vorher in einem
+Unterordner `neu-wp03/`. Der Digest wird **aus `neu-wp03/` heraus** geprüft
+(Liste und Skripte dort), **bevor** irgendetwas, insbesondere die neue
+`compose.yml`, ins Dienstverzeichnis kopiert wird.
+
+    cd /opt/apps/centric-dienstplanung && unset IMAGE_DIGEST IMAGE_TAG
+    stempel=$(date -u +%Y%m%dT%H%M%SZ) \
+      && cp -p .env ".env.vor-wp03-$stempel" \
+      && cp -p compose.yml "compose.yml.vor-wp03-$stempel" \
+      && [ "$(grep -c '^IMAGE_TAG=' .env)" = 1 ] \
+      && digest=$(sed -n 's/^IMAGE_TAG=[0-9a-f]\{40\}@\(sha256:[0-9a-f]\{64\}\)$/\1/p' .env) \
+      && [ -n "$digest" ] && echo "$digest" \
+      && chmod +x neu-wp03/digest-pruefen.sh neu-wp03/ruecksprung.sh neu-wp03/abschalten.sh \
+      && ./neu-wp03/digest-pruefen.sh "$digest" --ohne-label \
+      && cp neu-wp03/compose.yml neu-wp03/FREIGEGEBENE-IMAGES.md neu-wp03/*.sh . \
+      && ./digest-pruefen.sh "$digest" --ohne-label \
+      && sed -i "s/^IMAGE_TAG=.*/IMAGE_DIGEST=$digest/" .env \
+      && [ "$(grep -cE '^(export[[:space:]]+)?IMAGE_(TAG|DIGEST)=' .env)" = 1 ] \
+      && grep -q "^IMAGE_DIGEST=$digest\$" .env \
+      && docker compose config --no-env-resolution | grep -E '^\s+image: .*@sha256:' \
+      && docker compose up -d --pull never centric-dp-web \
+      && docker compose ps
+
+Erwartet: `echo` zeigt `sha256:0b192927…e452f`; `digest-pruefen.sh` meldet „in
+Ordnung“ mit Warnung (das H8+-Bild hat noch kein Revision-Label); die Prüfung mit
+`config` zeigt die Zeile `image: …@sha256:0b192927…`. `--no-env-resolution` löst
+nur die Werte aus `env_file` nicht auf; Interpolation (wie `image:`) und die Werte
+unter `environment:` erscheinen trotzdem — die Ausgabe daher nicht weitergeben,
+nur die `image:`-Zeile ansehen.
+
+Auch bei unverändertem Digest kann Compose den Container neu erzeugen (geänderte
+Konfiguration) — wenige Sekunden Unterbrechung einplanen. Zurück: beide
+`.vor-wp03-…`-Dateien zurückkopieren, `docker compose up -d --pull never`.
+
+**Pflichtschritt nach der Migration (gesondert freizugeben, hier nur beschrieben):**
+gesperrte Bilder lokal unerreichbar machen, damit sie auch von Hand nicht
+versehentlich gestartet werden. Die Sperre in den Skripten ist nur prozedural;
+ein `docker run …:latest` oder `docker run …:64d08a4…` an ihnen vorbei bliebe
+sonst möglich. Gelöst werden **alle** Referenzen gesperrter Bilder — jedes Tag
+(`latest`, die Commit-Tags `:64d08a4957c5…` und `:1a56988d…`, jedes andere) und
+jede Digest-Referenz (`…@sha256:f03a8514…`), nicht nur `latest`.
+
+    # 1. Bestand: alle Referenzen gesperrter Bilder (Digest ODER Bild-ID)
+    docker image ls --digests --no-trunc \
+      --format '{{.Repository}} {{.Tag}} {{.Digest}} {{.ID}}' \
+      | grep -E 'sha256:(f03a8514|0861adee)' | tee gesperrte-referenzen.txt
+    # 2. Befehle erzeugen und LESEN (erst Tags, dann Digest-Referenzen) — noch nichts gelöscht
+    awk '$2 != "<none>" { print "docker image rm " $1 ":" $2 }' gesperrte-referenzen.txt
+    awk '$3 != "<none>" { print "docker image rm " $1 "@" $3 }' gesperrte-referenzen.txt
+    # 3. nach Prüfung der Liste ausführen (je Zeile; kein --force)
+    # 4. Kontrolle — muss LEER sein:
+    docker image ls --digests --no-trunc \
+      --format '{{.Repository}} {{.Tag}} {{.Digest}} {{.ID}}' | grep -E 'sha256:(f03a8514|0861adee)'
+    docker image ls --digests ghcr.io/rinats-png/dienstplaner     # übrig: nur freigegebene Digests
+
+Sind alle Referenzen gelöst, entfernt Docker das Bild selbst. Ein Bild, das noch
+von einem Container (auch einem angehaltenen, etwa `centric-dienstplanung-test`)
+benutzt wird, lässt Docker nicht entfernen — dann erst den Container prüfen, nicht
+`--force`. Soll ein gesperrtes Bild zur Beweissicherung erhalten bleiben, vorher
+als Datei sichern (`docker save … | gzip > gesperrt-<digest>.tar.gz`, außerhalb des
+Dienstverzeichnisses) und den Ablageort im Abnahmebericht vermerken; ein
+zusätzliches Tag wie `alt-0861adee` ist **keine** Lösung, weil es startbar bliebe.
+
+**Job `vps` in `deploy.yml` — gesperrt.** Der Schritt auf den VPS aus GitHub
+Actions heraus (Job `vps` über SSH und `/opt/bin/deploy.sh`) darf **nicht**
+ausgelöst werden (Eingabe „ausliefern“ bleibt aus), und `DEPLOY_HOST` darf
+**nicht** gesetzt werden, bis `deploy.sh` auf Digest (`IMAGE_DIGEST`),
+`digest-pruefen.sh` und R0 umgestellt ist. Heute übergibt der Job ein
+Kennzeichen, und `deploy.sh` rollt bei Fehler automatisch auf ein voriges
+Kennzeichen zurück — das kann ein gesperrtes Bild treffen. Bis dahin gilt
+ausschließlich der Weg von Hand oben.
 
 ## Schritt 4 — Was beim ersten Öffnen geschieht
 
 **Keine Migration.** Ein leeres `/data` ist ein leerer Betrieb; die
-Anwendung legt beim ersten Schreiben an, was sie braucht.
+Anwendung legt Konten und Sitzungen beim ersten Schreiben an. Einen
+Datenraum richtet erst der Betreiber ein (siehe 5.0).
 
 **Dienstarbeiter.** Beim ersten Aufruf richtet sich der Offlinebetrieb ein.
 Danach startet die Anwendung auch ohne Netz, und der zuletzt geladene Plan
@@ -242,8 +417,59 @@ genauso.
 | Was | Wie | Wodurch |
 |---|---|---|
 | Betreiberkonsole | Code, Rolle `betreiber` | `/einrichten` |
-| Drei Demobetriebe | ohne Code offen auf der Anmeldeseite, **nur mit `CENTRIC_DEMO=true`** (Vorgabe aus, `docs/DEMO-SCHALTER.md`) | `/einrichten`, `demo: true` |
+| Drei Demobetriebe | ohne Code offen auf der Anmeldeseite, **nur mit `CENTRIC_DEMO=true`** (Vorgabe aus, `docs/DEMO-SCHALTER.md`) | `/einrichten`, `demo: true` — erst nach dem Einrichten des Raums |
 | Ein leerer Testbetrieb | eigener Raum, 30 Tage | `/starten` |
+
+**Leere Räume richtet nur der Betreiber ein (seit Oktober 2026).** Vorher
+entstand über `/einrichten` ein Code auch für einen Raum, den es noch nicht
+gab, und der erste Client, der sich damit anmeldete, befüllte ihn mit einem
+selbst gebauten Bestand. Jetzt gilt:
+
+- `/einrichten` legt Codes für Kundenrollen (leitung, planer, kunde,
+  subplaner, mitarbeiter, betriebsrat) nur für einen eingerichteten Raum an,
+  sonst `409` „Raum ist noch nicht eingerichtet.". Ein Betreibercode darf
+  vorher entstehen.
+- `PUT /api/bestand` auf einen leeren Raum wird für jede Rolle abgewiesen —
+  auch für den Betreiber.
+- Der einzige Weg ist `POST /api/bestand-anlegen` mit einer
+  Betreibersitzung: Vorlage `leer` oder `test` baut der Server selbst
+  (`baueLeerenBetrieb()`), Vorlage `demo` wird übermittelt und geprüft:
+  genau drei Betriebe mit den Kennungen `m-nordwacht`, `m-lindenhof`,
+  `m-steinbach` in dieser Reihenfolge. Ein belegter Raum: `409`.
+- Jeder neue Code trägt Position **und** Kennung seines Betriebs
+  (`betrieb`, `mandantId`). Passt beides nicht mehr zusammen — etwa weil
+  der Betreiber Betriebe umsortiert hat —, endet die laufende Sitzung und
+  die Anmeldung wird abgewiesen („Bitte wende dich an die
+  Organisationsleitung.").
+
+**Ablauf für den Demoraum.** Erster Lauf des Skripts: Betreibercode und
+Testbetrieb entstehen, die Demo wird als „ausstehend" gemeldet. Dann mit dem
+Betreibercode anmelden; die Anwendung zeigt „Dieser Raum ist noch nicht
+eingerichtet." und bietet „Demo-Bestand anlegen" an. Danach das Skript
+erneut aufrufen — es legt die drei Demozugänge an, gebunden an
+Nordwacht, Lindenhof und Steinbach, und überspringt Vorhandenes.
+
+**Offener Architekturpunkt.** Den Inhalt der Demo baut heute noch der
+Client (`startbestand()` in `src/App.jsx`); der Server prüft nur die
+Gestalt. Eine serverseitige Demo-Erzeugung verlangt, `baueMandant` aus der
+Oberfläche herauszulösen, und ist bewusst auf später verschoben.
+
+**Alte Codes (vor Oktober 2026)** kennen ihren Betrieb nur über die
+Position. In einem Raum mit genau einem Betrieb ergänzt die nächste
+Anmeldung die Kennung selbst. In Räumen mit mehreren Betrieben — also
+`demo-schau` — wird **nicht** automatisch gebunden:
+
+    curl -s -H "authorization: Bearer $CENTRIC_ADMIN"       "$SITE/einrichten/bindung?bestand=demo-schau" | jq
+
+zeigt im Trockenlauf je Code Name, Rolle, Position, den Betrieb, auf den die
+Position heute zeigt, und ob eine gespeicherte Kennung passt — ohne Codes
+und ohne etwas zu ändern. Erst nach menschlicher Prüfung bindet
+
+    curl -s -X POST -H "authorization: Bearer $CENTRIC_ADMIN"       -H "content-type: application/json" "$SITE/einrichten/bindung"       -d '{"bestand":"demo-schau","zuordnung":[{"kennung":"<8 Zeichen>","mandantId":"m-lindenhof"}]}'
+
+einzelne Codes — und nur, wenn die Position noch genau auf diesen Betrieb
+zeigt. Zeigt ein Democode heute auf den falschen Betrieb, nicht binden,
+sondern zurückziehen und neu anlegen.
 
 **Abgelaufene Testbetriebe löscht der Server selbst.** Ein selbst angelegter
 Testbetrieb läuft 30 Tage; danach weist die Anmeldung ab, die Daten bleiben
@@ -257,12 +483,12 @@ wird nie angefasst. Jeder Lauf hinterlässt `aufraeumen:letzter` in der Ablage
 ein Raum, bei dem etwas liegen blieb, behält seinen Kern und wird beim
 nächsten Lauf erneut versucht.
 
-**Warum der Testbetrieb über `/starten` läuft.** Nur dieser Weg legt den
+**Warum der Testbetrieb über `/starten` läuft.** Dieser Weg legt den
 Betrieb mit `baueLeerenBetrieb()` an — kein Beispielpersonal, keine
-erfundenen Dienstpläne, nur Name, Branche und Bundesland. Ein über
-`/einrichten` angelegter Code zeigt auf einen Raum, den die Anwendung beim
-ersten Öffnen mit den drei Beispielmandanten aus `startbestand()` füllt.
-Für einen Testzugang „ohne Demodaten" ist das genau das Falsche.
+erfundenen Dienstpläne, nur Name, Branche und Bundesland — und die Codes
+gleich mit. Über `/einrichten` allein entsteht für einen leeren Raum kein
+Kundencode mehr; dafür bräuchte es vorher `/api/bestand-anlegen` mit
+Vorlage `leer` oder `test`.
 
 **Warum der Demoraum `demo-schau` heißen muss.** `/api/demo` lässt einen
 Zugang ohne Code nur durch, wenn sein Raum mit `demo-` beginnt. Der Raumname
@@ -357,9 +583,36 @@ Sicherungsschlüssel anlegen, dann auf einem eigenen Rechner täglich
       -o centric-$(date +%F).json
 
 Der Schlüssel darf ausschließlich lesen. Er kann nichts ändern, nichts
-löschen und sich nicht anmelden. Unabhängig davon gehört `/data` auf dem
+löschen und sich nicht anmelden. Er ist an den Betrieb gebunden, für den er angelegt
+wurde, und die Ausgabe enthält nur diesen Betrieb (Fassung 2). Ältere Schlüssel
+ohne Bindung gelten nur in einem Raum mit genau einem Betrieb. Unabhängig davon gehört `/data` auf dem
 VPS in die Sicherung des Servers — es ist der einzige Ort, an dem die Daten
 liegen.
+
+**Was die Vollausgabe ist — und was nicht (seit Oktober 2026).** Sie ist ein
+**Datenexport / eine Datenmitnahme des Kunden**, kein roher Serverbestand und
+**kein Wiederherstellungsformat**. Zurückgespielt wird aus den Sicherungen auf
+dem Server (`/api/sicherung`, `/api/wiederherstellen`, je Betrieb) bzw. bei Verlust des Servers
+mit `werkzeug/ablage-sicherung.mjs` (5.4). Die Ausgabe trägt im Feld
+`inhalt`, welcher Umfang geliefert wurde; beide sind Positivlisten
+(`server/lib/sicherungen.mjs`), ein neues Feld geht erst hinaus, wenn es dort
+eingetragen ist:
+
+| | Leitung (angemeldet, `inhalt: "leitung"`) | Sicherungsschlüssel (`inhalt: "sicherung"`) |
+|---|---|---|
+| Plan, Regelwerk, Sammlungen (Abwesenheiten, Anträge, Nachrichten, Dienstbuch, Übergaben, Notizen, Ausschreibungen, Zeiterfassung …) | vollständig | vollständig |
+| Personen: Plan-, Qualifikations-, Kontakt- und Planungsangaben, Personalnummer | ja | ja |
+| Personen: Bank, Steuer-ID, Sozialversicherung, Lohn/Gehalt, Notfallkontakt, frühere Anmeldeadresse | **nein** (wie in ihrer normalen Sicht) | ja |
+| Technische Geheimnisse: Kalendergeheimnis und -verweis, Push-Schlüssel, Zustelleinstellungen | **nie** | **nie** |
+| Betreiberinterna: Konditionen, Vertrag, Rechnungsangaben, interne Notiz, Raumkennung, Preisliste, Rechnungen, Betreiberstamm | **nie** | **nie** |
+| andere Betriebe des Raums | nie | nie |
+
+**Den Sicherungsschlüssel besonders schützen.** Seine Ausgabe enthält
+Personaldaten (Bank, Steuer, Sozialversicherung, Lohn, Notfallkontakte). Die
+Datei gehört auf einen verschlüsselten Datenträger, der Schlüssel in einen
+Passwortspeicher; ein Schlüssel, der im Klartext in einem Skript oder Chat
+stand, wird zurückgezogen. Die rechtliche Einordnung des Exports erfolgt
+separat.
 
 ### 5.4 Sicherung und Wiederherstellung der gesamten Ablage
 
@@ -459,14 +712,18 @@ ist ein Umbenennen.
 
     cd /opt/apps/centric-dienstplanung
     docker compose stop -t 30                      # sauberes Beenden (SIGTERM), Exitcode 0
-    mv data "data.vor-wiederherstellung-$(date -u +%Y%m%dT%H%M%SZ)"
+    ALT="data.vor-wiederherstellung-$(date -u +%Y%m%dT%H%M%SZ)"
+    mv data "$ALT"
     sudo install -d -m 700 -o 1000 -g 1000 data    # neu, leer, dem Benutzer node (uid 1000)
+    # Frühere Wiederherstellungen mitnehmen (BETRIEB-SICHERUNG §4a), falls vorhanden:
+    if sudo test -f "$ALT/.wiederhergestellt.json"; then sudo cp -p "$ALT/.wiederhergestellt.json" data/; fi
     docker run --rm --network none --read-only --user 1000:1000 --cap-drop ALL \
       --security-opt no-new-privileges:true --env-file .env \
       -v "$PWD/sicherungen/centric-sicherung-<Zeit>:/s/sicherung:ro" \
-      -v "$PWD/data:/s/ziel" <dasselbe-Bild-wie-der-Dienst> \
+      -v "$PWD/data:/s/ziel" \
+      -v "$PWD/zustand:/zustand" -e CENTRIC_ZUSTAND=/zustand <dasselbe-Bild-wie-der-Dienst> \
       node werkzeug/ablage-sicherung.mjs wiederherstellen \
-      --sicherung /s/sicherung --ziel /s/ziel < /dev/null
+      --sicherung /s/sicherung --ziel /s/ziel --zustand /zustand < /dev/null
     docker compose rm -f -s centric-dp-web         # Container entfernen …
     docker compose up -d --pull never              # … und neu erzeugen, nicht nur neu starten
 
@@ -483,8 +740,23 @@ Dazu:
   Betrieb öffnen, Stichproben). Danach entweder verschlüsselt außerhalb des VPS
   archivieren oder bewusst löschen — sie enthält alles, auch Sitzungsdateien und
   Zugangsdaten.
+- `.wiederhergestellt.json` ist die fortgeschriebene Liste aller Wiederherstellungen
+  dieses Datenverzeichnisses. `wiederherstellen` hängt die neue an; `ablage-pruefen
+  --aus-sicherung` lehnt damit Sicherungen aus verworfenen Standfolgen ab. Ohne das
+  Übernehmen gingen die früheren Einträge mit dem alten `data/` beiseite. Die Punktdatei
+  stört die Prüfung „Ziel leer“ nicht; `cp -p` erhält Besitz (uid 1000) und Modus.
+  `sudo test`, weil `data/` dem Benutzer 1000 mit Modus 700 gehört.
+- Bricht `wiederherstellen` ab, weil `.wiederhergestellt.json` beschädigt ist (gilt für
+  Weg 1 und Weg 2 — auch `--ersetzen` lässt Punktdateien im Ziel stehen): bei gestopptem
+  Dienst `sudo mv data/.wiederhergestellt.json "data/.wiederhergestellt.kaputt-$(date -u +%Y%m%dT%H%M%SZ)"`,
+  noch lesbare Einträge möglichst von Hand in eine neue Datei übertragen
+  (`{"wiederherstellungen":[{"zeit":"…","sicherungErstellt":"…"}]}`, Besitz 1000:1000,
+  Modus 600), dann erneut wiederherstellen. Geht das Übertragen nicht, gilt ohne
+  Werkzeugprüfung die Regel „für `ablage-pruefen --aus-sicherung` nur Sicherungen nach
+  der letzten Wiederherstellung verwenden“ (BETRIEB-SICHERUNG §4a).
 - Geht etwas schief: `docker compose stop`, das neue `data/` in `data.fehlgeschlagen-<Zeit>`
-  umbenennen, die Sicherheitskopie zurück nach `data/` benennen, `up -d`.
+  umbenennen, die Sicherheitskopie zurück nach `data/` benennen, **`schluessel-erneuern`
+  ausführen** (unten, Pflicht), `up -d`.
 - Nach dem Start läuft der tägliche Löschlauf erstmals eine Minute später und danach
   alle 24 Stunden **ab diesem Start**. Seine Uhrzeit wandert also mit jedem
   Neuerzeugen des Containers. Er schreibt den Vermerk `aufraeumen:letzter` neu — das
@@ -514,6 +786,164 @@ oder ein Betriebsmerkmal, die erst nach der Sicherung entstanden sind, gibt es
 danach nicht, und ihre Merkmale sind wertlos. Der Rückweg zu den Sitzungen ist die
 neue Anmeldung.
 
+**Sicherungsschlüssel nach einer Wiederherstellung (Betreiberentscheidung 2026-11-07).**
+Nach jeder vollständigen Wiederherstellung gilt KEIN früherer Sicherungsschlüssel mehr,
+auch keiner, der im zurückgespielten Stand noch nicht widerrufen war. Die Autorität
+dafür liegt außerhalb von `data/`: die Schlüsselepoche in `zustand/` (`CENTRIC_ZUSTAND`,
+compose.yml). `zustand/` wird nie gesichert und nie zurückgespielt — auch nicht bei
+einer Kopie des ganzen App-Verzeichnisses. Der Server erkennt eine zurückgespielte
+Ablage selbst (die Bindung `skbindung` ist in keiner Sicherung) und beginnt eine neue
+Epoche; bei Weg 2 erneuert das Werkzeug sie zusätzlich vor dem Tausch (es sieht
+`CENTRIC_ZUSTAND`). Wer ein altes `data/` **ohne** das Werkzeug zurückholt (Umbenennen,
+Kopie), führt danach bei gestopptem Dienst aus:
+
+    docker compose run -T --rm --no-deps centric-dp-web       node werkzeug/ablage-sicherung.mjs schluessel-erneuern --zustand /zustand --daten /data
+
+**Pflichtschritt nach JEDEM Rollback außerhalb des Werkzeugs** — Snapshot der VM, des
+Volumes oder des Dateisystems, `data/` umbenennen oder kopieren, der Rückweg „Geht etwas
+schief" oben: bei gestopptem Dienst `schluessel-erneuern` wie oben, erst danach `up -d`.
+Vorher mit `docker compose ps` prüfen, dass der Dienst gestoppt ist: Im eigenen Container
+von `docker compose run` sieht die Serverprobe des Werkzeugs nur ihren eigenen Loopback und
+findet den laufenden Dienst nicht.
+
+**Gewollt:** Fehlt nur die Epochendatei bei vorhandener Bindung (Mount `zustand/` fehlt,
+`CENTRIC_ZUSTAND` geändert, Datei gelöscht) oder ist sie beschädigt, beginnt der Server eine
+neue Epoche und widerruft sofort und endgültig alle Sicherungsschlüssel. Eine Leitung legt
+danach neue an.
+
+**Lücke, ehrlich benannt:** Bringt ein Snapshot `data/` **und** `zustand/` gemeinsam zurück
+(VM- oder Volume-Snapshot über beide), passen Epoche und Bindung zueinander; das ist technisch
+nicht von einem unveränderten Betrieb zu unterscheiden. Dann schützt nur der Pflichtschritt.
+`zustand/` deshalb auf einem Datenträger halten, der nicht mit `data/` zurückgerollt wird, wo
+das geht. Ohne Snapshot erkennt der Server eine Kopie, die älter ist als die letzte Erneuerung
+der Bindung (beim Start, jede Minute, beim Beenden und vor jedem Widerruf), selbst. Nicht
+erkannt wird eine Kopie aus der letzten Minute vor einem Absturz oder SIGKILL.
+
+Danach legt eine Leitung in der App neue Schlüssel an (Sicherung außer Haus →
+Sicherungsschlüssel); Automatisierungen werden kontrolliert umgestellt: neuen Schlüssel
+eintragen, einen Lauf von Hand prüfen, erst dann den alten Eintrag löschen. Ein alter
+Schlüssel bekommt 401 mit `grund: "ablage-wiederhergestellt"`.
+
+**Widerrufene und ersetzte Zugangsdaten nach einem Rücksprung (Betreiberentscheidung E-M6, 2026-11-13).**
+Ein Zugangscode, der einmal zurückgezogen, ersetzt, als Ersteinrichtungscode oder als
+Erstanmeldecode ohne Person („belegt“) verbraucht oder mit seinem Raum gelöscht wurde,
+und ein gesperrter benannter Verwalterschlüssel gelten **nie wieder** — auch nicht nach dem
+Zurückspielen einer älteren Sicherung und nicht nach einem Rücksprung auf ein älteres Bild.
+Ein mit „angelegt“ eingelöster Erstanmeldecode ist der gewöhnliche Code der ersten Leitung
+und bleibt gültig; dass die Ersteinrichtung des Betriebs abgeschlossen ist, überlebt den
+Rücksprung ebenfalls. Ausnahme von „Was nach einer Wiederherstellung gilt“ oben: Ein
+Zugangsentzug wird durch eine Wiederherstellung **nicht** zurückgenommen. Die Autorität
+liegt wie bei der Schlüsselepoche außerhalb von `data/`: das Widerrufbuch
+`zustand/zugang-widerrufe.json` (nur Prüfsummen, nie Codes oder Schlüssel; mit einem aus
+dem Pfeffer abgeleiteten Siegel), dazu der Anker `widerrufbuch:anker` in `data/` (wird
+mitgesichert). Kontosperren und entzogene Mitgliedschaften deckt seit BE-1 ein **eigenes**
+Konto-Widerrufbuch ab (siehe unten); seit BE-2 A1 auch, dass ein Konto-Faktor einmal aktiv
+war, und eingelöste Wiederherstellungscodes von Konten; seit BE-1 Rest auch **abgelöste
+Passwörter** (nur HMAC-Kennung des alten Prüfwerts; ein Konto, das nach dem Rücksprung einen
+abgelösten Prüfwert trägt, wird `passwort: null` und meldet sich erst nach Neusetzen wieder an;
+Startprotokoll `Passwörter: n abgelöste im Buch, m in der Ablage zurückgesetzt`, bei m > 0
+`WARNUNG`). **Nicht** abgedeckt sind abgelöste 2FA-Geheimnisse (BE-2 A2) und einzeln zurückgesetzte Kalenderfeeds (A3) — eine
+ältere Sicherung bringt deren alten Stand zurück. Einzelheiten und Matrix:
+`docs/acc45/ABNAHME-V4-EM6-ROLLBACK-CODES.md`, `docs/acc45/ABNAHME-V4-BE1-KONTO-WIDERRUFBUCH.md`,
+`docs/acc45/ABNAHME-V4-BE2-A1-ZWEITER-FAKTOR.md`.
+
+- **Immer mit `--zustand` wiederherstellen.** Ohne `--zustand` gibt das Werkzeug nur einen Hinweis aus und bricht
+  **nicht** ab; die Widerrufe aus dem Buch werden dann erst vom nächsten Serverstart nachgezogen.
+- **Mit `--zustand` wiederherstellen** (Weg 2 über `docker compose run` sieht
+  `CENTRIC_ZUSTAND=/zustand` von selbst; bei Weg 1 `-v "$PWD/zustand:/zustand"
+  -e CENTRIC_ZUSTAND=/zustand` ergänzen). Das Werkzeug übernimmt dann vor dem Tausch alles,
+  was die bisherige Ablage gesperrt oder abgeschlossen kennt, ins Buch, sperrt alles, was
+  im Buch steht, in der zurückgespielten Kopie (Codes, Verwalterschlüssel), legt fehlende
+  Marken der Ersteinrichtung und Regime-Marken (PR #281) für jeden Betrieb der Kopie an und
+  vermerkt die Wiederherstellung im Buch. Läuft auf der
+  Ablage noch ein Server (Prozesssperre `.prozess`), lehnt es ab — auch mit
+  `--ohne-serverpruefung`. Ohne `--zustand` sperrt erst der Server **dieser oder einer
+  neueren Fassung** beim Start nach.
+- **Bild-Rücksprung:** Ein älteres Bild kennt das Buch nicht, wohl aber `gesperrt`.
+  Daher: Daten mit dem Werkzeug **dieser** Fassung und `--zustand` zurückspielen (oder
+  diese Fassung einmal starten), **erst dann** auf das ältere Bild zurück. Nie mit dem
+  Werkzeug eines älteren Bildes wiederherstellen und gleich das ältere Bild starten — dann
+  lebt ein widerrufener Code wieder auf (Gegenprobe im Test).
+- **Widerruf und Buch:** Ein Widerruf wirkt sofort in `data/` (Sperre, Sitzungen enden),
+  erst danach wird das Buch geschrieben. Antwortet die App mit „Widerruf wirksam,
+  Widerrufbuch nicht beschrieben“ oder meldet `/gesund` die Prüfung `widerrufbuch`:
+  Mount und Rechte von `zustand/` prüfen und den Dienst neu starten — der Start holt den
+  Eintrag nach. Bei einer Raumlöschung mit nicht
+  schreibbarem Buch werden die Codes dennoch gelöscht und als Nachtrag `widerrufbuch:nachtrag` in
+  `data/` (und im Speicher) festgehalten; Start, nächster Widerruf und das Werkzeug mit
+  `--zustand` tragen ihn ins Buch ein (das Werkzeug liest ihn vor dem Tausch aus der aktuellen
+  Ablage). Ohne `--zustand` zurückgespielt, sind die gelöschten Codes wieder gültig.
+- **Fail-closed:** Ist das Buch beschädigt, verändert, mit anderem Pfeffer gesiegelt,
+  gehört es zu einer anderen Ablage (Ankerkennung) oder fehlt es, obwohl `data/` einen
+  Anker trägt, gilt **kein** Zugangscode (Anmeldung, laufende Code-Sitzungen und
+  Kalenderfeeds aus Codes 503) und kein benannter Verwalterschlüssel; Startprotokoll
+  `WARNUNG Widerrufbuch … gilt kein Zugangscode`; das Werkzeug fasst nichts an.
+  Kontoanmeldung und der Ursprungsschlüssel bleiben. Sagt die Warnung dagegen „Das Buch ist
+  prüfbar … Die Ablage ist aber NICHT nachgezogen“, bleibt abgewiesen, was im Buch steht;
+  vor einem Rücksprung auf ein älteres Bild die Ursache beheben und neu starten.
+- **Sichern (BE-3, 2026-11-14):** `zustand/zugang-widerrufe.json` und `zustand/konto-widerrufe.json` sind bewusst
+  NICHT in der Ablagesicherung. Sie sichert ein **eigener, stündlicher Job**
+  (`deploy/sicherung/widerrufbuch-sicherung.sh`, eigene Konfiguration `widerrufbuch.env`, eigenes restic-Repository,
+  eigene Sperre; Einrichtung `docs/BETRIEB-SICHERUNG.md` §7). Er prüft vor jeder Sicherung beide Siegel und ob das
+  Buch alles enthält, was die letzte Sicherung kannte; danach `restic check`, Snapshot-Liste und Rückholung
+  (bytegleich, Siegel gültig). Ergebnis in `widerrufbuch-status.json` (keine Geheimnisse); `/gesund` warnt
+  (Prüfung `widerrufbuchsicherung`, `CENTRIC_WIDERRUFBUCH_SICHERUNG_STATUS`) bei gescheitertem Lauf, älter als
+  3 Stunden, ungesicherter Änderung nach 90 Minuten oder erkanntem Rücksprung — **nur Warnung, keine
+  Anmeldesperre**. Das produktive Speicherziel, seine Zugangsdaten und ein kostenpflichtiger Dienst brauchen die
+  Freigabe des Betreibers; bis dahin gilt die Handkopie wie bisher (nach jedem Widerruf, mindestens täglich).
+- **Zurücklegen heißt VEREINIGEN, nie ersetzen.** Eine Kopie wird nie über `zustand/` kopiert, sondern bei
+  gestopptem Dienst vereinigt — die Bücher enthalten nur Einschränkungen, mehr Einträge heißen nie mehr Zugang:
+
+      restic -r <Repository> restore latest --tag widerrufbuch --target /tmp/wb-kopie   # (Host)
+      docker compose run -T --rm --no-deps -v /tmp/wb-kopie:/kopie:ro centric-dp-web \
+        node werkzeug/ablage-sicherung.mjs widerrufbuch-vereinen --zustand /zustand --kopie /kopie --daten /data
+
+  Das Werkzeug prüft jedes Siegel (Pfeffer) und die Herkunft (gemeinsame Kennung, Anker in `data/`), verweigert
+  eine manipulierte, fremde oder gekürzte Kopie und ein beschädigtes aktuelles Buch (nichts angefasst), hebt beide
+  Eingaben unter `zustand/vereinen-sicherung/<Zeit>/` auf, schreibt atomar neu gesiegelt und entfernt nie einen
+  Eintrag; ein zweiter Lauf schreibt nichts. **Hostverlust:** Kopie zurückholen und in einem Schritt mit
+  `wiederherstellen … --zustand /zustand --widerrufbuch-kopie /kopie` zurückspielen — das Buch entsteht aus der
+  Kopie. **Schnappschuss über `data/` UND `zustand/`** (älterer, gültig gesiegelter Stand, früher Restrisiko R-1):
+  der Server bemerkt das nicht, der Job meldet `ruecksprung` (Exit 3), sichert dann **nicht** und `/gesund` warnt,
+  bis `widerrufbuch-vereinen` mit der letzten Sicherung gelaufen ist. Ohne Buch gilt kein Code — es gibt keine Hintertür.
+- **Kein Buch mehr vorhanden** (Server neu, keine Kopie): bei gestopptem Dienst bewusst
+
+      docker compose run -T --rm --no-deps centric-dp-web \
+        node werkzeug/ablage-sicherung.mjs widerrufbuch-neu --zustand /zustand --daten /data
+
+  Das übernimmt alles in `data/` Gesperrte; was **nur** im verlorenen Buch stand
+  (Widerruf nach der Sicherung), ist danach nicht mehr geschützt → diese Codes und
+  Verwalterschlüssel von Hand erneut zurückziehen. Ein vorhandenes oder beschädigtes Buch
+  ersetzt der Befehl nie.
+- **Konto-Widerrufbuch (BE-1):** `zustand/konto-widerrufe.json` (eigene Datei, eigenes Siegel,
+  Anker `kontowiderrufbuch:anker` in `data/`) hält gesperrte Konten und entzogene
+  Mitgliedschaften (Mindestgeneration je Konto×Raum) — nur HMAC-Kennungen, keine Namen,
+  Adressen oder Räume. Dieselben Regeln wie oben: Werkzeug mit `--zustand` zieht in der
+  Kopie nach (Konto `gesperrt`, Lauf angehoben, Mitgliedschaft `entzogen`), der Start dieser
+  Fassung ebenso; `/gesund` meldet `kontowiderrufbuch`. Beschädigt/fremd/fehlend bei Anker:
+  **kein Konto-Zugang** (Anmeldung mit Passwort, Betriebsauswahl, Konto-Sitzungen, Feeds aus
+  Konten: 503), Zugangscodes bleiben. Getrennt sichern wie das Buch der Codes (derselbe BE-3-Job). Verloren und
+  keine Kopie: bei gestopptem Dienst `node werkzeug/ablage-sicherung.mjs kontowiderrufbuch-neu
+  --zustand /zustand --daten /data` (sammelt aus `data/`; was nur im verlorenen Buch stand,
+  danach von Hand erneut sperren bzw. entziehen).
+- **Zweiter Faktor von Konten (BE-2 A1):** Im selben Konto-Widerrufbuch stehen (nur als HMAC-Kennung) Konten, deren
+  Faktor einmal **aktiv** war, und eingelöste Wiederherstellungscodes. Fehlt einem solchen Konto nach dem Rücksprung der
+  Faktor, ersetzt das Werkzeug (`--zustand`) bzw. der Start ihn in `data/` durch einen **gesperrten Platzhalter** (kein
+  Geheimnis wird zurückgelegt): Anmeldung **403** „zweiter Faktor fehlt im wiederhergestellten Datenstand“, keine
+  Neueinrichtung mit dem Passwort. Ein eingelöster Code wird in `data/` als verbraucht vermerkt und abgewiesen.
+  Ausgabe lesen: `Zweiter Faktor (BE-2 A1): … n Pflicht-Faktoren fehlen in der Sicherung und sind gesperrt` /
+  Startprotokoll `WARNUNG Konto-Widerrufbuch: n Konto/Konten mit Pflicht-Faktor ohne Faktor`. Ist n > 0: **zuerst eine
+  jüngere Sicherung suchen, die den Faktor enthält, und diese mit `--zustand` zurückspielen** (dann gilt die Anmeldung
+  mit Code aus der App wieder). Gibt es keine: Es gibt bewusst keinen Freischaltweg (kein Werkzeug, keine Route); die
+  Leitung lädt die Person mit neuer Adresse neu ein, das alte Konto bleibt gesperrt; Vorgang in
+  `betrieb-protokoll.log` vermerken. Ein Offline-Werkzeug dafür ist eine offene Betreiberentscheidung
+  (`docs/acc45/ABNAHME-V4-BE2-A1-ZWEITER-FAKTOR.md` §6.2). Immer erst diese Fassung starten, dann ein älteres Bild.
+- **Restore-Test mit `--zustand`:** Gesperrte Konten und Verwalterschlüssel, der Anker
+  und wiederhergestellte Marken weichen dann gewollt vom Manifest ab (die Ausgabe nennt die
+  Zahlen). Für den Datei-für-Datei-Vergleich ohne `--zustand` zurückspielen, wie in der
+  Probe (`deploy/sicherung/wiederherstellung-probe.sh`) — die Probe übt das Widerrufbuch
+  deshalb nicht; das prüft `npm run pruefung:em6-rollback-codes`.
+
 **Restore-Test.** Eine Sicherung, die nie zurückgespielt wurde, ist keine. Mindestens
 vierteljährlich, und nach jeder Änderung an Ablage oder Konten: in einen leeren
 Ordner zurückspielen (nicht in `data/`) und dort ansehen.
@@ -523,12 +953,24 @@ Ordner zurückspielen (nicht in `data/`) und dort ansehen.
       -v "$PWD/sicherungen:/sicherungen:ro" -v "$PWD/restore-test:/restore" centric-dp-web \
       node werkzeug/ablage-sicherung.mjs wiederherstellen \
       --sicherung /sicherungen/centric-sicherung-<Zeit> --ziel /restore --ohne-serverpruefung
+    # BE-1: Kopien (nie die Originale) beider Widerrufbücher (Konto und Codes) für den Test-Server
+    mkdir -p restore-test-zustand && sudo cp -p zustand/konto-widerrufe.json zustand/zugang-widerrufe.json restore-test-zustand/ \
+      && sudo chown -R 1000:1000 restore-test-zustand && sudo chmod 700 restore-test-zustand
     docker run --rm -p 127.0.0.1:3001:3000 --env-file .env \
       -e CENTRIC_DATEN=/data -v "$PWD/restore-test:/data" \
-      ghcr.io/rinats-png/dienstplaner:latest
+      -e CENTRIC_ZUSTAND=/zustand -v "$PWD/restore-test-zustand:/zustand" \
+      "ghcr.io/rinats-png/dienstplaner@$(sed -n 's/^IMAGE_DIGEST=//p' .env)"
+
+(Dasselbe Bild wie der Dienst, per Digest aus der `.env` — nie `latest`: das lokale
+`latest` auf dem VPS ist ein altes, gesperrtes Bild.)
+
+Die Sicherung trägt den Anker des Konto-Widerrufbuchs (BE-1), `zustand/` ist aber nie darin.
+Ohne die Kopie des Buchs antwortet die Kontoanmeldung des Test-Servers gewollt mit 503
+(fail-closed: ein Rücksprung ohne Buch ließe gesperrte Konten wieder aufleben). Bei Verlust des
+Servers dasselbe mit der getrennt gesicherten Kopie (siehe Konto-Widerrufbuch oben).
 
 Gegen `127.0.0.1:3001` (SSH-Tunnel) anmelden und einen Betrieb öffnen; danach
-Container beenden und `restore-test/` löschen.
+Container beenden und `restore-test/` sowie `restore-test-zustand/` löschen.
 
 Ein Restore, der nicht gegen die Sicherung verglichen wurde, ist nicht geprüft.
 Belastbar ist der Vergleich Datei für Datei: Jede Datei unter `daten/` der Sicherung
@@ -568,7 +1010,8 @@ Regeln, die sich bewährt haben:
   `docker compose` Container der Produktion.
 - **Bild per Digest** in der `compose.yml`, Start mit `docker compose up -d --pull never`.
   Ein Update ist dann der bewusste Austausch des Digests, ein Rollback der Austausch
-  zurück.
+  zurück — wie in der Produktion nur auf Digests, die `digest-pruefen.sh` zulässt
+  (Schritt 3).
 - **Container erneuern heißt neu erzeugen**: `docker compose rm -f -s <Dienst>` und
   `up -d --pull never`. Ein Neustart prüft weder die Konfiguration noch das Bild.
 - **`docker compose config` zeigt aufgelöste Werte, also Secrets.** Zum Prüfen der

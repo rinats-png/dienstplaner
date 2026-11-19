@@ -1,0 +1,285 @@
+{
+ "umgebung": {
+  "profil": "kurz",
+  "plattform": "win32",
+  "kerne": 4,
+  "cpu": "Intel(R) Celeron(R) N4120 CPU @ 1.10GHz",
+  "speicherGB": 12,
+  "node": "v24.18.0",
+  "heute": "2026-11-03",
+  "ci": false
+ },
+ "ablageVorher": {
+  "dateien": 1679,
+  "mb": 14.49,
+  "stores": {
+   ".gesund": {
+    "dateien": 0,
+    "mb": 0
+   },
+   "centric": {
+    "dateien": 658,
+    "mb": 14.21
+   },
+   "centric-sitzungen": {
+    "dateien": 1021,
+    "mb": 0.27
+   }
+  }
+ },
+ "S1": {
+  "auftraege": 600,
+  "n": 600,
+  "p50": 16453,
+  "p95": 17795,
+  "p99": 19304,
+  "max": 22096,
+  "fehlerquote": 34.67,
+  "status": {
+   "200": 392,
+   "500": 1,
+   "503": 207
+  },
+  "verloren": 0,
+  "falschGespeichert": 1,
+  "server": {
+   "eldP99Max": 291.2,
+   "eldMax": 291.2,
+   "rssStart": 77,
+   "rssEnde": 282,
+   "rssMax": 342,
+   "heapMax": 167,
+   "sekunden": 189,
+   "cpuMittel": 55,
+   "cpuMax": 105,
+   "fs": {
+    "readFile": {
+     "n": 9916,
+     "ms": 845876,
+     "msJeAufruf": 85.3
+    },
+    "readdir": {
+     "n": 2189,
+     "ms": 68439,
+     "msJeAufruf": 31.26
+    },
+    "mkdir": {
+     "n": 4,
+     "ms": 97,
+     "msJeAufruf": 24.25
+    },
+    "fh.writeFile": {
+     "n": 3697,
+     "ms": 82510,
+     "msJeAufruf": 22.32
+    },
+    "fh.sync": {
+     "n": 7393,
+     "ms": 156589,
+     "msJeAufruf": 21.18
+    },
+    "rename": {
+     "n": 3751,
+     "ms": 102980,
+     "msJeAufruf": 27.45
+    },
+    "unlink": {
+     "n": 2621,
+     "ms": 35957,
+     "msJeAufruf": 13.72
+    }
+   }
+  },
+  "einBetrieb": {
+   "auftraege": 200,
+   "n": 200,
+   "p50": 11709,
+   "p95": 16526,
+   "p99": 16927,
+   "max": 17286,
+   "fehlerquote": 51.5,
+   "status": {
+    "200": 97,
+    "429": 70,
+    "500": 1,
+    "503": 32
+   }
+  }
+ },
+ "S5": {
+  "stempel": {
+   "auftraege": 100,
+   "n": 100,
+   "p50": 8939,
+   "p95": 12596,
+   "p99": 14382,
+   "max": 14382,
+   "fehlerquote": 0,
+   "status": {
+    "200": 100
+   },
+   "verloren": 0,
+   "falschGespeichert": 0
+  },
+  "put": {
+   "n": 87,
+   "p50": 4371,
+   "p95": 9388,
+   "p99": 11893,
+   "max": 11893,
+   "fehlerquote": 0,
+   "status": {
+    "200": 87
+   }
+  },
+  "konflikte409": 0,
+  "get": {
+   "n": 87,
+   "p50": 1331,
+   "p95": 3121,
+   "p99": 4957,
+   "max": 4957,
+   "fehlerquote": 0,
+   "status": {
+    "200": 87
+   }
+  },
+  "sicherung": {
+   "exit": 1,
+   "sekunden": 2.1,
+   "versuche": 1,
+   "anfang": "FEHLER: Error: ENOENT: no such file or directory, stat '<pfad>' |     at async stat (node:internal/fs/promises:1038:18) |     at async quelleAnsehen (file:///<pfad>",
+   "letzteZeile": "    at async main (file:///<pfad> |     at async file:///<pfad>"
+  },
+  "sicherungRuhig": {
+   "exit": 0,
+   "sekunden": 101.8,
+   "versuche": 1,
+   "anfang": "Sicherung vollständig: <pfad> |   1700 Dateien, 27926114 Bytes |   centric (A): 783 Dateien",
+   "letzteZeile": "  bewusst ausgelassen: centric-takt — flüchtig (Klasse C): 275 | Nächster Schritt: Kopie außerhalb des Servers ablegen und mit `pruefen` dort gegenprüfen."
+  },
+  "server": {
+   "eldP99Max": 234.7,
+   "eldMax": 234.7,
+   "rssStart": 251,
+   "rssEnde": 261,
+   "rssMax": 303,
+   "heapMax": 115,
+   "sekunden": 96,
+   "cpuMittel": 55,
+   "cpuMax": 125,
+   "fs": {
+    "readFile": {
+     "n": 7278,
+     "ms": 529058,
+     "msJeAufruf": 72.69
+    },
+    "rename": {
+     "n": 1578,
+     "ms": 42593,
+     "msJeAufruf": 26.99
+    },
+    "fh.sync": {
+     "n": 3102,
+     "ms": 62525,
+     "msJeAufruf": 20.16
+    },
+    "readdir": {
+     "n": 1091,
+     "ms": 30154,
+     "msJeAufruf": 27.64
+    },
+    "fh.writeFile": {
+     "n": 1546,
+     "ms": 31733,
+     "msJeAufruf": 20.53
+    },
+    "unlink": {
+     "n": 989,
+     "ms": 18434,
+     "msJeAufruf": 18.64
+    }
+   }
+  }
+ },
+ "ablageNachher": {
+  "dateien": 3850,
+  "mb": 27.03,
+  "stores": {
+   ".gesund": {
+    "dateien": 0,
+    "mb": 0
+   },
+   "centric": {
+    "dateien": 783,
+    "mb": 26.37
+   },
+   "centric-sitzungen": {
+    "dateien": 1873,
+    "mb": 0.37
+   },
+   "centric-spur": {
+    "dateien": 917,
+    "mb": 0.27
+   },
+   "centric-takt": {
+    "dateien": 277,
+    "mb": 0.03
+   }
+  }
+ },
+ "serverGesamt": {
+  "eldP99Max": 402.9,
+  "eldMax": 402.9,
+  "rssStart": 68,
+  "rssEnde": 79,
+  "rssMax": 342,
+  "heapMax": 167,
+  "sekunden": 462,
+  "cpuMittel": 40,
+  "cpuMax": 125,
+  "fs": {
+   "mkdir": {
+    "n": 6,
+    "ms": 195,
+    "msJeAufruf": 32.5
+   },
+   "fh.writeFile": {
+    "n": 6237,
+    "ms": 125537,
+    "msJeAufruf": 20.13
+   },
+   "readdir": {
+    "n": 3916,
+    "ms": 113562,
+    "msJeAufruf": 29
+   },
+   "writeFile": {
+    "n": 1,
+    "ms": 2,
+    "msJeAufruf": 2
+   },
+   "fh.sync": {
+    "n": 12471,
+    "ms": 242748,
+    "msJeAufruf": 19.46
+   },
+   "readFile": {
+    "n": 20408,
+    "ms": 1545305,
+    "msJeAufruf": 75.72
+   },
+   "unlink": {
+    "n": 5941,
+    "ms": 70498,
+    "msJeAufruf": 11.87
+   },
+   "rename": {
+    "n": 6333,
+    "ms": 168310,
+    "msJeAufruf": 26.58
+   }
+  }
+ },
+ "dauerMin": 8.8
+}
