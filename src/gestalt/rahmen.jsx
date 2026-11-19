@@ -125,7 +125,10 @@ export function Kopfblock({
         <div style={{ flex: 1, minWidth: 0 }} />
 
         {!istBetreiber && (
-          <button type="button" className="suchknopf" onClick={onSuche} aria-label="Suchen (Strg K)">
+          /* WP-40 (WCAG 2.5.3): Der Name enthält den sichtbaren Text in seiner Reihenfolge („Suchen …“, ab Tabletbreite
+             „Strg K“), ohne Klammer; das Tastenkürzel steht zusätzlich in aria-keyshortcuts. */
+          <button type="button" className="suchknopf" onClick={onSuche} aria-label="Suchen, Strg K"
+            aria-keyshortcuts="Control+K Meta+K">
             <Icon n="suche" size={16} /><span>Suchen …</span><kbd>Strg K</kbd>
           </button>)}
 
@@ -188,7 +191,7 @@ export function Kopfblock({
 
         <div style={{ position: "relative" }}>
           <button type="button" ref={kontoKnopf} className="avatarknopf" aria-haspopup="menu"
-            aria-expanded={offen === "konto"} aria-label={`Konto: ${konto.name}`}
+            aria-expanded={offen === "konto"} aria-label={`${konto.kurz}, Konto ${konto.name}`}
             onClick={() => setOffen(offen === "konto" ? null : "konto")}>{konto.kurz}</button>
           <Menue offen={offen === "konto"} onSchliessen={() => setOffen(null)} ausloeser={kontoKnopf}
             label="Konto" rolle="menu" breite={296}>

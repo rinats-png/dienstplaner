@@ -12,7 +12,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { readFileSync } from "node:fs";
 import { verdecktDurchFest, verdecktAnteil, fehlerAmFormular, zulaessigerRollbereich } from "./browser/wcag-kern.mjs";
 import { zielgroessenBefunde, reflowOk, fehlertextOk } from "./browser/abnahme-kern.mjs";
-import { Field, Inp } from "../src/ui/bausteine.jsx";
+import { Field, Inp, Planzelle } from "../src/ui/bausteine.jsx";
 import { Fehlerband } from "../src/gestalt/ansichten.jsx";
 
 const LIES = (p) => readFileSync(new URL(`../${p}`, import.meta.url), "utf8").replace(/\r\n/g, "\n");
@@ -114,6 +114,107 @@ describe("3.3.1 im Markup: Fehlertext mit dem Feld verbunden", () => {
     const q = LIES("src/ansichten/personal.jsx");
     expect(q).toContain('id="neu-person-fehler" role="alert"');
     expect(q.match(/aria-describedby=\{neuFehler \? "neu-person-fehler" : undefined\}/g)).toHaveLength(2);
+  });
+});
+
+/* P2-11 Option A (Betreiberentscheidung 2026-11-18): zugängliche Namen enthalten den sichtbaren Text, kein Knopf im
+   Knopf, die axe-Ausnahmen dazu sind gestrichen. Der Browser-axe-Lauf (e2e/, CI) ist das Gate; hier steht der Teil
+   ohne Layout-Engine. `woerter` bildet die Wortzerlegung von axe 4.14 (label-content-name-mismatch) nach: Klammerinhalt
+   entfällt, alles außer Buchstaben und Ziffern trennt, Kleinschreibung; der sichtbare Text muss als zusammenhängende
+   Wortfolge im Namen stehen. */
+const woerter = (s) => s.normalize("NFKD").replace(/\([^()]*\)/g, "").replace(/[^\p{L}\p{N}]+/gu, " ")
+  .toLowerCase().split(/\s+/).filter(Boolean);
+const imNamen = (sichtbar, name) => {
+  const a = woerter(sichtbar), b = woerter(name);
+  for (let i = 0; i + a.length <= b.length; i++) if (a.every((w, j) => w === b[i + j])) return true;
+  return a.length === 0;
+};
+
+describe("WP-40 P2-11: sichtbarer Text im zugänglichen Namen (WCAG 2.5.3), kein Knopf im Knopf (4.1.2)", () => {
+  const rahmen = LIES("src/gestalt/rahmen.jsx"), mobil = LIES("src/ansichten/mobil.jsx");
+  const monat = LIES("src/ansichten/monatsplan.jsx"), woche = LIES("src/ansichten/wochenliste.jsx");
+  const einsatz = LIES("src/ansichten/einsatzplan.jsx"), personal = LIES("src/ansichten/personal.jsx");
+  const lage = LIES("src/ansichten/lagebild.jsx");
+
+  it("Nachbildung der axe-Wortfolge: alter Name fällt durch, neuer besteht", () => {
+    expect(imNamen("Suchen … Strg K", "Suchen (Strg K)")).toBe(false);
+    expect(imNamen("Suchen … Strg K", "Suchen, Strg K")).toBe(true);
+    expect(imNamen("Suchen …", "Suchen, Strg K")).toBe(true);
+    expect(imNamen("IS", "Konto: Ines Sommer")).toBe(false);
+    expect(imNamen("IS", "IS, Konto Ines Sommer")).toBe(true);
+    expect(imNamen("So 01", "Tag · So, 1. November 2026")).toBe(false);
+    expect(imNamen("So 01", "Tag · So, 01. November 2026")).toBe(true);
+    expect(imNamen("Fei 01", "Tag · Fei, 01. November 2026 · Allerheiligen · Sonntag")).toBe(true);
+    expect(imNamen("3/4", "So, 1. November 2026 · Frühdienst · 3 von 4")).toBe(false);
+    expect(imNamen("3/4", "3/4 · So, 1. November 2026 · Frühdienst · 3 von 4")).toBe(true);
+    expect(imNamen("FD 2 ab", "FD 2 ab · So, 1. November 2026 · Station A · Frühdienst · 2 abwesend")).toBe(true);
+  });
+
+  it("Kopfleiste: Suchknopf ohne Klammer, mit Tastenkürzel; Kontoknopf beginnt mit den sichtbaren Initialen", () => {
+    expect(rahmen).toContain('className="suchknopf" onClick={onSuche} aria-label="Suchen, Strg K"');
+    expect(rahmen).toContain('aria-keyshortcuts="Control+K Meta+K"');
+    expect(rahmen).not.toContain("Suchen (Strg K)");
+    expect(rahmen).toContain("aria-label={`${konto.kurz}, Konto ${konto.name}`}");
+    expect(rahmen).toMatch(/className="avatarknopf"[\s\S]{0,200}>\{konto\.kurz\}<\/button>/);
+  });
+
+  it("Mein Plan: die Karte „Zeiten bestätigen“ ist der einzige Knopf, die Zeile darin hat kein onClick", () => {
+    const stelle = mobil.slice(mobil.indexOf('<MKarte ton="warn" onClick={() => oeffnen("zeiten")}>'));
+    const zeile = stelle.slice(0, stelle.indexOf("</MKarte>"));
+    expect(zeile).toContain("<MZeile");
+    expect(zeile).not.toContain("onClick={() => {}}");
+    expect((zeile.match(/onClick=/g) || []).length).toBe(1);
+  });
+
+  it("Personal und Personaleinsatz: Personenzelle heißt, was sichtbar steht; Tageszelle beginnt mit dem Kürzel", () => {
+    for (const q of [personal, einsatz]) {
+      expect(q).toContain("<td {...klickbar(() => oeffnePerson(p.id))}");
+      expect(q).not.toContain("${p.vorname} öffnen`");
+    }
+    expect(einsatz).toContain("`${zelleKurz(map[t.dienstId], t.abwesenheit)}${p.nachname}, ${p.vorname} am ${fKurz(d)}:");
+    expect(einsatz).toMatch(/const k = abw \? abwArt\(abw\.art\)\.kurz : da \? da\.kurz : "";/);
+  });
+
+  it("Lagebild: Achtungszeile ohne eigenen Namen (Titel und Datum sind der Name)", () => {
+    const stelle = lage.slice(lage.indexOf('className="achtungszeile"'), lage.indexOf('<span className="t">'));
+    expect(stelle).toContain("klickbar(");
+    expect(stelle).not.toContain("`${fKurz(b.datum)}: ${b.titel}`");
+  });
+
+  it("Monatsplan: Kopf-, Einheits- und Besetzungszellen beginnen mit ihrem sichtbaren Text", () => {
+    expect(monat).toContain("{...zelleBedienbar(() => oeffneTag(d), kopfName(d, fei, eng))}");
+    expect(monat).toContain('return `Tag · ${fei ? "Fei" : DOW[dow(d)]}, ${pad(t.getDate())}. ${MON[t.getMonth()]} ${t.getFullYear()}`');
+    expect(monat).toContain('`${da ? `${da.kurz}${fehlt > 0 ? ` ${fehlt} ab` : ""} · ` : ""}${fLang(d)} · ${e.name}');
+    expect(monat).toContain("`${b.anzahl}/${sollAnzeige(b)} · ${fLang(d)} · ${da.name} · ${besetztText(b)}");
+    /* Sichtbarer Kopf: Wochentag bzw. „Fei“ und die zweistellige Tageszahl. */
+    expect(monat).toContain('{fei ? "Fei" : DOW[dow(d)]}</div>');
+    expect(monat).toContain("{pad(pISO(d).getDate())}</div>");
+    /* axe setzt den sichtbaren Text der Kinder ohne Trenner zusammen („So01“, „F1 ab“): ein Leerzeichen dazwischen. */
+    expect(monat).toMatch(/\{fei \? "Fei" : DOW\[dow\(d\)\]\}<\/div>\s*\{\/\*[\s\S]*?\*\/\}\s*\{" "\}<div/);
+    expect(LIES("src/ui/bausteine.jsx")).toContain('{unten && <>{" "}<div className="unten">{unten}</div></>}');
+  });
+
+  it("Planzelle rendert Kürzel und Zusatz mit Leerzeichen dazwischen, ohne Zusatz unverändert", () => {
+    const da = { name: "Frühdienst", kurz: "F", farbe: "#336699" };
+    expect(renderToStaticMarkup(h(Planzelle, { da, unten: "1 ab" }))).toContain('<div class="oben">F</div> <div class="unten">1 ab</div>');
+    expect(renderToStaticMarkup(h(Planzelle, { da }))).toContain('<div class="oben">F</div></div>');
+  });
+
+  it("Wochenliste: die Karte öffnet per Maus, Bedienelement ist die Kopfzeile mit genau ihrem sichtbaren Text", () => {
+    expect(woche).toContain("<Card key={d} onClick={() => oeffneTag(d)}");
+    expect(woche).not.toMatch(/<Card key=\{d\} \{\.\.\.klickbar/);
+    expect(woche).toContain('`${pISO(d).getDate()}. ${DOW_LANG[dow(d)]}${fei ? `, ${fei}` : ""}${istHeute ? ", heute" : ""}${t ? `, ${t.text}` : ""}`)}');
+    expect(woche).toContain("onClick={undefined}");
+    expect(woche).toContain('{" "}<span style={{ fontSize: 13.5, color: C.dim }}>{DOW_LANG[dow(d)]}</span>');
+    expect(woche).toContain('{fei && <>{" "}<Pill size="sm" tone="warn">{fei}</Pill></>}');
+    expect(woche).toContain('{istHeute && <>{" "}<Pill size="sm" tone="accent">heute</Pill></>}');
+  });
+
+  it("axe-Ausnahmen: keine für label-content-name-mismatch, nested-interactive oder target-size", () => {
+    const aus = JSON.parse(LIES("e2e/axe-ausnahmen.json")).ausnahmen;
+    for (const r of ["label-content-name-mismatch", "nested-interactive", "target-size"]) {
+      expect(aus.filter((a) => a.regel === r).map((a) => a.flaeche)).toEqual([]);
+    }
   });
 });
 

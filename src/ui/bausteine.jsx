@@ -132,7 +132,9 @@ export const Planzelle = ({ da, unten, aktiv, ausfall, onClick, title }) => {
         minHeight: 34, outline: aktiv ? `2px solid ${C.accent}` : "none",
         textDecoration: ausfall ? "line-through" : "none", opacity: ausfall ? .5 : 1 }}>
       <div className="oben">{da.kurz}</div>
-      {unten && <div className="unten">{unten}</div>}
+      {/* WP-40: Leerzeichen zwischen den Blöcken (unsichtbar), damit der Text „F 1 ab“ lautet und nicht „F1 ab“ —
+          so steht er wortgleich im Namen der Zelle (WCAG 2.5.3). */}
+      {unten && <>{" "}<div className="unten">{unten}</div></>}
     </div>);
 };
 /**

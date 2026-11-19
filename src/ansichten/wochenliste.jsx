@@ -54,19 +54,27 @@ export function Wochenliste({ sitz, ym, oeffneTag, bes, lage }) {
           const t = lage.tage.find((x) => x.datum === d);
           const istHeute = d === d0;
           return (
-            <Card key={d} {...klickbar(() => oeffneTag(d),
-              `${pISO(d).getDate()}. ${DOW_LANG[dow(d)]}${istHeute ? ", heute" : ""}${t ? `, ${t.text}` : ""}`)}
+            /* WP-40 (WCAG 2.5.3 Label in Name): Die Maus öffnet den Tag weiter über die ganze Karte. Bedienelement für
+               Tastatur und Vorlesesoftware ist die Kopfzeile; ihr Name ist genau ihr sichtbarer Text in derselben
+               Reihenfolge (Tag, Wochentag, Feiertag, heute, Hinweis). Ihr Klick steigt zur Karte auf, daher kein
+               eigenes onClick (sonst öffnete ein Klick den Tag zweimal). */
+            <Card key={d} onClick={() => oeffneTag(d)}
               style={{ padding: 0, overflow: "hidden", cursor: "pointer",
                 borderLeft: `3px solid ${t ? (t.stufe === 2 ? C.danger : C.warn) : istHeute ? C.accent : "transparent"}` }}>
-              <div style={{ display: "flex", alignItems: "baseline", gap: 9, padding: "11px 14px 8px",
+              <div {...klickbar(() => oeffneTag(d),
+                `${pISO(d).getDate()}. ${DOW_LANG[dow(d)]}${fei ? `, ${fei}` : ""}${istHeute ? ", heute" : ""}${t ? `, ${t.text}` : ""}`)}
+                onClick={undefined}
+                style={{ display: "flex", alignItems: "baseline", gap: 9, padding: "11px 14px 8px",
                 background: istHeute ? C.accentLight : (fei || we) ? C.flaecheStill : "transparent" }}>
                 <span style={{ fontSize: 19, fontWeight: 700, ...NUM,
                   color: istHeute ? C.accent : C.text }}>{pISO(d).getDate()}.</span>
-                <span style={{ fontSize: 13.5, color: C.dim }}>{DOW_LANG[dow(d)]}</span>
-                {fei && <Pill size="sm" tone="warn">{fei}</Pill>}
-                {istHeute && <Pill size="sm" tone="accent">heute</Pill>}
+                {/* Leerzeichen zwischen den Teilen (im Flex-Layout unsichtbar): Der Text lautet „10. Dienstag heute“,
+                    nicht „10.Dienstagheute“, und steht so wortgleich im Namen (WP-40, WCAG 2.5.3). */}
+                {" "}<span style={{ fontSize: 13.5, color: C.dim }}>{DOW_LANG[dow(d)]}</span>
+                {fei && <>{" "}<Pill size="sm" tone="warn">{fei}</Pill></>}
+                {istHeute && <>{" "}<Pill size="sm" tone="accent">heute</Pill></>}
                 <span style={{ flex: 1 }} />
-                {t && <span style={{ fontSize: 12, fontWeight: 700,
+                {t && " "}{t && <span style={{ fontSize: 12, fontWeight: 700,
                   color: t.stufe === 2 ? C.danger : C.warn }}>{t.text}</span>}
               </div>
               <div style={{ display: "flex", flexDirection: "column" }}>
