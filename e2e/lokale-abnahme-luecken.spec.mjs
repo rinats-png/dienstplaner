@@ -245,7 +245,7 @@ test.describe.serial("Lokale E2E-Abnahme 2026-11-19: Urlaub, Konflikt, Sitzung, 
      Sonst kann eine Hintergrundanfrage der offenen Seite (Abgleich, verzögerter PUT) die 401 vor dem Neuladen des Tests
      bekommen: Dann lädt die App selbst neu und verbraucht den einmaligen Hinweis, oder sie hält die Seite wegen eines
      wartenden Schreibvorgangs (Fall L4c) und räumt nur das Merkmal — das Neuladen des Tests zeigt dann die Anmeldung
-     ohne Hinweis. So schlug L4a in der CI fehl (Lauf 44551113318), lokal nicht (Zeitverhalten). */
+     ohne Hinweis. Vermutlich schlug L4a so in der CI fehl (Lauf 44551113318, nicht reproduziert, lokal nie rot); belegt ist nur, dass der neue Ablauf vom Zeitverhalten unabhängig ist. */
   async function sitzungBeenden(page) {
     await anmeldenBrowser(page, C.p1);
     await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
