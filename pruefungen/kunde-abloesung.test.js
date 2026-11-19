@@ -106,7 +106,7 @@ describe("Auswertung und gezielte Umstellung", () => {
 describe("Werkzeug werkzeug/kunde-abloesen.mjs (echte Ablage, Wegwerfdaten)", () => {
   let daten;
   const lauf = (...arg) => spawnSync(process.execPath, [path.join(WURZEL, "werkzeug", "kunde-abloesen.mjs"), ...arg],
-    { env: { ...process.env, CENTRIC_DATEN: daten, CENTRIC_ABLAGE: "dateien" }, encoding: "utf8" });
+    { env: { ...process.env, CENTRIC_DATEN: daten, CENTRIC_ABLAGE: "dateien" }, encoding: "utf8", timeout: 20_000 });
   const lesen = async () => {
     const { getStore } = await import("../server/lib/ablage.mjs");
     const { alleKonten } = await import("../server/lib/konten.mjs");
@@ -125,7 +125,7 @@ describe("Werkzeug werkzeug/kunde-abloesen.mjs (echte Ablage, Wegwerfdaten)", ()
   it("ohne --ausfuehren nur Bericht: nichts ändert sich, Betreiber sichtbar, keine Codes", async () => {
     const vorher = JSON.stringify(await lesen());
     const r = lauf();
-    expect(r.status, r.stderr).toBe(0);
+    expect(r.status, `${r.error?.message ?? ""} ${r.signal ?? ""} ${r.stderr}`).toBe(0);
     expect(r.stdout).toMatch(/Betreiberzugänge \(1\)/);
     expect(r.stdout).toMatch(/Trockenlauf: 2 würden umgestellt/);
     expect(r.stdout).not.toContain("h-betreiber-00000001");
@@ -134,7 +134,7 @@ describe("Werkzeug werkzeug/kunde-abloesen.mjs (echte Ablage, Wegwerfdaten)", ()
   it("mit --ausfuehren: Demo-kunde → leitung (demo bleibt), Rest und Betreiber unverändert, nichts gelöscht", async () => {
     const vorher = await lesen();
     const r = lauf("--ausfuehren");
-    expect(r.status, r.stderr).toBe(0);
+    expect(r.status, `${r.error?.message ?? ""} ${r.signal ?? ""} ${r.stderr}`).toBe(0);
     expect(r.stdout).toMatch(/UMGESTELLT: 2/);
     expect(r.stdout).toMatch(/Betreiberzugang unverändert/);
     const nachher = await lesen();
@@ -149,7 +149,7 @@ describe("Werkzeug werkzeug/kunde-abloesen.mjs (echte Ablage, Wegwerfdaten)", ()
     expect(r2.stdout).toMatch(/UMGESTELLT: 0/);
   });
   it("ohne Datenordner bricht das Werkzeug ab", () => {
-    const r = spawnSync(process.execPath, [path.join(WURZEL, "werkzeug", "kunde-abloesen.mjs")], { env: { ...process.env, CENTRIC_DATEN: "" }, encoding: "utf8" });
+    const r = spawnSync(process.execPath, [path.join(WURZEL, "werkzeug", "kunde-abloesen.mjs")], { env: { ...process.env, CENTRIC_DATEN: "" }, encoding: "utf8", timeout: 20_000 });
     expect(r.status).toBe(1);
   });
 });
