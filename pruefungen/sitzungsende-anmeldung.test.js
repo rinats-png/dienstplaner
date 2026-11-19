@@ -70,9 +70,10 @@ async function seite({ ablage } = {}) {
   vi.stubGlobal("localStorage", speicherAttrappe());
   vi.stubGlobal("window", { addEventListener: () => {} });
   vi.stubGlobal("document", { visibilityState: "visible", addEventListener: () => {} });
-  const r = { sitzung, neuGeladen: 0, fehler: [], gespeichert: [], tor: null, amTor: 0, putTor: null, amPutTor: 0, lesenErsatz: null, anmeldeToken: null };
+  const r = { sitzung, neuGeladen: 0, fehler: [], gespeichert: [], tor: null, amTor: 0, putTor: null, amPutTor: 0, putNetzWeg: false, lesenErsatz: null, lesenAnpassen: null, anmeldeToken: null, aufrufe: [] };
   vi.stubGlobal("fetch", async (url, opt = {}) => {
     nr += 1;
+    r.aufrufe.push(`${opt.method || "GET"} ${url}`);
     /* A1: die Anmeldung liefert ein vorgegebenes (echt angelegtes) Merkmal; Lesen kann an einem Tor warten. */
     if (url === "/api/anmelden") return new Response(JSON.stringify({ token: r.anmeldeToken, name: "Haus", rolle: "leitung",
       person: "l1", betrieb: 0 }), { status: 200, headers: { "content-type": "application/json" } });
@@ -81,6 +82,8 @@ async function seite({ ablage } = {}) {
     if (r.lesenErsatz && String(url) === "/api/bestand" && !(opt.method && opt.method !== "GET")) return r.lesenErsatz();
     const kopf = { ...(opt.headers || {}), host: WIRT, origin: `http://${WIRT}`, "x-forwarded-for": `10.52.${Math.floor(nr / 250) % 250}.${nr % 250}` };
     const methode = opt.method || "GET";
+    /* Folgepaket #381 (2): Netz weg vor dem Server — der PUT kommt nicht an. */
+    if (methode === "PUT" && r.putNetzWeg) throw new TypeError("Failed to fetch");
     if (methode === "PUT") PUTS.push(JSON.parse(opt.body));
     /* Delta-Review #381 (7): Der Server verarbeitet den PUT sofort, die Antwort kommt erst nach dem Tor an. */
     if (methode === "PUT" && r.putTor) {
@@ -88,7 +91,11 @@ async function seite({ ablage } = {}) {
       r.amPutTor += 1; await r.putTor;
       return antwort;
     }
-    return daten(new Request(`http://${WIRT}${url}`, { method: methode, headers: kopf, ...(opt.body ? { body: opt.body } : {}) }), {});
+    const antwort = await daten(new Request(`http://${WIRT}${url}`, { method: methode, headers: kopf, ...(opt.body ? { body: opt.body } : {}) }), {});
+    /* Review #382: Leseantwort verändern (etwa ohne Inhaber, wie bei Sitzungen ohne Person). */
+    if (r.lesenAnpassen && String(url) === "/api/bestand" && methode === "GET" && antwort.status === 200)
+      return new Response(JSON.stringify(r.lesenAnpassen(await antwort.json())), { status: 200, headers: { "content-type": "application/json" } });
+    return antwort;
   });
   const SP = await import("../src/speicher.js");
   const E = await import("../src/app/sitzungsende.js");
@@ -415,7 +422,7 @@ describe("O Senden nach erneuter Anmeldung (B-L4c)", { timeout: 120000 }, () => 
     expect(PUTS.length).toBe(1);
   });
 
-  it("Empfehlung (9): lies() mit dem geprüften Merkmal erledigt den Merker — ein weiteres Sitzungsende merkt den frischen ETag", async () => {
+  it("Absicherung: Wiederanmeldung, Senden, lies(), weiteres Sitzungsende — gesendet mit dem frischen ETag (unterscheidend für (9) ist Folgepaket (2))", async () => {
     await neuerRaum();
     const r = await seite();
     await bisZurLeiste(r);
@@ -436,6 +443,150 @@ describe("O Senden nach erneuter Anmeldung (B-L4c)", { timeout: 120000 }, () => 
     expect(await r.SP.nochmalSchreiben()).toEqual({ ok: true });
     expect(PUTS.map((p) => p.etag)).toEqual([frisch]);
     expect((await gespeichert()).einstellungen.ruhezeit).toBe(14);
+  });
+
+  it("Folgepaket #381 (2): Prüfung „gleich“ ohne PUT, dann lies() — ein weiteres Sitzungsende sendet mit dem frischen ETag", async () => {
+    await neuerRaum();
+    const r = await seite();
+    const alt = await bisZurLeiste(r);
+    const b = await neueSitzung();
+    r.anmeldeToken = b;
+    await r.SP.anmelden("CODE-B", false);
+    r.putNetzWeg = true;                                 // Prüfung „gleich“, der PUT erreicht den Server nicht
+    expect((await r.SP.nochmalSchreiben()).ok).toBe(false);
+    expect(r.SP.ausstehend().art).toBe("netz");
+    expect(PUTS).toEqual([]);
+    const fremd = bestand(); fremd.mandanten[0].name = "Haus fremd";
+    await B.bestandSchreiben(laden(), RAUM, fremd, { durch: "Andere" });
+    const frisch = (await B.bestandLesen(laden(), RAUM)).stand;
+    expect(frisch).not.toBe(alt);
+    /* Die Oberfläche liest neu (unter B) und speichert ihre Eingabe auf diesem Stand — der PUT scheitert wieder am Netz. */
+    const g = await r.SP.lies();
+    const db = { ...g.bestand, session: { mandantId: "m1", personId: "l1" } };
+    await r.SP.schreib({ ...db, mandanten: db.mandanten.map((m) => ({ ...m, einstellungen: { ...m.einstellungen, ruhezeit: 14 } })) },
+      { ...opt(r), sofort: true });
+    expect(r.SP.ausstehend().art).toBe("netz");
+    /* B endet, dieselbe Person meldet sich wieder an: gesendet mit dem ETag des frischen Lesens, nicht mit dem alten. */
+    await S.sitzungBeenden(b);
+    await expect(r.SP.lies()).rejects.toThrow("nicht-angemeldet");
+    r.putNetzWeg = false;
+    r.anmeldeToken = await neueSitzung();
+    await r.SP.anmelden("CODE-C", false);
+    expect(await r.SP.nochmalSchreiben()).toEqual({ ok: true });
+    expect(PUTS.map((x) => x.etag)).toEqual([frisch]);
+    const m = await gespeichert();
+    expect([m.name, m.einstellungen.ruhezeit]).toEqual(["Haus fremd", 14]);
+  });
+
+  it("Review #382 A2: direkte Anmeldung ohne bekannten Inhaber bei offener Konfliktfrage — weder ETag noch Absage wirken in Raum B", async () => {
+    await neuerRaum();
+    const r = await seite();
+    r.lesenAnpassen = (d) => { const { inhaber: _weg, ...rest } = d; return rest; };   // Sitzung ohne Inhaber
+    const g = await r.SP.lies();
+    expect(g.zugang.inhaber).toBeNull();
+    const db = { ...g.bestand, session: { mandantId: "m1", personId: "l1" } };
+    const fremd = bestand(); fremd.mandanten[0].name = "Haus fremd";
+    await B.bestandSchreiben(laden(), RAUM, fremd, { durch: "Andere" });
+    await r.SP.schreib({ ...db, mandanten: db.mandanten.map((m) => ({ ...m, einstellungen: { ...m.einstellungen, ruhezeit: 13 } })) },
+      { ...opt(r), sofort: true });
+    expect(r.SP.konfliktLage(), "Konfliktfrage offen").not.toBeNull();
+    const etagA = (await B.bestandLesen(laden(), RAUM)).stand;
+    /* Raum B mit demselben Zählerstand wie Raum A (ETags sind Zähler). */
+    const raum2 = `${RAUM}-zwei`;
+    for (let i = 0; i < 20 && (await B.bestandLesen(laden(), raum2))?.stand !== etagA; i++) {
+      const zwei = bestand(); zwei.mandanten[0].name = `Haus zwei ${i}`;
+      await B.bestandSchreiben(laden(), raum2, zwei, { durch: "Prüfung" });
+    }
+    const vorB = await B.bestandLesen(laden(), raum2);
+    expect(vorB.stand, "gleicher Stand in beiden Räumen").toBe(etagA);
+    r.anmeldeToken = await neueSitzung({ raum: raum2 });
+    await r.SP.anmelden("CODE-B", false);              // direkt, ohne Sitzungsende
+    expect(r.SP.konfliktLage(), "keine Absage aus Raum A mehr abrufbar").toBeNull();
+    /* Delta-Review #382 A-a: keine Sackgasse — die Leiste bietet statt „Konflikt entscheiden" Verwerfen und Neuladen. */
+    expect(r.SP.konfliktOhneAbsage()).toBe(true);
+    const { NichtGespeichert, OHNE_ABSAGE_TEXT } = await import("../src/ansichten/speicherlage.jsx");
+    const html = renderToStaticMarkup(h(NichtGespeichert, { lage: r.SP.ausstehend(), melde: () => {}, aufGeloest: () => {}, onKonflikt: () => {} }));
+    expect(r.SP.ausstehend().art).toBe("konfliktOffen");
+    expect(html).not.toContain("Konflikt entscheiden");
+    expect(html).toContain("Änderungen verwerfen und neu laden");
+    expect(html).toContain(OHNE_ABSAGE_TEXT);
+    expect(html).toContain("Als Datei sichern");
+    PUTS = [];
+    /* „Meinen Stand übernehmen“: die Oberfläche schickt ihren Stand (aus Raum A) erneut. */
+    expect(r.SP.konfliktLoesen("meins")).toBe(true);
+    await r.SP.schreib({ ...db, mandanten: db.mandanten.map((m) => ({ ...m, einstellungen: { ...m.einstellungen, ruhezeit: 13 } })) },
+      { ...opt(r), sofort: true });
+    expect(PUTS.map((x) => x.etag), "ohne Versionsangabe aus Raum A").toEqual([null]);
+    const nachB = await B.bestandLesen(laden(), raum2);
+    expect([nachB.stand, nachB.bestand.mandanten[0].einstellungen.ruhezeit], "Raum B nicht überschrieben").toEqual([vorB.stand, 11]);
+  });
+
+  it("Delta-Review #382 A-b: Voll-PUT unterwegs, Anmeldung ohne bekannten Inhaber — der nächste PUT trägt keine Versionsangabe", async () => {
+    await neuerRaum();
+    const r = await seite();
+    r.lesenAnpassen = (d) => { const { inhaber: _weg, ...rest } = d; return rest; };
+    const g = await r.SP.lies();
+    const raum2 = `${RAUM}-zwei`;
+    await B.bestandSchreiben(laden(), raum2, bestand(), { durch: "Prüfung" });
+    const db = { ...g.bestand, session: { mandantId: "m1", personId: "l1" } };
+    let auf; r.putTor = new Promise((ja) => { auf = ja; });
+    const laeuft = r.SP.schreib({ ...db, mandanten: db.mandanten.map((m) => ({ ...m, einstellungen: { ...m.einstellungen, ruhezeit: 13 } })) },
+      { ...opt(r), sofort: true });
+    while (r.amPutTor === 0) await warte();
+    expect(r.SP.ausstehend(), "nichts ausstehend außer dem laufenden PUT").toBeNull();
+    r.anmeldeToken = await neueSitzung({ raum: raum2 });
+    await r.SP.anmelden("CODE-B", false);
+    r.putTor = null; auf();
+    await laeuft;
+    expect(r.SP.ausstehend().art, "Antwort für die vorherige Anmeldung nicht übernommen").toBe("abgemeldet");
+    const vorB = await B.bestandLesen(laden(), raum2);
+    PUTS = [];
+    await r.SP.nochmalSchreiben();
+    expect(PUTS.map((x) => x.etag), "keine Versionsangabe der vorherigen Anmeldung").toEqual([null]);
+    expect((await B.bestandLesen(laden(), raum2)).stand, "Raum B unverändert").toBe(vorB.stand);
+  });
+
+  it("Delta-Review #382 (13): Merker gesetzt, anderer Inhaber — kein POST /wiederherstellen", async () => {
+    await neuerRaum();
+    const r = await seite();
+    await bisZurLeiste(r);
+    r.SP.allesAusstehendeVerwerfen();                  // nichts mehr ausstehend, der Merker bleibt
+    r.anmeldeToken = await neueSitzung({ person: "a1", rolle: "mitarbeiter" });
+    await r.SP.anmelden("CODE-ANDERS", false);
+    r.aufrufe.length = 0;
+    const erg = await r.SP.wiederherstellen("marke-x");
+    expect(erg.status).toBe(0);
+    expect(erg.daten.fehler).toMatch(/anderen Zugang/);
+    expect(r.aufrufe.filter((x) => x.includes("/api/wiederherstellen"))).toEqual([]);
+  });
+
+  it("Folgepaket #381 (1): verspätete Leseantwort nach Wechsel der Anmeldung — nichts übernommen (ETag, Zugang)", async () => {
+    await neuerRaum();
+    const r = await seite();
+    await r.SP.lies();
+    const raum2 = `${RAUM}-zwei`;
+    const zwei = bestand(); zwei.mandanten[0].name = "Haus zwei";
+    await B.bestandSchreiben(laden(), raum2, zwei, { durch: "Prüfung" });
+    let auf; r.tor = new Promise((ja) => { auf = ja; });
+    const spaet = r.SP.lies();                           // unter A, Antwort wartet
+    while (r.amTor === 0) await warte();
+    r.anmeldeToken = await neueSitzung({ raum: raum2 });
+    await r.SP.anmelden("CODE-B", false);
+    r.tor = null; auf();
+    await expect(spaet).rejects.toThrow("nicht-angemeldet");
+    expect(r.SP.angemeldet(), "die neue Anmeldung bleibt").toBe(true);
+    expect(r.SP.zugangsdaten().inhaber, "kein Inhaber aus der Antwort für A").toBeUndefined();
+    expect(r.neuGeladen).toBe(0);
+    /* Eine Eingabe unter B geht mit dem ETag von B hinaus (nicht mit dem von A). */
+    const g = await r.SP.lies();
+    expect(g.bestand.mandanten[0].name).toBe("Haus zwei");
+    const db = { ...g.bestand, session: { mandantId: "m1", personId: "l1" } };
+    const e2 = (await B.bestandLesen(laden(), raum2)).stand;
+    await r.SP.schreib({ ...db, mandanten: db.mandanten.map((m) => ({ ...m, einstellungen: { ...m.einstellungen, ruhezeit: 12 } })) },
+      { ...opt(r), sofort: true });
+    expect(PUTS.map((x) => x.etag)).toEqual([e2]);
+    expect((await B.bestandLesen(laden(), raum2)).bestand.mandanten[0].einstellungen.ruhezeit).toBe(12);
+    expect((await gespeichert()).einstellungen.ruhezeit, "Raum von A unverändert").toBe(11);
   });
 
   it("absichtliches Abmelden löscht den Merker: danach kein alter ETag mehr", async () => {
@@ -536,5 +687,9 @@ describe("Q Quelltext-Verträge", () => {
     /* App.jsx: Ladefehler „nicht-angemeldet" bleibt still — die Anmeldung kommt über das Neuladen, nicht über die Fehlerseite. */
     const app = await lies("../src/App.jsx");
     expect(app).toContain('if (lebt && String(e.message) !== "nicht-angemeldet") setLadefehler(String(e.message));');
+    /* Delta-Review #382 A-a: „Konflikt entscheiden" ohne Absage fällt auf Verwerfen mit Rückfrage zurück; nach dem
+       Schließen des Fensters erscheint die Leiste auch dann wieder. */
+    expect(app).toContain("if (d) setKonflikt({ ...d, meiner: ref.current }); else if (SP.konfliktOhneAbsage()) verwerfenMitRueckfrage();");
+    expect(app).toContain("if (SP.konfliktLage() || SP.konfliktOhneAbsage()) setNichtGespeichert(SP.ausstehend());");
   });
 });

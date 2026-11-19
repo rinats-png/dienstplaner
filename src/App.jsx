@@ -240,7 +240,7 @@ import { Ablaufansicht, Einfuehrung } from "./ansichten/ablauf.jsx";
 import { AntraegeGeteilt } from "./ansichten/antraegegeteilt.jsx";
 import { Monatsplan } from "./ansichten/monatsplan.jsx";
 import { Dienstarten } from "./ansichten/dienstarten.jsx";
-import { Konfliktfenster, NichtGespeichert, Offlineleiste } from "./ansichten/speicherlage.jsx";
+import { Konfliktfenster, NichtGespeichert, Offlineleiste, verwerfenMitRueckfrage } from "./ansichten/speicherlage.jsx";
 import { Teilkonfliktfenster, TeilwegLeiste, teilSichern } from "./ansichten/teilkonflikt.jsx";
 import { sitzungAusZugang } from "./app/zugangssitzung.js";
 import { Ladefehlerseite } from "./ansichten/ladefehler.jsx";
@@ -1857,7 +1857,7 @@ function AppInnen() {
           <Offlineleiste lage={offline} />
           <NichtGespeichert lage={nichtGespeichert} melde={melde}
             aufGeloest={() => setNichtGespeichert(null)}
-            onKonflikt={() => { const d = SP.konfliktLage(); if (d) setKonflikt({ ...d, meiner: ref.current }); }} />
+            onKonflikt={() => { const d = SP.konfliktLage(); if (d) setKonflikt({ ...d, meiner: ref.current }); else if (SP.konfliktOhneAbsage()) verwerfenMitRueckfrage(); }} />
           {teilLage && !teilFenster && <TeilwegLeiste zustand={teilLage} onOeffnen={() => setTeilFenster(true)} />}
           {schmal && !mobilOk && (
             <Card style={{ padding: 20, marginBottom: 20, background: C.warnLight }}>
@@ -2030,7 +2030,7 @@ function AppInnen() {
 
       {konflikt && (
         <Konfliktfenster lage={konflikt} melde={melde}
-          onSchliessen={() => { setKonflikt(false); if (SP.konfliktLage()) setNichtGespeichert(SP.ausstehend()); }}
+          onSchliessen={() => { setKonflikt(false); if (SP.konfliktLage() || SP.konfliktOhneAbsage()) setNichtGespeichert(SP.ausstehend()); }}
           onUebernehmen={() => {
             /* Denselben Stand noch einmal schicken. Erst mit dieser Entscheidung
                übernimmt speicher.js den ETag aus der Absage (vorher Sendesperre),

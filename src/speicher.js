@@ -170,6 +170,32 @@ function gemerktZuruecknehmen() {
   try { localStorage.removeItem(SCHLUESSEL); localStorage.removeItem(GEMERKT); } catch { /* egal */ }
 }
 
+/* Folgepaket #381 (3): Anmeldung im selben Reiter, ohne dass vorher ein Sitzungsende gemerkt wurde (direkte Anmeldung
+   über eine noch gültige Sitzung) oder ohne bekannten Inhaber (Sitzungen ohne Person, z. B. Betreiber, Kunde). Liegt
+   noch etwas der bisherigen Anmeldung aus (Auftrag, Konfliktfrage, Teilweg-Zustand mit unklaren Schlüsseln, gelesene
+   Teilweg-Basis), darf es nicht ungeprüft unter dem neuen Merkmal wirken:
+   - Inhaber bekannt: wie nach einem Sitzungsende ein Merker — vor dem nächsten Senden prüft ein frisches GET den Inhaber
+     (gleich: Teilweg-Zustand und ETag bleiben; anders: alles verworfen, B-L4c).
+   - Inhaber unbekannt: Teilweg-Zustand und Basis zurücksetzen und den ETag räumen (wie abmelden) — nichts Ausstehendes
+     geht mit Versionsangabe der bisherigen Anmeldung hinaus; der Server antwortet dann 409 ohne Versionsangabe.
+   Ein schon gemerktes Sitzungsende (vorSitzungsende) wird ohnehin vor dem Senden geprüft. Synchron vor dem Setzen des
+   neuen Merkmals aufrufen. */
+function anmeldungWechselt() {
+  if (vorSitzungsende) return;
+  /* Review #382 A1: auch ein laufender Schreibvorgang (Voll-PUT oder Teilweg) gehört zur bisherigen Anmeldung. */
+  if (!(offen || gescheitert || konfliktSperre || teil || teilRoh || unterwegs > 0 || teilLaeuft || laufend)) return;
+  if (zugang && typeof zugang.inhaber === "string" && zugang.inhaber) {
+    vorSitzungsende = { etag, inhaber: zugang.inhaber, fuer: null };
+    return;
+  }
+  teil = null; teilRoh = null; teilAuftrag = null;
+  etag = null;
+  /* Review #382 A2: Die offene Konfliktfrage bleibt (nichts geht ohne Entscheidung hinaus), aber weder ihr ETag (ETags
+     sind Zähler, derselbe Stand in einem anderen Raum ist möglich) noch die Absage mit dem Stand der bisherigen
+     Anmeldung wirken weiter. Nach der Entscheidung geht der Auftrag ohne Versionsangabe hinaus (Server: 409). */
+  if (konfliktSperre) konfliktSperre = { etag: null, daten: null };
+}
+
 export async function anmelden(zugangscode, merken, zweifaktor) {
   const a = await fetch("/api/anmelden", { method: "POST",
     headers: { "content-type": "application/json" },
@@ -182,6 +208,7 @@ export async function anmelden(zugangscode, merken, zweifaktor) {
     throw f;
   }
   await offlineCacheLeeren();   // Rollenwechsel: nichts von der vorherigen Person bleibt liegen (WP-37)
+  anmeldungWechselt();
   token = d.token; name = d.name;
   zugang = { rolle: d.rolle, person: d.person, betrieb: d.betrieb, name: d.name, hinweis: d.hinweis, demo: d.demo === true };
   tokenAblegen(token, merken && merkenErlaubtLaut(d));
@@ -204,6 +231,7 @@ export async function demoOeffnen(id, merken) {
   const d = await a.json();
   if (!a.ok) throw new Error(d.fehler || "Demozugang nicht verfügbar.");
   await offlineCacheLeeren();   // Rollenwechsel (WP-37)
+  anmeldungWechselt();
   token = d.token; name = d.name;
   zugang = { rolle: d.rolle, person: d.person, betrieb: d.betrieb, name: d.name, demo: true };
   /* Eine Betreibersitzung wird nie über das Schließen des Browsers hinaus
@@ -334,6 +362,14 @@ export function abmelden(still = false) {
 export async function lies() {
   const gelesenFuer = token;
   const { status, daten, ausSpeicher, geholt } = await ruf("bestand");
+  /* Folgepaket #381 (1): Die Antwort gehört zur Anmeldung, mit der gelesen wurde. Gilt inzwischen eine andere, wird
+     nichts übernommen (weder ETag noch Zugang noch Bestand) — wie beim PUT. Still wie eine abgewiesene Sitzung
+     (App.jsx zeigt für „nicht-angemeldet" keine Fehlerseite); die neue Anmeldung liest selbst. */
+  if (token !== gelesenFuer) {
+    const f = new Error("nicht-angemeldet");
+    /** @type {any} */ (f).gewechselt = true;
+    throw f;
+  }
   if (status !== 200) throw new Error(daten?.fehler || "Laden fehlgeschlagen.");
   etag = daten.etag;
   /* Delta-Review #381 (9): frisch gelesen mit dem geprüften Merkmal — der Merker des Sitzungsendes ist erledigt. */
@@ -772,6 +808,9 @@ const konfliktLageText = () => ({ art: "konfliktOffen", text: "Gleichzeitig bear
   zeit: new Date().toISOString() });
 /** Die Absage (409) des ungelösten Konflikts für das Konfliktfenster, sonst null. */
 export const konfliktLage = () => (konfliktSperre ? konfliktSperre.daten : null);
+/** Review #382 A-a: Konfliktsperre ohne gültige Absage (nach einer Anmeldung ohne bekannten Inhaber verworfen) — dann
+    gibt es nichts zu entscheiden; der Ausweg ist sichern und verwerfen/neu laden. */
+export const konfliktOhneAbsage = () => !!konfliktSperre && !konfliktSperre.daten;
 /**
  * Den Konflikt entscheiden. „meins": der Stand der Oberfläche soll den Stand des Servers ersetzen (danach schickt die
  * Oberfläche ihn mit schreib). „server": die Oberfläche hat den Stand aus der Absage übernommen (automatische Lösung,
@@ -959,6 +998,15 @@ async function teilwegSchreiben(auftrag, beimSchliessen, vollGewuenscht, abbruch
       },
     });
   } finally { teilLaeuft = false; }
+  /* Review #382 A1: Gilt inzwischen eine andere Anmeldung, kehrt der Teilweg-Zustand der bisherigen nicht zurück (er
+     wurde beim Anmelden geräumt oder wird dort geprüft) — der Auftrag bleibt ausstehend wie nach einer 401. */
+  /* Nebenwirkung (Delta-Review #382): Das gilt auch, wenn die neue Anmeldung später als „gleich“ bestätigt wird — der
+     Teilweg-Zustand ist dann trotzdem weg. Der nächste Schreibvorgang geht als Voll-PUT mit dem ETag des Merkers
+     hinaus; hat sich inzwischen etwas geändert, folgt 409 → vollSperre → „neu laden“ (sicher, aber ohne Frage je Zelle). */
+  if (token !== fuerTeil) {
+    teil = null; teilAuftrag = null;
+    return { weiter: false, status: null, fehler: new Error("nicht-angemeldet") };
+  }
   teil = r.teil;
   teilAuftrag = auftrag;
   /* `neu`: eine neue Frage bzw. „neu laden" (Fenster öffnen); sonst nur die Lage auffrischen (Frage schon offen). */
@@ -1329,6 +1377,14 @@ export async function wiederherstellen(marke) {
     return { status: 0, daten: { fehler: "Es wird noch gespeichert. Bitte kurz warten und erneut versuchen." } };
   if (gescheitert)
     return { status: 0, daten: { fehler: "Eine Änderung ist noch nicht gespeichert. Erst speichern oder verwerfen, dann zurückspielen." } };
+  /* Review #382 (13): wie vor jedem Senden — nach einem Sitzungsende oder Anmeldungswechsel erst den Inhaber prüfen. */
+  if (sitzungsendeUngeprueft()) {
+    const klar = await sitzungsendeKlaeren();
+    if (klar !== "gleich" || sitzungsendeUngeprueft())
+      return { status: 0, daten: { fehler: klar === "fremd"
+        ? "Mit einem anderen Zugang angemeldet — bitte die Seite neu laden."
+        : "Die Anmeldung ließ sich nicht prüfen. Bitte erneut versuchen." } };
+  }
   const { status, daten } = await ruf("wiederherstellen", { method: "POST", body: JSON.stringify({ marke, etag }) });
   if (status === 200 && daten && daten.etag !== undefined) etag = daten.etag;
   return { status, daten };

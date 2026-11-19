@@ -118,7 +118,9 @@ const setzeAuf = (b, t, w) => ({ ...b, mandanten: [{ ...b.mandanten[0], abweichu
 const geloescht = async (raum) => { const m = await gespeichertM(raum);
   return [m.abweichungen[`a1|${tag(-1000)}`], m.abweichungen[`a1|${tag(-900)}`], m.einstempeln[`a1|${tag(-1000)}`]]; };
 
-describe("WP-48.5 (3) Löschlauf-Knopf", () => {
+/* Review #382 (15): Zeitbudget wie in den übrigen Dateien mit echtem Handler — im Sammellauf unter Last lief der
+   Hook sonst in die Vorgabe von vitest, und alle Fälle wurden übersprungen. */
+describe("WP-48.5 (3) Löschlauf-Knopf", { timeout: 60000 }, () => {
   beforeAll(async () => {
     wurzel = await mkdtemp(path.join(tmpdir(), "centric-wp48-5l-"));
     process.env.CENTRIC_DATEN = wurzel;
@@ -135,7 +137,7 @@ describe("WP-48.5 (3) Löschlauf-Knopf", () => {
     const Z = await import("../server/lib/zeiterfassung.mjs");
     const HEUTE = Z.heuteBerlin();
     tag = (n) => Z.tagePlus(HEUTE, n);
-  });
+  }, 60000);
   afterEach(() => { vi.unstubAllGlobals(); aufrufe.length = 0; antwortErsetzen = null; nachAntwort = null; netzNach = null; });
   afterAll(async () => {
     delete process.env.CENTRIC_TEILSPEICHERUNG;

@@ -133,7 +133,7 @@ beforeAll(async () => {
   daten = (await import("../server/funktionen/daten.mjs")).default;
   B = await import("../server/lib/bestand.mjs");
   ({ sitzungAnlegen } = await import("../server/lib/sitzungen.mjs"));
-});
+}, 60000);   // Review #382 (15): Hook-Zeitbudget unter Last (sonst alle Fälle übersprungen)
 afterEach(() => { netzWegEinmal = false; vi.unstubAllGlobals(); });
 afterAll(async () => { if (wurzel) await rm(wurzel, { recursive: true, force: true }); });
 
@@ -414,17 +414,20 @@ describe("Q Quelltext-Verträge", () => {
     expect(app).toMatch(/if \(e\.art === "uebernehmen"\) \{\s*SP\.konfliktLoesen\("server"\);/);
     expect(app).toMatch(/if \(uebernehmen\) \{\s*\/\*[^]*?\*\/\s*SP\.konfliktLoesen\("server"\);/);
     expect(app).toMatch(/SP\.konfliktLoesen\("meins"\);\s*setNichtGespeichert\([^\n]*\);\s*SP\.schreib\(ref\.current, \{ durch: "Übernahme nach Konflikt"/);
-    expect(app).toMatch(/onKonflikt=\{\(\) => \{ const d = SP\.konfliktLage\(\); if \(d\) setKonflikt\(\{ \.\.\.d, meiner: ref\.current \}\); \}\}/);
+    /* Review #382 A-a: ohne gültige Absage (Anmeldungswechsel ohne Inhaber) Verwerfen mit Rückfrage statt nichts. */
+    expect(app).toMatch(/onKonflikt=\{\(\) => \{ const d = SP\.konfliktLage\(\); if \(d\) setKonflikt\(\{ \.\.\.d, meiner: ref\.current \}\); else if \(SP\.konfliktOhneAbsage\(\)\) verwerfenMitRueckfrage\(\); \}\}/);
     expect(app.match(/SP\.konfliktLoesen\(/g)).toHaveLength(3);
     /* Review #374 N1: „Später entscheiden“ zeigt die Leiste sofort, nicht erst mit der nächsten Eingabe. */
-    expect(app).toMatch(/onSchliessen=\{\(\) => \{ setKonflikt\(false\); if \(SP\.konfliktLage\(\)\) setNichtGespeichert\(SP\.ausstehend\(\)\); \}\}/);
+    expect(app).toMatch(/onSchliessen=\{\(\) => \{ setKonflikt\(false\); if \(SP\.konfliktLage\(\) \|\| SP\.konfliktOhneAbsage\(\)\) setNichtGespeichert\(SP\.ausstehend\(\)\); \}\}/);
   });
   it("speicherlage.jsx: Lage „konfliktOffen“ mit Entscheiden; Neu laden ohne Teilweg verwirft nach Rückfrage", async () => {
     const q = (await readFile(path.join(HIER, "..", "src", "ansichten", "speicherlage.jsx"), "utf8")).replace(/\r\n/g, "\n");
     expect(q).toMatch(/konfliktOffen: \{[^}]*konflikt: true,\s*\}/);
     /* Review #374 M2: Wegwischen am Telefon löst kein beforeunload aus — der Hinweis steht in der Leiste. */
     expect(q).toMatch(/Am Telefon "\s*\+ "vor dem Schließen der App entscheiden oder als Datei sichern/);
-    expect(q).toMatch(/\{l\.konflikt && onKonflikt && <Btn[^>]*onClick=\{onKonflikt\}>Konflikt entscheiden<\/Btn>\}/);
+    expect(q).toMatch(/\{l\.konflikt && onKonflikt && !ohneAbsage && <Btn[^>]*onClick=\{onKonflikt\}>Konflikt entscheiden<\/Btn>\}/);
+    /* Review #382 A-a: ohne gültige Absage der Ausweg Verwerfen und Neuladen (nach Rückfrage). */
+    expect(q).toMatch(/\{ohneAbsage && <Btn[^>]*onClick=\{\(\) => \{ verwerfenMitRueckfrage\(\); \}\}>\s*Änderungen verwerfen und neu laden<\/Btn>\}/);
     expect(q).toMatch(/if \(lage && lage\.ohneUebernehmen\) window\.location\.reload\(\); else verwerfenMitRueckfrage\(\);/);
   });
   it("speicher.js: Sperre nur ohne Teilweg; der PUT-Rumpf ist unverändert", async () => {
