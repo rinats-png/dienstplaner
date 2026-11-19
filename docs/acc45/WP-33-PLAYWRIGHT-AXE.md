@@ -130,3 +130,14 @@ Lauf mit den Ausnahmen (lokal, Windows, einzeln nacheinander): **56 von 56 besta
 - Ausnahmen abbauen (WP-40/WP-21): Namensschema Kontoknopf und Plan, Schichtkarte „Mein Plan“.
 - Weitere Flächen: Anträge, Tauschbörse, Personal, Prüfung, Abrechnungsdaten, Hilfe, Rechtliches und Lagebild sind in der Suite (siehe 4b); offen bleiben die Betreiberkonsole (eigener Zugang, eigener Betrieb) und weitere Verwaltungsansichten. Offline: Stempeln ohne Netz deckt B7 der Abnahme B ab; weitere Offline-Fälle brauchen eine Fachvorgabe.
 - Erster Lauf auf dem GitHub-Runner (Chromium-Download) steht mit dem PR aus.
+
+## 5. Sharding erprobt und zurückgenommen (PR #327, 2026-11-17)
+
+Versuch: Die Browserabnahme in zwei parallele Hälften (`--shard=1/2`, `2/2`, nach Viewport: 200 Tests, je 100) teilen, um die Laufzeit (ca. 16,7 min, Job `browser-abnahme`) zu verkürzen. Zurückgenommen, weil Hälfte 2 rot war und die Datenlage nicht als gleichwertig belegt werden konnte. Die Workflow- und Testdateien stehen wieder auf dem Stand vor dem Versuch.
+
+- Messwerte (letzter grüner ungeteilter Lauf 44026497363): Strang A (1024x768) 2,3 + 1,9 + 4,8 + 2,3 + 3,0 s plus Test 0 (unter 1 min); Abläufe B (390x844) B7 4,4 s, B8-Gegenprobe 0,1 s, B10 9,7 s. A und B zusammen weit unter 4 min. Playwright gesamt 16,3 min (117 passed, 83 skipped).
+- Datenlage: Im ungeteilten Lauf schreibt B auf 390x844 vor allen späteren Viewports, A auf 1024x768. Hälfte 2 begann auf frischem Bestand; ein Vorlauf der Abläufe B auf 1024x768 (Schalter, Telefonformat) wurde versucht, kam aber nicht zur Ausführung.
+- Fehler in Hälfte 2 (Run 44036533927, Job 133880644174): Strang A, Test 0, `Speichern 409: Jemand anderes hat inzwischen die Stammdaten geändert.` (`e2e/abnahme-a-ablauf.spec.mjs`, `schreiben()`), als erster Test auf kaltem Server nach etwa 2 s; Tests 1 bis 5 von A liefen deshalb nicht (serial), 57 passed, 1 failed, 37 skipped, 5 did not run.
+- Hypothese, unbelegt: Der Browser des Tests schreibt nach der Erstanmeldung noch (Migration `src/App.jsx` um Zeile 1123, Speicher-Effekt/Urlaubshinweis um Zeile 1222, Debounce 1200 ms und keepalive-PUT beim Schließen `src/speicher.js:26, 635-650`) und kollidiert mit dem Lesen und Speichern des Tests, nachdem dieser nur auf die serverseitig angelegte Person wartet und auf `about:blank` geht. Server-Etags und Zeiten liegen in den CI-Logs nicht vor.
+- Restsymptom: Es ist ein latentes Rennen in Strang A, das nur sichtbar wird, wenn A nicht auf einem warmen Server läuft. Es kann auch im ungeteilten Lauf auftreten.
+- Verworfen: Ein Neulesen und erneutes Anwenden bei 409 (verdeckt ein echtes Rennen). Ein gezielter Wartepunkt auf ein echtes Ereignis (z. B. Antwort des Browser-PUT) oder `page.close()` statt `about:blank` wäre zu prüfen, braucht aber Diagnose (PUT-Zeiten, Etags) im E2E-Lauf.
