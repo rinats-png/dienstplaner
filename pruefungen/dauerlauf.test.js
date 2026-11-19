@@ -6,7 +6,9 @@ import path from "node:path";
 import { entscheide, lesen, schreiben, gepruefterPush } from "../werkzeug/koordination.mjs";
 import {
   STANDARD, leererZustand, planeSchritt, verbucheErgebnis, zyklus, leaseEffekte, kandidatenAus, claudeBefehl, auftragsSchluessel, sperreNehmen,
+  fortschritt, prsFuerPaket, messeFortschritt, nutzungAm, zaehleStart, startGrenze, limitsAusArgs, LIMIT_MAX,
 } from "../werkzeug/dauerlauf.mjs";
+import { loeseBefehl, startPlan, optionenPruefen, istDerselbe } from "../werkzeug/dauerlauf-prozess.mjs";
 
 /* Feste Uhr: jede Zeit kommt aus T0 plus Minuten (kein Wanduhr-Bezug). */
 const T0 = Date.parse("2026-11-19T06:00:00Z");
@@ -27,10 +29,10 @@ function speicherImSpeicher() {
 
 /** Ein Supervisor mit eigener Uhr-Referenz, Worker-Attrappe und Protokoll. */
 function supervisor({ halter, speicher, uhr, kandidaten = ["WP-A", "WP-B"], schalter = { aus: false }, cfg = STANDARD }) {
-  const w = { starts: [], lebt: false, puls: null, ergebnis: null, beendet: 0 };
+  const w = { starts: [], lebt: false, puls: null, ergebnis: null, beendet: 0, eskalationen: [] };
   const L = leaseEffekte({ jetzt: () => new Date(uhr.t), speicher });
   const eff = {
-    jetzt: () => new Date(uhr.t), protokoll: (z) => w.log?.push(z), lease: L, kopf: () => "k1",
+    jetzt: () => new Date(uhr.t), protokoll: (z) => w.log?.push(z), lease: L, kopf: () => "k1", eskalieren: (g) => w.eskalationen.push(g),
     schalterAus: () => schalter.aus, kandidaten: () => kandidaten,
     worker: {
       starten: (id, h, e) => {
@@ -130,7 +132,10 @@ describe("Dauerlauf: reiner Kern", () => {
   });
   it("claudeBefehl: begrenzt, ohne Berechtigungsumgehung, Eingaben validiert", () => {
     const b = claudeBefehl({ paketId: "WP-A", halter: "dauerlauf-a", epoche: 3, promptDatei: "x.md" });
-    expect(b.args).toContain("--max-turns");
+    expect(b.args).toContain("-p");
+    expect(b.args.some((a) => a.startsWith("@"))).toBe(false); // Auftrag über stdin, nicht -p @datei
+    expect(b.args).not.toContain("--max-turns"); // nicht in `claude --help` 2.1.328: nur auf ausdrücklichen Wunsch
+    expect(claudeBefehl({ paketId: "WP-A", halter: "dauerlauf-a", epoche: 3, maxRunden: 40 }).args).toContain("--max-turns");
     expect(b.args.join(" ")).not.toMatch(/dangerously|skip-permissions|bypass/);
     expect(b.umgebung.CENTRIC_KOORD_EPOCHE).toBe("3");
     expect(() => claudeBefehl({ paketId: "a b; rm", halter: "dauerlauf-a", epoche: 3, promptDatei: "x" })).toThrow();
@@ -289,6 +294,243 @@ describe("Dauerlauf: Zyklen gegen Lease (Speicher im Arbeitsspeicher)", () => {
     expect(sp.lease.freigegeben_am).toBeTruthy();
     expect(a.schritt()).toBe("STOPP");
     expect(a.w.starts).toHaveLength(1);
+  });
+});
+
+describe("Lücke 2: Fortschritt misst der Supervisor selbst", () => {
+  const m = (o = {}) => ({ kopf: "k1", paket: { status: "IN_PROGRESS", pr: [] }, prs: [], ...o });
+  const pr = (nummer, o = {}) => ({ nummer, zustand: "OPEN", kopf: "a1", ciGruen: null, ...o });
+
+  it("Fortschritt: neuer PR, neue Commits, Merge, gedeckter SSOT-Schritt am neuen Kopf", () => {
+    expect(fortschritt(m(), m({ prs: [pr(7)] }))).toMatchObject({ fortschritt: true, gruende: ["neuer PR #7 (OPEN)"] });
+    expect(fortschritt(m({ prs: [pr(7)] }), m({ prs: [pr(7, { kopf: "b2", ciGruen: true })] }))).toMatchObject({ fortschritt: true, ciGruen: true });
+    expect(fortschritt(m({ prs: [pr(7)] }), m({ prs: [pr(7, { zustand: "MERGED" })] }))).toMatchObject({ fortschritt: true, ciGruen: true });
+    const ssot = fortschritt(m({ prs: [pr(7, { zustand: "MERGED" })] }), m({ kopf: "k2", paket: { status: "INTEGRATED", pr: ["#7"] }, prs: [pr(7, { zustand: "MERGED" })] }));
+    expect(ssot.fortschritt).toBe(true);
+    expect(ssot.gruende.join(" ")).toMatch(/SSOT/);
+    /* ohne PR-Daten (gh fehlt) genügt ein SSOT-Schritt am geänderten Integrationskopf */
+    expect(fortschritt(m({ prs: null }), m({ kopf: "k2", paket: { status: "REVIEW", pr: ["#7"] }, prs: null })).fortschritt).toBe(true);
+  });
+
+  it("Scheinfortschritt wird erkannt und NICHT gezählt", () => {
+    const statusSprung = fortschritt(m(), m({ kopf: "k2", paket: { status: "DONE", pr: [] }, prs: [] }));
+    expect(statusSprung.fortschritt).toBe(false);
+    expect(statusSprung.schein.join(" ")).toMatch(/ohne Beleg/);
+    expect(fortschritt(m(), m({ kopf: "k2", paket: { status: "IN_PROGRESS", pr: ["#999"] } })).schein.join(" ")).toMatch(/#999/);
+    const zu = fortschritt(m(), m({ prs: [pr(8, { zustand: "CLOSED" })] }));
+    expect(zu).toMatchObject({ fortschritt: false });
+    expect(zu.schein.join(" ")).toMatch(/geschlossen/);
+    expect(fortschritt(m({ paket: { status: "REVIEW", pr: [] } }), m()).schein.join(" ")).toMatch(/rückwärts/);
+    /* Statussprung am UNVERÄNDERTEN Kopf (ohne PR-Daten): kein Beleg */
+    expect(fortschritt(m({ prs: null }), m({ paket: { status: "REVIEW", pr: [] }, prs: null })).fortschritt).toBe(false);
+    const nurKopf = fortschritt(m(), m({ kopf: "k2" }));
+    expect(nurKopf).toMatchObject({ fortschritt: false, schein: [] });
+    expect(nurKopf.hinweise.join(" ")).toMatch(/nicht für dieses Paket/);
+  });
+
+  it("nichts geändert: kein Fortschritt, kein Schein; fehlende Messung ist fail-closed", () => {
+    expect(fortschritt(m({ prs: [pr(7)] }), m({ prs: [pr(7)] }))).toMatchObject({ fortschritt: false, gruende: [], schein: [] });
+    expect(fortschritt(null, m()).fortschritt).toBe(false);
+    expect(fortschritt(m(), null).fortschritt).toBe(false);
+  });
+
+  it("rote CI am neuen PR: Fortschritt, aber ciGruen false (wird als Fehlversuch verbucht)", () => {
+    const f = fortschritt(m(), m({ prs: [pr(9, { ciGruen: false })] }));
+    expect(f).toMatchObject({ fortschritt: true, ciGruen: false });
+    const v = verbucheErgebnis({ ...leererZustand("dauerlauf-a"), laufend: { paketId: "WP-A" } }, { exit: 0, ...f }, new Date(T0));
+    expect(v.zustand.versuche["WP-A"].n).toBe(1);
+  });
+
+  it("prsFuerPaket: exakte Paket-ID (WP-16 nicht in WP-16c), SSOT-PR-Liste, CI-Zuordnung", () => {
+    const liste = [
+      { number: 1, state: "OPEN", headRefOid: "x", headRefName: "feat/wp-16-a", title: "WP-16: a", statusCheckRollup: [{ conclusion: "SUCCESS" }] },
+      { number: 2, state: "OPEN", headRefOid: "y", headRefName: "feat/x", title: "WP-16c: b", statusCheckRollup: [{ conclusion: "FAILURE" }] },
+      { number: 3, state: "MERGED", headRefOid: "z", headRefName: "feat/y", title: "ohne Kennung", statusCheckRollup: [] },
+    ];
+    expect(prsFuerPaket(liste, "WP-16", ["#3"])).toEqual([
+      { nummer: 1, zustand: "OPEN", kopf: "x", ciGruen: true },
+      { nummer: 3, zustand: "MERGED", kopf: "z", ciGruen: null },
+    ]);
+    expect(prsFuerPaket(liste, "WP-16c")[0]).toMatchObject({ nummer: 2, ciGruen: false });
+  });
+
+  it("messeFortschritt liest Kopf, SSOT und gh (injiziert); gh fehlt -> prs null", () => {
+    const ssot = () => ({ kopf: "k9", pakete: [{ id: "WP-A", status: "REVIEW", pr: ["#4"] }] });
+    const gh = () => [{ number: 4, state: "OPEN", headRefOid: "h", headRefName: "b", title: "x", statusCheckRollup: [] }];
+    expect(messeFortschritt("WP-A", { ssot, gh })).toEqual({ kopf: "k9", paket: { status: "REVIEW", pr: ["#4"] }, prs: [{ nummer: 4, zustand: "OPEN", kopf: "h", ciGruen: null }] });
+    expect(messeFortschritt("WP-A", { ssot, gh: null }).prs).toBeNull();
+    expect(messeFortschritt("WP-A", { ssot: () => null, gh: null })).toEqual({ kopf: null, paket: null, prs: null });
+  });
+
+  it("Zyklus: Selbstauskunft des Workers wird verworfen, die Messung entscheidet", () => {
+    const sp = speicherImSpeicher(); const uhr = { t: T0 };
+    const a = supervisor({ halter: "dauerlauf-a", speicher: sp, uhr, kandidaten: ["WP-A"] });
+    let messung = m();
+    a.eff.messen = () => structuredClone(messung);
+    a.schritt(); a.schritt();
+    expect(a.z.laufend.messung).toEqual(m());
+    a.w.lebt = false; a.w.ergebnis = { exit: 0, fortschritt: true, ciGruen: true }; // Worker behauptet Erfolg
+    uhr.t += MIN; a.schritt();
+    expect(a.z.versuche["WP-A"].n).toBe(1); // nichts messbar: Fehlversuch
+    /* umgekehrt: Worker meldet nichts, Messung zeigt neuen PR -> Erfolg */
+    uhr.t += 6 * MIN; a.w.puls = new Date(uhr.t).toISOString();
+    expect(a.schritt()).toBe("STARTEN");
+    messung = m({ prs: [pr(11, { ciGruen: true })] });
+    a.w.lebt = false; a.w.ergebnis = { exit: 0, fortschritt: false };
+    uhr.t += MIN; a.schritt();
+    expect(a.z.versuche["WP-A"]).toBeUndefined();
+  });
+});
+
+describe("Lücke 1 (Kern): Startfehler zählen, Supervisor stürzt nicht ab", () => {
+  for (const art of ["Rückgabe ok:false", "Ausnahme"]) {
+    it(`Start scheitert (${art}): kein laufender Auftrag, gezählter Fehlversuch mit Backoff, Start gezählt`, () => {
+      const sp = speicherImSpeicher(); const uhr = { t: T0 };
+      const a = supervisor({ halter: "dauerlauf-a", speicher: sp, uhr, kandidaten: ["WP-A"] });
+      a.eff.worker.starten = art === "Ausnahme" ? () => { throw new Error("spawn ENOENT"); } : () => ({ ok: false, grund: "Befehl nicht gefunden" });
+      a.schritt();
+      expect(a.schritt()).toBe("STARTEN");
+      expect(a.z.laufend).toBeNull();
+      expect(a.z.versuche["WP-A"].n).toBe(1);
+      expect(a.z.nutzung.startsGesamt).toBe(1);
+      uhr.t += MIN;
+      expect(a.schritt()).toBe("BACKOFF");
+    });
+  }
+});
+
+describe("Lücke 1 (Kern): Pfadauflösung, sichere Argumente, Optionen, Prozess-Identität", () => {
+  const win = (dateien) => ({ plattform: "win32", pfad: "C:\\a;C:\\npm", existiert: (f) => dateien.includes(f) });
+  it("Windows: .exe vor .cmd vor .ps1; Datei ohne Endung (Git-Bash-Skript) wird nie gestartet", () => {
+    expect(loeseBefehl("claude", win(["C:\\npm\\claude", "C:\\npm\\claude.cmd", "C:\\npm\\claude.ps1"]))).toEqual({ datei: "C:\\npm\\claude.cmd", art: "cmd" });
+    expect(loeseBefehl("claude", win(["C:\\npm\\claude.cmd", "C:\\a\\claude.exe"]))).toEqual({ datei: "C:\\a\\claude.exe", art: "exe" });
+    expect(loeseBefehl("claude", win(["C:\\npm\\claude.ps1"]))).toEqual({ datei: "C:\\npm\\claude.ps1", art: "ps1" });
+    expect(loeseBefehl("claude", win(["C:\\npm\\claude"]))).toBeNull();
+    expect(loeseBefehl("claude", { plattform: "linux", pfad: "/usr/bin:/opt/b", existiert: (f) => f === "/opt/b/claude" })).toEqual({ datei: "/opt/b/claude", art: "bin" });
+    expect(loeseBefehl("cl aude", win([]))).toBeNull();
+  });
+  it(".cmd nur über cmd.exe mit geprüften Argumenten; Sonderzeichen verhindern den Start", () => {
+    const cmd = { datei: "C:\\npm\\claude.cmd", art: "cmd" };
+    const p = startPlan(cmd, ["-p", "--model", "opus"], { comspec: "C:\\Windows\\system32\\cmd.exe" });
+    expect(p).toMatchObject({ ok: true, datei: "C:\\Windows\\system32\\cmd.exe", optionen: { windowsVerbatimArguments: true } });
+    expect(p.args).toEqual(["/d", "/s", "/c", '""C:\\npm\\claude.cmd" -p --model opus"']);
+    for (const boese of ["a&calc", "a|b", "x>y", "%PATH%", 'a"b', "mit leer", "a^b"]) expect(startPlan(cmd, ["-p", boese]).ok).toBe(false);
+    expect(startPlan({ datei: "C:\\x%y\\claude.cmd", art: "cmd" }, ["-p"]).ok).toBe(false);
+    expect(startPlan({ datei: "C:\\a\\claude.exe", art: "exe" }, ["mit leer & so"])).toMatchObject({ ok: true, datei: "C:\\a\\claude.exe", args: ["mit leer & so"] }); // ohne Shell
+    expect(startPlan(null, []).ok).toBe(false);
+  });
+  it("optionenPruefen: jede verwendete lange Option muss in der lokalen Hilfe stehen", () => {
+    const hilfe = "  --model <model>   Model\n  --output-format <format>  x\n  --verbose   y\n  -p, --print  z\n";
+    expect(optionenPruefen(hilfe, claudeBefehl({ paketId: "WP-A", halter: "dauerlauf-a", epoche: 1 }).args)).toEqual({ ok: true, fehlend: [] });
+    expect(optionenPruefen(hilfe, claudeBefehl({ paketId: "WP-A", halter: "dauerlauf-a", epoche: 1, maxRunden: 5 }).args)).toEqual({ ok: false, fehlend: ["--max-turns"] });
+    expect(optionenPruefen("", ["--model"]).ok).toBe(false);
+  });
+  it("istDerselbe: nur bei gleicher bekannter Startzeit und passendem Merkmal", () => {
+    const g = { pid: 5, startzeit: "2026-11-19T06:00:00.000Z", merkmal: "claude" };
+    expect(istDerselbe(g, { lebt: true, startzeit: g.startzeit, kommandozeile: "cmd /c claude.cmd -p" })).toBe(true);
+    expect(istDerselbe(g, { lebt: true, startzeit: "2026-11-19T07:00:00.000Z", kommandozeile: "claude" })).toBe(false); // PID wiederverwendet
+    expect(istDerselbe(g, { lebt: true, startzeit: g.startzeit, kommandozeile: "notepad.exe" })).toBe(false);
+    expect(istDerselbe(g, { lebt: true, startzeit: null, kommandozeile: "claude" })).toBe(false); // unklar: nicht beenden
+    expect(istDerselbe({ ...g, startzeit: null }, { lebt: true, startzeit: g.startzeit })).toBe(false);
+    expect(istDerselbe(g, { lebt: false })).toBe(false);
+  });
+});
+
+describe("Lücke 4: harte Nutzungsgrenzen (persistente Zähler, UTC-Tag, feste Uhr)", () => {
+  const mitLimits = (o) => ({ ...STANDARD, limits: { ...STANDARD.limits, ...o } });
+  /** Lässt den laufenden Worker sofort mit Erfolg enden und macht einen Zyklus. */
+  const fertig = (a, uhr) => { a.w.lebt = false; a.w.ergebnis = { exit: 0, fortschritt: true, ciGruen: true }; uhr.t += MIN; return a.schritt(); };
+
+  it("Tageslimit: danach keine Starts, Eskalation, Lease freigegeben, keine Wiederübernahme; neuer UTC-Tag startet wieder", () => {
+    const sp = speicherImSpeicher(); const uhr = { t: Date.parse("2026-11-19T22:00:00Z") };
+    const a = supervisor({ halter: "dauerlauf-a", speicher: sp, uhr, cfg: mitLimits({ startsTag: 2 }) });
+    a.schritt(); expect(a.schritt()).toBe("STARTEN");
+    expect(fertig(a, uhr)).toBe("STARTEN");
+    expect(fertig(a, uhr)).toBe("FREIGEBEN");
+    expect(a.w.eskalationen.join(" ")).toMatch(/Tageslimit 2/);
+    expect(sp.lease.freigegeben_am).toBeTruthy();
+    const spitze = sp.spitze;
+    for (let i = 0; i < 5; i++) { uhr.t += 10 * MIN; expect(a.schritt()).toBe("WARTEN_LIMIT"); }
+    expect(sp.spitze).toBe(spitze); // kein Epochen-Rauschen
+    expect(a.w.starts).toHaveLength(2);
+    uhr.t = Date.parse("2026-11-20T00:00:30Z"); // Tageswechsel UTC
+    expect(a.schritt()).toBe("UEBERNEHMEN");
+    expect(a.schritt()).toBe("STARTEN");
+    expect(a.z.nutzung).toMatchObject({ tag: "2026-11-20", startsTag: 1, startsGesamt: 3 });
+  });
+
+  it("Gesamtlimit gilt über Tageswechsel hinweg", () => {
+    const sp = speicherImSpeicher(); const uhr = { t: T0 };
+    const a = supervisor({ halter: "dauerlauf-a", speicher: sp, uhr, cfg: mitLimits({ startsTag: 1, startsGesamt: 2 }) });
+    a.schritt(); a.schritt(); fertig(a, uhr);
+    uhr.t += 24 * 60 * MIN; a.schritt(); expect(a.schritt()).toBe("STARTEN");
+    fertig(a, uhr);
+    uhr.t += 24 * 60 * MIN;
+    expect(a.schritt()).toBe("WARTEN_LIMIT");
+    expect(a.w.starts).toHaveLength(2);
+    expect(startGrenze({ nutzung: a.z.nutzung, jetzt: new Date(uhr.t), limits: mitLimits({ startsGesamt: 2 }).limits })).toMatch(/Gesamtlimit/);
+  });
+
+  it("Läufe je Paket: erschöpftes Paket wird übersprungen, danach Eskalation", () => {
+    const sp = speicherImSpeicher(); const uhr = { t: T0 };
+    const a = supervisor({ halter: "dauerlauf-a", speicher: sp, uhr, cfg: mitLimits({ laeufeJePaket: 1 }) });
+    a.schritt(); a.schritt();
+    expect(fertig(a, uhr)).toBe("STARTEN");
+    expect(a.w.starts.map((s) => s.id)).toEqual(["WP-A", "WP-B"]);
+    expect(fertig(a, uhr)).toBe("FREIGEBEN");
+    expect(a.w.eskalationen.join(" ")).toMatch(/Läufe je Paket/);
+  });
+
+  it("Laufzeitlimit: Worker mit frischem Puls wird nach Ablauf beendet, Fehlversuch gezählt, Eskalation", () => {
+    const sp = speicherImSpeicher(); const uhr = { t: T0 };
+    const a = supervisor({ halter: "dauerlauf-a", speicher: sp, uhr, cfg: mitLimits({ laufzeitMin: 30 }) });
+    a.schritt(); a.schritt();
+    for (let i = 0; i < 9; i++) { uhr.t += 3 * MIN; a.w.puls = new Date(uhr.t).toISOString(); expect(a.schritt()).toBe("WORKER_LAEUFT"); }
+    uhr.t += 3 * MIN; a.w.puls = new Date(uhr.t).toISOString();
+    expect(a.schritt()).toBe("WORKER_BEENDEN");
+    expect(a.w.beendet).toBe(1);
+    expect(a.z.versuche["WP-A"].n).toBe(1);
+    expect(a.w.eskalationen.join(" ")).toMatch(/Laufzeitlimit 30/);
+    expect(a.z.nutzung.wallMsTag).toBe(30 * MIN);
+  });
+
+  it("Wallclock je Tag: laufender Worker wird bei Erreichen beendet, danach keine Starts mehr an diesem Tag", () => {
+    const sp = speicherImSpeicher(); const uhr = { t: T0 };
+    const a = supervisor({ halter: "dauerlauf-a", speicher: sp, uhr, cfg: mitLimits({ wallMinTag: 40, laufzeitMin: 30 }) });
+    a.schritt(); a.schritt();
+    for (let i = 0; i < 8; i++) { uhr.t += 3 * MIN; a.w.puls = new Date(uhr.t).toISOString(); a.schritt(); } // Heartbeat
+    expect(fertig(a, uhr)).toBe("STARTEN"); // 25 Min verbraucht
+    for (let i = 0; i < 4; i++) { uhr.t += 3 * MIN; a.w.puls = new Date(uhr.t).toISOString(); expect(a.schritt()).toBe("WORKER_LAEUFT"); }
+    uhr.t += 3 * MIN; a.w.puls = new Date(uhr.t).toISOString();
+    expect(a.schritt()).toBe("WORKER_BEENDEN");
+    expect(a.w.eskalationen.join(" ")).toMatch(/Wallclock-Limit 40/);
+    expect(a.schritt()).toBe("FREIGEBEN");
+    expect(a.schritt()).toBe("WARTEN_LIMIT");
+  });
+
+  it("ohne Limits nie ein Start und nie eine Übernahme", () => {
+    const sp = speicherImSpeicher(); const uhr = { t: T0 };
+    const a = supervisor({ halter: "dauerlauf-a", speicher: sp, uhr, cfg: { ...STANDARD, limits: undefined } });
+    for (let i = 0; i < 3; i++) { uhr.t += MIN; expect(a.schritt()).toBe("WARTEN_LIMIT"); }
+    expect(sp.spitze).toBe(0);
+  });
+
+  it("Zähler: Tageswechsel UTC setzt nur Tageszähler zurück", () => {
+    const n = zaehleStart(zaehleStart(null, new Date("2026-11-19T23:59:00Z"), "WP-A"), new Date("2026-11-19T23:59:30Z"), "WP-A");
+    expect(n).toMatchObject({ tag: "2026-11-19", startsTag: 2, startsGesamt: 2, laeufeJePaket: { "WP-A": 2 } });
+    expect(nutzungAm(n, new Date("2026-11-20T00:00:00Z"))).toMatchObject({ tag: "2026-11-20", startsTag: 0, wallMsTag: 0, startsGesamt: 2, laeufeJePaket: { "WP-A": 2 } });
+  });
+
+  it("scharfer Lauf: jedes Limit ist Pflichtparameter, positiv, mit Obergrenze", () => {
+    const voll = ["--limit-starts-tag", "2", "--limit-starts-gesamt", "5", "--limit-laeufe-paket", "2", "--limit-laufzeit-min", "60", "--limit-wall-min-tag", "120"];
+    expect(limitsAusArgs(voll)).toEqual({ ok: true, limits: { startsTag: 2, startsGesamt: 5, laeufeJePaket: 2, laufzeitMin: 60, wallMinTag: 120 } });
+    for (let i = 0; i < voll.length; i += 2) {
+      const ohne = [...voll.slice(0, i), ...voll.slice(i + 2)];
+      expect(limitsAusArgs(ohne).ok).toBe(false);
+    }
+    expect(limitsAusArgs(voll.map((x) => (x === "60" ? String(LIMIT_MAX.laufzeitMin + 1) : x))).ok).toBe(false);
+    expect(limitsAusArgs(voll.map((x) => (x === "2" ? "0" : x))).ok).toBe(false);
+    expect(limitsAusArgs(voll.map((x) => (x === "5" ? "5x" : x))).ok).toBe(false);
   });
 });
 

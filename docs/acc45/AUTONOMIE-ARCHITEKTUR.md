@@ -1,6 +1,6 @@
 # Dauerhaft autonome Entwicklungssteuerung: Untersuchung, Architektur, Prototyp
 
-Stand 2026-11-19. Status: Prototyp und Tests im Repository, **nichts aktiviert** (kein Trigger, kein globaler Hook, keine Berechtigungsänderung, keine neuen Kosten).
+Stand 2026-11-19 (Lücken 1 bis 8 aus §7 überarbeitet, siehe §7.1). Status: Prototyp und Tests im Repository, **nichts aktiviert** (kein Trigger, kein globaler Hook, keine Berechtigungsänderung, keine neuen Kosten).
 
 ## 1. Ist-Analyse: warum nach PRs und Agentenläufen nichts weiterläuft
 
@@ -82,7 +82,7 @@ Zwei Wege nach Totalausfall: gleicher Halter mit Zustandsdatei setzt sofort fort
 
 ## 6. Nachweise des Prototyps
 
-`pruefungen/dauerlauf.test.js` (34 Tests, Teil von `npm run pruefung:koordination`, also ohne Workflow-Änderung in der CI):
+`pruefungen/dauerlauf.test.js` (Kern und Zyklen) und `pruefungen/dauerlauf-prozess.test.js` (echte Prozesse, Push-Schutz, Wiederanlauf), beide Teil von `npm run pruefung:koordination`, also ohne Workflow-Änderung in der CI. Ergänzungen zu den Lücken stehen in §7.1.
 
 | Anforderung | Test |
 |---|---|
@@ -98,19 +98,31 @@ Zwei Wege nach Totalausfall: gleicher Halter mit Zustandsdatei setzt sofort fort
 
 Grenze des Beweises: Die Zufallsläufe verwenden eindeutige Halter; ihre Invarianten 1 und 4 folgen weitgehend aus `entscheide` und sind keine unabhängige Prüfung, aussagekräftig sind Epochen-Monotonie und "Worker nur mit Schreibrecht" (nur für den jeweils schrittenden Supervisor). Gleichzeitige Prozesse mit gleichem Halter verhindert die Sperrdatei (eigener Test), nicht der Zufallslauf. Der Beweis stützt sich auf die Korrektheit von `entscheide` und den Git-CAS (beide bereits getestet). Er deckt das Zusammenspiel Supervisor/Lease ab, **nicht** das Verhalten eines echten `claude -p`-Prozesses unter Windows.
 
-## 7. Bekannte Lücken des Prototyps (ehrlich)
+## 7. Lücken des Prototyps (ehrlich, Stand nach `feat/dauerlauf-luecken`)
 
-1. Der echte Worker-Adapter ist ungetestet. Er meldet derzeit `fortschritt: false`, solange keine Fortschrittsmessung existiert; ein scharfer Lauf würde also jeden Lauf als Fehlversuch zählen. Nötig: Messung über Integrationskopf, SSOT-Status und PR-Zustand (etwa 1 bis 2 PT).
-2. `claude -p` headless braucht eine Berechtigungsstrategie (Allowlist), ohne `--dangerously-skip-permissions`. Das ist eine Berechtigungsentscheidung des Betreibers.
-3. Prozessüberwachung unter Windows (PID-Prüfung, Prozessbaum beenden) muss real getestet werden.
-4. Die Pulsmessung per Log-Änderungszeit ist grob; ein Worker, der still rechnet (lange Testläufe), kann fälschlich als hängend gelten. Die Schwelle beträgt 20 Min (gleich der Lease-Dauer); der echte Adapter soll Streamausgabe als Puls verwenden.
-5. Kosten: jeder Lauf verbraucht Nutzungskontingent oder API-Kosten. Begrenzung nur über `--max-turns`, `maxVersuche` und Abschalter; ein Tageslimit fehlt noch.
+### 7.1 Geschlossen (mit Test)
 
-6. Das Fencing des Workers ist kooperativ: Der Auftrag verlangt `koordination push`, aber ein Worker mit Projektrechten könnte direkt `git push` ausführen. Die Umgebungsvariablen `CENTRIC_KOORD_*` wertet kein Code aus. Die Berechtigungs-Allowlist (§9.3) muss direktes `git push` sperren. Hinzu kommt der bestehende Schutz durch Pull Request, Review und CI.
-7. Prozesssteuerung unter Windows: `beenden` beendet eine gespeicherte PID; nach Neustart kann sie wiederverwendet sein (Prüfung über Startzeit oder Kommandozeile fehlt), der Prozessbaum wird nicht beendet, und `spawn("claude")` ohne Shell scheitert, falls `claude` eine `.cmd`-Datei ist (kein `error`-Listener). Ob `-p @datei` die Datei so einliest, ist ungeprüft.
-8. Ergebnis von `erneuern` wird im Zyklus nicht ausgewertet; ein Fehlschlag zeigt sich erst im nächsten Zyklus.
-9. Die Sperrdatei verkleinert das Rennen zweier gleichzeitiger Starter (erneutes Lesen vor dem Löschen), schließt es bei verwaister Sperre aber nicht vollständig aus; eine nach Neustart wiederverwendete PID hält die Sperre dauerhaft (fail-closed, manuelles Löschen).
-10. Solange alle offenen Pakete nur im Backoff sind (bis 45 Min), hält der Supervisor die Lease und blockiert den Hauptchat; dieser muss dann warten oder den Supervisor abschalten.
+Nachweise: `pruefungen/dauerlauf.test.js` (reiner Kern, Zyklen) und `pruefungen/dauerlauf-prozess.test.js` (echte Kindprozesse, echtes Git, lokales Bare-Remote). Beide laufen in `npm run pruefung:koordination`, also ohne Workflow-Änderung in der CI.
+
+| Frühere Lücke | Lösung | Test |
+|---|---|---|
+| 1 Fortschritt wurde nicht gemessen | Reine Funktion `fortschritt(vorher, nachher)` über Integrationskopf, SSOT-Status/PR-Liste am Integrationskopf und PR-Zustand (gh, optional, injizierbar). Messung beim Start im Zustand, Vergleich am Ende. Ist eine Messung vorhanden, wird die Selbstauskunft des Workers verworfen. Scheinfortschritt (geschlossener PR, Status rückwärts, Statussprung ohne PR-Beleg, SSOT nennt nicht existierenden PR) zählt nicht; geänderter Integrationskopf allein ist kein Fortschritt des Pakets. | Fortschritt, Scheinfortschritt, nichts, rote CI, `prsFuerPaket` (WP-16 nicht in WP-16c), Zyklus mit verworfener Selbstauskunft |
+| 3 und 7 Windows-Prozesssteuerung | `werkzeug/dauerlauf-prozess.mjs`: eigene PATH-Auflösung (`.exe` vor `.cmd`/`.bat` vor `.ps1`; Datei ohne Endung unter Windows nie), `.cmd` nur über `cmd.exe /d /s /c` mit geprüften Argumenten (keine Leer- und Sonderzeichen, sonst kein Start), sonst ohne Shell; `error`-Listener; Startfehler werfen nie und zählen als Fehlversuch mit Backoff. Prozessbaum beenden (`taskkill /T /F`, sonst Signal an die Prozessgruppe). Startzeit und Kommandozeilen-Merkmal stehen in der Zustandsdatei; `status`/`beenden` vergleichen sie, ein fremder Prozess unter gleicher PID wird nie beendet. Auftrag über stdin statt `-p @datei`. Losgelöst gestartet wird nur der Zwischenprozess `werkzeug/dauerlauf-starter.mjs`; er startet den Befehl mit verborgener Konsole und schreibt den Exit-Code in eine Datei (auch nach Neustart des Supervisors lesbar). Grund, im Test gefunden: Ein losgelöst gestartetes `cmd.exe` hat keine Konsole, sein Kind (`node` hinter `claude.cmd`) bekam eine neue Konsole statt der Pipes; der Auftrag über stdin kam nie an, ein echter `claude.cmd`-Worker hätte endlos gewartet. | echter Attrappen-Worker mit Kindeskind wird gestartet und als Baum beendet; PID-Wiederverwendung; unbekannter und nicht ausführbarer Befehl; unter Windows Start über eine echte `.cmd`-Datei samt Baum-Ende |
+| 6 Fencing nur kooperativ | Geschützte Worker-Kopie (`werkzeug/dauerlauf-schutz.mjs`, nur lokale Git-Konfiguration dieser Kopie): `pushurl` ungültig, `core.hooksPath` mit pre-push-Hook, der nur eine Einmalmarke von `koordination.mjs push` durchlässt; Anmeldehelfer in der Kopie geleert, nur der Wrapper setzt ihn. Der Supervisor startet keinen Worker, wenn die Prüfung der Kopie scheitert. Allowlist als Vorschlag: `docs/acc45/AUTONOMIE-ALLOWLIST-VORSCHLAG.json` (nicht installiert). | direkter `git push` (über Namen, über URL, mit gefälschter Marke) scheitert; Wrapper-Push nur mit gültiger Epoche und eigenem Halter; gesperrte Ziele; ungeschützte Kopie wird erkannt |
+| 5 Kosten ohne Tageslimit | Harte Grenzen im reinen Kern: Starts je UTC-Tag, Starts gesamt, Läufe je Paket, Laufzeit je Worker (danach beenden), Wallclock je Tag; Zähler persistent in der Zustandsdatei. Überschreitung: keine Starts, Eskalationsprotokoll (`eskalation.jsonl`), Lease freigeben, keine Wiederübernahme (`WARTEN_LIMIT`). Im scharfen Lauf ist jedes Limit Pflichtparameter mit Obergrenze (ohne Limit kein Start). Notaus bleibt die Datei `AUTONOMIE-AUS`. | Tageslimit mit Tageswechsel, Gesamtlimit, Läufe je Paket, Laufzeitlimit, Wallclock, ohne Limits, Pflichtparameter |
+| 8 Ergebnis von `erneuern` | Fehlschlag wird protokolliert (Wirkung weiterhin erst im nächsten Zyklus). | indirekt |
+| Wiederanlauf nur simuliert | Echter Supervisor-Prozess im Testmodus (Bare-Remote in `KOORD_REMOTE`, Attrappen-Worker, Uhrdatei): Start, harter Abbruch (Prozess gekillt, Worker lebt weiter, Sperrdatei verwaist), Neustart mit gleichem Halter setzt fort ohne Doppelstart, neuer Halter wartet bis Ablauf plus Zone und übernimmt mit Epoche 2, Push des verwaisten Workers scheitert am Fencing, der zurückkehrende alte Supervisor beendet seinen Worker samt Kindeskind. | `dauerlauf-prozess.test.js` |
+
+### 7.2 Verbleibend
+
+1. `claude -p` ist nicht real gestartet worden (keine Kosten, kein scharfer Lauf). Geprüft ist nur `claude --help` (2.1.328): `-p`, `--model`, `--output-format`, `--verbose`, `--max-budget-usd` stehen dort, `--max-turns` nicht; es wird deshalb nur auf ausdrücklichen Wunsch gesetzt, und der Supervisor prüft vor dem ersten Start, ob jede verwendete Option in der lokalen Hilfe steht. Dass `claude -p` den Auftrag von stdin liest, folgt aus der Hilfe ("useful for pipes"), ist aber erst im ersten freigegebenen Lauf belegt. Die harte Grenze ist das Laufzeitlimit.
+2. Berechtigungen des headless Workers: Die Allowlist ist nur ein Vorschlag. Ohne installierte Allowlist fragt `claude -p` bei nicht erlaubten Werkzeugen nach und bricht ab (kein Fortschritt, also Fehlversuch).
+3. Der Push-Schutz ist eine Hürde, keine Sicherheitsgrenze: Ein Worker mit freier Shell kann `--no-verify` nutzen, `core.hooksPath` zurücksetzen, die Marke selbst schreiben oder einen gh-Token für HTTPS verwenden (Test "Grenze (ehrlich)"). Wirksam bleiben Fencing über die Epoche, die gesperrten Ziele des Wrappers, PR-Pflicht, Review, CI und serverseitiger Branch-Schutz (offene Betreiberaufgabe).
+4. Identitätsprüfung: Zwischen Prüfung und `taskkill` bleibt ein sehr kleines Zeitfenster. Ist die Identität unklar (Abfrage scheitert), wird nicht beendet; ein solcher Worker könnte nach Ablauf des Laufzeitlimits weiterlaufen, während der Supervisor ihn als beendet führt. Unter Windows kostet jede Abfrage einen PowerShell-Start (etwa 1 s).
+5. Exit-Code nach Neustart des Supervisors ist unbekannt (`null`); dann entscheidet allein die Messung.
+6. Pulsmessung weiter über die Änderungszeit der Ausgabedatei (Streamausgabe); ein still rechnender Worker kann als hängend gelten (Schwelle 20 Min).
+7. Sperrdatei (früher Punkt 9) und Lease-Halten im Backoff (früher Punkt 10) unverändert.
+8. Fortschrittsmessung über gh ordnet PRs über Paket-ID in Titel oder Branch beziehungsweise die SSOT-PR-Liste zu; ein PR ohne Kennung zählt nicht. Ohne gh wird nur ein SSOT-Schritt am geänderten Integrationskopf anerkannt.
 
 ## 8. Aufwand, Verbesserung, Risiken
 
@@ -120,9 +132,9 @@ Grenze des Beweises: Die Zufallsläufe verwenden eindeutige Halter; ihre Invaria
 
 ## 9. Genehmigungspflichtige Aktivierungsschritte (nicht ausgeführt)
 
-1. Erster scharfer Lauf (`CENTRIC_AUTONOMIE=ja`) und seine Dauer.
+1. Erster scharfer Lauf (`CENTRIC_AUTONOMIE=ja`) und seine Dauer. Voraussetzungen, die der Supervisor selbst erzwingt: geschützte Worker-Kopie (`--worker-kopie-einrichten`, dann `--worker-kopie`), alle fünf Limits als Parameter, lokale `claude --help` kennt jede verwendete Option.
 2. Autostart (Windows-Aufgabenplanung oder Dienst): Systemeinstellung.
-3. Berechtigungsstrategie für headless Worker (Allowlist, keine Umgehung).
-4. Nutzungslimit und Kostenrahmen für Dauerläufe.
+3. Berechtigungsstrategie für headless Worker: Vorschlag `docs/acc45/AUTONOMIE-ALLOWLIST-VORSCHLAG.json` prüfen und gegebenenfalls installieren (keine Umgehung). Zusätzlich empfehlenswert: gh-Token des Workers nur mit PR-Rechten.
+4. Konkrete Werte der Pflichtlimits (`--limit-starts-tag`, `--limit-starts-gesamt`, `--limit-laeufe-paket`, `--limit-laufzeit-min`, `--limit-wall-min-tag`) und Kostenrahmen; Vorschlag für den ersten Lauf: 2, 4, 2, 60, 120.
 5. Anpassung der Cloud-Routine (Entwurf `routine-vorspann.txt` bleibt unangewendet).
 6. Falls gewünscht: eigener CI-Job für den Prototyp (Workflow-Änderung).

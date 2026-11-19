@@ -42,6 +42,8 @@
    Umgebung: KOORD_REMOTE (Standard origin) für Prüfungen mit lokalem Remote.
    ========================================================================== */
 import { execFileSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
+import { rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -105,10 +107,26 @@ export function entscheide(lease, jetzt, a) {
   return { ok: false, grund: `unbekannte Aktion ${a.aktion}` };
 }
 
-function git(args, eingabe, timeout) {
-  return execFileSync("git", args, { cwd: WURZEL, encoding: "utf8", input: eingabe, stdio: ["pipe", "pipe", "pipe"], timeout }).trim();
+function git(args, eingabe, timeout, env) {
+  return execFileSync("git", args, { cwd: WURZEL, encoding: "utf8", input: eingabe, stdio: ["pipe", "pipe", "pipe"], timeout, env: env ? { ...process.env, ...env } : undefined }).trim();
 }
 const remote = () => process.env.KOORD_REMOTE || "origin";
+const gitOpt = (args) => { try { return git(args); } catch { return ""; } };
+
+/** Push über den Wrapper. In einer geschützten Worker-Kopie (werkzeug/dauerlauf-schutz.mjs) ist die pushurl
+    gesperrt und ein pre-push-Hook verlangt eine Einmalmarke: Sie wird hier unmittelbar vor dem Push in die
+    Git-Verwaltung geschrieben, als CENTRIC_PUSH_MARKE übergeben, vom Hook verbraucht und danach gelöscht.
+    Ziel ist KOORD_REMOTE, sonst centric.pushurl (echte Adresse der geschützten Kopie), sonst origin. */
+function wrapperPush(refspecs) {
+  const ziel = process.env.KOORD_REMOTE || gitOpt(["config", "--get", "centric.pushurl"]) || "origin";
+  const helfer = gitOpt(["config", "--get", "centric.credentialhelper"]);
+  const marke = randomBytes(16).toString("hex");
+  const datei = path.resolve(WURZEL, git(["rev-parse", "--git-path", "centric-push-marke"]));
+  writeFileSync(datei, marke);
+  try {
+    git([...(helfer ? ["-c", "credential.helper=", "-c", `credential.helper=${helfer}`] : []), "push", "--atomic", "--quiet", ziel, ...refspecs], undefined, undefined, { CENTRIC_PUSH_MARKE: marke });
+  } finally { rmSync(datei, { force: true }); }
+}
 
 /** Eine Lease muss ein Objekt sein; alles andere (null, 0, false, Liste, Text) ist unlesbar (fail-closed). */
 function leseLeaseText(text) {
@@ -167,7 +185,7 @@ export function gepruefterPush({ halter, epoche, quelle, ziel, jetzt = new Date(
   const e = entscheide(lease, jetzt, { aktion: "erneuern", halter, epoche, minuten });
   if (!e.ok) throw new Error(`Kein Schreibrecht: ${e.grund}`);
   const lc = leaseCommit(spitze, e.neu, `Lease erneuert beim Push: ${halter} Epoche ${e.neu.epoche}`);
-  git(["push", "--atomic", "--quiet", remote(), `${git(["rev-parse", quelle])}:${ziel}`, `${lc}:${REF}`]);
+  wrapperPush([`${git(["rev-parse", quelle])}:${ziel}`, `${lc}:${REF}`]);
   return lc;
 }
 
