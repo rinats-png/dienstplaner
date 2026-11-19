@@ -41,6 +41,10 @@ import { istZeitFuer, ungeplanterDienst, istVerfuegbar, UNGEPLANT_NAME, zeitraum
 export const IST_EINGEFROREN = "istEingefroren";
 
 const objekt = (x) => !!x && typeof x === "object" && !Array.isArray(x);
+/** JSON mit sortierten Objektschlüsseln (Inhalt statt Reihenfolge; Listen behalten ihre Reihenfolge). */
+const stabilJson = (x) => (Array.isArray(x) ? `[${x.map(stabilJson).join(",")}]`
+  : objekt(x) ? `{${Object.keys(x).filter((k) => x[k] !== undefined).sort().map((k) => `${JSON.stringify(k)}:${stabilJson(x[k])}`).join(",")}}`
+    : JSON.stringify(x === undefined ? null : x));
 const liste = (w) => (Array.isArray(w) ? w : []).filter((x) => x && typeof x === "object");
 
 /** Hat die Dienstart eine Mindestbesetzung (ein Objekt)? Fehlt sie, ist das ein Befund („Mindestbesetzung fehlt"),
@@ -545,11 +549,17 @@ function aufgeloest(w, monat, pid, e) {
 /** Wie viele Personentage weichen im gerechneten Ist heute vom eingefrorenen ab? (Hinweis beim Wiederöffnen) */
 export function istAbweichungen(m, monat) {
   const jetzt = istEinfrieren(m, monat), eingefroren = eingefrorenDesMonats(m, monat);
+  /* WP-14c-Nachbesserung: verglichen wird der Inhalt, nicht die Schlüsselreihenfolge (ein Altabschluss Schema 1 trägt
+     `da` vorn, der heutige Stand hinten — vorher zählte dort JEDER Personentag als „geändert"), und ohne die
+     Prüffall-Kennzeichnung `p`: Sie ist keine Ist-Zeit. Ein Abschluss vor der Kennzeichnung (WP-14c F2, #268) zählte
+     sonst einen Tag mit Pause gleich Anwesenheit als „Ist geändert", obwohl Stunden, Dienst und Erfassung gleich sind.
+     Das Ist selbst (std, e, Dienst, Abwesenheit, Einheit des Tages ausgenommen wie bisher) zählt unverändert. */
   const vergleich = (w, k) => {
     if (!objekt(w[k])) return null;
     const x = aufgeloest(w, monat, String(k).split("|")[0], w[k]);
     delete x.u;
-    return JSON.stringify(x);
+    delete x.p;
+    return stabilJson(x);
   };
   let n = 0;
   for (const k of new Set([...Object.keys(jetzt), ...Object.keys(eingefroren)])) {
