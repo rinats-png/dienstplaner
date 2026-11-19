@@ -23,7 +23,8 @@
         derselben Reihenfolge mit denselben Rümpfen und ETags
      Q  Quelltext-Verträge (App.jsx, speicherlage.jsx)
      P  P2-20 (Restrisiko, belegt): „Meinen Stand übernehmen" ersetzt auch
-        fremde Änderungen außerhalb der genannten Monate
+        fremde Änderungen außerhalb der genannten Monate; Karte und Rückfrage
+        sagen das (Hinweis, Verhalten unverändert)
 
    Echter Client (src/speicher.js, eigene Modulinstanz je Reiter) gegen den
    echten Handler (fetch auf daten() umgeleitet, Dateiablage).
@@ -376,6 +377,29 @@ describe("P P2-20 Restrisiko (belegt, Entscheidung offen)", { timeout: 120000 },
     await lt.SP.schreib(lt.db, { durch: "Übernahme nach Konflikt", sofort: true });
     const s = await gespeichert();
     expect(s.abweichungen["a1|2026-03-02"], "Ist-Stand: auch der März der Planung ist weg (P2-20)").toBeUndefined();
+  });
+  /* P2-20 Hinweis: Das Verhalten bleibt (oben belegt); der Dialog sagt es jetzt ehrlich — in der Karte und in der
+     Rückfrage vor dem Übernehmen. Der Knopfname bleibt „Meinen Stand übernehmen". */
+  const HINWEIS = "Auch was andere seit deinem letzten Laden in anderen Monaten geändert haben, kann dabei ersetzt werden.";
+  it("Dialog: die Karte „Meinen Stand nehmen“ nennt auch fremde Änderungen in anderen Monaten (gerendert)", async () => {
+    const { createElement } = await import("react");
+    const { renderToStaticMarkup } = await import("react-dom/server");
+    const { Konfliktfenster } = await import("../src/ansichten/speicherlage.jsx");
+    const html = renderToStaticMarkup(createElement(Konfliktfenster, {
+      lage: { monate: ["März 2026"], durch: "Pat Planung" }, onSchliessen: () => {}, onUebernehmen: () => {}, melde: () => {} }));
+    expect(html).toContain("Was Pat Planung in März 2026 geändert hat, ist danach weg. " + HINWEIS
+      + " Bitte vorher kurz Rücksprache halten.");
+    expect(html).toMatch(/<button[^>]*>Meinen Stand übernehmen<\/button>/);
+    /* Mit Teilweg gibt es kein Übernehmen — dann auch keinen Hinweis darauf. */
+    const ohne = renderToStaticMarkup(createElement(Konfliktfenster, {
+      lage: { monate: ["März 2026"], ohneUebernehmen: true }, onSchliessen: () => {}, onUebernehmen: () => {}, melde: () => {} }));
+    expect(ohne).not.toContain(HINWEIS);
+  });
+  it("Dialog: die Rückfrage vor dem Übernehmen nennt denselben Hinweis (Quelltext-Vertrag)", async () => {
+    const q = (await readFile(path.join(HIER, "..", "src", "ansichten", "speicherlage.jsx"), "utf8")).replace(/\r\n/g, "\n");
+    expect(q).toContain(`const ANDERE_MONATE_ERSETZT = "Auch was andere seit deinem letzten Laden in anderen Monaten geändert haben, "\n`
+      + `  + "kann dabei ersetzt werden.";`);
+    expect(q).toMatch(/window\.confirm\(`Die Änderungen von \$\{wer\}`\n[^\n]*werden überschrieben\. `\n\s*\+ `\$\{ANDERE_MONATE_ERSETZT\} `\n\s*\+ "Das lässt sich nicht rückgängig machen\."\)\) onUebernehmen\(\);/);
   });
 });
 
