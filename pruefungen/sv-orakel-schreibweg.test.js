@@ -243,6 +243,41 @@ describe("Schichtverantwortung: Prüfungen am Wert der Kennung (Server-Mitteilun
   }
 });
 
+describe("Ältere Kopie: unverändert mitgeschickte verborgene Einträge blockieren nicht (Review #366 N2)", () => {
+  it("SV schickt verborgene Einträge byte-gleich mit: 200, Bestand byte-gleich, kein Platzhalter", async () => {
+    await frisch("s1");
+    const vorher = await gespeichertM();
+    const g = (await roh()).mandanten[0];
+    const kopie = (feld, id) => JSON.parse(JSON.stringify(g[feld].find((x) => x.id === id)));
+    const w = await schreiben("s1", (m) => {
+      m.anfragen.push(kopie("anfragen", "an-b1"), kopie("anfragen", "an-x1"));
+      m.notrufe.push(kopie("notrufe", "nr-x1"));
+      m.bestaetigungen = [...(m.bestaetigungen || []), kopie("bestaetigungen", "be-b1")];
+      m.dienstbuch.push(kopie("dienstbuch", "db-eB"));
+      m.nachrichten.push(kopie("nachrichten", "n-a2"));
+      m.notizen[TAG] = [...m.notizen[TAG], JSON.parse(JSON.stringify(g.notizen[TAG].find((x) => x.id === "no-eB")))];
+    });
+    expect(w.status, JSON.stringify(w)).toBe(200);
+    const nachher = await gespeichertM();
+    expect(nachher).toBe(vorher);
+    expect(nachher).not.toMatch(/~[0-9a-f]{8}-[0-9a-f]{4}-/);          // Platzhalter-Kennung (Anfang~UUID)
+  }, 30000);
+});
+
+describe("Vorhersagbare Kennungen von Server-Mitteilungen (Review #366 N1)", () => {
+  for (const id of ["n-protokoll80-l1", "n-schutzentfernt-1-l1", "n-schutzkonflikt-a2-2026-11-23-l1", "n-bestaetigung-be-x-l1"]) {
+    for (const wer of ["s1", "l1"]) {
+      it(`${wer}: neue Mitteilung mit Kennung ${id} wird verworfen (200, nichts angelegt)`, async () => {
+        await frisch(wer);
+        const vorher = await gespeichertM();
+        const w = await schreiben(wer, ANHANG("nachrichten", { id, personId: "a2", titel: "x", text: "y" }));
+        expect(w.status, JSON.stringify(w)).toBe(200);
+        expect(await gespeichertM()).toBe(vorher);
+      }, 30000);
+    }
+  }
+});
+
 describe("Schichtverantwortung, POST /api/bestand/teile: dasselbe über den Teilweg", () => {
   for (const [feld, id, eintrag] of [
     ["anfragen", "an-x1", { ...ANTRAG_X1, status: "genehmigt", antwort: "ok" }],

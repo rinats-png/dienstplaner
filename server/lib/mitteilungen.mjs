@@ -83,10 +83,15 @@ const kuerzen = (t, n) => String(t ?? "").slice(0, n);
 export const istNotruf = (n) => istObjekt(n) && istObjekt(n.quelle) && n.quelle.art === "notruf";
 
 /** Entsteht diese Mitteilung nur auf dem Server? (RB-4: auch jede Mitteilung der Art
-    `krankmeldungEingegangen` — kein Client, auch nicht die Planung, legt sie an.) */
+    `krankmeldungEingegangen` — kein Client, auch nicht die Planung, legt sie an.)
+    PR #366 (Review N1): auch die vorhersagbaren Kennungen der Mitteilungen aus bestaetigungen.mjs („n-protokoll80-…",
+    „n-schutzentfernt-…", „n-schutzkonflikt-…", „n-bestaetigung-…"). Vorher konnte ein Client eine Mitteilung mit
+    einer solchen Kennung vorab anlegen und damit die Mitteilung an die Leitung unterdrücken (die Erzeuger überspringen
+    vorhandene Kennungen) — etwa die zu einem bewusst bestätigten Rechtsverstoß — und am nächsten Abruf ablesen, ob es
+    sie schon gibt. Der Server erzeugt sie erst nach dieser Vorfilterung. */
 export function nurVomServer(n) {
   return istObjekt(n) && (n.ziel === "notruf" || n.art === "tauschAngebot" || n.art === "krankmeldungEingegangen"
-    || n.quelle !== undefined || /^n-(notruf|tausch|krank)-/.test(String(n.id)));
+    || n.quelle !== undefined || /^n-(notruf|tausch|krank|protokoll80|schutzentfernt|schutzkonflikt|bestaetigung)-/.test(String(n.id)));
 }
 
 /**

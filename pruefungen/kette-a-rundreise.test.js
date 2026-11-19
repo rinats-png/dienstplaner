@@ -163,11 +163,18 @@ describe("d.1 Bestätigungsprotokoll: Rundreise je Rolle", () => {
       expect(betrieb(geleert).bestaetigungen, r).toEqual(betrieb(g).bestaetigungen);
     }
   });
-  it("Schichtverantwortung: ein verborgener Eintrag lässt sich nicht überschreiben", () => {
+  /* Folgepaket #361 (Existenzorakel, PR #366): Bis dahin wurde ein verändert mitgeschickter VERBORGENER Eintrag still
+     übergangen (200), eine unbekannte Kennung mit denselben Angaben aber geprüft (hier 403) — die Antwort verriet die
+     Existenz. Jetzt dieselbe Antwort wie für die unbekannte Kennung, und das Protokoll bleibt byte-gleich
+     (überschrieben wird weiterhin nichts). */
+  it("Schichtverantwortung: ein verborgener Eintrag lässt sich nicht überschreiben (Antwort wie unbekannte Kennung)", () => {
     const g = bestand();
-    const e = rundreise(g, "SV", (m) => { m.bestaetigungen.push({ ...betrieb(g).bestaetigungen[1], grund: "überschrieben" }); });
-    expect(e && !e.verweigert).toBe(true);
-    expect(betrieb(e).bestaetigungen).toEqual(betrieb(g).bestaetigungen);
+    const verborgen = { ...betrieb(g).bestaetigungen[1], grund: "überschrieben" };
+    const e = rundreise(g, "SV", (m) => { m.bestaetigungen.push(verborgen); });
+    const u = rundreise(bestand(), "SV", (m) => { m.bestaetigungen.push({ ...verborgen, id: `${verborgen.id}-unbekannt` }); });
+    expect(e && e.verweigert).toBe(u && u.verweigert);
+    expect(betrieb(g).bestaetigungen).toEqual(betrieb(bestand()).bestaetigungen);
+    if (!e.verweigert) expect(betrieb(e).bestaetigungen).toEqual(betrieb(g).bestaetigungen);
   });
   it("ungültige neue Einträge werden abgewiesen", () => {
     const falsch = [

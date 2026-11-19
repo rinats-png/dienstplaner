@@ -559,16 +559,30 @@ vor der Rechteprüfung) unterschied für jede Rolle ohne vollen Umfang am Text (
 andere Person an einem Tag gestempelt hatte. Jetzt prüft sie für diese Rollen gegen den Stand ihrer Sicht (wie GET):
 ein unsichtbarer Stempel antwortet wie ein nicht vorhandener; gespeichert wird weiter der gespeicherte Stand.
 **Ausschreibungen:** Auf eine nicht mehr offene Ausschreibung (vergeben, zurückgezogen) kommt keine Bewerbung hinzu
-und keine eigene ändert sich (still übergangen, Beschäftigte und Schichtverantwortung); zurückziehen bleibt wie in der
-Oberfläche. **Restrisiko (bewusst, wie B1–B3):** Die Antwort ist gleich (Status, Text, Schlüssel, neuer etag in beiden
+und keine eigene ändert sich (still mit 200 übergangen, Beschäftigte und Schichtverantwortung — kein Fehlerhinweis,
+auch nicht im Wettlauf kurz vor der Vergabe; akzeptiert); zurückziehen bleibt wie in der Oberfläche, eine
+Altbewerbung lässt sich also nur noch löschen. **Server-Mitteilungen mit vorhersagbarer Kennung:** Neue Mitteilungen
+mit `n-protokoll80-…`, `n-schutzentfernt-…`, `n-schutzkonflikt-…` oder `n-bestaetigung-…` verwirft der Server wie
+`n-notruf-…` (`nurVomServer`); vorher konnte ein Client sie vorab anlegen und so die Mitteilung an die Leitung
+unterdrücken (etwa zu einem bewusst bestätigten Rechtsverstoß oder zum 80-%-Füllstand) und am nächsten Abruf ablesen,
+ob es sie gab. **Laufzeit:** Für Rollen ohne vollen Umfang berechnet jedes PUT einmal die eigene Sicht für die
+Stempelprüfung (gemessen etwa +0,8 s bei 400 Personen, linear, unter der Raumsperre); die Sicht der
+Schichtverantwortung wird je Speichern einmal berechnet und an die Rückfüllung weitergegeben.
+**Restrisiko (bewusst, wie B1–B3):** Die Antwort ist gleich (Status, Text, Schlüssel, neuer etag in beiden
 Fällen), der nächste Abruf aber nicht — bei einer unbekannten Kennung erscheint der neue Eintrag, bei einer verborgenen
-nicht; im Teilweg zeigen das schon die `versionen` der Antwort (sie beschreiben die eigene Sicht danach). Beschäftigte:
+nicht; im Teilweg zeigen das schon die `versionen` der Antwort (sie beschreiben die eigene Sicht danach). Das setzt
+eine erratene Kennung voraus — außer bei Kennungen, die der Server vorhersagbar bildet; deren bekannte Muster
+(Mitteilungen oben) sind für Clients gesperrt, für weitere deterministische Kennungen gilt die Einschränkung nicht. Beschäftigte:
 ein mitgeschickter verborgener fremder Antrag bleibt inhaltlich gleich, rückt aber an die übermittelte Stelle der Liste
 (Altverhalten, für sie unsichtbar). **Offen (Produktfrage):** Neue Einträge prüft der Schreibweg weiter mit der
 Bereichsregel am Tag ohne Sichtfenster (`imBereich`) — die Schichtverantwortung kann also einen neuen Antrag, Einsprung
 oder eine Planänderung für eine Person anlegen, die am Tag in ihrem Bereich war, die sie aber nicht (mehr) im Fenster
 sieht; die Antwort verrät dabei die frühere Zugehörigkeit. Ob das Sichtfenster auch für neue Einträge und den Plan
-gelten soll (Nachpflege alter Monate), ist eine Entscheidung. Geprüft in `pruefungen/sv-orakel-schreibweg.test.js`
+gelten soll (Nachpflege alter Monate), ist eine Entscheidung (`docs/acc45/ENTSCHEIDUNGSLISTE.md` P2-15, Voreinstellung A).
+Umgestellte Prüfungen (vorher 403 bzw. still 200 für die verborgene Kennung erwartet, jetzt „Antwort wie unbekannte
+Kennung + Zustand byte-gleich"): `schichtverantwortung`, `bereich-dienstbuch-uebergaben`, `bereich-tagesnotizen`,
+`sicht-schichtverantwortung` (je Unit und HTTP), `stempel-integritaet` (Betreiber), `kette-a-rundreise`
+(Bestätigungen). Geprüft in `pruefungen/sv-orakel-schreibweg.test.js`
 (echter Handler, Rollenmatrix, Zustände byte-gleich, Differenztest alt/neu mit Zufallsbeständen).
 
 **Mitteilungen (Commit 4, A):** Zustellwege (`wege`) und Zustellstatus (`zugestellt`) schreibt kein Client.
