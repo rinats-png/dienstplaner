@@ -9,7 +9,7 @@ version: 2
 updates:
   - package-ecosystem: npm
     directory: "/"
-    target-branch: integration/centric-complete
+    target-branch: integration/release-v4
     schedule:
       interval: weekly
       day: monday
@@ -28,7 +28,7 @@ updates:
 
   - package-ecosystem: github-actions
     directory: "/"
-    target-branch: integration/centric-complete
+    target-branch: integration/release-v4
     schedule:
       interval: weekly
       day: monday
@@ -46,7 +46,7 @@ updates:
   # — alle drei FROM-Zeilen in einem Pull Request.
   - package-ecosystem: docker
     directory: "/"
-    target-branch: integration/centric-complete
+    target-branch: integration/release-v4
     schedule:
       interval: weekly
       day: monday
