@@ -35,7 +35,7 @@ produktiv aktiviert) sind „nein“, soweit in der Spalte „Weitere Stufen“ 
 | E7 | Abrechnungstag nach Berliner Zeit | wie E1 | wie E1 |
 | E8 | Gerätezeitzone wird nicht gespeichert und erzeugt keinen Prüffall | wie E1 | wie E1 |
 | WP-ZEIT Rahmen | Vier Zeitbegriffe trennen (Ereigniszeitpunkt, betrieblicher Kalendertag, Schichttag, Eingangszeitpunkt); versioniertes Zeitmodell, keine stille Migration | Vertrag §1, §6 | wie E1 |
-| #280 Q1 | `mindest: 0` als Kurzform bleibt 422 | `ENTSCHEIDUNGSVORLAGE-KONSOLIDIERT-2026-11-14.md` §6 | PR #280 ist gemergt (2026-11-13, bcddf680); Umsetzung von Q1 bis Q5 im Code je Entscheidung durch Prüfungen belegt (Nachtrag 2026-11-19, `ABNAHME-V4-A4-MINDEST.md` §5); Review, Staging, fachliche Freigabe, produktiv: nein |
+| #280 Q1 | `mindest: 0` als Kurzform bleibt 422 | `ENTSCHEIDUNGSVORLAGE-KONSOLIDIERT-2026-11-14.md` §6 | PR #280 ist gemergt (2026-11-13, bcddf680); Umsetzung von Q1 bis Q5 im Code je Entscheidung durch Prüfungen belegt (Nachtrag 2026-11-19, `ABNAHME-V4-A4-MINDEST.md` §5); Review: für #370 (Q1-Q5-Tabelle, Anzeige-Lücke) belegt, für den Code des Direktmerges #280 selbst nicht (`REVIEW-NACHWEIS-2026-11-19.md`); Staging, fachliche Freigabe, produktiv: nein |
 | #280 Q2 | Weglassen bei bestehender Dienstart: Wert bleibt | wie Q1 | wie Q1 |
 | #280 Q3 | Historische Sicherungen bleiben brauchbar, kein stilles Ergänzen | wie Q1 | wie Q1 |
 | #280 Q4 | Bearbeiten historisch fehlender Werte erlaubt, gekennzeichnet | wie Q1 | wie Q1 |
