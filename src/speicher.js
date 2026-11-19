@@ -79,11 +79,31 @@ if (!token) offlineCacheLeeren();
 const kopf = () => ({ "content-type": "application/json",
   ...(token ? { authorization: `Bearer ${token}` } : {}) });
 
+/* Befund B-L4 (lokale E2E-Abnahme 2026-11-19): Bei 401 räumte ruf() das Merkmal (abmelden(true)), sagte der Oberfläche
+   aber nichts — nach dem Neuladen blieb die Seite auf dem Ladegerüst stehen. Jetzt erfahren angemeldete Hörer
+   (src/app/sitzungsende.js) vom Ende der Sitzung; nur wenn bis dahin ein Merkmal galt, damit kein Kreislauf entsteht. */
+const sitzungsendeHoerer = new Set();
+/** @param {() => void} fn @returns {() => void} hebt das Anmelden des Hörers wieder auf */
+export function beiSitzungsende(fn) {
+  sitzungsendeHoerer.add(fn);
+  return () => { sitzungsendeHoerer.delete(fn); };
+}
+/** @param {string|null} gesendet  das Merkmal, mit dem die abgewiesene Anfrage hinausging */
+function sitzungEndet(gesendet) {
+  /* Review #378 A1: Eine verspätete 401 einer Anfrage mit einem älteren Merkmal (inzwischen neu angemeldet) räumt das
+     neue Merkmal nicht. Ohne Merkmal (gesendet null) bleibt es beim bisherigen Räumen, gemeldet wird dann nichts. */
+  if (gesendet !== token) return;
+  abmelden(true);
+  if (!gesendet) return;
+  for (const fn of [...sitzungsendeHoerer]) { try { fn(); } catch { /* ein Hörer hält die anderen nicht auf */ } }
+}
+
 async function ruf(pfad, opt = {}) {
+  const gesendet = token;
   const a = await fetch(`/api/${pfad}`, { ...opt, headers: { ...kopf(), ...(opt.headers || {}) } });
   let d = null;
   try { d = await a.json(); } catch { /* leere Antwort */ }
-  if (a.status === 401) { abmelden(true); throw new Error("nicht-angemeldet"); }
+  if (a.status === 401) { sitzungEndet(gesendet); throw new Error("nicht-angemeldet"); }
   /* Der Dienstarbeiter kennzeichnet eine Antwort, die aus seinem Speicher
      kommt. Ohne dieses Kennzeichen sähe ein drei Tage alter Plan aus wie
      der aktuelle — und das wäre schlimmer als gar keiner. */
