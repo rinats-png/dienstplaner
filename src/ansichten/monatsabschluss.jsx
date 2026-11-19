@@ -1,7 +1,7 @@
 /* WP-39: aus src/App.jsx herausgeloest (Text unveraendert). */
 import { useState } from "react";
 import { darf } from "../lib/berechtigung.js";
-import { freezeGeloescht, lohnexportRueckfrage, VORMONAT_KATEGORIEN, freezeZeilen } from "../lib/fachlogik.js";
+import { freezeGeloescht, lohnexportRueckfrage, VORMONAT_KATEGORIEN, freezeZeilen, pauseAnwesenheitFaelle } from "../lib/fachlogik.js";
 import { abschlussLuecken, abschlussLueckeText, ohneEintrittPrueffaelle, ohneEintrittFallText, OHNE_EINTRITT_TEXT } from "../../server/lib/isteinfrieren.mjs";
 import { heute, zeitpunktText, fKurz } from "../lib/datum.js";
 import { C } from "../farben.js";
@@ -27,6 +27,9 @@ export function Monatsabschluss({ sitz, ym, akt }) {
   const luecken = zu && !freezeGeloescht(m, ym) ? abschlussLuecken(m, ym) : [];
   /* Auflage A (Datenreview PR #130): Stempel von Personen ohne Eintrittsdatum — Prüffall, offen wie abgeschlossen. */
   const ohneEintritt = ohneEintrittPrueffaelle(m, ym);
+  /* WP-14c-Nachbesserung: bestätigte Ist-Zeiten mit Pause ≥ Anwesenheit (0 h) — Prüffall, offen wie abgeschlossen; nur
+     Kennzeichnung (ob sie den Abschluss sperren, ist offen: ENTSCHEIDUNGSLISTE P2-6 b, P2-12 Schritt 3). */
+  const pauseFaelle = pauseAnwesenheitFaelle(m, ym);
   const rueckfrage = zu && !exportiert ? lohnexportRueckfrage(m, ym) : null;
   const bestaetigen = () => { if (rueckfrage && rueckfrage.vormonate) setTrotz({ kategorie: "", grund: "" }); else akt.lohnexportBestaetigen(ym); };
   const laufend = ym >= heute().slice(0, 7);
@@ -61,6 +64,11 @@ export function Monatsabschluss({ sitz, ym, akt }) {
             ? "der Monat ist abgeschlossen und der Lohnexport bestätigt — ein später gesetztes Eintrittsdatum ändert die eingefrorenen Stunden nicht; nachtragen nur über den Korrekturprozess."
             : "der Monat ist abgeschlossen — ein später gesetztes Eintrittsdatum ändert die eingefrorenen Stunden nicht; nachtragen nur über Wiederöffnen und erneuten Abschluss.")
           : "nach dem Setzen des Eintrittsdatums rechnen die Stunden mit."}</div>}
+      {pauseFaelle && <div data-befund="pause-anwesenheit" style={{ fontSize: 12.5, color: C.warn, marginTop: 4 }}>
+        Prüffall: {pauseFaelle.text} Betroffen: {pauseFaelle.faelle.map((f) => `${fKurz(f.datum)} ${name(f.personId)}`).join("; ")}.{zu
+          ? (exportiert ? " Der Monat ist abgeschlossen und der Lohnexport bestätigt — berichtigen nur über den Korrekturprozess."
+            : " Der Monat ist abgeschlossen — berichtigen nur über Wiederöffnen und erneuten Abschluss.")
+          : ""}</div>}
       {trotz && zu && !exportiert && (
         <div style={{ marginTop: 8, padding: "10px 12px", border: `1px solid ${C.warn}`, borderRadius: 6 }}>
           <div style={{ fontSize: 12.5, color: C.warn, whiteSpace: "pre-line", lineHeight: 1.45 }}>{rueckfrage ? rueckfrage.text : ""}</div>

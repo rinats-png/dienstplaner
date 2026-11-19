@@ -2,7 +2,7 @@
 import { useState, useMemo } from "react";
 import { Scrollbereich } from "../ui/scrollbereich.jsx";
 import { imDienst, einheitAm } from "../../server/lib/fachpruefung.mjs";
-import { kontoSichtbar, zuschlagWert, ausgleichBedarf, istStunden, darfEinheit } from "../lib/fachlogik.js";
+import { kontoSichtbar, zuschlagWert, ausgleichBedarf, istStunden, darfEinheit, pauseAnwesenheitFaelle } from "../lib/fachlogik.js";
 import { pruefHinweis, ZUR_PRUEFUNG_TEXT } from "../istdaten.js";
 import { H1, Seg, Btn, Card, CardHead, Lab, Avatar, Inp, Sel, Leer, Pill } from "../ui/bausteine.jsx";
 import { MON, heute } from "../lib/datum.js";
@@ -13,7 +13,7 @@ import { NUM } from "../ui/thema.js";
 import { darf } from "../lib/berechtigung.js";
 import { Icon } from "../gestalt/icons.jsx";
 import { vormonateMitPruefung } from "../istdaten.js";
-import { UNGEPLANT_PRUEFUNG_TEXT } from "../istdaten.js";
+import { UNGEPLANT_PRUEFUNG_TEXT, PAUSE_ANWESENHEIT_TEXT } from "../istdaten.js";
 import { Lohnausgabe } from "./lohnausgabe.jsx";
 import { StempelBefunde } from "./korrekturen.jsx";
 
@@ -28,6 +28,8 @@ export function Abrechnungsdaten({ sitz, ym, akt }) {
   const faellig = zeilen.filter((z) => z.a.faellig);
   const pruefOffen = useMemo(() => pruefHinweis(m, ym), [m, ym]);
   const pruefVor = useMemo(() => vormonateMitPruefung(m, ym), [m, ym]);
+  /* WP-14c-Nachbesserung: bestätigte Ist-Zeiten mit Pause ≥ Anwesenheit (zählen 0 h) — sichtbar, nicht still. */
+  const pauseFaelle = useMemo(() => pauseAnwesenheitFaelle(m, ym), [m, ym]);
 
   return (
     <div>
@@ -50,6 +52,13 @@ export function Abrechnungsdaten({ sitz, ym, akt }) {
           aktion={<Btn size="sm" onClick={() => setReiter("stempel")}>Zur Prüfliste</Btn>}>
           {pruefOffen.text} Betroffene Tage sind in der Lohnausgabe gekennzeichnet („{ZUR_PRUEFUNG_TEXT}" bzw. „{UNGEPLANT_PRUEFUNG_TEXT}").
           Der Export (Zuschläge) und die Lohnausgabe fragen vor dem Download nach.
+        </Hinweisband>)}
+      {pauseFaelle && reiter !== "stempel" && (
+        <Hinweisband ton="warn" titel={`${pauseFaelle.anzahl} Ist-Zeit${pauseFaelle.anzahl === 1 ? "" : "en"} mit zu langer Pause · ${pauseFaelle.monat}`}
+          style={{ marginBottom: 18 }}
+          aktion={<Btn size="sm" onClick={() => setReiter("stempel")}>Zu den Stempelbefunden</Btn>}>
+          {pauseFaelle.text} Betroffen: {pauseFaelle.faelle.map((f) => f.datum).join(", ")}. In der Lohnausgabe gekennzeichnet („{PAUSE_ANWESENHEIT_TEXT}");
+          der Export (Zuschläge) und die Lohnausgabe fragen vor dem Download nach.
         </Hinweisband>)}
 
       {reiter === "zuschlaege" && (<>

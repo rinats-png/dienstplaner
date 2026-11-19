@@ -15,7 +15,7 @@ import { eingefrorenerMonat, abschlussLuecke, freezeStatus, feiertagFuer, zuschl
    (kein Absturz) und wird als „Mindestbesetzung fehlt" gezeigt (mindestVorhanden) — nie still gespeichert. */
 export { mindestWerte, mindestVorhanden, mindestLuecken, mindestUngueltig, mindestFeldStatus };
 const mindestSumme = (d) => { const md = mindestWerte(d); return md.mo_do + md.fr + md.sa + md.so; };
-import { istVerfuegbar, zeitraumMonat, zurPruefung, ISTDATEN_TEXT, pruefHinweis, pruefFallText, istUngeplant, UNGEPLANT_TEXT } from "../istdaten.js";
+import { istVerfuegbar, zeitraumMonat, zurPruefung, ISTDATEN_TEXT, pruefHinweis, pruefFallText, istUngeplant, UNGEPLANT_TEXT, istZeitFuer, PAUSE_ANWESENHEIT_TEXT } from "../istdaten.js";
 import { LOHNARTEN_STD } from "../../server/lib/lohnrechnung.mjs";
 import { UNGUELTIGER_KALENDERTAG } from "../../server/lib/betriebszeit.mjs";
 import { rechtsquelleTabelle, regelIdFuerBefund } from "../regelregister.js";
@@ -3317,11 +3317,46 @@ export function datevCSV(m, ym) {
  * Haus verlässt. Eine Trennzeichendatei prüft niemand gern am Bildschirm.
  */
 /**
+ * WP-14c-Nachbesserung (Betreiberentscheidung 2026-11-18, P2-12 Variante B: sichtbare Kennzeichnung): BESTÄTIGTE
+ * Ist-Zeiten eines Monats, deren Pause die Anwesenheit erreicht oder übersteigt (istZeitFuer: pauseUeberAnwesenheit,
+ * WP-14c F2 / M-14c-1). Sie zählen 0 h; die Kennzeichnung erreichte bisher keine Oberfläche (pruefHinweis zählt nur
+ * unbestätigte Prüffälle). Der Dienst des Tages wie in der Rechnung (istTag: im abgeschlossenen Monat der eingefrorene),
+ * die Erfassung wie gespeichert — so auch für Abschlüsse vor der Kennzeichnung. Nur Kennzeichnung: keine Stunde,
+ * kein Freeze und keine Prüfsumme ändert sich. Ohne Zugang zu den Ist-Daten keine Fälle (istZeitFuer). Ohne Fälle null.
+ * @returns {null | {anzahl: number, monat: string, faelle: Array<{personId: string, datum: string}>, text: string}}
+ */
+export function pauseAnwesenheitFaelle(m, ym) {
+  const erf = m && m.erfassung && typeof m.erfassung === "object" && !Array.isArray(m.erfassung) ? m.erfassung : {};
+  const personen = new Map((Array.isArray(m && m.personen) ? m.personen : []).filter(Boolean).map((p) => [String(p.id), p]));
+  const faelle = [];
+  for (const [k, e] of Object.entries(erf)) {
+    const [pid, d] = String(k).split("|");
+    if (!d || !d.startsWith(`${ym}-`) || !e || typeof e !== "object" || e.bestaetigt !== true) continue;
+    const p = personen.get(pid);
+    if (!p) continue;
+    const t = istTag(m, p, d);
+    if (!t || !t.da || t.abwesenheit) continue;
+    if (istZeitFuer(m, p, d, t.da).pauseUeberAnwesenheit === true) faelle.push({ personId: pid, datum: d });
+  }
+  if (!faelle.length) return null;
+  faelle.sort((a, b) => a.datum.localeCompare(b.datum) || a.personId.localeCompare(b.personId));
+  const n = faelle.length;
+  const monat = monatText(ym);
+  return { anzahl: n, monat, faelle,
+    text: `${n === 1 ? "1 bestätigte Ist-Zeit" : `${n} bestätigte Ist-Zeiten`} im ${monat} mit einer Pause so lang wie die Anwesenheit `
+      + `oder länger: ${n === 1 ? "Sie zählt" : "Sie zählen"} mit 0 h im Stundenkonto und in der Lohnausgabe. Bitte prüfen und über die Korrektur berichtigen.` };
+}
+
+/**
  * Ist-Zeiten zur Prüfung (WP-17, W1) im Blatt zum Gegenlesen: je betroffenem
  * Tag eine Zeile „zur Prüfung, Planzeit vorläufig". Ohne offene Fälle leer.
  */
 export function lohnPruefZeilen(m, ym) {
   const h = pruefHinweis(m, ym);
+  /* WP-14c-Nachbesserung: bestätigte Ist-Zeiten mit Pause ≥ Anwesenheit (0 h) — gekennzeichnet, nicht still. */
+  const pa = pauseAnwesenheitFaelle(m, ym);
+  const nameP = (pid) => { const p = m.personen.find((x) => String(x.id) === String(pid)); return p ? `${p.nachname}, ${p.vorname}` : pid; };
+  const paZeilen = pa ? [`ACHTUNG: ${pa.text}`, ...pa.faelle.map((f) => `  ${f.datum}  ${nameP(f.personId)}: ${PAUSE_ANWESENHEIT_TEXT}`), ""] : [];
   /* Abgeschlossener Monat ohne Freeze einer Person (WP-16, Nachtrag N3): Prüffall statt still 0 h. */
   /* Nach Frist gelöscht (Nachtrag vierter Review A-3): kein Prüffall je Person — freezeZeilen sagt es einmal. */
   const lu = freezeGeloescht(m, ym) ? [] : abschlussLuecken(m, ym);
@@ -3330,13 +3365,14 @@ export function lohnPruefZeilen(m, ym) {
   /* Austritt im Monat (A-5): keine Zeilen — gesagt, nicht still. */
   /* Auflage A (Datenreview PR #130): Stempel ohne Eintrittsdatum — keine Zeilen, aber ein benannter Prüffall. */
   const fz = [...freezeZeilen(m, ym), ...ohneZeilenText(m, ym), ...ohneEintrittZeilen(m, ym)];
-  if (!h) return [...luZeilen, ...fz];
+  if (!h) return [...paZeilen, ...luZeilen, ...fz];
   const nameVon = (pid) => { const p = m.personen.find((x) => x.id === pid); return p ? `${p.nachname}, ${p.vorname}` : pid; };
   return [
     `ACHTUNG: ${h.text}`,
     ...h.faelle.map((f) => `  ${f.datum}  ${nameVon(f.personId)}: ${pruefFallText(f.art)}`),
     "Vor der Weitergabe in Abrechnungsdaten · Stempelbefunde prüfen und bestätigen.",
     "",
+    ...paZeilen,
     ...luZeilen,
     ...fz,
   ];
@@ -3412,7 +3448,10 @@ export function ohneEintrittZeilen(m, ym) {
 export function lohnWarnung(m, ym, w) {
   const l = freezeGeloescht(m, ym) ? 0 : abschlussLuecken(m, ym).length;
   /* Auflage A (Datenreview PR #130): Stempel ohne Eintrittsdatum stehen mit in der Rückfrage. */
-  const fz = [...freezeZeilen(m, ym), ...ohneEintrittZeilen(m, ym)].filter((z) => z.startsWith("ACHTUNG")).join("\n");
+  /* WP-14c-Nachbesserung: bestätigte Ist-Zeiten mit Pause ≥ Anwesenheit (0 h) stehen mit in der Rückfrage. */
+  const pa = pauseAnwesenheitFaelle(m, ym);
+  const fz = [...freezeZeilen(m, ym), ...ohneEintrittZeilen(m, ym)].filter((z) => z.startsWith("ACHTUNG"))
+    .concat(pa ? [`ACHTUNG: ${pa.text} Betroffen: ${pa.faelle.map((f) => f.datum).join(", ")}.`] : []).join("\n");
   if (!l && !fz) return w;
   const t = [l ? `${l === 1 ? "1 Person" : `${l} Personen`}: ${abschlussLueckeText(m, ym)} In der Ausgabe fehlt sie.` : "", fz].filter(Boolean).join("\n");
   return w ? `${t}\n\n${w}` : `${t}\n\nTrotzdem jetzt ausgeben?`;

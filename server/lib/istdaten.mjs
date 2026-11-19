@@ -168,6 +168,10 @@ export const bestaetigungsGrund = (e) => (istUngeplant(e)
 /** Text zu einem bestätigten ungeplanten Dienst an einem Tag mit Abwesenheit (C1): er zählt dort nicht. */
 export const UNGEPLANT_ABWESEND_TEXT = "zählt wegen der Abwesenheit an diesem Tag nicht im Stundenkonto";
 
+/** WP-14c-Nachbesserung: Kennzeichnung einer BESTÄTIGTEN Ist-Zeit, deren Pause die Anwesenheit erreicht (istZeitFuer:
+    pauseUeberAnwesenheit) — sie zählt 0 h, die Leitung prüft und berichtigt sie über die Korrektur. */
+export const PAUSE_ANWESENHEIT_TEXT = "Pause so lang wie die Anwesenheit oder länger, zählt 0 h, zur Prüfung";
+
 /** Der Kennzeichnungstext eines Prüffalls (art aus pruefHinweis: "lang" | "ungeplant"). */
 export const pruefFallText = (art) => (art === "ungeplant" ? UNGEPLANT_PRUEFUNG_TEXT : ZUR_PRUEFUNG_TEXT);
 
