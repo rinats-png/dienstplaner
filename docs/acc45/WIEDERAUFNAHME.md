@@ -5,10 +5,14 @@
 > Halter und Epoche stehen nie verlässlich in diesem Dokument: maßgeblich ist allein `node werkzeug/koordination.mjs status`
 > (dazu `leerlauf`). Epochenangaben in den Nachträgen unten sind historisch. Betriebsregeln: Abschnitt „Koordinationsregel“.
 
-## Nachtrag 2026-11-19 (e) (Folgepaket speicher.js 409, Branch `fix/speicher-409-konfliktsperre`, offen bis Merge)
+## Nachtrag 2026-11-19 (f) (Folgepaket speicher.js 409, Branch `fix/speicher-409-konfliktsperre`, offen bis Merge)
 
 - Folgepaket (5) aus dem Nachtrag (d) bzw. Review #365 Punkt 1b gebaut, Ziel `integration/release-v4`, nicht gemergt. Befund mit echtem Client gegen echten Handler bestätigt (Server schreibt mit aktuellem ETag ohne Abgleich; Verlust echt). Behebung: Konfliktsperre in `src/speicher.js` (ohne Teilweg) bis `konfliktLoesen`; Teilweg-Pfad, Schalter und Speicherschlüssel unverändert. Einzelheiten und Varianten in `WP-48-GB-ANALYSE.md` §7.
 - Neue Betreiberfrage P2-20 in `ENTSCHEIDUNGSLISTE.md` (Reichweite von „Meinen Stand übernehmen“, Voreinstellung A = unverändert). Umgestellte bestehende Prüfungen: `wp48-gb-lesen` V, `modul-kern-nachtrag3` „Abweisung 409“ (offengelegt in §7 und im PR-Text).
+
+## Nachtrag 2026-11-19 (e) (Lastflake `zugaenge-frischer-faktor`, Branch `test/flake-zugaenge-frischer-faktor`, nur Test, offen bis Merge)
+
+- **Flake gehärtet (Folgepaket (4) aus Nachtrag (d)):** `pruefungen/zugaenge-frischer-faktor.test.js` „zu viele falsche Codes werden gebremst (429), danach auch der richtige Code nicht sofort“ lief im PR-Lauf 44399586039 (erster Versuch) mit 5010 ms in das vitest-Standardlimit von 5 s; sonst 2,07 s in der CI, lokal 2,39 bis 2,45 s. **Ursache:** kein Rechenaufwand, sondern echte Wartezeit, die nicht Gegenstand der Aussage ist: Jeder der fünf falschen Codes wartet im Server 400 ms (`betreiber-zweifaktor.mjs`, `setTimeout`, Schutz gegen Zeitmessung), zusammen 2,0 s; dazu sieben Aufrufe im Prozess (kein Netz, kein Serverstart, kein scrypt). Der Zähler der Bremse (`schutz.mjs`, `zweifaktor` 5 Versuche) läuft auf der festen Uhr (`vi.setSystemTime`); einen Prüfschalter für die 400 ms gibt es nicht und wird nicht eingeführt. **Maßnahme:** nur die Zeitgrenze dieses Tests auf 30 s, wie in `rollen-zweifaktor.test.js` für denselben Mechanismus; Aussage und Server unverändert. Mutanten (je rot): Bremse übergangen (401 statt 429), Schwelle 9 statt 5 (401 statt 429), richtiger Code vor der Bremse angenommen (200 statt 429). **Restrisiko:** Der Schwester-Test B3 derselben Datei hat denselben Mechanismus (2,06 bis 2,40 s in der CI, unter 2,5 s) und behält das Standardlimit; erst bei belegtem Auftreten härten. Übrige Tests im Schritt `pruefung:zugaenge-faktor` liegen unter 2,5 s oder haben schon eine Grenze (`zugaenge-vorlauf-produktion` 120 s, `kundenraumschutz` `beforeAll` 120 s; dessen langsamster Test 2,25 s).
 
 ## Nachtrag 2026-11-19 (d) (SSOT-Nachtrag #367 bis #370, nur Doku und SSOT)
 

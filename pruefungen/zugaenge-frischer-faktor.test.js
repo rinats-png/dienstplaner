@@ -213,7 +213,11 @@ describe("SI-P6 frischer zweiter Faktor", () => {
     uhr(jetzt + 31_000);
     const r = await zugaenge(tokenMit, { bestand: "p6-neu", eintraege: [{ rolle: "planer" }], zweifaktor: code(geheimnis) });
     expect(r.status).toBe(429);
-  });
+    /* Zeitgrenze: Lastflake am 5-s-Limit, Dauer ~2 s, Aussage unverändert. Jeder der fünf falschen Codes wartet im
+       Server echte 400 ms (betreiber-zweifaktor.mjs, Schutz gegen Zeitmessung; nicht Gegenstand dieser Prüfung), der
+       Zähler selbst läuft auf der festen Uhr. Im PR-Lauf 44399586039 (CI unter Last) 5010 ms → Abbruch; wie in
+       rollen-zweifaktor.test.js nur die Grenze angehoben, keine Toleranz in der Aussage. */
+  }, 30_000);
 });
 
 describe("SI-P6 Review (Opus): Altschlüssel, Bremse, Reihenfolge, Raumanlage", () => {
