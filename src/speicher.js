@@ -88,12 +88,32 @@ export function beiSitzungsende(fn) {
   sitzungsendeHoerer.add(fn);
   return () => { sitzungsendeHoerer.delete(fn); };
 }
+/* Befund B-L4c (lokale E2E-Abnahme 2026-11-19): abmelden(true) räumt auch den ETag. Endete die Sitzung bei offener Seite
+   mit ungesendeter Eingabe, ging „Anmelden und senden" (nochmalSchreiben) ohne Versionsangabe hinaus; der Server
+   antwortete 409 „ohne Versionsangabe nicht überschreibbar", das Konfliktfenster erschien, obwohl niemand sonst schrieb.
+   Jetzt merkt sich NUR der Sitzungsende-Pfad den ETag zusammen mit dem Inhaber der Sitzung (Prüfsumme aus Raum, Betrieb
+   und Person, vom Server beim Lesen gemeldet). Der Merker wirkt erst, wenn nach einer neuen Anmeldung ein frisches GET
+   (kein Speicher des Dienstarbeiters) denselben Inhaber meldet: dann geht der Auftrag MIT dem alten ETag hinaus — der
+   Server entscheidet (passt → gespeichert, veraltet → gewöhnlicher 409 mit Abgleich). Meldet er einen anderen Inhaber
+   (andere Person, anderer Betrieb, anderer Datenraum), wird ALLES der vorherigen Sitzung verworfen (ETag, Eingabe,
+   Konfliktsperre) und nichts gesendet. Bis dahin geht nichts der vorherigen Sitzung hinaus. Absichtliches Abmelden
+   (abmelden) löscht den Merker. Am Räumen von abmelden(true) selbst ändert sich nichts. */
+/** @type {{ etag: any, inhaber: string } | null} */
+let vorSitzungsende = null;
+/** Hat die Prüfung nach einer neuen Anmeldung die Eingaben einer anderen Sitzung verworfen? (für nochmalSchreiben) */
+let vorgaengerVerworfen = false;
+
 /** @param {string|null} gesendet  das Merkmal, mit dem die abgewiesene Anfrage hinausging */
 function sitzungEndet(gesendet) {
   /* Review #378 A1: Eine verspätete 401 einer Anfrage mit einem älteren Merkmal (inzwischen neu angemeldet) räumt das
      neue Merkmal nicht. Ohne Merkmal (gesendet null) bleibt es beim bisherigen Räumen, gemeldet wird dann nichts. */
   if (gesendet !== token) return;
+  /* B-L4c: Ein noch ungeprüfter Merker bleibt (auch über eine weitere 401 hinweg, etwa wenn die neue Sitzung vor der
+     Prüfung endet); sonst ETag und Inhaber dieser Sitzung — nur mit bekanntem Inhaber. */
+  const merker = vorSitzungsende
+    || (gesendet && zugang && typeof zugang.inhaber === "string" && zugang.inhaber ? { etag, inhaber: zugang.inhaber } : null);
   abmelden(true);
+  vorSitzungsende = merker;
   if (!gesendet) return;
   for (const fn of [...sitzungsendeHoerer]) { try { fn(); } catch { /* ein Hörer hält die anderen nicht auf */ } }
 }
@@ -286,6 +306,8 @@ export function abmelden(still = false) {
      gehört nicht dem nächsten Menschen an diesem Gerät. */
   offlineDatenLoeschen(stempelInhaber());
   token = null; etag = null; name = null; zugang = null;
+  /* B-L4c: Der Merker des Sitzungsendes gilt nie über ein Abmelden hinaus (sitzungEndet setzt ihn danach neu). */
+  vorSitzungsende = null; vorgaengerVerworfen = false;
   /* Der Stempelpuffer bleibt auf dem Gerät (WP-07) — wartende Stempel gehen
      nicht verloren. Ohne Inhaber wird aber nichts mehr gesendet und nichts
      mehr angezeigt; eine andere Person, die sich hier anmeldet, sieht ihn
@@ -685,13 +707,17 @@ export const ausstehend = () => (gescheitert ? { ...gescheitert.lage } : null);
 
 /** Nimmt den letzten gescheiterten Versuch noch einmal auf. */
 export async function nochmalSchreiben() {
+  if (vorgaengerVerworfen && !gescheitert) { vorgaengerVerworfen = false; return { ok: false, fremd: true }; }
   if (!gescheitert) return { ok: true, nichts: true };
   /* Review #350 H1: Ein Auftrag von vor einem Löschlauf geht nie mehr hinaus (er enthielte Gelöschtes). */
   if (neuLadenPflicht || gescheitert.gesperrt) return { ok: false, gesperrt: true };
   const a = gescheitert;
   gescheitert = null;
   offen = a.auftrag;
+  vorgaengerVerworfen = false;
   await jetztSchreiben();
+  /* B-L4c: Angemeldet hat sich eine andere Sitzung (anderer Inhaber) — die Eingaben der vorherigen sind verworfen. */
+  if (vorgaengerVerworfen) { vorgaengerVerworfen = false; return { ok: false, fremd: true }; }
   return { ok: !gescheitert };
 }
 
@@ -954,11 +980,60 @@ async function teilwegSchreiben(auftrag, beimSchliessen, vollGewuenscht, abbruch
   return { weiter: false, status: a.status, fehler: f };
 }
 
+/**
+ * B-L4c: Gehört die neue Anmeldung zum Inhaber der beendeten Sitzung? Ein frisches GET (nie aus dem Speicher des
+ * Dienstarbeiters) meldet den Inhaber; übernommen wird daraus NUR dieser Vergleich — weder Bestand noch ETag.
+ * "gleich": der alte ETag gilt wieder. "fremd": alles der vorherigen Sitzung verworfen. "unklar": Merker bleibt.
+ * Eine 401 wirft „nicht-angemeldet" (der Merker bleibt, sitzungEndet).
+ * @returns {Promise<"gleich"|"fremd"|"unklar">}
+ */
+async function sitzungsendeKlaeren() {
+  const vor = vorSitzungsende;
+  const { status, daten, ausSpeicher } = await ruf("bestand");
+  if (!vor || vorSitzungsende !== vor) return "unklar";   // inzwischen abgemeldet oder neu gemerkt
+  if (status !== 200 || ausSpeicher || !daten || typeof daten.inhaber !== "string" || !daten.inhaber) return "unklar";
+  vorSitzungsende = null;
+  if (daten.inhaber === vor.inhaber) { etag = vor.etag; return "gleich"; }
+  vorgaengerVerwerfen();
+  return "fremd";
+}
+
+/** B-L4c: Alles, was zur vorherigen Sitzung gehört und noch hinausgehen oder angezeigt werden könnte, verwerfen. */
+function vorgaengerVerwerfen() {
+  etag = null;
+  gescheitert = null;
+  offen = null;
+  if (uhr) { clearTimeout(uhr); uhr = null; }
+  konfliktSperre = null;
+  teil = null; teilRoh = null; teilAuftrag = null;
+  einmalig = null;
+  letzterBestand = null;
+  vorgaengerVerworfen = true;
+}
+
 async function schreibenAusfuehren(beimSchliessen) {
   if (!offen) return;
   /* Review #350: nach einem Löschlauf geht kein wartender Auftrag mehr hinaus (auch nicht beim Schließen). */
   if (neuLadenPflicht) { const a = offen; offen = null; uhr = null; pflichtAufnehmen(a); return; }
   const auftrag = offen; offen = null; uhr = null;
+  /* B-L4c: Nach einem Sitzungsende und neuer Anmeldung erst den Inhaber prüfen — vor der Konfliktsperre, damit auch eine
+     offene Konfliktfrage der vorherigen Sitzung bei einem anderen Inhaber verworfen wird. Beim Schließen keine Prüfung
+     möglich: dann nichts senden, der Auftrag bleibt ausstehend. */
+  if (vorSitzungsende && token) {
+    let klar = "unklar", fehler = null;
+    unterwegs += 1;
+    try { if (!beimSchliessen) klar = await sitzungsendeKlaeren(); }
+    catch (e) { fehler = e; }
+    finally { unterwegs -= 1; }
+    if (klar === "fremd") return;
+    if (klar !== "gleich") {
+      gescheitert = { auftrag, lage: { art: fehler ? fehlerart(fehler, null) : "netz",
+        text: String(fehler && fehler.message || "Die Anmeldung ließ sich nicht prüfen."), status: null,
+        zeit: new Date().toISOString() } };
+      if (auftrag.onFehler) { try { auftrag.onFehler({ ...gescheitert.lage, ...(fehler ? { fehler } : {}) }); } catch { /* Anzeige */ } }
+      return;
+    }
+  }
   /* Konfliktsperre: bis zur Entscheidung nichts senden, auch nicht beim Schließen (ohne Teilweg nie gesetzt). */
   if (konfliktSperre) { konfliktHalten(auftrag); return; }
   let status = null;

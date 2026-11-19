@@ -12,6 +12,9 @@
         der Schreibvorgang scheitert mit Lage „abgemeldet", der Auftrag bleibt (ausstehenderBestand), die Leiste
         „nicht gespeichert" bietet Anmeldung mit Code in diesem Reiter und „Als Datei sichern". Auf dem Server ändert
         sich nichts.
+     O  (B-L4c) Senden nach erneuter Anmeldung: dieselbe Person → mit dem alten ETag (passt: gespeichert; veraltet:
+        gewöhnlicher 409); anderer Inhaber (Person oder Datenraum) → nichts gesendet, alles der vorherigen Sitzung
+        verworfen; absichtliches Abmelden löscht den Merker; endet auch die neue Sitzung, bleibt er.
      K  Kein Kreislauf: Eine weitere 401 ohne Merkmal meldet nichts mehr.
      F  Entscheidungstafel sitzungsendeFolge.
      Q  Quelltext-Verträge (speicher.js, main.jsx, App.jsx).
@@ -186,6 +189,124 @@ describe("O Sitzung endet bei offener Seite mit ausstehender Eingabe", { timeout
   });
 });
 
+/* Befund B-L4c: Nach dem Sitzungsende ging „Anmelden und senden" ohne Versionsangabe hinaus (abmelden(true) räumte den
+   ETag) — 409 „ohne Versionsangabe nicht überschreibbar", Konfliktfenster ohne fremde Änderung. Jetzt bleibt der ETag
+   über das Sitzungsende, wirkt aber nur, wenn die neue Anmeldung denselben Inhaber (Raum, Betrieb, Person) hat. */
+const neueSitzung = async ({ raum = RAUM, person: p = "l1", rolle = "leitung" } = {}) => (await S.sitzungAnlegen({
+  bestand: raum, name: `V N${p}`, rolle, person: p, betrieb: 0, mandantId: "m1", einheit: null }, 2 * 3600 * 1000)).token;
+/** Bis zur Leiste „nicht gespeichert" wie in O: Eingabe ruhezeit 13, Sitzung beendet, Auftrag gescheitert (abgemeldet). */
+async function bisZurLeiste(r) {
+  const g = await r.SP.lies();
+  const db = { ...g.bestand, session: { mandantId: "m1", personId: "l1" } };
+  r.konflikte = [];
+  const o = { ...opt(r), onKonflikt: (d) => r.konflikte.push(d) };
+  r.SP.schreib({ ...db, mandanten: db.mandanten.map((m) => ({ ...m, einstellungen: { ...m.einstellungen, ruhezeit: 13 } })) }, o);
+  await S.sitzungBeenden(TOKEN);
+  await expect(r.SP.lies()).rejects.toThrow("nicht-angemeldet");
+  await r.SP.schreibenAbschliessen();
+  expect(r.SP.ausstehend().art).toBe("abgemeldet");
+  /* Der Versuch ohne Merkmal (401) zählt nicht; ab hier nur die Versuche nach der neuen Anmeldung. */
+  expect(PUTS.every((p) => p.etag === null)).toBe(true);
+  PUTS = [];
+  return (await B.bestandLesen(laden(), RAUM)).stand;
+}
+
+describe("O Senden nach erneuter Anmeldung (B-L4c)", { timeout: 120000 }, () => {
+  it("dieselbe Person meldet sich in diesem Reiter an: gesendet MIT dem alten ETag, gespeichert, kein Konflikt", async () => {
+    await neuerRaum();
+    const r = await seite();
+    const stand = await bisZurLeiste(r);
+    r.anmeldeToken = await neueSitzung();
+    await r.SP.anmelden("CODE-NEU", false);
+    const erg = await r.SP.nochmalSchreiben();
+    expect(erg).toEqual({ ok: true });
+    expect(PUTS.length).toBe(1);
+    expect(PUTS[0].etag, "mit der Versionsangabe von vor dem Sitzungsende").toBeTruthy();
+    expect(PUTS[0].etag).toBe(stand);
+    expect(r.konflikte, "kein Konfliktfenster").toEqual([]);
+    expect(r.SP.konfliktLage()).toBeNull();
+    expect(r.SP.ausstehend()).toBeNull();
+    expect((await gespeichert()).einstellungen.ruhezeit).toBe(13);
+    expect(r.neuGeladen).toBe(0);
+  });
+
+  it("inzwischen fremd geändert: gesendet mit dem alten ETag → gewöhnlicher 409, die fremde Änderung bleibt", async () => {
+    await neuerRaum();
+    const r = await seite();
+    const stand = await bisZurLeiste(r);
+    const fremd = bestand(); fremd.mandanten[0].name = "Haus fremd";
+    await B.bestandSchreiben(laden(), RAUM, fremd, { durch: "Andere" });
+    r.anmeldeToken = await neueSitzung();
+    await r.SP.anmelden("CODE-NEU", false);
+    const erg = await r.SP.nochmalSchreiben();
+    expect(erg.ok).toBe(false);
+    expect(PUTS.map((p) => p.etag), "der alte ETag, nicht null").toEqual([stand]);
+    expect(r.konflikte.length, "Konfliktfenster mit dem Stand des Servers").toBe(1);
+    expect(r.SP.konfliktLage(), "Konfliktsperre gesetzt").not.toBeNull();
+    expect(JSON.stringify(r.konflikte[0])).not.toMatch(/ohne Versionsangabe/);
+    const m = await gespeichert();
+    expect([m.name, m.einstellungen.ruhezeit], "fremde Änderung bleibt, nichts überschrieben").toEqual(["Haus fremd", 11]);
+    expect(r.SP.ausstehenderBestand().mandanten[0].einstellungen.ruhezeit, "Eingabe bleibt ausstehend").toBe(13);
+  });
+
+  for (const [titel, andere] of [
+    ["andere Person im selben Raum", async () => neueSitzung({ person: "a1", rolle: "mitarbeiter" })],
+    ["dieselbe Person-Kennung in einem anderen Datenraum", async () => {
+      const raum2 = `${RAUM}-zwei`;
+      await B.bestandSchreiben(laden(), raum2, bestand(), { durch: "Prüfung" });
+      return neueSitzung({ raum: raum2 });
+    }],
+  ]) {
+    it(`Benutzerwechsel (${titel}): nichts gesendet, ETag und Eingabe der vorherigen Sitzung verworfen`, async () => {
+      await neuerRaum();
+      const r = await seite();
+      await bisZurLeiste(r);
+      r.anmeldeToken = await andere();
+      await r.SP.anmelden("CODE-ANDERS", false);
+      const erg = await r.SP.nochmalSchreiben();
+      expect(erg).toEqual({ ok: false, fremd: true });
+      expect(PUTS, "kein Schreibversuch mit Eingabe oder ETag der vorherigen Sitzung").toEqual([]);
+      expect(r.SP.ausstehend()).toBeNull();
+      expect(r.SP.ausstehenderBestand()).toBeNull();
+      expect(r.SP.konfliktLage()).toBeNull();
+      expect(r.SP.schreibenAusstehend()).toBe(false);
+      expect(r.konflikte).toEqual([]);
+      expect((await gespeichert()).einstellungen.ruhezeit, "Raum der vorherigen Sitzung unverändert").toBe(11);
+      /* Ein weiterer Aufruf meldet nichts mehr (der Hinweis gilt einmal). */
+      expect(await r.SP.nochmalSchreiben()).toEqual({ ok: true, nichts: true });
+    });
+  }
+
+  it("absichtliches Abmelden löscht den Merker: danach kein alter ETag mehr", async () => {
+    await neuerRaum();
+    const r = await seite();
+    await bisZurLeiste(r);
+    r.SP.abmelden();
+    r.anmeldeToken = await neueSitzung();
+    await r.SP.anmelden("CODE-NEU", false);
+    await r.SP.nochmalSchreiben();
+    expect(PUTS.map((p) => p.etag), "ohne Merker keine Versionsangabe der vorherigen Sitzung").toEqual([null]);
+    expect((await gespeichert()).einstellungen.ruhezeit).toBe(11);
+  });
+
+  it("die neue Sitzung endet vor der Prüfung: der Merker bleibt, die nächste Anmeldung sendet mit dem alten ETag", async () => {
+    await neuerRaum();
+    const r = await seite();
+    const stand = await bisZurLeiste(r);
+    const zwischen = await neueSitzung();
+    r.anmeldeToken = zwischen;
+    await r.SP.anmelden("CODE-1", false);
+    await S.sitzungBeenden(zwischen);
+    const erste = await r.SP.nochmalSchreiben();
+    expect(erste.ok).toBe(false);
+    expect(r.SP.ausstehend().art).toBe("abgemeldet");
+    r.anmeldeToken = await neueSitzung();
+    await r.SP.anmelden("CODE-2", false);
+    expect(await r.SP.nochmalSchreiben()).toEqual({ ok: true });
+    expect(PUTS.map((p) => p.etag)).toEqual([stand]);
+  });
+});
+
 describe("K kein Kreislauf", { timeout: 120000 }, () => {
   it("eine weitere 401 ohne Merkmal meldet nichts; abgemeldete Hörer hören nichts", async () => {
     await neuerRaum();
@@ -241,7 +362,9 @@ describe("Q Quelltext-Verträge", () => {
     const sp = await lies("../src/speicher.js");
     expect(sp).toMatch(/const gesendet = token;\n  const a = await fetch/);
     expect(sp).toMatch(/if \(a\.status === 401\) \{ sitzungEndet\(gesendet\); throw new Error\("nicht-angemeldet"\); \}/);
-    expect(sp).toMatch(/if \(gesendet !== token\) return;\n  abmelden\(true\);\n  if \(!gesendet\) return;/);
+    expect(sp).toMatch(/if \(gesendet !== token\) return;\n[\s\S]{0,400}?abmelden\(true\);\n  vorSitzungsende = merker;\n  if \(!gesendet\) return;/);
+    /* B-L4c: abmelden räumt den Merker; nur sitzungEndet setzt ihn danach; das Räumen von abmelden bleibt. */
+    expect(sp).toMatch(/token = null; etag = null; name = null; zugang = null;\n[^\n]*\n  vorSitzungsende = null; vorgaengerVerworfen = false;/);
     const main = await lies("../src/main.jsx");
     expect(main).toMatch(/\nsitzungsendeBeobachten\(\);\n/);
     expect(main).toMatch(/const SITZUNGSENDE_BEIM_START = sitzungsendeHinweisAbholen\(\);/);

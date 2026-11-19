@@ -125,6 +125,14 @@ export function verwerfenMitRueckfrage() {
   return true;
 }
 
+/* Befund B-L4c: Nach dem Sitzungsende hat sich eine andere Sitzung angemeldet (anderer Inhaber: Person, Betrieb oder
+   Datenraum). speicher.js hat die Eingaben der vorherigen Sitzung verworfen und nichts gesendet; die Seite lädt neu,
+   damit auch die Anzeige nichts der vorherigen Sitzung mehr zeigt. */
+function fremdVerworfen(melde) {
+  melde("Angemeldet mit einem anderen Zugang — die nicht gespeicherten Eingaben der vorherigen Sitzung wurden verworfen.");
+  window.location.reload();
+}
+
 export function NichtGespeichert({ lage, melde, aufGeloest, onKonflikt = null }) {
   const [laeuft, setLaeuft] = useState(false);
   const [code, setCode] = useState("");
@@ -135,6 +143,7 @@ export function NichtGespeichert({ lage, melde, aufGeloest, onKonflikt = null })
     setLaeuft(true);
     try {
       const erg = await SP.nochmalSchreiben();
+      if (erg.fremd) { fremdVerworfen(melde); return; }
       if (erg.ok) { aufGeloest(); melde("Gespeichert."); }
       else melde("Es hat wieder nicht geklappt.");
     } catch { melde("Es hat wieder nicht geklappt."); }
@@ -154,6 +163,7 @@ export function NichtGespeichert({ lage, melde, aufGeloest, onKonflikt = null })
     try {
       await SP.anmelden(c, SP.wirdGemerkt());
       const erg = await SP.nochmalSchreiben();
+      if (erg.fremd) { fremdVerworfen(melde); return; }
       if (erg.ok) { aufGeloest(); melde("Angemeldet und gespeichert."); }
       else melde("Angemeldet — das Speichern hat trotzdem nicht geklappt.");
     } catch (e) { melde(String(e.message || e)); }
