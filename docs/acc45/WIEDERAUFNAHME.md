@@ -5,6 +5,11 @@
 > Halter und Epoche stehen nie verlässlich in diesem Dokument: maßgeblich ist allein `node werkzeug/koordination.mjs status`
 > (dazu `leerlauf`). Epochenangaben in den Nachträgen unten sind historisch. Betriebsregeln: Abschnitt „Koordinationsregel“.
 
+## Nachtrag 2026-11-19 (h) (IMP-6 Vorbedingung „Modell verkürzt, Versatz ≥ n“, Branch `feat/imp6-versatz-vorbedingung`, offen bis Merge)
+
+- Basis `integration/release-v4` `8c250c04`. Umgesetzt (nur Server): Wird ein Schichtmodell verkürzt und trägt eine Zuordnung zu diesem Modell einen Versatz ≥ neue Länge, antwortet der Server 422 `MODELL_VERKUERZT_VERSATZ` und speichert nichts (bisher 200, Zuordnung danach still „ungültig/versatz“). Voll- und Teilweg, nach der Rechteprüfung, in `daten.mjs` neben den übrigen 422-Absagen; Bibliothek `modellKuerzungFehler`/`modellKuerzungFehlerBestand` in `schichtzuordnung.mjs`. Festschreibender Test in `imp6-mehrfachmodelle` Abschnitt 4 umgestellt, neuer Abschnitt 4b (Grenzen n−1/n, Verlängern, gleicher Speichervorgang, Altfehler, Teilweg, Rollen ohne Recht). Keine Oberfläche (`App.jsx`/`speicher.js` unberührt, PR #382 läuft dort), kein Schalter, keine Migration.
+- Damit erledigt: die technische Vorbedingung aus P2-4 (Zeile „Folgepaket (Pflicht vor P2-4 Punkt 6)“ in Nachtrag (c)). Weiter vor Punkt 6 offen: Punkt 8 (Wiederherstellen), Wächter D2 in `imp6-zyklen-grenzfaelle` und Differenzprüfung D; Anzeige des Servertexts in der Oberfläche zusammen mit der Modellpflege (P2-19 (d)). Keine neue Betreiberfrage.
+
 ## Nachtrag 2026-11-19 (g) (SSOT-Nachtrag #372 bis #374 und Einordnung P2-14 bis P2-20, nur Doku und SSOT)
 
 - Integrationskopf `integration/release-v4`: `1d8aacce` (Merge #374). Merge-Commits aus `gh pr view`: #372 (`c581f903`, IMP-6 Teil 2, Q4: Beschäftigte sehen ihr eigenes Schichtmodell, Lesesicht; Betriebsrat keine neuen Leserechte); #373 (`a9b32b4f`, Lastflake `zugaenge-frischer-faktor`: nur Zeitgrenze 30 s, Aussage unverändert, kein Servercode); #374 (`1d8aacce`, `speicher.js` Sendesperre nach 409 bis zur Entscheidung, Folgepaket aus Review #365).

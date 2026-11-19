@@ -56,7 +56,7 @@ import { bestaetigtAm, bestaetigungEntfernen } from "../lib/mailbestaetigung.mjs
 import { zustellen, pushSchluessel, geraetAbmelden, geraetAusRumpf, personBereinigen, zustellStatusEigene } from "../lib/versand.mjs";
 import { auskunftBauen, protokollZurPerson, kontoFuerAuskunft, AUSKUNFT_FUER_ANDERE } from "../lib/auskunft.mjs";
 import { modulProtokollZeilen, bestandOhneModuleinstellungen } from "../lib/branchenmodule.mjs";
-import { schichtzuordnungProtokollZeilen } from "../lib/schichtzuordnung.mjs";
+import { schichtzuordnungProtokollZeilen, modellKuerzungFehlerBestand } from "../lib/schichtzuordnung.mjs";
 import { VORLAGEN, vorlageBestand, demoGestaltPruefen, demoOhneVertrag, codeBindung, betriebFuerNeuenCode }
   from "../lib/erstbefuellung.mjs";
 import { SICHERUNG_ROLLEN, WIEDERHERSTELLEN_ROLLEN, MARKE, markeNeu, eigenerBetrieb,
@@ -1746,6 +1746,15 @@ async function behandeln(req, context, ctx) {
           await protokoll("schreiben", ks, "abgewiesen", `Gestalt: ${paS.code}`, wer);
           return antwort({ fehler: "Die Pause einer Ist-Zeit ist ungültig.", code: paS.code,
             text: `${paS.grund} Es wurde nichts geändert.`, feld: paS.feld }, 422);
+        }
+        /* IMP-6, Vorbedingung vor P2-4 Punkt 6 (Review #369): Ein verkürztes Schichtmodell, an dem eine Zuordnung einen
+           Versatz ≥ neue Länge trägt, ist 422 MODELL_VERKUERZT_VERSATZ — kein stilles „ungültig“, kein Modulo, kein
+           Ersatzwert. Voll- und Teilweg, nach der Rechteprüfung (ohne Recht bleiben die Modelle ohnehin gespeichert). */
+        const mkS = modellKuerzungFehlerBestand(zuSchreiben, jetzt ? jetzt.bestand : null);
+        if (mkS) {
+          await protokoll("schreiben", ks, "abgewiesen", `Gestalt: ${mkS.code}`, wer);
+          return antwort({ fehler: "Das Schichtmodell ist für eine Zuordnung zu kurz.", code: mkS.code,
+            text: `${mkS.grund} Es wurde nichts geändert.`, feld: mkS.feld }, 422);
         }
 
         /* Die offene Fachprüfung (WP-22) hängt am Ergebnis von zusammenfuehren (WeakMap) —
