@@ -195,7 +195,8 @@ test.describe.serial("Lokale E2E-Abnahme Hauptfunktionen 2: Stempeln mit Pause, 
     const zelle = (n, kopf) => zeile(n).locator(`td[data-label="${kopf}"]`);
     await expect(zeile(`Stempel-${MK}, Ada`)).toHaveCount(1);
     /* Beobachtung B-Z3 (fachlich zu klären, nicht geändert): Die Zuschlagsstunden zählen die Anwesenheit 06:00–14:00
-       (8,0), ohne die 30 min Pause der Dienstart (server/lib/isteinfrieren.mjs zuschlagTagAddieren/tagesanteile). */
+       (8,0), ohne die 30 min Pause der Dienstart (server/lib/isteinfrieren.mjs zuschlagTagAddieren/tagesanteile).
+       Nach fachlicher Klärung ggf. umkehren (dann 7,5 hier und in Z4). */
     await expect(zelle(`Stempel-${MK}`, "Sonntag")).toHaveText("8,0");
     await expect(zelle(`Gegen-${MK}`, "Sonntag")).toHaveText("0,0");
     await expect(zelle(`Gegen-${MK}`, "Gearbeitet"), "06:00–14:00 mit 60 min Pause").toHaveText("7,0");
@@ -230,7 +231,7 @@ test.describe.serial("Lokale E2E-Abnahme Hauptfunktionen 2: Stempeln mit Pause, 
     const zeileVon = (n) => (csv.find((z) => z.startsWith(`${n};`)) || "").split(";");
     const a1 = zeileVon(`Stempel-${MK}`), a2 = zeileVon(`Gegen-${MK}`);
     expect(a1.slice(0, 3)).toEqual([`Stempel-${MK}`, "Ada", "a1"]);
-    expect(a1[5], "Sonntag a1 (B-Z3: ohne Pausenabzug)").toBe("8,0");
+    expect(a1[5], "Sonntag a1 (B-Z3: ohne Pausenabzug; nach fachlicher Klärung ggf. umkehren)").toBe("8,0");
     expect(a2.slice(0, 6), "a2: 7,0 h, kein Sonntag").toEqual([`Gegen-${MK}`, "Gea", "a2", "7,0", "0,0", "0,0"]);
     /* Blatt zum Gegenlesen: der offene Prüffall steht darin (Planzeit vorläufig), nichts als bestätigt ausgegeben */
     await reiter(page, "Lohnausgabe").click();
