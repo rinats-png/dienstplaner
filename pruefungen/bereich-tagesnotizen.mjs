@@ -97,16 +97,26 @@ pruef("SV: neue Notiz — Einheit A und Autor vom Server; die übrigen des Tages
   && nNeu && nNeu.einheitId === "eA" && nNeu.vonId === "s1" && mP.notizen[D].length === 6, `Status ${neu.status} ${neu.text || ""}`);
 const loesch = await schreibe(tS, (m) => { m.notizen[D] = m.notizen[D].filter((x) => x.id !== "n-A"); });
 pruef("SV: eigene Notiz löschen: 200", loesch.status === 200 && !(await betriebVon(tP)).notizen[D].some((x) => x.id === "n-A"), `Status ${loesch.status}`);
-const bAendern = await schreibe(tS, (m) => { m.notizen[D].push({ ...notiz("n-B", "eB"), text: "GEÄNDERT" }); });
-pruef("SV: B-Notiz ändern: abgewiesen", bAendern.status === 403);
-const bUeber = await schreibe(tS, (m) => { m.notizen[D].push({ ...notiz("n-B", "eB"), einheitId: "eA" }); });
-pruef("SV: B-Notiz → A: abgewiesen", bUeber.status === 403);
-const lUeber = await schreibe(tS, (m) => { m.notizen[D].push({ ...notiz("n-L", undefined), einheitId: "eA" }); });
-pruef("SV: Altbestand übernehmen: abgewiesen", lUeber.status === 403);
-const nUeber = await schreibe(tS, (m) => { m.notizen[D].push({ ...notiz("n-N", null), einheitId: "eA" }); });
-pruef("SV: null-Notiz übernehmen: abgewiesen", nUeber.status === 403);
-const pUeber = await schreibe(tS, (m) => { m.notizen[D].push({ ...notiz("n-P", "ePool"), einheitId: "eA" }); });
-pruef("SV: Pool-Notiz übernehmen: abgewiesen", pUeber.status === 403);
+/* Folgepaket #361 (Existenzorakel): bis dahin 403 „Bestehende Tagesnotizen sind nicht änderbar" für die verborgene
+   Kennung, für eine unbekannte mit denselben Angaben 200. Jetzt dieselbe Antwort wie für die unbekannte Kennung —
+   geändert oder übernommen wird trotzdem nichts: die verborgene Notiz bleibt byte-gleich. */
+/* Antwortbild ohne den neuen Stand (etag; bei 200 steht der Rohtext mit etag in `text`). */
+const antwortBild = (w) => JSON.stringify({ ...w, etag: undefined, text: w.status === 200 ? undefined : w.text });
+let unbekanntNr = 0;
+const wieUnbekannt = async (name, x) => {
+  const vorherN = JSON.stringify((await betriebVon(tP)).notizen[D].find((y) => y.id === x.id));
+  const v = await schreibe(tS, (m) => { m.notizen[D].push(x); });
+  const nachN = JSON.stringify((await betriebVon(tP)).notizen[D].find((y) => y.id === x.id));
+  unbekanntNr += 1;
+  const u = await schreibe(tS, (m) => { m.notizen[D].push({ ...x, id: `${x.id}-unbekannt-${unbekanntNr}` }); });
+  pruef(`SV: ${name}: Antwort wie unbekannte Kennung, Notiz unverändert`,
+    antwortBild(v) === antwortBild(u) && !!vorherN && nachN === vorherN, `Status ${v.status}/${u.status}`);
+};
+await wieUnbekannt("B-Notiz ändern", { ...notiz("n-B", "eB"), text: "GEÄNDERT" });
+await wieUnbekannt("B-Notiz → A", { ...notiz("n-B", "eB"), einheitId: "eA" });
+await wieUnbekannt("Altbestand übernehmen", { ...notiz("n-L", undefined), einheitId: "eA" });
+await wieUnbekannt("null-Notiz übernehmen", { ...notiz("n-N", null), einheitId: "eA" });
+await wieUnbekannt("Pool-Notiz übernehmen", { ...notiz("n-P", "ePool"), einheitId: "eA" });
 const bLoesch = await schreibe(tS, (m) => { m.notizen = {}; });
 pruef("SV: B-, Pool-, null-, Altbestand-Notizen löschen (nicht mitgeschickt): wirkungslos", bLoesch.status === 200
   && (await betriebVon(tP)).notizen[D].filter((x) => ["n-B", "n-P", "n-N", "n-L"].includes(x.id)).length === 4);

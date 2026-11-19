@@ -319,6 +319,9 @@ function nachrichtenZusammen(alt, neu, ich) {
     && gelesen.get(String(n.id)) !== n.gelesen ? { ...n, gelesen: gelesen.get(String(n.id)) } : n));
 }
 
+/** Offen ist eine Ausschreibung mit Status „offen" (Altbestand ohne Status ebenfalls, wie beim Anlegen). */
+const ausschreibungOffen = (a) => (a && a.status !== undefined && a.status !== null ? a.status : "offen") === "offen";
+
 function ausschreibungenZusammen(alt, neu, ich) {
   const neueNachId = new Map((Array.isArray(neu) ? neu : []).filter(Boolean).map((a) => [a.id, a]));
   return (Array.isArray(alt) ? alt : []).map((a) => {
@@ -326,6 +329,9 @@ function ausschreibungenZusammen(alt, neu, ich) {
     if (!g) return a;
     const fremdeB = (a.bewerbungen || []).filter((b) => !eigenerEintrag(b, ich));
     const meineB = (g.bewerbungen || []).filter((b) => eigenerEintrag(b, ich));
+    /* Auf eine nicht mehr offene Ausschreibung (vergeben, zurückgezogen) kommt keine Bewerbung hinzu und keine
+       ändert sich (Review #361, Folgepaket); zurückziehen bleibt möglich wie in der Oberfläche. Still übergangen. */
+    if (!ausschreibungOffen(a) && meineB.length && !gleich((a.bewerbungen || []).filter((b) => eigenerEintrag(b, ich)), meineB)) return a;
     return { ...a, bewerbungen: [...fremdeB, ...meineB] };
   });
 }
@@ -831,9 +837,10 @@ function objektRueckfuellen(alt, neu, sicht, ich) {
   return aus;
 }
 /** Rückfüllung des ganzen Betriebs der Schichtverantwortung. */
-export function schichtRueckfuellen(altM, neuM, sitzung) {
+export function schichtRueckfuellen(altM, neuM, sitzung, sichtVorab = null) {
   if (!altM || !neuM || typeof neuM !== "object") return neuM;
-  const sicht = betriebSichtSchicht(altM, schichtSichtKontext(altM, sitzung));
+  /* sichtVorab: dieselbe Sicht, schon berechnet (schichtVerborgenAlsUnbekannt) — einmal je Speichern. */
+  const sicht = sichtVorab || betriebSichtSchicht(altM, schichtSichtKontext(altM, sitzung));
   const mitPersonen = personenRueckfuellen(altM, neuM, sitzung);
   const aus = {};
   for (const feld of new Set([...Object.keys(altM), ...Object.keys(neuM)])) {
@@ -848,6 +855,110 @@ export function schichtRueckfuellen(altM, neuM, sitzung) {
     if (Array.isArray(a) && Array.isArray(v) && Array.isArray(n)) aus[feld] = listeRueckfuellen(a, n, v, sitzung.person);
     else if (istObjekt(a) && istObjekt(v) && istObjekt(n)) aus[feld] = objektRueckfuellen(a, n, v, sitzung.person);
     else aus[feld] = gleichJson(n, v) ? a : n;
+  }
+  return aus;
+}
+
+/* --------------------------------------------------------------------------
+   SICHTREGEL IM SCHREIBWEG DER SCHICHTVERANTWORTUNG (Folgepaket zu #361: N1 und Existenzorakel)
+
+   Bis hierher beurteilte einheitZusammen einen mitgeschickten Eintrag mit der Kennung eines gespeicherten als
+   „bestehend" — auch wenn die Lesesicht (sicht.mjs, betriebSichtSchicht) ihn der Schichtverantwortung gar nicht
+   zeigt. Folgen: 403 „Bestehende Einträge sind nicht änderbar" (einspruenge, nachrichten, notrufe, dienstbuch,
+   uebergaben, aenderungen, protokoll, Tagesnotizen) oder „… umschreiben" (anfragen) gegen 200 oder einen anderen
+   Text bei einer unbekannten Kennung — ein Existenzorakel. Und weil die Bereichsregel im Schreibweg (imBereich, am
+   Tag) das Sichtfenster (−60/+90 Tage, umfangImZeitraum) nicht kennt, ließ sich ein verborgener Antrag einer
+   längst versetzten Person mit erratenem Kern sogar entscheiden, ein verborgener Notruf quittieren (Review #361 N1).
+
+   Jetzt EINE Regel aus derselben Quelle wie die Lesesicht: Was betriebSichtSchicht nicht ausliefert, ist für die
+   Schichtverantwortung unbekannt. Ein mitgeschickter Eintrag mit der Kennung eines verborgenen gespeicherten (und
+   anderem Inhalt) bekommt vor jedem kennungsabhängigen Schritt eine neue, unbekannte Kennung — er wird genau so
+   beurteilt wie ein Eintrag mit einer Kennung, die es nicht gibt (dieselbe Antwort, derselbe Text). Besteht er,
+   wird er danach still übergangen (platzhalterEntfernen): Der verborgene Eintrag bleibt byte-gleich, angelegt wird
+   nichts. Sichtbare Einträge und neue Einträge mit unbekannter Kennung laufen unverändert.
+
+   Die neue Kennung behält den Anfang der alten (Muster wie „n-notruf-…" in mitteilungen.mjs, nurVomServer) und ist
+   immer gültig (kennungGueltig) — so hängt auch keine Prüfung am Wert der Kennung anders als bei einer unbekannten.
+   Ein unverändert mitgeschickter verborgener Eintrag bleibt, wie er ist (wer den ganzen Inhalt kennt, erfährt
+   nichts; eine ältere Kopie aus der Zeit, als er noch sichtbar war, blockiert das Speichern nicht).
+   -------------------------------------------------------------------------- */
+/** Listen mit Kennung je Eintrag, die einheitZusammen Eintrag für Eintrag beurteilt. */
+export const SV_KENNUNG_LISTEN = Object.freeze(["anfragen", "einspruenge", "wuensche", "nachrichten", "notrufe", "dienstbuch",
+  "uebergaben", "aenderungen", "protokoll", "bestaetigungen"]);
+/** Objekte aus Listen je Schlüssel („tag|…"), ebenso je Eintrag beurteilt. */
+export const SV_KENNUNG_TAGESLISTEN = Object.freeze(["notizen"]);
+const neuePlatzhalterKennung = (alt) => `${String(alt).slice(0, 50)}~${globalThis.crypto.randomUUID()}`;
+
+/**
+ * Verborgene Kennungen wie unbekannte (siehe oben). Rückgabe: der Betrieb mit umbenannten Einträgen und die
+ * vergebenen Platzhalter je Feld (für platzhalterEntfernen); ohne Treffer der übermittelte Betrieb selbst.
+ * @param {any} altM gespeicherter Betrieb
+ * @param {any} neuM übermittelter Betrieb (vor jeder Rückfüllung)
+ * @param {any} sitzung
+ * @returns {{ mandant: any, platzhalter: null | Record<string, Set<string>>, sicht?: any }}
+ */
+export function schichtVerborgenAlsUnbekannt(altM, neuM, sitzung) {
+  if (!istObjekt(altM) || !istObjekt(neuM)) return { mandant: neuM, platzhalter: null };
+  const sicht = betriebSichtSchicht(altM, schichtSichtKontext(altM, sitzung));
+  /** @type {Record<string, Set<string>>} */
+  const platzhalter = {};
+  const kennung = (e) => (istObjekt(e) && kennungGueltig(e.id) ? String(e.id) : null);
+  /* Eine Liste: Einträge, deren Kennung gespeichert, aber nicht sichtbar ist und deren Inhalt sich unterscheidet. */
+  const liste = (alt, neu, sichtL, schluessel) => {
+    if (!Array.isArray(alt) || !Array.isArray(neu)) return neu;
+    const sichtbar = new Set((Array.isArray(sichtL) ? sichtL : []).map(kennung).filter((k) => k !== null));
+    const verborgen = new Map();
+    for (const a of alt) {
+      const k = kennung(a);
+      if (k === null || sichtbar.has(k)) continue;
+      if (!verborgen.has(k)) verborgen.set(k, []);
+      verborgen.get(k).push(a);
+    }
+    if (!verborgen.size) return neu;
+    const vergeben = new Map();
+    let geaendert = false;
+    const aus = neu.map((e) => {
+      const k = kennung(e);
+      if (k === null || !verborgen.has(k) || verborgen.get(k).some((a) => gleichJson(a, e))) return e;
+      if (!vergeben.has(k)) vergeben.set(k, neuePlatzhalterKennung(k));
+      geaendert = true;
+      return { ...e, id: vergeben.get(k) };
+    });
+    if (!geaendert) return neu;
+    if (!platzhalter[schluessel]) platzhalter[schluessel] = new Set();
+    for (const p of vergeben.values()) platzhalter[schluessel].add(p);
+    return aus;
+  };
+  let aus = neuM;
+  for (const feld of SV_KENNUNG_LISTEN) {
+    if (!hat(neuM, feld)) continue;
+    const l = liste(altM[feld], neuM[feld], sicht[feld], feld);
+    if (l !== neuM[feld]) aus = { ...aus, [feld]: l };
+  }
+  for (const feld of SV_KENNUNG_TAGESLISTEN) {
+    const a = altM[feld], n = neuM[feld];
+    if (!istObjekt(a) || !istObjekt(n)) continue;
+    const s = istObjekt(sicht[feld]) ? sicht[feld] : {};
+    let objekt = n;
+    for (const k of Object.keys(n)) {
+      if (!hat(a, k)) continue;
+      const l = liste(a[k], n[k], hat(s, k) ? s[k] : [], `${feld}\u0000${k}`);
+      if (l !== n[k]) objekt = { ...objekt, [k]: l };
+    }
+    if (objekt !== n) aus = { ...aus, [feld]: objekt };
+  }
+  return { mandant: aus, platzhalter: Object.keys(platzhalter).length ? platzhalter : null, sicht };
+}
+
+/** Die Einträge mit Platzhalter-Kennung wieder heraus — nach dem Urteil, vor allen Folgen (Mitteilungen, Fachprüfung). */
+export function platzhalterEntfernen(mandant, platzhalter) {
+  if (!platzhalter || !istObjekt(mandant)) return mandant;
+  const weg = (l, ids) => (Array.isArray(l) ? l.filter((e) => !(istObjekt(e) && kennungGueltig(e.id) && ids.has(String(e.id)))) : l);
+  let aus = mandant;
+  for (const [schluessel, ids] of Object.entries(platzhalter)) {
+    const [feld, k] = schluessel.split("\u0000");
+    if (k === undefined) { if (hat(aus, feld)) aus = { ...aus, [feld]: weg(aus[feld], ids) }; continue; }
+    if (istObjekt(aus[feld]) && hat(aus[feld], k)) aus = { ...aus, [feld]: { ...aus[feld], [k]: weg(aus[feld][k], ids) } };
   }
   return aus;
 }
@@ -1482,6 +1593,15 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
       geschickt = Object.prototype.hasOwnProperty.call(ort.betrieb, "krankmeldungen")
         ? { ...ohneFaelle, krankmeldungen: ort.betrieb.krankmeldungen } : ohneFaelle;
     }
+    /* Schichtverantwortung: Kennungen von Einträgen, die ihre Sicht nicht zeigt, gelten als unbekannt — vor jedem
+       kennungsabhängigen Schritt (auch mitteilungenVorfiltern). Siehe schichtVerborgenAlsUnbekannt. */
+    let svPlatzhalter = null, svSicht = null;
+    if (umfang === SCHREIBEN_EINHEIT) {
+      const v = schichtVerborgenAlsUnbekannt(ort.betrieb, geschickt, sitzung);
+      geschickt = v.mandant;
+      svPlatzhalter = v.platzhalter;
+      svSicht = v.sicht || null;
+    }
 
     /* Dienstarten (WP-22, Nutzerentscheidung): anlegen, ändern und löschen,
        wer org.edit oder pattern.edit hat (Leitung, Kundenrolle, Planung — die
@@ -1604,12 +1724,13 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
     /* Die Schichtverantwortung: Feld für Feld gegen den gespeicherten Stand
        (siehe einheitZusammen). Weiter geht nur, was dabei herauskommt. */
     if (umfang === SCHREIBEN_EINHEIT) {
-      geschickt = schichtRueckfuellen(ort.betrieb, geschickt, sitzung);
+      geschickt = schichtRueckfuellen(ort.betrieb, geschickt, sitzung, svSicht);
       /* Monatsabschluss (WP-16): immer der gespeicherte Stand — die verkürzte Form der Sicht ist keine Änderung. */
       geschickt = abschlussAusGespeichert(ort.betrieb, geschickt);
       const urteil = einheitZusammen(ort.betrieb, geschickt, sitzung);
       if (!urteil.ok) return { verweigert: urteil.grund };
-      geschickt = urteil.mandant;
+      /* Bestanden: Einträge unter Platzhalter-Kennung still übergangen, der verborgene Eintrag bleibt byte-gleich. */
+      geschickt = platzhalterEntfernen(urteil.mandant, svPlatzhalter);
     }
     /* Branchenmodule (WP-19.0): Daten ausgeschalteter Module nur lesbar (G3), danach die Schreibwege
        der Module aus MODUL_SCHREIBWEGE — der eine Einhängepunkt für Planung, Leitung und
@@ -2401,10 +2522,12 @@ export function einheitZusammen(altM, neuM, sitzung) {
           }
           if (gleich(vorher, x)) { ergebnis.push(vorher); continue; }
           /* Befund B2 (Review #356): Ein fremder Antrag außerhalb des Bereichs (nicht eigen, Person am ersten Tag nicht
-             im Bereich, kein offenes Tauschgesuch ohne Partner — Bereichs- und Statusregel OHNE das Sichtfenster von
-             sicht.mjs schichtAnfragen; Restfall siehe RECHTEMATRIX.md, Review #361 N1) antwortet wie eine Kennung,
-             die es nicht gibt — sonst verrieten 403-Texte seine Existenz. Geprüft wird wie für einen neuen Antrag; was das
-             besteht, wird still übergangen: Der gespeicherte Antrag bleibt, wie er war. */
+             im Bereich, kein offenes Tauschgesuch ohne Partner) antwortet wie eine Kennung, die es nicht gibt — sonst
+             verrieten 403-Texte seine Existenz. Geprüft wird wie für einen neuen Antrag; was das besteht, wird still
+             übergangen: Der gespeicherte Antrag bleibt, wie er war. Im Schreibweg (zusammenfuehren) kommt ein solcher
+             Antrag hier gar nicht mehr an: schichtVerborgenAlsUnbekannt hat jede Kennung, die die Lesesicht
+             (schichtAnfragen, mit Sichtfenster) nicht zeigt, schon vorher zur unbekannten gemacht (Review #361 N1).
+             Dieser Zweig bleibt als zweite Sicherung für Aufrufe ohne diesen Schritt. */
           if (!eigen(vorher.personId) && !imBereich(vorher.personId, vorher.von)
             && !(vorher.typ === "tausch" && vorher.status === "offen" && !vorher.partnerId)) {
             if (!eigen(x.personId) && !imBereich(x.personId, x.von)) return nein(fremdText(x.personId, x.von));
@@ -2595,6 +2718,9 @@ export function einheitZusammen(altM, neuM, sitzung) {
           const istMeine = (b) => b && eigen(b.personId);
           const neu = Array.isArray(x.bewerbungen) ? x.bewerbungen : [];
           if (gleich(alt.filter(istMeine), neu.filter(istMeine))) return alt;     // eigene unverändert
+          /* Nicht mehr offen (vergeben, zurückgezogen): keine neue oder geänderte eigene Bewerbung, zurückziehen bleibt
+             (wie bei Beschäftigten, ausschreibungenZusammen). Still übergangen. */
+          if (!ausschreibungOffen(vorher) && meineB(x).length) return alt;
           return [...alt.filter((b) => !istMeine(b)), ...meineB(x)];
         };
         const ersetzt = new Map();

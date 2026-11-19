@@ -136,15 +136,25 @@ function bekannteIstStaende(gespeichertE, stempel) {
  * Widerspricht die Übermittlung eines Betriebs seinen gespeicherten Stempeln?
  * @param {object|null} altM  gespeicherter Betrieb (null: neu angelegt)
  * @param {object} neuM       übermittelter Betrieb, wie gesendet
- * @param {{loeschlauf?: boolean, heute?: string, vollSicht?: boolean, unveraendert?: Set<string>}} [o]  loeschlauf: Rolle darf
- *   abgelaufene Stempel löschen (Leitung/Planung); heute: Berliner Tag
+ * @param {{loeschlauf?: boolean, heute?: string, vollSicht?: boolean, unveraendert?: Set<string>,
+ *   sichtbar?: (feld: string, k: string) => boolean}} [o]  loeschlauf: Rolle darf
+ *   abgelaufene Stempel löschen (Leitung/Planung); heute: Berliner Tag; sichtbar: ohne vollSicht — liest die Rolle
+ *   diesen gespeicherten Schlüssel (einstempeln, erfassung)? Unsichtbares gilt als nicht vorhanden.
  * @returns {null | {grund: string, schluessel: string|null}}
  */
 export function stempelWiderspruch(altM, neuM, o = {}) {
   if (!objekt(neuM)) return null;
   const kurz = ketteAn();                                       // WP-48.6: Abkürzungen (Vorgabe an)
-  const altS = altM && objekt(altM.einstempeln) ? altM.einstempeln : {};
-  const altE = altM && objekt(altM.erfassung) ? altM.erfassung : {};
+  /* Existenzorakel (Folgepaket #361): Wer nicht alles sieht (o.sichtbar, nur ohne vollSicht), prüft gegen den Stand,
+     den seine Sicht zeigt. Ein Stempel oder eine Ist-Zeit, die die Rolle nicht liest, gilt hier als nicht vorhanden —
+     sonst unterschied der Text („nicht ändern" gegen „entstehen nur über die Stempeluhr", 403 gegen 200 mit {}), ob
+     eine andere Person an einem Tag gestempelt hat. Gespeichert wird ohnehin der gespeicherte Stand (stempelSichern,
+     Rechteprüfung). */
+  const sichtFilter = !o.vollSicht && typeof o.sichtbar === "function" && ("einstempeln" in neuM || "erfassung" in neuM)
+    ? /** @type {(feld: string, k: string) => boolean} */ (o.sichtbar) : null;
+  const nurSichtbar = (obj, feld) => (sichtFilter ? Object.fromEntries(Object.entries(obj).filter(([k]) => sichtFilter(feld, k))) : obj);
+  const altS = nurSichtbar(altM && objekt(altM.einstempeln) ? altM.einstempeln : {}, "einstempeln");
+  const altE = nurSichtbar(altM && objekt(altM.erfassung) ? altM.erfassung : {}, "erfassung");
   const stich = o.loeschlauf && o.heute && altM ? loeschStichtag(altM, o.heute) : null;
   const abgelaufen = (k) => !!stich && !!tagVon(k) && tagVon(k) < stich;
   /* Ein Stempel jenseits der Aufbewahrungsfrist, den der Datenschutzlauf schon

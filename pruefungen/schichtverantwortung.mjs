@@ -132,8 +132,15 @@ const protV = (await gespeichert()).protokoll;
 const wPr = await versuch((m) => { m.protokoll = []; });
 pruef("Protokoll löschen: wirkungslos (nicht sichtbar)", wPr.status === 200
   && JSON.stringify((await gespeichert()).protokoll.filter((l) => ["l1", "l2"].includes(l.id))) === JSON.stringify(protV.filter((l) => ["l1", "l2"].includes(l.id))), `Status ${wPr.status}`);
+/* Folgepaket #361 (Existenzorakel): Bis dahin 403 „Bestehende Einträge sind nicht änderbar" für die verborgene
+   Kennung, für eine unbekannte mit denselben Angaben 200. Jetzt dieselbe Antwort wie für die unbekannte Kennung —
+   geändert wird trotzdem nichts: das Protokoll bleibt byte-gleich. */
 const wPr2 = await versuch((m) => { m.protokoll = [{ ...protV.find((l) => l.id === "l1"), text: "gefälscht" }]; });
-pruef("Protokolleintrag ändern: 403", wPr2.status === 403, `Status ${wPr2.status}`);
+const protNach = JSON.stringify((await gespeichert()).protokoll.filter((l) => ["l1", "l2"].includes(l.id)));
+const wPr2U = await versuch((m) => { m.protokoll = [{ ...protV.find((l) => l.id === "l1"), id: "l-unbekannt", text: "gefälscht" }]; });
+pruef("Protokolleintrag ändern: Antwort wie unbekannte Kennung, Protokoll unverändert",
+  wPr2.status === wPr2U.status && (wPr2.text || "") === (wPr2U.text || "")
+  && protNach === JSON.stringify(protV.filter((l) => ["l1", "l2"].includes(l.id))), `Status ${wPr2.status}/${wPr2U.status}`);
 const wN = await versuch((m) => { m.nachrichten = []; });
 pruef("Fremde Nachricht löschen: wirkungslos (nicht sichtbar)", wN.status === 200
   && (await gespeichert()).nachrichten.some((n) => n.id === "n-b"), `Status ${wN.status}`);

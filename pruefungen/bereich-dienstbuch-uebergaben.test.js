@@ -57,6 +57,16 @@ function schreibe(s, aendern, g = bestand()) {
   return { g, e, m: e && e.mandanten ? e.mandanten[0] : null };
 }
 const roh = () => bestand().mandanten[0];
+/* Folgepaket #361 (Existenzorakel): Ein verändert eingeschleuster VERBORGENER Eintrag bekam bis dahin 403 „Bestehende
+   Einträge sind nicht änderbar", eine unbekannte Kennung mit denselben Angaben aber 200 oder einen anderen Text. Jetzt
+   dieselbe Antwort wie für die unbekannte Kennung — und gespeichert bleibt das Feld byte-gleich (geändert, übernommen
+   oder angelegt wird weiterhin nichts; die Prüfung ist nicht gelockert, sie prüft jetzt den Zustand statt des Status). */
+const wieUnbekannt = (s, feld, eintrag) => {
+  const v = schreibe(s, (mm) => { mm[feld].push(eintrag); });
+  const u = schreibe(s, (mm) => { mm[feld].push({ ...eintrag, id: `${eintrag.id}-unbekannt` }); });
+  expect(v.e.verweigert, eintrag.id).toBe(u.e.verweigert);
+  if (!v.e.verweigert) expect(v.m[feld], eintrag.id).toEqual(roh()[feld]);
+};
 
 describe("Sicht", () => {
   it("Schichtverantwortung A: nur Dienstbuch und Übergabe der Einheit A", () => {
@@ -104,10 +114,10 @@ describe("Dienstbuch schreiben", () => {
     expect(schreibe(SUB, (mm) => { finde(mm.dienstbuch, "db-A").text = "anders"; }).e.verweigert).toBeTruthy();
     expect(schreibe(SUB, (mm) => { mm.dienstbuch = mm.dienstbuch.filter((x) => x.id !== "db-A"); }).e.verweigert).toBeTruthy();
   });
-  it("SV: fremden Eintrag einschleusen/ändern, Altbestand mit einheitId A übernehmen: abgewiesen", () => {
-    expect(schreibe(SUB, (mm) => { mm.dienstbuch.push({ ...db("db-B", "eB"), text: "FAKE" }); }).e.verweigert).toBeTruthy();
-    expect(schreibe(SUB, (mm) => { mm.dienstbuch.push({ ...db("db-L", undefined), einheitId: "eA" }); }).e.verweigert).toBeTruthy();
-    expect(schreibe(SUB, (mm) => { mm.dienstbuch.push({ ...db("db-N", null), einheitId: "eA" }); }).e.verweigert).toBeTruthy();
+  it("SV: fremden Eintrag einschleusen/ändern, Altbestand mit einheitId A übernehmen: wie unbekannte Kennung, nichts geändert; eigenen umhängen: abgewiesen", () => {
+    wieUnbekannt(SUB, "dienstbuch", { ...db("db-B", "eB"), text: "FAKE" });
+    wieUnbekannt(SUB, "dienstbuch", { ...db("db-L", undefined), einheitId: "eA" });
+    wieUnbekannt(SUB, "dienstbuch", { ...db("db-N", null), einheitId: "eA" });
     expect(schreibe(SUB, (mm) => { finde(mm.dienstbuch, "db-A").einheitId = "eB"; }).e.verweigert).toBeTruthy();
   });
   it("SV mit Pool als eigener Einheit: kein Eintrag", () => {
@@ -157,11 +167,11 @@ describe("Übergaben schreiben", () => {
     expect(schreibe(SUB, (mm) => { finde(mm.uebergaben, "u-A").lage = "anders"; }).e.verweigert).toBeTruthy();
     expect(schreibe(SUB, (mm) => { finde(mm.uebergaben, "u-A").einheitId = "eB"; }).e.verweigert).toBeTruthy();
   });
-  it("SV: Ergänzung an fremde Übergabe, Altbestand/null/Pool übernehmen, fremde löschen: abgewiesen bzw. wirkungslos", () => {
-    expect(schreibe(SUB, (mm) => { mm.uebergaben.push({ ...ue("u-B", "F", "eB"), ergaenzungen: [{ text: "FAKE" }] }); }).e.verweigert).toBeTruthy();
-    expect(schreibe(SUB, (mm) => { mm.uebergaben.push({ ...ue("u-L", "S", undefined), einheitId: "eA" }); }).e.verweigert).toBeTruthy();
-    expect(schreibe(SUB, (mm) => { mm.uebergaben.push({ ...ue("u-N", "F", null), einheitId: "eA" }); }).e.verweigert).toBeTruthy();
-    expect(schreibe(SUB, (mm) => { mm.uebergaben.push({ ...ue("u-P", "F", "ePool"), einheitId: "eA" }); }).e.verweigert).toBeTruthy();
+  it("SV: Ergänzung an fremde Übergabe, Altbestand/null/Pool übernehmen: wie unbekannte Kennung, nichts geändert; fremde löschen: wirkungslos", () => {
+    wieUnbekannt(SUB, "uebergaben", { ...ue("u-B", "F", "eB"), ergaenzungen: [{ text: "FAKE" }] });
+    wieUnbekannt(SUB, "uebergaben", { ...ue("u-L", "S", undefined), einheitId: "eA" });
+    wieUnbekannt(SUB, "uebergaben", { ...ue("u-N", "F", null), einheitId: "eA" });
+    wieUnbekannt(SUB, "uebergaben", { ...ue("u-P", "F", "ePool"), einheitId: "eA" });
     const weg = schreibe(SUB, (mm) => { mm.uebergaben = mm.uebergaben.filter((u) => u.id === "u-A"); mm.abweichungen[`a1|${D}`] = "F"; });
     expect(weg.e.verweigert).toBeFalsy();
     expect(weg.m.uebergaben).toEqual(roh().uebergaben);

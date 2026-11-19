@@ -256,8 +256,16 @@ describe("E — Stempeluhr und Zeiterfassung", () => {
 });
 
 describe("F/G/H — Nachrichten, Dienstbuch, Unterschreitungen", () => {
-  it("10. fremde Nachricht ändern: abgewiesen; löschen: wirkungslos (nicht sichtbar)", () => {
-    ab(schreibe(bestand(), SUB, (m) => { m.nachrichten.push({ ...gespeichert("nachrichten", "n-a"), titel: "anders" }); }));
+  /* Folgepaket #361 (Existenzorakel): Bis dahin hier 403 „Bestehende Einträge sind nicht änderbar" — für eine
+     unbekannte Kennung aber 200 oder ein anderer Text. Jetzt dieselbe Antwort wie für eine unbekannte Kennung, und die
+     fremde Nachricht bleibt byte-gleich (nicht gelockert: geändert wird sie weiterhin nie). */
+  it("10. fremde Nachricht ändern: Antwort wie unbekannte Kennung, gespeichert unverändert; löschen: wirkungslos (nicht sichtbar)", () => {
+    for (const [id, aenderung] of [["n-a", { titel: "anders" }], ["n-b", { gelesen: true }]]) {
+      const verborgen = schreibe(bestand(), SUB, (m) => { m.nachrichten.push({ ...gespeichert("nachrichten", id), ...aenderung }); });
+      const unbekannt = schreibe(bestand(), SUB, (m) => { m.nachrichten.push({ ...gespeichert("nachrichten", id), ...aenderung, id: "gibt-es-nicht" }); });
+      expect(verborgen.verweigert, id).toBe(unbekannt.verweigert);
+      if (!verborgen.verweigert) expect(verborgen.mandanten[0].nachrichten, id).toEqual(bestand().mandanten[0].nachrichten);
+    }
     ab(schreibe(bestand(), SUB, (m) => { m.nachrichten.push({ ...gespeichert("nachrichten", "n-b"), gelesen: true }); }));
     const m = ok(schreibe(bestand(), SUB, (m) => { m.nachrichten = []; m.abweichungen["a1|2026-11-03"] = "F"; }));
     expect(m.nachrichten.map((n) => n.id).sort()).toEqual(["n-a", "n-b", "n-s"]);
@@ -313,8 +321,13 @@ describe("F/G/H — Nachrichten, Dienstbuch, Unterschreitungen", () => {
 });
 
 describe("I — Protokoll und Änderungen: nur anhängen", () => {
-  it("12. Protokoll ändern: abgewiesen; löschen: wirkungslos (nicht sichtbar)", () => {
-    ab(schreibe(bestand(), SUB, (m) => { m.protokoll = [{ ...gespeichert("protokoll", "l1"), text: "gefälscht" }]; }));
+  /* Folgepaket #361 (Existenzorakel): vorher 403 „Bestehende Einträge sind nicht änderbar", für eine unbekannte
+     Kennung 200. Jetzt dieselbe Antwort, und das Protokoll bleibt byte-gleich (geändert wird es weiterhin nie). */
+  it("12. Protokoll ändern: Antwort wie unbekannte Kennung, Protokoll unverändert; löschen: wirkungslos (nicht sichtbar)", () => {
+    const verborgen = schreibe(bestand(), SUB, (m) => { m.protokoll = [{ ...gespeichert("protokoll", "l1"), text: "gefälscht" }]; });
+    const unbekannt = schreibe(bestand(), SUB, (m) => { m.protokoll = [{ ...gespeichert("protokoll", "l1"), id: "gibt-es-nicht", text: "gefälscht" }]; });
+    expect(verborgen.verweigert).toBe(unbekannt.verweigert);
+    expect(ok(verborgen).protokoll).toEqual(bestand().mandanten[0].protokoll);
     const m = ok(schreibe(bestand(), SUB, (m) => { m.protokoll = []; m.abweichungen["a1|2026-11-03"] = "F"; }));
     expect(m.protokoll.map((l) => l.id)).toEqual(["l2", "l1"]);
   });

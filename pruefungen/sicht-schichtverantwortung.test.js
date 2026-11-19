@@ -498,8 +498,6 @@ describe("Sammlungen: Rundweg, Rückfüllung, Angriffe", () => {
     "fremden Antrag verändert einschleusen": (m) => { m.anfragen.push({ id: "an-b", personId: "b1", typ: "abwesenheit", art: "urlaub", status: "genehmigt", von: tag(20), bis: tag(21) }); },
     "Korrekturgrund im Bereich setzen": (m) => { m.erfassung[`a1|${tag(-2)}`].grund = "anders"; },
     "fremde Erfassung einschleusen": (m) => { m.erfassung[`b1|${tag(-2)}`] = { start: "00:00", ende: "23:59", bestaetigt: true }; },
-    "fremde Nachricht verändert einschleusen": (m) => { m.nachrichten.push({ id: "n-a", personId: "a1", art: "info", titel: "geändert" }); },
-    "Protokolleintrag verändert einschleusen": (m) => { m.protokoll = [{ id: "l2", zeit: "2", text: "gefälscht" }]; },
     "fremde Änderung einschleusen": (m) => { m.aenderungen.push({ id: "c-b", personId: "b1", datum: tag(1), von: "-", nach: "S" }); },
     "Personennotiz einschleusen": (m) => { m.notizen["person|b1"] = [{ id: "x", text: "neu" }]; },
     "verborgene Standortkoordinaten setzen": (m) => { m.standorte[0].lat = 1; },
@@ -509,6 +507,20 @@ describe("Sammlungen: Rundweg, Rückfüllung, Angriffe", () => {
     it(`${name}: abgewiesen`, () => {
       const { e } = rundweg(f);
       expect(e.verweigert, name).toBeTruthy();
+    });
+  }
+  /* Folgepaket #361 (Existenzorakel): Diese beiden bekamen bis dahin 403 „Bestehende Einträge sind nicht änderbar" —
+     eine unbekannte Kennung mit denselben Angaben aber 200. Jetzt dieselbe Antwort wie für die unbekannte Kennung, und
+     das Feld bleibt byte-gleich (verändert wird weiterhin nichts; geprüft wird der Zustand statt des Status). */
+  const wieUnbekannt = {
+    "fremde Nachricht verändert einschleusen": ["nachrichten", (id) => (m) => { m.nachrichten.push({ id, personId: "a1", art: "info", titel: "geändert" }); }, "n-a"],
+    "Protokolleintrag verändert einschleusen": ["protokoll", (id) => (m) => { m.protokoll = [{ id, zeit: "2", text: "gefälscht" }]; }, "l2"],
+  };
+  for (const [name, [feld, f, id]] of Object.entries(wieUnbekannt)) {
+    it(`${name}: Antwort wie unbekannte Kennung, gespeichert unverändert`, () => {
+      const v = rundweg(f(id)), u = rundweg(f(`${id}-unbekannt`));
+      expect(v.e.verweigert, name).toBe(u.e.verweigert);
+      if (!v.e.verweigert) expect(v.e.mandanten[0][feld], name).toEqual(v.g.mandanten[0][feld]);
     });
   }
   /* Seit 1e.2a: Vertrag und Betreiberstamm im Betrieb mitgeschickt — wirkungslos statt 403 (E3). */

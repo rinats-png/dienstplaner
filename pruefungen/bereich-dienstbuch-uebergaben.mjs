@@ -107,8 +107,17 @@ const erg = await schreibe(tS, (m) => { finde(m.uebergaben, "u-A").ergaenzungen.
 pruef("SV: eigene Übergabe ergänzen: 200", erg.status === 200 && finde((await betriebVon(tP)).uebergaben, "u-A").ergaenzungen.length === 1);
 const fremdErg = await schreibe(tS, (m) => { m.uebergaben.push({ ...ue("u-B", "F", "eB"), ergaenzungen: [{ text: "FAKE" }] }); });
 pruef("SV: Ergänzung an fremde Übergabe: abgewiesen", fremdErg.status === 403, `Status ${fremdErg.status}`);
+/* Folgepaket #361 (Existenzorakel): bis dahin 403 „Bestehende Einträge sind nicht änderbar" für die verborgene Kennung,
+   für eine unbekannte mit denselben Angaben 200. Jetzt dieselbe Antwort wie für die unbekannte Kennung — übernommen
+   wird trotzdem nichts: db-L bleibt byte-gleich. */
+const dbVorher = JSON.stringify(finde((await betriebVon(tP)).dienstbuch, "db-L"));
 const legacy = await schreibe(tS, (m) => { m.dienstbuch.push({ ...db("db-L", undefined), einheitId: "eA" }); });
-pruef("SV: Altbestand mit einheitId A übernehmen: abgewiesen", legacy.status === 403);
+const dbNach = JSON.stringify(finde((await betriebVon(tP)).dienstbuch, "db-L"));
+const legacyU = await schreibe(tS, (m) => { m.dienstbuch.push({ ...db("db-L", undefined), id: "db-L-unbekannt", einheitId: "eA" }); });
+/* Antwortbild ohne den neuen Stand (etag; bei 200 steht der Rohtext mit etag in `text`). */
+const antwortBild = (w) => JSON.stringify({ ...w, etag: undefined, text: w.status === 200 ? undefined : w.text });
+pruef("SV: Altbestand mit einheitId A übernehmen: Antwort wie unbekannte Kennung, db-L unverändert",
+  antwortBild(legacy) === antwortBild(legacyU) && dbNach === dbVorher && !!dbVorher, `Status ${legacy.status}/${legacyU.status}`);
 const umschreiben = await schreibe(tS, (m) => { finde(m.uebergaben, "u-A").einheitId = "eB"; });
 pruef("SV: einheitId der eigenen Übergabe umschreiben: abgewiesen", umschreiben.status === 403);
 
