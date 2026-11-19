@@ -70,7 +70,7 @@ async function seite({ ablage } = {}) {
   vi.stubGlobal("localStorage", speicherAttrappe());
   vi.stubGlobal("window", { addEventListener: () => {} });
   vi.stubGlobal("document", { visibilityState: "visible", addEventListener: () => {} });
-  const r = { sitzung, neuGeladen: 0, fehler: [], gespeichert: [], tor: null, amTor: 0, lesenErsatz: null, anmeldeToken: null };
+  const r = { sitzung, neuGeladen: 0, fehler: [], gespeichert: [], tor: null, amTor: 0, putTor: null, amPutTor: 0, lesenErsatz: null, anmeldeToken: null };
   vi.stubGlobal("fetch", async (url, opt = {}) => {
     nr += 1;
     /* A1: die Anmeldung liefert ein vorgegebenes (echt angelegtes) Merkmal; Lesen kann an einem Tor warten. */
@@ -82,6 +82,12 @@ async function seite({ ablage } = {}) {
     const kopf = { ...(opt.headers || {}), host: WIRT, origin: `http://${WIRT}`, "x-forwarded-for": `10.52.${Math.floor(nr / 250) % 250}.${nr % 250}` };
     const methode = opt.method || "GET";
     if (methode === "PUT") PUTS.push(JSON.parse(opt.body));
+    /* Delta-Review #381 (7): Der Server verarbeitet den PUT sofort, die Antwort kommt erst nach dem Tor an. */
+    if (methode === "PUT" && r.putTor) {
+      const antwort = await daten(new Request(`http://${WIRT}${url}`, { method: methode, headers: kopf, body: opt.body }), {});
+      r.amPutTor += 1; await r.putTor;
+      return antwort;
+    }
     return daten(new Request(`http://${WIRT}${url}`, { method: methode, headers: kopf, ...(opt.body ? { body: opt.body } : {}) }), {});
   });
   const SP = await import("../src/speicher.js");
@@ -380,6 +386,56 @@ describe("O Senden nach erneuter Anmeldung (B-L4c)", { timeout: 120000 }, () => 
     const html = renderToStaticMarkup(h(NichtGespeichert, { lage: r.fehler[0], melde: () => {}, aufGeloest: () => {} }));
     expect(html).toContain("Mit einem anderen Zugang angemeldet");
     expect((await gespeichert()).name).toBe("Haus");
+  });
+
+  it("Delta-Review #381 (7): verspätete PUT-Antwort nach Wechsel der Anmeldung räumt den Merker nicht und setzt keinen ETag", async () => {
+    await neuerRaum();
+    const r = await seite();
+    await bisZurLeiste(r);
+    const b = await neueSitzung();                      // dieselbe Person: Prüfung „gleich“
+    r.anmeldeToken = b;
+    await r.SP.anmelden("CODE-B", false);
+    let auf; r.putTor = new Promise((ja) => { auf = ja; });
+    const laeuft = r.SP.nochmalSchreiben();             // PUT unter B, vom Server angenommen, Antwort wartet
+    while (r.amPutTor === 0) await warte();
+    expect((await gespeichert()).einstellungen.ruhezeit, "unter B gespeichert").toBe(13);
+    await S.sitzungBeenden(b);
+    await expect(r.SP.lies()).rejects.toThrow("nicht-angemeldet");   // B endet (eine andere Anfrage bekommt 401)
+    r.anmeldeToken = await neueSitzung({ person: "a1", rolle: "mitarbeiter" });   // C
+    await r.SP.anmelden("CODE-C", false);
+    r.putTor = null; auf();
+    expect((await laeuft).ok, "für C ist nichts gespeichert").toBe(false);
+    /* Nichts aus der Antwort für B übernommen: C wird vor jedem Senden geprüft (anderer Inhaber → verworfen). */
+    expect(await r.SP.nochmalSchreiben()).toEqual({ ok: false, fremd: true });
+    expect(PUTS.length, "nur der PUT unter B").toBe(1);
+    /* Empfehlung (10): bis zum Neuladen keine neuen Aufträge. */
+    const fehler = [];
+    expect(await r.SP.schreib(bestand(), { durch: "x", onFehler: (l) => fehler.push(l.art), sofort: true })).toEqual({ ok: false, gesperrt: true });
+    expect(fehler).toEqual(["fremd"]);
+    expect(PUTS.length).toBe(1);
+  });
+
+  it("Empfehlung (9): lies() mit dem geprüften Merkmal erledigt den Merker — ein weiteres Sitzungsende merkt den frischen ETag", async () => {
+    await neuerRaum();
+    const r = await seite();
+    await bisZurLeiste(r);
+    r.anmeldeToken = await neueSitzung();
+    await r.SP.anmelden("CODE-NEU", false);
+    expect(await r.SP.nochmalSchreiben()).toEqual({ ok: true });
+    const g = await r.SP.lies();
+    const frisch = (await B.bestandLesen(laden(), RAUM)).stand;
+    /* Zweite Eingabe, zweites Sitzungsende, dritte Anmeldung: gesendet mit dem frischen ETag, gespeichert. */
+    const db = { ...g.bestand, session: { mandantId: "m1", personId: "l1" } };
+    r.SP.schreib({ ...db, mandanten: db.mandanten.map((m) => ({ ...m, einstellungen: { ...m.einstellungen, ruhezeit: 14 } })) }, opt(r));
+    await S.sitzungBeenden(r.anmeldeToken);
+    await expect(r.SP.lies()).rejects.toThrow("nicht-angemeldet");
+    await r.SP.schreibenAbschliessen();
+    PUTS = [];
+    r.anmeldeToken = await neueSitzung();
+    await r.SP.anmelden("CODE-DREI", false);
+    expect(await r.SP.nochmalSchreiben()).toEqual({ ok: true });
+    expect(PUTS.map((p) => p.etag)).toEqual([frisch]);
+    expect((await gespeichert()).einstellungen.ruhezeit).toBe(14);
   });
 
   it("absichtliches Abmelden löscht den Merker: danach kein alter ETag mehr", async () => {

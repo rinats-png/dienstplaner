@@ -498,6 +498,38 @@ describe("B echter Client (src/speicher.js) gegen den echten Handler", { timeout
     expect(g.abweichungen[`a1|${tag(23)}`]).toBe("N");
   });
 
+  it("Delta-Review #381 (8): Anmeldung wechselt mitten im Teilweg (nach dem GET einer Runde) — keine Runde unter der neuen Kennung", async () => {
+    process.env.CENTRIC_TEILSPEICHERUNG = "true";
+    fetchStub();
+    const { raum, token } = await raumMit(["PL"]);
+    const fremdRaum = await raumMit(["LT"]);
+    const o = await oberflaeche(token.PL, "p1");
+    /* Ausgang unklar (Netz nach dem Server weg) → das nächste Speichern setzt per GET neu auf und sendet in Runde 2. */
+    const k = `a1|${tag(20)}`;
+    setze(o, k, "N");
+    netzWeg = (url, m) => (m === "POST" && url === "/api/bestand/teile" ? "nachher" : null);
+    await speichern(o);
+    netzWeg = null;
+    expect(o.SP.teilwegLage().unklar).toEqual([`z:abweichungen:${k}`]);
+    const vorher = [(await gespeichertM(raum)).abweichungen[`a1|${tag(23)}`], (await gespeichertM(fremdRaum.raum)).abweichungen[`a1|${tag(23)}`]];
+    setze(o, `a1|${tag(23)}`, "N");
+    aufrufe.length = 0;
+    o.fehler.length = 0;
+    /* Nach dem GET der Runde meldet sich im selben Reiter jemand anderes an (anderer Datenraum). */
+    nachGet = async () => {
+      anmeldeAntwort = { token: fremdRaum.token.LT, name: "Haus", rolle: "leitung", person: "l1", betrieb: 0 };
+      await o.SP.anmelden("PRUEF-CODE", false);
+    };
+    await speichern(o);
+    const fremd = `Bearer ${fremdRaum.token.LT}`;
+    expect(aufrufe.map((x) => `${x.methode} ${x.url}`)[0], "die Runde mit GET fand statt").toBe("GET /api/bestand");
+    expect(aufrufe.filter((x) => x.auth === fremd).map((x) => `${x.methode} ${x.url}`), "nichts unter der neuen Kennung").toEqual([]);
+    expect([(await gespeichertM(raum)).abweichungen[`a1|${tag(23)}`], (await gespeichertM(fremdRaum.raum)).abweichungen[`a1|${tag(23)}`]],
+      "weder im alten noch im fremden Raum geschrieben").toEqual(vorher);
+    expect(vorher[0]).not.toBe("N");
+    expect(o.fehler.length, "die Oberfläche erfährt, dass nichts gespeichert ist").toBeGreaterThan(0);
+  });
+
   it("Rückfall voll (Feld ohne Version): Voll-PUT, danach Teilweg aus; Konfliktfenster ohne blindes Übernehmen gekennzeichnet", async () => {
     process.env.CENTRIC_TEILSPEICHERUNG = "true";
     fetchStub();
