@@ -1249,6 +1249,10 @@ async function schreibenAusfuehren(beimSchliessen) {
       const f = new Error(daten?.fehler || "Speichern fehlgeschlagen.");
       if (daten && typeof daten.code === "string") f.code = daten.code;
       if (status === 422 && f.code === KALENDERTAG_CODE) kalendertagAngaben(f, daten);
+      /* E1 (Review #397): Die Begründung einer 403 (`text`, etwa „Einteilung am … nicht möglich: Ruhezeit …") geht mit
+         in die Lage. Nur was der Server dieser Sitzung ohnehin sendet (er hält Fremdes dort schon neutral), nur als
+         Zeichenkette, gekürzt; angezeigt als Text. */
+      if (status === 403 && daten && typeof daten.text === "string" && daten.text.trim()) f.grund = daten.text.trim().slice(0, 500);
       throw f;
     }
     etag = daten.etag;
@@ -1269,7 +1273,8 @@ async function schreibenAusfuehren(beimSchliessen) {
       /* Folgepunkt (1): Text des Servers (welcher Tag), Feld und Bereich — sonst wie bisher. */
       ? { art, text: String(e.text || e.message), status, zeit: new Date().toISOString(),
         feld: typeof e.feld === "string" ? e.feld : null, bereich: kalendertagBereich(e.feld) }
-      : { art, text: String(e && e.message || e), status, zeit: new Date().toISOString() } };
+      : { art, text: String(e && e.message || e), status, zeit: new Date().toISOString(),
+        ...(e && typeof e.grund === "string" ? { grund: e.grund } : {}) } };
     if (auftrag.onFehler) auftrag.onFehler({ ...gescheitert.lage, fehler: e });
   } finally {
     /* Review #350: Löschlauf per Speichern (Kundenrolle) gesendet und nicht sicher abgewiesen → neu laden Pflicht. */

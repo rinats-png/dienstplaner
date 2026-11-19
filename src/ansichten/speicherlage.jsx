@@ -209,6 +209,9 @@ export function NichtGespeichert({ lage, melde, aufGeloest, onKonflikt = null })
         {l.text}</p>
       {ohneAbsage && <p style={{ fontSize: 13.5, lineHeight: 1.6, margin: "0 0 14px", maxWidth: "72ch" }}>
         {OHNE_ABSAGE_TEXT}</p>}
+      {/* E1 (Review #397): Begründung des Servers zu einer 403 (speicher.js `grund`) — als Text, nie als Markup. */}
+      {typeof lage.grund === "string" && lage.grund && <p style={{ fontSize: 13.5, lineHeight: 1.6, margin: "0 0 14px",
+        maxWidth: "72ch", overflowWrap: "anywhere" }}>Begründung: {lage.grund}</p>}
       {l.verwerfen && (lage.bereich || lage.text) && <p style={{ fontSize: 13.5, lineHeight: 1.6, margin: "0 0 14px", maxWidth: "72ch" }}>
         {lage.bereich ? <>Bereich: <strong>{lage.bereich}</strong>. </> : null}{lage.text}</p>}
       <div style={{ display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center" }}>
