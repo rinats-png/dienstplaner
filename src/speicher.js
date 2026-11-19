@@ -170,6 +170,27 @@ function gemerktZuruecknehmen() {
   try { localStorage.removeItem(SCHLUESSEL); localStorage.removeItem(GEMERKT); } catch { /* egal */ }
 }
 
+/* Folgepaket #381 (3): Anmeldung im selben Reiter, ohne dass vorher ein Sitzungsende gemerkt wurde (direkte Anmeldung
+   über eine noch gültige Sitzung) oder ohne bekannten Inhaber (Sitzungen ohne Person, z. B. Betreiber, Kunde). Liegt
+   noch etwas der bisherigen Anmeldung aus (Auftrag, Konfliktfrage, Teilweg-Zustand mit unklaren Schlüsseln, gelesene
+   Teilweg-Basis), darf es nicht ungeprüft unter dem neuen Merkmal wirken:
+   - Inhaber bekannt: wie nach einem Sitzungsende ein Merker — vor dem nächsten Senden prüft ein frisches GET den Inhaber
+     (gleich: Teilweg-Zustand und ETag bleiben; anders: alles verworfen, B-L4c).
+   - Inhaber unbekannt: Teilweg-Zustand und Basis zurücksetzen und den ETag räumen (wie abmelden) — nichts Ausstehendes
+     geht mit Versionsangabe der bisherigen Anmeldung hinaus; der Server antwortet dann 409 ohne Versionsangabe.
+   Ein schon gemerktes Sitzungsende (vorSitzungsende) wird ohnehin vor dem Senden geprüft. Synchron vor dem Setzen des
+   neuen Merkmals aufrufen. */
+function anmeldungWechselt() {
+  if (vorSitzungsende) return;
+  if (!(offen || gescheitert || konfliktSperre || teil || teilRoh)) return;
+  if (zugang && typeof zugang.inhaber === "string" && zugang.inhaber) {
+    vorSitzungsende = { etag, inhaber: zugang.inhaber, fuer: null };
+    return;
+  }
+  teil = null; teilRoh = null; teilAuftrag = null;
+  etag = null;
+}
+
 export async function anmelden(zugangscode, merken, zweifaktor) {
   const a = await fetch("/api/anmelden", { method: "POST",
     headers: { "content-type": "application/json" },
@@ -182,6 +203,7 @@ export async function anmelden(zugangscode, merken, zweifaktor) {
     throw f;
   }
   await offlineCacheLeeren();   // Rollenwechsel: nichts von der vorherigen Person bleibt liegen (WP-37)
+  anmeldungWechselt();
   token = d.token; name = d.name;
   zugang = { rolle: d.rolle, person: d.person, betrieb: d.betrieb, name: d.name, hinweis: d.hinweis, demo: d.demo === true };
   tokenAblegen(token, merken && merkenErlaubtLaut(d));
@@ -204,6 +226,7 @@ export async function demoOeffnen(id, merken) {
   const d = await a.json();
   if (!a.ok) throw new Error(d.fehler || "Demozugang nicht verfügbar.");
   await offlineCacheLeeren();   // Rollenwechsel (WP-37)
+  anmeldungWechselt();
   token = d.token; name = d.name;
   zugang = { rolle: d.rolle, person: d.person, betrieb: d.betrieb, name: d.name, demo: true };
   /* Eine Betreibersitzung wird nie über das Schließen des Browsers hinaus
@@ -334,6 +357,14 @@ export function abmelden(still = false) {
 export async function lies() {
   const gelesenFuer = token;
   const { status, daten, ausSpeicher, geholt } = await ruf("bestand");
+  /* Folgepaket #381 (1): Die Antwort gehört zur Anmeldung, mit der gelesen wurde. Gilt inzwischen eine andere, wird
+     nichts übernommen (weder ETag noch Zugang noch Bestand) — wie beim PUT. Still wie eine abgewiesene Sitzung
+     (App.jsx zeigt für „nicht-angemeldet" keine Fehlerseite); die neue Anmeldung liest selbst. */
+  if (token !== gelesenFuer) {
+    const f = new Error("nicht-angemeldet");
+    /** @type {any} */ (f).gewechselt = true;
+    throw f;
+  }
   if (status !== 200) throw new Error(daten?.fehler || "Laden fehlgeschlagen.");
   etag = daten.etag;
   /* Delta-Review #381 (9): frisch gelesen mit dem geprüften Merkmal — der Merker des Sitzungsendes ist erledigt. */

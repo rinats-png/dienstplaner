@@ -319,6 +319,7 @@ let netzWeg = null;   // (pfad, methode) => "vorher" | "nachher" | null — Netz
 let anmeldeAntwort = null;   // Antwort auf /api/anmelden (Zugangswechsel ohne Neuladen)
 let antwortErsetzen = null;  // (pfad, methode) => { status, daten } | null
 let nachGet = null;          // einmalig nach dem nächsten GET /api/bestand ausgeführt
+let leseAnpassen = null;     // (daten) => daten: Antwort des echten Handlers auf GET /api/bestand verändern
 function fetchStub() {
   vi.stubGlobal("fetch", async (url, opt = {}) => {
     nr += 1;
@@ -336,6 +337,8 @@ function fetchStub() {
     if (weg === "nachher") throw new TypeError("Failed to fetch");
     /* Rennen: ein Fremdschreiber direkt nach einer Leseantwort (zwischen frischem GET und Voll-PUT). */
     if (nachGet && methode === "GET" && url === "/api/bestand") { const f = nachGet; nachGet = null; await f(); }
+    if (leseAnpassen && methode === "GET" && url === "/api/bestand" && a.status === 200)
+      return new Response(JSON.stringify(leseAnpassen(await a.json())), { status: 200, headers: { "content-type": "application/json" } });
     return a;
   });
 }
@@ -376,7 +379,7 @@ describe("B echter Client (src/speicher.js) gegen den echten Handler", { timeout
     const HEUTE = Z.heuteBerlin();
     tag = (n) => Z.tagePlus(HEUTE, n);
   });
-  afterEach(() => { vi.unstubAllGlobals(); aufrufe.length = 0; netzWeg = null; anmeldeAntwort = null; antwortErsetzen = null; nachGet = null; });
+  afterEach(() => { vi.unstubAllGlobals(); aufrufe.length = 0; netzWeg = null; anmeldeAntwort = null; antwortErsetzen = null; nachGet = null; leseAnpassen = null; });
   afterAll(async () => {
     delete process.env.CENTRIC_TEILSPEICHERUNG;
     if (wurzel) await rm(wurzel, { recursive: true, force: true });
@@ -483,8 +486,9 @@ describe("B echter Client (src/speicher.js) gegen den echten Handler", { timeout
     setze(o, `a1|${tag(23)}`, "N");
     aufrufe.length = 0;
     await speichern(o);
-    /* Kein POST unter neuer Kennung mit dem alten Erwartungswert: erst GET, dann die Frage. */
-    expect(aufrufe.map((x) => `${x.methode} ${x.url}`)).toEqual(["GET /api/bestand"]);
+    /* Kein POST unter neuer Kennung mit dem alten Erwartungswert: erst GET, dann die Frage. Folgepaket #381 (3): davor
+       das GET der Inhaberprüfung (direkte Anmeldung mit Ausstehendem; dieselbe Person → Teilweg-Zustand bleibt). */
+    expect(aufrufe.map((x) => `${x.methode} ${x.url}`)).toEqual(["GET /api/bestand", "GET /api/bestand"]);
     expect(o.lokal).toHaveLength(1);
     const z = o.SP.teilwegLage();
     expect(z.konflikte.map((f) => [f.k, f.meins, f.fremd])).toEqual([[k, "N", "F"]]);
@@ -529,6 +533,43 @@ describe("B echter Client (src/speicher.js) gegen den echten Handler", { timeout
     expect(vorher[0]).not.toBe("N");
     expect(o.fehler.length, "die Oberfläche erfährt, dass nichts gespeichert ist").toBeGreaterThan(0);
   });
+
+  for (const ohneInhaber of [false, true]) {
+    it(`Folgepaket #381 (3): direkte Anmeldung eines anderen Zugangs bei unklarem Teilweg (${ohneInhaber ? "ohne" : "mit"} Inhaber) — nichts der vorherigen Anmeldung wirkt`, async () => {
+      process.env.CENTRIC_TEILSPEICHERUNG = "true";
+      fetchStub();
+      /* Ohne Inhaber: wie eine Sitzung ohne Person (Betreiber, Kunde) — die Leseantwort trägt keinen. */
+      if (ohneInhaber) leseAnpassen = (d) => { const { inhaber: _weg, ...rest } = d; return rest; };
+      const { raum, token } = await raumMit(["PL"]);
+      const fremdRaum = await raumMit(["LT"]);
+      const o = await oberflaeche(token.PL, "p1");
+      expect(o.SP.zugangsdaten().inhaber == null).toBe(ohneInhaber);
+      const k = `a1|${tag(20)}`;
+      setze(o, k, "N");
+      netzWeg = (url, m) => (m === "POST" && url === "/api/bestand/teile" ? "nachher" : null);
+      await speichern(o);
+      netzWeg = null;
+      expect(o.SP.teilwegLage().unklar).toEqual([`z:abweichungen:${k}`]);
+      const vorherFremd = await gespeichertM(fremdRaum.raum);
+      /* Ein anderer Zugang meldet sich in diesem Reiter an (anderer Datenraum), ohne Neuladen. */
+      anmeldeAntwort = { token: fremdRaum.token.LT, name: "Haus", rolle: "leitung", person: "l1", betrieb: 0 };
+      await o.SP.anmelden("PRUEF-CODE", false);
+      if (ohneInhaber) expect(o.SP.teilwegLage(), "Teilweg-Zustand sofort zurückgesetzt").toBeNull();
+      setze(o, `a1|${tag(23)}`, "N");
+      aufrufe.length = 0; o.fehler.length = 0;
+      await o.SP.schreib(o.db, optionen(o));
+      for (let i = 0; i < 200 && o.SP.schreibenAusstehend() && !o.fehler.length; i++) await new Promise((r) => setTimeout(r, 5));
+      expect(aufrufe.filter((x) => x.url === "/api/bestand/teile"), "kein Teil-POST unter der neuen Kennung").toEqual([]);
+      expect(aufrufe.filter((x) => x.methode === "PUT" && x.rumpf.etag !== null), "keine Versionsangabe der vorherigen Anmeldung").toEqual([]);
+      if (!ohneInhaber) {
+        expect(aufrufe.map((x) => `${x.methode} ${x.url}`), "nur die Inhaberprüfung").toEqual(["GET /api/bestand"]);
+        expect(o.fehler.map((l) => l.art)).toEqual(["fremd"]);
+        expect(o.SP.teilwegLage()).toBeNull();
+      }
+      expect(await gespeichertM(fremdRaum.raum), "fremder Raum unverändert").toEqual(vorherFremd);
+      expect((await gespeichertM(raum)).abweichungen[`a1|${tag(23)}`]).not.toBe("N");
+    });
+  }
 
   it("Rückfall voll (Feld ohne Version): Voll-PUT, danach Teilweg aus; Konfliktfenster ohne blindes Übernehmen gekennzeichnet", async () => {
     process.env.CENTRIC_TEILSPEICHERUNG = "true";

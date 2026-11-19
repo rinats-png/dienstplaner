@@ -70,7 +70,7 @@ async function seite({ ablage } = {}) {
   vi.stubGlobal("localStorage", speicherAttrappe());
   vi.stubGlobal("window", { addEventListener: () => {} });
   vi.stubGlobal("document", { visibilityState: "visible", addEventListener: () => {} });
-  const r = { sitzung, neuGeladen: 0, fehler: [], gespeichert: [], tor: null, amTor: 0, putTor: null, amPutTor: 0, lesenErsatz: null, anmeldeToken: null };
+  const r = { sitzung, neuGeladen: 0, fehler: [], gespeichert: [], tor: null, amTor: 0, putTor: null, amPutTor: 0, putNetzWeg: false, lesenErsatz: null, anmeldeToken: null };
   vi.stubGlobal("fetch", async (url, opt = {}) => {
     nr += 1;
     /* A1: die Anmeldung liefert ein vorgegebenes (echt angelegtes) Merkmal; Lesen kann an einem Tor warten. */
@@ -81,6 +81,8 @@ async function seite({ ablage } = {}) {
     if (r.lesenErsatz && String(url) === "/api/bestand" && !(opt.method && opt.method !== "GET")) return r.lesenErsatz();
     const kopf = { ...(opt.headers || {}), host: WIRT, origin: `http://${WIRT}`, "x-forwarded-for": `10.52.${Math.floor(nr / 250) % 250}.${nr % 250}` };
     const methode = opt.method || "GET";
+    /* Folgepaket #381 (2): Netz weg vor dem Server — der PUT kommt nicht an. */
+    if (methode === "PUT" && r.putNetzWeg) throw new TypeError("Failed to fetch");
     if (methode === "PUT") PUTS.push(JSON.parse(opt.body));
     /* Delta-Review #381 (7): Der Server verarbeitet den PUT sofort, die Antwort kommt erst nach dem Tor an. */
     if (methode === "PUT" && r.putTor) {
@@ -415,7 +417,7 @@ describe("O Senden nach erneuter Anmeldung (B-L4c)", { timeout: 120000 }, () => 
     expect(PUTS.length).toBe(1);
   });
 
-  it("Empfehlung (9): lies() mit dem geprüften Merkmal erledigt den Merker — ein weiteres Sitzungsende merkt den frischen ETag", async () => {
+  it("Absicherung: Wiederanmeldung, Senden, lies(), weiteres Sitzungsende — gesendet mit dem frischen ETag (unterscheidend für (9) ist Folgepaket (2))", async () => {
     await neuerRaum();
     const r = await seite();
     await bisZurLeiste(r);
@@ -436,6 +438,68 @@ describe("O Senden nach erneuter Anmeldung (B-L4c)", { timeout: 120000 }, () => 
     expect(await r.SP.nochmalSchreiben()).toEqual({ ok: true });
     expect(PUTS.map((p) => p.etag)).toEqual([frisch]);
     expect((await gespeichert()).einstellungen.ruhezeit).toBe(14);
+  });
+
+  it("Folgepaket #381 (2): Prüfung „gleich“ ohne PUT, dann lies() — ein weiteres Sitzungsende sendet mit dem frischen ETag", async () => {
+    await neuerRaum();
+    const r = await seite();
+    const alt = await bisZurLeiste(r);
+    const b = await neueSitzung();
+    r.anmeldeToken = b;
+    await r.SP.anmelden("CODE-B", false);
+    r.putNetzWeg = true;                                 // Prüfung „gleich“, der PUT erreicht den Server nicht
+    expect((await r.SP.nochmalSchreiben()).ok).toBe(false);
+    expect(r.SP.ausstehend().art).toBe("netz");
+    expect(PUTS).toEqual([]);
+    const fremd = bestand(); fremd.mandanten[0].name = "Haus fremd";
+    await B.bestandSchreiben(laden(), RAUM, fremd, { durch: "Andere" });
+    const frisch = (await B.bestandLesen(laden(), RAUM)).stand;
+    expect(frisch).not.toBe(alt);
+    /* Die Oberfläche liest neu (unter B) und speichert ihre Eingabe auf diesem Stand — der PUT scheitert wieder am Netz. */
+    const g = await r.SP.lies();
+    const db = { ...g.bestand, session: { mandantId: "m1", personId: "l1" } };
+    await r.SP.schreib({ ...db, mandanten: db.mandanten.map((m) => ({ ...m, einstellungen: { ...m.einstellungen, ruhezeit: 14 } })) },
+      { ...opt(r), sofort: true });
+    expect(r.SP.ausstehend().art).toBe("netz");
+    /* B endet, dieselbe Person meldet sich wieder an: gesendet mit dem ETag des frischen Lesens, nicht mit dem alten. */
+    await S.sitzungBeenden(b);
+    await expect(r.SP.lies()).rejects.toThrow("nicht-angemeldet");
+    r.putNetzWeg = false;
+    r.anmeldeToken = await neueSitzung();
+    await r.SP.anmelden("CODE-C", false);
+    expect(await r.SP.nochmalSchreiben()).toEqual({ ok: true });
+    expect(PUTS.map((x) => x.etag)).toEqual([frisch]);
+    const m = await gespeichert();
+    expect([m.name, m.einstellungen.ruhezeit]).toEqual(["Haus fremd", 14]);
+  });
+
+  it("Folgepaket #381 (1): verspätete Leseantwort nach Wechsel der Anmeldung — nichts übernommen (ETag, Zugang)", async () => {
+    await neuerRaum();
+    const r = await seite();
+    await r.SP.lies();
+    const raum2 = `${RAUM}-zwei`;
+    const zwei = bestand(); zwei.mandanten[0].name = "Haus zwei";
+    await B.bestandSchreiben(laden(), raum2, zwei, { durch: "Prüfung" });
+    let auf; r.tor = new Promise((ja) => { auf = ja; });
+    const spaet = r.SP.lies();                           // unter A, Antwort wartet
+    while (r.amTor === 0) await warte();
+    r.anmeldeToken = await neueSitzung({ raum: raum2 });
+    await r.SP.anmelden("CODE-B", false);
+    r.tor = null; auf();
+    await expect(spaet).rejects.toThrow("nicht-angemeldet");
+    expect(r.SP.angemeldet(), "die neue Anmeldung bleibt").toBe(true);
+    expect(r.SP.zugangsdaten().inhaber, "kein Inhaber aus der Antwort für A").toBeUndefined();
+    expect(r.neuGeladen).toBe(0);
+    /* Eine Eingabe unter B geht mit dem ETag von B hinaus (nicht mit dem von A). */
+    const g = await r.SP.lies();
+    expect(g.bestand.mandanten[0].name).toBe("Haus zwei");
+    const db = { ...g.bestand, session: { mandantId: "m1", personId: "l1" } };
+    const e2 = (await B.bestandLesen(laden(), raum2)).stand;
+    await r.SP.schreib({ ...db, mandanten: db.mandanten.map((m) => ({ ...m, einstellungen: { ...m.einstellungen, ruhezeit: 12 } })) },
+      { ...opt(r), sofort: true });
+    expect(PUTS.map((x) => x.etag)).toEqual([e2]);
+    expect((await B.bestandLesen(laden(), raum2)).bestand.mandanten[0].einstellungen.ruhezeit).toBe(12);
+    expect((await gespeichert()).einstellungen.ruhezeit, "Raum von A unverändert").toBe(11);
   });
 
   it("absichtliches Abmelden löscht den Merker: danach kein alter ETag mehr", async () => {
