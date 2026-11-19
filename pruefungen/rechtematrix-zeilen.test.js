@@ -68,6 +68,9 @@ const M = (x) => `«${x}»`;
 const person = (id, rolle, einheit, extra = {}) => ({ id, vorname: "V", nachname: `N${id}`, rolle, bereich: einheit,
   status: "aktiv", funktion: "Fachkraft", zugehoerigkeit: [{ ab: "2020-01-01", einheitId: einheit }], ...extra });
 
+/* IMP-6 Q4: eine eigene Zuordnung von m0/s1/r1 auf das eigene Modell sm-<X>; der Stempel ist Marker. */
+const EIGENE_ZUORDNUNG = (x) => ({ id: `z-${x}`, modellId: `sm-${x}`, gueltigAb: "2026-01-01", gueltigBis: null, geaendertVon: M(`SMZ-VON-${x}`) });
+
 /* b1 (Bereich e2) ist für jede Rolle eine fremde Person aus einem anderen Bereich. */
 const B1 = () => person("b1", "mitarbeiter", "e2", {
   nachname: M("NACHNAME-B1"), funktion: M("FUNKTION-B1"), rolleSeit: M("ROLLESEIT-B1"), eintritt: M("EINTRITT-B1"),
@@ -147,7 +150,8 @@ const bestand = () => ({
       [`r-b1|${tag(1)}`]: { id: "r-b1", personId: "b1", art: "einsatz", einheitId: M("ROTATION-B1") } },
     pflegeNiveaus: [{ id: "n1", name: M("PFLEGENIVEAU-NAME") }],
     /* Schichtmodelle (IMP-6 Teil 2): nur Planung, Leitung, Kundenrolle. */
-    schichtmodelle: [{ id: "sm1", name: M("SCHICHTMODELL-NAME"), tage: ["-"], geaendertVon: M("SCHICHTMODELL-VON") }],
+    schichtmodelle: [{ id: "sm1", name: M("SCHICHTMODELL-NAME"), tage: ["-"], geaendertVon: M("SCHICHTMODELL-VON") },
+      ...["M0", "S1", "R1"].map((x) => ({ id: `sm-${x}`, name: M(`SCHICHTMODELL-NAME-${x}`), tage: ["-"], geaendertVon: M(`SCHICHTMODELL-VON-${x}`) }))],
     /* Interne Vorgaben (WP-I4): nur org.edit (Leitung, Kundenrolle) liest sie; für den Betriebsrat gibt es keine Lesesicht. */
     vorgaben: [{ id: "v1", name: M("VORGABE-NAME"), regelart: "grenzregel", staerke: "muss", prioritaet: 1, bezug: "monat", status: "aktiv",
       geltung: { art: "personen", personen: [M("VORGABE-PERSON")] }, grundlage: { art: "hausregel" },
@@ -162,7 +166,10 @@ const bestand = () => ({
       modulprotokoll: [{ art: "eingeschaltet", modul: "wachbuch", am: "t", von: M("PROTOKOLL-VON"), grundlage: M("PROTOKOLL-GRUNDLAGE") }] },
     qualifikationen: [{ id: "pfk", name: "PFK" }, { id: "masern", name: "Masern", nurStatus: true }],
     dienstarten: [{ id: "F", name: "Früh", start: "06:00", ende: "14:00" }],
-    personen: [person("m0", "mitarbeiter", "e1"), person("r1", "betriebsrat", "ALLE"), person("s1", "subplaner", "e1"),
+    /* IMP-6 Q4: m0, s1 und r1 tragen je eine eigene Zuordnung (eigenes Modell, Stempel als Marker). */
+    personen: [person("m0", "mitarbeiter", "e1", { schichtmodellZuordnungen: [EIGENE_ZUORDNUNG("M0")] }),
+      person("r1", "betriebsrat", "ALLE", { schichtmodellZuordnungen: [EIGENE_ZUORDNUNG("R1")] }),
+      person("s1", "subplaner", "e1", { schichtmodellZuordnungen: [EIGENE_ZUORDNUNG("S1")] }),
       person("p1", "planer", "ALLE"), person("l1", "leitung", "ALLE"), person("ku1", "kunde", "ALLE"),
       person("sp1", "mitarbeiter", "pool", { springer: true, telefon: M("TELEFON-SP1"),
         stundenuebertrag: M("STUNDEN-SP1"), verfuegbarkeit: { aktiv: M("VERFUEGBARKEIT-SP1") }, kompetenzNachweise: [{ id: M("KOMPETENZ-SP1") }] }), A1(), B1()],
@@ -484,7 +491,21 @@ const ZEILEN = {
     sonden: [mk("VORGABE-NAME"), mk("VORGABE-PERSON"), mk("VORGABE-PARAMETER"), mk("VORGABE-AUSNAHME"), mk("VORGABE-VON")] },
   "Pflegeniveaus (`pflegeNiveaus`: Niveaus je Betrieb; Branchenmodul Pflegequalifikation) — vorläufig": { sonden: [mk("PFLEGENIVEAU-NAME")] },
   "Schichtmodelle und Zuordnungen je Person (`schichtmodelle`: Name, Zyklustage, Wann/Wer/Version; `schichtmodellZuordnungen` an der Person: Modell, Gültigkeit, Versatz, Wann/Wer/Version; IMP-6 Teil 2)": {
-    sonden: [mk("SCHICHTMODELL-NAME"), mk("SCHICHTMODELL-VON"), mk("SMZ-VON-B1"), feld("b1", "schichtmodellZuordnungen")] },
+    /* IMP-6 Q4 (Betreiberentscheidung 2026-11-14): Die eigene Person (Beschäftigte, Schichtverantwortung) sieht ihre
+       Zuordnungen und deren Modelle ohne Wann/Wer/Version; der Betriebsrat auch an der eigenen Person nichts (r1). */
+    sonden: [mk("SCHICHTMODELL-NAME"), mk("SCHICHTMODELL-VON"), mk("SMZ-VON-B1"), feld("b1", "schichtmodellZuordnungen"),
+      mk("SCHICHTMODELL-NAME-R1"), mk("SCHICHTMODELL-VON-R1"), mk("SMZ-VON-R1"), feld("r1", "schichtmodellZuordnungen")],
+    bedingt: Object.fromEntries([["nur eigene, ohne Stempel", ["M0", "m0"]], ["nur die eigene Person, ohne Stempel", ["S1", "s1"]]]
+      .map(([wortlaut, [x, pid]]) => [wortlaut, (s, def) => {
+        expect(mk(`SCHICHTMODELL-NAME-${x}`)(s), "eigenes Modell").toBe(true);
+        expect(feld(pid, "schichtmodellZuordnungen")(s), "eigene Zuordnung").toBe(true);
+        expect(personIn(s.betrieb, pid).schichtmodellZuordnungen, "eigene ohne Stempel")
+          .toEqual([{ id: `z-${x}`, modellId: `sm-${x}`, gueltigAb: "2026-01-01", gueltigBis: null }]);
+        for (const y of [`SMZ-VON-${x}`, `SCHICHTMODELL-VON-${x}`]) expect(mk(y)(s), y).toBe(false);
+        const andere = ["M0", "S1"].filter((z) => z !== x);
+        for (const z of andere) for (const y of [`SCHICHTMODELL-NAME-${z}`, `SMZ-VON-${z}`]) expect(mk(y)(s), y).toBe(false);
+        for (const [name, ist] of alle(def.sonden, s)) expect(ist, `fremd/Betriebsrat: ${name}`).toBe(false);
+      }])) },
   /* WP-19.0 (²⁹): Moduleinstellungen in `einstellungen`. */
   "Branchenmodule: Schalter, Parameter, Zeitpunkte (`einstellungen.branchenmodule`: `an`, `parameter`, `geaendertAm`, `mitbestimmung.bestaetigtAm`)": {
     sonden: [mk("MODUL-AM"), mk("MB-AM"), Object.assign((s) => {

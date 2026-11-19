@@ -11,7 +11,8 @@
       Kennung, Modell, Datum, Reihenfolge, Versatz, Überschneidung (Lücke zulässig, Frage 5),
       Obergrenzen); Altbestand = implizites Betriebsmodell; Zykluslage über
       Zeitumstellung und Schalttag.
-   1. Lesen je Rolle: nur Planung, Leitung, Kundenrolle.
+   1. Lesen je Rolle: Planung, Leitung, Kundenrolle alles; Beschäftigte seit
+      IMP-6 Q4 nur die eigenen Zuordnungen und deren Modelle ohne Stempel.
    2. Schreiben je Rolle: jede andere Rolle ändert nichts; erlaubte Rollen
       schreiben, Wann/Wer/Version vom Server (Fälschungen verfallen).
    3. Kontrollierte Klärung: mehrdeutige oder unvollständige Listen werden
@@ -227,7 +228,12 @@ describe("A. Bibliothek: genau ein Modell oder ausdrücklich Klärung", () => {
 
 /* ------------------------------------------------------------------------ */
 describe("1. Lesen je Rolle", () => {
-  it("Planung, Leitung, Kundenrolle sehen Modelle und Zuordnungen; alle anderen nichts davon", async () => {
+  /* UMGESTELLT mit IMP-6 Q4 (Betreiberentscheidung 2026-11-14, „Beschäftigte sehen ihr eigenes Modell“; offengelegt im PR):
+     Bis dahin sah MA_EIGEN (a1) wie alle anderen nichts. Jetzt sieht a1 die eigenen Zuordnungen und nur das Modell „tag“
+     (das eine eigene Zuordnung nennt) — beides OHNE Wann/Wer/Version; das Modell „nacht“ nicht. Für alle übrigen Rollen
+     dieses Abschnitts (MA fremd, SV mit a1 im eigenen Bereich, BR, BT) gilt die Prüfung unverändert streng. Die volle
+     Matrix Rolle × Feld × Person steht in pruefungen/imp6-eigenes-modell.test.js. */
+  it("Planung, Leitung, Kundenrolle sehen Modelle und Zuordnungen; Beschäftigte nur die eigenen ohne Stempel; alle anderen nichts davon", async () => {
     const { token } = await neuerRaum();
     for (const k of ERLAUBT) {
       const g = await anfrage("/api/bestand", { token: token[k] });
@@ -235,7 +241,7 @@ describe("1. Lesen je Rolle", () => {
       expect(JSON.stringify(m.schichtmodelle), k).toContain(MARKE);
       expect(pA1(m).schichtmodellZuordnungen, k).toHaveLength(2);
     }
-    for (const k of [...NICHT, "BT"]) {
+    for (const k of NICHT.filter((x) => x !== "MA_EIGEN").concat("BT")) {
       const g = await anfrage("/api/bestand", { token: token[k] });
       expect(g.status, k).toBe(200);
       const s = JSON.stringify(g);
@@ -243,6 +249,16 @@ describe("1. Lesen je Rolle", () => {
       expect(s, k).not.toContain("schichtmodellZuordnungen");
       expect(s, k).not.toContain("a1-tag");
     }
+    const g = await anfrage("/api/bestand", { token: token.MA_EIGEN });
+    expect(g.status).toBe(200);
+    const m = g.bestand.mandanten[0];
+    const ohneStempel = ({ geaendertAm: _a, geaendertVon: _v, version: _n, ...rest }) => rest;
+    expect(pA1(m).schichtmodellZuordnungen).toEqual(ZUORDNUNGEN_A1().map(ohneStempel));
+    expect(m.schichtmodelle).toEqual([{ id: "tag", name: MARKE, tage: ["F", "F", "-"] }]);
+    for (const p of m.personen) if (p.id !== "a1") expect(Object.prototype.hasOwnProperty.call(p, "schichtmodellZuordnungen"), p.id).toBe(false);
+    const s = JSON.stringify(g);
+    expect(s).not.toContain(STEMPEL.geaendertAm);
+    expect(s).not.toContain('"nacht"');
   });
 });
 

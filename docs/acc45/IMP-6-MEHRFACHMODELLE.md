@@ -43,10 +43,12 @@ kein neuer Weg, keine Oberfläche, keine Wirkung auf die Planrechnung.
    einschließlich heute** (Europe/Berlin), in einem **abgeschlossenen Monat** (`monatsabschluss`) oder in einem **freigegebenen
    Monat** (`freigaben`). Weg dafür: Zuordnung ab morgen bzw. ab dem Folgemonat; für einen freigegebenen Monat die bestehende
    Rücknahme der Freigabe (Leitung, `org.edit`); für einen abgeschlossenen Monat das Wiederöffnen. Vergangene Tage bleiben immer.
-4. **Rechte (keine neuen).** Lesen und Schreiben nur Rollen mit Vollschreibrecht und (`org.edit` oder `pattern.edit`) und
-   `staff.edit` — Planung, Leitung, Kundenrolle (wer heute Schichtfolge und Personal pflegt). Beschäftigte (auch eigene Person),
-   Betriebsrat, Schichtverantwortung, Betreiber: nicht sichtbar; mitgeschickt wirkungslos bzw. (Schichtverantwortung) 403 wie jedes
-   Leitungsfeld. Ein vom Betreiber neu angelegter Betrieb bekommt die Felder nicht. RB-1 bis RB-5 unverändert.
+4. **Rechte (keine neuen).** Schreiben und vollständiges Lesen nur Rollen mit Vollschreibrecht und (`org.edit` oder
+   `pattern.edit`) und `staff.edit` — Planung, Leitung, Kundenrolle (wer heute Schichtfolge und Personal pflegt). Seit Frage 4
+   (siehe unten, „Umsetzungsstand“) sehen Beschäftigte und die Schichtverantwortung an der **eigenen** Person ihre Zuordnungen
+   und nur deren Modelle, ohne Wann/Wer/Version. Fremde Personen, Betriebsrat (auch an der eigenen Person), Betreiber: nicht
+   sichtbar. Mitgeschickt wirkungslos bzw. (Schichtverantwortung) 403 wie jedes Leitungsfeld; unverändert Zurückgeschicktes
+   behält den gespeicherten Stand. Ein vom Betreiber neu angelegter Betrieb bekommt die Felder nicht. RB-1 bis RB-5 unverändert.
 5. **Server setzt Wann/Wer/Version**; mitgeschickte Stempel verfallen. Unverändert Zurückgeschicktes behält den gespeicherten
    Datensatz. Fehlt ein Feld in der Übermittlung (veraltete Kopie), gilt der gespeicherte Stand (kein 403).
 6. **Protokoll**: je angelegtem/geändertem/entferntem Modell bzw. Zuordnung eine Zeile im Betriebsprotokoll (`schichtmodell`)
@@ -107,7 +109,7 @@ noch nicht umgesetzt, reviewt, integriert, auf Staging geprüft oder aktiviert (
 | 1 | Erfüllt seit Teil 2: jede Änderung an einem Tag bis einschließlich heute wird abgewiesen (`historischeSperre`), frühester Wechsel ist morgen. | `imp6-mehrfachmodelle` Abschnitt 4 „Wechsel ab heute“ |
 | 2 | Erfüllt seit Teil 2: vergangene Tage ändern sich nie über diesen Weg; abgeschlossene Monate erst nach dem Wiederöffnen (WP-16c), nicht rückwirkend. | Abschnitt 4 „Vergangenheit“, „abgeschlossener Monat“ |
 | 3 | Strenger als verlangt, solange die Zuordnungen nicht auf die Planrechnung wirken: Eine Änderung in einem freigegebenen Monat wird abgewiesen; Weg ist Rücknahme der Freigabe (Leitung), Änderung, neue Freigabe — also immer eine neue Planfreigabe. Eine Änderung mit Vorlauf, die die Freigabe selbst zurücknimmt, gehört zur Planwirkung (Punkt 6) und ist nicht gebaut. | Abschnitt 4 „freigegebener Monat“ |
-| 4 | Nicht gebaut (eigener Schritt: Lesesicht der eigenen Person in `sicht.mjs`, RECHTEMATRIX). Bis dahin sehen Beschäftigte die Zuordnung nicht (Abschnitt 1). | — |
+| 4 | **Lesesicht umgesetzt** (Branch `feat/imp6-eigenes-modell`, PR an `integration/release-v4`): `GET /api/bestand` liefert Beschäftigten und der Schichtverantwortung an der eigenen Person die eigenen Zuordnungen (Kennung, Modell, Gültigkeit, Versatz) und im Betrieb nur die Modelle dieser Zuordnungen (Kennung, Name, Zyklustage), jeweils ohne Wann/Wer/Version; fremde Personen nie; Betriebsrat und Betreiber nichts; Planung, Leitung, Kundenrolle unverändert. Schreibregeln unverändert. **Nicht gebaut:** eine Anzeige in der Oberfläche (die Modelle wirken noch nicht auf den Plan, eine Anzeige „Mein Schichtmodell“ neben einem anders gerechneten Plan wäre irreführend), Selbstauskunft (Punkt 7). Offene Abgrenzungen: ENTSCHEIDUNGSLISTE P2-19. | `imp6-eigenes-modell` (Matrix, Schreibweg, Teilweg, Differenz alt/neu); `imp6-mehrfachmodelle` Abschnitt 1 (umgestellt); `rechtematrix-zeilen` |
 | 5 | **Umgesetzt:** Lücken und befristetes Ende werden gespeichert; „keine“ an diesen Tagen. | `imp6-zyklen-grenzfaelle` Q5, `imp6-mehrfachmodelle` Abschnitt 3 „Frage 5“ |
 
 Zusätzlich geprüft (`pruefungen/imp6-zyklen-grenzfaelle.test.js`, Teil von `npm run pruefung:imp6-mehrfachmodelle`):

@@ -218,7 +218,7 @@
     "pruefung:verlustweg-browser": "node pruefungen/browser/verlustweg-wr6.mjs",
     "pruefung:import-schichtmodelle": "vitest run pruefungen/import-schichtmodelle-imp6.test.js",
     "pruefung:import-analyse-cache": "vitest run pruefungen/import-analyse-cache-imp6.test.js --testTimeout=120000",
-    "pruefung:imp6-mehrfachmodelle": "vitest run pruefungen/imp6-mehrfachmodelle.test.js pruefungen/imp6-zyklen-grenzfaelle.test.js --testTimeout=120000 --hookTimeout=120000",
+    "pruefung:imp6-mehrfachmodelle": "vitest run pruefungen/imp6-mehrfachmodelle.test.js pruefungen/imp6-zyklen-grenzfaelle.test.js pruefungen/imp6-eigenes-modell.test.js --testTimeout=120000 --hookTimeout=120000",
     "pruefung:abnahme-a-ablauf": "vitest run pruefungen/abnahme-a-ablauf.test.js --testTimeout=120000 --hookTimeout=120000",
     "pruefung:erstleitung": "vitest run pruefungen/erstleitung.test.js pruefungen/erstleitung-entscheidungen.test.js pruefungen/erstleitung-abbruch.test.js pruefungen/erstleitung-betreiber-put.test.js pruefungen/konto-parallel.test.js pruefungen/erstleitung-bestand-differenz.test.js pruefungen/erstleitung-zufallsmuster.test.js --no-file-parallelism --testTimeout=180000 --hookTimeout=180000",
     "pruefung:import-schichtmodell-vorschau": "vitest run pruefungen/import-schichtmodell-vorschau-imp6.test.js --testTimeout=120000",

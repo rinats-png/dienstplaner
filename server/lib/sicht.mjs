@@ -142,9 +142,56 @@ export const PERSONENFELDER = [...new Set([...EIGENE_PERSON, "mutterschutz",
   "geburtsdatum", "personalnummer", "iban", "steuerId", "sozialversicherung",
   "notfall", "lohn", "gehalt", "zuschlaege", "einarbeitung", "nachweise",
   "neuerZugang", "anonymSeit", "schutz", "sichtbereich",
-  /* Mehrere Schichtmodelle je Person (IMP-6 Teil 2, schichtzuordnung.mjs): nur Planung, Leitung und Kundenrolle —
-     weder die eigene Person noch Betriebsrat oder Schichtverantwortung (keine neue Leserechte; Planrechnung unverändert). */
+  /* Mehrere Schichtmodelle je Person (IMP-6 Teil 2, schichtzuordnung.mjs): vollständig nur Planung, Leitung und
+     Kundenrolle. Die eigene Person (Beschäftigte, Schichtverantwortung) sieht seit IMP-6 Q4 ihre eigenen Zuordnungen
+     ohne Stempel (eigeneZuordnungen unten) — nicht über EIGENE_PERSON, weil Wann/Wer/Version nicht mitgehen. Fremde
+     Personen und der Betriebsrat (auch an der eigenen Person): nichts. Planrechnung unverändert. */
   "schichtmodellZuordnungen"])];
+
+/* ------------------------------------------------------------------------
+   DAS EIGENE SCHICHTMODELL (IMP-6 Q4, Betreiberentscheidung 2026-11-14)
+
+   „Beschäftigte sehen ihr eigenes Modell; keine neuen Leserechte für den
+   Betriebsrat.“ Umgesetzt als Positivliste:
+   - an der eigenen Person die eigenen Zuordnungen, je Eintrag nur Kennung,
+     Modell, Gültigkeit und Versatz — ohne Wann/Wer/Version (die nennen die
+     Person, die geändert hat);
+   - im Betrieb nur die Modelle, die eine eigene Zuordnung nennt, je Modell
+     nur Kennung, Name und Zyklustage — ohne Stempel. Das Betriebsmodell
+     („betrieb“) ist die Schichtfolge `zyklus`, die ohnehin sichtbar ist.
+   Gilt für Beschäftigte und die Schichtverantwortung an der eigenen Person;
+   der Betriebsrat bekommt nichts, auch nicht an der eigenen Person (Q4,
+   Rückfrage P2-19). Kein Zeitfenster: Eine gefilterte Liste änderte die
+   Bedeutung (fehlende oder leere Liste = Betriebsmodell unbefristet);
+   eigene Angaben sind auch sonst ungefenstert (P2-19).
+   Schreiben unverändert: Beschäftigte wirkungslos (zusammenfuehren nimmt
+   nur SELBST_FELDER), Schichtverantwortung: unverändert zurückgeschickt
+   bleibt der gespeicherte Stand, geändert 403 wie jedes Leitungsfeld
+   (personenRueckfuellen/schichtRueckfuellen rechnen mit dieser Sicht).
+   ------------------------------------------------------------------------ */
+const ZUORDNUNG_FELD = "schichtmodellZuordnungen";
+/** Was an einer eigenen Zuordnung hinausgeht (keine Stempel). */
+export const ZUORDNUNG_FELDER_EIGEN = Object.freeze(["id", "modellId", "gueltigAb", "gueltigBis", "versatz"]);
+/** Was an einem zugeordneten Modell hinausgeht (keine Stempel). */
+export const MODELL_FELDER_EIGEN = Object.freeze(["id", "name", "tage"]);
+const istEintrag = (x) => !!x && typeof x === "object" && !Array.isArray(x);
+/** Die eigenen Zuordnungen ohne Stempel — undefined, wenn die Person keine Liste trägt (Feld fehlt in der Sicht). */
+export function eigeneZuordnungen(p) {
+  if (!istEintrag(p) || !Object.prototype.hasOwnProperty.call(p, ZUORDNUNG_FELD) || !Array.isArray(p[ZUORDNUNG_FELD])) return undefined;
+  return p[ZUORDNUNG_FELD].filter(istEintrag).map((z) => nimm(z, ZUORDNUNG_FELDER_EIGEN));
+}
+/** Die eigene Person mit den eigenen Zuordnungen (sofern sie welche trägt). */
+function mitEigenenZuordnungen(aus, p) {
+  const z = eigeneZuordnungen(p);
+  return z === undefined ? aus : { ...aus, [ZUORDNUNG_FELD]: z };
+}
+/** Die Modelle, die eine eigene Zuordnung nennt — ohne Stempel. Ohne Person oder ohne Zuordnung: leere Liste. */
+function schichtmodelleEigene(w, ctx) {
+  const ich = liste(ctx && ctx.betrieb && ctx.betrieb.personen).find((p) => istEintrag(p) && gleich(p.id, ctx.ich));
+  const ids = new Set((eigeneZuordnungen(ich) || []).map((z) => z.modellId)
+    .filter((id) => (typeof id === "string" || typeof id === "number") && String(id) !== "betrieb").map(String));
+  return liste(w).filter((x) => istEintrag(x) && ids.has(String(x.id))).map((x) => nimm(x, MODELL_FELDER_EIGEN));
+}
 
 /* ------------------------------------------------------------------------
    KATALOG DER ART.-9-NAHEN FELDER (T-11, L-16, R-03)
@@ -303,7 +350,8 @@ export function umfangVon(p, ctx) {
 export function schichtPersonSicht(p, ctx) {
   if (!p || typeof p !== "object") return p;
   const umfang = umfangVon(p, ctx);
-  if (umfang === "eigen") return { ...nimm(p, EIGENE_PERSON), sichtbereich: "eigen" };
+  /* IMP-6 Q4: die eigenen Zuordnungen ohne Stempel (siehe eigeneZuordnungen). */
+  if (umfang === "eigen") return { ...mitEigenenZuordnungen(nimm(p, EIGENE_PERSON), p), sichtbereich: "eigen" };
   if (umfang === "fremd") return { ...personSicht(p, { ...ctx, rolle: "mitarbeiter" }), sichtbereich: "fremd" };
   const aus = nimm(p, umfang === "bereich" ? BEREICH_PERSON : POOL_PERSON);
   if (Object.prototype.hasOwnProperty.call(p, "qualNachweise")) aus.qualNachweise = nachweiseBereich(p);
@@ -316,7 +364,9 @@ export function schichtPersonSicht(p, ctx) {
 
 function personSicht(p, ctx) {
   if (!p || typeof p !== "object") return p;
-  if (gleich(p.id, ctx.ich)) return nimm(p, EIGENE_PERSON);
+  /* IMP-6 Q4: Beschäftigte sehen ihre eigenen Zuordnungen ohne Stempel; der Betriebsrat nicht (keine neuen Leserechte). */
+  if (gleich(p.id, ctx.ich))
+    return ctx.rolle === "mitarbeiter" ? mitEigenenZuordnungen(nimm(p, EIGENE_PERSON), p) : nimm(p, EIGENE_PERSON);
   const katalog = ctx.rolle === "betriebsrat" ? FREMD_BETRIEBSRAT : FREMD_MITARBEITER;
   const aus = {};
   for (const [feld, regel] of Object.entries(katalog)) {
@@ -697,9 +747,10 @@ export const BETRIEB = {
      § 87 BetrVG offen: eine Lesesicht des Betriebsrats gibt es nicht). Planung sieht das Feld nicht (rechte.mjs nimmt es aus der
      Sicht); nur org.edit (Leitung, Kundenrolle) liest und schreibt. */
   vorgaben: [WEG, WEG],
-  /* Mehrere Schichtmodelle je Betrieb (IMP-6 Teil 2, schichtzuordnung.mjs): nur Planung, Leitung und Kundenrolle; sie wirken
-     noch nicht auf die Planrechnung. Beschäftigte, Schichtverantwortung und Betriebsrat sehen das Feld nicht. */
-  schichtmodelle: [WEG, WEG],
+  /* Mehrere Schichtmodelle je Betrieb (IMP-6 Teil 2, schichtzuordnung.mjs): vollständig nur Planung, Leitung und
+     Kundenrolle; sie wirken noch nicht auf die Planrechnung. Beschäftigte und Schichtverantwortung (SCHICHT übernimmt die
+     Spalte) seit IMP-6 Q4 nur die Modelle ihrer eigenen Zuordnungen ohne Stempel; der Betriebsrat nichts. */
+  schichtmodelle: [R(schichtmodelleEigene), WEG],
   /* Anlagen (WP-19) sind Betriebsmittel der Art „anlage“ mit mindestBesetzung und
      laufzeit — keine Personendaten; sie folgen dieser Zeile (nicht ausgegeben → sichtbar). */
   betriebsmittel: [R(betriebsmittelEigen), WEG],
