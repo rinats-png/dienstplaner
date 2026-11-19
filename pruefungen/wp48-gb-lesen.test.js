@@ -306,7 +306,9 @@ describe("WP-48-GB Nachtrag: Lesen ändert den Stand nicht", { timeout: 120000 }
     expect(schreib).toMatch(/^SP\.schreib\(b, \{ durch: "Migration", sofort: true,\s*onKonflikt:/);
     /* Die Entscheidung trifft migrationKonflikt (Fall K führt sie aus): aktueller Stand vor dem geladenen, Teilweg. */
     expect(schreib).toMatch(/migrationKonflikt\(\{ geschrieben: migrationsAbbild, aktuell: ref\.current, geladen,\s*antwort: d, migriere, teilwegGenutzt: SP\.teilwegGenutzt\(\) \}\)/);
-    expect(schreib).toMatch(/if \(e\.art === "uebernehmen"\) \{\s*zuletztGeschrieben\.current = abbildVon\(e\.bestand\);\s*setDb\(e\.bestand\);\s*return;\s*\}/);
+    /* Folgepaket #365 (umgestellt, nicht gelockert): speicher.js gibt den ETag der Absage erst mit der Entscheidung frei —
+       die stille Übernahme ruft deshalb zuerst SP.konfliktLoesen("server") (pruefungen/speicher-409-konfliktsperre.test.js). */
+    expect(schreib).toMatch(/if \(e\.art === "uebernehmen"\) \{\s*SP\.konfliktLoesen\("server"\);[^\n]*\n\s*zuletztGeschrieben\.current = abbildVon\(e\.bestand\);\s*setDb\(e\.bestand\);\s*return;\s*\}/);
     expect(schreib).toMatch(/setKonflikt\(\{ \.\.\.d, meiner: e\.meiner, \.\.\.\(SP\.teilwegGenutzt\(\) \? \{ ohneUebernehmen: true,/);
     expect(schreib.slice(0, schreib.indexOf("} });")), "keine eigene Entscheidung mehr im Handler").not.toMatch(/automatikKonfliktLoesen/);
     expect(app).toMatch(/import \{[^}]*migrationZurueckschreiben[^}]*migrationKonflikt[^}]*\} from "\.\/app\/oeffnen\.js"/);

@@ -144,6 +144,7 @@ rot; „Teilweg-Abfrage entfernt“ → K rot.
    kann den fremden Stand überschreiben, obwohl der Dialog offen ist. Dieser Nachtrag behebt nur den Fall „keine eigene
    Eingabe“; bei M4 erscheint der Dialog, das stille Überschreiben durch die nächste Eingabe bleibt möglich. Eigenes
    Folgepaket (vermerkt in `WIEDERAUFNAHME.md`), hier nicht gebaut.
+   **Nachtrag 2026-11-19 (Folgepaket, Branch `fix/speicher-409-konfliktsperre`):** bestätigt und behoben, siehe §7.
 3. **Ältere Serverfassung.** Steht der Server bei der Absage selbst noch auf einer Fassung < 9 (`automatikKonfliktLoesen`
    verlangt `schritte === 0`), erscheint ein unnötiger, aber sicherer Dialog statt der stillen Übernahme.
 4. **Ausführung von `App.jsx`:** siehe Nachweis — nur über den Quelltext geprüft.
@@ -151,3 +152,55 @@ rot; „Teilweg-Abfrage entfernt“ → K rot.
 **Weiter offen** (nicht Teil dieses Nachtrags): `workers: 1` in `playwright.config.mjs` — die e2e-Tests teilen einen
 Demo-Betrieb und ändern ihn teils; ob sie parallel ohne echte Konflikte laufen, ist nur mit einem e2e-Lauf zu belegen.
 Unabhängiges Review; Produktfragen in Abschnitt 5.
+
+## 7. Folgepaket: Konfliktsperre nach 409 in `speicher.js` (2026-11-19)
+
+**Befund bestätigt (echter Client gegen echten Handler, `pruefungen/speicher-409-konfliktsperre.test.js`).** Der Server
+gleicht nur bei veraltetem ETag ab (Drei-Wege-Abgleich je Scherbe, Streit → 409). Mit dem aktuellen ETag schreibt er den
+geschickten Stand ohne Abgleich (`server/lib/bestand.mjs`, „Kein Stand mitgeschickt: schreiben ohne Abgleich“). Weil
+`speicher.js` nach jedem 409 sofort den ETag der Absage übernahm, war der Verlust echt: Auf dem alten Stand endete V1 mit
+„Haus“ statt „Haus Planung“ (die Änderung der anderen Sitzung war weg, die eigene Eingabe stand da).
+
+Varianten (alle auf dem alten Stand rot, auf dem neuen grün):
+
+| Variante | alter Ablauf |
+|---|---|
+| V1 Eingabe wartet im Zeitgeber | geht nach dem 409 mit dem neuen ETag hinaus, überschreibt |
+| V2 Eingabe wartet in der Schreibkette (`jetztSchreiben`) | wie V1, ohne Zeitgeber |
+| V3 gescheitert (Netz), „Noch einmal senden“ → 409 | meldet „Gespeichert.“ (`ok: true`), die nächste Eingabe überschreibt |
+| V4 Dialog offen oder „Später entscheiden“, weitere Eingabe | überschreibt |
+| V5 Teilweg (Schalter an) | schon geschützt (`vollSperre`, Review #348; `wp48-5-oberflaeche` P4b), unverändert |
+| V6 zwei Reiter derselben Sitzung | je Reiter wie V1–V4; der Server schützt nur über den ETag des jeweiligen Reiters |
+| Schließen/Neu laden (`beforeunload`, `keepalive`) | schickte eine wartende Eingabe mit dem neuen ETag — auch beim Klick auf „Neu laden“ im Dialog |
+
+**Behebung (ohne Teilweg; der Teilweg-Pfad ist unverändert):** Nach einem 409 setzt `speicher.js` eine Sperre (`konfliktSperre`)
+statt den ETag zu übernehmen. Bis zur Entscheidung geht kein Voll-PUT hinaus (auch nicht beim Schließen); der jüngste
+Auftrag bleibt ausstehend (Lage „konfliktOffen“, als Datei zu sichern, `beforeunload` fragt), nichts wird verworfen.
+`schreibenAusstehend()` ist währenddessen wahr (Stempeln und Monatsabschluss ersetzen den lokalen Stand dann nicht still).
+Entschieden wird ausdrücklich mit `konfliktLoesen("meins" | "server")`: „Meinen Stand übernehmen“ (dann erst ETag der Absage),
+die automatischen Lösungen (`automatikKonfliktLoesen`, `migrationKonflikt`) mit „server“. „Neu laden“ im Dialog verwirft
+ohne Teilweg sichtbar (`verwerfenMitRueckfrage`). Die Leiste „konfliktOffen“ öffnet den Dialog wieder („Konflikt
+entscheiden“). Konfliktfreie Abläufe senden dieselben Requests (Test D, auf altem und neuem Stand grün).
+
+**Umgestellte bestehende Prüfungen (offengelegt, nicht gelockert):** `wp48-gb-lesen` V (die stille Übernahme muss jetzt
+zusätzlich `SP.konfliktLoesen("server")` rufen); `modul-kern-nachtrag3` „Abweisung 409“ (nach dem 409 eines
+Ausnahmewegs geht die nächste Eingabe erst nach der Entscheidung hinaus, dann ohne Angabe und mit dem ETag der Absage).
+
+**Restrisiken (Review #374):**
+- **M2 Telefon/PWA:** Wird die App weggewischt, kommt nur `visibilitychange`, kein `beforeunload` (in iOS Safari ist
+  `beforeunload` ohnehin unzuverlässig). Gehaltene Eingaben sind dann ohne Rückfrage weg; vorher gingen sie hinaus und
+  überschrieben die fremde Änderung. Der Tausch ist bewusst: lieber die eigene, ungespeicherte Eingabe verlieren als
+  still eine fremde, gespeicherte. Die Leiste „konfliktOffen“ sagt es („Am Telefon vor dem Schließen der App entscheiden
+  oder als Datei sichern“). Geprüft: bei Sperre weder per `beforeunload` noch per `visibilitychange` ein PUT, und
+  `beforeunload` fragt nach (V7).
+- **N2 Ausnahmeweg:** Ein 409 auf dem Ausnahmeweg setzt ebenfalls die Sperre; die nächste Eingabe ersetzt die Lage
+  „ausnahmeZurueck“ (neu laden) durch „konfliktOffen“, der Hinweis „abgewiesen, neu laden“ geht verloren. Reines
+  Anzeigeproblem: die Angabe geht nicht mehr mit (`modul-kern-nachtrag3`), der Server bleibt sicher.
+- **N3 (schon vorher so):** Nach „Meinen Stand übernehmen“ meldet `App.jsx` „Dein Stand wurde übernommen.“ vor der
+  Antwort; bei erneutem 409 ist das falsch, die Leiste „konfliktOffen“ korrigiert es.
+- **N4:** `App.jsx` nur über Quelltext-Verträge geprüft, kein Browserlauf.
+- Behoben (N1): „Später entscheiden“ zeigt die Leiste sofort (`onSchliessen` setzt `SP.ausstehend()`), nicht erst mit
+  der nächsten Eingabe.
+
+**Offen:** P2-20 (`ENTSCHEIDUNGSLISTE.md`): „Meinen Stand übernehmen“ ersetzt auch fremde Änderungen in Monaten, die der
+Dialog nicht nennt (Ist-Verhalten, als Test belegt). Ausführung von `App.jsx` nur über Quelltext-Verträge geprüft.
