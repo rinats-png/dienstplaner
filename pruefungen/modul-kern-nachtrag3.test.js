@@ -296,8 +296,18 @@ describe("F2 — speicher.js: die Ausnahmeangabe übersteht einen Fehlschlag", (
       await SP.schreib(mitAenderung(), { sofort: true, onFehler: (l) => lagen.push(l), onKonflikt: (d) => konflikte.push(d) });
       expect(lagen.map((l) => l.art)).toEqual(["ausnahmeZurueck"]);
       expect(konflikte).toEqual([]);
+      if (status === 409) {
+        /* Folgepaket #365 (umgestellt, offengelegt): Nach einem 409 geht bis zur Entscheidung nichts hinaus — vorher ging
+           die nächste Eingabe mit dem ETag der Absage hinaus und überschrieb still den fremden Stand
+           (pruefungen/speicher-409-konfliktsperre.test.js). Die Angabe bleibt auch nach der Entscheidung verworfen. */
+        await SP.schreib(mitAenderung(), { sofort: true, onFehler: (l) => lagen.push(l) });
+        expect(aufrufe).toHaveLength(1);
+        expect(lagen.at(-1).art).toBe("konfliktOffen");
+        expect(SP.konfliktLoesen("meins")).toBe(true);
+      }
       await SP.schreib(mitAenderung(), { sofort: true });
       expect("moduldatenAusnahme" in koerper(aufrufe[1])).toBe(false);
+      if (status === 409) expect(JSON.parse(aufrufe[1][1].body).etag, "erst nach der Entscheidung der ETag der Absage").toBe("e9");
     });
   }
 });

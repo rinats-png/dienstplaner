@@ -69,6 +69,14 @@ export const SPEICHERLAGE = {
       + "dann neu.",
     neuladen: true,
   },
+  /* Folgepaket #365: nach „Gleichzeitig bearbeitet" ohne Teilspeicherung — gesendet wird erst nach der Entscheidung. */
+  konfliktOffen: {
+    titel: "Gleichzeitig bearbeitet — bis zur Entscheidung wird nichts gespeichert",
+    text: "Jemand anderes hat dieselben Angaben gespeichert, seit du geladen hast. Damit nichts still überschrieben "
+      + "wird, sendet diese Seite nichts mehr, bis du entschieden hast: neu laden (deine ungespeicherten Änderungen "
+      + "verwerfen) oder deinen Stand übernehmen. Sichere deine Änderungen vorher bei Bedarf als Datei.",
+    konflikt: true,
+  },
   /* WP-48.5 (Review #350): Nach einem Löschlauf (auch bei unklarem Ausgang) geht aus dieser Seite nichts mehr hinaus. */
   neuLadenPflicht: {
     titel: "Nach dem Löschlauf bitte die Seite neu laden",
@@ -116,7 +124,7 @@ export function verwerfenMitRueckfrage() {
   return true;
 }
 
-export function NichtGespeichert({ lage, melde, aufGeloest }) {
+export function NichtGespeichert({ lage, melde, aufGeloest, onKonflikt = null }) {
   const [laeuft, setLaeuft] = useState(false);
   const [code, setCode] = useState("");
   if (!lage) return null;
@@ -171,6 +179,7 @@ export function NichtGespeichert({ lage, melde, aufGeloest }) {
       {l.verwerfen && (lage.bereich || lage.text) && <p style={{ fontSize: 13.5, lineHeight: 1.6, margin: "0 0 14px", maxWidth: "72ch" }}>
         {lage.bereich ? <>Bereich: <strong>{lage.bereich}</strong>. </> : null}{lage.text}</p>}
       <div style={{ display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center" }}>
+        {l.konflikt && onKonflikt && <Btn kind="primary" size="sm" onClick={onKonflikt}>Konflikt entscheiden</Btn>}
         {l.nochmal && <Btn kind="primary" size="sm" disabled={laeuft} onClick={nochmal}>
           {laeuft ? "Wird gesendet …" : "Noch einmal senden"}</Btn>}
         {l.neuAnmelden && (<>
@@ -260,7 +269,10 @@ export function Konfliktfenster({ lage, onSchliessen, onUebernehmen, melde }) {
                   + "Stand ab und fragt bei Überschneidungen nach."
                 : <>Du siehst den Stand von {wer}. Deine Änderungen seit dem letzten
               Speichern sind weg.</>}</div>
-            <Btn size="sm" kind="primary" onClick={() => window.location.reload()}>
+            {/* Folgepaket #365: ohne Teilweg sichtbar verwerfen (Rückfrage), sonst schickte das Schließen nichts, aber
+                der Browser fragte „Seite verlassen?". Mit Teilweg (ohneUebernehmen) unverändert. */}
+            <Btn size="sm" kind="primary" onClick={() => {
+              if (lage && lage.ohneUebernehmen) window.location.reload(); else verwerfenMitRueckfrage(); }}>
               Neu laden</Btn>
           </div>
 

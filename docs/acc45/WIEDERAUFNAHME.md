@@ -5,6 +5,11 @@
 > Halter und Epoche stehen nie verlässlich in diesem Dokument: maßgeblich ist allein `node werkzeug/koordination.mjs status`
 > (dazu `leerlauf`). Epochenangaben in den Nachträgen unten sind historisch. Betriebsregeln: Abschnitt „Koordinationsregel“.
 
+## Nachtrag 2026-11-19 (e) (Folgepaket speicher.js 409, Branch `fix/speicher-409-konfliktsperre`, offen bis Merge)
+
+- Folgepaket (5) aus dem Nachtrag (d) bzw. Review #365 Punkt 1b gebaut, Ziel `integration/release-v4`, nicht gemergt. Befund mit echtem Client gegen echten Handler bestätigt (Server schreibt mit aktuellem ETag ohne Abgleich; Verlust echt). Behebung: Konfliktsperre in `src/speicher.js` (ohne Teilweg) bis `konfliktLoesen`; Teilweg-Pfad, Schalter und Speicherschlüssel unverändert. Einzelheiten und Varianten in `WP-48-GB-ANALYSE.md` §7.
+- Neue Betreiberfrage P2-20 in `ENTSCHEIDUNGSLISTE.md` (Reichweite von „Meinen Stand übernehmen“, Voreinstellung A = unverändert). Umgestellte bestehende Prüfungen: `wp48-gb-lesen` V, `modul-kern-nachtrag3` „Abweisung 409“ (offengelegt in §7 und im PR-Text).
+
 ## Nachtrag 2026-11-19 (d) (SSOT-Nachtrag #367 bis #370, nur Doku und SSOT)
 
 - Integrationskopf `integration/release-v4`: `87473f12` (Merge #370). Merge-Commits aus `gh pr view`, Vorfahren des Kopfes: #367 (`63616c7e`, SSOT-Nachtrag, schon belegt); #368 (`9fd6045f`, WP-14c-Nachbesserung: Kennzeichnung „zur Prüfung“ an vier Stellen, `istAbweichungen` inhaltlich statt `JSON.stringify`, negative, zu lange oder leere Pausen beim allgemeinen Speichern 422 `PAUSE_UNGUELTIG`, Altbestand unverändert); #369 (`8200976a`, IMP-6 Teil 3: Q5 Lücken in der Modellzuordnung zulässig, Zustand „keine“, nie das Betriebsmodell; ungültiger Versatz „ungueltig“; über 55 Grenzfalltests); #370 (`87473f12`, ABN-A4: Absturz schon durch #280 behoben, fehlender oder unvollständiger Bedarf zeigt „Bedarf nicht festgelegt“ statt „0/0“ oder NaN in acht Ansichten, Rechnung unverändert).

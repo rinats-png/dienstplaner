@@ -48,6 +48,9 @@ let neuLadenSperre = false;
 let vollSperre = false;
 /** War der Teilweg in dieser Sitzung aktiv? Dann bietet das Konfliktfenster des Voll-PUT kein blindes Übernehmen an. */
 let teilGenutzt = false;
+/** Konfliktsperre (Folgepaket #365, ohne Teilweg): nach einem 409 „Gleichzeitig bearbeitet" bis zur Entscheidung
+    (konfliktLoesen) { etag, daten } der Absage — solange geht kein Voll-PUT hinaus. Sonst null. */
+let konfliktSperre = null;
 /** Rückrufe des letzten Auftrags auf dem Teilweg (Senden nach einer Entscheidung im Konfliktfenster). */
 let teilAuftrag = null;
 /** Der jüngste lokale Stand, der zum Speichern übergeben wurde. */
@@ -57,7 +60,7 @@ const teilOffen = () => !!teil && !teilRuhig(teil);
 
 /** Wartet ein Schreibvorgang oder ist einer unterwegs? Dann ist der lokale
     Stand nicht der gespeicherte. */
-export const schreibenAusstehend = () => !!offen || unterwegs > 0 || teilOffen();
+export const schreibenAusstehend = () => !!offen || unterwegs > 0 || teilOffen() || !!konfliktSperre;
 let name = null;
 let zugang = null;         // Rolle, Person und Betrieb aus dem Zugangscode
 
@@ -693,6 +696,38 @@ export function allesAusstehendeVerwerfen() {
   if (uhr) { clearTimeout(uhr); uhr = null; }
 }
 
+/* Konfliktsperre (Folgepaket aus dem Review von #365, docs/acc45/WP-48-GB-ANALYSE.md §6 Restrisiko 2). Vorher übernahm
+   speicher.js nach einem 409 sofort den ETag der Absage. Jede danach gesendete Eingabe (wartend im Zeitgeber, in der
+   Schreibkette hinter dem abgewiesenen Auftrag, „Noch einmal senden", eine Eingabe bei offenem oder mit „Später
+   entscheiden" geschlossenem Dialog, das Senden beim Schließen) ging mit diesem ETag hinaus. Der Server schreibt bei
+   aktuellem ETag ohne Abgleich (server/lib/bestand.mjs) — die fremde Änderung war still weg.
+   Jetzt hält speicher.js nach dem 409 an: Nichts geht hinaus, der jüngste Auftrag bleibt ausstehend (Lage
+   „konfliktOffen", als Datei zu sichern), bis die Oberfläche entscheidet. Mit Teilweg in der Sitzung gilt weiter
+   vollSperre (Review #348), diese Sperre wird dort nie gesetzt. */
+const konfliktLageText = () => ({ art: "konfliktOffen", text: "Gleichzeitig bearbeitet — erst entscheiden.", status: 409,
+  zeit: new Date().toISOString() });
+/** Die Absage (409) des ungelösten Konflikts für das Konfliktfenster, sonst null. */
+export const konfliktLage = () => (konfliktSperre ? konfliktSperre.daten : null);
+/**
+ * Den Konflikt entscheiden. „meins": der Stand der Oberfläche soll den Stand des Servers ersetzen (danach schickt die
+ * Oberfläche ihn mit schreib). „server": die Oberfläche hat den Stand aus der Absage übernommen (automatische Lösung,
+ * WP-48-GB). In beiden Fällen gehört ab jetzt der ETag der Absage zum lokalen Stand; der ausstehende Auftrag ist überholt.
+ * Gibt false zurück, wenn kein Konflikt offen ist.
+ * @param {"meins"|"server"} _wahl
+ */
+export function konfliktLoesen(_wahl) {
+  if (!konfliktSperre) return false;
+  if (konfliktSperre.etag !== undefined && konfliktSperre.etag !== null) etag = konfliktSperre.etag;
+  konfliktSperre = null;
+  gescheitert = null;
+  return true;
+}
+/** Während der Konfliktsperre: den Auftrag nicht senden, sondern als ausstehend halten und melden. */
+function konfliktHalten(auftrag) {
+  gescheitert = { auftrag, lage: konfliktLageText() };
+  if (auftrag.onFehler) { try { auftrag.onFehler(gescheitert.lage); } catch { /* Anzeige */ } }
+}
+
 /* P2-12 (Folgepunkt (1) Review #344): 422 UNGUELTIGER_KALENDERTAG des Servers (gestalt.kalendertagFehler). Gespeichert
    wurde nichts. Die Lage nennt den Bereich (aus `feld`, z. B. „mandanten[0].erfassung") und den Text des Servers
    („Den Kalendertag 2026-02-30 gibt es nicht. Es wurde nichts geändert.").
@@ -904,6 +939,8 @@ async function schreibenAusfuehren(beimSchliessen) {
   /* Review #350: nach einem Löschlauf geht kein wartender Auftrag mehr hinaus (auch nicht beim Schließen). */
   if (neuLadenPflicht) { const a = offen; offen = null; uhr = null; pflichtAufnehmen(a); return; }
   const auftrag = offen; offen = null; uhr = null;
+  /* Konfliktsperre: bis zur Entscheidung nichts senden, auch nicht beim Schließen (ohne Teilweg nie gesetzt). */
+  if (konfliktSperre) { konfliktHalten(auftrag); return; }
   let status = null;
   unterwegs += 1;
   /* Fünfter Review B-2: Ohne Zeitgrenze hielte ein hängender Request die Schreibkette (jetztSchreiben) dauerhaft. */
@@ -992,12 +1029,17 @@ async function schreibenAusfuehren(beimSchliessen) {
     if (status === 409) {
       /* Review #348 H1/P4: Mit Teilweg in der Sitzung bleibt der ETag der eigene; weitere Voll-PUTs sind gesperrt, bis
          neu gelesen ist (die Wahl im Konfliktfenster ist nur „Neu laden“ bzw. Datei sichern). Ohne Teilweg wie bisher. */
+      /* Ohne Teilweg (Folgepaket #365): den ETag der Absage erst mit der Entscheidung übernehmen (konfliktLoesen) —
+         bis dahin geht nichts hinaus, und der abgewiesene Auftrag bleibt ausstehend. */
       if (teilGenutzt) vollSperre = true;
-      else etag = daten.etag;
+      else konfliktSperre = { etag: daten ? daten.etag : undefined, daten };
       /* Wurde dieselbe Angabe inzwischen angenommen, ist der 409 ein gewöhnlicher Konflikt (kein Alarm). */
       if (auftrag.ausnahme && angenommeneAngaben.has(auftrag.ausnahme)) auftrag.ausnahme = null;
       if (auftrag.ausnahme) { ausnahmeAbgewiesen(String(daten?.text || daten?.fehler || "Der Bestand hat sich geändert.")); return; }
+      if (konfliktSperre) gescheitert = { auftrag, lage: konfliktLageText() };
       if (auftrag.onKonflikt) auftrag.onKonflikt(daten);
+      /* Ohne Konfliktfenster (z. B. der zweite Versuch nach „Meinen Stand übernehmen"): wenigstens die Leiste. */
+      else if (konfliktSperre && auftrag.onFehler) auftrag.onFehler(gescheitert.lage);
       return;
     }
     if (status === 403 && auftrag.ausnahme) { ausnahmeAbgewiesen(String(daten?.fehler || "Abgewiesen.")); return; }
@@ -1087,7 +1129,9 @@ if (typeof window !== "undefined") {
        Ausgang, „neu laden") — dann nichts senden, aber nachfragen. Ohne Teilweg ist teilOffen() immer falsch. */
     /* Review #350: nach einem Löschlauf: nichts senden, aber nachfragen, solange Ungesichertes gescheitert ist. */
     const pflichtOffen = neuLadenPflicht && !!gescheitert && !gescheitert.gesichert;
-    if (!offen && !teilOffen() && !pflichtOffen) return;
+    /* Konfliktsperre: nichts senden (jetztSchreiben hält an), aber nachfragen, solange Ungesichertes aussteht. */
+    const konfliktUngesichert = !!konfliktSperre && !!gescheitert && !gescheitert.gesichert;
+    if (!offen && !teilOffen() && !pflichtOffen && !konfliktUngesichert) return;
     if (offen && !neuLadenPflicht) jetztSchreiben(true);
     /* Zusätzlich nachfragen: keepalive ist zuverlässig, aber nicht
        garantiert. Bei einem Monatsplan wiegt eine Rückfrage leichter als
@@ -1125,6 +1169,8 @@ export async function sicherungen() {
  */
 export async function wiederherstellen(marke) {
   try { await schreibenAbschliessen(); } catch { /* der Server prüft den Stand ohnehin */ }
+  if (konfliktSperre)
+    return { status: 0, daten: { fehler: "Gleichzeitig bearbeitet — erst entscheiden (neu laden oder deinen Stand übernehmen), dann zurückspielen." } };
   if (schreibenAusstehend())
     return { status: 0, daten: { fehler: "Es wird noch gespeichert. Bitte kurz warten und erneut versuchen." } };
   if (gescheitert)

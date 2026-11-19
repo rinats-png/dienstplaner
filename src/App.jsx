@@ -1145,6 +1145,7 @@ function AppInnen() {
                 antwort: d, migriere, teilwegGenutzt: SP.teilwegGenutzt() });
               if (!e) return;
               if (e.art === "uebernehmen") {
+                SP.konfliktLoesen("server");   // ETag der Absage gehört jetzt zum übernommenen Stand
                 zuletztGeschrieben.current = abbildVon(e.bestand);
                 setDb(e.bestand);
                 return;
@@ -1274,8 +1275,9 @@ function AppInnen() {
             antwort: d, migriere });
         if (uebernehmen) {
           /* Nur der automatische Lauf ist gescheitert, niemand hat etwas eingegeben: den Stand des
-             Servers übernehmen (den ETag dazu hat speicher.js schon) und den Lauf einmal neu prüfen —
-             meist stehen die Hinweise dort schon, von der anderen Sitzung. */
+             Servers übernehmen (den ETag dazu gibt speicher.js mit konfliktLoesen frei) und den Lauf einmal neu
+             prüfen — meist stehen die Hinweise dort schon, von der anderen Sitzung. */
+          SP.konfliktLoesen("server");
           const naechster = { ...uebernehmen, session: ref.current.session, stand: (ref.current.stand || 0) + 1 };
           zuletztGeschrieben.current = abbildVon(naechster);
           if (urlaubsLaeufe.current < 2) urlaubsLauf.current = false;
@@ -1854,7 +1856,8 @@ function AppInnen() {
           {!istBetreiber && <Testablauf mandant={sitz.mandant} darfEinrichten={darf(sitz, "org.edit")} />}
           <Offlineleiste lage={offline} />
           <NichtGespeichert lage={nichtGespeichert} melde={melde}
-            aufGeloest={() => setNichtGespeichert(null)} />
+            aufGeloest={() => setNichtGespeichert(null)}
+            onKonflikt={() => { const d = SP.konfliktLage(); if (d) setKonflikt({ ...d, meiner: ref.current }); }} />
           {teilLage && !teilFenster && <TeilwegLeiste zustand={teilLage} onOeffnen={() => setTeilFenster(true)} />}
           {schmal && !mobilOk && (
             <Card style={{ padding: 20, marginBottom: 20, background: C.warnLight }}>
@@ -2029,9 +2032,11 @@ function AppInnen() {
         <Konfliktfenster lage={konflikt} melde={melde}
           onSchliessen={() => setKonflikt(false)}
           onUebernehmen={() => {
-            /* Denselben Stand noch einmal schicken. speicher.js hat den
-               ETag aus der Absage bereits übernommen, der zweite Versuch
-               läuft also gegen den aktuellen Stand und geht durch. */
+            /* Denselben Stand noch einmal schicken. Erst mit dieser Entscheidung
+               übernimmt speicher.js den ETag aus der Absage (vorher Sendesperre),
+               der zweite Versuch läuft also gegen den aktuellen Stand und geht durch. */
+            SP.konfliktLoesen("meins");
+            setNichtGespeichert((l) => (l && l.art === "konfliktOffen" ? null : l));
             SP.schreib(ref.current, { durch: "Übernahme nach Konflikt", sofort: true,
               onFehler: (l) => setNichtGespeichert(l) });
             setKonflikt(false);
