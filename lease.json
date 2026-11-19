@@ -2,8 +2,8 @@
   "epoche": 23,
   "halter": "hauptchat-e23",
   "uebernommen_am": "2026-11-19T12:01:36.788Z",
-  "erneuert_am": "2026-11-19T22:05:08.995Z",
-  "gueltig_bis": "2026-11-20T01:05:08.995Z",
+  "erneuert_am": "2026-11-19T22:18:40.890Z",
+  "gueltig_bis": "2026-11-20T01:18:40.890Z",
   "uebergabe": "Hauptchat 19.11.: Epoche 22 abgelaufen 11:16Z, leerlauf Exit 5, kein anderer Koordinator, Kopf 1d8aacce, keine offenen Agenten, keine Integrations-PRs offen",
   "vorgaenger": "hauptchat-e22",
   "freigegeben_am": null
