@@ -15,8 +15,8 @@
          Planung bekommt 409 → Konfliktfenster; nach „Später entscheiden“ geht eine weitere Eingabe NICHT hinaus
          (Sendesperre nach 409); die fremde Änderung bleibt auf dem Server; „Neu laden“ zeigt sie.
      L4  Sitzungsende und Wiederanmeldung: Sitzung serverseitig beendet (Abmelden mit dem Merkmal der Seite, wie nach
-         Ablauf), das alte Merkmal bekommt 401. L4a erwartet die Anmeldung schon beim nächsten Laden — heute bleibt das
-         Ladegerüst stehen (Befund B-L4, als test.fail markiert, nicht versteckt). L4b: nach erneutem Laden Anmeldung,
+         Ablauf), das alte Merkmal bekommt 401. L4a prüft den heutigen Fehlzustand ausdrücklich: das erste Laden
+         bleibt auf dem Ladegerüst (Befund B-L4, offen, nicht versteckt; bei Behebung umkehren). L4b: nach erneutem Laden Anmeldung,
          Wiederanmeldung mit demselben Code zeigt die Daten wieder.
      L5  Personalimport-Fehlerfall im Browser (Text einfügen; der Dateiimport ist ausgeschaltet, IMPORT_DATEI_AKTIV und
          CENTRIC_IMPORT_AKTIV): fehlerhafte Zeile wird erkannt und nicht übernommen, nur die gültige landet auf dem Server;
@@ -183,7 +183,10 @@ test.describe.serial("Lokale E2E-Abnahme 2026-11-19: Urlaub, Konflikt, Sitzung, 
     /* Die Eigenprüfung des Fixtures („Gleichzeitig bearbeitet“ = Fehler) gilt hier nicht: Dieser Test erzeugt den Konflikt. */
     await page.removeLocatorHandler(page.getByRole("dialog", { name: "Gleichzeitig bearbeitet" }));
     const puts = [];
-    page.on("response", (r) => { if (r.request().method() === "PUT" && new URL(r.url()).pathname === "/api/bestand") puts.push(r.status()); });
+    let putAnfragen = 0;
+    const istPut = (q) => q.method() === "PUT" && new URL(q.url()).pathname === "/api/bestand";
+    page.on("request", (q) => { if (istPut(q)) putAnfragen += 1; });
+    page.on("response", (r) => { if (istPut(r.request())) puts.push(r.status()); });
     await anmeldenBrowser(page, C.p1);
     await geheZu(page, "Einstellungen");
     await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
@@ -200,12 +203,17 @@ test.describe.serial("Lokale E2E-Abnahme 2026-11-19: Urlaub, Konflikt, Sitzung, 
     await expect(fenster.getByRole("button", { name: "Neu laden" })).toBeVisible();
     await fenster.getByRole("button", { name: "Später entscheiden" }).click();
     await expect(fenster).toBeHidden();
-    /* Sendesperre: weitere Eingabe, danach Netzruhe — kein weiterer PUT */
-    const nachKonflikt = puts.length;
+    /* Sendesperre: weitere Eingabe — kein weiterer PUT. Gezählt werden ANFRAGEN (nicht Antworten), damit auch ein
+       hinausgegangener, noch unbeantworteter PUT auffällt. Der Client schreibt erst WARTE = 1200 ms nach der letzten
+       Eingabe (src/speicher.js:28, Zeitgeber in planeSchreiben); Netzruhe direkt nach dem Klick sagt darüber nichts.
+       Deshalb bewusst eine feste Zeitspanne von 3000 ms (> WARTE + Puffer für langsame Rechner): Fehlte die Sperre,
+       ginge der PUT nach 1200 ms hinaus und dieser Test würde rot. Eine Bedingung zum Abwarten gibt es hier nicht —
+       geprüft wird gerade das Ausbleiben eines Ereignisses. */
+    const nachKonflikt = putAnfragen;
     await dichte();
-    await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
+    await page.waitForTimeout(3000);
     await expect(page.getByText(/bis zur Entscheidung wird nichts gespeichert/).first()).toBeVisible({ timeout: 15000 });
-    expect(puts.length, "nach 409 darf vor der Entscheidung kein PUT hinausgehen").toBe(nachKonflikt);
+    expect(putAnfragen, "nach 409 darf vor der Entscheidung kein PUT hinausgehen").toBe(nachKonflikt);
     /* Die fremde Änderung ist auf dem Server unversehrt */
     expect((await mandant(C.lLT)).personen.some((p) => p.nachname === FREMD)).toBe(true);
     /* Entscheidung „Neu laden“ (Rückfrage nimmt das Fixture an) → Stand des Servers mit der fremden Änderung */
@@ -232,13 +240,18 @@ test.describe.serial("Lokale E2E-Abnahme 2026-11-19: Urlaub, Konflikt, Sitzung, 
   /* Befund B-L4 (docs/acc45/LOKALE-E2E-ABNAHME-2026-11-19.md §4): Beim Laden mit einem beim Server nicht mehr gültigen
      Merkmal bleibt die Seite auf dem Ladegerüst „CENTRIC wird geladen“ stehen; die Anmeldung erscheint erst nach einem
      weiteren Neuladen (src/speicher.js ruf: 401 → abmelden(true) ohne Rückmeldung an die Oberfläche; src/App.jsx: Fehler
-     „nicht-angemeldet“ wird verschluckt, db bleibt leer). Erwartetes Verhalten als bekannter Fehler (test.fail): Wird
-     der Fehler behoben, meldet Playwright diesen Test als „unerwartet bestanden“ — dann test.fail entfernen. */
-  test("L4a Sitzung beim Server beendet: beim nächsten Laden direkt die Anmeldung (bekannter Fehler B-L4)", async ({ page }) => {
-    test.fail(true, "Befund B-L4: Ladegerüst statt Anmeldung nach 401 beim Laden");
+     „nicht-angemeldet“ wird verschluckt, db bleibt leer). Dieser Test prüft ausdrücklich den HEUTIGEN Fehlzustand;
+     jeder Fehler in der Vorbereitung macht ihn rot (kein test.fail).
+     Bei Behebung von B-L4 umkehren (fix-PR folgt): dann Anmelden-Knopf sichtbar, kein Ladegerüst. */
+  test("L4a (B-L4 offen: heutiges Verhalten) Sitzung beim Server beendet: erstes Laden bleibt auf dem Ladegerüst", async ({ page }) => {
     await sitzungBeenden(page);
     await page.reload({ waitUntil: "load" });
-    await expect(page.getByRole("button", { name: /anmelden/i }).first()).toBeVisible({ timeout: 10000 });
+    /* Der Ladelauf ist durch: Das Merkmal ist geräumt (401 → abmelden(true)), das Netz ruht. */
+    await expect.poll(() => page.evaluate(() => sessionStorage.getItem("centric:token")), { timeout: 15000 }).toBeNull();
+    await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
+    await expect(page.getByRole("status").filter({ hasText: "CENTRIC wird geladen" })).toBeAttached();
+    await expect(page.getByRole("button", { name: /anmelden/i })).toHaveCount(0);
+    await expect(page.locator(".m-tabs, .kopfleiste")).toHaveCount(0);
   });
 
   test("L4b Sitzung beim Server beendet: altes Merkmal 401, Anmeldung nach erneutem Laden, Wiederanmeldung zeigt die Daten", async ({ page }) => {

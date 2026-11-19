@@ -108,7 +108,7 @@ ob er beim Scan noch sichtbar war (3 s), hing von der Laufzeit ab (CI schnell, W
 ## 4a-2. Lokale E2E-Abnahme 2026-11-19
 
 `e2e/lokale-abnahme-luecken.spec.mjs` (nur Projekt `1024x768`, eigene Betriebe): Urlaubsantrag und Genehmigung, 409 mit Sendesperre,
-Sitzungsende und Wiederanmeldung (Befund B-L4 als `test.fail`), Import-Fehlerfall, Mandantentrennung bei Anträgen. Matrix, Läufe und
+Sitzungsende und Wiederanmeldung (Befund B-L4 offen, heutiges Verhalten ausdrücklich geprüft), Import-Fehlerfall, Mandantentrennung bei Anträgen. Matrix, Läufe und
 Befund: [LOKALE-E2E-ABNAHME-2026-11-19.md](LOKALE-E2E-ABNAHME-2026-11-19.md).
 
 ## 4b. WP-33 Rest: weitere axe-Flächen (2026-11-17)
