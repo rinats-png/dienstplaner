@@ -172,14 +172,27 @@ for (const [name, f] of [
   ["Anmerkung einer Abwesenheit im Bereich setzen", (m) => { m.abwesenheiten.find((a) => a.id === "ab-a").notiz = "anders"; }],
   ["fremden Antrag genehmigt einschleusen", (m) => { m.anfragen.push({ id: "an-b", personId: "b1", typ: "abwesenheit", art: "urlaub", status: "genehmigt", von: "2026-12-20", bis: "2026-12-21" }); }],
   ["Korrekturgrund setzen", (m) => { m.erfassung["a1|2026-10-01"].grund = "anders"; }],
-  ["fremde Nachricht ändern", (m) => { m.nachrichten.push({ id: "n-a", personId: "a1", art: "info", titel: "geändert" }); }],
-  ["Protokoll fälschen", (m) => { m.protokoll = [{ id: "l1", zeit: "1", text: "gefälscht" }]; }],
 ]) {
   const r = await lies(tS);
   const x = kopie(r.bestand);
   f(x.mandanten[0]);
   const a = await schreib(tS, x, r.etag);
   pruef(`Angriff „${name}": 403`, a.status === 403, `Status ${a.status}`);
+}
+/* Folgepaket #361 (Existenzorakel): Diese beiden bekamen bis dahin 403 „Bestehende Einträge sind nicht änderbar" für
+   die verborgene Kennung, für eine unbekannte mit denselben Angaben aber 200. Jetzt dieselbe Antwort wie für die
+   unbekannte Kennung — verändert wird trotzdem nichts (geprüft unten: Sammlungen unverändert). Die Gegenprobe mit
+   unbekannter Kennung legt einen Eintrag an und läuft deshalb erst nach dieser Prüfung. */
+const wieUnbekannt = [
+  ["fremde Nachricht ändern", (id) => (m) => { m.nachrichten.push({ id, personId: "a1", art: "info", titel: "geändert" }); }, "n-a"],
+  ["Protokoll fälschen", (id) => (m) => { m.protokoll = [{ id, zeit: "1", text: "gefälscht" }]; }, "l1"],
+];
+const verborgenA = [];
+for (const [, f, id] of wieUnbekannt) {
+  const r = await lies(tS);
+  const x = kopie(r.bestand);
+  f(id)(x.mandanten[0]);
+  verborgenA.push(await schreib(tS, x, r.etag));
 }
 {
   const restVorher = ohnePlan(vorherM);
@@ -188,6 +201,15 @@ for (const [name, f] of [
 }
 pruef("Nach den Angriffen: Personen unverändert",
   JSON.stringify((await lies(tL)).bestand.mandanten[0].personen) === JSON.stringify(vorher));
+for (const [i, [name, f, id]] of wieUnbekannt.entries()) {
+  const r = await lies(tS);
+  const x = kopie(r.bestand);
+  f(`${id}-unbekannt`)(x.mandanten[0]);
+  const u = await schreib(tS, x, r.etag);
+  const v = verborgenA[i];
+  pruef(`Angriff „${name}": Antwort wie unbekannte Kennung, nichts verändert`, v.status === u.status && (v.text || "") === (u.text || ""),
+    `Status ${v.status}/${u.status}`);
+}
 
 const bestanden = ergebnisse.filter((r) => r.ok).length;
 console.log(`\n${bestanden} von ${ergebnisse.length} Prüfungen bestanden.`);

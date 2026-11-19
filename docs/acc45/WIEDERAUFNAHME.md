@@ -5,6 +5,11 @@
 > Halter und Epoche stehen nie verlässlich in diesem Dokument: maßgeblich ist allein `node werkzeug/koordination.mjs status`
 > (dazu `leerlauf`). Epochenangaben in den Nachträgen unten sind historisch. Betriebsregeln: Abschnitt „Koordinationsregel“.
 
+## Nachtrag 2026-11-19 (b) (SV-Orakel im Schreibweg, PR #366, offen bis Merge)
+
+- Folgepaket aus dem Nachtrag 2026-11-18 (d) gebaut, Branch `fix/sv-orakel-schreibweg`, Ziel `integration/release-v4`, nicht gemergt. Schreibweg der Schichtverantwortung: verborgene Kennungen wie unbekannte (`schichtVerborgenAlsUnbekannt`, aus `betriebSichtSchicht`), schließt N1 (verborgenen Antrag entscheiden, Notruf quittieren) und die Existenzorakel der Nachträge 2026-11-18 (d); Stempel-Orakel für alle Rollen ohne vollen Umfang; vorhersagbare Server-Mitteilungskennungen (`n-protokoll80-`, `n-schutzentfernt-`, `n-schutzkonflikt-`, `n-bestaetigung-`) für Clients gesperrt; keine Bewerbung auf nicht offene Ausschreibung. Einzelheiten in `RECHTEMATRIX.md` („Sichtregel im Schreibweg der Schichtverantwortung“).
+- Neue Betreiberfrage P2-15 in `ENTSCHEIDUNGSLISTE.md` (Sichtfenster auch für neue Einträge, Voreinstellung A). Umgestellte bestehende Prüfungen dort und im PR-Text aufgeführt.
+
 ## Nachtrag 2026-11-19 (WP-48-GB Nachtrag, PR #365)
 
 - **Ergebnis:** Der Befund „Öffnen schreibt“ ist durch #271 behoben. `GET /api/bestand` liest rein, und das ist jetzt byte-genau belegt. Behoben ist zusätzlich ein Randfall der Migration beim Laden (verlorene Änderung, Betriebsrat 403). Einzelheiten in `WP-48-GB-ANALYSE.md` §6. WP-48-GB bleibt IN_PROGRESS (`workers: 1`, Review, Produktfragen).

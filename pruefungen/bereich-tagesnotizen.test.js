@@ -125,13 +125,21 @@ describe("Schreiben der Schichtverantwortung", () => {
     expect(schreibe(SUB, (mm) => { mm.notizen[D][0].text = "anders"; }).e.verweigert).toBeTruthy();
     expect(schreibe(SUB, (mm) => { mm.notizen[D][0].einheitId = "eB"; }).e.verweigert).toBeTruthy();
   });
-  it("Angriffe auf B, Pool, null, Altbestand: abgewiesen bzw. wirkungslos", () => {
-    const fremd = (x) => schreibe(SUB, (mm) => { mm.notizen[D].push(x); }).e.verweigert;
-    expect(fremd({ ...notiz("n-B", "eB"), text: "GEÄNDERT" }), "B ändern").toBeTruthy();
-    expect(fremd({ ...notiz("n-B", "eB"), einheitId: "eA" }), "B → A").toBeTruthy();
-    expect(fremd({ ...notiz("n-L", undefined), einheitId: "eA" }), "Altbestand übernehmen").toBeTruthy();
-    expect(fremd({ ...notiz("n-N", null), einheitId: "eA" }), "null übernehmen").toBeTruthy();
-    expect(fremd({ ...notiz("n-P", "ePool"), einheitId: "eA" }), "Pool übernehmen").toBeTruthy();
+  /* Folgepaket #361 (Existenzorakel): Ein verändert eingeschleuster VERBORGENER Eintrag bekam bis dahin 403 „Bestehende
+     Tagesnotizen sind nicht änderbar", eine unbekannte Kennung mit denselben Angaben aber 200. Jetzt dieselbe Antwort
+     wie für die unbekannte Kennung — und die Notizen bleiben byte-gleich (geändert oder übernommen wird weiterhin nichts). */
+  it("Angriffe auf B, Pool, null, Altbestand: wie unbekannte Kennung, nichts geändert, bzw. wirkungslos", () => {
+    const fremd = (x, was) => {
+      const v = schreibe(SUB, (mm) => { mm.notizen[D].push(x); });
+      const u = schreibe(SUB, (mm) => { mm.notizen[D].push({ ...x, id: `${x.id}-unbekannt` }); });
+      expect(v.e.verweigert, was).toBe(u.e.verweigert);
+      if (!v.e.verweigert) expect(v.m.notizen, was).toEqual(roh().notizen);
+    };
+    fremd({ ...notiz("n-B", "eB"), text: "GEÄNDERT" }, "B ändern");
+    fremd({ ...notiz("n-B", "eB"), einheitId: "eA" }, "B → A");
+    fremd({ ...notiz("n-L", undefined), einheitId: "eA" }, "Altbestand übernehmen");
+    fremd({ ...notiz("n-N", null), einheitId: "eA" }, "null übernehmen");
+    fremd({ ...notiz("n-P", "ePool"), einheitId: "eA" }, "Pool übernehmen");
     /* B löschen: verborgen, also nicht mitgeschickt — bleibt */
     const weg = schreibe(SUB, (mm) => { mm.notizen = {}; mm.abweichungen["a1|2026-10-15"] = "F"; });
     expect(weg.e.verweigert).toBeFalsy();

@@ -117,8 +117,21 @@ describe("Rechtematrix: jede Rolle × Originalstempel ändern oder löschen ⇒ 
         const k = ziel(pid);
         eingriff(m, k, vorher.einstempeln[k]);
         const w = await anfrage("bestand", { methode: "PUT", token: T[rolle], rumpf: { bestand: b, etag: r.etag, durch: "Test" } });
-        expect(w.status, w.roh).toBe(403);
-        if (rolle !== "betriebsrat") expect(w.code, w.roh).toBe("STEMPEL_UNVERAENDERLICH");
+        if (rolle === "betreiber") {
+          /* Folgepaket #361 (Existenzorakel): Der Betreiber liest keine Stempel. Bis dahin unterschied die Antwort
+             (403 „nicht ändern"/„nicht löschen" gegen 200 oder „entstehen nur über die Stempeluhr"), ob a1 an dem Tag
+             gestempelt hatte. Jetzt dieselbe Antwort wie für einen Tag ohne Stempel — und gespeichert bleibt alles
+             (unten). Nicht gelockert: geändert wird weiterhin nichts. */
+          const r2 = await anfrage("bestand", { methode: "GET", token: T[rolle] });
+          const b2 = JSON.parse(JSON.stringify(r2.bestand));
+          eingriff(b2.mandanten.find((x) => x && x.id === "m1") || b2.mandanten[0], `a1|${tag(-9)}`, vorher.einstempeln[k]);
+          const u = await anfrage("bestand", { methode: "PUT", token: T[rolle], rumpf: { bestand: b2, etag: r2.etag, durch: "Test" } });
+          const bild = (x) => ({ status: x.status, code: x.code, fehler: x.fehler, text: x.text });
+          expect(bild(w), w.roh).toEqual(bild(u));
+        } else {
+          expect(w.status, w.roh).toBe(403);
+          if (rolle !== "betriebsrat") expect(w.code, w.roh).toBe("STEMPEL_UNVERAENDERLICH");
+        }
         const nachher = await gespeichert();
         expect(nachher.einstempeln).toEqual(vorher.einstempeln);
         expect(nachher.erfassung).toEqual(vorher.erfassung);

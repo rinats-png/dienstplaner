@@ -1649,8 +1649,21 @@ async function behandeln(req, context, ctx) {
         const voll = schreibumfang(s.rolle) === SCHREIBEN_VOLL;
         const stempelO = { loeschlauf: voll, vollSicht: voll, heute: heuteBerlin(),
           unveraendert: await unveraenderteScherben(store, s.bestand, etag ?? null, jetzt) };
+        /* Existenzorakel (Folgepaket #361): Ohne vollen Umfang prüft die Stempel-Integrität gegen das, was die Rolle
+           liest (dieselbe Sicht wie GET) — ein unsichtbarer Stempel antwortet wie ein nicht vorhandener. Die Sicht
+           wird erst berechnet, wenn die Übermittlung Stempel oder Ist-Zeiten enthält. */
+        let sichtStempel = null;
+        const sichtbarIn = (id) => (feld, k) => {
+          if (!sichtStempel) {
+            const b = jetzt && jetzt.bestand ? bestandFuerAntwort(personenAngleichen(jetzt.bestand), s) : null;
+            sichtStempel = new Map(((b && Array.isArray(b.mandanten)) ? b.mandanten : []).filter((x) => x && typeof x === "object").map((x) => [x.id, x]));
+          }
+          const m = sichtStempel.get(id);
+          const f = m && m[feld];
+          return !!f && typeof f === "object" && !Array.isArray(f) && Object.prototype.hasOwnProperty.call(f, k);
+        };
         for (const [id, gesendet] of gesendetNachId) {
-          const w = stempelWiderspruch(altNachId.get(id) || null, gesendet, stempelO);
+          const w = stempelWiderspruch(altNachId.get(id) || null, gesendet, voll ? stempelO : { ...stempelO, sichtbar: sichtbarIn(id) });
           if (w) {
             /* WP-16b: Der Schlüssel (Person|Tag) steht nicht im Text der Spur; der Tag steht im eigenen Feld (nur
                Auskunft nach Art. 15), die Betreiber-Lage zeigt ihn nicht (spurFuerBetreiber). */

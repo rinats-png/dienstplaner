@@ -533,16 +533,57 @@ an einem verborgenen Antrag). **B3:** Ein eigener Wunsch, Einsprung oder Urlaubs
 fremden entsteht nicht mehr als zweiter Eintrag mit derselben Kennung (ein schon gespeicherter eigener bleibt
 änderbar). **Restrisiko (bewusst):** Die Antwort ist gleich, der nächste Abruf aber nicht — bei einer nicht vorhandenen
 Kennung erscheint der eigene neue Eintrag, bei einer fremden nicht. Das verlangt eine erratene Kennung (uid, 7 Zeichen
-Basis 36) und gilt ebenso für Krankmeldung und Notruf. **Offen (gering, nicht geändert):** Für die Schichtverantwortung
-antworten `einspruenge`, `nachrichten`, `notrufe`, `dienstbuch`, `uebergaben` und Tagesnotizen bei der Kennung eines
-verborgenen Eintrags mit 403 „Bestehende Einträge sind nicht änderbar", bei einer unbekannten Kennung mit 200 oder
-einem anderen 403 (Existenzorakel, nur mit erratener Kennung; kein Inhalt, keine Änderung). **Offen (Restfall B2,
-Review #361 N1):** Ein Antrag einer Person, die am ersten Tag des Antrags im eigenen Bereich war, deren Antrag aber
-außerhalb des Sichtfensters liegt (`umfangImZeitraum`, etwa nach einer Versetzung), ist für die Schichtverantwortung
-unsichtbar, gilt im Schreibweg aber als „aus dem Bereich“: weiter 403 „… umschreiben“ statt der Antwort für eine
-unbekannte Kennung, und mit erratenem Kern ließe er sich entscheiden. Bestand schon vor B2; Folgepaket (Regel im
-Schreibweg aus `umfangImZeitraum` ableiten, zusammen mit den übrigen Orakeln oben). Geprüft in
+Basis 36) und gilt ebenso für Krankmeldung und Notruf. Geprüft in
 `pruefungen/antrag-kapern-orakel.test.js` (echter Handler, Zustände byte-gleich, Differenztest alt/neu).
+
+**Sichtregel im Schreibweg der Schichtverantwortung (Folgepaket zu #361: N1 und Existenzorakel, A):** Bis hierher
+galt ein mitgeschickter Eintrag mit der Kennung eines gespeicherten als „bestehend", auch wenn die Lesesicht ihn der
+Schichtverantwortung nicht zeigt. `einspruenge`, `nachrichten`, `notrufe`, `dienstbuch`, `uebergaben`, `aenderungen`,
+`protokoll` und Tagesnotizen antworteten dann mit 403 „Bestehende Einträge sind nicht änderbar", `anfragen` mit
+„… umschreiben", bei einer unbekannten Kennung aber mit 200 oder einem anderen Text; `bestaetigungen` umgekehrt (verborgen
+still 200, unbekannt geprüft) — Existenzorakel. Und weil die Bereichsregel im Schreibweg (`imBereich` am Tag) das
+Sichtfenster (`umfangImZeitraum`, −60/+90 Tage) nicht kennt, ließ sich ein verborgener Antrag einer seit über 60 Tagen
+versetzten Person mit erratenem Kern **entscheiden** und ein verborgener Notruf dieser Person **quittieren**
+(Review #361 N1). **Jetzt** eine Regel aus derselben Quelle wie die Lesesicht (`rechte.mjs`
+`schichtVerborgenAlsUnbekannt`, abgeleitet aus `betriebSichtSchicht`): Was die Sicht nicht ausliefert, ist im
+Schreibweg unbekannt. Ein mitgeschickter Eintrag mit der Kennung eines verborgenen Eintrags und anderem Inhalt bekommt
+vor jedem kennungsabhängigen Schritt eine neue, unbekannte Kennung (Anfang der alten bleibt, z. B. `n-notruf-…`), wird
+genau wie ein neuer Eintrag beurteilt (dieselbe Antwort, derselbe Text) und, wenn er besteht, still übergangen; der
+verborgene Eintrag bleibt byte-gleich, angelegt wird nichts. Gilt für `anfragen`, `einspruenge`, `wuensche`,
+`nachrichten`, `notrufe`, `dienstbuch`, `uebergaben`, `aenderungen`, `protokoll`, `bestaetigungen` und Tagesnotizen,
+über PUT `/api/bestand` und POST `/api/bestand/teile` (beide laufen durch `zusammenfuehren`). Sichtbare Einträge,
+neue Einträge und alle Wege von Planung, Leitung und Kundenrolle bleiben unverändert; ein Antrag einer eben versetzten
+Person, deren Tag im Fenster liegt, bleibt entscheidbar. Ein unverändert mitgeschickter verborgener Eintrag bleibt, wie
+er ist (eine ältere Kopie blockiert nicht). **Stempel und Ist-Zeiten:** Die Stempel-Integrität (`stempelWiderspruch`,
+vor der Rechteprüfung) unterschied für jede Rolle ohne vollen Umfang am Text (oder 403 gegen 200 mit `{}`), ob eine
+andere Person an einem Tag gestempelt hatte. Jetzt prüft sie für diese Rollen gegen den Stand ihrer Sicht (wie GET):
+ein unsichtbarer Stempel antwortet wie ein nicht vorhandener; gespeichert wird weiter der gespeicherte Stand.
+**Ausschreibungen:** Auf eine nicht mehr offene Ausschreibung (vergeben, zurückgezogen) kommt keine Bewerbung hinzu
+und keine eigene ändert sich (still mit 200 übergangen, Beschäftigte und Schichtverantwortung — kein Fehlerhinweis,
+auch nicht im Wettlauf kurz vor der Vergabe; akzeptiert); zurückziehen bleibt wie in der Oberfläche, eine
+Altbewerbung lässt sich also nur noch löschen. **Server-Mitteilungen mit vorhersagbarer Kennung:** Neue Mitteilungen
+mit `n-protokoll80-…`, `n-schutzentfernt-…`, `n-schutzkonflikt-…` oder `n-bestaetigung-…` verwirft der Server wie
+`n-notruf-…` (`nurVomServer`); vorher konnte ein Client sie vorab anlegen und so die Mitteilung an die Leitung
+unterdrücken (etwa zu einem bewusst bestätigten Rechtsverstoß oder zum 80-%-Füllstand) und am nächsten Abruf ablesen,
+ob es sie gab. **Laufzeit:** Für Rollen ohne vollen Umfang berechnet jedes PUT einmal die eigene Sicht für die
+Stempelprüfung (gemessen etwa +0,8 s bei 400 Personen, linear, unter der Raumsperre); die Sicht der
+Schichtverantwortung wird je Speichern einmal berechnet und an die Rückfüllung weitergegeben.
+**Restrisiko (bewusst, wie B1–B3):** Die Antwort ist gleich (Status, Text, Schlüssel, neuer etag in beiden
+Fällen), der nächste Abruf aber nicht — bei einer unbekannten Kennung erscheint der neue Eintrag, bei einer verborgenen
+nicht; im Teilweg zeigen das schon die `versionen` der Antwort (sie beschreiben die eigene Sicht danach). Das setzt
+eine erratene Kennung voraus — außer bei Kennungen, die der Server vorhersagbar bildet; deren bekannte Muster
+(Mitteilungen oben) sind für Clients gesperrt, für weitere deterministische Kennungen gilt die Einschränkung nicht. Beschäftigte:
+ein mitgeschickter verborgener fremder Antrag bleibt inhaltlich gleich, rückt aber an die übermittelte Stelle der Liste
+(Altverhalten, für sie unsichtbar). **Offen (Produktfrage):** Neue Einträge prüft der Schreibweg weiter mit der
+Bereichsregel am Tag ohne Sichtfenster (`imBereich`) — die Schichtverantwortung kann also einen neuen Antrag, Einsprung
+oder eine Planänderung für eine Person anlegen, die am Tag in ihrem Bereich war, die sie aber nicht (mehr) im Fenster
+sieht; die Antwort verrät dabei die frühere Zugehörigkeit. Ob das Sichtfenster auch für neue Einträge und den Plan
+gelten soll (Nachpflege alter Monate), ist eine Entscheidung (`docs/acc45/ENTSCHEIDUNGSLISTE.md` P2-15, Voreinstellung A).
+Umgestellte Prüfungen (vorher 403 bzw. still 200 für die verborgene Kennung erwartet, jetzt „Antwort wie unbekannte
+Kennung + Zustand byte-gleich"): `schichtverantwortung`, `bereich-dienstbuch-uebergaben`, `bereich-tagesnotizen`,
+`sicht-schichtverantwortung` (je Unit und HTTP), `stempel-integritaet` (Betreiber), `kette-a-rundreise`
+(Bestätigungen). Geprüft in `pruefungen/sv-orakel-schreibweg.test.js`
+(echter Handler, Rollenmatrix, Zustände byte-gleich, Differenztest alt/neu mit Zufallsbeständen).
 
 **Mitteilungen (Commit 4, A):** Zustellwege (`wege`) und Zustellstatus (`zugestellt`) schreibt kein Client.
 Notruf- und Tauschmitteilungen erzeugt nur der Server aus dem fachlichen Vorgang (neuer eigener Notruf; neue
