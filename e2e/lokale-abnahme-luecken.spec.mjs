@@ -231,20 +231,31 @@ test.describe.serial("Lokale E2E-Abnahme 2026-11-19: Urlaub, Konflikt, Sitzung, 
 
   /* Sitzung beim Server beenden — wie Ablauf (30 min Untätigkeit, 12 h Frist) oder Abmelden auf einem anderen Gerät.
      Die Uhr des Testservers lässt sich nicht vorstellen; die Fristen selbst belegt pruefungen/sitzungen.test.js. */
-  async function merkmalBeenden(page) {
+  const merkmalDerSeite = async (page) => {
     const alt = await page.evaluate(() => sessionStorage.getItem("centric:token"));
     expect(alt, "Merkmal der Seite").toBeTruthy();
+    return alt;
+  };
+  async function merkmalBeenden(alt) {
     expect((await api("/api/abmelden", { methode: "POST", token: alt, rumpf: {} })).status).toBe(200);
     expect((await api("/api/bestand", { token: alt })).status).toBe(401);
     return alt;
   }
+  /* Für L4a/L4b wird die Seite VOR dem Sitzungsende verlassen (about:blank; das Merkmal bleibt im Reiterspeicher).
+     Sonst kann eine Hintergrundanfrage der offenen Seite (Abgleich, verzögerter PUT) die 401 vor dem Neuladen des Tests
+     bekommen: Dann lädt die App selbst neu und verbraucht den einmaligen Hinweis, oder sie hält die Seite wegen eines
+     wartenden Schreibvorgangs (Fall L4c) und räumt nur das Merkmal — das Neuladen des Tests zeigt dann die Anmeldung
+     ohne Hinweis. So schlug L4a in der CI fehl (Lauf 44551113318), lokal nicht (Zeitverhalten). */
   async function sitzungBeenden(page) {
     await anmeldenBrowser(page, C.p1);
-    return merkmalBeenden(page);
+    await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
+    const alt = await merkmalDerSeite(page);
+    await page.goto("about:blank");
+    return merkmalBeenden(alt);
   }
-  /** Laden mit totem Merkmal: 401 → kontrolliertes Neuladen (src/app/sitzungsende.js) → Anmeldung mit Hinweis. */
+  /** Erstes Laden mit totem Merkmal: 401 → kontrolliertes Neuladen (src/app/sitzungsende.js) → Anmeldung mit Hinweis. */
   async function nachSitzungsendeLaden(page) {
-    await page.reload({ waitUntil: "load" });
+    await page.goto("/", { waitUntil: "load" });
     const hinweis = page.locator("#sitzungsende-hinweis");
     await expect(hinweis).toBeVisible({ timeout: 30000 });
     await expect(hinweis).toContainText("Deine Sitzung ist beendet");
@@ -303,8 +314,20 @@ test.describe.serial("Lokale E2E-Abnahme 2026-11-19: Urlaub, Konflikt, Sitzung, 
     const ziel = vorher === "kompakt" ? "komfortabel" : "kompakt";
     /* Marke im Fensterzustand: ein Neuladen würde sie löschen. */
     await page.evaluate(() => { window.__l4cOhneNeuladen = true; });
-    await merkmalBeenden(page);
+    /* Reihenfolge fest, ohne Zeitbezug: erst die Eingabe, ihr PUT wird angehalten, DANN endet die Sitzung, dann geht der
+       PUT (mit dem alten Merkmal) weiter → 401, während die Eingabe aussteht. Endete die Sitzung vor der Eingabe, könnte
+       eine Hintergrundanfrage die 401 ohne Ausstehendes bekommen und die App neu laden (CI-Zeitverhalten). */
+    const alt = await merkmalDerSeite(page);
+    let freigeben; const tor = new Promise((ja) => { freigeben = ja; });
+    let angehalten; const putDa = new Promise((ja) => { angehalten = ja; });
+    await page.route("**/api/bestand", async (route) => {
+      if (route.request().method() !== "PUT") return route.continue();
+      angehalten(); await tor; return route.continue();
+    });
     await page.getByRole("tab", { name: ziel === "kompakt" ? "Kompakt" : "Komfortabel", selected: false }).first().click();
+    await putDa;
+    await merkmalBeenden(alt);
+    freigeben();
     const leiste = page.getByRole("alert").filter({ hasText: "Die Sitzung ist abgelaufen" });
     await expect(leiste).toBeVisible({ timeout: 20000 });
     expect(await page.evaluate(() => window.__l4cOhneNeuladen === true), "kein Neuladen bei ausstehender Eingabe").toBe(true);
