@@ -167,8 +167,9 @@ test.describe.serial("Lokale E2E-Abnahme Hauptfunktionen 1: Personal, Dienstart,
     await expect.poll(async () => (await neuAufServer()).map((p) => [p.vorname, p.rolle, p.eintritt, p.austritt]), { timeout: 20000 })
       .toEqual([["Nora", "mitarbeiter", "2025-01-01", null]]);
     expect((await neuAufServer()).length, "Fehlerfall hat nichts angelegt, genau eine Person").toBe(1);
-    /* bearbeiten: Akte öffnen, Wochenstunden */
-    await page.getByRole("button", { name: `${NEU}, Nora öffnen` }).click();
+    /* bearbeiten: Akte öffnen, Wochenstunden. Seit WP-40 (#389, WCAG 2.5.3) hat die Personenzelle keinen eigenen Namen
+       mehr („… öffnen“), sie heißt wie ihr sichtbarer Inhalt — darum Teilname „Nachname, Vorname“. */
+    await page.getByRole("button", { name: `${NEU}, Nora` }).click();
     const akte = page.getByRole("dialog", { name: `Nora ${NEU}` });
     await expect(akte).toBeVisible();
     await akte.getByLabel("Wochenstunden", { exact: true }).fill("32");
@@ -211,7 +212,7 @@ test.describe.serial("Lokale E2E-Abnahme Hauptfunktionen 1: Personal, Dienstart,
     await expect(page.getByRole("row").filter({ hasText: `Mitarbeiterin-${MK}` })).toHaveCount(1);
     await expect(page.getByRole("button", { name: "Person hinzufügen" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Importieren" })).toHaveCount(0);
-    await page.getByRole("button", { name: `Mitarbeiterin-${MK}, Lia öffnen` }).click();
+    await page.getByRole("button", { name: `Mitarbeiterin-${MK}, Lia` }).click();
     const akte = page.getByRole("dialog", { name: `Lia Mitarbeiterin-${MK}` });
     await expect(akte).toBeVisible();
     await expect(akte.getByRole("button", { name: "Austritt eintragen" })).toHaveCount(0);
