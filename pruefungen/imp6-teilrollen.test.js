@@ -20,7 +20,8 @@
       speicher.js ihn aus der Antwort gesetzt hat; außerhalb des Fensters für Personen mit eigenem Modell
       kein Dienst (offen, nie still das Betriebsmodell); setzeAbweichung löscht dort nicht. PUT/Teilweg
       tragen das Kennzeichen nur mit gesetztem Dienst des Servers.
-   S. Wächter: nur speicher.js setzt den Dienst des Servers; Vorgabe AUS unverändert.
+   L. Bibliothek allein: Rollenfilter, Schalter und Umfang auch ohne die Vorstufe in daten.mjs.
+   S. Wächter: nur speicher.js setzt den Dienst des Servers; Vorgabe AUS unverändert; beide Stufen in daten.mjs.
 
    Aufruf: npx vitest run pruefungen/imp6-teilrollen.test.js --maxWorkers=1 --testTimeout=60000
    ========================================================================== */
@@ -456,6 +457,59 @@ describe("C. Client: Dienst des Servers in planDienst/schichtfolgeAm, Aktionen, 
 });
 
 /* ======================================================================== */
+describe("L. Bibliothek schichtfolge-teilrollen.mjs: Rollenfilter, Schalter, Umfang (ohne die Vorstufe in daten.mjs)", () => {
+  /* daten.mjs prüft Schalter und Rolle schon vor dem Aufruf; die Bibliothek hält beides selbst (zweite Stufe, fail-closed).
+     Ohne diese Prüfungen überlebten Mutanten der Bibliothek, solange daten.mjs sie verdeckt (Mutationslauf R1, S1, S2, P1). */
+  /* C6 setzt die Module zurück (vi.resetModules): Bibliothek und Planrechnung deshalb hier gemeinsam frisch laden, damit
+     der Schalter genau die Instanz trifft, die die Bibliothek liest. */
+  let T, FPL;
+  beforeAll(async () => {
+    vi.resetModules();
+    T = await import("../server/lib/schichtfolge-teilrollen.mjs");
+    FPL = await import("../server/lib/fachpruefung.mjs");
+  }, 240000);
+  afterEach(() => { if (FPL) FPL.schichtmodellWirkungSetzen(false); });
+  const roh = () => bestand().mandanten[0];
+  const rumpfMit = (r, ab) => ({ mandanten: [{ ...kopie(r), abweichungen: ab }] });
+
+  it("L1 vollsichtSchichtmodelle: nur Planung, Leitung, Kundenrolle", () => {
+    for (const r of ["planer", "leitung", "kunde"]) expect(T.vollsichtSchichtmodelle(r), r).toBe(true);
+    for (const r of ["subplaner", "mitarbeiter", "betriebsrat", "betreiber", "gibtsnicht", undefined]) expect(T.vollsichtSchichtmodelle(r), String(r)).toBe(false);
+  });
+
+  it("L2 abweichungenTeilrollen: AN + Teilrolle entscheidet; volle Rolle und AUS geben denselben Rumpf zurück", () => {
+    const key = `a1|${TAG_F_FREI}`, key2 = `a1|${TAG_FREI_F}`;
+    const r = roh();
+    const sicht = { ...r, abweichungen: { [key]: "N" } };
+    FPL.schichtmodellWirkungSetzen(true);
+    for (const rolle of ["subplaner", "mitarbeiter", "betriebsrat"]) {
+      const e = T.abweichungenTeilrollen(rumpfMit(r, { [key2]: "-" }), { roh: r, sicht, rolle, basisServer: false });
+      expect(e.mandanten[0].abweichungen, rolle).toEqual({ [key]: "-" });           // Löschung → Betriebsfolge; key2 = Modell → entfällt
+      const s = T.abweichungenTeilrollen(rumpfMit(r, { [key2]: "-" }), { roh: r, sicht, rolle, basisServer: true });
+      expect(s.mandanten[0].abweichungen, rolle).toEqual({});                       // mit Kennzeichen: Löschung bleibt
+    }
+    for (const rolle of ["planer", "leitung", "kunde"]) {
+      const b = rumpfMit(r, { [key2]: "-" });
+      expect(T.abweichungenTeilrollen(b, { roh: r, sicht, rolle, basisServer: false }), rolle).toBe(b);
+    }
+    FPL.schichtmodellWirkungSetzen(false);
+    const b = rumpfMit(r, { [key2]: "-" });
+    expect(T.abweichungenTeilrollen(b, { roh: r, sicht, rolle: "subplaner", basisServer: false })).toBe(b);
+  });
+
+  it("L3 schichtfolgeFuerSicht: AUS null; nur Personen, die die Sicht enthält", () => {
+    const r = roh();
+    FPL.schichtmodellWirkungSetzen(false);
+    expect(T.schichtfolgeFuerSicht(r, r, HEUTE)).toBe(null);
+    FPL.schichtmodellWirkungSetzen(true);
+    expect(Object.keys(T.schichtfolgeFuerSicht(r, r, HEUTE).personen).sort()).toEqual(["a1", "t1"]);
+    const ohneA1 = { ...r, personen: r.personen.filter((p) => p.id !== "a1") };
+    expect(Object.keys(T.schichtfolgeFuerSicht(r, ohneA1, HEUTE).personen)).toEqual(["t1"]);
+    expect(T.schichtfolgeFuerSicht(r, { ...r, personen: [] }, HEUTE).personen).toEqual({});
+  });
+});
+
+/* ======================================================================== */
 describe("S. Wächter", () => {
   it("S1 nur fachpruefung.mjs (Definition) und speicher.js (Antwort des Servers) nennen schichtfolgeServerSetzen im Produktcode", () => {
     const wurzelP = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -481,5 +535,11 @@ describe("S. Wächter", () => {
     const t = quelle("../server/lib/schichtfolge-teilrollen.mjs");
     expect(t).toMatch(/schichtmodellWirkungAktiv\(\)/);
     expect(t).toMatch(/export function vollsichtSchichtmodelle/);
+    /* Erste Stufe in daten.mjs: Schalter UND Rolle vor jeder Rechnung (die Bibliothek prüft beides noch einmal, L2/L3).
+       Beide Stufen sind redundant; Verhaltensprüfungen allein töten den Wegfall EINER Stufe nicht (Mutationslauf S3, S4). */
+    expect(d).toContain("if (!schichtmodellWirkungAn() || vollsichtSchichtmodelle(s.rolle) || s.rolle === \"betreiber\" || s.nurSicherung) return {};");
+    expect(d).toContain("if (jetzt && jetzt.bestand && schichtmodellWirkungAn() && !vollsichtSchichtmodelle(s.rolle)) {");
+    expect(d.match(/abweichungenTeilrollen\(/g)).toHaveLength(1);
+    expect(d.match(/schichtfolgeFuerSicht\(/g)).toHaveLength(1);
   });
 });

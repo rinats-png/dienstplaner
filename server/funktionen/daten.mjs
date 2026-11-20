@@ -25,9 +25,10 @@ import { kontoLesen, kontoLesenStreng, kontoSchreiben, kontoAendern, alleKonten,
 import { demoAn, teilwegAn, abschlussSegmentweiseAn, abschlussOhneSperreAn, schichtmodellPflegeAn, schichtmodellWirkungAn } from "../lib/schalter.mjs";
 /* IMP-6 Planwirkung: Quelle der Planrechnung = CENTRIC_SCHICHTMODELL_WIRKUNG (Vorgabe aus; auch ohne server.mjs). */
 import "../lib/schichtmodell-wirkung.mjs";
+import { vollsichtSchichtmodelle, schichtfolgeFuerSicht, abweichungenTeilrollen } from "../lib/schichtfolge-teilrollen.mjs";
 import { ABSCHLUSS_SEGMENT_AKTIONEN, ABSCHLUSS_VERSUCHE, abschlussAuswahl, abschlussTeile } from "../lib/abschluss-segmentweise.mjs";
 import { loeschlaufRecht, loeschlaufFormFehler, loeschlaufVorbereiten, ohneWirkung } from "../lib/loeschlauf.mjs";
-import { TEILWEG_FORMAT, teileFormFehler, teileAnwenden, teileVersionen, beruehrteVersionen, rumpfAbdruck, anfragePruefen, anfrageMerken, anfragenAufraeumen } from "../lib/teilweg.mjs";
+import { TEILWEG_FORMAT, teileFormFehler, teileAnwenden, teileVersionen, sichtBetrieb, beruehrteVersionen, rumpfAbdruck, anfragePruefen, anfrageMerken, anfragenAufraeumen } from "../lib/teilweg.mjs";
 import { bestandLesen, bestandLesenStreng, bestandLesenAuswahlStreng, bestandSchreiben, teileSchreiben, raumBelegt, unterRaumsperre, unveraenderteScherben,
   bestandSchnappschussAuswahl, standUnveraendert, SPERRE_ZEITGRENZE, SPERRE_GESTOPPT, BESTAND_UNLESBAR } from "../lib/bestand.mjs";
 import { geoUrteil, bestandStandorteFehler, bestandDienstartOrtFehler } from "../lib/geo.mjs";
@@ -1415,9 +1416,16 @@ async function behandeln(req, context, ctx) {
         /* IMP-6 Planwirkung (Vorgabe aus): Die Oberfläche rechnet nur mit den Modellen, wenn sie ALLE Zuordnungen sieht —
            Rollen, die sie pflegen und vollständig lesen (Vollschreibrecht, org.edit oder pattern.edit, staff.edit; wie
            rechte.mjs). Teilsichten (Beschäftigte, Schichtverantwortung, Betriebsrat) rechneten sonst für andere still das
-           Betriebsmodell (Q4/Q5); sie bleiben bis zur „Sicht der Beschäftigten“ beim bisherigen Stand (fail-safe). */
-        ...(schichtmodellWirkungAn() && schreibumfang(s.rolle) === SCHREIBEN_VOLL && (darf(s.rolle, "org.edit") || darf(s.rolle, "pattern.edit"))
-          && darf(s.rolle, "staff.edit") ? { schichtmodellWirkung: true } : {}),
+           Betriebsmodell (Q4/Q5); sie bekommen stattdessen den vom Server gerechneten Dienst (unten). */
+        ...(schichtmodellWirkungAn() && vollsichtSchichtmodelle(s.rolle) ? { schichtmodellWirkung: true } : {}),
+        /* Teilrollen (Vorbedingung 1 vor AN): der vom Server gerechnete Dienst der Personen ihrer Sicht, nie Modelle oder
+           Zuordnungen anderer (lib/schichtfolge-teilrollen.mjs). AUS: keine Angabe. */
+        ...(() => {
+          if (!schichtmodellWirkungAn() || vollsichtSchichtmodelle(s.rolle) || s.rolle === "betreiber" || s.nurSicherung) return {};
+          const roh = eigenerMandant(angeglichenG, s);
+          const f = roh ? schichtfolgeFuerSicht(roh, sichtBetrieb(sichtG, roh.id), heuteBerlin()) : null;
+          return f ? { schichtfolgeServer: f } : {};
+        })(),
         geaendert: mit.zeit, durch: mit.durch });
     }
 
@@ -1708,6 +1716,16 @@ async function behandeln(req, context, ctx) {
            festgehalten. Ein Löschvermerk (am = jetzt) entsteht erst darin; die Sicherung „vor Verlust"
            zeigt den Stand vor dieser Änderung und trägt deshalb diese frühere Zeit — nie eine spätere. */
         const lesezeit = new Date().toISOString();
+        /* IMP-6 Teilrollen (Vorbedingung 1 vor AN; AUS und volle Rollen: unverändert): Abweichungen gegen den Modelldienst
+           entscheiden, nicht gegen die Annahme des Clients — vor der Rechteprüfung, damit Rechte und Fachprüfung den
+           wirksamen Stand sehen. Verglichen wird mit der Sicht der Rolle auf den gespeicherten Stand (wie GET). */
+        if (jetzt && jetzt.bestand && schichtmodellWirkungAn() && !vollsichtSchichtmodelle(s.rolle)) {
+          const angeglichenA = personenAngleichen(jetzt.bestand);
+          const rohA = eigenerMandant(angeglichenA, s);
+          if (rohA && typeof rohA.id === "string")
+            bestand = abweichungenTeilrollen(bestand, { roh: rohA, sicht: sichtBetrieb(bestandFuerAntwort(angeglichenA, s), rohA.id),
+              rolle: s.rolle, basisServer: req.headers.get("x-centric-schichtfolge") === "server" });
+        }
         let zuSchreiben = zusammenfuehren(jetzt ? personenAngleichen(jetzt.bestand) : null, bestand, s, { fachpruefung: "aussen" });
         if (!zuSchreiben) {
           await protokoll("schreiben", ks, "abgewiesen", `Rolle ${s.rolle}`, wer);

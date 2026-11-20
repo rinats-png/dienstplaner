@@ -1,6 +1,6 @@
 /* WP-39: Aktionen aus dem Aktionsobjekt `akt` in src/App.jsx (AppInnen), Text unveraendert.
    Der Kontext k kommt aus AppInnen (useMemo von akt) und traegt dieselben Werte wie vorher der Abschluss. */
-import { einheitAm, einheitDienst, imDienst, schichtfolgeAm } from "../../../server/lib/fachpruefung.mjs";
+import { einheitAm, einheitDienst, imDienst, schichtfolgeAm, schichtfolgeOffen } from "../../../server/lib/fachpruefung.mjs";
 import { darfEinheit, vorlauf, istFreigegeben, personTag, schutzSperre, abwesenheitAm, bestaetigungVermerken, abwArt, abwesenheitTagAufheben, freigabeStand, planAbbild, EXPORT_STAND, lohnexportRueckfrage, VORLAGEN, genehmigungsStand, antragUmsetzen, eintrittPruefen, eintrittUebernehmen } from "../../lib/fachlogik.js";
 import { uid } from "../../lib/format.js";
 import { REGELSTAND, addDays } from "../../regelwerk.js";
@@ -52,7 +52,8 @@ export function aktionenPlan(k) {
         const plan = schichtfolgeAm(m, p, d, () => (eid ? einheitDienst(m, eid, d) : null));
         const ab = { ...m.abweichungen }, key = `${pid}|${d}`;
         const vorher = ab[key] !== undefined ? ab[key] : plan;
-        if ((dienstId === "-" && !plan) || dienstId === plan) delete ab[key]; else ab[key] = dienstId;
+        /* Teilrollen: außerhalb des Fensters des Servers ist der Plan unbekannt — ausdrücklich speichern, der Server entscheidet. */
+        if (!schichtfolgeOffen(p, d) && ((dienstId === "-" && !plan) || dienstId === plan)) delete ab[key]; else ab[key] = dienstId;
         const nachher = ab[key] !== undefined ? ab[key] : plan;
         let next = { ...m, abweichungen: ab };
         if (vorher !== nachher) {

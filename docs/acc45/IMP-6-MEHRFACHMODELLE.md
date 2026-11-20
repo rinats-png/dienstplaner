@@ -280,7 +280,8 @@ Stellen (Definition, Server-Einstieg, `speicher.js`) plus die Meldung in `daten.
    Dienst; Änderungsliste und Mitteilung beruhen auf der Betriebsfolge des Clients. Dasselbe gilt für jeden Weg der Teilrollen, der „Abweichung = Plan“
    wegnormalisiert. **Vorbedingung vor AN:** vom Server gerechneter Dienst für die Teilrollen, mit **Sicht und Schreibweg**
    (der Client vergleicht beim Schreiben mit dem Dienst des Servers, oder der Server normalisiert selbst; nie mit der
-   Betriebsfolge, wenn die Person ein eigenes Modell hat).
+   Betriebsfolge, wenn die Person ein eigenes Modell hat). **Gebaut** (Branch `acc45/imp6/teilrollen-serverdienst`), siehe
+   unten „Teilrollen: vom Server gerechneter Dienst“.
 2. **P2-26** (Wiederherstellen), **P2-27** (Stichtag), **P2-25** (Art. 15), **P2-24 (b)** (Versionierung), **P2-28** (Teilzeit-Quote):
    nicht entschieden, nichts daran geändert. Urlaubskonto bei AN nach dem Modell: **gebaut als Vorschlag hinter AN,
    Entscheidung P2-28 offen (Kategorie C)**. Begründung des Vorschlags: Q5 („nie still das Betriebsmodell“) lässt für
@@ -292,7 +293,8 @@ Stellen (Definition, Server-Einstieg, `speicher.js`) plus die Meldung in `daten.
 **Vorbedingungen vor AN (Liste, Stand Nachtrag Review #431).** Der Schalter bleibt AUS, bis alle Punkte erledigt oder
 entschieden sind:
 1. Teilrollen (Beschäftigte, Schichtverantwortung, Betriebsrat): vom Server gerechneter Dienst mit Sicht **und Schreibweg**
-   (siehe „Bewusst nicht gebaut“ 1, Szenario Schichtverantwortung).
+   (siehe „Bewusst nicht gebaut“ 1, Szenario Schichtverantwortung). **Gebaut, Schalter AUS** (Abschnitt „Teilrollen: vom
+   Server gerechneter Dienst“); vor AN offen bleibt dort „Grenzen“ (Deploy-Hinweis „Clients neu laden“, Fenster, Punkt 5).
 2. Entscheidungen P2-26, P2-27; dazu P2-24 (b), P2-25, P2-28 beim Betreiber.
 3. `RELEASE-UNFERTIG.json`-Eintrag nach dem Merge von #427; Release-Gate-Warnung (REL-1).
 4. **Teilzeitprofil (Befund 4, Review #431):** `teilzeitProfil` (`src/lib/fachlogik.js`, ~Z. 1743) rechnet aus `m.zyklus` ohne
@@ -301,4 +303,71 @@ entschieden sind:
 5. **Offline-Merker (Befund 5, Review #431):** `src/speicher.js` (`lies`, ~Z. 381) übernimmt `schichtmodellWirkung` auch aus
    einer Antwort aus dem Speicher des Dienstarbeiters (`ausSpeicher`). Nach dem Abschalten am Server rechnet ein Offline-Client
    weiter mit den Modellen, bis er wieder online liest. Vor AN klären: gemerkte Antwort nicht als Quelle des Merkers nehmen
-   (oder beim Abschalten den Speicher verwerfen).
+   (oder beim Abschalten den Speicher verwerfen). Gilt ebenso für `schichtfolgeServer` (Teilrollen, unten): `lies` übernimmt
+   es wie den Merker auch aus der gemerkten Antwort — bewusst gleich behandelt, die Lösung gehört zu diesem Punkt.
+
+## Teilrollen: vom Server gerechneter Dienst (Vorbedingung 1, Branch `acc45/imp6/teilrollen-serverdienst`, 2026-11-20)
+
+Schalter `CENTRIC_SCHICHTMODELL_WIRKUNG` bleibt **AUS** (nirgends gesetzt, auch nicht in CI). Bei AUS ist alles wörtlich wie
+vorher: keine neue Angabe in `GET /api/bestand`, kein Unterschied beim Schreiben, kein Kopf beim Senden, Planrechnung und
+Markup byte-gleich (`imp6-planwirkung` D3, `imp6-verdrahtung` H unverändert grün; `imp6-teilrollen` G4, W6, C1).
+Keine Entscheidung zu P2-24 (b), P2-25 bis P2-28. Teilrollen = jede Rolle ohne vollständige Sicht der Zuordnungen
+(`vollsichtSchichtmodelle`, `server/lib/schichtfolge-teilrollen.mjs`; dieselbe Regel wie die Angabe `schichtmodellWirkung`):
+Beschäftigte, Schichtverantwortung, Betriebsrat.
+
+**Sicht (GET /api/bestand, nur AN, nur Teilrollen, nicht Betreiber/Sicherungsschlüssel).** Neue Angabe `schichtfolgeServer`:
+`{ von, bis, personen: { [personId]: Wert je Tag } }`. Fenster = `SICHTFENSTER` (heute − 60 bis heute + 90 Tage, Europe/Berlin),
+wie die Personensicht der Schichtverantwortung. Wert: `null` = an diesem Tag Betriebsmodell (die Oberfläche rechnet wie bisher),
+`"F"`/`"-"` = Dienst (roh = Plan), `["F", "-"]` = [roh, Plan mit Teilzeit].
+- **Nur Personen der Sicht der Rolle** (`bestandFuerAntwort`; dieselbe Personenliste wie bisher) und nur solche mit eigener
+  Zuordnung (`folgtNurBetriebsmodell`: kein Feld, leer oder genau eine unbefristete Zuordnung „betrieb“ → nicht enthalten).
+  Springer und Personen außerhalb des Schichtdiensts nicht (keine Folge).
+- **Datenschutz (Q4):** nie Modelle, Modellnamen, Zykluslänge, Versatz, Zuordnungskennungen oder Gültigkeiten als Angabe — nur
+  der gerechnete Dienst je Tag, wie er bisher aus Schichtfolge und Teilzeit (`teilzeit`, `wochenstunden` stehen in der Sicht) für
+  jede Person der Sicht ablesbar war. Aus der Folge der Tage lässt sich nur ablesen, was auch der fertige Plan zeigt. Der Betriebsrat liest weiterhin keine Modelle, auch nicht die eigene Zuordnung. Mitgeteilt wird
+  zusätzlich, **dass** eine Person eine eigene Zuordnung hat (Schlüssel vorhanden) — nötig, damit die Oberfläche außerhalb
+  des Fensters nicht still das Betriebsmodell zeigt; der gerechnete Dienst im Fenster verrät das ohnehin (Kategorie B).
+- Entwurfstage der Beschäftigten: unverändert — `personTag` zeigt dort wie bisher keinen Plan (`sichtEntwuerfe`).
+
+**Oberfläche.** `src/speicher.js` (`lies`) setzt die Angabe allein aus der Antwort (`schichtfolgeServerSetzen`, ungültige Form
+= keine Angabe). `planDienst` und `schichtfolgeAm` (`fachpruefung.mjs`) lesen sie nur im AUS-Zweig der eigenen Rechnung:
+Wert im Fenster → Dienst des Servers; `null` oder Person ohne Schlüssel → bisheriger Ausdruck; **außerhalb des Fensters für
+eine Person mit Schlüssel „offen“: kein Dienst, nie still das Betriebsmodell (Q5).** Damit folgen `personTag` (Monatsplan,
+Mein Dienst), `setzeAbweichung`, `mehrfachDienst`, `urlaubskonto`, `planVergleich` und der Ersatzvorschlag dem Dienst des
+Servers. `abweichendVomBetriebsmodell` zählt für Teilrollen die Personen mit Angabe (Hinweis je Einheit). An einem offenen Tag
+löschen `setzeAbweichung`/`mehrfachDienst` keine Abweichung als „Plan“, sondern speichern ausdrücklich (`schichtfolgeOffen`).
+Volle Rollen bekommen keine Angabe; ist bei ihnen die eigene Rechnung an, wirkt eine Angabe ohnehin nicht.
+
+**Schreibweg (Voll-PUT und Teilweg, nur AN, nur Teilrollen).** `abweichungenTeilrollen` entscheidet **vor** der Rechteprüfung
+(`zusammenfuehren`) gegen den Modelldienst des gespeicherten Stands (`schichtmodellLageAm`), verglichen mit der Sicht der Rolle
+auf den gespeicherten Stand (ein unsichtbarer Eintrag gilt nie als gelöscht). Nur geänderte Schlüssel an Tagen, an denen die
+Person **nicht** dem Betriebsmodell folgt (eigenes Modell, Lücke, Klärung); sonst wie bisher.
+
+| Änderung des Clients | Kopf `x-centric-schichtfolge: server` | Ergebnis |
+|---|---|---|
+| Abweichung = Modelldienst (`-` = frei) | egal | entfällt (sie ist der Plan) |
+| andere Abweichung | egal | bleibt |
+| Abweichung gelöscht | fehlt (Client rechnete mit der Betriebsfolge) | ausdrücklich der Dienst der Betriebsfolge — was der Client als Plan zeigte; gleicht er dem Modelldienst, bleibt die Löschung |
+| Abweichung gelöscht | gesetzt (Client rechnete mit dem Dienst des Servers) | Löschung bleibt: Plan = Modelldienst |
+
+Der Kopf geht nur hinaus, wenn die Oberfläche den Dienst des Servers hat (`schichtfolgeServerAktiv`); bei AUS nie. Er erweitert
+keine Rechte: Er bestimmt nur, wie die eigene Löschung gelesen wird; beide Ergebnisse könnte der Client auch ausdrücklich setzen.
+Rechte (Bereich der Schichtverantwortung), Fachprüfung, Stempel- und Abschlussschutz laufen danach unverändert auf dem
+entschiedenen Stand. Volle Rollen: unverändert (sie rechnen selbst mit allen Zuordnungen).
+
+**Grenzen (vor AN zu beachten):**
+1. **Veraltete Clients** (Code vor diesem Stand oder vor dem Einschalten gelesen): Wählt die Schichtverantwortung an einem Tag mit
+   eigenem Modell den Dienst der Betriebsfolge und gab es dort keine Abweichung, schickt ihr Client nichts — das erkennt kein
+   Server. Abhilfe beim Einschalten: Deploy-Hinweis „Clients neu laden“ (wie P2-19 (e)). Jeder Client, der bei AN liest, hat den
+   Dienst des Servers und schickt den Kopf.
+2. **Fenster:** Außerhalb von heute − 60 … + 90 Tagen zeigen Teilrollen für Personen mit eigenem Modell keinen Dienst
+   (fail-safe). Eine Abweichung dort wird ausdrücklich gespeichert; der Server entscheidet gegen den Modelldienst.
+3. **Kopf zum Sendezeitpunkt:** Eine offline gemerkte Änderung trägt den Kopf nach dem Stand beim Senden, nicht beim Bearbeiten.
+   Wechselt der Schalter dazwischen, gilt die Löschung nach dem neuen Stand (wie Vorbedingung 5).
+4. **Ersatzvorschlag** an Lücken-/Klärungstagen: Teilrollen bekommen nur den Dienst, nicht die Art der Lage; der neutrale Grund
+   „kein Schichtmodell an diesem Tag“ erscheint nur bei vollen Rollen (Teilrollen: wie ein Tag ohne Dienst der Folge gewertet,
+   Grund „in der Dienstphase“, +8). Nur Rangfolge eines Vorschlags, kein Schreibweg; vor AN bewusst entscheiden (Kategorie B).
+5. `teilzeitProfil` (Punkt 4) und Offline-Merker (Punkt 5): nicht in diesem Stand, unverändert offen.
+
+Prüfung: `pruefungen/imp6-teilrollen.test.js` (in `pruefung:imp6-mehrfachmodelle`); Wächter `imp6-planwirkung` S um
+`server/lib/schichtfolge-teilrollen.mjs` (1 Aufruf `einheitDienst(`, Plan der Betriebsfolge im Schreibweg) erweitert.
