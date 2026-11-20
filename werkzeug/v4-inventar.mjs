@@ -12,6 +12,7 @@
      node werkzeug/v4-inventar.mjs --json       vollständige Daten
      node werkzeug/v4-inventar.mjs --streng     Exit 1 bei Datei ohne ZUORDNUNG oder verschwundener Datei im Dokument
      node werkzeug/v4-inventar.mjs --hauptansichten   Formebene je Hauptansicht (docs/acc45/V4-IST-STAND-2026-11-20.md)
+                                                      und feste Radien/Schatten im globalen Stil (V4-3a)
    Test: pruefungen/v4-inventar.test.js, pruefungen/v4-ist-stand.test.js (npm run pruefung:querschnitt).
    ========================================================================== */
 import { readFileSync, readdirSync, existsSync } from "node:fs";
@@ -336,6 +337,28 @@ export function formTraegerIn(text, klassen) {
 /** Inline-Formwerte, die an den Tokens vorbeigehen: borderRadius als Zahl oder Zeichenkette (nicht var(…)),
  *  boxShadow als Zeichenkette (nicht "none", nicht var(…)). Gezählt im Text ohne Kommentare. */
 const RE_FORM_LITERAL = /borderRadius:\s*(?:\d|["'`](?!\s*var\())|boxShadow:\s*["'`](?!\s*(?:none|var\())/g;
+/** V4-3a: globaler Stil (CSS in Vorlagen-Zeichenketten), nicht je Ansicht verrechnet. */
+export const GLOBALE_STILDATEIEN = ["src/App.jsx", "src/gestalt/stil.js"];
+/* Wert bis ; oder }, Platzhalter ${…} der Vorlage zählen zum Wert. */
+const RE_CSS_RADIUS = /border-radius:\s*((?:\$\{[^}]*\}|[^;}])+)/g;
+const RE_CSS_SCHATTEN = /box-shadow:\s*((?:\$\{[^}]*\}|[^;}])+)/g;
+/** Feste Formwerte im CSS-Text ohne Kommentare: border-radius ohne var(…), box-shadow ohne var(…)/none.
+ *  Nicht gezählt: 0, inherit und 50 % (Kreisform, keine Radiusstufe der Tokens). */
+export function festeFormwerte(text) {
+  const code = ohneKommentare(String(text));
+  const radien = [...code.matchAll(RE_CSS_RADIUS)].map((m) => m[1].trim())
+    .filter((w) => !/^var\(/.test(w) && !/^(?:0|50%|inherit)$/.test(w));
+  const schatten = [...code.matchAll(RE_CSS_SCHATTEN)].map((m) => m[1].trim()).filter((w) => !/^(?:var\(|none\b)/.test(w));
+  return { radien: radien.length, schatten: schatten.length, werte: [...radien, ...schatten] };
+}
+/** Feste Radien und Schatten je globaler Stildatei (Grenze aus V4-IST-STAND §2, gemessen seit V4-3a). */
+export function globalerStil(lies = (d) => readFileSync(join(WURZEL, d), "utf8")) {
+  return Object.fromEntries(GLOBALE_STILDATEIEN.map((d) => {
+    const f = festeFormwerte(lies(d));
+    return [d, { radien: f.radien, schatten: f.schatten }];
+  }));
+}
+
 /** Erzeugt die Datei Markup (JSX-Element, className oder Inline-Stil)? Reine Logik-/Stilquellen sind nicht „sichtbar“. */
 const RE_SICHTBAR = /<[a-z][a-z0-9]*[\s>/]|className=|style=\{/;
 
@@ -358,6 +381,9 @@ export function formKennzahlen(text, overlayKlassen = [], traeger = []) {
 
 /** Formstufe (Rangfolge): V4-Baustein, Overlay direkt, Overlay über Baustein, Token direkt, ohne V4-Form, nicht sichtbar. */
 export function formStufe(k) {
+  /* V4-3a: reine Stilquellen (gestalt/stil.js liest jetzt var(--v4-r-…)) bleiben „nicht sichtbar“; der Nenner
+     „sichtbar“ und die Summe der Stufen bleiben so gleich. */
+  if (k.sichtbar === false) return "nicht sichtbar";
   if (k.v4Baustein > 0) return "V4-Baustein";
   if (k.formDirekt > 0) return "Overlay direkt";
   if (k.formBaustein > 0) return "Overlay über Baustein";
@@ -827,11 +853,13 @@ async function hauptprogramm(argv) {
     process.exitCode = strengerAusgang(b);
     return;
   }
-  if (argv.includes("--json")) { console.log(JSON.stringify({ zusammenfassung: zusammenfassung(inv), ...inv }, null, 1)); return; }
+  if (argv.includes("--json")) { console.log(JSON.stringify({ zusammenfassung: zusammenfassung(inv), globalerStil: globalerStil(), ...inv }, null, 1)); return; }
   if (argv.includes("--markdown")) { console.log(alsMarkdown(inv)); return; }
   if (argv.includes("--hauptansichten")) {
     console.log(hauptansichtenMarkdown(inv));
     for (const [n, x] of Object.entries(jeHauptansicht(inv))) if (x.ohneForm.length) console.log(`ohne V4-Form – ${n}: ${x.ohneForm.join(", ")}`);
+    const g = Object.entries(globalerStil()).map(([d, x]) => `${d} ${x.radien}/${x.schatten}`).join(", ");
+    console.log(`globaler Stil – feste Radien/Schatten (ohne var(…), 0, 50 %): ${g}`);
     return;
   }
   console.log(JSON.stringify(zusammenfassung(inv), null, 1));

@@ -16,7 +16,7 @@ import { addDays } from "./regelwerk.js";
 import { csvFeld, csvText } from "./csvfeld.js";
 import { v4ThemaMerken, v4ThemaGemerkt, v4SystemthemaBeobachten } from "./v4/thema.js";
 import { v4AppStil } from "./v4/app-stil.js";
-import { v4AppVariablen } from "./v4/stil.js";
+import { v4AppVariablen, v4RadienVariablen } from "./v4/stil.js";
 import { V4_SCHATTEN, V4_SEITENLEISTE } from "./v4/tokens.js";
 import { Wortmarke } from "./marke.jsx";
 
@@ -328,7 +328,9 @@ const bauStyles = () => `
   /* Dichte — systemweit umschaltbar zwischen Komfortabel und Kompakt */
   --zeile: 48px; --pad-y: 14px; --pad-x: 20px; --luft: 32px; --schrift: 14.5px;
   --block: 48px;                 /* Abstand zwischen Abschnitten — bewusst großzügig */
-  --r: 12px; --r-gross: 18px; --r-pille: 999px;
+  /* V4-3a: Radiusstufen aus den Tokens (src/v4/tokens.js V4_RADIEN); die Altnamen zeigen darauf. */
+  ${v4RadienVariablen()}
+  --r: var(--v4-r-mittel); --r-gross: var(--v4-r-gross); --r-pille: var(--v4-r-pille);
   ${schattenVariablen("hell")}
   ${seitenleisteVariablen()}
   --sidebar-breite: 252px;
@@ -346,7 +348,7 @@ const bauStyles = () => `
   clip:rect(0,0,0,0); white-space:nowrap; border:0;}
 /* Sprungmarke zum Inhalt */
 .sprung{position:absolute; left:8px; top:-48px; z-index:100; background:${C.accent}; color:${C.aufAkzent};
-  padding:10px 16px; border-radius:8px; font-size:13.5px; font-weight:600; text-decoration:none;
+  padding:10px 16px; border-radius:var(--v4-r-klein); font-size:13.5px; font-weight:600; text-decoration:none;
   transition:top .16s;}
 .sprung:focus{top:8px;}
 body{margin:0;}
@@ -377,7 +379,7 @@ body{margin:0;}
 .slink{
   display:flex; align-items:center; gap:12px; width:100%; border:none; background:transparent;
   color:var(--sl-schrift-leise); font-family:inherit; font-size:14px; font-weight:500;
-  padding:11px 14px; border-radius:10px; cursor:pointer; text-align:left;
+  padding:11px 14px; border-radius:var(--v4-r-mittel); cursor:pointer; text-align:left;
   transition:background .14s, color .14s; margin-bottom:1px; position:relative;
 }
 .slink:hover{background:var(--sl-hover); color:var(--sl-schrift);}
@@ -385,7 +387,7 @@ body{margin:0;}
 .slink.on{background:var(--sl-an); color:var(--sl-schrift); font-weight:600;}
 .slink.on::before{content:""; position:absolute; left:0; top:9px; bottom:9px; width:3px;
   border-radius:0 3px 3px 0; background:${C.accentOrig};}
-.slink .zahl{margin-left:auto; font-size:11px; font-weight:700; padding:2px 7px; border-radius:999px;
+.slink .zahl{margin-left:auto; font-size:11px; font-weight:700; padding:2px 7px; border-radius:var(--v4-r-pille);
   background:var(--sl-zahl); ${'' /* Zähler */}}
 .slink .zahl.warn{background:${C.danger}; color:${istDunkel() ? C.bg : "var(--sl-schrift)"};}
 .sfuss{padding:14px 16px; border-top:1px solid var(--sl-trenner); font-size:12px;
@@ -469,7 +471,7 @@ h1.titel b{font-weight:680;}
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='7' viewBox='0 0 11 7'%3E%3Cpath d='M1 1l4.5 4.5L10 1' stroke='%236B7280' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
   background-repeat:no-repeat; background-position:right 12px center;}
 
-.pille{display:inline-flex; align-items:center; gap:5px; padding:4px 11px; border-radius:999px;
+.pille{display:inline-flex; align-items:center; gap:5px; padding:4px 11px; border-radius:var(--v4-r-pille);
   font-size:12.5px; font-weight:600; background:${C.flaecheStill}; color:${C.dim};
   white-space:nowrap; font-variant-numeric:tabular-nums;}
 .pille-sm{padding:2px 9px; font-size:11.5px;}
@@ -485,12 +487,14 @@ h1.titel b{font-weight:680;}
   background:${C.flaecheStill}; color:${C.dim}; letter-spacing:-.02em;}
 .avatar-sm{width:30px; height:30px; font-size:11.5px;}
 /* Schichtmarke mit linkem Akzentstrich statt voller Farbfläche */
-.schicht{display:flex; flex-direction:column; gap:1px; padding:7px 10px; border-radius:9px;
+.schicht{display:flex; flex-direction:column; gap:1px; padding:7px 10px; border-radius:var(--v4-r-klein);
   line-height:1.25; min-width:0;}
 .schicht b{font-size:12px; font-weight:640;}
 .schicht span{font-size:11px; opacity:.78; white-space:nowrap;}
 /* Freie Zelle im Plan — sichtbar, aber ruhig */
-.leerzelle{border:1.5px dashed ${C.line}; border-radius:9px; background:transparent;}
+.leerzelle{border:1.5px dashed ${C.line}; border-radius:var(--v4-r-klein); background:transparent;}
+/* V4-3a: Planzelle mit der kleinen Radiusstufe (Referenz design/v4-glass .shift, 8 px); Fläche und Fokus unverändert. */
+.planzelle{border-radius:var(--v4-r-klein);}
 
 .rubrik{font-size:11px; font-weight:700; letter-spacing:.10em; text-transform:uppercase; color:${C.dim};}
 
@@ -509,7 +513,7 @@ table.raster tbody tr[data-gewaehlt="1"] td{background:${C.accentLight};}
 .seg{display:inline-flex; gap:8px; max-width:100%; overflow-x:auto; padding:2px;}
 .seg button{border:1px solid ${C.line}; background:${C.flaeche}; cursor:pointer;
   font-family:inherit; font-size:13px; font-weight:550; color:${C.dim};
-  padding:8px 16px; border-radius:999px; white-space:nowrap; flex-shrink:0;
+  padding:8px 16px; border-radius:var(--v4-r-pille); white-space:nowrap; flex-shrink:0;
   transition:background .14s, color .14s, border-color .14s;}
 .seg button:hover{border-color:${C.steuer};}
 .seg button.on{background:${C.accentLight}; color:${C.accent}; border-color:${C.accent}; font-weight:620;}
@@ -523,7 +527,7 @@ table.raster tbody tr[data-gewaehlt="1"] td{background:${C.accentLight};}
 .hakenliste{list-style:none; padding:0; margin:0;}
 .hakenliste li{display:flex; gap:10px; align-items:flex-start; padding:7px 0; font-size:13.5px;}
 
-.schalter{width:40px; height:23px; border-radius:999px; border:none; cursor:pointer; padding:0;
+.schalter{width:40px; height:23px; border-radius:var(--v4-r-pille); border:none; cursor:pointer; padding:0;
   position:relative; transition:background .18s; flex-shrink:0; background:${C.steuer};}
 .schalter.on{background:${C.accent};}
 .schalter i{position:absolute; top:2.5px; left:2.5px; width:18px; height:18px; border-radius:50%;
@@ -639,11 +643,11 @@ kbd.taste{display:inline-flex; align-items:center; justify-content:center; min-w
   .seg button{padding:8px 13px;}
   /* Unter sechzehn Pixeln zoomt iOS beim Antippen in das Feld hinein */
   .inp,.sel,textarea{font-size:16px !important;}
-  .karte{border-radius:10px;}
+  .karte{border-radius:var(--v4-r-mittel);}
   /* Auf dem Telefon zählt jeder Millimeter Breite: der Rand um ein Blatt
      schrumpft, das Blatt selbst nimmt die volle Breite. */
   .sheet-back{padding:10px;}
-  .sheet-back > .blatt{border-radius:12px;}
+  .sheet-back > .blatt{border-radius:var(--v4-r-mittel);}
 }
 
 /* WP-35: Datentabelle der Abrechnungsdaten (Zuschlaege je Person) ohne

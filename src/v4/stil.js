@@ -29,9 +29,12 @@ const farbVariablen = (thema) => {
   return zeilen.join("");
 };
 
+/** Radiusstufen als --v4-r-…. V4-3a: auch im Grundstil der Anwendung (App.jsx :root), damit Querschnittsklassen
+ *  sie vor dem ersten themaSetzen (ohne data-v4-app) und auf der Fehlerseite lesen können. */
+export const v4RadienVariablen = () => Object.entries(V4_RADIEN).map(([k, w]) => `--v4-r-${k}:${w};`).join("");
+
 const festeVariablen = () => {
-  const z = [`--v4-glas-blur:${V4_GLAS.weichzeichner};`];
-  for (const [k, w] of Object.entries(V4_RADIEN)) z.push(`--v4-r-${k}:${w};`);
+  const z = [`--v4-glas-blur:${V4_GLAS.weichzeichner};`, v4RadienVariablen()];
   for (const [k, w] of Object.entries(V4_ABSTAND)) z.push(`--v4-abstand-${k}:${w};`);
   z.push(`--v4-schrift:${V4_SCHRIFT.familie};`);
   for (const k of ["klein", "text", "gross", "titel", "anzeige"])
