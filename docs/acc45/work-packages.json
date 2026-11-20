@@ -6750,7 +6750,7 @@
       "agent": null,
       "modell": "opus",
       "konfliktzonen": [],
-      "pr": [],
+      "pr": ["#427"],
       "nachweis": "docs/acc45/RELEASE-LUECKENANALYSE-2026-11-20.md; docs/acc45/RELEASE-PROZESS.md",
       "akzeptanz": "Werkzeug prüft G1–G10 maschinenlesbar, Ausgabe JSON, Exit 0 nur bei GO, fail-closed bei fehlenden Angaben; Lückenanalyse je Anforderung mit Datei:Zeile; Richtlinie Phase 0–6; Workflow-Vorschlag nur als Text; unabhängiges Review",
       "tests": "Unit (pruefung:acc45-werkzeuge)",
