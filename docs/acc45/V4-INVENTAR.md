@@ -76,6 +76,11 @@ diese Stellen im Browser tatsächlich abfängt, ist nicht gemessen [vermutet: nu
 V4-Bausteine, die Gestalt kommt aus Inline-Stilen und der alten Klassenwelt mit globalem Overlay. Ein einzelner
 „V4-Prozentwert“ wird bewusst nicht gebildet; die Merkmale oben sind einzeln belegt.
 
+**Nachtrag 2026-11-21:** Die 0 % gelten für die V4-Komponenten-API. Für das Bild ist die Zahl ein Zählartefakt.
+Über die Oberflächenschicht und die Bausteine (`Card`, `Btn`, `Inp`, `Seitenkarte`, `Fenster` …) erreichen 123 von
+159 sichtbaren Dateien die V4-Form. Ohne Farb- und Form-Literale sind es 67/159. Siehe
+[`V4-IST-STAND-2026-11-21.md`](V4-IST-STAND-2026-11-21.md) (`node werkzeug/v4-inventar.mjs --hauptansichten`).
+
 ## 3. Rollen-Sicht [belegt, mit Grenzen]
 
 Abgeleitet aus `src/app/navigation.js` (`ansichtErlaubt`) mit der Standardmatrix `MATRIX_STD` (`src/lib/rollen.js`)

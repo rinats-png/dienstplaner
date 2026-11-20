@@ -11,7 +11,8 @@
      node werkzeug/v4-inventar.mjs --markdown   Tabellen für docs/acc45/V4-INVENTAR.md
      node werkzeug/v4-inventar.mjs --json       vollständige Daten
      node werkzeug/v4-inventar.mjs --streng     Exit 1 bei Datei ohne ZUORDNUNG oder verschwundener Datei im Dokument
-   Test: pruefungen/v4-inventar.test.js (npm run pruefung:querschnitt).
+     node werkzeug/v4-inventar.mjs --hauptansichten   Formebene je Hauptansicht (docs/acc45/V4-IST-STAND-2026-11-21.md)
+   Test: pruefungen/v4-inventar.test.js, pruefungen/v4-ist-stand.test.js (npm run pruefung:querschnitt).
    ========================================================================== */
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join, resolve, dirname, relative } from "node:path";
@@ -248,6 +249,156 @@ const RE = {
   importe: /(?:from\s+|import\(\s*)["'](\.{1,2}\/[^"']+)["']/g,
 };
 
+/* ------------------------------------------- Formebene (V4-IST, 2026-11-21)
+   Die V4-Form erreicht eine Datei auf vier Wegen: V4-Basiskomponenten (<V4Karte …>), Klassen der Oberflächenschicht
+   direkt im className (auch in Ternären), über einen Baustein, der eine solche Klasse setzt (<Card>, <Btn>, <Inp>,
+   <Seitenkarte>, <Fenster> …), oder über var(--v4-…) im Inline-Stil (Einstieg). Die ursprüngliche Spalte „V4-Bst.“
+   zählt nur den ersten Weg; die Zählung „0 %“ beschreibt daher die Komponenten-API, nicht das Bild. */
+
+/** Klassen der Oberflächenschicht, die nur Breite/Druck betreffen und keine Form geben. */
+export const NUR_LAYOUT_KLASSEN = ["noprint", "inhalt"];
+export const formKlassen = (overlayKlassen) => overlayKlassen.filter((k) => !NUR_LAYOUT_KLASSEN.includes(k));
+
+/** Ausdruck eines className-Attributs: "…"/'…' bis zum Schlussquote, {…} bis zur passenden Klammer. */
+function klassenAusdruck(text, ab) {
+  const q = text[ab];
+  if (q === '"' || q === "'") { const z = text.indexOf(q, ab + 1); return text.slice(ab + 1, z < 0 ? undefined : z); }
+  if (q !== "{") return "";
+  let tiefe = 0;
+  for (let i = ab; i < text.length; i++) {
+    if (text[i] === "{") tiefe++;
+    else if (text[i] === "}" && --tiefe === 0) return text.slice(ab + 1, i);
+  }
+  return text.slice(ab + 1);
+}
+
+/** Textliterale eines JS-Ausdrucks: "…", '…' und die festen Teile von `…${…}…` (auch verschachtelt). */
+function literaleIn(expr) {
+  const raus = [];
+  let i = 0;
+  const ausdruck = (bisKlammer) => {
+    let tiefe = 0;
+    while (i < expr.length) {
+      const c = expr[i];
+      if (c === '"' || c === "'") { const z = expr.indexOf(c, i + 1); raus.push(expr.slice(i + 1, z < 0 ? expr.length : z)); i = z < 0 ? expr.length : z + 1; continue; }
+      if (c === "`") { i++; vorlage(); continue; }
+      if (c === "{") tiefe++;
+      else if (c === "}") { if (bisKlammer && tiefe === 0) { i++; return; } tiefe--; }
+      i++;
+    }
+  };
+  const vorlage = () => {
+    let puffer = "";
+    while (i < expr.length) {
+      const c = expr[i];
+      if (c === "`") { raus.push(puffer); i++; return; }
+      if (c === "$" && expr[i + 1] === "{") { raus.push(puffer); puffer = ""; i += 2; ausdruck(true); continue; }
+      puffer += c; i++;
+    }
+    raus.push(puffer);
+  };
+  ausdruck(false);
+  return raus;
+}
+
+/** Alle Klassenwörter aus className-Ausdrücken, auch aus Ternären und Vorlagen (Bezeichner in `${…}` zählen nicht). */
+export function klassenWoerter(text) {
+  const t = String(text), raus = [];
+  for (const m of t.matchAll(/className=/g)) {
+    const ab = m.index + m[0].length;
+    const a = klassenAusdruck(t, ab);
+    const teile = t[ab] === "{" ? literaleIn(a) : [a];
+    for (const s of teile) for (const w of s.split(/\s+/)) if (w) raus.push(w);
+  }
+  return raus;
+}
+
+/** Dateien, deren exportierte Komponenten als Formträger in Frage kommen (Bausteine und gemeinsame Dialograhmen). */
+export const TRAEGER_DATEIEN = [
+  "src/ui/bausteine.jsx", "src/ui/leisten.jsx", "src/ui/scrollbereich.jsx",
+  "src/gestalt/ansichten.jsx", "src/gestalt/bausteine.jsx", "src/gestalt/rahmen.jsx",
+  "src/ansichten/fenster.jsx", "src/ansichten/bestaetigungsfrage.jsx", "src/ansichten/teilkonflikt.jsx",
+  "src/ansichten/warndialog.jsx",
+];
+
+/** Exportierte Komponenten eines Quelltexts, deren Rumpf eine Formklasse setzt (sortiert). */
+export function formTraegerIn(text, klassen) {
+  const fk = new Set(klassen);
+  const namen = [];
+  /* Abschnitt = von einem Export bis zur nächsten Deklaration auf oberster Ebene (lokale Helfer gehören nicht dazu). */
+  for (const s of String(text).split(/\n(?=export\s|function\s|const\s|class\s)/)) {
+    const m = s.match(/^export\s+(?:const|function)\s+([A-Z]\w*)/);
+    if (m && klassenWoerter(s).some((w) => fk.has(w))) namen.push(m[1]);
+  }
+  return namen.sort();
+}
+
+/** Inline-Formwerte, die an den Tokens vorbeigehen: borderRadius als Zahl, boxShadow als Literal. */
+const RE_FORM_LITERAL = /borderRadius:\s*\d|boxShadow:\s*["'`]/g;
+/** Erzeugt die Datei Markup (JSX-Element, className oder Inline-Stil)? Reine Logik-/Stilquellen sind nicht „sichtbar“. */
+const RE_SICHTBAR = /<[a-z][a-z0-9]*[\s>/]|className=|style=\{/;
+
+/** Formkennzahlen einer Datei. `traeger`: Namen der Formträger-Bausteine; gezählt nur, wenn die Datei sie importiert. */
+export function formKennzahlen(text, overlayKlassen = [], traeger = []) {
+  const fk = new Set(formKlassen(overlayKlassen));
+  const importiert = new Set();
+  for (const m of String(text).matchAll(/import\s*\{([^}]+)\}\s*from/g)) {
+    for (const n of m[1].split(",")) importiert.add(n.trim().split(/\s+as\s+/).pop().trim());
+  }
+  const tr = new Set(traeger.filter((n) => importiert.has(n)));
+  return {
+    sichtbar: RE_SICHTBAR.test(text),
+    formDirekt: klassenWoerter(text).filter((w) => fk.has(w)).length,
+    formBaustein: [...String(text).matchAll(/<([A-Z]\w*)\b/g)].filter((m) => tr.has(m[1])).length,
+    formLiterale: zaehle(text, RE_FORM_LITERAL),
+  };
+}
+
+/** Formstufe (Rangfolge): V4-Baustein, Overlay direkt, Overlay über Baustein, Token direkt, ohne V4-Form, nicht sichtbar. */
+export function formStufe(k) {
+  if (k.v4Baustein > 0) return "V4-Baustein";
+  if (k.formDirekt > 0) return "Overlay direkt";
+  if (k.formBaustein > 0) return "Overlay über Baustein";
+  if (k.tokenVar > 0) return "Token direkt";
+  return k.sichtbar ? "ohne V4-Form" : "nicht sichtbar";
+}
+/** Farbstufe: Literale (rgb/Hex im Code), V4 (Tokens, Palette C oder Bausteine), geerbt (sichtbar, aber ohne eigene
+ *  Farbangabe: erbt Text- und Grundfarbe der V4-Schale), ohne Farbe (kein Markup). */
+export function farbStufe(k) {
+  if (k.gruppe === "V4") return "Quelle";
+  if (k.rgb + k.hex > 0) return "Literale";
+  if (k.tokens === "direkt" || k.tokens === "Palette" || k.tokens === "Bausteine") return "V4";
+  return k.sichtbar ? "geerbt" : "ohne Farbe";
+}
+export const FORM_STUFEN = ["V4-Baustein", "Overlay direkt", "Overlay über Baustein", "Token direkt", "ohne V4-Form", "nicht sichtbar"];
+const FORM_ERREICHT = new Set(FORM_STUFEN.slice(0, 4));
+export const formErreicht = (stufe) => FORM_ERREICHT.has(stufe);
+
+/**
+ * Hauptansicht (Gliederung des Ist-Stands, Urteil): Einstieg, Speicherlage, Telefonschale und Import nach Datei,
+ * sonst nach Familie. Rein für die Auswertung in docs/acc45/V4-IST-STAND-2026-11-21.md.
+ */
+export const HAUPTANSICHT_DATEIEN = {
+  Einstieg: ["src/main.jsx", "src/startbild.jsx", "src/verlustweg.jsx", "src/betreiber-2fa.jsx", "src/rechtstexte.jsx",
+    "src/marke.jsx", "src/ansichten/anmeldung.jsx", "src/ansichten/mailbestaetigung.jsx", "src/ansichten/ladefehler.jsx"],
+  Telefonschale: ["src/ansichten/mobil.jsx"],
+  Speicherlage: ["src/ansichten/speicherlage.jsx", "src/ansichten/teilkonflikt.jsx"],
+  Import: ["src/ansichten/import.jsx", "src/ansichten/import-datei.jsx"],
+  Selbsttest: ["src/pruefung.jsx", "src/ansichten/testablauf.jsx"],
+};
+export const HAUPTANSICHTEN = ["Einstieg", "Plan/Dienstplan", "Personal", "Zeit/Abrechnung", "Import",
+  "Einstellungen/Verwaltung", "Telefonschale", "Speicherlage", "Lage/Dashboard", "Betreiberkonsole", "Branchenmodule",
+  "Querschnitt/Bausteine", "Selbsttest"];
+export function hauptansicht(e) {
+  for (const [h, liste] of Object.entries(HAUPTANSICHT_DATEIEN)) if (liste.includes(e.datei)) return h;
+  if (e.gruppe === "Branchenmodul") return "Branchenmodule";
+  return {
+    plan: "Plan/Dienstplan", standort: "Plan/Dienstplan", personal: "Personal", zeit: "Zeit/Abrechnung",
+    auswertung: "Zeit/Abrechnung", einstellung: "Einstellungen/Verwaltung", pruefung: "Einstellungen/Verwaltung",
+    lage: "Lage/Dashboard", betreiber: "Betreiberkonsole",
+  }[e.familie] || "Querschnitt/Bausteine";
+}
+
 /** Quelltext ohne Block- und Zeilenkommentare (für Farbliterale: „#348“ in Kommentaren ist eine PR-Nummer, keine Farbe). */
 export function ohneKommentare(text) {
   return text.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:"'`\\])\/\/[^\n]*/gm, "$1");
@@ -416,6 +567,9 @@ export async function inventar() {
   const liste = dateiliste();
   const texte = new Map(liste.map((d) => [d.datei, lies(d.datei)]));
   const testTexte = Object.fromEntries(Object.entries(TESTS).map(([k, p]) => [k, existsSync(join(WURZEL, p)) ? lies(p) : ""]));
+  const fk = formKlassen(V4_APP_KLASSEN);
+  const traeger = [...new Set(TRAEGER_DATEIEN.filter((d) => existsSync(join(WURZEL, d)))
+    .flatMap((d) => formTraegerIn(texte.get(d) ?? lies(d), fk)))].sort();
   const appAnsichten = ansichtenAusApp(texte.get("src/App.jsx") || "");
   const { label, rollen } = await rollenJeAnsicht();
   const proben = probenBeschriftungen();
@@ -497,13 +651,19 @@ export async function inventar() {
     if (axe) tests.push("e2e-flaechen/axe");
     if (wp40Browser) tests.push("wp40-browser");
     const klasse = aufwandsklasse(k);
-    return {
+    const f = formKennzahlen(text, V4_APP_KLASSEN, traeger);
+    const eintrag = {
       datei, gruppe, familie: zu[0], zweck: zu[1], ansichten: ids, beschriftung: labels,
       rollen: rollenSicht, rollenArt, faninAnzahl: (importiertVon.get(datei) || []).length,
       ...k, tokens, tests, aufwand: klasse, pt: PT_JE_KLASSE[klasse],
+      ...f,
     };
+    eintrag.form = gruppe === "V4" ? "Quelle" : formStufe(eintrag);
+    eintrag.farbe = farbStufe(eintrag);
+    eintrag.hauptansicht = hauptansicht(eintrag);
+    return eintrag;
   });
-  return { eintraege, appAnsichten, navAnzahl: label.size };
+  return { eintraege, appAnsichten, navAnzahl: label.size, formTraeger: traeger };
 }
 
 /* --------------------------------------------------------- Zusammenfassen */
@@ -562,9 +722,57 @@ export function zusammenfassung(inv) {
         ohneBackdropLuecke: z((x) => x.backdropOhneRueckfall === 0),
         mitAxe: z((x) => x.tests.includes("e2e-flaechen/axe")),
         mitTestbezug: z((x) => x.tests.length > 0),
+        /* Formebene und sichtbarer Nenner (V4-IST 2026-11-21) */
+        sichtbar: z((x) => x.sichtbar),
+        form: Object.fromEntries(FORM_STUFEN.map((s) => [s, z((x) => x.form === s)])),
+        formErreicht: z((x) => formErreicht(x.form)),
+        formLiterale: o.reduce((s, x) => s + x.formLiterale, 0),
+        mitFormLiteralen: z((x) => x.formLiterale > 0),
+        farbe: Object.fromEntries(["V4", "geerbt", "Literale", "ohne Farbe"].map((s) => [s, z((x) => x.farbe === s)])),
+        sichtbarFarbrein: z((x) => x.sichtbar && x.rgb + x.hex === 0),
+        sichtbarVoll: z((x) => x.sichtbar && formErreicht(x.form) && x.rgb + x.hex === 0 && x.formLiterale === 0),
       };
     })(),
+    jeHauptansicht: jeHauptansicht(inv),
   };
+}
+
+/** Kennzahlen je Hauptansicht (ohne src/v4). */
+export function jeHauptansicht(inv) {
+  const raus = {};
+  for (const h of HAUPTANSICHTEN) {
+    const e = inv.eintraege.filter((x) => x.gruppe !== "V4" && x.hauptansicht === h);
+    const s = e.filter((x) => x.sichtbar);
+    raus[h] = {
+      dateien: e.length, sichtbar: s.length, zeilen: e.reduce((a, x) => a + x.zeilen, 0),
+      formErreicht: s.filter((x) => formErreicht(x.form)).length,
+      overlayDirekt: s.filter((x) => x.form === "Overlay direkt").length,
+      ueberBaustein: s.filter((x) => x.form === "Overlay über Baustein").length,
+      tokenDirekt: s.filter((x) => x.form === "Token direkt").length,
+      ohneForm: s.filter((x) => x.form === "ohne V4-Form").map((x) => x.datei),
+      farbrein: s.filter((x) => x.rgb + x.hex === 0).length,
+      farbLiterale: e.reduce((a, x) => a + x.rgb + x.hex, 0),
+      formLiterale: e.reduce((a, x) => a + x.formLiterale, 0),
+      inlineStil: e.reduce((a, x) => a + x.inlineStil, 0),
+      dialog: e.reduce((a, x) => a + x.dialog, 0),
+      zustand: e.reduce((a, x) => a + x.zustand, 0),
+      axe: e.filter((x) => x.tests.includes("e2e-flaechen/axe")).length,
+      wp40: e.filter((x) => x.tests.includes("wp40-browser")).length,
+      voll: s.filter((x) => formErreicht(x.form) && x.rgb + x.hex === 0 && x.formLiterale === 0).length,
+    };
+  }
+  return raus;
+}
+
+/** Tabelle je Hauptansicht für docs/acc45/V4-IST-STAND-2026-11-21.md. */
+export function hauptansichtenMarkdown(inv) {
+  const h = jeHauptansicht(inv);
+  const z = ["| Hauptansicht | Dateien (sichtbar) | Zeilen | Form erreicht | davon direkt / Baustein / Token | Farbrein | Farbliterale | Form-Literale | Inline-Stile | Dialog | Zustand | axe | WP-40 | voll V4 |",
+    "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"];
+  for (const [name, x] of Object.entries(h)) {
+    z.push(`| ${name} | ${x.dateien} (${x.sichtbar}) | ${x.zeilen} | ${x.formErreicht}/${x.sichtbar} | ${x.overlayDirekt} / ${x.ueberBaustein} / ${x.tokenDirekt} | ${x.farbrein}/${x.sichtbar} | ${x.farbLiterale} | ${x.formLiterale} | ${x.inlineStil} | ${x.dialog} | ${x.zustand} | ${x.axe} | ${x.wp40} | ${x.voll}/${x.sichtbar} |`);
+  }
+  return z.join("\n");
 }
 
 /* -------------------------------------------------------------- Ausgabe */
@@ -619,6 +827,11 @@ async function hauptprogramm(argv) {
   }
   if (argv.includes("--json")) { console.log(JSON.stringify({ zusammenfassung: zusammenfassung(inv), ...inv }, null, 1)); return; }
   if (argv.includes("--markdown")) { console.log(alsMarkdown(inv)); return; }
+  if (argv.includes("--hauptansichten")) {
+    console.log(hauptansichtenMarkdown(inv));
+    for (const [n, x] of Object.entries(jeHauptansicht(inv))) if (x.ohneForm.length) console.log(`ohne V4-Form – ${n}: ${x.ohneForm.join(", ")}`);
+    return;
+  }
   console.log(JSON.stringify(zusammenfassung(inv), null, 1));
 }
 
