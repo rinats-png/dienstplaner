@@ -92,7 +92,7 @@ bietet den (angehakten) Schalter „Fehlende Einheiten und Qualifikationen mit a
 Falsches gespeichert), aber der angebotene Weg führt nicht zum Ziel. Nach Behebung I1 umkehren (Übernehmbar 2, Zeile mit
 neuer Einheit angelegt).
 
-### B-P2 (Produktfehler, mittel, Sicherheit der Information): Offline-Hinweis fehlt in der Telefonschale
+### B-P2 (Produktfehler, mittel, Sicherheit der Information, behoben in PR #410): Offline-Hinweis fehlte in der Telefonschale
 
 Belegt in **P2** (390x844, Beschäftigte; nicht vakuös: dieselbe Seite zeigt die Leiste in der Rechneransicht, die App hat das Offline-Lesen also erkannt). Ohne Netz startet die Anwendung aus dem Gerüst und zeigt den gespeicherten Stand —
 richtig —, aber ohne die Leiste „Keine Verbindung … Der angezeigte Stand wurde … geholt“ (`Offlineleiste`,

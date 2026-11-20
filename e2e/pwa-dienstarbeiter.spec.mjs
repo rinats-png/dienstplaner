@@ -92,11 +92,16 @@ test.describe("PWA: Dienstarbeiter lokal (nur diese Datei erlaubt ihn)", () => {
     await expect(page.getByRole("button", { name: "Mein Plan" })).toBeVisible();
     await expect(leiste, "B-P2: zurück in der Telefonansicht weiterhin sichtbar").toBeVisible();
 
+    /* Wieder online, OHNE Neuladen: Die Leiste verschwindet (B-P2, „verschwindet, sobald die Verbindung zurück ist“).
+       Das Ereignis wird wie in B7 (abnahme-b-ablaeufe) ausdrücklich ausgelöst; die App lauscht auf „online“. */
     await context.setOffline(false);
+    expect(await page.evaluate(() => navigator.onLine), "Browser meldet online").toBe(true);
+    await page.evaluate(() => window.dispatchEvent(new Event("online")));
+    await expect(leiste, "B-P2: online ohne Neuladen keine Offline-Leiste").toHaveCount(0, { timeout: 15000 });
+    /* Und nach dem Neuladen mit Netz ebenso. */
     await page.reload({ waitUntil: "load" });
     await page.waitForSelector(".m-tabs, .kopfleiste", { timeout: 30000 });
     await expect(page.getByRole("button", { name: "Mein Plan" })).toBeVisible();
-    /* Wieder online: Die Leiste ist weg (B-P2, „verschwindet, sobald die Verbindung zurück ist“). */
     await expect(leiste, "B-P2: online keine Offline-Leiste").toHaveCount(0);
     await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
     await page.goto("about:blank");

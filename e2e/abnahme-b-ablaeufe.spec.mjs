@@ -171,6 +171,7 @@ test.describe("Abnahme B — Abläufe mit Schreibwirkung (einmal je Lauf)", () =
     /* B-P2 (PR #410): Offline erscheint auch am Telefon die Leiste „Keine Verbindung“ und schiebt die Stempeluhr nach
        unten. Erst klicken, wenn sie steht — sonst kann der Klick in die Verschiebung fallen. Das Ereignis wird wie beim
        „online“ unten ausdrücklich ausgelöst (die App lauscht darauf). */
+    expect(await page.evaluate(() => navigator.onLine), "Browser meldet offline").toBe(false);
     await page.evaluate(() => window.dispatchEvent(new Event("offline")));
     await expect(page.getByRole("status").filter({ hasText: "Keine Verbindung" }), "Offline-Leiste steht").toBeVisible({ timeout: 15000 });
     await ein.click();
