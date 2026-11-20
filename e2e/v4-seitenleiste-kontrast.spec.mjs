@@ -2,7 +2,7 @@
    Befund (Review #425, docs/acc45/v4-2-nachweis.md §6): .slink.on und .slink:hover legten var(--v4-glas) unter weiße
    Schrift; hell rgba(255,255,252,.72) über der Seitenleiste = 1,76:1 (WCAG 1.4.3 verlangt 4,5:1).
    Die axe-Specs (barrierefreiheit*.spec.mjs) messen ohne geöffnete Schublade; diese Spec öffnet sie per Tastatur
-   (Menütaste, Enter: der Fokus springt auf den aktiven Eintrag, ui/geraete.js seitenleisteFokus) und misst im Browser:
+   (Menütaste, Enter; Fokus auf dem aktiven Eintrag, vgl. ui/geraete.js seitenleisteFokus) und misst im Browser:
    aktiver Eintrag mit Fokusring, ein anderer Eintrag im Hover, Text >= 4,5:1 auf der gemischten Fläche, Fokusring
    >= 3:1 gegen die angrenzenden Farben (bei outline-offset > 0 die Seitenleiste); danach axe (WCAG 2.2 AA) mit offener
    Schublade.
@@ -60,6 +60,9 @@ test.describe("V4-2c: Seitenleisten-Einträge in der Schublade (390 px)", () => 
       await page.keyboard.press("Enter");
       await expect(page.locator(".seitenleiste.offen")).toBeVisible();
       const aktiv = ".seitenleiste .slink.on";
+      /* Die App setzt den Fokus beim Öffnen selbst; liegt er (noch) nicht dort, setzt ihn der Test. Letzte Eingabe war die
+         Tastatur, daher gilt :focus-visible (unten geprüft). */
+      if (!(await page.locator(aktiv).evaluate((e) => e === document.activeElement))) await page.locator(aktiv).focus();
       await expect(page.locator(aktiv)).toBeFocused();
       const t = V4_FARBEN[thema];
       const an = await messen(page, aktiv);
