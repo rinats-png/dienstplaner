@@ -51,7 +51,7 @@ Nur der Betreiber löst ein Deployment aus. Claude startet nie einen Deploy-Work
 
 Die Release-Prüfung läuft **zweimal**: als Vorprüfung vor Phase 1 (G4, G6, G7, G10 sind dann noch offen, Feld
 `vorpruefungOk`) und als Endprüfung nach Phase 2 (alle Gates, Exit 0). `--basis` ist Pflicht: der Commit des
-vorigen Releases. Online prüft das Werkzeug vor jedem Netzaufruf: Basis ist echter Vorfahr des Kandidaten, nicht gleich, Bereich nicht leer, Commit einer Zeile der Freigabeliste; sonst Exit 2. Gemeint ist die Zeile `aktiv` vor dem Listen-PR. Das Werkzeug leitet die Basis bewusst nicht aus der Liste ab,
+vorigen Releases. Online prüft das Werkzeug vor jedem Netzaufruf: Basis ist echter Vorfahr des Kandidaten, nicht gleich, Bereich nicht leer, Commit einer Zeile `aktiv` oder `vorherig` der Freigabeliste (eine Zeile `gesperrt` ist nie Basis); sonst Exit 2. Gemeint ist die Zeile `aktiv` vor dem Listen-PR; nach dem Listen-PR steht sie als `vorherig`. Folge für Option b (Produktionsweg §3.3a, altes Bild sofort `gesperrt`): Die Endprüfung muss laufen, solange die alte Zeile noch `vorherig` ist; die Sperre folgt in einem eigenen Listen-PR nach dem Wechsel. Zusätzlich bindet der Betreiber die Basis in der Freigabedatei (`basisCommit`); ohne diese Bindung ist G10 NO-GO. Das Werkzeug leitet die Basis bewusst nicht aus der Liste ab,
 weil die Zeile des Kandidaten sie nach dem Listen-PR überdeckt und ein gesperrtes Altbild keine Basis sein darf.
 
 | Phase | Was | Wer | Beleg | Verweis |
@@ -78,6 +78,18 @@ schließt nur der Branch-Schutz: `docs/acc45/releases/` und `deploy/FREIGEGEBENE
 `CODEOWNERS` (Inhaber) und Pflicht-Review auf `main` geschützt sein ([BETREIBER-BRANCHSCHUTZ.md](BETREIBER-BRANCHSCHUTZ.md)).
 Eine Datei mit falscher Struktur gilt für alle Gates als nicht vorhanden.
 
+Grenzen, die das Werkzeug nicht schließt (bewusst dokumentiert):
+
+- **Selbstbeleg im Kandidaten:** `REVIEW-NACHWEIS*.md` und die SSOT-Stufe „reviewt“ liest das Werkzeug aus dem
+  Kandidaten. Wer den Kandidaten schreibt, kann diese Belege mitschreiben. Sie sind Selbstauskunft der Orchestrierung;
+  nur ein GitHub-Review eines anderen Kontos ist ein fremder Beleg. Abhilfe: Branch-Schutz mit Pflicht-Review.
+- **`freigegebeneSchalter` bindet nur den Namen**, nicht den Wert: Ein freigegebener Schalter darf in jeder
+  Vorlage jeden aktiven Wert haben.
+- **Rebase-Merges auf `integration/*`:** `GET commits/{sha}/pulls` nennt für Commits außerhalb des Standardzweigs
+  nur offene PRs. Rebase-gemergte Commits auf `integration/*` erscheinen deshalb als „ohne PR“ (fail-closed);
+  Merge-Commits und Squash-Commits sind über `pulls/{n}` bestätigt.
+- **`akzeptierteCommits`** verlangt den vollen Commit (40 Zeichen); Präfixe gelten nicht.
+
 ```json
 {
   "schema": 1,
@@ -87,6 +99,7 @@ Eine Datei mit falscher Struktur gilt für alle Gates als nicht vorhanden.
   "umgebung": "produktion",
   "freigegebenDurch": "<Name>",
   "datum": "JJJJ-MM-TT",
+  "basisCommit": "<40 hex, Commit des vorigen Releases>",
   "rueckweg": { "strategie": "r0", "entscheidungO1": "a", "entscheidungO2": "a" },
   "migration": { "freigegeben": true, "basisCommit": "<40 hex>", "abgedeckt": ["W-4", "W-5", "STARTBLOCK"], "bericht": "<Pfad zum Probebericht>" },
   "reviewBestaetigt": [412],
@@ -109,7 +122,7 @@ Einzelheiten und Konfiguration: Kopf von `werkzeug/release-pruefung.mjs`, Ausgab
 | Gate | GO, wenn |
 |---|---|
 | G1 | alle Pflicht-Check-Runs auf dem Kandidaten-SHA abgeschlossen und `success`; abgefragt mit `filter=all`, jeder Lauf zählt (ein roter Lauf bleibt rot); Läufe ohne `head_sha` sind NO-GO; eigene Gate-Jobs zählen nicht |
-| G2 | jeder PR im Paket hat einen Review-Beleg (GitHub-Review eines anderen Kontos ohne spätere Änderungsforderung, letzte vorbehaltlose positive Aussage in `REVIEW-NACHWEIS*.md`, SSOT-Stufe reviewt) oder ist bestätigt; jeder Commit gehört zu einem von GitHub bestätigten PR (gemergt, `merge_commit_sha`, Commits des PR; der Betreff allein belegt nichts), sonst `akzeptierteCommits`; leerer Bereich ist nie GO |
+| G2 | jeder PR im Paket hat einen Review-Beleg (GitHub-Review eines anderen Kontos ohne spätere Änderungsforderung, in `REVIEW-NACHWEIS*.md` eine letzte Aussage ohne Verneinung oder Vorbehalt, die exakt auf `MERGEBAR`, `MERGE-OK` oder `erledigt` endet, SSOT-Stufe reviewt) oder ist bestätigt; jeder Commit gehört zu einem von GitHub bestätigten PR (gemergt, `merge_commit_sha`, Commits des PR; der Betreff allein belegt nichts), sonst `akzeptierteCommits`; leerer Bereich ist nie GO |
 | G3 | jeder `CENTRIC_`-Name im Server-Code des Kandidaten und in den Vorlagen ist in [RELEASE-SCHALTER.json](RELEASE-SCHALTER.json) klassifiziert; kein Schalter und keine unfertige Funktion in `.env.example`, `deploy/compose.yml`, `Dockerfile` (ENV und ARG), Staging-Vorlagen aktiv (auch nicht als `${X:-w}`/`${X:+w}`, YAML-Flow, Vergleich mit trim/Kleinschreibung); freigabepflichtige Schalter nur mit `freigegebeneSchalter`; `NODE_ENV` nur `production`, in `deploy/compose.yml` und `Dockerfile` Pflicht |
 | G4 | Digest vollständig; Bildangaben aktuell; Label und Provenienz = Kandidat; Freigabeliste gültig, Zeile `aktiv` mit Kandidaten-Commit |
 | G5 | keine Startschreib-Quelle (W-1…W-9, `server.mjs`) geändert oder neu, oder Betreiberfreigabe deckt alle ab |

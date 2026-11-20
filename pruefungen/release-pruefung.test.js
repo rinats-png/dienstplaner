@@ -764,7 +764,7 @@ describe("Delta-Review 3 #427: Urteile, Basisbindung, Online-Pfad mit realistisc
     const fx = fixtureGo();
     expect(gateVon(pruefe(fx), "G10").ergebnis).toBe("GO");
     datei("docs/acc45/releases/v4-r1.freigabe.json", { ...FREIGABE, basisCommit: undefined });
-    expect(gateVon(pruefe(fx), "G10").gruende.join()).toMatch(/basisCommit/);
+    expect(gateVon(pruefe(fx), "G10").gruende.join()).toMatch(/basisCommit fehlt/);
     datei("docs/acc45/releases/v4-r1.freigabe.json", { ...FREIGABE, basisCommit: K });
     expect(gateVon(pruefe(fx), "G10").ergebnis).toBe("NO-GO");
   });
@@ -857,5 +857,18 @@ describe("Delta-Review 3 #427: temporäres Git-Repo (unabhängig von Historie un
     expect(gateVon(r, "G2").belege.join()).toMatch(/#1: GitHub-Review APPROVED von b/);
     expect(r.gates.find((x) => x.id === "G10").gruende.join()).toMatch(/nicht auf origin|gepusht/);
     expect(e.stand.headGepusht).toBe(false); // kein origin im temporären Repo
+  }, 90_000);
+  it("H1: gepusht heißt: ein Zweig auf origin zeigt genau auf HEAD (ls-remote)", () => {
+    const fern = mkdtempSync(join(tmpdir(), "rel1-fern-"));
+    try {
+      spawnSync("git", ["init", "-q", "--bare", fern], { encoding: "utf8" });
+      g("remote", "add", "origin", fern);
+      g("push", "-q", "origin", "HEAD:refs/heads/main");
+      const gh = () => { throw new Error("kein Netz"); };
+      const lauf = () => sammeln({ wurzel: repo, offline: false, kandidatSha: kandidat, basisSha: basis, releaseId: "x1y", digest: D, jetztMs: JETZT_MS, gh });
+      expect(lauf().stand.headGepusht).toBe(true);
+      commit("lokal.txt", "x", "nur lokal");
+      expect(lauf().stand.headGepusht).toBe(false);
+    } finally { rmSync(fern, { recursive: true, force: true }); }
   }, 90_000);
 });
