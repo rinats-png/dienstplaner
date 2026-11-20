@@ -51,7 +51,15 @@ describe("SI-01 Push-Endpunkt nur bei bekannten Push-Diensten", () => {
   /* Review S1: web-push verbindet über den alten url.parse, die Prüfung las
      mit new URL. Diese Proben sahen für new URL wie ein Push-Dienst aus,
      url.parse (und damit die Verbindung) führte aber nach 127.0.0.1,
-     169.254.169.254 oder ohne Host (localhost). */
+     169.254.169.254 oder ohne Host (localhost).
+     DEP-1: web-push 4 verbindet über new URL; die Doppelprüfung bleibt als
+     strengere Regel bestehen (Begründung in pushziel.mjs). Den tatsächlichen
+     Verbindungs-Host belegt webpush-echt.test.js; hier die Quellenprobe. */
+  it("DEP-1: web-push verbindet über new URL (Hostname), nicht über url.parse", async () => {
+    const q = await quelle("node_modules/web-push/src/web-push-lib.js");
+    expect(q).toMatch(/new URL\(requestDetails\.endpoint\)/);
+    expect(q).not.toMatch(/url\.parse\(|require\(['"]url['"]\)/);
+  });
   const PARSER_TRICKS = [
     "https://127.0.0.1;.push.apple.com/x",
     "https://169.254.169.254'.push.apple.com/latest/meta-data",

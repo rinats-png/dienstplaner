@@ -158,7 +158,7 @@
     "pruefung:post": "vitest run pruefungen/post.test.js",
     "pruefung:mail-push-produktion": "vitest run pruefungen/mail-push-produktion.test.js --testTimeout=60000",
     "pruefung:testraum-mail": "vitest run pruefungen/testraum-mail.test.js",
-    "pruefung:mail-push-anbieter": "vitest run pruefungen/mail-push-anbieter.test.js",
+    "pruefung:mail-push-anbieter": "vitest run pruefungen/mail-push-anbieter.test.js pruefungen/webpush-echt.test.js",
     "pruefung:mail-push-handler": "vitest run pruefungen/mail-push-handler.test.js pruefungen/mailbestaetigung.test.js pruefungen/e9-abmelden-geraet.test.js",
     "pruefung:selbst": "vitest run pruefungen/selbsttest.test.js",
     "pruefung:branchen": "vitest run pruefungen/branchen.test.js",
@@ -264,7 +264,7 @@
     "@fontsource-variable/inter": "^5.3.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "web-push": "^3.6.7"
+    "web-push": "^4.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",

@@ -40,6 +40,24 @@ export function pushKlasse(status) {
    Takt (nachfassen) auf. Eine Zeitüberschreitung ist vorübergehend. */
 export const PUSH_FRIST_MS = 10_000;
 
+/* DEP-1 (web-push 4): Die Bibliothek ist reines ESM und hat nur benannte
+   Exporte, keinen Standardexport. Der frühere Zugriff über den
+   Standardexport warf mit v4 einen TypeError; das catch unten machte daraus still
+   „temporaer/netz“ — Push wäre nie zugestellt worden. Deshalb: benannte
+   Exporte, und eine fehlende oder fremde Exportform meldet sich als
+   Konfigurationsfehler (Betreiberproblem), nicht als Netzfehler.
+   Geladen wird erst beim ersten echten Versand (ohne VAPID-Schlüssel nie). */
+async function pushBibliothek() {
+  try {
+    const m = await import("web-push");
+    const { setVapidDetails, sendNotification } = m;
+    if (typeof setVapidDetails !== "function" || typeof sendNotification !== "function") return null;
+    return { setVapidDetails, sendNotification };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * @param {any} anmeldung  die gespeicherte Push-Anmeldung (Push-Register)
  * @param {string} titel
@@ -56,16 +74,17 @@ export async function sendePush(anmeldung, titel, text, ziel, opt = {}) {
      der Versand behandelt die Anmeldung dann wie eine abgelaufene. */
   if (!anmeldung || !pushEndpunktErlaubt(anmeldung.endpoint))
     return { ok: false, erloschen: true, klasse: "erloschen", fehler: "push-ziel-nicht-erlaubt" };
+  const bib = await pushBibliothek();
+  if (!bib) return { ok: false, erloschen: false, klasse: "konfiguration", fehler: "push-modul" };
   /** @type {any} */
   let wecker;
   try {
-    const webpush = await import("web-push");
-    webpush.default.setVapidDetails(
+    bib.setVapidDetails(
       process.env.VAPID_KONTAKT || "mailto:kein-kontakt@example.invalid", oeff, priv);
     const zeitUm = new Promise((_, nein) => {
       wecker = setTimeout(() => nein(Object.assign(new Error("zeitueberschreitung"), { zeitUm: true })), PUSH_FRIST_MS + 1000);
     });
-    await Promise.race([webpush.default.sendNotification(anmeldung,
+    await Promise.race([bib.sendNotification(anmeldung,
       JSON.stringify({ titel, text, ziel }),
       { TTL: 24 * 60 * 60, urgency: opt.dringend ? "high" : "normal", timeout: PUSH_FRIST_MS,
         ...(opt.topic ? { topic: opt.topic } : {}) }), zeitUm]);

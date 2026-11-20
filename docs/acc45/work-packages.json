@@ -4,9 +4,9 @@
   "anzahl": 232,
   "statusZaehlung": {
     "BLOCKED": 89,
-    "READY": 18,
+    "READY": 17,
     "IN_PROGRESS": 18,
-    "REVIEW": 7,
+    "REVIEW": 8,
     "INTEGRATED": 97,
     "DONE": 3
   },
@@ -39,8 +39,8 @@
       "pakete": 24,
       "offen": 19,
       "restPT": {
-        "min": 26.6,
-        "max": 47.1
+        "min": 26.200000000000003,
+        "max": 46.300000000000004
       }
     },
     "extern": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 333.4,
-    "max": 572.35
+    "min": 333,
+    "max": 571.5500000000001
   },
   "kritischerPfad": {
     "summe": 70,
@@ -6568,22 +6568,22 @@
       "prio": "P2",
       "aufwandPT": {"min":0.5,"max":1},
       "abhaengigkeiten": [],
-      "status": "READY",
+      "status": "REVIEW",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #422, Commits 79b8130f (Test + Bump, rot) und 1493246d (Fix) auf acc45/dep/dep-1-web-push-4"},
+        "lokalGetestet": {"wert":true,"beleg":"docs/acc45/DEP-1-NACHWEIS.md 3.4: webpush-echt 14, mail-push-anbieter 58, sicherheit-intern 27, mail-push-handler 25, mail-push-produktion 75 grün (einzeln); Gegenprobe alter Code + v4: webpush-echt 11 rot"},
         "reviewt": {"wert":false,"beleg":null},
         "integriert": {"wert":false,"beleg":null},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
       },
-      "branch": null,
+      "branch": "acc45/dep/dep-1-web-push-4",
       "agent": null,
       "modell": "opus",
       "konfliktzonen": [],
-      "pr": ["#404"],
-      "nachweis": "docs/acc45/ENTSCHEIDUNGSLISTE.md (P3-9), Bewertung Dependabot 2026-11-20",
+      "pr": ["#404","#422"],
+      "nachweis": "docs/acc45/DEP-1-NACHWEIS.md; docs/acc45/ENTSCHEIDUNGSLISTE.md (P3-9), Bewertung Dependabot 2026-11-20",
       "akzeptanz": "web-push 4 (reines ESM, keine default-Exports) wird mit benannten Importen genutzt; Test gegen das echte Modul (Exportform, ohne Netz) ergänzt und der Mock in mail-push-anbieter.test.js an die echte Exportform angepasst; pushziel.mjs-Begründung (SSRF, Parser-Gleichlauf) und Test neu bewertet; proxy-agent-negotiate geprüft; Opus-Sicherheitsreview; Push-Schalter bleiben AUS",
       "tests": "Unit",
       "dateien": "server/lib/webpush.mjs, server/lib/pushziel.mjs, pruefungen/mail-push-anbieter.test.js, pruefungen/sicherheit-intern.test.js, package.json",
