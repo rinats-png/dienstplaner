@@ -19,8 +19,8 @@
          Monatsplan zeigt sie, das Tagesblatt nennt die neuen Zeiten und teilt die Beschäftigte ein (vorher: kein Tag).
      H5  Schichtplanung (Planung) im Tagesblatt: „Raus“ und „+ S“ ändern den Plan (Server); Gegenprobe über die API: ZX
          ausdrücklich am Folgetag (9 h nach dem Spätdienst) → 403 Ruhezeit, nichts gespeichert.
-     H5b Befund B-H5 (heutiges Verhalten): dieselbe Einteilung über „+ ZX“ im Tagesblatt löscht nur die Abweichung (Rückkehr
-         zur Schichtfolge) und wird angenommen (200) — die Ruhezeitsperre greift dort nicht.
+     H5b B-H5 behoben: dieselbe Einteilung über „+ ZX“ im Tagesblatt löscht nur die Abweichung (Rückkehr zur
+         Schichtfolge) — der Server prüft den Dienst aus der Schichtfolge wie einen gesetzten: 403 Ruhezeit, „-“ bleibt.
    Nur Projekt 1024x768 (schreibt Daten). zeit-ok: kein eigener Uhrbezug — Tage relativ zum festen Abnahmetag (abnahmeHeute),
    Laufkennung nur als eindeutiger Raumname. */
 import { test, expect, geheZu, schreibvorgaengeVerfolgen } from "./hilfen.mjs";
@@ -355,12 +355,11 @@ test.describe.serial("Lokale E2E-Abnahme Hauptfunktionen 1: Personal, Dienstart,
     expect((await ab())[`a1|${T2}`], "abgewiesen: Folgetag bleibt frei").toBe("-");
   });
 
-  /* Befund B-H5 (docs/acc45/LOKALE-E2E-ABNAHME-2026-11-20.md §4), Produktfehler, NICHT in src/server repariert:
-     Dieselbe Einteilung (ZX am Folgetag, 9 h nach dem Spätdienst) geht durch, wenn sie im Tagesblatt über „+ ZX“
-     entsteht. Die Oberfläche löscht dann die Abweichung „-“ (ZX ist ohnehin der Plan der Schichtfolge), und die
-     Schutzdurchsetzung des Servers prüft den Tag offenbar nicht als geänderte Einteilung. Der Test hält das HEUTIGE
-     Verhalten fest (wie L4a/L4c damals) und wird nach der Behebung umgekehrt: dann 403 und Abweichung bleibt „-“. */
-  test("H5b (Befund B-H5) Rückkehr zur Schichtfolge im Tagesblatt umgeht heute die Ruhezeitsperre", async ({ page }) => {
+  /* B-H5 (docs/acc45/LOKALE-E2E-ABNAHME-2026-11-20.md §4), behoben in PR #397: Dieselbe Einteilung (ZX am Folgetag,
+     9 h nach dem Spätdienst) entsteht im Tagesblatt über „+ ZX“. Die Oberfläche löscht dann die Abweichung „-“ (ZX ist
+     ohnehin der Plan der Schichtfolge). Der Server prüft eine gelöschte Abweichung ab heute wie eine gesetzte
+     Einteilung (server/lib/schutzdurchsetzung.mjs): 403 Ruhezeit unter 11 Stunden, gespeichert bleibt „-“. */
+  test("H5b (B-H5 behoben) Rückkehr zur Schichtfolge im Tagesblatt: Ruhezeitsperre greift (403)", async ({ page }) => {
     const ab = async () => (await mandant(C.lT)).abweichungen || {};
     const puts = [];
     page.on("response", async (r) => { if (r.request().method() === "PUT" && new URL(r.url()).pathname === "/api/bestand")
@@ -375,11 +374,12 @@ test.describe.serial("Lokale E2E-Abnahme Hauptfunktionen 1: Personal, Dienstart,
     await blatt.getByRole("button", { name: /^ZX \d+\/\d+$/ }).click();
     await blatt.locator(".karte").filter({ hasText: `Lia Mitarbeiterin-${MK}` }).getByRole("button", { name: "+ ZX" }).click();
     await expect.poll(() => puts.length, { timeout: 20000 }).toBeGreaterThan(0);
-    expect(puts[0][0], `heute angenommen (Befund B-H5): ${puts[0][1]}`).toBe(200);
-    await expect.poll(async () => (await ab())[`a1|${T2}`], { timeout: 20000 }).toBeUndefined();
-    /* Wirkung: a1 ist am Folgetag wieder über die Schichtfolge im ZX (07:00) eingeteilt — 9 h nach dem Spätdienst */
-    await expect(blatt.locator(".karte").filter({ hasText: `Lia Mitarbeiterin-${MK}` }).getByRole("button", { name: "Raus" })).toBeVisible();
+    expect(puts[0][0], `abgewiesen (B-H5 behoben): ${puts[0][1]}`).toBe(403);
+    expect(puts[0][1]).toContain(`Einteilung am ${T2} nicht möglich: Ruhezeit unter 11 Stunden.`);
     await page.keyboard.press("Escape");
     await seiteZu(page, v);
+    /* Kein späterer Versuch ging durch; gespeichert bleibt der Folgetag frei. */
+    expect(puts.every(([st]) => st !== 200), `kein angenommener PUT: ${JSON.stringify(puts)}`).toBe(true);
+    expect((await ab())[`a1|${T2}`], "abgewiesen: Folgetag bleibt frei").toBe("-");
   });
 });

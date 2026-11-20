@@ -90,7 +90,7 @@
     "pruefung:bereich-tagesnotizen-http": "node --import ./werkzeug/betreiber-faktor-vorlauf.mjs pruefungen/bereich-tagesnotizen.mjs",
     "pruefung:schutzmerkmale-sicht": "vitest run pruefungen/schutzmerkmale-sicht.test.js",
     "pruefung:schutzmerkmale-sicht-http": "node --import ./werkzeug/betreiber-faktor-vorlauf.mjs pruefungen/schutzmerkmale-sicht.mjs",
-    "pruefung:fachpruefung": "vitest run pruefungen/fachpruefung-server.test.js pruefungen/schutzkonflikte.test.js",
+    "pruefung:fachpruefung": "vitest run pruefungen/fachpruefung-server.test.js pruefungen/schutzkonflikte.test.js pruefungen/b-h5-teilweg.test.js --hookTimeout=120000",
     "pruefung:br-auswertung": "vitest run pruefungen/br-auswertung.test.js",
     "pruefung:fachpruefung-http": "node --import ./werkzeug/betreiber-faktor-vorlauf.mjs pruefungen/fachpruefung-server.mjs",
     "pruefung:schutzregeln-ersatzsuche": "vitest run pruefungen/schutzregeln-ersatzsuche.test.js",

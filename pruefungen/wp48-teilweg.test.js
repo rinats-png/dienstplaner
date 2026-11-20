@@ -705,7 +705,8 @@ describe("Befund §7: gespeicherte abgeleitete Personenfelder (Altinhalt)", { ti
 describe("Größe: 150 Personen × 12 Monate mit Stempeln", { timeout: 300000 }, () => {
   it("Voll-PUT läge über RUMPF_MAX (413), der Teil-PUT einer Einteilung ist < 2 KB und geht durch", async () => {
     const M = await import("../werkzeug/wp48-messung.mjs");
-    const b = M.bestandErzeugen(150, M.monateBis(HEUTE.slice(0, 7), 12));
+    /* Zwölf Monate bis einschließlich des NÄCHSTEN Monats: Es gibt immer künftige Abweichungen, auch am Monatsende. */
+    const b = M.bestandErzeugen(150, M.monateBis(Z.tagePlus(`${HEUTE.slice(0, 7)}-01`, 32).slice(0, 7), 12));
     const raum = `wp48-teilweg-gross-${++raumNr}`;
     await B.bestandSchreiben(laden(), raum, G.personenAngleichen(b), { durch: "Pruefung" });
     const token = (await sitzungAnlegen({ bestand: raum, name: "L", rolle: "leitung", person: "p1", betrieb: 0,
@@ -716,8 +717,17 @@ describe("Größe: 150 Personen × 12 Monate mit Stempeln", { timeout: 300000 },
     expect(vollBytes).toBeGreaterThan(M.RUMPF_MAX);
     const mid = b.mandanten[0].id;
     const m = g.bestand.mandanten.find((x) => x.id === mid);
-    /* Eine künftige Abweichung zurücknehmen (zurück in den Rhythmus) — fachlich unauffällig, Rumpf eine Zelle. */
-    const k = Object.keys(m.abweichungen).filter((x) => x.split("|")[1] > tag(2)).sort()[0];
+    /* Eine künftige Abweichung zurücknehmen (zurück in den Rhythmus), Rumpf eine Zelle. Seit B-H5 prüft der Server den
+       Dienst aus der Schichtfolge wie einen gesetzten: Je nach Datum und Zufallsbestand kann die früheste Rücknahme die
+       Mindestbesetzung unterschreiten (409). Gewählt wird deshalb die früheste, deren Rücknahme die Fachprüfung auf dem
+       gespeicherten Stand ohne Befund lässt — deterministisch und vom Datum unabhängig fachlich unauffällig. */
+    const { fachpruefungUebermittlung } = await import("../server/lib/schutzdurchsetzung.mjs");
+    const roh = (await gespeichert(raum)).bestand.mandanten[0];
+    const k = Object.keys(m.abweichungen).filter((x) => x.split("|")[1] > tag(2)).sort().slice(0, 60).find((x) => {
+      const ohne = { ...roh, abweichungen: { ...roh.abweichungen } };
+      delete ohne.abweichungen[x];
+      return fachpruefungUebermittlung(roh, ohne, HEUTE) === null;
+    });
     expect(k).toBeTruthy();
     const rumpf = { format: 1, epoche: g.teile.epoche, zellen: [{ feld: "abweichungen", k, alt: m.abweichungen[k], neu: null }] };
     const teilBytes = Buffer.byteLength(JSON.stringify(rumpf));
