@@ -45,6 +45,29 @@ Ein Agent F prüft jede Korrektur selbst nach (Test auf altem Stand rot, auf neu
 4. Keine Produktion, kein VPS ohne Freigabe, keine Secrets, keine Abschwächung von Tests, keine erfundenen Ergebnisse.
 5. Bericht: Branch, Commits, Dateien, Tests vorher/nachher mit Zahlen, CI-Run, offene Punkte.
 
+## Kommunikationsstandard (Orientierung 80/20, seit 2026-11-21)
+
+Berichte und Agentenmeldungen folgen etwa zu 80 % den Grundprinzipien von ASD-STE100 (Simplified Technical English), auf Deutsch. Etwa 20 % bleiben frei für natürliche Sprache und fachliche Tiefe. Das ist eine Orientierung, keine Wort- oder Satzquote.
+
+**Regeln (80 %)**
+- Kurze, vollständige Sätze. Eindeutige Aussagen. Gleiche Fachbegriffe für gleiche Dinge.
+- Fakten, Bewertungen und Annahmen getrennt benennen.
+- Technische Ergebnisse mit Nachweis belegen (Test, Review, Commit, Lauf).
+- Vier Stufen nie vermischen: GETESTET (Tests grün), INTEGRIERT (im Integrationszweig), RELEASEFÄHIG (Release-Kandidat, volle CI auf dem Kopf, alle Auflagen erfüllt), PRODUKTIV (auf dem Produktionssystem nachgewiesen).
+- Keine Wiederholungen und keine Statusmeldung ohne neue Information. Probleme und Restrisiken ausdrücklich nennen.
+
+**Ausnahmen (20 %)**: Sicherheitsanalysen, Architekturentscheidungen, komplexe Fehlerursachen, datenschutzrechtliche oder wirtschaftliche Abwägungen, fachliche Erläuterungen und Begründungen mit erheblichen Folgen. Wichtige Information wird nie gekürzt, nur um kurze Sätze einzuhalten.
+
+**Statusbericht** (nicht benötigte Abschnitte weglassen; einfache Fortschrittsmeldung: wenige Sätze)
+
+    ERGEBNIS: Was ist abgeschlossen?
+    NACHWEIS: Welche Tests, Reviews und Commits belegen das?
+    PRODUKTIONSSTAND: Was ist tatsächlich veröffentlicht?
+    RISIKEN / BLOCKADEN: Was ist noch offen?
+    NÄCHSTE AKTION: Was wird als Nächstes ausgeführt?
+
+Dieser Abschnitt ändert keine Regel zu Autonomie, Modellrouting, Parallelisierung, Reviews, CI, Sicherheit oder Freigabegrenzen.
+
 ## Werkzeuge
 
 Drei Repo-Werkzeuge beschleunigen die Arbeit, ohne neue Software, Hooks oder globale Einstellungen. Geprüft in
