@@ -75,6 +75,7 @@ function bestand({ abweichungen = {} } = {}) {
     personen: [person("m0", "mitarbeiter", "e1"), person("a1", "mitarbeiter", "e1", { schichtmodellZuordnungen: ZU_A1() }),
       person("t1", "mitarbeiter", "e1", { wochenstunden: 20, teilzeit: { aktiv: true }, schichtmodellZuordnungen: [{ ...ZU_A1()[1], id: "t1-tag", gueltigAb: "2026-07-01" }] }),
       person("c1", "mitarbeiter", "e1", { schichtmodellZuordnungen: [{ id: "c1-b", modellId: "betrieb", gueltigAb: null, gueltigBis: null, ...STEMPEL }] }),
+      person("b2", "mitarbeiter", "e2", { schichtmodellZuordnungen: [{ ...ZU_A1()[1], id: "b2-tag" }] }),
       person("r1", "betriebsrat", "ALLE"), person("s1", "subplaner", "e1"), person("p1", "planer", "ALLE"), person("l1", "leitung", "ALLE")],
     abweichungen: kopie(abweichungen), planstaende: {}, freigaben: {},
     unterschreitungen: [], belegung: {}, therapie: {}, aushang: [], monatsabschluss: {},
@@ -172,7 +173,7 @@ describe("G. Sicht: GET /api/bestand liefert den Teilrollen den gerechneten Dien
       expect(f, k).toBeTruthy();
       expect([f.von, f.bis], k).toEqual([VON, BIS]);
       /* nur Personen mit eigener Zuordnung (nicht m0 ohne Feld, nicht c1 mit unbefristetem Betriebsmodell) */
-      expect(Object.keys(f.personen).sort(), k).toEqual(["a1", "t1"]);
+      expect(Object.keys(f.personen).sort(), k).toEqual(["a1", "b2", "t1"]);
       expect(f.personen.a1, k).toHaveLength(FENSTER);
       /* Jeder Tag im Fenster liegt nach dem 01.07.2026: Modell F F - (gleich roh und Plan, ohne Teilzeit) */
       for (let i = 0; i < FENSTER; i++) expect(f.personen.a1[i], `${k} ${plus(VON, i)}`).toBe(modellFolge(plus(VON, i)));
@@ -191,7 +192,7 @@ describe("G. Sicht: GET /api/bestand liefert den Teilrollen den gerechneten Dien
       const g = await anfrage("/api/bestand", { token: token[k] });
       const text = JSON.stringify(g);
       expect(text.includes(MARKE), k).toBe(false);
-      for (const id of ["a1-tag", "a1-alt", "t1-tag", "c1-b", "\"tag\""]) expect(text.includes(id), `${k} ${id}`).toBe(false);
+      for (const id of ["a1-tag", "a1-alt", "t1-tag", "b2-tag", "c1-b", "\"tag\""]) expect(text.includes(id), `${k} ${id}`).toBe(false);
       expect(text.includes("schichtmodellZuordnungen"), k).toBe(false);
     }
     /* Beschäftigte an der eigenen Person: eigene Zuordnung und eigenes Modell wie bisher (Q4) — nichts darüber hinaus */
@@ -304,6 +305,52 @@ describe("W. Schreibweg: der Server vergleicht mit dem Modelldienst, nicht mit d
       expect(key in ab, String(w)).toBe(false);
       expect(ab[key2], String(w)).toBe("-");
     }
+  });
+
+  /* Review #436 B1: kein Abfrageorakel über den Schreibweg. Entschieden werden nur Schlüssel, die die Rolle sieht UND schreiben
+     darf (eigener Bereich) UND die im Fenster liegen. Alles andere geht unverändert an die Rechteprüfung — gleicher Status wie AUS. */
+  const TAG_SPAET = (() => { for (let i = 100; i < 200; i++) { const d = plus(HEUTE, i); if (modellFolge(d) === "F" && betriebsfolge(d) === "-") return d; } return null; })();
+  it("W8 B1: fremder Bereich, Wert = Modelldienst → 403 wie bei AUS (im und außerhalb des Fensters), nichts gespeichert", async () => {
+    for (const tag of [TAG_F_FREI, TAG_SPAET]) {
+      const key = `b2|${tag}`;
+      const status = {};
+      for (const w of [undefined, "true"]) {
+        const { raum, token } = await neuerRaum(["SV"]);
+        umgebung(w);
+        const a = await putAls(token, "SV", setze(key, "F"));
+        status[String(w)] = a.status;
+        expect(key in (await gespeichertAb(raum)), `${tag} ${w}`).toBe(false);
+      }
+      expect(status, tag).toEqual({ undefined: 403, true: 403 });
+    }
+  });
+  it("W9 B1: eigener Bereich außerhalb des Fensters → wie AUS (ausdrücklich gespeichert, nicht entschieden)", async () => {
+    const key = `a1|${TAG_SPAET}`;
+    for (const w of [undefined, "true"]) {
+      const { raum, token } = await neuerRaum(["SV"]);
+      umgebung(w);
+      expect((await putAls(token, "SV", setze(key, "F"))).status, String(w)).toBe(200);
+      expect((await gespeichertAb(raum))[key], String(w)).toBe("F");
+    }
+  });
+  it("W10 B6 (H3): nur genau „server“ ist das Kennzeichen; jeder andere Wert gilt als fehlend", async () => {
+    const key = `a1|${TAG_F_FREI}`;
+    for (const wert of ["SERVER", "ja", "1", "serverx"]) {
+      const { raum, token } = await neuerRaum(["SV"], { abweichungen: { [key]: "N" } });
+      umgebung("true");
+      expect((await putAls(token, "SV", loesche(key), { "x-centric-schichtfolge": wert })).status, wert).toBe(200);
+      expect((await gespeichertAb(raum))[key], wert).toBe("-");
+    }
+  });
+  it("W11 B1 Teilweg: fremder Bereich mit Modelldienst → derselbe Status wie der Voll-PUT (403), nichts gespeichert", async () => {
+    const key = `b2|${TAG_F_FREI}`;
+    const { raum, token } = await neuerRaum(["SV"]);
+    umgebung("true");
+    const g = await anfrage("/api/bestand", { token: token.SV });
+    const t = await anfrage("/api/bestand/teile", { methode: "POST", token: token.SV,
+      rumpf: { format: g.teile.format, epoche: g.teile.epoche, durch: "Pruefung", zellen: [{ feld: "abweichungen", k: key, alt: null, neu: "F" }] } });
+    expect(t.status, JSON.stringify(t).slice(0, 300)).toBe(403);
+    expect(key in (await gespeichertAb(raum))).toBe(false);
   });
 
   it("W7 Teilweg (POST /api/bestand/teile): dieselbe Entscheidung wie der Voll-PUT", async () => {
@@ -482,19 +529,48 @@ describe("L. Bibliothek schichtfolge-teilrollen.mjs: Rollenfilter, Schalter, Umf
     const r = roh();
     const sicht = { ...r, abweichungen: { [key]: "N" } };
     FPL.schichtmodellWirkungSetzen(true);
-    for (const rolle of ["subplaner", "mitarbeiter", "betriebsrat"]) {
-      const e = T.abweichungenTeilrollen(rumpfMit(r, { [key2]: "-" }), { roh: r, sicht, rolle, basisServer: false });
+    for (const rolle of ["subplaner"]) {
+      const e = T.abweichungenTeilrollen(rumpfMit(r, { [key2]: "-" }), { roh: r, sicht, rolle, person: "s1", heute: HEUTE, basisServer: false });
       expect(e.mandanten[0].abweichungen, rolle).toEqual({ [key]: "-" });           // Löschung → Betriebsfolge; key2 = Modell → entfällt
-      const s = T.abweichungenTeilrollen(rumpfMit(r, { [key2]: "-" }), { roh: r, sicht, rolle, basisServer: true });
+      const s = T.abweichungenTeilrollen(rumpfMit(r, { [key2]: "-" }), { roh: r, sicht, rolle, person: "s1", heute: HEUTE, basisServer: true });
       expect(s.mandanten[0].abweichungen, rolle).toEqual({});                       // mit Kennzeichen: Löschung bleibt
     }
     for (const rolle of ["planer", "leitung", "kunde"]) {
       const b = rumpfMit(r, { [key2]: "-" });
-      expect(T.abweichungenTeilrollen(b, { roh: r, sicht, rolle, basisServer: false }), rolle).toBe(b);
+      expect(T.abweichungenTeilrollen(b, { roh: r, sicht, rolle, person: "s1", heute: HEUTE, basisServer: false }), rolle).toBe(b);
     }
     FPL.schichtmodellWirkungSetzen(false);
     const b = rumpfMit(r, { [key2]: "-" });
-    expect(T.abweichungenTeilrollen(b, { roh: r, sicht, rolle: "subplaner", basisServer: false })).toBe(b);
+    expect(T.abweichungenTeilrollen(b, { roh: r, sicht, rolle: "subplaner", person: "s1", heute: HEUTE, basisServer: false })).toBe(b);
+  });
+
+  it("L4 B1/B5: nur die Schichtverantwortung im eigenen Bereich, im Fenster, Person in der Sicht; sonst derselbe Rumpf", () => {
+    const r = roh();
+    const opt = (o) => ({ roh: r, sicht: r, rolle: "subplaner", person: "s1", heute: HEUTE, basisServer: false, ...o });
+    FPL.schichtmodellWirkungSetzen(true);
+    const eigenIm = `a1|${TAG_FREI_F}`;                                      // Modell frei: „-“ entfällt
+    expect(T.abweichungenTeilrollen(rumpfMit(r, { [eigenIm]: "-" }), opt({})).mandanten[0].abweichungen).toEqual({});
+    for (const [fall, ab, o] of [
+      ["fremder Bereich", { [`b2|${TAG_FREI_F}`]: "-" }, {}],
+      ["außerhalb des Fensters", { [`a1|${plus(HEUTE, 140)}`]: modellFolge(plus(HEUTE, 140)) }, {}],
+      ["vor dem Fenster", { [`a1|${plus(HEUTE, -90)}`]: modellFolge(plus(HEUTE, -90)) }, {}],
+      ["Person nicht in der Sicht", { [eigenIm]: "-" }, { sicht: { ...r, personen: r.personen.filter((p) => p.id !== "a1") } }],
+      ["Betreiber", { [eigenIm]: "-" }, { rolle: "betreiber", person: null }],
+      ["Beschäftigte", { [eigenIm]: "-" }, { rolle: "mitarbeiter", person: "a1" }],
+      ["Betriebsrat", { [eigenIm]: "-" }, { rolle: "betriebsrat", person: "r1" }],
+      ["ohne Person", { [eigenIm]: "-" }, { person: null }],
+    ]) {
+      const b = rumpfMit(r, ab);
+      expect(T.abweichungenTeilrollen(b, opt(o)), fall).toBe(b);
+    }
+  });
+  it("L5 B6 (W3): verglichen wird mit der Sicht — ein für die Rolle unsichtbarer gespeicherter Eintrag gilt nie als gelöscht", () => {
+    const key = `a1|${TAG_F_FREI}`;
+    const r = { ...roh(), abweichungen: { [key]: "N" } };                     // gespeichert, aber nicht in der Sicht
+    const sicht = { ...r, abweichungen: {} };
+    FPL.schichtmodellWirkungSetzen(true);
+    const b = rumpfMit(r, {});
+    expect(T.abweichungenTeilrollen(b, { roh: r, sicht, rolle: "subplaner", person: "s1", heute: HEUTE, basisServer: false })).toBe(b);
   });
 
   it("L3 schichtfolgeFuerSicht: AUS null; nur Personen, die die Sicht enthält", () => {
@@ -502,9 +578,9 @@ describe("L. Bibliothek schichtfolge-teilrollen.mjs: Rollenfilter, Schalter, Umf
     FPL.schichtmodellWirkungSetzen(false);
     expect(T.schichtfolgeFuerSicht(r, r, HEUTE)).toBe(null);
     FPL.schichtmodellWirkungSetzen(true);
-    expect(Object.keys(T.schichtfolgeFuerSicht(r, r, HEUTE).personen).sort()).toEqual(["a1", "t1"]);
+    expect(Object.keys(T.schichtfolgeFuerSicht(r, r, HEUTE).personen).sort()).toEqual(["a1", "b2", "t1"]);
     const ohneA1 = { ...r, personen: r.personen.filter((p) => p.id !== "a1") };
-    expect(Object.keys(T.schichtfolgeFuerSicht(r, ohneA1, HEUTE).personen)).toEqual(["t1"]);
+    expect(Object.keys(T.schichtfolgeFuerSicht(r, ohneA1, HEUTE).personen).sort()).toEqual(["b2", "t1"]);
     expect(T.schichtfolgeFuerSicht(r, { ...r, personen: [] }, HEUTE).personen).toEqual({});
   });
 });
@@ -538,7 +614,7 @@ describe("S. Wächter", () => {
     /* Erste Stufe in daten.mjs: Schalter UND Rolle vor jeder Rechnung (die Bibliothek prüft beides noch einmal, L2/L3).
        Beide Stufen sind redundant; Verhaltensprüfungen allein töten den Wegfall EINER Stufe nicht (Mutationslauf S3, S4). */
     expect(d).toContain("if (!schichtmodellWirkungAn() || vollsichtSchichtmodelle(s.rolle) || s.rolle === \"betreiber\" || s.nurSicherung) return {};");
-    expect(d).toContain("if (jetzt && jetzt.bestand && schichtmodellWirkungAn() && !vollsichtSchichtmodelle(s.rolle)) {");
+    expect(d).toContain("if (jetzt && jetzt.bestand && schichtmodellWirkungAn() && !vollsichtSchichtmodelle(s.rolle) && s.rolle !== \"betreiber\") {");
     expect(d.match(/abweichungenTeilrollen\(/g)).toHaveLength(1);
     expect(d.match(/schichtfolgeFuerSicht\(/g)).toHaveLength(1);
   });
