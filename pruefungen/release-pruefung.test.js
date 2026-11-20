@@ -808,7 +808,7 @@ describe("Delta-Review 3 #427: temporäres Git-Repo (unabhängig von Historie un
     kandidat = m3;
     commit("deploy/FREIGEGEBENE-IMAGES.md", liste([zeileListe(D, kandidat, "aktiv"), zeileListe(D_ALT, basis, "vorherig"),
       zeileListe("sha256:deadbeef", nebenzweig, "gesperrt", "vorsorglich")]), "Liste");
-  });
+  }, 60_000); // viele git-Aufrufe; unter Last mehr als die Vorgabe von 10 s
   afterEach(() => rmSync(repo, { recursive: true, force: true }));
 
   it("N-B2/B1: Basis = Kandidat, kein Vorfahr, nicht gelistet, nur gesperrt gelistet → Exit 2 mit Grund (CLI)", () => {

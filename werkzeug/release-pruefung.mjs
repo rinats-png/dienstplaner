@@ -128,6 +128,11 @@ export const KONFIG_STANDARD = Object.freeze({
   erlaubtNachKandidat: ["docs/acc45/releases/", "deploy/FREIGEGEBENE-IMAGES.md"],
   // Ohne diese Gates ist die Vorprüfung (Phase 0) vollständig; sie folgen in der Endprüfung.
   endpruefungGates: ["G4", "G6", "G7", "G10"],
+  // Compose lädt diese Dateien selbst (auch override); jede gefundene muss eine geprüfte Vorlage sein (G3).
+  composeMuster: "(^|/)(docker-)?compose[^/]*\\.ya?ml$",
+  composeSuche: ["deploy"],
+  composeWurzel: ["compose.yml", "compose.yaml", "docker-compose.yml", "docker-compose.yaml",
+    "compose.override.yml", "compose.override.yaml", "docker-compose.override.yml", "docker-compose.override.yaml"],
 });
 
 const HEX40 = /^[0-9a-f]{40}$/;
@@ -438,6 +443,57 @@ const STEUERWORT = /(?:^|[^A-Za-z0-9_])["']?(env_file|extends|include)["']?\s*:/
 const ERLAUBTES_ENV_FILE = /^\s+env_file:\s*(["']?)\.env\1\s*$/;
 
 /**
+ * Zerlegt eine Vorlage in logische Zeilen. Kommentarzeilen werden VOR jedem Verbinden entfernt.
+ * Zeilenfortsetzung mit „\“ gibt es nur im Dockerfile (wie bei Docker); dort ist eine fortgesetzte physische Zeile
+ * mit „#“ und eine offene Fortsetzung am Dateiende unlesbar. In env und compose gibt es keine Fortsetzung; dort
+ * wird ein Zeilenkommentar „ # …“ entfernt, die „\“/„$“-Prüfung sieht aber die ganze physische Zeile.
+ * Liefert [{ z, pruefText, unlesbarGrund }].
+ */
+function logischeZeilen(text, art) {
+  const physisch = String(text ?? "").split(/\r?\n/).filter((z) => z.trim() && !/^\s*#/.test(z));
+  if (art !== "dockerfile") return physisch.map((roh) => ({ z: kommentarWeg(roh), pruefText: roh, unlesbarGrund: null }));
+  const aus = [];
+  let puffer = null;
+  let grund = null;
+  for (const z of physisch) {
+    const fort = /\\\s*$/.test(z);
+    if (fort && z.includes("#")) grund = "Fortsetzung mit #";
+    const teil = fort ? z.replace(/\\\s*$/, " ") : z;
+    puffer = puffer == null ? teil : puffer + teil;
+    if (!fort) { aus.push({ z: puffer, pruefText: puffer, unlesbarGrund: grund }); puffer = null; grund = null; }
+  }
+  if (puffer != null) aus.push({ z: puffer, pruefText: puffer, unlesbarGrund: "offene Fortsetzung am Dateiende" });
+  return aus;
+}
+
+/**
+ * „\“ und „$“ sind in Vorlagen nur in wenigen benannten Formen erlaubt, die die echten Vorlagen brauchen
+ * (Stand 2026-11-21, je 0 Fehlalarme):
+ *   compose     `image: <ref>@${NAME:?Meldung}` und `NAME: ${NAME:?Meldung}` (gleicher Name, nicht überwacht)
+ *   dockerfile  `NAME=$NAME` / `NAME=${NAME}` in ENV (gleicher Name, nicht überwacht); die Fortsetzung „\“ am
+ *               Zeilenende ist vorher aufgelöst
+ *   env         keine
+ * Jede andere Zeile mit „\“ oder „$“ ist unlesbar (fail-closed), gleich ob ein überwachter Name darin steht.
+ */
+function dollarUndBackslashErlaubt(z, art, istUeberwacht) {
+  if (!/[\\$]/.test(z)) return true;
+  if (z.includes("\\")) return false;
+  if (art === "compose") {
+    const bild = /^\s+image:\s+[^\s$"'\\]+@\$\{([A-Z_][A-Z0-9_]*):\?[^}$\\]*\}\s*$/.exec(z);
+    if (bild) return !istUeberwacht(bild[1]);
+    const pflicht = /^\s+([A-Z_][A-Z0-9_]*):\s+\$\{\1:\?[^}$\\]*\}\s*$/.exec(z);
+    return !!pflicht && !istUeberwacht(pflicht[1]);
+  }
+  if (art === "dockerfile") {
+    if (!/^\s*ENV\s/i.test(z)) return false;
+    const rest = z.replace(/\b([A-Z_][A-Z0-9_]*)=\$(?:\{([A-Z_][A-Z0-9_]*)\}|([A-Z_][A-Z0-9_]*))(?=\s|$)/g,
+      (ganz, n, a, b) => (n === (a || b) && !istUeberwacht(n) ? `${n}=X` : ganz));
+    return !rest.includes("$");
+  }
+  return false; // env: keine Form mit „$“
+}
+
+/**
  * Liest eine Vorlage nach einer festen, kleinen Grammatik (Allowlist). Jede Zeile, die einen überwachten Namen
  * (CENTRIC_*, NODE_ENV, Variablen unfertiger Funktionen) enthält und nicht genau einer bekannten Form entspricht,
  * ist „unlesbar“ (fail-closed); ebenso jedes Steuerwort außer `env_file: .env`. Bezüge `$X` und `${X…}` zählen
@@ -453,10 +509,8 @@ export function vorlageAuswerten(text, art, ueberwacht = []) {
   const argVorgaben = new Map();
   const istUeberwacht = (n) => /^CENTRIC_/.test(n) || n === "NODE_ENV" || ueberwacht.includes(n);
   const vorkommen = (z) => [...z.matchAll(/(?<!\$\{?)\b([A-Z][A-Z0-9_]*)\b/g)].map((m) => m[1]).filter(istUeberwacht);
-  const zeilen = String(text ?? "").replace(/\\\r?\n/g, " ").split(/\r?\n/);
-  for (const roh of zeilen) {
-    if (/^\s*#/.test(roh) || !roh.trim()) continue;
-    const z = kommentarWeg(roh);
+  for (const { z, pruefText, unlesbarGrund } of logischeZeilen(text, art)) {
+    if (unlesbarGrund || !dollarUndBackslashErlaubt(pruefText, art, istUeberwacht)) { unlesbar.push(z.trim()); continue; }
     const gelesen = [];
     let m;
     if (art === "env") {
@@ -539,7 +593,7 @@ export function abweichend(roh, erlaubt) {
   return !erlaubt.map((x) => String(x).toLowerCase()).includes(n);
 }
 
-export function g3Schalter({ codeNamen, klassen, vorlagen, unfertig, quelltexte, freigabe = null }, konfig) {
+export function g3Schalter({ codeNamen, klassen, vorlagen, unfertig, quelltexte, freigabe = null, composeDateien }, konfig) {
   const g = gate("G3", "Schalter Standard AUS, unfertige Funktionen nicht aktiv");
   if (!Array.isArray(codeNamen) || codeNamen.length === 0) nogo(g, "keine CENTRIC_-Namen im Server-Code gefunden (fail-closed)");
   if (!istObjekt(klassen?.variablen)) return nogo(g, `${konfig.schalterDatei} fehlt oder ist ungültig (fail-closed)`);
@@ -552,6 +606,13 @@ export function g3Schalter({ codeNamen, klassen, vorlagen, unfertig, quelltexte,
   if (unklassifiziert.length) nogo(g, `unklassifizierte CENTRIC_-Namen im Server-Code (in ${konfig.schalterDatei} einordnen): ${unklassifiziert.join(", ")}`);
   const freigegeben = new Map((Array.isArray(freigabe?.freigegebeneSchalter) ? freigabe.freigegebeneSchalter : [])
     .filter((x) => istObjekt(x) && typeof x.name === "string" && String(x.grund || "").trim()).map((x) => [x.name, x.grund]));
+  if (composeDateien !== undefined) {
+    if (!Array.isArray(composeDateien)) nogo(g, "Compose-Dateien des Kandidaten nicht ermittelbar (fail-closed)");
+    else {
+      const geprueft = new Set(konfig.vorlagen.filter((v) => v.art === "compose").map((v) => v.pfad));
+      for (const f of composeDateien) if (!geprueft.has(f)) nogo(g, `${f}: wird von Compose geladen, ist aber keine geprüfte Vorlage`);
+    }
+  }
   const unfertigVariablen = unfertig.funktionen.filter(istObjekt).flatMap((f) => (Array.isArray(f.variablen) ? f.variablen : []));
   for (const v of vorlagen || []) {
     if (v.text == null) {
@@ -880,7 +941,7 @@ export function auswerten(e, konfig = KONFIG_STANDARD) {
   const gates = [
     g1Ci(e.checkRuns, e.kandidat, konfig),
     g2Review({ prs, commitsOhnePr: ohne, anzahlCommits: commitsOk ? e.commits.length : undefined, prAngaben: istObjekt(e.prAngaben) ? e.prAngaben : {}, dokBelege: reviewNachweiseLesen(e.reviewTexte || []), ssotBelege: ssotReviewBelege(e.ssot), freigabe }),
-    g3Schalter({ codeNamen: e.codeNamen, klassen: e.klassen, vorlagen: e.vorlagen || [], unfertig: e.unfertig, quelltexte: e.quelltexte, freigabe }, konfig),
+    g3Schalter({ codeNamen: e.codeNamen, klassen: e.klassen, vorlagen: e.vorlagen || [], unfertig: e.unfertig, quelltexte: e.quelltexte, freigabe, composeDateien: e.composeDateien }, konfig),
     g4Bild({ digest: e.digest, kandidat: e.kandidat, bild: bildAngabenLesen(e.bildRoh), liste, berichtVorhanden: e.berichtVorhanden, jetztMs: e.jetztMs }, konfig),
     g5Migration(bericht, freigabe, liste),
     g6Sicherung(e.nachweise, e.jetztMs, konfig),
@@ -1005,6 +1066,9 @@ export function sammeln(opt, konfig = KONFIG_STANDARD) {
   e.codeNamen = codeNamenFinden(serverDateien.map((f) => kq.lesen(f)));
   e.klassen = jsonLesen(kq.lesen(konfig.schalterDatei)).wert;
   e.vorlagen = konfig.vorlagen.map((v) => ({ ...v, text: kq.lesen(v.pfad) }));
+  const composeMuster = new RegExp(konfig.composeMuster, "i");
+  e.composeDateien = [...kq.dateien(konfig.composeSuche).filter((f) => composeMuster.test(f)),
+    ...konfig.composeWurzel.filter((f) => kq.gibt(f))];
   e.unfertig = jsonLesen(kq.lesen(konfig.unfertigDatei)).wert;
   e.quelltexte = {};
   for (const f of Array.isArray(e.unfertig?.funktionen) ? e.unfertig.funktionen : []) {
