@@ -872,6 +872,14 @@ function fehlerart(e, status) {
   return "unbekannt";
 }
 
+/** E1 (Review #397), B-P3-Paket: Begründung einer 403 (`text` der Absage, etwa „Einteilung am … nicht möglich:
+    Ruhezeit …"). Nur was der Server dieser Sitzung ohnehin sendet (er hält Fremdes dort schon neutral), nur als
+    Zeichenkette, gekürzt; angezeigt als Text. Gilt für Voll-PUT, Teilweg und Ausnahmeweg. Sonst null. */
+function grund403(status, daten) {
+  if (status !== 403 || !daten || typeof daten.text !== "string" || !daten.text.trim()) return null;
+  return daten.text.trim().slice(0, 500);
+}
+
 /* Der laufende Schreibvorgang, damit man auf ihn warten kann (schreibenAbschliessen). */
 let laufend = null;
 function jetztSchreiben(beimSchliessen) {
@@ -1054,6 +1062,9 @@ async function teilwegSchreiben(auftrag, beimSchliessen, vollGewuenscht, abbruch
     || "Speichern fehlgeschlagen."));
   if (typeof d.code === "string") /** @type {any} */ (f).code = d.code;
   if (a.status === 422 && d.code === KALENDERTAG_CODE) kalendertagAngaben(f, d);
+  /* E1/B-P3: Begründung einer 403 auch auf dem Teilweg (wie beim Voll-PUT). */
+  const g = grund403(a.status, d);
+  if (g) /** @type {any} */ (f).grund = g;
   return { weiter: false, status: a.status, fehler: f };
 }
 
@@ -1182,10 +1193,11 @@ async function schreibenAusfuehren(beimSchliessen) {
       return;
     }
     /* Abgewiesen (403/409): Angabe verwerfen, lokale Änderung zurücknehmen — Neuladen (F2). */
-    const ausnahmeAbgewiesen = (text) => {
+    const ausnahmeAbgewiesen = (text, grund = null) => {
       if (einmalig === auftrag.ausnahme) einmalig = null;
       auftrag.ausnahme = null;
-      gescheitert = { auftrag, lage: { art: "ausnahmeZurueck", text, status, zeit: new Date().toISOString() } };
+      gescheitert = { auftrag, lage: { art: "ausnahmeZurueck", text, status, zeit: new Date().toISOString(),
+        ...(grund ? { grund } : {}) } };
       if (auftrag.onFehler) auftrag.onFehler(gescheitert.lage);
     };
     /* Review #381 (1): unmittelbar vor dem PUT (synchron bis zum fetch in ruf) — inzwischen anders angemeldet und
@@ -1244,15 +1256,16 @@ async function schreibenAusfuehren(beimSchliessen) {
       else if (konfliktSperre && auftrag.onFehler) auftrag.onFehler(gescheitert.lage);
       return;
     }
-    if (status === 403 && auftrag.ausnahme) { ausnahmeAbgewiesen(String(daten?.fehler || "Abgewiesen.")); return; }
+    /* E1/B-P3: auch auf dem Ausnahmeweg die Begründung einer 403 mitgeben. */
+    if (status === 403 && auftrag.ausnahme) { ausnahmeAbgewiesen(String(daten?.fehler || "Abgewiesen."), grund403(status, daten)); return; }
     if (status !== 200) {
       const f = new Error(daten?.fehler || "Speichern fehlgeschlagen.");
       if (daten && typeof daten.code === "string") f.code = daten.code;
       if (status === 422 && f.code === KALENDERTAG_CODE) kalendertagAngaben(f, daten);
       /* E1 (Review #397): Die Begründung einer 403 (`text`, etwa „Einteilung am … nicht möglich: Ruhezeit …") geht mit
-         in die Lage. Nur was der Server dieser Sitzung ohnehin sendet (er hält Fremdes dort schon neutral), nur als
-         Zeichenkette, gekürzt; angezeigt als Text. */
-      if (status === 403 && daten && typeof daten.text === "string" && daten.text.trim()) f.grund = daten.text.trim().slice(0, 500);
+         in die Lage (grund403). */
+      const g = grund403(status, daten);
+      if (g) f.grund = g;
       throw f;
     }
     etag = daten.etag;
