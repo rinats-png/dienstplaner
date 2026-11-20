@@ -1719,12 +1719,12 @@ async function behandeln(req, context, ctx) {
         /* IMP-6 Teilrollen (Vorbedingung 1 vor AN; AUS und volle Rollen: unverändert): Abweichungen gegen den Modelldienst
            entscheiden, nicht gegen die Annahme des Clients — vor der Rechteprüfung, damit Rechte und Fachprüfung den
            wirksamen Stand sehen. Verglichen wird mit der Sicht der Rolle auf den gespeicherten Stand (wie GET). */
-        if (jetzt && jetzt.bestand && schichtmodellWirkungAn() && !vollsichtSchichtmodelle(s.rolle)) {
+        if (jetzt && jetzt.bestand && schichtmodellWirkungAn() && !vollsichtSchichtmodelle(s.rolle) && s.rolle !== "betreiber") {
           const angeglichenA = personenAngleichen(jetzt.bestand);
           const rohA = eigenerMandant(angeglichenA, s);
           if (rohA && typeof rohA.id === "string")
             bestand = abweichungenTeilrollen(bestand, { roh: rohA, sicht: sichtBetrieb(bestandFuerAntwort(angeglichenA, s), rohA.id),
-              rolle: s.rolle, basisServer: req.headers.get("x-centric-schichtfolge") === "server" });
+              rolle: s.rolle, person: s.person ?? null, heute: heuteBerlin(), basisServer: req.headers.get("x-centric-schichtfolge") === "server" });
         }
         let zuSchreiben = zusammenfuehren(jetzt ? personenAngleichen(jetzt.bestand) : null, bestand, s, { fachpruefung: "aussen" });
         if (!zuSchreiben) {

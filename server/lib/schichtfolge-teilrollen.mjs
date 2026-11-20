@@ -20,9 +20,17 @@
         der Client als Plan zeigte. Nie still der Modelldienst.
       - Mit Kennzeichen (der Client rechnete mit dem Dienst des Servers) bleibt
         die Löschung: Plan = Modelldienst.
-      Das Kennzeichen erweitert keine Rechte: Es entscheidet nur, wie die eigene
-      Löschung gelesen wird; beide Ergebnisse könnte der Client auch ausdrücklich
-      setzen. Die Rechteprüfung (rechte.mjs) läuft danach unverändert.
+      Das Kennzeichen erweitert keine Schreibrechte: Es entscheidet nur, wie eine
+      eigene Löschung im eigenen Bereich gelesen wird; beide Ergebnisse könnte der
+      Client auch ausdrücklich setzen. Die Rechteprüfung (rechte.mjs) läuft danach
+      unverändert.
+      Kein Abfrageorakel (Review #436 B1): Entschieden werden NUR Schlüssel, die die
+      Schichtverantwortung sieht UND schreiben darf — Person in ihrer Sicht, Tag im
+      Sichtfenster (wie die GET-Angabe), Einheit am Tag = eigener Bereich (dieselbe
+      Regel wie rechte.mjs). Alles andere geht unverändert an die Rechteprüfung:
+      gleicher Status und gleicher Stand wie bei AUS. Sonst verriete 200/403 den
+      Modelldienst fremder Zuordnungen (Q4). Andere Teilrollen schreiben keine
+      Abweichungen; für sie und den Betreiber bleibt der Rumpf unverändert.
 
    AUS (Vorgabe): beide Wege geben ihre Eingabe unverändert zurück bzw. null —
    keine Angabe in der Antwort, kein Unterschied beim Schreiben. Volle Rollen
@@ -30,7 +38,7 @@
    docs/acc45/IMP-6-MEHRFACHMODELLE.md, „Teilrollen: vom Server gerechneter Dienst“.
    ========================================================================== */
 import { schichtmodellWirkungAktiv, schichtmodellLageAm, planDienst, einheitAm, einheitDienst, folgtNurBetriebsmodell } from "./fachpruefung.mjs";
-import { schreibumfang, darf, SCHREIBEN_VOLL } from "./rechte.mjs";
+import { schreibumfang, darf, SCHREIBEN_VOLL, eigeneEinheit, einheitAm as einheitAmRechte } from "./rechte.mjs";
 import { SICHTFENSTER } from "./sicht.mjs";
 import { addDays } from "./regelwerk.mjs";
 
@@ -81,11 +89,13 @@ export function schichtfolgeFuerSicht(roh, sicht, heute, fenster = SICHTFENSTER)
  * Abweichungen. Verglichen wird mit dem, was die Rolle gelesen hat (Sicht des gespeicherten Stands) — ein für sie
  * unsichtbarer Eintrag gilt nie als gelöscht.
  * @param {any} bestand übermittelter Rumpf ({ mandanten })
- * @param {{ roh: any, sicht: any, rolle: string, basisServer: boolean }} o roh = gespeicherter eigener Betrieb,
- *   sicht = derselbe Betrieb in der Sicht der Rolle
+ * @param {{ roh: any, sicht: any, rolle: string, person: any, heute: string, basisServer: boolean }} o roh = gespeicherter
+ *   eigener Betrieb, sicht = derselbe Betrieb in der Sicht der Rolle, person = Person der Sitzung, heute = JJJJ-MM-TT
  */
-export function abweichungenTeilrollen(bestand, { roh, sicht, rolle, basisServer }) {
+export function abweichungenTeilrollen(bestand, { roh, sicht, rolle, person, heute, basisServer }, fenster = SICHTFENSTER) {
   if (!schichtmodellWirkungAktiv() || vollsichtSchichtmodelle(rolle)) return bestand;
+  /* Nur die Schichtverantwortung schreibt Abweichungen (rechte.mjs einheitZusammen); alle anderen: unverändert. */
+  if (rolle !== "subplaner" || person === null || person === undefined || typeof heute !== "string" || !TAG.test(heute)) return bestand;
   if (!bestand || !Array.isArray(bestand.mandanten) || !roh || typeof roh.id !== "string") return bestand;
   const i = bestand.mandanten.findIndex((x) => x && typeof x === "object" && x.id === roh.id);
   if (i < 0) return bestand;
@@ -94,12 +104,19 @@ export function abweichungenTeilrollen(bestand, { roh, sicht, rolle, basisServer
   if (!neuAb || typeof neuAb !== "object" || Array.isArray(neuAb)) return bestand;          // Form prüft rechte.mjs
   const altAb = sicht && sicht.abweichungen && typeof sicht.abweichungen === "object" ? sicht.abweichungen : {};
   const personen = new Map(liste(roh.personen).map((p) => [String(p.id), p]));
+  const ich = personen.get(String(person));
+  const eigene = ich ? eigeneEinheit(roh, ich) : null;
+  if (!eigene) return bestand;
+  const sichtbar = new Set(liste(sicht && sicht.personen).filter((p) => p.id !== undefined && p.id !== null).map((p) => String(p.id)));
+  const von = addDays(heute, -fenster.vorTage), bis = addDays(heute, fenster.nachTage);
   let aus = null;
   for (const k of new Set([...Object.keys(altAb), ...Object.keys(neuAb)])) {
     if (altAb[k] === neuAb[k]) continue;
     const [pid, tag] = String(k).split("|");
     const p = personen.get(pid);
     if (!p || !TAG.test(tag || "")) continue;                                  // ungültig: entscheidet rechte.mjs
+    /* B1: nur, was die Rolle sieht und schreiben darf, im Fenster — sonst unverändert an die Rechteprüfung */
+    if (!sichtbar.has(pid) || tag < von || tag > bis || einheitAmRechte(p, tag) !== eigene) continue;
     const l = schichtmodellLageAm(roh, p, tag);
     if (betriebsLage(l)) continue;                                             // Betriebsmodell: wie bisher
     const modell = l.art === "dienst" && l.dienstId ? String(l.dienstId) : "-";

@@ -315,3 +315,22 @@ E3 verlangt, dass nur `src/ansichten/schichtmodelle.jsx` und `src/app/aktionen/p
   Quelltext) ergänzt. Hinweis: Nach dem Zurücknehmen einer Mutante war L3 zweimal ohne Mutation rot (Verhalten wie Mutante P1),
   danach grün, ohne Codeänderung. Vermutete Ursache (nicht belegt): eine alte Fassung aus `fsModuleCache`. Deshalb wird der
   Zwischenspeicher bei Mutationsläufen geleert; der gültige Lauf oben ist ohne Zwischenspeicher.
+
+## Nachtrag 2026-11-20 (k): Review #436 (Opus, nicht freigegeben wegen B1) — Branch `acc45/imp6/teilrollen-serverdienst`
+
+- **B1 (Abfrageorakel über den Schreibweg) behoben:** `abweichungenTeilrollen` entscheidet nur noch Schlüssel, die die
+  Schichtverantwortung sieht und schreiben darf — Person in ihrer Sicht, Tag im Sichtfenster, Einheit am Tag = eigener Bereich
+  (`eigeneEinheit`/`einheitAm` aus `rechte.mjs`). Alles andere geht unverändert an die Rechteprüfung. Vorher: Schichtverantwortung
+  schickt für eine Person eines fremden Bereichs (oder einen Tag außerhalb des Fensters) den Modelldienst → vor der Rechteprüfung
+  entfernt → 200; anderer Wert → 403. Jetzt beides 403 wie bei AUS. Nur die Schichtverantwortung wird entschieden (die einzige
+  Teilrolle, die Abweichungen schreibt).
+- **B5:** Schreibweg schließt den Betreiber aus (`daten.mjs`, wie die GET-Angabe).
+- **B6:** Prüfungen für W3 (Vergleich gegen die Sicht, `imp6-teilrollen` L5) und H3 (Kennzeichen genau „server“, W10). R2 gleichwertig (vermerkt).
+- **B2, B3, B4:** keine Entscheidung; als offene Entscheidungen vor AN eingetragen (`ENTSCHEIDUNGSLISTE.md` P2-29 Mitteilung
+  „eigene Zuordnung“ mit datensparsamer Alternative, P2-30 Ersatzvorschlag inkl. „offen“, P2-31 Entwurfstage). Aussage „erweitert
+  keine Rechte“ präzisiert (keine Schreibrechte, keine neue Leseauskunft).
+- **Rot vorher:** Commit `b3a02d03` (nur Prüfungen) gegen `6471c08b`: 5 von 31 rot (W8, W9, W11, L4, S3). W8: Status AN 200 statt 403.
+- **Mutationslauf 2** (Zwischenspeicher je Lauf geleert): B1a (Bereich) rot W8/W11; B1b (Fenster) rot W9/L4; B1c (Sicht) rot L4;
+  B1d (nur Schichtverantwortung) rot L4; B5 rot S3; H3 rot W10; W3 rot L2/L5; V1, V2, V3, S1 weiter rot. R1 (Rollenfilter der
+  Bibliothek) überlebt jetzt: gleichwertig, weil die neue Prüfung „nur Schichtverantwortung“ volle Rollen schon ausschließt (B1d rot).
+  S4 als Zeichenkette entfallen; die Stufe in `daten.mjs` sichert S3 (Quelltext, um den Betreiber erweitert). Ohne Mutation 31/31.
