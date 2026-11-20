@@ -148,8 +148,8 @@ Nachweise: `pruefungen/dauerlauf.test.js` (reiner Kern, Zyklen) und `pruefungen/
 Checkliste vor jedem scharfen Lauf (Nachtrag 2026-11-20, Review-Hinweis #408):
 
 - `gitPfad` ist nur eine Binärdatei (`.exe` bzw. Binary, wie `ghPfad`), kein Verzeichnis und kein Skript.
-- Windows-Pfade strikt als Laufwerks- oder UNC-Pfad (kein `oo` ohne Laufwerk).
-- Meldung „git fehlt“ klar und eindeutig (Fehlermeldung bei fehlendem oder ungültigem `gitPfad` verbessern).
+- Windows-Pfade strikt als Laufwerks- oder UNC-Pfad (kein laufwerkloser Pfad wie `\foo`).
+- OFFENE AUFGABE (kein Prüfpunkt): Fehlermeldung „git fehlt“ klarer fassen (bei fehlendem oder ungültigem `gitPfad` eindeutig benennen, was fehlt).
 - Allowlist installieren erst nach Betreiberfreigabe.
 - Kostenrahmen festgelegt (Punkt 4).
 - Berechtigungsstrategie für headless Worker entschieden (Punkt 3).

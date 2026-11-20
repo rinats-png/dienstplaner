@@ -6292,7 +6292,7 @@
       "stufen": {
         "implementiert": {"wert":true,"beleg":"PR #402 in integration/release-v4"},
         "lokalGetestet": {"wert":true,"beleg":"PR #402 in integration/release-v4"},
-        "reviewt": {"wert":true,"beleg":"PR #402 in integration/release-v4"},
+        "reviewt": {"wert":true,"beleg":"docs/acc45/REVIEW-NACHWEIS-2026-11-20.md, PR #402: Sonnet MERGEBAR (Selbstauskunft)"},
         "integriert": {"wert":true,"beleg":"PR #402 in integration/release-v4"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},

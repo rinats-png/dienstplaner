@@ -176,7 +176,7 @@ WP-40 (acc45, 1,5–2,25 PT offen) · WP-28b (folge, 0,5–1 PT offen) · WP-I4 
 | QS-ZEIT Zeitabhängige Tests: geo.test.js und Browserabnahme B8 auf fester Zeitbasis | PR #305 in integration/release-v4 | PR #305 in integration/release-v4 |
 | BE-1 Konto-Widerrufbuch: Kontosperren und entzogene Mitgliedschaften überleben jeden Rücksprung | PR #304, #306, #307, #308 und #360 (Merge-Commit 8baa93cc, Passwörter) gemergt, Merge-Commits Vorfahren von integration/release-v4; Sperren, Mitgliedschaften und Passwörter sind damit alle im Code der Integration | PR #304: unabhängiges Diff-Review MERGE-OK mit Auflagen (WIEDERAUFNAHME.md); Auflagen eingearbeitet in PR #307 (Doku) und PR #308 (Code); PR #360 (2026-11-18, zwei unabhängige Opus-Reviews): Sicherheitsreview auf 050e75a0 MERGE-MIT-AUFLAGEN (MITTEL-1, MITTEL-2, Doku-Auflage), Delta-Review der Nachbesserung auf f464531c MERGE-OK nach grüner CI; Berichte nicht als Dateien im Repo, belegt über Merge-Gate-Protokoll und PR-Verlauf Zusammenfassung der Reviews zu #360: docs/acc45/REVIEW-NACHWEIS-2026-11-19.md |
 | BE-2 BE-2 Stufe A1: aktiver Konto-Faktor und eingelöste Wiederherstellungscodes überleben jeden Rücksprung | PR #311 in integration/release-v4 (Merge 87cbde26) | – |
-| V4-0 V4: Spezifikation übernehmen, V3 als abgelöst kennzeichnen | PR #402 in integration/release-v4 | PR #402 in integration/release-v4 |
+| V4-0 V4: Spezifikation übernehmen, V3 als abgelöst kennzeichnen | PR #402 in integration/release-v4 | docs/acc45/REVIEW-NACHWEIS-2026-11-20.md, PR #402: Sonnet MERGEBAR (Selbstauskunft) |
 
 ### Statusstufen
 
