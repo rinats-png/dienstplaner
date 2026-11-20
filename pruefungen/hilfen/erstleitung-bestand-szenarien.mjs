@@ -211,6 +211,7 @@ export function p21Herausnehmen(schritte, ablage) {
   for (const st of schritte) st.rumpf = geh(st.rumpf);                      // auch spätere Antworten (Vollausgabe) zeigen den Eintrag
   /* Serverprotokoll: die neue Prüfzeile (Ausgang „pruefung“) und der Zusatz in der Erfolgszeile. */
   aus.pruefzeilen = [];
+  aus.erfolgszeilen = [];
   for (let i = ablage.length - 1; i >= 0; i--) {
     const e = ablage[i];
     const d = e && e.wert && e.wert.daten;
@@ -219,7 +220,7 @@ export function p21Herausnehmen(schritte, ablage) {
       aus.pruefzeilen.push(d.zusatz.replace(/^wiederherstellen \S+: /, ""));
       ablage.splice(i, 1);
     } else if (d.ausgang === "erfolg" && typeof d.zusatz === "string" && /^wiederhergestellt aus /.test(d.zusatz) && / · Fachprüfung: [^·]*$/.test(d.zusatz)) {
-      aus.zusaetze.push(d.zusatz.match(/ · Fachprüfung: [^·]*$/)[0]);
+      aus.erfolgszeilen.push(d.zusatz.match(/ · Fachprüfung: [^·]*$/)[0]);
       d.zusatz = d.zusatz.replace(/ · Fachprüfung: [^·]*$/, "");
     }
   }

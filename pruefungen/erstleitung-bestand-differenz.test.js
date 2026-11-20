@@ -14,7 +14,8 @@
      gleich  Statuscodes, Antwortrümpfe, angelegte/geänderte/entfernte
              Ablagedateien (Bestand, Zugänge, Sitzungen, Protokoll, Marken,
              Sicherungen) müssen der Basis entsprechen — bis auf die unten
-             einzeln benannten, dokumentierten Abweichungen (B-1, B-2).
+             einzeln benannten, dokumentierten Abweichungen (B-1, B-2, B-4;
+             B-4 = Fachprüfungsbericht der Wiederherstellung, P2-21/PR #419).
      kipp    die Vorgänge, die einen Betrieb auf das strenge Regime stellen,
              werden ausdrücklich geprüft (Marke, Wirkung).
    Dazu B-3 (Oberfläche, ohne Server): der bisherige Ablauf für die erste
@@ -88,6 +89,9 @@ function fachpruefungsbericht(szenario, x) {
   for (const z of p.zusaetze) expect(z, `${szenario}: B-4 Zusatz`).toBe(" · Fachprüfung: keine neuen Befunde");
   /* Serverprotokoll: je erfolgreicher Wiederherstellung genau eine Prüfzeile (vor dem Tausch). */
   expect(p.pruefzeilen || [], `${szenario}: B-4 Prüfzeilen`).toEqual(Array.from({ length: erfolgreich }, () => "Fachprüfung: keine neuen Befunde"));
+  /* … und genau ein Zusatz in der Erfolgszeile je Wiederherstellung. Der Zusatz am Protokolleintrag erscheint in jeder
+     Kopie des Betriebs (Ablage, spätere Antworten) und wird darum oben nur in Form und Vorhandensein geprüft. */
+  expect(p.erfolgszeilen || [], `${szenario}: B-4 Erfolgszeilen`).toEqual(Array.from({ length: erfolgreich }, () => " · Fachprüfung: keine neuen Befunde"));
   if (!erfolgreich) expect(p.zusaetze, `${szenario}: B-4 ohne Wiederherstellung kein Zusatz`).toEqual([]);
   else expect(p.zusaetze.length, `${szenario}: B-4 Zusatz im gespeicherten Betrieb`).toBeGreaterThan(0);
   delete x.p21;
