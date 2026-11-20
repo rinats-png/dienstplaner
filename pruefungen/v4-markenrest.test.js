@@ -119,6 +119,25 @@ describe("V4-2: Wortmarke als bereitgestelltes SVG", () => {
       expect(q, datei).toMatch(/<Wortmarke\b/);
     }
   });
+  it("der Name „CENTRIC“ wird je Marke genau einmal angesagt (Review #425 A1)", () => {
+    /* alt="" macht die Wortmarke dekorativ, wenn daneben schon das Logo (role=img, aria-label) den Namen trägt. */
+    const leer = renderToStaticMarkup(React.createElement(MARKE.Wortmarke, { alt: "" }));
+    expect(leer).toContain('alt=""');
+    expect(lies("src/ui/logo.jsx")).toMatch(/role="img" aria-label="CENTRIC"/);
+    for (const datei of ["src/App.jsx", "src/ansichten/mobil.jsx"]) {
+      const q = lies(datei);
+      const i = q.search(/<Wortmarke\b/);
+      const vorher = q.slice(Math.max(0, i - 200), i);
+      expect(vorher, `${datei}: Logo vor der Wortmarke`).toMatch(/<Logo\b/);
+      expect(q.slice(i, q.indexOf("/>", i)), `${datei}: Wortmarke neben dem Logo`).toContain('alt=""');
+    }
+    /* Neben der aria-verborgenen Bildmarke (Marke) trägt die Wortmarke den Namen selbst. */
+    for (const datei of ["src/gestalt/rahmen.jsx", "src/main.jsx"]) {
+      const q = lies(datei);
+      const i = q.search(/<Wortmarke\b/);
+      expect(q.slice(i, q.indexOf("/>", i)), datei).not.toContain('alt=""');
+    }
+  });
   it("die Klassen der Wortmarken-Stellen bleiben (Gestaltung und Locators unverändert)", () => {
     expect(lies("src/gestalt/rahmen.jsx")).toContain('className="wort"');
     expect(lies("src/ansichten/mobil.jsx")).toContain('className="m-wort"');
