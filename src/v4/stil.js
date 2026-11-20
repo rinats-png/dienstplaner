@@ -1,6 +1,6 @@
 import {
   V4_FARBEN, V4_GLAS, V4_VERLAUF, V4_SCHATTEN, V4_UEBERLAGERUNG, V4_RADIEN, V4_ABSTAND,
-  V4_SCHRIFT, V4_FOKUS, V4_BEWEGUNG, V4_BREAKPOINTS,
+  V4_SCHRIFT, V4_FOKUS, V4_BEWEGUNG, V4_BREAKPOINTS, V4_SEITENLEISTE,
 } from "./tokens.js";
 
 /* ==========================================================================
@@ -39,6 +39,8 @@ const festeVariablen = () => {
   z.push(`--v4-fokus-breite:${V4_FOKUS.breite};--v4-fokus-abstand:${V4_FOKUS.abstand};--v4-ziel:${V4_FOKUS.ziel};`);
   z.push(`--v4-kurz:${V4_BEWEGUNG.kurz};--v4-mittel:${V4_BEWEGUNG.mittel};--v4-kurve:${V4_BEWEGUNG.kurve};`);
   for (const [k, w] of Object.entries(V4_BREAKPOINTS)) z.push(`--v4-bp-${k}:${w}px;`);
+  /* V4-2c: Seitenleiste ist in beiden Themes dunkel, daher ein Satz (--v4-seitenleiste-hover, -an, …). */
+  for (const [k, w] of Object.entries(V4_SEITENLEISTE)) z.push(`--v4-seitenleiste-${kebab(k)}:${w};`);
   return z.join("");
 };
 

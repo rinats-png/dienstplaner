@@ -33,11 +33,13 @@ html[data-v4-app] .inhalt{min-width:0; max-width:100%;}
 html[data-v4-app] main.bereich [style*="flex-wrap: wrap"] > *{max-width:100%;}
 html[data-v4-app] main.bereich [style*="display: grid"]:not([style*="grid-template-columns"]) > *{min-width:0;}
 
-/* Navigation: dunkle Seitenleiste; aktiver Eintrag als Glasfläche mit Akzentkante */
+/* Navigation: dunkle Seitenleiste; aktiver Eintrag als helle Tönung mit Akzentkante.
+   V4-2c: Hover und Aktiv tragen die Tönungen der Seitenleiste (V4_SEITENLEISTE.hover/.an), nicht das Glas des
+   Inhalts (--v4-glas): das ergab im hellen Thema weiße Schrift auf heller Glasfläche = 1,76:1 (WCAG 1.4.3). */
 html[data-v4-app] .seitenleiste{background:var(--v4-sidebar); border-right:1px solid var(--v4-glas-rand);}
 html[data-v4-app] .slink{min-height:var(--v4-ziel); border-radius:var(--v4-r-mittel);}
-html[data-v4-app] .slink:hover{background:var(--v4-glas);}
-html[data-v4-app] .slink.on{background:var(--v4-glas);
+html[data-v4-app] .slink:hover{background:var(--v4-seitenleiste-hover);}
+html[data-v4-app] .slink.on{background:var(--v4-seitenleiste-an);
   border:1px solid var(--v4-glas-rand);}
 html[data-v4-app] .slink.on::before{background:var(--v4-akzent-auf-dunkel);}
 
