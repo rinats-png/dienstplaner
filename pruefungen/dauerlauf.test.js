@@ -6,9 +6,9 @@ import path from "node:path";
 import { entscheide, lesen, schreiben, gepruefterPush } from "../werkzeug/koordination.mjs";
 import {
   STANDARD, leererZustand, planeSchritt, verbucheErgebnis, zyklus, leaseEffekte, kandidatenAus, claudeBefehl, auftragsSchluessel, sperreNehmen,
-  fortschritt, prsFuerPaket, messeFortschritt, nutzungAm, zaehleStart, startGrenze, limitsAusArgs, LIMIT_MAX, pruefeClaudePfad,
+  fortschritt, prsFuerPaket, messeFortschritt, nutzungAm, zaehleStart, startGrenze, limitsAusArgs, LIMIT_MAX, pruefeClaudePfad, ghPfad,
 } from "../werkzeug/dauerlauf.mjs";
-import { loeseBefehl, startPlan, optionenPruefen, istDerselbe } from "../werkzeug/dauerlauf-prozess.mjs";
+import { loeseBefehl, startPlan, optionenPruefen, istDerselbe, gitPfad, loeseAbsolut } from "../werkzeug/dauerlauf-prozess.mjs";
 
 /* Feste Uhr: jede Zeit kommt aus T0 plus Minuten (kein Wanduhr-Bezug). */
 const T0 = Date.parse("2026-11-19T06:00:00Z");
@@ -460,6 +460,47 @@ describe("Nicht beendbarer Worker und fester claude-Pfad", () => {
     a.eff.worker.beenden = () => ({ beendet: true });
     a.schritt();
     expect(a.z.laufend).toBeNull();
+  });
+
+  it("Laufzeit- und Wallclock-Limit mit scheiterndem Beenden: je Limit-Eskalation nur einmal je Auftrag", () => {
+    const mitLimits = (o) => ({ ...STANDARD, limits: { ...STANDARD.limits, ...o } });
+    for (const [o, re] of [[{ laufzeitMin: 30 }, /Laufzeitlimit 30/], [{ wallMinTag: 30, laufzeitMin: 90 }, /Wallclock-Limit 30/]]) {
+      const sp = speicherImSpeicher(); const uhr = { t: T0 };
+      const a = supervisor({ halter: "dauerlauf-a", speicher: sp, uhr, kandidaten: ["WP-A"], cfg: mitLimits(o) });
+      a.schritt(); a.schritt();
+      a.eff.worker.beenden = () => ({ beendet: false, grund: "Beenden fehlgeschlagen" });
+      for (let i = 0; i < 9; i++) { uhr.t += 3 * MIN; a.w.puls = new Date(uhr.t).toISOString(); expect(a.schritt()).toBe("WORKER_LAEUFT"); }
+      for (let i = 0; i < 6; i++) { uhr.t += 3 * MIN; a.w.puls = new Date(uhr.t).toISOString(); expect(a.schritt()).toBe("WORKER_BEENDEN"); }
+      expect(a.w.eskalationen.filter((g) => re.test(g))).toHaveLength(1);
+      expect(a.w.eskalationen.filter((g) => /nicht beendbar/.test(g))).toHaveLength(1);
+      expect(a.z.laufend).toMatchObject({ paketId: "WP-A", limitEskaliert: true, beendenFehlgeschlagen: 6 });
+      expect(a.w.starts).toHaveLength(1);
+      a.eff.worker.beenden = () => ({ beendet: true });
+      uhr.t += MIN; a.schritt();
+      expect(a.z.laufend).toBeNull();
+    }
+  });
+
+  it("ghPfad: absolute Auflösung über PATH, nur direkt startbar (keine .cmd), sonst null", () => {
+    expect(ghPfad({ plattform: "win32", pfad: "C:\\a;C:\\gh", existiert: (f) => f === "C:\\gh\\gh.exe" })).toBe("C:\\gh\\gh.exe");
+    expect(ghPfad({ plattform: "win32", pfad: "C:\\a", existiert: (f) => f === "C:\\a\\gh.cmd" })).toBeNull();
+    expect(ghPfad({ plattform: "linux", pfad: "/usr/bin", existiert: (f) => f === "/usr/bin/gh" })).toBe("/usr/bin/gh");
+    expect(ghPfad({ plattform: "linux", pfad: "", existiert: () => false })).toBeNull();
+    /* relativer PATH-Eintrag (Arbeitsverzeichnis) liefert einen relativen Treffer: verworfen */
+    expect(ghPfad({ plattform: "win32", pfad: ".;bin", existiert: () => true })).toBeNull();
+    expect(ghPfad({ plattform: "linux", pfad: ".:bin", existiert: () => true })).toBeNull();
+  });
+
+  it("gitPfad/loeseAbsolut: nur absolute Treffer, ohne Fund Fehler statt Rückfall auf den bloßen Namen git", () => {
+    expect(gitPfad({ plattform: "win32", pfad: "C:\\Git\\cmd", existiert: (f) => f === "C:\\Git\\cmd\\git.exe" })).toBe("C:\\Git\\cmd\\git.exe");
+    /* relativer Eintrag vorn (untergeschobenes bin/git im Arbeitsverzeichnis): übersprungen, absoluter Treffer gewinnt */
+    const beide = (f) => f === "bin/git" || f === "/usr/bin/git";
+    expect(loeseBefehl("git", { plattform: "linux", pfad: "bin:/usr/bin", existiert: beide }).datei).toBe("bin/git"); // ohne Filter
+    expect(gitPfad({ plattform: "linux", pfad: "bin:/usr/bin", existiert: beide })).toBe("/usr/bin/git");
+    expect(loeseAbsolut("git", { plattform: "win32", pfad: ".;\"C:\\Git\\cmd\"", existiert: (f) => f === ".\\git.exe" || f === "C:\\Git\\cmd\\git.exe" }).datei).toBe("C:\\Git\\cmd\\git.exe");
+    /* ohne absoluten Fund: Fehler, kein Rückfall auf "git" */
+    expect(() => gitPfad({ plattform: "linux", pfad: ".:bin", existiert: () => true })).toThrow(/absolutem Pfad/);
+    expect(() => gitPfad({ plattform: "win32", pfad: "", existiert: () => false })).toThrow(/absolutem Pfad/);
   });
 
   it("pruefeClaudePfad: Pflicht, absolut, vorhanden, keine PATH-Suche", () => {

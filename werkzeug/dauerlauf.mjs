@@ -45,7 +45,7 @@ import { fileURLToPath } from "node:url";
 import { entscheide, lesen, schreiben } from "./koordination.mjs";
 import { naechste } from "./naechstes-paket.mjs";
 import { paketeAus } from "./acc45-backlog.mjs";
-import { prozessAdapter, loeseBefehl, startPlan, optionenPruefen } from "./dauerlauf-prozess.mjs";
+import { prozessAdapter, loeseBefehl, startPlan, optionenPruefen, gitPfad, loeseAbsolut } from "./dauerlauf-prozess.mjs";
 import { pruefeWorkerKopie, richteWorkerKopieEin, workerUmgebung } from "./dauerlauf-schutz.mjs";
 
 const MIN = 60000;
@@ -317,7 +317,13 @@ export function zyklus(eff, zustand, cfg = STANDARD) {
   const lease = eff.lease.lesen();
   const plan = planeSchritt({ jetzt, lease, zustand: z, schalterAus: eff.schalterAus(), kandidaten: eff.kandidaten(), cfg });
   eff.protokoll({ aktion: plan.aktion, grund: plan.grund, halter: z.halter, epoche: z.epoche });
-  if (plan.eskalation) eff.eskalieren?.(plan.grund);
+  /* Eskalation einmal je Auftrag: Laufzeit-/Wallclock-Limit würde sonst in jedem Zyklus erneut melden, solange das
+     Beenden scheitert (der Auftrag bleibt dann eingetragen). */
+  if (plan.eskalation) {
+    const jeAuftrag = plan.aktion === "WORKER_BEENDEN" && z.laufend;
+    if (!jeAuftrag || !z.laufend.limitEskaliert) eff.eskalieren?.(plan.grund);
+    if (jeAuftrag) z = { ...z, laufend: { ...z.laufend, limitEskaliert: true } };
+  }
   const L = eff.lease;
   switch (plan.aktion) {
     case "UEBERNEHMEN": {
@@ -406,7 +412,7 @@ export const istTestmodus = (env = process.env) => Boolean(env.KOORD_REMOTE) && 
 /** Integrationskopf und SSOT dort, über einen temporären Ref (wie koordination.lesen). null bei Fehler. */
 function ssotAmKopf(zweig = "integration/release-v4") {
   const tmp = `refs/dauerlauf/tmp/${process.pid}-${Date.now()}`;
-  const git = (a) => execFileSync("git", a, { cwd: WURZEL, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 60000 }).trim();
+  const git = (a) => execFileSync(gitPfad(), a, { cwd: WURZEL, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 60000 }).trim();
   try {
     git(["fetch", "--quiet", "--no-tags", remoteName(), `refs/heads/${zweig}:${tmp}`, "--force"]);
     const kopf = git(["rev-parse", tmp]);
@@ -416,9 +422,19 @@ function ssotAmKopf(zweig = "integration/release-v4") {
   } catch { return null; } finally { try { git(["update-ref", "-d", tmp]); } catch { /* egal */ } }
 }
 
+/** Absoluter Pfad zu gh aus dem PATH des Supervisors (wie gitPfad; relative Treffer werden verworfen). Nur direkt
+    startbare Dateien (.exe bzw. ohne Endung unter POSIX); eine .cmd/.ps1 ginge nur über eine Shell und wird nicht
+    benutzt. null = gh nicht verfügbar. */
+export function ghPfad(opt) {
+  const a = loeseAbsolut("gh", opt);
+  return a && (a.art === "exe" || a.art === "bin") ? a.datei : null;
+}
+
 function ghListe() {
+  const gh = ghPfad();
+  if (!gh) return null; // ohne gh: keine PR-Daten (Messung bleibt fail-closed)
   try {
-    return JSON.parse(execFileSync("gh", ["pr", "list", "--state", "all", "--limit", "200", "--json", "number,state,headRefOid,headRefName,title,statusCheckRollup"], { cwd: WURZEL, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 60000 }));
+    return JSON.parse(execFileSync(gh, ["pr", "list", "--state", "all", "--limit", "200", "--json", "number,state,headRefOid,headRefName,title,statusCheckRollup"], { cwd: WURZEL, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 60000 }));
   } catch { return null; }
 }
 
