@@ -3,9 +3,9 @@
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
   "anzahl": 229,
   "statusZaehlung": {
-    "BLOCKED": 87,
+    "BLOCKED": 86,
     "READY": 18,
-    "IN_PROGRESS": 17,
+    "IN_PROGRESS": 18,
     "REVIEW": 7,
     "INTEGRATED": 97,
     "DONE": 3
@@ -39,8 +39,8 @@
       "pakete": 21,
       "offen": 16,
       "restPT": {
-        "min": 25.6,
-        "max": 45.1
+        "min": 24.6,
+        "max": 43.6
       }
     },
     "extern": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 332.4,
-    "max": 570.35
+    "min": 331.4,
+    "max": 568.85
   },
   "kritischerPfad": {
     "summe": 70,
@@ -6316,26 +6316,26 @@
       "prio": "P2",
       "aufwandPT": {"min":2,"max":3},
       "abhaengigkeiten": ["V4-0"],
-      "status": "BLOCKED",
+      "status": "IN_PROGRESS",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
+        "implementiert": {"wert":"teilweise","beleg":"Inventar ja (docs/acc45/V4-INVENTAR.md, werkzeug/v4-inventar.mjs), Baseline nur Plan (kein Bildvergleich)"},
+        "lokalGetestet": {"wert":true,"beleg":"pruefungen/v4-inventar.test.js (13 Tests, lokal grün; in pruefung:querschnitt)"},
         "reviewt": {"wert":false,"beleg":null},
         "integriert": {"wert":false,"beleg":null},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
       },
-      "branch": null,
+      "branch": "docs/v4-1-inventar",
       "agent": null,
       "modell": "opus",
-      "konfliktzonen": [],
+      "konfliktzonen": ["package.json"],
       "pr": [],
-      "nachweis": "docs/acc45/V4-INTEGRATIONSSTAND-2026-11-20.md",
+      "nachweis": "docs/acc45/V4-INVENTAR.md",
       "akzeptanz": "Inventar aller Ansichten/Komponenten mit V4-Status; Baseline hell/dunkel als Nenner für den Integrationsstand",
       "tests": "Unit, E2E",
       "dateien": "docs/, e2e/",
-      "notiz": "Analyse 2026-11-20 (V4-Integrationsstand); PT sind Schätzung der Analyse, nicht belegt."
+      "notiz": "Analyse 2026-11-20 (V4-Integrationsstand); PT sind Schätzung der Analyse, nicht belegt. Umsetzung 2026-11-20 (Branch docs/v4-1-inventar, PR gegen integration/release-v4): Inventar 172 Dateien (167 ohne src/v4) mit Zählwerkzeug und Test; Screenshot-Baseline nur als Plan (keine Binärdateien, nicht in CI). Status nach Merge setzt der Koordinator."
     },
     {
       "id": "V4-2",
