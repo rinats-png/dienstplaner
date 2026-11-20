@@ -1751,16 +1751,39 @@ function AppInnen() {
     </div>
   </>);
 
+  /* B-P3: Die Leiste „Nicht gespeichert“ (mit Ausweg: Datei sichern, neu anmelden, neu laden) und das Konfliktfenster
+     gelten in beiden Schalen — vorher nur in der Rechneransicht, am Telefon scheiterte Speichern ohne stehenden Hinweis. */
+  const nichtGespeichertLeiste = (
+    <NichtGespeichert lage={nichtGespeichert} melde={melde}
+      aufGeloest={() => setNichtGespeichert(null)}
+      onKonflikt={() => { const d = SP.konfliktLage(); if (d) setKonflikt({ ...d, meiner: ref.current }); else if (SP.konfliktOhneAbsage()) verwerfenMitRueckfrage(); }} />);
+  const konfliktBlock = konflikt ? (
+    <Konfliktfenster lage={konflikt} melde={melde}
+      onSchliessen={() => { setKonflikt(false); if (SP.konfliktLage() || SP.konfliktOhneAbsage()) setNichtGespeichert(SP.ausstehend()); }}
+      onUebernehmen={() => {
+        /* Denselben Stand noch einmal schicken. Erst mit dieser Entscheidung
+           übernimmt speicher.js den ETag aus der Absage (vorher Sendesperre),
+           der zweite Versuch läuft also gegen den aktuellen Stand und geht durch. */
+        SP.konfliktLoesen("meins");
+        setNichtGespeichert((l) => (l && l.art === "konfliktOffen" ? null : l));
+        SP.schreib(ref.current, { durch: "Übernahme nach Konflikt", sofort: true,
+          onFehler: (l) => setNichtGespeichert(l) });
+        setKonflikt(false);
+        melde("Dein Stand wurde übernommen.");
+      }} />) : null;
+
   if (zeigeMobil) return (
     <div className={`sw-root${sitz.person.kontrastmodus ? " feldmodus" : ""}`}>
       <style>{bauStyles()}</style>
       <div style={{display:"none"}}><i /><i /><i /><i /></div>
       <div>
-        {/* B-P2: Auch am Telefon sagt die Leiste, dass ein gespeicherter Stand ohne Verbindung gezeigt wird. */}
+        {/* B-P2: Auch am Telefon sagt die Leiste, dass ein gespeicherter Stand ohne Verbindung gezeigt wird.
+            B-P3: ebenso die Leiste „Nicht gespeichert“ (gescheitertes Speichern). */}
         <MobilSchale sitz={sitz} akt={akt} dialoge={dialogBlock} startTab={mobilStart}
-          hinweise={<Offlineleiste lage={offline} />}
+          hinweise={<><Offlineleiste lage={offline} />{nichtGespeichertLeiste}</>}
           aufRechner={() => setRechnerAnsicht(true)} />
       </div>
+      {konfliktBlock}
     </div>);
 
   return (
@@ -1857,9 +1880,7 @@ function AppInnen() {
             aria-label={`Ansicht ${aktiveView}`}>
           {!istBetreiber && <Testablauf mandant={sitz.mandant} darfEinrichten={darf(sitz, "org.edit")} />}
           <Offlineleiste lage={offline} />
-          <NichtGespeichert lage={nichtGespeichert} melde={melde}
-            aufGeloest={() => setNichtGespeichert(null)}
-            onKonflikt={() => { const d = SP.konfliktLage(); if (d) setKonflikt({ ...d, meiner: ref.current }); else if (SP.konfliktOhneAbsage()) verwerfenMitRueckfrage(); }} />
+          {nichtGespeichertLeiste}
           {teilLage && !teilFenster && <TeilwegLeiste zustand={teilLage} onOeffnen={() => setTeilFenster(true)} />}
           {schmal && !mobilOk && (
             <Card style={{ padding: 20, marginBottom: 20, background: C.warnLight }}>
@@ -2030,20 +2051,7 @@ function AppInnen() {
             <span className="glyph" style={{ color: C.danger, display: "flex" }}><Icon n="krank" size={20} /></span>Krank</button>}
         </nav>)}
 
-      {konflikt && (
-        <Konfliktfenster lage={konflikt} melde={melde}
-          onSchliessen={() => { setKonflikt(false); if (SP.konfliktLage() || SP.konfliktOhneAbsage()) setNichtGespeichert(SP.ausstehend()); }}
-          onUebernehmen={() => {
-            /* Denselben Stand noch einmal schicken. Erst mit dieser Entscheidung
-               übernimmt speicher.js den ETag aus der Absage (vorher Sendesperre),
-               der zweite Versuch läuft also gegen den aktuellen Stand und geht durch. */
-            SP.konfliktLoesen("meins");
-            setNichtGespeichert((l) => (l && l.art === "konfliktOffen" ? null : l));
-            SP.schreib(ref.current, { durch: "Übernahme nach Konflikt", sofort: true,
-              onFehler: (l) => setNichtGespeichert(l) });
-            setKonflikt(false);
-            melde("Dein Stand wurde übernommen.");
-          }} />)}
+      {konfliktBlock}
 
       {teilLage && teilFenster && (
         <Teilkonfliktfenster key={`${teilLage.phase}:${(teilLage.konflikte || []).map((f) => f.id).join(",")}`}

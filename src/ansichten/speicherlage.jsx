@@ -279,8 +279,9 @@ export function Konfliktfenster({ lage, onSchliessen, onUebernehmen, melde }) {
       style={{ position: "fixed", inset: 0, background: "var(--c-ueberlagerung)",
         backdropFilter: "blur(6px)", zIndex: 90, display: "flex", alignItems: "center",
         justifyContent: "center", padding: 20 }}>
+      {/* B-P3: auch am Telefon (Telefonschale) — höher als der Bildschirm wird das Blatt in sich gerollt, nicht abgeschnitten. */}
       <div ref={rahmen} tabIndex={-1} className="blatt"
-        style={{ maxWidth: 560, padding: 28, outline: "none" }}>
+        style={{ maxWidth: 560, padding: 28, outline: "none", maxHeight: "100%", overflowY: "auto" }}>
         <div style={{ fontSize: 18, fontWeight: 650, marginBottom: 10 }}>
           {kern
             ? "Die Stammdaten wurden gleichzeitig geändert"

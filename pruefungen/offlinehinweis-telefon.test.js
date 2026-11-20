@@ -25,7 +25,8 @@ describe("B-P2: Offline-Hinweis auch in der Telefonschale", () => {
     const app = lies("../src/App.jsx");
     const aufruf = app.match(/<MobilSchale [\s\S]*?aufRechner=\{[^}]*\}\s*\/>/);
     expect(aufruf, "Aufruf der MobilSchale").toBeTruthy();
-    expect(aufruf[0]).toMatch(/hinweise=\{<Offlineleiste lage=\{offline\} \/>\}/);
+    /* B-P3: neben der Offlineleiste steht dort auch die Leiste „Nicht gespeichert“ (speicherfehler-telefon.test.js). */
+    expect(aufruf[0]).toMatch(/hinweise=\{<><Offlineleiste lage=\{offline\} \/>\{nichtGespeichertLeiste\}<\/>\}/);
     /* Die Rechneransicht behält ihre Leiste. */
     expect(app).toMatch(/<main className="bereich"[\s\S]*?<Offlineleiste lage=\{offline\} \/>/);
     const mobil = lies("../src/ansichten/mobil.jsx");
