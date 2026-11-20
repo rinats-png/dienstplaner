@@ -931,3 +931,38 @@ describe("9. Stabile 403-Codes (Folgepunkt 1 aus #423) und Schalter CENTRIC_SCHI
     expect((await gespeichert(raum)).a1.schichtmodellZuordnungen.map((z) => z.id)).toEqual(["a1-alt", "a1-tag", "a1-nacht"]);
   });
 });
+
+describe("10. Schalter CENTRIC_SCHICHTMODELL_WIRKUNG am Server (IMP-6 Planwirkung PR 2, Vorgabe AUS)", () => {
+  /* Die Oberfläche rechnet nur dann mit den Modellen, wenn sie alle Zuordnungen sieht (Planung, Leitung, Kundenrolle —
+     dieselben Rollen, die sie pflegen und vollständig lesen). Beschäftigte, Schichtverantwortung und Betriebsrat sehen
+     höchstens die eigene Zuordnung (Q4): Mit unvollständigen Daten rechnete die Oberfläche für andere still das
+     Betriebsmodell (gegen Q5). Für sie bleibt die Anzeige bis zur „Sicht der Beschäftigten“ (vom Server gerechneter Dienst)
+     beim bisherigen Stand — fail-safe; das ist eine Vorbedingung vor dem Einschalten. */
+  it("GET meldet schichtmodellWirkung nur bei genau „true“ und nur an Rollen mit vollständiger Sicht", async () => {
+    const FP = await import("../server/lib/fachpruefung.mjs");
+    const { token } = await neuerRaum({ rollen: ["LT", "KU", "PL", "SV", "MA", "MA_EIGEN", "BR"] });
+    const vorher = process.env.CENTRIC_SCHICHTMODELL_WIRKUNG;
+    try {
+      for (const w of [undefined, "TRUE", "1", " true"]) {
+        if (w === undefined) delete process.env.CENTRIC_SCHICHTMODELL_WIRKUNG; else process.env.CENTRIC_SCHICHTMODELL_WIRKUNG = w;
+        for (const k of Object.keys(token)) expect((await anfrage("/api/bestand", { token: token[k] })).schichtmodellWirkung, `${w} ${k}`).toBeUndefined();
+        expect(FP.schichtmodellWirkungAktiv(), String(w)).toBe(false);
+      }
+      process.env.CENTRIC_SCHICHTMODELL_WIRKUNG = "true";
+      /* Der Server-Einstieg (daten.mjs → schichtmodell-wirkung.mjs) hat die Quelle gesetzt: die Planrechnung des Servers folgt. */
+      expect(FP.schichtmodellWirkungAktiv()).toBe(true);
+      for (const k of ["LT", "KU", "PL"]) expect((await anfrage("/api/bestand", { token: token[k] })).schichtmodellWirkung, k).toBe(true);
+      for (const k of ["SV", "MA", "MA_EIGEN", "BR"]) expect((await anfrage("/api/bestand", { token: token[k] })).schichtmodellWirkung, k).toBeUndefined();
+    } finally {
+      if (vorher === undefined) delete process.env.CENTRIC_SCHICHTMODELL_WIRKUNG; else process.env.CENTRIC_SCHICHTMODELL_WIRKUNG = vorher;
+    }
+    expect(FP.schichtmodellWirkungAktiv()).toBe(false);
+  });
+  it("Schalter AUS (Vorgabe): Speichern eines Zuordnungswechsels bleibt wie bisher (keine mittelbare Nachrechnung)", async () => {
+    delete process.env.CENTRIC_SCHICHTMODELL_WIRKUNG;
+    const { raum, token } = await neuerRaum({ rollen: ["LT"] });
+    const a = await schreibeAls(token, "LT", WECHSEL);
+    expect(a.status, JSON.stringify(a).slice(0, 200)).toBe(200);
+    expect((await gespeichert(raum)).a1.schichtmodellZuordnungen.map((z) => z.id)).toEqual(["a1-alt", "a1-tag", "a1-nacht"]);
+  });
+});
