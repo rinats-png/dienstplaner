@@ -268,7 +268,7 @@ export function ssotReviewBelege(ssot) {
 }
 
 const PR_MERGE = /^Merge pull request #(\d+) from (\S+)/;
-const PR_SQUASH = /\(#(\d+)\)\s*$/;
+const PR_SQUASH = /\((?:PR )?#(\d+)\)\s*$/;
 
 /** PR-Nummern aus den Betreffs: „Merge pull request #N“ und Squash „… (#N)“. */
 export function prsAusCommits(commits) {
@@ -716,8 +716,14 @@ export function auswerten(e, konfig = KONFIG_STANDARD) {
   // Ein ungültiger Eintrag macht die ganze Commit-Liste unbrauchbar (fail-closed).
   const commitsOk = Array.isArray(e.commits) &&
     e.commits.every((c) => istObjekt(c) && typeof c.sha === "string" && Array.isArray(c.eltern) && typeof c.betreff === "string");
-  const prs = commitsOk ? prsAusCommits(e.commits) : undefined;
-  const ohne = commitsOk ? commitsOhnePr(e.commits, konfig) : undefined;
+  // GitHub-Zuordnung Commit → gemergte PRs (Rebase-Merge, Squash mit anderem Betreff); Sammel-PRs sind dort
+  // schon ausgefiltert. Ein Commit mit mindestens einer Zuordnung gilt als abgedeckt.
+  const zuordnung = istObjekt(e.commitPrZuordnung) ? e.commitPrZuordnung : {};
+  const zugeordnet = (sha) => (Array.isArray(zuordnung[sha]) ? zuordnung[sha].map(Number).filter(Number.isInteger) : []);
+  const prs = commitsOk
+    ? [...new Set([...prsAusCommits(e.commits), ...e.commits.flatMap((c) => zugeordnet(c.sha))])].sort((a, b) => a - b)
+    : undefined;
+  const ohne = commitsOk ? commitsOhnePr(e.commits, konfig).filter((c) => zugeordnet(c.sha).length === 0) : undefined;
   const gates = [
     g1Ci(e.checkRuns, e.kandidat, konfig),
     g2Review({ prs, commitsOhnePr: ohne, prAngaben: istObjekt(e.prAngaben) ? e.prAngaben : {}, dokBelege: reviewNachweiseLesen(e.reviewTexte || []), ssotBelege: ssotReviewBelege(e.ssot), freigabe }),
@@ -846,6 +852,7 @@ export function sammeln(opt, konfig = KONFIG_STANDARD) {
   if (!online) {
     e.checkRuns = fx.checkRuns;
     e.commits = fx.commits;
+    e.commitPrZuordnung = fx.commitPrZuordnung;
     e.prAngaben = istObjekt(fx.prs) ? fx.prs : {};
     e.geaenderteDateien = fx.geaenderteDateien;
     e.neueDateien = Array.isArray(fx.neueDateien) ? fx.neueDateien : [];
@@ -874,10 +881,22 @@ export function sammeln(opt, konfig = KONFIG_STANDARD) {
     const seiten = ghApi(w, `repos/${konfig.repo}/commits/${e.kandidat}/check-runs?per_page=100`, ["--paginate", "--slurp"]);
     e.checkRuns = seiten.flatMap((s) => s.check_runs || []);
   } catch { e.checkRuns = null; }
+  // Commits ohne PR-Merkmal im Betreff: GitHub fragen, zu welchen gemergten PRs sie gehören (nur GET).
+  e.commitPrZuordnung = {};
+  const sammel = new RegExp(konfig.sammelZweig);
+  if (Array.isArray(e.commits)) {
+    for (const c of commitsOhnePr(e.commits, konfig)) {
+      try {
+        const l = ghApi(w, `repos/${konfig.repo}/commits/${c.sha}/pulls`);
+        e.commitPrZuordnung[c.sha] = l.filter((p) => p.merged_at && !sammel.test(String(p.head?.ref || ""))).map((p) => p.number);
+      } catch { /* ohne Antwort: bleibt „ohne PR“ (fail-closed) */ }
+    }
+  }
   e.prAngaben = {};
   const dok = reviewNachweiseLesen(e.reviewTexte);
   const ssotBeleg = ssotReviewBelege(e.ssot);
-  for (const nr of Array.isArray(e.commits) ? prsAusCommits(e.commits) : []) {
+  const allePrs = Array.isArray(e.commits) ? new Set([...prsAusCommits(e.commits), ...Object.values(e.commitPrZuordnung).flat()]) : [];
+  for (const nr of allePrs) {
     if (dok.has(nr) || ssotBeleg.has(nr)) continue; // Dokumentbeleg genügt; spart Abfragen
     try {
       const p = ghApi(w, `repos/${konfig.repo}/pulls/${nr}`);

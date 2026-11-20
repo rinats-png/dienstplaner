@@ -146,25 +146,30 @@ Sicherungen auf dem VPS, eine Freigabe je Release und eine Prüfung vor dem Job 
 
 ## 3. Probelauf des Werkzeugs gegen den heutigen Stand
 
-Lauf am 2026-11-20 (online: `git` lokal, `gh api` nur GET). Kandidat `origin/integration/release-v4` @ `014c86ab`,
-Basis `274bfa0` (Zeile `aktiv`), Platzhalter-Digest, ohne Bildangaben, ohne Nachweise, ohne Freigabedatei.
-Ergebnis: **NO-GO** (erwartet).
+Lauf am 2026-11-20 mit Werkzeug v2 (online: `git` lokal, `gh api` nur GET). Kandidat `origin/integration/release-v4`
+@ `5876ff48`, `--basis 274bfa0` (Zeile `aktiv`), Platzhalter-Digest, ohne Bildangaben, ohne Nachweise, ohne
+Freigabedatei. Ergebnis: **NO-GO, Exit 1** (erwartet).
 
 | Gate | Ergebnis | Grund |
 |---|---|---|
-| G1 | GO | alle 11 Pflicht-Check-Runs `success` auf `014c86ab` |
-| G2 | NO-GO | 339 PRs im Paket. 314 ohne Beleg aus GitHub-Review, `REVIEW-NACHWEIS*.md` oder PR-Text. Mit der Zusatzquelle „SSOT-Paket reviewt = true“ (nach dem Lauf ergänzt, offline gegen dieselbe PR-Liste gerechnet) bleiben **202** |
-| G3 | GO | keine Vorlage schaltet einen Schalter oder eine unfertige Funktion ein |
+| G1 | NO-GO | `pruefen` lief zum Zeitpunkt noch (`in_progress`) auf dem neuen Kopf. Auf `014c86ab` waren alle 11 Pflicht-Checks `success` (Lauf v1) |
+| G2 | NO-GO | 374 PRs im Paket (aus Betreffs und GitHub-Zuordnung). 210 ohne Review-Beleg. **149 Commits ohne PR**: direkt auf `integration/release-v4` geschrieben (meist Status-, Backlog- und Doku-Commits, z. B. `77cfb42a`, `9e041af2`); Squash-Commits mit „(PR #N)“ und rebase-gemergte Commits zählen als abgedeckt |
+| G3 | NO-GO | `RELEASE-SCHALTER.json` gibt es im Kandidaten noch nicht (kommt mit diesem PR). Gegen den Stand dieses PRs: GO |
 | G4 | NO-GO | keine Bildangaben, Digest nicht in der Liste (erwartet: kein Bild aus `main`) |
 | G5 | NO-GO | W-1…W-9 und Startblock seit `274bfa0` geändert → Migrationsfreigabe nötig |
 | G6 | NO-GO | keine Sicherungs- und Probe-Nachweise |
-| G7, G10 | NO-GO | keine Freigabedatei |
+| G7 | NO-GO | keine Freigabedatei |
 | G8 | NO-GO | 13 P0/P1-Pakete nicht fertig, aber mit PR im Paket (u. a. WP-16, WP-16c, WP-48, WP-19, WP-21, WP-14c) |
-| G9 | NO-GO | offene P1-Befunde WP-14c, WP-07b, ABN-A2, ABN-S2, V4-2b |
+| G9 | NO-GO | offene P1-Befunde WP-14c, WP-07b, ABN-A2, ABN-S2, V4-2b. REL-* zählen nicht (Release-Prozess selbst) |
+| G10 | NO-GO | keine Freigabedatei; HEAD (dieser Branch) ändert seit dem Kandidaten mehr als Liste und Freigabedatei |
 
-**Befund G2:** Für ältere PRs (vor etwa #377) gibt es keinen maschinenlesbaren Review-Beleg. Zwei Wege: (a) der
-Betreiber bestätigt die Liste in `reviewBestaetigt`; (b) Claude legt einen Nachtrag `REVIEW-NACHWEIS-NACHTRAG.md` mit
-belegten Reviews an (Quelle: Nachweisdateien je Paket). Weg (b) ist ehrlicher, aber nur, soweit Belege existieren.
+**Befund G2 (Review):** Für ältere PRs (vor etwa #377) gibt es keinen maschinenlesbaren Review-Beleg. Zwei Wege: (a)
+der Betreiber bestätigt die Liste in `reviewBestaetigt`; (b) Claude legt einen Nachtrag `REVIEW-NACHWEIS-NACHTRAG.md`
+mit belegten Reviews an (Quelle: Nachweisdateien je Paket). Weg (b) ist ehrlicher, aber nur, soweit Belege existieren.
+**Befund G2 (Commits ohne PR):** Die 149 Direkt-Commits sind die Folge der früheren Direkt-Merges und Status-Commits
+(Betreiberentscheidung 2026-11-13: Direkt-Merges bedingt anerkannt). Für den ersten Release braucht jeder davon eine
+Annahme mit Grund in `akzeptierteCommits`, oder der Betreiber entscheidet eine Sammelannahme als neue Regel (dann
+Werkzeug-PR). Ab Branch-Schutz (B-12/Branch-Schutz `main` und `integration/*`) entstehen keine neuen.
 **Befund G8:** Das Paket enthält Code unfertiger P0/P1-Pakete. Ein Release braucht für jedes davon eine Annahme mit
 Grund in `akzeptiertePakete` (z. B. „hinter Schalter AUS“) oder den Abschluss des Pakets.
 

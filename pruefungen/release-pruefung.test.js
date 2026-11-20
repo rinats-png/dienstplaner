@@ -246,6 +246,20 @@ describe("G2 Review und Commits ohne PR", () => {
     expect(commitsOhnePr(commits, KONFIG_STANDARD).map((x) => x.sha[0]).sort()).toEqual(["5", "7", "8"]);
     expect(prsAusCommits(commits)).toEqual([12, 13, 416]);
   });
+  it("Squash mit „(PR #N)“ und GitHub-Zuordnung (Rebase-Merge) decken ab; Sammel-PR-Zuordnung nicht", () => {
+    const c = (sha, eltern, betreff) => ({ sha: sha.repeat(40), eltern: eltern.map((e) => e.repeat(40)), betreff });
+    expect(prsAusCommits([c("1", ["b"], "SI-P9: Härtung (PR #114)")])).toEqual([114]);
+    expect(commitsOhnePr([c("1", ["b"], "SI-P9: Härtung (PR #114)")], KONFIG_STANDARD)).toEqual([]);
+    const fx = fixtureGo();
+    fx.commits.push({ sha: "4".repeat(40), eltern: [B], betreff: "rebase-gemergt" });
+    fx.commits.push({ sha: "5".repeat(40), eltern: [B], betreff: "nur im Sammel-PR" });
+    fx.commitPrZuordnung = { ["4".repeat(40)]: [10] };
+    const r = pruefe(fx);
+    expect(r.paket.commitsOhnePr.map((x) => x.sha)).toEqual(["5".repeat(40)]);
+    expect(r.paket.prs).toEqual([10, 11]);
+    fx.commitPrZuordnung = { ["4".repeat(40)]: [10], ["5".repeat(40)]: [] };
+    expect(pruefe(fx).paket.commitsOhnePr.map((x) => x.sha)).toEqual(["5".repeat(40)]);
+  });
   it("Commits ohne PR → NO-GO, außer akzeptiert mit Grund (Präfix ab 7 Zeichen)", () => {
     const ohne = [{ sha: "5".repeat(40), betreff: "Direkt" }];
     expect(g2Review({ prs: [], commitsOhnePr: ohne }).ergebnis).toBe("NO-GO");

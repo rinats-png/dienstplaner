@@ -6739,7 +6739,7 @@
       "status": "REVIEW",
       "stufen": {
         "implementiert": {"wert":true,"beleg":"Branch acc45/release/rel-1-gates: werkzeug/release-pruefung.mjs (G1–G10), docs/acc45/RELEASE-UNFERTIG.json, RELEASE-PROZESS.md, RELEASE-LUECKENANALYSE-2026-11-20.md"},
-        "lokalGetestet": {"wert":true,"beleg":"pruefungen/release-pruefung.test.js 45/45 grün (Vitest 5, --maxWorkers=1), positiv/negativ/fail-closed je Gate, 2 Mutanten (G1 fail-closed, G10 commitet) erkannt; Probelauf online gegen integration/release-v4 @ 014c86ab: NO-GO wie erwartet (G1, G3 GO), docs/acc45/RELEASE-LUECKENANALYSE-2026-11-20.md 3"},
+        "lokalGetestet": {"wert":true,"beleg":"pruefungen/release-pruefung.test.js 59/59 grün (Vitest 5, --maxWorkers=1); Review #427 (Opus, NICHT FREIGEGEBEN) behoben: Tests zuerst rot (30/58 auf v1, Commit e441aa1c), 37 Mutanten (17 aus dem Review sinngleich + 20 neue) alle rot; Probelauf v2 online gegen integration @ 5876ff48: NO-GO Exit 1 (docs/acc45/RELEASE-LUECKENANALYSE-2026-11-20.md 3)"},
         "reviewt": {"wert":false,"beleg":null},
         "integriert": {"wert":false,"beleg":null},
         "stagingGeprueft": {"wert":false,"beleg":null},
@@ -6754,7 +6754,7 @@
       "nachweis": "docs/acc45/RELEASE-LUECKENANALYSE-2026-11-20.md; docs/acc45/RELEASE-PROZESS.md",
       "akzeptanz": "Werkzeug prüft G1–G10 maschinenlesbar, Ausgabe JSON, Exit 0 nur bei GO, fail-closed bei fehlenden Angaben; Lückenanalyse je Anforderung mit Datei:Zeile; Richtlinie Phase 0–6; Workflow-Vorschlag nur als Text; unabhängiges Review",
       "tests": "Unit (pruefung:acc45-werkzeuge)",
-      "dateien": "werkzeug/release-pruefung.mjs, pruefungen/release-pruefung.test.js, docs/acc45/RELEASE-*.md, docs/acc45/RELEASE-UNFERTIG.json, package.json",
+      "dateien": "werkzeug/release-pruefung.mjs, pruefungen/release-pruefung.test.js, pruefungen/fixtures/release-pruefung-beispiel.json, docs/acc45/RELEASE-*.md, docs/acc45/RELEASE-UNFERTIG.json, docs/acc45/RELEASE-SCHALTER.json, package.json",
       "notiz": "Betreiberauftrag Release-Automatisierung 2026-11-20 (Zielablauf Entwicklung → Review → CI → Integration → Release-Prüfung → Deployment → Live-Abnahme). Kein VPS, kein Workflow-Start, keine Workflow-Änderung. Aufwand SCHÄTZUNG."
     },
     {
