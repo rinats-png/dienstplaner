@@ -54,8 +54,13 @@ export default defineConfig({
   server: { proxy },
   /* vitest: die Playwright-Suite (e2e/*.spec.mjs, WP-33 Teil 3) läuft mit
      `npm run e2e`, nie unter vitest. Die übrigen Einträge sind die Vorgaben
-     von vitest, die ein eigenes exclude sonst ersetzen würde. */
-  test: { exclude: ["**/node_modules/**", "**/.git/**", "e2e/**"] },
+     von vitest, die ein eigenes exclude sonst ersetzen würde.
+     DEP-2 (Vitest 5): clearMocks war bis Vitest 4 aus; Vitest 5 schaltet es
+     als Vorgabe ein und löscht vor jedem Test die Aufrufliste aller Mocks.
+     Die Prüfungen sind unter der alten Vorgabe geschrieben (Aufrufe aus
+     beforeAll und Modul-Mocks gelten über mehrere Tests). Der Wert bleibt
+     darum ausdrücklich aus — keine stille Verhaltensänderung beim Update. */
+  test: { exclude: ["**/node_modules/**", "**/.git/**", "e2e/**"], clearMocks: false },
   build: {
     outDir: "dist",
     sourcemap: false,

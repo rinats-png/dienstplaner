@@ -112,7 +112,7 @@ afterAll(async () => {
   await rm(daten, { recursive: true, force: true }).catch(() => {});
 });
 
-describe.sequential("Strang A: Betreiber → Leitung → Personal → Schichtmodell → Plan → Beschäftigte, zwei Betriebe", () => {
+describe("Strang A: Betreiber → Leitung → Personal → Schichtmodell → Plan → Beschäftigte, zwei Betriebe", { concurrent: false }, () => {
   /* ---------------- Bereich 1: Betrieb anlegen und konfigurieren ---------------- */
   it("1.1 Betreiber richtet sich ein und legt zwei leere Betriebe an", async () => {
     const e = await anfrage("/einrichten", { methode: "POST", rumpf: { verwaltung: ADMIN, name: "Betreiber", bestand: "abn-a-betreiber",
