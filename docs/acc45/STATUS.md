@@ -18,24 +18,24 @@ oder `"teilweise"`, jeweils mit Beleg (PR, Commit, Nachweis). „Geplant“, „
 <!-- AUTO:BEGIN -->
 Erzeugt aus `docs/acc45/work-packages.json` (Schema 2) mit `node werkzeug/acc45-backlog.mjs status-schreiben` — nicht von Hand ändern.
 
-**Pakete gesamt:** 236 · BLOCKED 88 · READY 16 · IN_PROGRESS 18 · REVIEW 14 · INTEGRATED 97 · DONE 3
+**Pakete gesamt:** 236 · BLOCKED 87 · READY 16 · IN_PROGRESS 18 · REVIEW 15 · INTEGRATED 97 · DONE 3
 
 | Strang | Pakete | BLOCKED | READY | IN_PROGRESS | REVIEW | INTEGRATED | DONE | offener Aufwand PT |
 |---|---|---|---|---|---|---|---|---|
 | ACC45 | 119 | 27 | 0 | 7 | 5 | 78 | 2 | 61,4–104,95 |
 | WP-19-Module | 15 | 13 | 0 | 1 | 0 | 1 | 0 | 64,5–100,5 |
 | Intelligence | 40 | 20 | 0 | 7 | 0 | 13 | 0 | 181–320 |
-| Folgepakete | 27 | 10 | 0 | 3 | 9 | 5 | 0 | 25,2–44,3 |
+| Folgepakete | 27 | 9 | 0 | 3 | 10 | 5 | 0 | 24,4–43,1 |
 | Extern/Entscheidungen | 35 | 18 | 16 | 0 | 0 | 0 | 1 | 20,35–46,1 |
 
-Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **332,1–569,75 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
+Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **331,3–568,55 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
 
 **Kritische Pfade** (offener Aufwand, Mitte der Spanne maßgeblich):
 
 - gemeinsam: WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **50–90 PT**
 - ohne Intelligence: WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 → WP-42a → WP-42 = **22,5–35 PT**
 - ACC45: WP-21 → WP-42a → WP-42 = **14–20 PT**
-- Folgepakete: V4-1 → V4-2 → V4-3a → V4-3b → V4-6 = **8,2–14,4 PT**
+- Folgepakete: V4-1 → V4-2 → V4-3a → V4-3b → V4-6 = **7,4–13,2 PT**
 - WP-19: WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 = **18,5–28,5 PT**
 - Intelligence: WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **50–90 PT**
 
@@ -72,6 +72,7 @@ Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **332,1–569,
 | V4-2b V4: --v4-*-Variablen in der Anwendung immer gesetzt und an data-thema gebunden (Neuladen mit Sitzung) | REVIEW | `acc45/v4/v4-2b-variablen` | Befund Review #425 (H2), Browserbeleg 2026-11-20 in docs/acc45/v4-2-nachweis.md Abschnitt 6: nach Neuladen fehlt #v4-stil, computed background von .seitenleiste/.karte/.btn-primary ist rgba(0,0,0,0) (hell und dunkel); Schublade mit weißer Schrift auf hellem Grund unlesbar. Ursache: v4Stil() nur über v4EinstiegAnwenden (src/v4/thema.js), main.jsx:84 ruft es nur ohne Sitzung. P1 vor Release. |
 | V4-2c V4: Kontrast aktiver/gehoverter Eintrag der Seitenleiste im hellen Thema (WCAG 1.4.3) | REVIEW | `acc45/v4/v4-2c-kontrast` | Befund Review #425, Schwere MITTEL-HOCH. Browserbeleg 2026-11-20 (v4-2-nachweis.md Abschnitt 6): hell .slink.on/.slink:hover Hintergrund var(--v4-glas) rgba(255,255,252,.72) unter weißer Schrift = 1,76:1; dunkel 13,4:1. Nur Schublade < 1025 px. |
 | V4-2d V4: Fokus beim Öffnen der Seitenleisten-Schublade per Tastatur (WCAG 2.4.3) | REVIEW | `acc45/v4/schublade-fokus` | Befund aus CI #430 (v4-2-nachweis.md Abschnitt 8, Nachtrag): Fokusführung seitenleisteFokus (WP-21 Teil 2) wirkte nicht; betroffen nur Nutzer mit „Bewegung reduzieren“ (und die E2E-Suite, reducedMotion: reduce). |
+| V4-3a V4: Altstil der Querschnittsklassen auf Tokens (.pille/.bpille/.kachel/.planzelle/table.raster; Klassennamen unverändert) | REVIEW | `acc45/v4/v4-3a` | Übernommen (Review #418), V4-IST 2026-11-20 (Messung werkzeug/v4-inventar.mjs --hauptansichten); PT sind Schätzung. Ersetzt einen Teil des früheren V4-3. Umsetzung 2026-11-20 (docs/acc45/V4-IST-STAND-2026-11-20.md, Nachtrag V4-3a): ein PR, kein Schnitt nötig. Feste Radien im globalen Stil App.jsx 17→7, gestalt/stil.js 13→7 (Schatten 1/2 unverändert: Zustandsanzeigen); Form erreicht 124/159 und voll V4 71/159 unverändert (Zählung je Datei wertet den globalen Stil nicht). |
 | DEP-1 Abhängigkeit: web-push 4 Migration | REVIEW | `acc45/dep/dep-1-web-push-4` | Quelle: Bewertung offener Dependabot-PRs #400 bis #407 vom 2026-11-20 (nur lesend erhoben, Basis integration/release-v4 @ 105f6c83); Aufwand ist eine SCHÄTZUNG der Bewertung, nicht belegt. Der Dependabot-PR wird nicht geschlossen; Schließen entscheidet der Betreiber. Befund: web-push 4.0.0 hat nur benannte Exporte; server/lib/webpush.mjs:62-64 nutzt webpush.default.setVapidDetails, mit v4 ein TypeError, den das catch still zu {ok:false, klasse:temporaer, fehler:netz} macht (Push würde lautlos nie zugestellt). CI bleibt grün, weil pruefungen/mail-push-anbieter.test.js:23 web-push mit { default: {...} } mockt. pushziel.mjs (Review S1) begründet den Parser-Gleichlauf mit url.parse in 3.6.x; v4 nutzt new URL, Begründung und sicherheit-intern.test.js neu bewerten (SI-01). Neue transitive Abhängigkeit proxy-agent-negotiate 1.1.0 prüfen. Ohne VAPID-Schlüssel endet sendePush vor dem Import (trocken), daher aktuell kein sichtbarer Schaden. Aufwand SCHÄTZUNG 0,5 bis 1 PT plus Sicherheitsreview (Opus). Dependabot-PR #404, nicht mergen (funktionaler Defekt); Schließen entscheidet der Betreiber. |
 | DEP-2 Abhängigkeit: Vitest 5 Migration | REVIEW | `acc45/dep/dep-2-vitest-5` | Quelle: Bewertung offener Dependabot-PRs #400 bis #407 vom 2026-11-20 (nur lesend erhoben, Basis integration/release-v4 @ 105f6c83); Aufwand ist eine SCHÄTZUNG der Bewertung, nicht belegt. Der Dependabot-PR wird nicht geschlossen; Schließen entscheidet der Betreiber. Vitest 5 entfernt die sequential-Optionen (zugunsten von concurrent); der Lauf von PR #405 scheitert mit describe.sequential is not a function in abnahme-a-ablauf.test.js:115, die rund 190 Folgeschritte wurden übersprungen (der Lauf belegt nichts über den Rest der Suite). Betroffen: 12 Stellen in 6 Dateien (abnahme-a-ablauf, erstleitung-abbruch, erstleitung-betreiber-put, erstleitung-entscheidungen, erstleitung, konto-parallel). Node 22 und Vite 6.4.5 passen. Aufwand SCHÄTZUNG 0,5 bis 1 PT. Opus-Review Pflicht (Prüfwerkzeug, kritischer Pfad). Dependabot-PR #405, nicht mergen. |
 | REL-0 VPS-Zugang und Inventur: Forced-Command-Zugang nur für die lesende Produktionsinventur V-1 bis V-9 (Phase 1), Konto ohne Docker-Rechte mit root-Sammler (Phase 2, Entwurf) | REVIEW | `acc45/release/vps-zugang-inventur` | Betreiberentscheidungen 2026-11-20: E-1 Variante A (keine sudo-Regel), E-2 Passphrase (Automatik-Schlüssel nur Konzept), E-3 kein from=, E-4 root:root 0755 unter /usr/local/sbin, E-5 nur maskierte Zusammenfassung ins Repo. Opus-Review #428 (Kopf 4590b34c) B-1 shellcheck rot (SC2329, SC2012) und A-1 bis A-5, H-3, H-5 eingearbeitet. Vor manueller Einrichtung: unabhängiges Opus-Sicherheitsreview (Delta) und volle CI auf dem exakten Kopf. Betreiberhandlung offen: Abschnitte 0 bis 5. Phase 2 (Konto inventur, Timer, sshd Match-Block) braucht eigene Freigabe. Kein Zugriff auf den VPS durch Agenten. |
@@ -190,7 +191,7 @@ WP-40 (acc45, 1,5–2,25 PT offen) · WP-28b (folge, 0,5–1 PT offen) · WP-I4 
 
 ✓ belegt · T teilweise (z. B. nur Server-Teilumfang) · – nicht erreicht oder nicht belegt. „Staging“, „Freigabe“ und
 „prod.“ stehen nur mit Beleg auf ✓. Gezeigt sind alle Pakete mit mindestens einer erreichten Stufe; alle übrigen
-60 offenen Entwicklungspakete stehen auf allen Stufen auf „–“.
+59 offenen Entwicklungspakete stehen auf allen Stufen auf „–“.
 
 | Paket | Status | impl. | lokal | Review | integr. | Staging | Freigabe | prod. |
 |---|---|---|---|---|---|---|---|---|
@@ -332,6 +333,7 @@ WP-40 (acc45, 1,5–2,25 PT offen) · WP-28b (folge, 0,5–1 PT offen) · WP-I4 
 | V4-2b | REVIEW | ✓ | ✓ | – | – | – | – | – |
 | V4-2c | REVIEW | ✓ | ✓ | – | – | – | – | – |
 | V4-2d | REVIEW | ✓ | ✓ | – | – | – | – | – |
+| V4-3a | REVIEW | ✓ | ✓ | – | – | – | – | – |
 | DEP-1 | REVIEW | ✓ | ✓ | – | – | – | – | – |
 | DEP-2 | REVIEW | ✓ | ✓ | – | – | – | – | – |
 | REL-0 | REVIEW | ✓ | ✓ | – | – | – | – | – |

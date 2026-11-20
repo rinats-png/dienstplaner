@@ -25,24 +25,24 @@ die sich mit dem Backlog ändern.
 <!-- AUTO:BEGIN kennzahlen -->
 Erzeugt aus `docs/acc45/work-packages.json` (Schema 2) mit `node werkzeug/acc45-backlog.mjs status-schreiben` — nicht von Hand ändern.
 
-**Pakete gesamt:** 236 · BLOCKED 88 · READY 16 · IN_PROGRESS 18 · REVIEW 14 · INTEGRATED 97 · DONE 3
+**Pakete gesamt:** 236 · BLOCKED 87 · READY 16 · IN_PROGRESS 18 · REVIEW 15 · INTEGRATED 97 · DONE 3
 
 | Strang | Pakete | BLOCKED | READY | IN_PROGRESS | REVIEW | INTEGRATED | DONE | offener Aufwand PT |
 |---|---|---|---|---|---|---|---|---|
 | ACC45 | 119 | 27 | 0 | 7 | 5 | 78 | 2 | 61,4–104,95 |
 | WP-19-Module | 15 | 13 | 0 | 1 | 0 | 1 | 0 | 64,5–100,5 |
 | Intelligence | 40 | 20 | 0 | 7 | 0 | 13 | 0 | 181–320 |
-| Folgepakete | 27 | 10 | 0 | 3 | 9 | 5 | 0 | 25,2–44,3 |
+| Folgepakete | 27 | 9 | 0 | 3 | 10 | 5 | 0 | 24,4–43,1 |
 | Extern/Entscheidungen | 35 | 18 | 16 | 0 | 0 | 0 | 1 | 20,35–46,1 |
 
-Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **332,1–569,75 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
+Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **331,3–568,55 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
 
 **Kritische Pfade** (offener Aufwand, Mitte der Spanne maßgeblich):
 
 - gemeinsam: WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **50–90 PT**
 - ohne Intelligence: WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 → WP-42a → WP-42 = **22,5–35 PT**
 - ACC45: WP-21 → WP-42a → WP-42 = **14–20 PT**
-- Folgepakete: V4-1 → V4-2 → V4-3a → V4-3b → V4-6 = **8,2–14,4 PT**
+- Folgepakete: V4-1 → V4-2 → V4-3a → V4-3b → V4-6 = **7,4–13,2 PT**
 - WP-19: WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 = **18,5–28,5 PT**
 - Intelligence: WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **50–90 PT**
 <!-- AUTO:END kennzahlen -->
@@ -192,9 +192,9 @@ Abhängigkeiten oder Konfliktzonen die Agenten nicht auslasten.
 
 | Szenario | Rest-PT (Entwicklung) | Untergrenze Arbeit ÷ Kapazität | Simulierte Dauer | fertig am |
 |---|---|---|---|---|
-| optimistisch | 82,6 | 2,1 AT | **5 AT** | **2026-11-10** |
-| realistisch | 112,7 | 6,3 AT | **13 AT** | **2026-11-20** |
-| bei Problemen | 178,4 | 17 AT | **27 AT** | **2026-12-10** |
+| optimistisch | 81,8 | 2 AT | **5 AT** | **2026-11-10** |
+| realistisch | 111,7 | 6,2 AT | **13 AT** | **2026-11-20** |
+| bei Problemen | 176,9 | 16,9 AT | **27 AT** | **2026-12-10** |
 
 Treiberkette A (realistisch): OPT-4 (wartet auf Zone daten.mjs) → WR-9 (wartet auf Zone daten.mjs)
 
@@ -202,9 +202,9 @@ Treiberkette A (realistisch): OPT-4 (wartet auf Zone daten.mjs) → WR-9 (wartet
 
 | Szenario | Rest-PT (Entwicklung) | Untergrenze Arbeit ÷ Kapazität | Simulierte Dauer | fertig am |
 |---|---|---|---|---|
-| optimistisch | 329,1 | 8,2 AT | **11 AT** | **2026-11-18** |
-| realistisch | 447,2 | 24,8 AT | **40 AT** | **2027-01-04** |
-| bei Problemen | 706,6 | 67,3 AT | **102 AT** | **2027-04-02** |
+| optimistisch | 328,3 | 8,2 AT | **11 AT** | **2026-11-18** |
+| realistisch | 446,2 | 24,8 AT | **40 AT** | **2027-01-04** |
+| bei Problemen | 705,1 | 67,1 AT | **102 AT** | **2027-04-02** |
 
 Treiberkette B (realistisch): WP-I30 (wartet auf Zone App.jsx) → WP-I37
 
@@ -212,9 +212,9 @@ Treiberkette B (realistisch): WP-I30 (wartet auf Zone App.jsx) → WP-I37
 
 | Szenario | Rest-PT (Entwicklung) | Untergrenze Arbeit ÷ Kapazität | Simulierte Dauer | fertig am |
 |---|---|---|---|---|
-| optimistisch | 332,1 | 8,3 AT | **53 AT** | **2027-01-21** |
-| realistisch | 450,9 | 25,1 AT | **92 AT** | **2027-03-17** |
-| bei Problemen | 712,2 | 67,8 AT | **135 AT** | **2027-05-21** |
+| optimistisch | 331,3 | 8,3 AT | **53 AT** | **2027-01-21** |
+| realistisch | 449,9 | 25 AT | **92 AT** | **2027-03-17** |
+| bei Problemen | 710,7 | 67,7 AT | **135 AT** | **2027-05-21** |
 
 | Szenario | Produktiv-Deploy (E-23) | C1: ACC45 + WP-19 produktionsreif (Pilot E-24 bestanden) | C2: Intelligence produktionsreif (WP-I37) |
 |---|---|---|---|
