@@ -12,7 +12,7 @@ import {
   KONFIG_STANDARD, auswerten, sammeln, freigabelisteLesen, g1Ci, g2Review, g3Schalter, g4Bild, g5Migration,
   g6Sicherung, g7Rueckweg, g8Blocker, g9Befunde, g10Freigabe, migrationsbericht, reviewNachweiseLesen,
   codeNamenFinden, vorlageLesen, wertAufloesen, abweichend, bildAngabenLesen, prsAusCommits, commitsOhnePr,
-  argumenteLesen, ssotReviewBelege, freigabeSchema, basisPruefen, ausfuehrOptionen,
+  argumenteLesen, ssotReviewBelege, freigabeSchema, basisPruefen, ausfuehrOptionen, ausfuehren, vorlageUnlesbar,
 } from "../werkzeug/release-pruefung.mjs";
 
 const WURZEL = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -1015,5 +1015,106 @@ describe("Delta-Review 4 #427: Umbenennungen und GitHub-Zuordnung (temporäres G
       expect(lauf(passend)).toBe(true);
       expect(lauf(KONFIG_STANDARD)).toBe(false); // origin ist nicht github.com/rinats-png/dienstplaner
     } finally { rmSync(fern, { recursive: true, force: true }); }
+  }, 90_000);
+});
+
+describe("Delta-Review 5 #427: G3 als Allowlist-Grammatik", () => {
+  const g3v = (text, art = "compose", pfad = "v") => g3Schalter({ codeNamen: ["CENTRIC_DEMO"], klassen: KL, unfertig: UNFERTIG,
+    quelltexte: { "src/lib/import-schnittstelle.js": "export const IMPORT_DATEI_AKTIV = false;" }, vorlagen: [{ pfad, art, pflicht: true, text }] }, KONFIG_STANDARD);
+
+  it("B1: jeder Fund zählt einzeln — ein späterer Aus-Wert hebt einen früheren aktiven nicht auf", () => {
+    const t = "services:\n  app:\n    environment:\n      CENTRIC_DEMO: \"true\"\n  worker:\n    environment:\n      CENTRIC_DEMO: \"false\"\n";
+    expect(g3v(t).ergebnis).toBe("NO-GO");
+    expect(g3v("CENTRIC_DEMO=true\nCENTRIC_DEMO=false\n", "env").ergebnis).toBe("NO-GO");
+    expect(g3v("ENV CENTRIC_DEMO=true\nENV CENTRIC_DEMO=false\n", "dockerfile").ergebnis).toBe("NO-GO");
+    expect(g3v("NODE_ENV=production\nNODE_ENV=development\n", "env").ergebnis).toBe("NO-GO");
+  });
+  it("B2: unvollständige Flow-Zeile und Wert auf der Folgezeile sind NO-GO", () => {
+    expect(g3v("    environment: {CENTRIC_DEMO: \"true\",\n      A: b }\n").ergebnis).toBe("NO-GO");
+    expect(g3v("    environment:\n      CENTRIC_DEMO:\n        \"true\"\n").ergebnis).toBe("NO-GO");
+    expect(g3v("    environment:\n      CENTRIC_DEMO:\n").ergebnis).toBe("NO-GO");
+    expect(g3v("    environment:\n      CENTRIC_DEMO: |\n        true\n").ergebnis).toBe("NO-GO");
+  });
+  it("B3: env_file, extends und include nur in der erlaubten Form", () => {
+    for (const t of [
+      "    \"env_file\": prod.env\n", "    'env_file': .env.prod\n", "  app: { image: x, env_file: prod.env }\n",
+      "    extends:\n      file: basis.yml\n      service: app\n", "include:\n  - andere.yml\n", "    env_file: [.env, prod.env]\n",
+    ]) expect(g3v(t).ergebnis, t).toBe("NO-GO");
+    expect(g3v("    env_file: .env\n").ergebnis).toBe("GO");
+  });
+  it("Allowlist: jede Zeile mit überwachtem Namen außerhalb der bekannten Formen ist NO-GO (auch Aus-Werte)", () => {
+    for (const [t, art] of [
+      ["    command: [\"node\", \"--x=CENTRIC_DEMO\"]\n", "compose"],
+      ["RUN echo CENTRIC_DEMO\n", "dockerfile"],
+      ["CENTRIC_DEMO false\n", "env"],
+      ["      \"CENTRIC_DEMO=false\",\n", "compose"],
+      ["    VAPID_PRIVATE:\n", "compose"],
+    ]) expect(g3v(t, art).ergebnis, t).toBe("NO-GO");
+    for (const [t, art] of [
+      ["    environment:\n      CENTRIC_DEMO: \"false\"\n      NODE_ENV: production\n", "compose"],
+      ["    environment:\n      - CENTRIC_DEMO=false\n", "compose"],
+      ["    environment: { CENTRIC_DEMO: \"false\" }\n", "compose"],
+      ["    image: x@${IMAGE_DIGEST:?fehlt}\n    environment:\n      CENTRIC_ZUSTAND: /zustand\n", "compose"],
+      ["CENTRIC_DEMO=false # aus\n", "env"],
+      ["ENV CENTRIC_DEMO=false\n", "dockerfile"],
+    ]) expect(g3v(t, art).ergebnis, t).toBe("GO");
+  });
+  it("B4: maskierter Strich in einer Zelle verschiebt keine Spalten", () => {
+    const text = KOPF + "| #1 | a \\| b | MERGEBAR | x |\n| #2 | Opus | NICHT MERGEN | x |";
+    const b = reviewNachweiseLesen([{ datei: "x.md", text }]);
+    expect([...b.keys()]).toEqual([1]);
+    const falsch = KOPF + "| #3 | a \\| MERGEBAR | NICHT MERGEN | x |";
+    expect(reviewNachweiseLesen([{ datei: "x.md", text: falsch }]).size).toBe(0);
+  });
+  it("B5: „erledigt“ nur direkt nach „MIT AUFLAGEN“", () => {
+    for (const u of ["NICHT MERGEN, erledigt", "erledigt", "2 Runden → erledigt", "MERGEBAR, erledigt"]) {
+      expect(reviewNachweiseLesen([{ datei: "x.md", text: KOPF + `| #1 | x | ${u} |` }]).size, u).toBe(0);
+    }
+    for (const u of ["MIT AUFLAGEN → erledigt", "MERGE-MIT-AUFLAGEN → erledigt", "2 Runden (MIT AUFLAGEN → erledigt)"]) {
+      expect(reviewNachweiseLesen([{ datei: "x.md", text: KOPF + `| #1 | x | ${u} |` }]).size, u).toBe(1);
+    }
+  });
+  it("B5/B6: PR-Autor null, Kopf null mit commit_id null sind kein Beleg", () => {
+    const pr = (a) => g2Review({ prs: [7], commitsOhnePr: [], anzahlCommits: 1, prAngaben: { 7: a } }).ergebnis;
+    const review = { state: "APPROVED", autor: "b", assoc: "MEMBER", commit: "k" };
+    expect(pr({ autor: "a", kopf: "k", reviews: [review] })).toBe("GO");
+    expect(pr({ autor: null, kopf: "k", reviews: [review] })).toBe("NO-GO");
+    expect(pr({ autor: "a", kopf: null, reviews: [{ ...review, commit: null }] })).toBe("NO-GO");
+  });
+  it("B6: Spalten-Reset bei einer Nicht-Tabellenzeile zwischen zwei Tabellen", () => {
+    const text = ["| PR | Urteil | X |", "|---|---|---|", "| #1 | MERGEBAR | x |", "Fließtext", "| #2 | MERGEBAR | x |"].join("\n");
+    expect([...reviewNachweiseLesen([{ datei: "x.md", text }]).keys()]).toEqual([1]);
+  });
+  it("Gegenprobe: echte Vorlagen des Repositorys ohne Fehlalarm", () => {
+    const e = sammeln({ wurzel: WURZEL, offline: true, fixture: {}, jetztMs: JETZT_MS });
+    for (const v of e.vorlagen.filter((x) => x.text != null)) expect(vorlageUnlesbar(v.text, v.art), v.pfad).toEqual([]);
+  }, 60_000);
+});
+
+describe("Delta-Review 5 #427: git und gh laufen wirklich mit Zeitgrenze", () => {
+  let repo;
+  beforeEach(() => {
+    repo = mkdtempSync(join(tmpdir(), "rel1-r5-"));
+    const g = (...a) => spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false", ...a], { cwd: repo, encoding: "utf8" });
+    g("init", "-q"); writeFileSync(join(repo, "a.txt"), "1"); g("add", "-A"); g("commit", "-q", "-m", "a");
+    writeFileSync(join(repo, "b.txt"), "2"); g("add", "-A"); g("commit", "-q", "-m", "b");
+  });
+  afterEach(() => rmSync(repo, { recursive: true, force: true }));
+  it("jeder Aufruf über ausfuehren.exec trägt timeout 60 s (git und gh)", () => {
+    const echt = ausfuehren.exec;
+    const aufrufe = [];
+    ausfuehren.exec = (bin, args, opt) => {
+      aufrufe.push([bin, opt?.timeout]);
+      if (bin === "gh") throw new Error("kein Netz im Test");
+      return echt(bin, args, opt);
+    };
+    try {
+      const k = spawnSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" }).stdout.trim();
+      const b = spawnSync("git", ["rev-parse", "HEAD~1"], { cwd: repo, encoding: "utf8" }).stdout.trim();
+      sammeln({ wurzel: repo, offline: false, kandidatSha: k, basisSha: b, releaseId: "x1y", digest: D, jetztMs: JETZT_MS });
+    } finally { ausfuehren.exec = echt; }
+    expect(aufrufe.some(([bin]) => bin === "git")).toBe(true);
+    expect(aufrufe.some(([bin]) => bin === "gh")).toBe(true);
+    expect(aufrufe.filter(([, t]) => t !== 60_000)).toEqual([]);
   }, 90_000);
 });
