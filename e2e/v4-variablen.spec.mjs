@@ -6,7 +6,11 @@
    Geprüft je Fall: Anmeldung → F5 → computed background der drei Klassen ist die Token-Farbe des App-Themas (nicht
    transparent), bei 390 px und 1280 px; App-Thema über die gemerkte Wahl dieses Geräts (centric.thema, schreibt nichts
    auf dem Server), Systemthema über emulateMedia — auch System ≠ App. Dazu ein Themenwechsel in der App ohne Neuladen
-   (keine Wahl gemerkt, System wechselt). Läuft einmal je Lauf im Projekt 390x844 und stellt die Breiten selbst ein. */
+   (keine Wahl gemerkt, System wechselt). Läuft einmal je Lauf im Projekt 390x844 und stellt die Breiten selbst ein.
+   Bremsen-Bilanz: 5 Anmeldungen als Leitung je Lauf (nur Projekt 390x844; F5 und Themenwechsel nutzen die Sitzung, keine
+   neue Anmeldung). Die Bremse „anmelden-code“ erlaubt 20 je 300 s und Code; anmelden() (hilfen.mjs) wählt den Code je Test
+   aus dem Zugangspool (e2e/herkunft.mjs codeSchluessel, umgebung.mjs ZUGANG_POOL), die Herkunft je Test ebenso.
+   Zeitgrenze 150 s je Fall: lokal 43–49 s, der globale Rahmen von 90 s (playwright.config.mjs) wäre auf CI zu knapp. */
 import { test, expect, anmelden } from "./hilfen.mjs";
 import { V4_FARBEN } from "../src/v4/tokens.js";
 
@@ -59,6 +63,7 @@ async function bereit(page) {
 }
 
 test.describe("V4-2b: --v4-*-Variablen nach Neuladen mit Sitzung", () => {
+  test.setTimeout(150_000);
   for (const [appThema, system] of FAELLE) {
     test(`App ${appThema}, System ${system === "dark" ? "dunkel" : "hell"}: F5 mit Sitzung`, async ({ page }, testInfo) => {
       test.skip(testInfo.project.name !== PROJEKT, "einmal je Lauf; die Breiten stellt der Test selbst ein");
@@ -86,8 +91,11 @@ test.describe("V4-2b: --v4-*-Variablen nach Neuladen mit Sitzung", () => {
       pruefen(await messen(page), "hell", `${breite.width} px hell`);
       await page.emulateMedia({ colorScheme: "dark" });
       await expect.poll(() => page.evaluate(() => document.documentElement.getAttribute("data-thema"))).toBe("dunkel");
-      /* Flächen mit Übergang (App.jsx: transition background .14–.18 s) erst nach dessen Ende messen. */
-      await page.waitForTimeout(500);
+      /* Bedingung statt fester Pause: Mit reducedMotion „reduce“ (playwright.config.mjs) startet der Übergang einer Fläche
+         erst mit dem nächsten Bild; direkt nach dem Attributwechsel liefert getComputedStyle noch den alten Wert. */
+      const t = V4_FARBEN.dunkel;
+      await expect.poll(() => messen(page), { timeout: 10000, message: `${breite.width} px: Flächen folgen dem Wechsel` })
+        .toMatchObject({ seitenleiste: rgb(t.sidebar), karte: rgb(t.flaeche), primaer: rgb(t.accent) });
       pruefen(await messen(page), "dunkel", `${breite.width} px nach Wechsel auf dunkel`);
     }
   });

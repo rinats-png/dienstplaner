@@ -147,7 +147,11 @@ Der E2E-Test läuft nur im Projekt 390x844 und stellt beide Breiten selbst ein (
 Gerätematrix). App-Thema über die gemerkte Wahl dieses Geräts (`centric.thema`), System über `emulateMedia`; nichts
 wird auf dem Server geschrieben außer dem bestehenden `tourZu` in `anmelden()`. Vor Grün zwei Anpassungen am neuen
 Test (kein bestehender Test geändert): `.karte` ohne eigene Inline-Fläche messen (Hinweiskarte trägt Warnfarbe inline),
-nach dem Themenwechsel 500 ms für die Übergänge (`transition background .14–.18 s`) warten.
+nach dem Themenwechsel auf die Flächen warten (`expect.poll` auf die drei Hintergründe, 10 s). Ursache: Mit
+`reducedMotion: "reduce"` startet der Übergang erst mit dem nächsten Bild; direkt nach dem Attributwechsel liefert
+`getComputedStyle` noch den alten Wert (nicht die Dauer 0,14–0,18 s). Review #426: feste Pause durch Bedingung ersetzt,
+`test.setTimeout(150 s)` (lokal 43–49 s je Fall), Bremsen-Bilanz im Kopf der Spec (5 Leitungsanmeldungen je Lauf,
+nur 390x844; Code je Test aus dem Zugangspool, #423).
 
 **Fix (minimal, nur bestehende Tokens).** `src/v4/stil.js`: neue Ausgabe `v4AppVariablen()` aus denselben
 `festeVariablen()`/`farbVariablen()` wie der Einstieg, gebunden an `:root[data-v4-app][data-thema="hell"|"dunkel"]`
