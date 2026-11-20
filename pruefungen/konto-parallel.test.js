@@ -72,7 +72,7 @@ async function betreiberSitzung() {
     mandantId: null }, 3600e3)).token;
 }
 
-describe.sequential("Zugang: Sperre, Faktorvermerk und Bindung der Erstanmeldung gleichzeitig", () => {
+describe("Zugang: Sperre, Faktorvermerk und Bindung der Erstanmeldung gleichzeitig", { concurrent: false }, () => {
   it("deterministisch: Sperre und Faktorvermerk in der Pause der Erstanmeldung bleiben erhalten; Bindung auch", async () => {
     const raum = "pk-a";
     await L.bestandSchreiben(store(), raum, leererBetrieb(raum), { durch: "Prüfung" });

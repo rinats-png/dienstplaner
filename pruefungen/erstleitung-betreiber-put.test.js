@@ -217,7 +217,7 @@ describe.each([
 });
 
 /* ------------------- Teil 2: Marke nicht schreibbar → nichts geschrieben ------------------- */
-describe.sequential("F1, in-process: Regime-Marke scheitert → 503, kein Betrieb ohne Marke", () => {
+describe("F1, in-process: Regime-Marke scheitert → 503, kein Betrieb ohne Marke", { concurrent: false }, () => {
   const WIRT = "127.0.0.1:3000";
   const RAUM = "f1put-fehler";
   let wurzel, laden, handler, nr = 0;
