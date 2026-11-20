@@ -12,7 +12,7 @@ import {
   KONFIG_STANDARD, auswerten, sammeln, freigabelisteLesen, g1Ci, g2Review, g3Schalter, g4Bild, g5Migration,
   g6Sicherung, g7Rueckweg, g8Blocker, g9Befunde, g10Freigabe, migrationsbericht, reviewNachweiseLesen,
   codeNamenFinden, vorlageLesen, wertAufloesen, abweichend, bildAngabenLesen, prsAusCommits, commitsOhnePr,
-  argumenteLesen, ssotReviewBelege, freigabeSchema, basisPruefen,
+  argumenteLesen, ssotReviewBelege, freigabeSchema, basisPruefen, ausfuehrOptionen,
 } from "../werkzeug/release-pruefung.mjs";
 
 const WURZEL = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -60,6 +60,7 @@ const SSOT = { pakete: [
   { id: "REL-2", prio: "P1", status: "BLOCKED", strang: "folge", pr: [], titel: "Release-Prozess selbst, kein Befund" },
 ] };
 
+const KOPF = "| PR | Modell | Urteil | Stand |\n|---|---|---|---|\n";
 const NACHWEISE = JSON.parse(readFileSync(BEISPIEL, "utf8")).nachweise;
 const fixtureGo = () => JSON.parse(readFileSync(BEISPIEL, "utf8"));
 
@@ -192,7 +193,7 @@ describe("G1 CI", () => {
 
 describe("G2 Review und Commits ohne PR", () => {
   it("Tabellenurteil: MERGEBAR und „erledigt“ belegen; Verneinung, offene Auflagen und Ausstehendes nicht", () => {
-    const b = reviewNachweiseLesen([{ datei: "x.md", text: [
+    const b = reviewNachweiseLesen([{ datei: "x.md", text: KOPF + [
       "| #1 | Opus | 2 Runden → MERGEBAR | gemergt |",
       "| #2 | Opus | MIT AUFLAGEN → erledigt | offen |",
       "| #3 | Opus | MIT AUFLAGEN | offen |",
@@ -205,11 +206,11 @@ describe("G2 Review und Commits ohne PR", () => {
   });
   it("die letzte Aussage zählt: eine spätere negative Zeile hebt eine frühere positive auf", () => {
     const b = reviewNachweiseLesen([
-      { datei: "docs/acc45/REVIEW-NACHWEIS-2026-11-19.md", text: "| #8 | Opus | MERGEBAR | gemergt |\n| #9 | Opus | MERGEBAR | gemergt |" },
-      { datei: "docs/acc45/REVIEW-NACHWEIS-2026-11-20.md", text: "| #8 | Opus | NICHT FREIGEGEBEN | offen |" },
+      { datei: "docs/acc45/REVIEW-NACHWEIS-2026-11-19.md", text: KOPF + "| #8 | Opus | MERGEBAR | gemergt |\n| #9 | Opus | MERGEBAR | gemergt |" },
+      { datei: "docs/acc45/REVIEW-NACHWEIS-2026-11-20.md", text: KOPF + "| #8 | Opus | NICHT FREIGEGEBEN | offen |" },
     ]);
     expect([...b.keys()]).toEqual([9]);
-    const c = reviewNachweiseLesen([{ datei: "y.md", text: "| #8 | Opus | MIT AUFLAGEN | offen |\n| #8 | Opus | Auflagen erledigt, MERGEBAR | offen |" }]);
+    const c = reviewNachweiseLesen([{ datei: "y.md", text: KOPF + "| #8 | Opus | MIT AUFLAGEN | offen |\n| #8 | Opus | MIT AUFLAGEN → erledigt | offen |" }]);
     expect([...c.keys()]).toEqual([8]);
   });
   it("PR-Text allein ist kein Beleg; Selbst-Review des Autors zählt nicht", () => {
@@ -218,7 +219,7 @@ describe("G2 Review und Commits ohne PR", () => {
     expect(g.manuell).toEqual(["#7"]);
   });
   it("Belege: GitHub-Review eines anderen Kontos, Dokument, SSOT, Betreiberbestätigung", () => {
-    expect(g2Review({ prs: [7], commitsOhnePr: [], prAngaben: { 7: { autor: "a", reviews: [{ state: "APPROVED", autor: "b" }] } } }).ergebnis).toBe("GO");
+    expect(g2Review({ prs: [7], commitsOhnePr: [], prAngaben: { 7: { autor: "a", kopf: "k", reviews: [{ state: "APPROVED", autor: "b", assoc: "MEMBER", commit: "k" }] } } }).ergebnis).toBe("GO");
     expect(g2Review({ prs: [7], commitsOhnePr: [], dokBelege: new Map([[7, "x"]]) }).ergebnis).toBe("GO");
     expect(g2Review({ prs: [7], commitsOhnePr: [], ssotBelege: new Map([[7, "x"]]) }).ergebnis).toBe("GO");
     expect(g2Review({ prs: [7], commitsOhnePr: [], freigabe: { reviewBestaetigt: [7] } }).ergebnis).toBe("GO");
@@ -644,7 +645,7 @@ describe("Delta-Review #427: Fälschung, Basis, Wertlücken, Kandidaten-Stand", 
     expect(g3("CENTRIC_ERSTLEITUNG_STRENG=false\n").ergebnis).toBe("GO");
   });
   it("Auflage 4: Vorbehalte und Verneinungen sind kein Beleg; Format mit Titel und Urteil-Spalte wird gelesen", () => {
-    const b = reviewNachweiseLesen([{ datei: "REVIEW-NACHWEIS-a.md", text: [
+    const b = reviewNachweiseLesen([{ datei: "REVIEW-NACHWEIS-a.md", text: KOPF + [
       "| #5 | x | MERGEBAR |", "| #5 | y | NICHT MERGEBAR |", "| #6 | x | unerledigt |", "| #7 | x | UNMERGEBAR |",
       "| #8 | x | MERGEBAR erst nach Behebung B1 |", "| #9 | x | NO-GO, MERGEBAR? nein |", "| #10 | x | MERGEBAR MIT AUFLAGEN (A1 offen) |",
       "| #11 | x | 2 Runden (MIT AUFLAGEN, MERGEBAR) |", "| #12 | x | MERGEBAR, dann MIT AUFLAGEN |",
@@ -660,7 +661,7 @@ describe("Delta-Review #427: Fälschung, Basis, Wertlücken, Kandidaten-Stand", 
     expect([...f.keys()]).toEqual([360]);
   });
   it("Hinweis: CHANGES_REQUESTED nach APPROVED hebt den Beleg auf", () => {
-    const pr = (reviews) => g2Review({ prs: [7], commitsOhnePr: [], anzahlCommits: 1, prAngaben: { 7: { autor: "a", reviews } } }).ergebnis;
+    const pr = (reviews) => g2Review({ prs: [7], commitsOhnePr: [], anzahlCommits: 1, prAngaben: { 7: { autor: "a", kopf: "k", reviews: reviews.map((x) => ({ assoc: "COLLABORATOR", commit: "k", ...x })) } } }).ergebnis;
     expect(pr([{ state: "APPROVED", autor: "b" }])).toBe("GO");
     expect(pr([{ state: "APPROVED", autor: "b" }, { state: "CHANGES_REQUESTED", autor: "b" }])).toBe("NO-GO");
     expect(pr([{ state: "APPROVED", autor: "b" }, { state: "CHANGES_REQUESTED", autor: "c" }])).toBe("NO-GO");
@@ -744,12 +745,12 @@ describe("Delta-Review 3 #427: Urteile, Basisbindung, Online-Pfad mit realistisc
       "verweigert, MERGEBAR", "Beleg fehlt, MERGEBAR", "unerledigt, MERGEBAR",
     ];
     negativ.forEach((u, i) => {
-      const b = reviewNachweiseLesen([{ datei: "x.md", text: `| #${i + 1} | x | ${u} |` }]);
+      const b = reviewNachweiseLesen([{ datei: "x.md", text: KOPF + `| #${i + 1} | x | ${u} |` }]);
       expect(b.size, u).toBe(0);
     });
     const positiv = ["MERGEBAR", "MERGEBAR.", "2 Runden (MIT AUFLAGEN, MERGEBAR)", "MIT AUFLAGEN → erledigt", "MERGE-MIT-AUFLAGEN; Delta MERGE-OK", "2 Runden → MERGEBAR"];
     positiv.forEach((u, i) => {
-      const b = reviewNachweiseLesen([{ datei: "x.md", text: `| #${i + 1} | x | ${u} |` }]);
+      const b = reviewNachweiseLesen([{ datei: "x.md", text: KOPF + `| #${i + 1} | x | ${u} |` }]);
       expect(b.size, u).toBe(1);
     });
   });
@@ -825,7 +826,7 @@ describe("Delta-Review 3 #427: temporäres Git-Repo (unabhängig von Historie un
   });
   it("A3: realistischer gh-Ersatz — gemergt, nicht gemergt, falscher merge_commit_sha, Reviews nur paginiert", () => {
     const pr = {
-      1: { merged_at: "2026-11-20T00:00:00Z", merge_commit_sha: m1, head: { ref: "acc45/f1" }, user: { login: "a" } },
+      1: { merged_at: "2026-11-20T00:00:00Z", merge_commit_sha: m1, head: { ref: "acc45/f1", sha: f1 }, user: { login: "a" } },
       2: { merged_at: null, merge_commit_sha: m2, head: { ref: "acc45/f2" }, user: { login: "a" } },
       3: { merged_at: "2026-11-20T00:00:00Z", merge_commit_sha: "9".repeat(40), head: { ref: "acc45/f3" }, user: { login: "a" } },
     };
@@ -838,7 +839,7 @@ describe("Delta-Review 3 #427: temporäres Git-Repo (unabhängig von Historie un
       }
       if ((m = /pulls\/(\d+)\/reviews/.exec(pfad))) {
         if (!paginiert) return { fehler: "nicht paginiert" };
-        return [[{ state: "APPROVED", user: { login: "b" } }]];
+        return [[{ state: "APPROVED", user: { login: "b" }, author_association: "MEMBER", commit_id: f1 }]];
       }
       if ((m = /pulls\/(\d+)$/.exec(pfad))) return pr[m[1]];
       if (/commits\/[0-9a-f]+\/pulls/.test(pfad)) return [];
@@ -865,10 +866,154 @@ describe("Delta-Review 3 #427: temporäres Git-Repo (unabhängig von Historie un
       g("remote", "add", "origin", fern);
       g("push", "-q", "origin", "HEAD:refs/heads/main");
       const gh = () => { throw new Error("kein Netz"); };
-      const lauf = () => sammeln({ wurzel: repo, offline: false, kandidatSha: kandidat, basisSha: basis, releaseId: "x1y", digest: D, jetztMs: JETZT_MS, gh });
+      // Die Bindung an GitHub (origin-URL) wird hier auf das Test-Remote umgestellt; Zweig muss main sein.
+      const konfig = { ...KONFIG_STANDARD, repoUrlMuster: "^" + fern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$" };
+      const lauf = () => sammeln({ wurzel: repo, offline: false, kandidatSha: kandidat, basisSha: basis, releaseId: "x1y", digest: D, jetztMs: JETZT_MS, gh }, konfig);
       expect(lauf().stand.headGepusht).toBe(true);
       commit("lokal.txt", "x", "nur lokal");
       expect(lauf().stand.headGepusht).toBe(false);
+    } finally { rmSync(fern, { recursive: true, force: true }); }
+  }, 90_000);
+});
+
+describe("Delta-Review 4 #427", () => {
+  const KL4 = KL;
+  const g3c = (text, art = "compose", pfad = "v") => g3Schalter({ codeNamen: ["CENTRIC_DEMO"], klassen: KL4, unfertig: UNFERTIG,
+    quelltexte: { "src/lib/import-schnittstelle.js": "export const IMPORT_DATEI_AKTIV = false;" }, vorlagen: [{ pfad, art, pflicht: true, text }] }, KONFIG_STANDARD);
+
+  it("2: gültige Compose-Schreibweisen werden gelesen oder sind NO-GO (unlesbar)", () => {
+    for (const t of [
+      "    environment: [\"CENTRIC_DEMO=true\"] # Kommentar\n",
+      "    environment: { CENTRIC_DEMO: \"1\" } # k\n",
+      "    environment:\n      \"CENTRIC_DEMO\": \"true\"\n",
+      "    environment:\n      'CENTRIC_DEMO': yes\n",
+      "    environment: [\n      \"CENTRIC_DEMO=true\",\n    ]\n",
+      "    environment: {\n      CENTRIC_DEMO: \"true\",\n    }\n",
+      "    x: &anker\n      CENTRIC_DEMO: on\n",
+      "    environment: !!map { CENTRIC_DEMO: true }\n",
+    ]) expect(g3c(t).ergebnis, t).toBe("NO-GO");
+  });
+  it("2: eine nicht sicher lesbare Zeile mit CENTRIC_ ist NO-GO, auch wenn der Wert aus wäre", () => {
+    const g = g3c("    environment: { CENTRIC_DEMO: false, A: b } extra\n");
+    expect(g.ergebnis).toBe("NO-GO");
+    expect(g.gruende.join()).toMatch(/nicht sicher lesbar/);
+    expect(g3c("    environment:\n      CENTRIC_DEMO: \"false\"\n      NODE_ENV: production\n").ergebnis).toBe("GO");
+  });
+  it("2: env_file außer .env wird nicht verfolgt → NO-GO", () => {
+    expect(g3c("    env_file: .env\n").ergebnis).toBe("GO");
+    expect(g3c("    env_file: prod.env\n").ergebnis).toBe("NO-GO");
+    expect(g3c("    env_file:\n      - .env\n      - extra.env\n").ergebnis).toBe("NO-GO");
+  });
+  it("3: GitHub-Review zählt nur mit Mitgliedsrolle, auf dem PR-Kopf und mit Konto", () => {
+    const pr = (r) => g2Review({ prs: [7], commitsOhnePr: [], anzahlCommits: 1, prAngaben: { 7: { autor: "a", kopf: "k", reviews: [{ state: "APPROVED", autor: "b", assoc: "MEMBER", commit: "k", ...r }] } } }).ergebnis;
+    expect(pr({})).toBe("GO");
+    expect(pr({ assoc: "OWNER" })).toBe("GO");
+    expect(pr({ assoc: "COLLABORATOR" })).toBe("GO");
+    expect(pr({ assoc: "NONE" })).toBe("NO-GO");
+    expect(pr({ assoc: "CONTRIBUTOR" })).toBe("NO-GO");
+    expect(pr({ assoc: undefined })).toBe("NO-GO");
+    expect(pr({ commit: "alt" })).toBe("NO-GO");
+    expect(pr({ autor: null })).toBe("NO-GO");
+    expect(g2Review({ prs: [7], commitsOhnePr: [], anzahlCommits: 1, prAngaben: { 7: { autor: "a", reviews: [{ state: "APPROVED", autor: "b", assoc: "MEMBER", commit: "k" }] } } }).ergebnis).toBe("NO-GO"); // ohne Kopf
+  });
+  it("4: echte Positivform — Bedingungen, Vorbehalte und fremde Teile sind kein Beleg", () => {
+    for (const u of ["wenn CI grün, MERGEBAR", "unter Auflagen A1, MERGEBAR", "CI ROT, MERGEBAR", "Rückfrage — erledigt",
+      "Auflage B1 offen → MERGEBAR", "falls grün → MERGEBAR", "sofern B1 → MERGEBAR", "sobald CI; MERGEBAR", "statisch MERGEBAR",
+      "MERGEBAR (A1)", "Opus → MERGEBAR"]) {
+      expect(reviewNachweiseLesen([{ datei: "x.md", text: KOPF + `| #1 | x | ${u} |` }]).size, u).toBe(0);
+    }
+    for (const u of ["MERGEBAR", "2 Runden → MERGEBAR", "3 Runden (MIT AUFLAGEN, MIT AUFLAGEN, MERGEBAR)", "MIT AUFLAGEN → erledigt",
+      "NICHT MERGEN; Delta MERGE-OK", "MERGE-MIT-AUFLAGEN; Delta MERGE-OK", "Runde 1 → MERGEBAR"]) {
+      expect(reviewNachweiseLesen([{ datei: "x.md", text: KOPF + `| #1 | x | ${u} |` }]).size, u).toBe(1);
+    }
+  });
+  it("5: Tabellen ohne PR-Kopfzeile zählen nicht; die Urteil-Spalte gilt je Tabelle", () => {
+    expect(reviewNachweiseLesen([{ datei: "x.md", text: "| #1 | x | MERGEBAR |" }]).size).toBe(0);
+    const text = [
+      "| PR | Kopf | Modell | Urteil |", "|---|---|---|---|", "| #1 | a | Opus | MERGEBAR |", "",
+      "Andere Tabelle:", "| Nr | Befund | Urteil |", "|---|---|---|", "| #2 | x | MERGEBAR |", "",
+      "| PR | Urteil | Stand |", "|---|---|---|", "| #3 | MERGEBAR | gemergt |",
+    ].join("\n");
+    expect([...reviewNachweiseLesen([{ datei: "x.md", text }]).keys()]).toEqual([1, 3]);
+  });
+  it("8: übersteuert auch online mit --jetzt (Exit 3); online, echte Uhr, alles GO → Exit 0", () => {
+    const e = sammeln({ wurzel: w, offline: true, fixture: fixtureGo(), releaseId: "v4-r1", digest: D, jetztMs: JETZT_MS });
+    e.modus = "online";
+    e.jetztUeberschrieben = false;
+    const r0 = auswerten(e);
+    expect([r0.gesamt, r0.uebersteuert, r0.exitCode]).toEqual(["GO", false, 0]);
+    e.jetztUeberschrieben = true;
+    const r3 = auswerten(e);
+    expect([r3.uebersteuert, r3.exitCode]).toEqual([true, 3]);
+  });
+  it("8: git- und gh-Aufrufe laufen mit Zeitgrenze 60 s", () => {
+    expect(ausfuehrOptionen("x").timeout).toBe(60_000);
+    expect(ausfuehrOptionen("x").cwd).toBe("x");
+  });
+});
+
+describe("Delta-Review 4 #427: Umbenennungen und GitHub-Zuordnung (temporäres Git-Repo)", () => {
+  let repo;
+  const g = (...args) => {
+    const r = spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false", "-c", "init.defaultBranch=main", ...args], { cwd: repo, encoding: "utf8" });
+    if (r.status !== 0) throw new Error(args.join(" ") + ": " + r.stderr);
+    return r.stdout.trim();
+  };
+  const schreib = (rel, inhalt) => { mkdirSync(join(repo, rel, ".."), { recursive: true }); writeFileSync(join(repo, rel), inhalt); };
+  beforeEach(() => { repo = mkdtempSync(join(tmpdir(), "rel1-r4-")); g("init", "-q"); });
+  afterEach(() => rmSync(repo, { recursive: true, force: true }));
+  const ghLeer = (zuordnung = {}) => (pfad) => {
+    const m = /commits\/([0-9a-f]+)\/pulls/.exec(pfad);
+    if (m) return zuordnung[m[1]] || [];
+    if (/check-runs/.test(pfad)) return [{ check_runs: [] }];
+    throw new Error("unbekannt: " + pfad);
+  };
+
+  it("1: Umbenennung mit Änderung (schreibhalt.mjs → halt.mjs) ist für G5 und G10 sichtbar", () => {
+    const inhalt = Array.from({ length: 40 }, (_, i) => `export const z${i} = ${i};`).join("\n") + "\n";
+    schreib("server/lib/schreibhalt.mjs", inhalt);
+    g("add", "-A"); g("commit", "-q", "-m", "Basis");
+    const basis = g("rev-parse", "HEAD");
+    g("mv", "server/lib/schreibhalt.mjs", "server/lib/halt.mjs");
+    schreib("server/lib/halt.mjs", inhalt + "export const neu = 1;\n");
+    g("add", "-A"); g("commit", "-q", "-m", "Umbenennung");
+    const kandidat = g("rev-parse", "HEAD");
+    g("mv", "server/lib/halt.mjs", "server/lib/halt2.mjs");
+    g("commit", "-q", "-m", "danach umbenannt");
+    const e = sammeln({ wurzel: repo, offline: false, kandidatSha: kandidat, basisSha: basis, releaseId: "x1y", digest: D, jetztMs: JETZT_MS, gh: ghLeer() });
+    expect(e.geaenderteDateien).toContain("server/lib/schreibhalt.mjs");
+    const b = migrationsbericht({ basis, kandidat, geaenderteDateien: e.geaenderteDateien, neueDateien: e.neueDateien }, KONFIG_STANDARD);
+    expect(b.betroffen).toContain("W-2");
+    expect(e.stand.geaendertSeitKandidat).toEqual(expect.arrayContaining(["server/lib/halt.mjs", "server/lib/halt2.mjs"]));
+  }, 90_000);
+  it("8: GitHub-Zuordnung zählt nur gemergte PRs (merged_at)", () => {
+    schreib("a.txt", "1"); g("add", "-A"); g("commit", "-q", "-m", "Basis");
+    const basis = g("rev-parse", "HEAD");
+    schreib("b.txt", "2"); g("add", "-A"); g("commit", "-q", "-m", "direkt");
+    const kandidat = g("rev-parse", "HEAD");
+    const offen = [{ number: 5, merged_at: null, head: { ref: "acc45/x" } }];
+    const gemergt = [{ number: 5, merged_at: "2026-11-20T00:00:00Z", head: { ref: "acc45/x" } }];
+    const lauf = (z) => sammeln({ wurzel: repo, offline: false, kandidatSha: kandidat, basisSha: basis, releaseId: "x1y", digest: D, jetztMs: JETZT_MS, gh: ghLeer({ [kandidat]: z }) });
+    expect(lauf(offen).commitPrZuordnung[kandidat]).toEqual([]);
+    expect(lauf(gemergt).commitPrZuordnung[kandidat]).toEqual([5]);
+    expect(lauf([{ ...gemergt[0], head: { ref: "release/rc" } }]).commitPrZuordnung[kandidat]).toEqual([]);
+  }, 90_000);
+  it("6: gepusht nur, wenn origin das GitHub-Repository ist und HEAD auf main liegt", () => {
+    schreib("a.txt", "1"); g("add", "-A"); g("commit", "-q", "-m", "Basis");
+    const basis = g("rev-parse", "HEAD");
+    schreib("b.txt", "2"); g("add", "-A"); g("commit", "-q", "-m", "K");
+    const kandidat = g("rev-parse", "HEAD");
+    const fern = mkdtempSync(join(tmpdir(), "rel1-fern4-"));
+    try {
+      spawnSync("git", ["init", "-q", "--bare", fern], { encoding: "utf8" });
+      g("remote", "add", "origin", fern);
+      g("push", "-q", "origin", "HEAD:refs/heads/nebenzweig");
+      const passend = { ...KONFIG_STANDARD, repoUrlMuster: "^" + fern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$" };
+      const lauf = (k) => sammeln({ wurzel: repo, offline: false, kandidatSha: kandidat, basisSha: basis, releaseId: "x1y", digest: D, jetztMs: JETZT_MS, gh: ghLeer() }, k).stand.headGepusht;
+      expect(lauf(passend)).toBe(false); // nur auf nebenzweig
+      g("push", "-q", "origin", "HEAD:refs/heads/main");
+      expect(lauf(passend)).toBe(true);
+      expect(lauf(KONFIG_STANDARD)).toBe(false); // origin ist nicht github.com/rinats-png/dienstplaner
     } finally { rmSync(fern, { recursive: true, force: true }); }
   }, 90_000);
 });
