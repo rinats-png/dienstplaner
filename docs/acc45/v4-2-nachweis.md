@@ -181,3 +181,58 @@ eslint 0 Fehler (nur bestehende Warnungen), tsc 0. E2E (`E2E_PORT` frei gewählt
 14/14 (Projekte 390x844 und 1024x768).
 
 **Offen.** V4-2c (Kontrast `.slink.on`/`:hover` hell) bleibt eigenes Paket. Vollregression nur in CI.
+
+## 8. V4-2c — Kontrast der Seitenleisten-Einträge (`.slink`) hell und dunkel
+
+Basis `origin/integration/release-v4` 5876ff48 (Merge #426), Branch `acc45/v4/v4-2c-kontrast`.
+
+**Ursache (Code).** `src/v4/app-stil.js` setzte `.slink:hover` und `.slink.on` auf `var(--v4-glas)`. Das ist die
+Glasfläche des Inhalts (`V4_GLAS.*.flaeche`), nicht der Seitenleiste. Die Seitenleiste ist in beiden Themen dunkel, die
+Schrift ist weiß (`V4_SEITENLEISTE.schrift`). Hell: rgba(255,255,252,.72) über `#0e3034` = rgb(188,197,196) unter Weiß
+= **1,76:1**. Dunkel: 13,4:1, aber Hover und Aktiv waren dieselbe Fläche. Ab 1025 px ist die Seitenleiste ausgeblendet
+(`gestalt/stil.js`); der Befund war nur in der Schublade sichtbar. Geprüft werden trotzdem beide Layouts.
+
+**Test zuerst** (Commits f27f3a28, 3a8e5b81, 793e8de9; rot auf 5876ff48):
+
+| Test | rot (alt) | grün (neu) |
+|---|---|---|
+| `pruefungen/v4-app-stil.test.js`, Block „V4-2c“ (in `pruefung:querschnitt`): gerenderter App-Stil (App serverseitig), kleine Kaskade für html > … > `.seitenleiste` > `.snav` > `button.slink` (Spezifität, Reihenfolge, `!important`, `@media` nach Breite und Farbschema, Vererbung, `var()`), Flächen über die Vorfahren gemischt. Zustände normal/hover/aktiv/aktiv+hover/focus-visible/aktiv+focus-visible × hell/dunkel × 390/1280 px: Text ≥ 4,5:1, Fokusring ≥ 3:1 gegen die angrenzenden Farben, Hover ≠ Aktiv ≠ normal | 15/55 rot (hell 1,76:1; dunkel Hover = Aktiv) | 55/55 |
+| `e2e/v4-seitenleiste-kontrast.spec.mjs` (neu, nur Projekt 390x844): Schublade per Tastatur öffnen, aktiver Eintrag mit Fokus, anderer Eintrag im Hover, Messung aus `getComputedStyle`, danach axe mit offener Schublade (`schublade-leitung`) | 2/2 rot (hell aktiv 1,76:1; dunkel Hover = Aktiv `rgba(25, 65, 68, 0.62)`) | 2/2, axe 0 Verstöße |
+
+Anpassung am neuen Test vor Grün (kein bestehender Test geändert): Der Fokusring wird gegen die **angrenzenden**
+Farben gemessen (WCAG 1.4.11). Mit `outline-offset` 2 px liegt zwischen Ring und Eintrag ein Spalt in der Farbe der
+Seitenleiste; der Ring grenzt innen und außen an die Seitenleiste. Ohne Abstand würde zusätzlich gegen den Eintrag
+geprüft. In der E2E-Spec setzt der Test den Fokus selbst auf den aktiven Eintrag, falls er nach dem Öffnen noch nicht
+dort liegt; `:focus-visible` wird geprüft. Die axe-Specs `barrierefreiheit*.spec.mjs` öffnen die Schublade nicht, darum
+die neue Spec. Bremsen-Bilanz: 2 Leitungsanmeldungen je Lauf, Code und Herkunft aus dem Zugangspool (`anmelden()`).
+
+**Fix (nur bestehende Tokens).** `src/v4/stil.js`: `festeVariablen()` gibt `V4_SEITENLEISTE` als `--v4-seitenleiste-*`
+aus (für Einstieg und App gleich, kein neuer Farbwert). `src/v4/app-stil.js`: `.slink:hover` →
+`var(--v4-seitenleiste-hover)` (rgba(255,255,255,.07)), `.slink.on` → `var(--v4-seitenleiste-an)` (rgba(255,255,255,.13)).
+Das sind dieselben Tönungen wie im Grundstil (`--sl-hover`, `--sl-an` in App.jsx). Rand und Akzentkante von `.slink.on`
+unverändert. Klassennamen und Locators unverändert.
+
+**Neue Kontrastwerte** (gerechnet aus den Tokens, gleich im Unit-Test; E2E im Browser bestätigt):
+
+| Zustand | hell (Leiste `#0e3034`) | dunkel (Leiste `#071e22`) |
+|---|---|---|
+| normal (Schrift `schriftLeise` .74) | 8,37:1 | 9,82:1 |
+| Hover, Fläche rgb(31,62,66) / rgb(24,46,49) | **11,43:1** (vorher 1,76:1) | 14,27:1 (vorher 13,4:1) |
+| Aktiv, Fläche rgb(45,75,78) / rgb(39,59,63) | **9,42:1** (vorher 1,76:1) | 11,74:1 (vorher 13,4:1) |
+| Fokusring (`--v4-focus`, 3 px, Abstand 2 px) gegen Seitenleiste | 3,15:1 | 12,53:1 |
+
+**Bildbeleg** (lokal, 127.0.0.1, Wegwerfdaten, Kopie der Spec mit Bildschirmfoto nur im Scratchpad, nicht im Repo):
+Schublade 390 px, hell und dunkel, aktiver Eintrag „Start“ mit Fokusring und Eintrag „Ablauf“ im Hover. Weiße Schrift
+auf dunkler Tönung lesbar; Hover und Aktiv sichtbar verschieden (Aktiv heller, mit Akzentkante).
+
+**Lokale Läufe** (2026-11-20, je Datei `--maxWorkers=1`): v4-app-stil 55/55, kontrast 207/207, v4-tokens 32/32,
+v4-markenrest 20/20, v4-2b-variablen 14/14, gestalt 19/19, wcag-wp40 35/35, oberflaeche-render 40/40,
+prozess-wachen 15/15, doku 5/5, verdrahtung 8/8 (`--testTimeout=60000`), ci-abdeckung 8/8, acc45-status 17/17;
+eslint 0 Fehler (nur bestehende Warnungen), tsc 0. E2E (`E2E_PORT=3287`, Projekt 390x844): v4-seitenleiste-kontrast 2/2
+und barrierefreiheit 7 bestanden, 1 übersprungen (Vorgabe der Spec). Browserwerte (Anmerkung „kontrast“) gleich der
+Rechnung: hell aktiv 9,42:1, Hover 11,43:1, Ring 3,15:1; dunkel 11,74:1, 14,27:1, Ring 12,53:1.
+
+**Offen / Risiken.** Fokusring hell gegen die Seitenleiste 3,15:1: erfüllt 3:1, aber knapp; gegen die Fläche des
+aktiven Eintrags 2,11:1 (durch den Spalt von 2 px getrennt, nicht angrenzend). Ein eigener Fokuston für die dunkle
+Seitenleiste (z. B. `akzentAufDunkel`) wäre eine Gestaltungsentscheidung, nicht Teil dieses Pakets. Vollregression nur
+in CI.
