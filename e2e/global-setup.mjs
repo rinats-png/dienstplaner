@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { istLoopback } from "../pruefungen/browser/abnahme-kern.mjs";
-import { BASIS, PORT, ROLLEN, ZUSATZ_ZUGAENGE, OEFFNEN_ZUGAENGE, ZUGAENGE_VAR, BETREIBER_VAR } from "./umgebung.mjs";
+import { BASIS, PORT, ROLLEN, ZUSATZ_ZUGAENGE, OEFFNEN_ZUGAENGE, ZUGAENGE_VAR, BETREIBER_VAR, ZUGANG_POOL } from "./umgebung.mjs";
 import { ABNAHME_ZEITPUNKT, UHR_VERSATZ_VAR, uhrVersetzen, abnahmeHeute } from "./zeitbasis.mjs";
 
 const WURZEL = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -116,6 +116,16 @@ export default async function globalSetup() {
     if (!Array.isArray(zz.d.zugaenge) || zz.d.zugaenge.length !== eintraege.length) throw new Error("Zugänge nicht angelegt (Status " + zz.s + ")");
     const codes = {};
     schluessel.forEach((k, i) => { codes[k] = zz.d.zugaenge[i].code; });
+    /* Befund CI #423: weitere Codes je Rolle für dieselbe Person (umgebung.mjs ZUGANG_POOL; Lastbremse „anmelden-code“).
+       Eigener Aufruf: höchstens 20 Einträge je Aufruf. */
+    const pool = [];
+    for (const r of ROLLEN) for (let n = 2; n <= ZUGANG_POOL; n++)
+      pool.push({ k: `${r}~${n}`, e: { rolle: r, personId: eintraege.find((x) => x.rolle === r && x.name === "E2E " + r).personId, name: `E2E ${r} ${n}` } });
+    if (pool.length) {
+      const zp = await j("/api/zugaenge", { bestand: RAUM, eintraege: pool.map((x) => x.e) }, bt);
+      if (!Array.isArray(zp.d.zugaenge) || zp.d.zugaenge.length !== pool.length) throw new Error("Zugangs-Pool nicht angelegt (Status " + zp.s + ")");
+      pool.forEach((x, i) => { codes[x.k] = zp.d.zugaenge[i].code; });
+    }
     process.env[ZUGAENGE_VAR] = JSON.stringify(codes);
     process.env[BETREIBER_VAR] = e.d.zugangscode;
     console.log(`E2E: Server ${BASIS}, Abnahmetag ${abnahmeHeute()}${extern ? " (echte Uhr, fremder Container)" : ""}, Demo-Bestand mit ${personen.length} erfundenen Personen, Zugänge für ${ROLLEN.join(", ")}`);

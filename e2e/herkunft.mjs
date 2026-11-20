@@ -14,3 +14,16 @@ export function herkunftFuerTest(testId, retry) {
   for (const z of `${testId}:${retry}`) h = (h * 31 + z.charCodeAt(0)) >>> 0;
   return `10.33.${(h >>> 8) % 240}.${(h % 254) + 1}`;
 }
+
+/**
+ * Schlüssel des Zugangscodes einer Rolle für einen Test: einer aus dem Pool (rolle, rolle~2 … rolle~pool), stabil je Test.
+ * Fehlt der Pool-Schlüssel (älterer Aufbau), gilt der Rollenzugang.
+ * @param {Record<string, string>} codes  @param {string} rolle  @param {string} testId  @param {number} pool
+ */
+export function codeSchluessel(codes, rolle, testId, pool) {
+  let h = 11;
+  for (const z of String(testId)) h = (h * 33 + z.charCodeAt(0)) >>> 0;
+  const i = pool > 1 ? h % pool : 0;
+  const k = i === 0 ? rolle : `${rolle}~${i + 1}`;
+  return codes && codes[k] ? k : rolle;
+}

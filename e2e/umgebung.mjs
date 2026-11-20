@@ -21,6 +21,13 @@ export const ZUSATZ_ZUGAENGE = Object.freeze(["stempeluhr-ein", "stempeluhr-aus"
 export const OEFFNEN_ZUGAENGE = Object.freeze([["oeffnen-planer", "planer", 1], ["oeffnen-subplaner", "subplaner", 1],
   ["oeffnen-mitarbeiter", "mitarbeiter", 3]]);
 
+/** Weitere Codes je Rolle für dieselbe Person (Pool). Befund CI #423 (2026-11-20): Der Server deckelt gelungene
+ *  Anmeldungen je CODE auf 20 in 5 Minuten (Lastbremse „anmelden-code“, server/lib/schutz.mjs). Die Suite meldet die
+ *  Planung an acht Viewports rund acht Mal je Viewport an; läuft sie zügig, überschreitet EIN Code die Grenze (429,
+ *  danach 5 Minuten gesperrt). Je Test wird deshalb einer von ZUGANG_POOL Codes der Rolle gewählt (stabil je Test,
+ *  e2e/herkunft.mjs codeSchluessel) — wie mehrere Geräte einer Person. Schlüssel: rolle, rolle~2 … rolle~N. */
+export const ZUGANG_POOL = 4;
+
 /** Umgebungsvariable, über die global-setup.mjs die Zugangscodes an die Testprozesse reicht (nie ausgegeben). */
 export const ZUGAENGE_VAR = "CENTRIC_E2E_ZUGAENGE";
 

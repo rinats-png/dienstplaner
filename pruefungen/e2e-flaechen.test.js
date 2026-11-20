@@ -98,3 +98,32 @@ describe("Herkunft je Test (e2e/herkunft.mjs)", () => {
     expect(q).not.toMatch(/\(h >> 8\)/);
   });
 });
+
+/* Befund CI #423 (2026-11-20, zweiter Lauf): Lastbremse „anmelden-code“ (20 gelungene Anmeldungen je Code in 5 Minuten).
+   Die Suite verteilt die Anmeldungen einer Rolle auf einen Pool von Codes derselben Person (umgebung.mjs ZUGANG_POOL). */
+describe("Code-Pool je Rolle (e2e/herkunft.mjs codeSchluessel)", () => {
+  it("stabil je Test, nur Schlüssel des Pools, ohne Pool der Rollenzugang; gleichmäßig genug verteilt", async () => {
+    const { codeSchluessel } = await import("../e2e/herkunft.mjs");
+    const { ZUGANG_POOL, ROLLEN } = await import("../e2e/umgebung.mjs");
+    expect(ZUGANG_POOL).toBeGreaterThanOrEqual(4);
+    const codes = Object.fromEntries(ROLLEN.flatMap((r) => [[r, `C-${r}`], ...Array.from({ length: ZUGANG_POOL - 1 }, (_, i) => [`${r}~${i + 2}`, `C-${r}-${i + 2}`])]));
+    const zaehler = {};
+    for (let i = 0; i < 4000; i++) {
+      const id = `a707cd05005453af93c6-${i.toString(16).padStart(20, "0")}`;
+      const k = codeSchluessel(codes, "planer", id, ZUGANG_POOL);
+      expect(k === "planer" || /^planer~[2-9]$/.test(k), k).toBe(true);
+      expect(codeSchluessel(codes, "planer", id, ZUGANG_POOL)).toBe(k);
+      zaehler[k] = (zaehler[k] || 0) + 1;
+    }
+    expect(Object.keys(zaehler).sort()).toEqual(["planer", ...Array.from({ length: ZUGANG_POOL - 1 }, (_, i) => `planer~${i + 2}`)].sort());
+    for (const n of Object.values(zaehler)) expect(n).toBeGreaterThan(4000 / ZUGANG_POOL / 2);   // keine Häufung auf einem Code
+    expect(codeSchluessel({ planer: "C" }, "planer", "x-1", ZUGANG_POOL)).toBe("planer");       // ohne Pool: Rollenzugang
+    expect(codeSchluessel(codes, "planer", "", 1)).toBe("planer");
+  });
+  it("Testhilfe, Abnahme B und Aufbau nutzen den Pool", () => {
+    const lies = (p) => readFileSync(new URL(p, import.meta.url), "utf8");
+    expect(lies("../e2e/hilfen.mjs")).toContain("codeSchluessel(alle, rolle, id, id ? ZUGANG_POOL : 1)");
+    expect(lies("../e2e/abnahme-b-ablaeufe.spec.mjs")).toContain("const code = zugangscode(rolle);");
+    expect(lies("../e2e/global-setup.mjs")).toContain("for (let n = 2; n <= ZUGANG_POOL; n++)");
+  });
+});
