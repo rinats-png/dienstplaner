@@ -3,10 +3,10 @@
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
   "anzahl": 232,
   "statusZaehlung": {
-    "BLOCKED": 89,
+    "BLOCKED": 88,
     "READY": 17,
     "IN_PROGRESS": 18,
-    "REVIEW": 8,
+    "REVIEW": 9,
     "INTEGRATED": 97,
     "DONE": 3
   },
@@ -39,8 +39,8 @@
       "pakete": 24,
       "offen": 19,
       "restPT": {
-        "min": 26.200000000000003,
-        "max": 46.300000000000004
+        "min": 25.400000000000002,
+        "max": 44.7
       }
     },
     "extern": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 333,
-    "max": 571.5500000000001
+    "min": 332.2,
+    "max": 569.95
   },
   "kritischerPfad": {
     "summe": 70,
@@ -6344,26 +6344,26 @@
       "prio": "P2",
       "aufwandPT": {"min":1,"max":2},
       "abhaengigkeiten": ["V4-1","WP-40"],
-      "status": "BLOCKED",
+      "status": "REVIEW",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"acc45/v4/v4-2-markenrest: Test ddf3ad8c (15/19 rot auf 6e19564b), Umsetzung 71de0454; docs/acc45/v4-2-nachweis.md"},
+        "lokalGetestet": {"wert":true,"beleg":"Lauf 2026-11-20 lokal, je Datei --maxWorkers=1: v4-markenrest 19/19, v4-tokens 32/32, kontrast 207/207, pwa 29/29, v4-app-stil 16/16, gestalt 19/19, wcag-wp40 35/35, oberflaeche-render 40/40 u. a. (v4-2-nachweis.md Abschnitt 4); CI-Schritt pruefung:v4-tokens"},
         "reviewt": {"wert":false,"beleg":null},
         "integriert": {"wert":false,"beleg":null},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
       },
-      "branch": null,
+      "branch": "acc45/v4/v4-2-markenrest",
       "agent": null,
       "modell": "opus",
       "konfliktzonen": ["App.jsx"],
       "pr": [],
-      "nachweis": "docs/acc45/V4-INTEGRATIONSSTAND-2026-11-20.md",
+      "nachweis": "docs/acc45/v4-2-nachweis.md",
       "akzeptanz": "manifest.webmanifest/index.html auf V4-Farben; Wortmarke als SVG; Avatar-Paare aus Tokens (src/farben.js); Glas-Rückfall für reduzierte Transparenz in src/gestalt/stil.js und App.jsx; rgba-Reste in App.jsx auf Tokens; vorschau.png/Marketing-Bilder gegen das C-Logo geprüft",
       "tests": "Unit, E2E",
       "dateien": "src/, public/",
-      "notiz": "Analyse 2026-11-20 (V4-Integrationsstand); PT sind Schätzung der Analyse, nicht belegt."
+      "notiz": "Analyse 2026-11-20 (V4-Integrationsstand); PT sind Schätzung der Analyse, nicht belegt. Stand 2026-11-20: umgesetzt auf Branch acc45/v4/v4-2-markenrest (PR gegen integration/release-v4, nicht gemergt); Abhängigkeiten V4-1/WP-40 laut SSOT offen, Umsetzung auf Auftrag. Rest: Glas ohne Rückfall in 6 Ansichtsdateien (Inline, V4-3a/b); Marketingreihe marketing/posts in V3-Palette ohne C-Logo (Designentscheidung, nur gemeldet)."
     },
     {
       "id": "V4-3",
