@@ -1211,3 +1211,21 @@ describe("Delta-Review 6 #427: „\\“ und „$“ nur in benannten Formen", ()
     }
   });
 });
+
+describe("Delta-Review 6 #427: Nachschärfung gegen überlebende Mutanten", () => {
+  it("„$“ im Dockerfile nur in ENV, nicht in ARG oder anderen Anweisungen", () => {
+    expect(vorlageUnlesbar("ARG HALLO=$HALLO\n", "dockerfile")).not.toEqual([]);
+    expect(vorlageUnlesbar("LABEL x=$X\n", "dockerfile")).not.toEqual([]);
+  });
+  it("„\\“ und „$“ werden auch im Zeilenkommentar erkannt (env, compose)", () => {
+    expect(vorlageUnlesbar("FOO=bar # kostet $5\n", "env")).not.toEqual([]);
+    expect(vorlageUnlesbar("    environment:\n      FOO: bar # \\\n", "compose")).not.toEqual([]);
+  });
+  it("compose.override.yml im Wurzelverzeichnis wird gefunden → G3 NO-GO", () => {
+    datei("compose.override.yml", "services:\n  app:\n    environment:\n      CENTRIC_DEMO: \"true\"\n");
+    const r = pruefe();
+    const g = gateVon(r, "G3");
+    expect(g.ergebnis).toBe("NO-GO");
+    expect(g.gruende.join()).toMatch(/compose\.override\.yml/);
+  });
+});
