@@ -40,7 +40,7 @@ gelaufen; **teilweise**; **Lücke**. Neu in diesem Auftrag fett.
 | 7 | Zeiterfassung / Pausen / Zuschläge | **Z1** Ein-/Ausstempeln am Rechner (Frühdienst heute); Pause vorbelegt 30; ungültige Pause 999 → Stempel bleibt, ohne Pause, `PAUSE_UNGUELTIG`; Ist-Zeit bleibt Prüffall (`DAUER_NULL`/`PAUSE_ZU_LANG`, nie still bestätigt); Leitung sieht „Pausenangabe ungültig — ohne Pause gespeichert“. **Z2** Vollschreibweg: Pause `""`, 240, 90 bei 60 min Anwesenheit → **422 `PAUSE_UNGUELTIG`**, nichts gespeichert; 60 → 200. **Z3** Zuschläge im Browser: Sonntag aus dem Plan, Gegenprobe 0,0; „Gearbeitet“ 7,0 durch die Pause | Browser + HTTP-Server | teilweise → **belegt** (Beobachtung B-Z3) | — |
 | 8 | Abrechnung / Exporte | **Z4** „Export“ mit offenem Prüffall: Rückfrage (nennt Prüffall, Tag, „Trotzdem jetzt ausgeben?“); abgebrochen → kein Download; bestätigt → `zuschlaege_2026-11.csv` heruntergeladen und gelesen (Kopf, Zeilen, Werte). „Blatt zum Gegenlesen“ (Lohnausgabe) heruntergeladen: Prüffall „zur Prüfung, Planzeit vorläufig“ gekennzeichnet | Browser (Download) | Lücke → **belegt** | Lohnausgabe-CSV (DATEV) gegen echtes Lohnprogramm |
 | 9 | Rechte- und Mandantentrennung | H2 (Betriebsrat), H3 (Planung ohne Dienstarten); **I3** Leitung des Demo-Betriebs liest ihren Bestand: keine Person/kein Name des Import-Betriebs (Gegenprobe: dort vorhanden) | Browser, HTTP-Server | belegt → belegt (erweitert) | volle Rechtematrix weiter nur CI (`rechtematrix-zeilen`) |
-| 10 | Mobile Bedienung / PWA | **P1** `/sw.js` registriert (Bereich `/`), aktiv, steuert die Seite; `centric-schale-*` und Bestand in `centric-daten-*`; Manifest lesbar. **P2** offline: Neuladen aus dem Gerüst zeigt den gespeicherten Stand der Person statt der Fehlerseite; Gegenprobe Rechneransicht („Mehr“ → „Rechneransicht“): Leiste „Keine Verbindung“ erscheint; zurück in der Telefonansicht fehlt sie — Befund **B-P2** | Browser (Chromium 390x844, Dienstarbeiter erlaubt) | teilweise → **belegt** (lokal, Chromium) | Installation, iOS/Safari, echtes Gerät, Aktualisierung des Dienstarbeiters |
+| 10 | Mobile Bedienung / PWA | **P1** `/sw.js` registriert (Bereich `/`), aktiv, steuert die Seite; `centric-schale-*` und Bestand in `centric-daten-*`; Manifest lesbar. **P2** offline: Neuladen aus dem Gerüst zeigt den gespeicherten Stand der Person statt der Fehlerseite; Gegenprobe Rechneransicht („Mehr“ → „Rechneransicht“): Leiste „Keine Verbindung“ erscheint; zurück in der Telefonansicht fehlt sie — Befund **B-P2** (behoben in PR #410: Leiste auch in der Telefonansicht; Folgepunkt **B-P3** offen) | Browser (Chromium 390x844, Dienstarbeiter erlaubt) | teilweise → **belegt** (lokal, Chromium) | Installation, iOS/Safari, echtes Gerät, Aktualisierung des Dienstarbeiters |
 | 11 | Wiederholte Anmeldung / Sitzungsablauf | **P3** Abmelden im Browser („Mehr“ → „Abmelden“): Anmeldung erscheint, Bestand aus dem Zwischenspeicher entfernt, altes Merkmal beim Server 401 | Browser | belegt → belegt (erweitert) | Zeitablauf 30 min / 12 h in Echtzeit |
 
 ## 3. Läufe (lokal, 2026-11-20)
@@ -92,13 +92,24 @@ bietet den (angehakten) Schalter „Fehlende Einheiten und Qualifikationen mit a
 Falsches gespeichert), aber der angebotene Weg führt nicht zum Ziel. Nach Behebung I1 umkehren (Übernehmbar 2, Zeile mit
 neuer Einheit angelegt).
 
-### B-P2 (Produktfehler, mittel, Sicherheit der Information): Offline-Hinweis fehlt in der Telefonschale
+### B-P2 (Produktfehler, mittel, Sicherheit der Information, behoben in PR #410): Offline-Hinweis fehlte in der Telefonschale
 
 Belegt in **P2** (390x844, Beschäftigte; nicht vakuös: dieselbe Seite zeigt die Leiste in der Rechneransicht, die App hat das Offline-Lesen also erkannt). Ohne Netz startet die Anwendung aus dem Gerüst und zeigt den gespeicherten Stand —
 richtig —, aber ohne die Leiste „Keine Verbindung … Der angezeigte Stand wurde … geholt“ (`Offlineleiste`,
 `src/ansichten/speicherlage.jsx`). Sie ist nur im Hauptbereich der Rechneransicht eingehängt (`src/App.jsx`, `<Offlineleiste
 lage={offline} />`), nicht in `MobilSchale`. Der Kommentar in `public/sw.js` verspricht ausdrücklich, dass die Anwendung sagt,
 dass sie offline ist und wie alt der Stand ist. Nach Behebung P2 umkehren (Leiste sichtbar).
+
+**Behoben (PR #410):** `MobilSchale` bekommt die Leiste als `hinweise` und zeigt sie über jedem Reiter; P2 ist umgekehrt
+(Leiste in der Telefonansicht und im Reiter „Mehr“ sichtbar, kein waagrechtes Scrollen bei 390 und 320 px, nach Rückkehr
+online verschwunden; Rechneransicht nur noch Parallelprobe). Prüfung: `pruefungen/offlinehinweis-telefon.test.js`.
+
+### B-P3 (Produktfehler, mittel, offen): Speicherfehler-Leiste in der Telefonschale nicht sichtbar
+
+Beim Review von B-P2 gefunden (PR #410). Die Leiste „Nicht gespeichert“ (`NichtGespeichert`, `src/ansichten/speicherlage.jsx`)
+ist wie früher die Offlineleiste nur im Hauptbereich der Rechneransicht eingehängt (`src/App.jsx`), nicht in `MobilSchale`.
+Scheitert am Telefon ein Speichervorgang (Sitzungsende, Netz, 403, Konflikt), sehen Beschäftigte keine stehende Leiste mit
+Ausweg („Als Datei sichern“, neu anmelden, neu laden). Noch nicht im Browser belegt; Behebung und E2E-Beleg offen.
 
 ### B-Z3 (Beobachtung, fachlich zu klären — kein bestätigter Fehler)
 

@@ -168,6 +168,12 @@ test.describe("Abnahme B — Abläufe mit Schreibwirkung (einmal je Lauf)", () =
     await expect(ein, "Stempeluhr mit Einstempeln (Dienst heute)").toBeVisible({ timeout: 20000 });
 
     await context.setOffline(true);
+    /* B-P2 (PR #410): Offline erscheint auch am Telefon die Leiste „Keine Verbindung“ und schiebt die Stempeluhr nach
+       unten. Erst klicken, wenn sie steht — sonst kann der Klick in die Verschiebung fallen. Das Ereignis wird wie beim
+       „online“ unten ausdrücklich ausgelöst (die App lauscht darauf). */
+    expect(await page.evaluate(() => navigator.onLine), "Browser meldet offline").toBe(false);
+    await page.evaluate(() => window.dispatchEvent(new Event("offline")));
+    await expect(page.getByRole("status").filter({ hasText: "Keine Verbindung" }), "Offline-Leiste steht").toBeVisible({ timeout: 15000 });
     await ein.click();
     await expect(page.getByText(/vorläufig \(offline gespeichert\)/).first(), "vorläufig auf dem Gerät").toBeVisible({ timeout: 15000 });
     expect(stempelHeute(mandantVon(await api("bestand", { token: ma.token })), ma.person), "offline: nichts auf dem Server").toHaveLength(0);

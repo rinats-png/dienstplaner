@@ -612,7 +612,7 @@ export function verknuepfungFuer(sitz, ziel) {
     personId: betreiber ? null : sitz.person.id, mobil }, ziel);
 }
 
-export function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge, startTab }) {
+export function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge, startTab, hinweise }) {
   const [tab, setTab] = useState(startTab || "heute");
   useEffect(() => { if (startTab) setTab(startTab); }, [startTab]);   // Verknüpfung (WP-37)
   const [blatt, setBlatt] = useState(null);
@@ -638,6 +638,8 @@ export function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge, startTab }
       </header>
 
       <main style={{ padding: "20px 18px 10px" }}>
+        {/* B-P2: Hinweise der Schale (Offlineleiste) über jedem Reiter, nicht nur in der Rechneransicht. */}
+        {hinweise}
         {tab === "heute" && <MHeute sitz={sitz} akt={akt} setTab={setTab} oeffnen={oeffnen} />}
         {tab === "plan" && <MPlan sitz={sitz} akt={akt} oeffnen={oeffnen} />}
         {tab === "anliegen" && <MAnliegen sitz={sitz} akt={akt} oeffnen={oeffnen} />}
