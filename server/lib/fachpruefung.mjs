@@ -29,6 +29,7 @@ import { schutzEinsatz, nachtFenster, nachtschwelle, nachtAnteil } from "./schut
 import { pad, pISO, addDays, dow, dauer, between, montag, fenster, verbindlichkeit, fehlendeKompetenzen,
   HOECHST_TAG } from "./regelwerk.mjs";
 import { BEFUND_KATALOG } from "./bestaetigungen.mjs";
+import { anzuwendendesModell, modellLage, modellVerzeichnis, BETRIEB_MODELL, ZUORDNUNG_FELD } from "./schichtmodell-kern.mjs";
 import { branchenBefunde } from "./branchenbefunde.mjs";
 
 const liste = (w) => (Array.isArray(w) ? w : []).filter((x) => x && typeof x === "object");
@@ -163,6 +164,127 @@ export function teilzeitDienst(m, p, datum, plan) {
   const versatz = (idStreu(p.id) % 997) / 997;
   return Math.floor((nr + 1 + versatz) * quote) > Math.floor((nr + versatz) * quote) ? plan : null;
 }
+/* ------------------------------------------------------------------------
+   PLANWIRKUNG DER SCHICHTMODELLE JE PERSON (IMP-6, ENTSCHEIDUNGSLISTE P2-4 Punkt 6) — Vorgabe AUS
+
+   Ist die Planwirkung aus (Vorgabe, auch ohne gesetzte Quelle), rechnet planDienst
+   wörtlich den bisherigen Ausdruck (Schichtfolge der Einheit mit Teilzeit) — die
+   Planrechnung bleibt byte-gleich (pruefungen/imp6-planwirkung.test.js, D3).
+   Ist sie an, gilt für jede Person und jeden Tag das zugeordnete Modell
+   (schichtmodell-kern.mjs, anzuwendendesModell):
+     Betriebsmodell (auch implizit: keine Zuordnung) → Schichtfolge der Einheit wie bisher
+     eigenes Modell → Zyklustag ab „Gültig ab“ mit Versatz (Kalendertage), Teilzeit über
+                      die Zyklustage des Modells (teilzeitModell)
+     „keine“ (Lücke, Q5) → kein Dienst aus einem Modell, nie still das Betriebsmodell
+     mehrdeutig → „uneindeutig“: kein Dienst, nie still ein Modell gewählt (Klärung)
+     ungültig → kein Dienst (Klärung)
+   Springer und Personen außerhalb des Schichtdiensts bekommen wie bisher keine Folge.
+   Abgeschlossene Monate rechnen weiter aus dem Eingefrorenen (istTag, Soll, Ist,
+   Zuschläge, Lohnexport) — die Wirkung ändert sie nicht.
+
+   Quelle des Schalters: CENTRIC_SCHICHTMODELL_WIRKUNG (server/lib/schalter.mjs,
+   schichtmodellWirkungAn). Diese Datei liest keine Umgebung (sie erreicht auch die
+   Oberfläche); wer die Wirkung einschaltet, setzt die Quelle mit
+   schichtmodellWirkungSetzen. Stand PR 1 (Rechenkern): KEIN Weg setzt sie — die
+   Verdrahtung (Server-Einstieg, Oberfläche, Schutzrechnung, Anzeige) folgt in PR 2.
+   ------------------------------------------------------------------------ */
+let wirkungQuelle = () => false;
+/** Quelle der Planwirkung setzen: eine Funktion (bei jedem Aufruf gelesen) oder ein Wert (nur genau true schaltet ein). */
+export function schichtmodellWirkungSetzen(quelle) {
+  wirkungQuelle = typeof quelle === "function" ? quelle : quelle === true ? () => true : () => false;
+}
+/** Ist die Planwirkung an? Nur genau true; eine werfende Quelle gilt als aus (fail-closed). */
+export function schichtmodellWirkungAktiv() {
+  try { return wirkungQuelle() === true; } catch { return false; }
+}
+
+/**
+ * Die Lage der Schichtfolge einer Person an einem Tag nach den zugeordneten Modellen (roh, vor Teilzeit und Abweichung),
+ * unabhängig vom Schalter (für Anzeige, Klärungsliste und Vorprüfung):
+ * - { art: "dienst", quelle: "betrieb" | "zuordnung", modellId, zuordnungId, dienstId (null = frei), nummer?, index?, laenge? }
+ * - { art: "ohne" }                     Springer oder nicht im Schichtdienst: keine Folge (wie bisher)
+ * - { art: "keine" }                    kein Modell an diesem Tag (Q5), nie still das Betriebsmodell
+ * - { art: "uneindeutig", zuordnungIds } mehrere Zuordnungen gelten (Klärung, kein Vorrang)
+ * - { art: "ungueltig", grund }          gespeicherte Zuordnung fehlerhaft (Klärung)
+ * @returns {{ art: string } & Record<string, any>}
+ */
+export function schichtmodellLageAm(m, p, d) {
+  if (p.springer || p.imSchichtdienst === false) return { art: "ohne" };
+  const r = anzuwendendesModell(m, p, d);
+  if (r.art === "mehrdeutig") return { art: "uneindeutig", zuordnungIds: r.zuordnungIds };
+  if (r.art !== "modell") return r;
+  if (r.quelle === "betrieb") {
+    const eid = einheitAm(p, d);
+    return { art: "dienst", quelle: "betrieb", modellId: BETRIEB_MODELL, zuordnungId: r.zuordnungId, dienstId: eid ? einheitDienst(m, eid, d) : null };
+  }
+  const l = modellLage(m, /** @type {any} */ (r), d);
+  const id = l.tage[l.index];
+  return { art: "dienst", quelle: "zuordnung", modellId: r.modellId, zuordnungId: r.zuordnungId, dienstId: id && id !== "-" ? id : null,
+    nummer: l.nummer, index: l.index, laenge: l.tage.length };
+}
+
+/** Teilzeit im eigenen Modell: dieselbe Regel wie teilzeitDienst, gezählt über die Zyklustage des Modells ab „Gültig ab“. */
+function teilzeitModell(m, p, datum, plan, l) {
+  const tz = p.teilzeit;
+  if (!tz || !tz.aktiv || !plan) return plan;
+  if (tz.modus === "wochentage") return (tz.wochentage || []).includes(dow(datum)) ? plan : null;
+  const soll = (m.einstellungen && m.einstellungen.sollWochenstunden) || 40;
+  const quote = Math.max(0.05, Math.min(1, (p.wochenstunden || soll) / soll));
+  if (quote >= 0.999) return plan;
+  const len = l.tage.length;
+  let gesamt = 0;
+  for (const t of l.tage) if (t && t !== "-") gesamt++;
+  if (!gesamt) return plan;
+  let vor = 0;
+  for (let i = 0; i < l.index; i++) { const t = l.tage[i]; if (t && t !== "-") vor++; }
+  const nr = Math.floor(l.nummer / len) * gesamt + vor;
+  const versatz = (idStreu(p.id) % 997) / 997;
+  return Math.floor((nr + 1 + versatz) * quote) > Math.floor((nr + versatz) * quote) ? plan : null;
+}
+
+/**
+ * Der Plandienst der Schichtfolge einer Person an einem Tag (mit Teilzeit, ohne Abweichung, Posten und Abwesenheit) —
+ * die eine Stelle, an der die Planrechnung (personTag, dienstAm, planTag, Postenbesetzung, Schutzrechnung) die
+ * Schichtfolge liest. Planwirkung aus: wörtlich der bisherige Ausdruck.
+ * @param {any} m Betrieb
+ * @param {any} p Person
+ * @param {string} d JJJJ-MM-TT
+ * @param {any} [eid] Einheit der Person an diesem Tag (Vorgabe einheitAm)
+ */
+export function planDienst(m, p, d, eid = einheitAm(p, d)) {
+  if (!schichtmodellWirkungAktiv())
+    return eid && !p.springer && p.imSchichtdienst !== false ? teilzeitDienst(m, p, d, einheitDienst(m, eid, d)) : null;
+  const l = schichtmodellLageAm(m, p, d);
+  if (l.art !== "dienst" || !l.dienstId) return null;
+  if (l.quelle === "betrieb") return teilzeitDienst(m, p, d, l.dienstId);
+  return teilzeitModell(m, p, d, l.dienstId, { nummer: l.nummer, index: l.index, tage: modellVerzeichnis(m).get(l.modellId).tage });
+}
+
+/** Höchstzahl der Tage je Person in schichtmodellKlaerungen (technische Grenze, etwa zehn Jahre). */
+const KLAERUNG_TAGE_MAX = 3700;
+/**
+ * Klärungsfälle der Modellzuordnung in einem Zeitraum (unabhängig vom Schalter): Tage, an denen für eine Person im
+ * Schichtdienst kein Modell eindeutig gilt („uneindeutig“) oder die gespeicherte Zuordnung fehlerhaft ist („ungueltig“).
+ * „keine“ (Q5) ist kein Klärungsfall. Nur Kennungen; höchstens `grenze` Einträge (danach `begrenzt`).
+ * @returns {{ faelle: { personId: string, datum: string, art: string, zuordnungIds?: any[], grund?: string }[], begrenzt: boolean }}
+ */
+export function schichtmodellKlaerungen(m, von, bis, grenze = 500) {
+  const faelle = [];
+  for (const p of liste(m && m.personen)) {
+    if (!Array.isArray(p[ZUORDNUNG_FELD]) || !p[ZUORDNUNG_FELD].length) continue;      // implizit: nie Klärung
+    let n = 0;
+    for (let d = von; d <= bis; d = addDays(d, 1)) {
+      if (++n > KLAERUNG_TAGE_MAX) return { faelle, begrenzt: true };       // Zeitraum ohne Grenze: nie endlos rechnen
+      if (!imDienst(p, d)) continue;
+      const l = schichtmodellLageAm(m, p, d);
+      if (l.art !== "uneindeutig" && l.art !== "ungueltig") continue;
+      if (faelle.length >= grenze) return { faelle, begrenzt: true };
+      faelle.push({ personId: String(p.id), datum: d, art: l.art, ...(l.zuordnungIds ? { zuordnungIds: l.zuordnungIds } : { grund: l.grund }) });
+    }
+  }
+  return { faelle, begrenzt: false };
+}
+
 /** Fehlt der Eintritt ausdrücklich (null oder leer, wie ihn Import und Einzelanlage seit IMP-1 anlegen)?
  *  Ein Bestand ganz ohne Feld (undefined, Altbestand vor IMP-1) zählt nicht dazu. */
 export const eintrittFehlt = (p) => !!p && (p.eintritt === null || p.eintritt === "");
@@ -186,10 +308,7 @@ export function dienstAm(m, p, d) {
   const ab = m.abweichungen && typeof m.abweichungen === "object" ? m.abweichungen[`${p.id}|${d}`] : undefined;
   let basis;
   if (ab !== undefined) basis = ab === "-" || ab === "" || ab === null ? null : ab;
-  else {
-    const eid = einheitAm(p, d);
-    basis = eid && !p.springer && p.imSchichtdienst !== false ? teilzeitDienst(m, p, d, einheitDienst(m, eid, d)) : null;
-  }
+  else basis = planDienst(m, p, d);                       // Schichtfolge (IMP-6: bei Planwirkung das zugeordnete Modell)
   if (!basis) return null;
   if (liste(m.abwesenheiten).some((a) => String(a.personId) === String(p.id) && a.von <= d && a.bis >= d)) return null;
   return basis;

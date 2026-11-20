@@ -75,7 +75,7 @@ import { schutzEinsatz, addDays, tagUTC } from "./schutzpruefung.mjs";
 import { heuteBerlin } from "./zeiterfassung.mjs";
 import { BEFUND_KATALOG, sperrtBefund, befundText } from "./bestaetigungen.mjs";
 import { einteilungsBefunde, imDienst, mindestOhneFeiertag, einheitAm, einheitDienst, teilzeitDienst,
-  landFuerEinheit } from "./fachpruefung.mjs";
+  landFuerEinheit, planDienst, schichtmodellWirkungAktiv } from "./fachpruefung.mjs";
 
 /** Wie weit der Server mittelbare Änderungen voraus nachrechnet (Tage ab heute). */
 export const SCHUTZ_HORIZONT_TAGE = 120;
@@ -187,6 +187,7 @@ function* planrechner(m, personen, zeitUm = () => false, weiter = () => {}) {
     if (v === undefined) { v = einheitDienst(m, eid, d); je.set(d, v); }
     return v;
   };
+  const wirkung = schichtmodellWirkungAktiv();                               // je Planrechner einmal gelesen
   const dienste = new Map();                                                 // pid → Map(tag → id|null)
   const am = (p, d) => {
     const pid = String(p.id);
@@ -202,7 +203,9 @@ function* planrechner(m, personen, zeitUm = () => false, weiter = () => {}) {
       if (ab !== undefined) basis = frei(ab) ? null : ab;
       else {
         const eid = einheitAm(p, d);
-        basis = eid && !p.springer && p.imSchichtdienst !== false ? teilzeitDienst(m, p, d, folgeAm(eid, d)) : null;
+        /* IMP-6 Planwirkung (Vorgabe aus): je Person das zugeordnete Modell (planDienst); aus wörtlich wie bisher. */
+        basis = wirkung ? planDienst(m, p, d, eid)
+          : eid && !p.springer && p.imSchichtdienst !== false ? teilzeitDienst(m, p, d, folgeAm(eid, d)) : null;
       }
       const ab2 = basis ? fehlt.get(pid) : undefined;
       if (basis && !(ab2 && ab2.some((a) => a.von <= d && a.bis >= d))) v = basis;

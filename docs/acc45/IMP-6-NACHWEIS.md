@@ -176,3 +176,53 @@ E3 verlangt, dass nur `src/ansichten/schichtmodelle.jsx` und `src/app/aktionen/p
 - **Behebung (nur Testaufbau, Serverregel unverändert):** `global-setup.mjs` legt je Rolle drei weitere Codes für dieselbe Person an (`ZUGANG_POOL = 4`, eigener Aufruf wegen höchstens 20 Einträgen je Aufruf); Browser- (`hilfen.mjs zugangscode`) und API-Anmeldung (Abnahme B) wählen je Test stabil einen Code (`herkunft.mjs codeSchluessel`) — wie mehrere Geräte einer Person. Prüfung in `pruefungen/e2e-flaechen.test.js` (stabil, nur Pool-Schlüssel, gleichmäßig verteilt, Rückfall auf den Rollenzugang; Verdrahtung in Testhilfe, Abnahme B und Aufbau).
 - **Branch** mit `origin/integration/release-v4` (#424 Vitest 5, #425 V4-2) zusammengeführt, ohne Konflikte.
 - **Lokal (nach Merge):** Planer-Specs (barrierefreiheit, teilkonflikt, abnahme-b-ablaeufe, barrierefreiheit-flaechen) sowie lokale-abnahme-luecken und imp6-schichtmodelle bei 430x932 und 1024x768: 51 bestanden, 29 übersprungen (Projektbindung), 0 rot, 14,5 min. Grenze dieses Belegs: Der Entwicklungsrechner ist langsamer als CI und erreicht 20 Planer-Anmeldungen in 5 Minuten ohnehin kaum; maßgeblich für die Lastbremse ist der nächste CI-Lauf. e2e-flaechen, prozess-wachen, imp6-oberflaeche 76/76; doku 5/5, verdrahtung 8/8, ci-abdeckung 8/8; eslint ohne Fehler.
+
+## Nachtrag 2026-11-20 (f): Planwirkung PR 1 — Rechenkern (Branch `acc45/imp/imp-6-planwirkung`)
+
+- **Umfang:** Rechenkern der Planwirkung (P2-4 Punkt 6) hinter `CENTRIC_SCHICHTMODELL_WIRKUNG` (Vorgabe aus; in PR 1 mit
+  keinem Weg verbunden). Aufteilung wegen Umfang > 5 PT: PR 2 = Verdrahtung (Server-Einstieg, Oberfläche, Auslöser der
+  Schutzrechnung, Anzeige/Lagebild/Export, Sicht der Beschäftigten). Beschreibung: `IMP-6-MEHRFACHMODELLE.md`, „Planwirkung“.
+- **Code:** `server/lib/schichtmodell-kern.mjs` (neu, Kern ohne Importe, aus `schichtzuordnung.mjs` ausgelagert und dort
+  re-exportiert — Schnittstelle unverändert); `server/lib/fachpruefung.mjs` (`planDienst`, `schichtmodellLageAm`,
+  `teilzeitModell`, `schichtmodellKlaerungen`, Merker `schichtmodellWirkungSetzen/Aktiv`); Aufrufe in `engine/plan.mjs`
+  (`personTag`), `fachpruefung.mjs` (`dienstAm`), `isteinfrieren.mjs` (`planTag`, Postenbesetzung), `schutzdurchsetzung.mjs`
+  (Planrechner `am`), `engine/einsatz.mjs` (Ersatzvorschlag); `schichtzuordnung.mjs` `wirkungsVorpruefung`; `schalter.mjs`
+  `schichtmodellWirkungAn`.
+- **Prüfung:** `pruefungen/imp6-planwirkung.test.js` (in `pruefung:imp6-mehrfachmodelle`): K Tabelle (8 Längen × 6 Wechseltage
+  × 3 Versatzpaare, drei Rechnungen = Referenz), L Lücke/Überschneidung/ungültig/Springer, N Nacht über Mitternacht am
+  Wechseltag (Fachprüfung und Server-Schutzrechnung, Zeitumstellung 9 h/7 h), T Teilzeit, M Besetzung und Posten, D3 Differenz
+  (AUS byte-gleich mit Modellen/Lücken/Überschneidungen; AN ohne eigene Modelle byte-gleich; Gegenprobe), A abgeschlossene
+  Monate, V Vorprüfung, R Rollen, F 8 000 Zufallsfälle gegen die Referenz, S Schalter und Wächter, Q7 Selbstauskunft.
+- **Geänderter bestehender Test (begründet):** `imp6-zyklen-grenzfaelle` D2 — ERLAUBT um `schichtmodell-kern.mjs` und
+  `fachpruefung.mjs` erweitert (Kern ausgelagert; `fachpruefung.mjs` ist die eine Stelle der Planrechnung, die ihn liest),
+  Suchausdruck zusätzlich um Importe des Kerns verschärft. Differenz D selbst unverändert.
+- **Entscheidungsvorlagen:** P2-25 (Frage 7), P2-26 (Frage 8), P2-27 (Stichtag beim Einschalten), P2-28 (Teilzeit/Urlaubskonto).
+- **Rot vorher:** Commit `2111ed66` (nur Prüfungen) gegen den Code der Basis: 17 von 17 ausgewählten Fällen (L, T, M, V, S, Q7)
+  rot (`schichtmodellWirkungSetzen is not a function` u. a.).
+- **Grün lokal (einzeln, `--maxWorkers=1`):** imp6-planwirkung 81/81 (710 s auf dem Entwicklungsrechner, D3 und A sind die
+  langen Teile); imp6-mehrfachmodelle 119, imp6-zyklen-grenzfaelle 57, imp6-eigenes-modell 22, imp6-oberflaeche 51,
+  fachpruefung-server 63, p212-kalendertag 59, p212-client-kalendertag 12, prozess-wachen 15, doku 5, verdrahtung 8,
+  ci-abdeckung 8, acc45-status 17, endgeraete-speicher 6, wp39-app-aufbau 4; eslint ohne Befund; tsc ohne Befund;
+  `acc45-backlog pruefen` OK; `vorpruefung --paket IMP-6` ohne harte Verstöße.
+
+## Nachtrag 2026-11-20 (g): Review #429 (Opus, mit Auflagen) — nur Tests und Doku
+
+- **A1 (Test M, Posten):** Der Test behauptete „a1 vorn“, der Startindex `between(anker, 2027-11-03) % 2 = 1` setzte aber a2 vorn —
+  die Mutation M8 (Posten bei AN ohne `r !== posten.quelle`) überlebte. Jetzt Tag 2027-11-04 (gerader Abstand, im Test
+  ausgerechnet): a1 mit Nachtmodell steht wirklich vorn; zusätzlich `postenBesatzung` = `["a2"]`. **M8 jetzt rot** (lokal,
+  Mutation von Hand gesetzt und zurückgenommen).
+- **A2 (Springer):** neuer Fall in T „Springer mit Einheit“ — AUS und AN, ohne und mit eigener Zuordnung, drei Rechnungen und
+  `planDienst` = null, Gegenprobe ohne `springer` mit Diensten. **M5a (AUS-Zweig von `planDienst` ohne `!p.springer`) jetzt rot.**
+- **A3 (offen für REL-1/PR 2):** `RELEASE-UNFERTIG.json` kommt mit #427 (nicht gemergt). Dort ist
+  `CENTRIC_SCHICHTMODELL_WIRKUNG` als unfertig (Vorgabe aus) einzutragen — sobald #427 gemergt ist, spätestens mit PR 2.
+- **Laufzeit in CI (geprüft, Lauf 44741581647, Job `pruefen`):** `imp6-planwirkung` 81 Tests in 21,0 s; der ganze Schritt
+  „Mehrere Schichtmodelle je Person (IMP-6 Teil 2)“ 22 s. Die Jobdauer 35:35 min kommt nicht aus diesem Schritt (längste
+  Schritte: BE-2 A1 213 s, Teilspeicherung 149 s, Gate-Proben 116/103 s). Die lokale Dauer (12 min) liegt am belasteten
+  Entwicklungsrechner. Keine Workflow-Änderung.
+- **Notizen für PR 2 (Hinweise des Reviews):**
+  1. Wächter S zur Gesamtsuche `einheitDienst(` in `server/` und `src/` mit Positivliste ausbauen — in `src/` heute noch ohne
+     Wirkung: `fachlogik.js` (`urlaubskonto`, Vergleich mit dem Freigabestand), `app/aktionen/plan.js:51`,
+     `app/aktionen/begleitung.js:85`, `lib/aushang.js`, `ansichten/monatsplan.jsx`, `ansichten/lagebild.jsx`.
+  2. `modellVerzeichnis` wird je Person und Tag bis zu dreimal neu gebaut → Zwischenspeicher je Bestand (nur bei AN).
+  3. Ersatzvorschlag: bei Lücke oder „uneindeutig“ gilt heute „in der Dienstphase +8“ — bewusst entscheiden.
+  4. Release-Gate-Warnung, wenn `CENTRIC_SCHICHTMODELL_WIRKUNG` gesetzt, aber nicht genau `true` ist (REL-1).
