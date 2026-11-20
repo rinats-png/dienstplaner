@@ -100,6 +100,8 @@ Strukturelle Änderung der Schichtfolge (ungünstigster Fall), warm, Minimum aus
   Schichtfolge“ nicht (403). Ausweg: den Tag ausdrücklich auf „-“ oder einen anderen Dienst setzen.
 - Die Oberfläche zeigt den Text einer 403 der Fachprüfung (`text`) nicht an: `src/speicher.js` wirft nur `fehler`,
   `fehlerart` macht daraus „nicht zulässig“. Folgepaket (Kategorie B), nicht Teil von B-H5.
-- `/api/wiederherstellen` (nur Leitung) läuft ohne Fachprüfung (Entscheidungsliste P2-21, Kategorie C).
+- `/api/wiederherstellen` (nur Leitung) prüft seit P2-21 mit derselben Rechnung, sperrt aber nicht (Empfehlung B:
+  Bericht mit Anzahl neuer Befunde je Regel in Antwort, Betriebs- und Serverprotokoll; ohne abgeschlossene Prüfung
+  503, nichts zurückgespielt). Sperren wie beim Speichern bleibt Betreiberentscheidung (Entscheidungsliste P2-21, Option C).
 - Mittelbar nur 120 Tage voraus. Ändern sich nur Vorgaben des Betriebs, prüft der Server bestehende Einteilungen nicht nach.
 - Die Bremse für Strukturänderungen lebt im Speicher des einen Serverprozesses.

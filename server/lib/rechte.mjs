@@ -32,6 +32,7 @@ import { paketfelderGeprueft, preisgestaltungFuerKunde } from "./paketstand.mjs"
 import { modulSchreibwegeAnwenden } from "./modulschreibwege.mjs";
 import { vorgabenZusammen } from "./vorgaben.mjs";
 import { schichtzuordnungZusammen } from "./schichtzuordnung.mjs";
+import { textimportOrgVerweigert } from "./import/org.mjs";
 import { anlagenZusammen } from "./modul-anlagen.mjs";
 import { maschinenqualZusammen } from "./modul-maschinenqual.mjs";
 import { geteilterdienstZusammen } from "./modul-geteilterdienst.mjs";
@@ -1610,6 +1611,12 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
     if (!darf(rolle, "org.edit") && !darf(rolle, "pattern.edit") && geschickt && typeof geschickt === "object"
       && hat(geschickt, "dienstarten") && !gleichJson(geschickt.dienstarten, ort.betrieb.dienstarten))
       return { verweigert: "Dienstarten legen Leitung und Planung an und ändern sie (org.edit oder pattern.edit)." };
+
+    /* P2-22 (B-I1): Der Textimport legt Einheiten, Qualifikationen und Standorte nur mit org.edit an — wie der
+       Dateiimport (IMP-5). Erkannt am neuen Protokolleintrag des Textimports; der allgemeine Speicherweg bleibt
+       unverändert (Planung legt im Einrichtungsassistenten Einheiten an), siehe textimportOrgVerweigert. */
+    const textimportGrund = textimportOrgVerweigert(ort.betrieb, geschickt, darf(rolle, "org.edit"));
+    if (textimportGrund) return { verweigert: textimportGrund };
 
     /* Mitteilungen: Notruf- und Tauschmitteilungen des Clients verworfen,
        Zustellwege und -status aus dem gespeicherten Stand, Grenzen für
