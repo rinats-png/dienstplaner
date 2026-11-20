@@ -163,3 +163,5 @@ Absicherung ohne Browser: `pruefungen/wcag-wp40.test.js` (Abschnitt P2-11; bilde
 und verlangt eine ganz leere Ausnahmeliste). Gate bleibt der Browser-axe-Lauf der CI an allen acht Viewports; lokal liefen
 1024x768 (alle betroffenen Flächen) und 390x844 (plan-planer, plan-mitarbeiter), Ergebnisse im PR. `target-size` auf
 plan-mitarbeiter ist für die Telefone quer (feste untere Leiste) nur durch die CI belegbar.
+
+Nachtrag 2026-11-20: `target-size`/Telefon-Viewports: an allen acht Viewports durch die CI belegt (browser-abnahme beider Läufe auf `96550b70` grün; Läufe 44602429299 und 44602446785).

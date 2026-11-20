@@ -64,7 +64,9 @@ vitest einzeln (`--maxWorkers=1`): `doku.test.js` grün 5/5, `ci-abdeckung.test.
 
 ## 4. Befunde (nicht repariert — `src/` und `server/` unverändert; die Tests prüfen das heutige Verhalten ausdrücklich)
 
-### B-H5 (Produktfehler, hoch, Arbeitszeitrecht): Ruhezeitsperre greift nicht, wenn eine Abweichung entfernt wird
+### B-H5 (Produktfehler, hoch, Arbeitszeitrecht; **behoben in PR #397**): Ruhezeitsperre greift nicht, wenn eine Abweichung entfernt wird
+
+**Stand 2026-11-20 (Nachtrag):** Behoben in PR #397 (Server prüft gelöschte Abweichungen ab heute). Die Spec H5b erwartet jetzt 403 mit dem Text „Einteilung am T2 nicht möglich: Ruhezeit unter 11 Stunden.“, und `a1|T2` bleibt `-`. Der Befundtext darunter beschreibt den Zustand vor der Behebung.
 
 Belegt in **H5b**. Ausgangslage: Beschäftigte am Tag T1 im Spätdienst (14–22 Uhr, ausdrückliche Abweichung), am Folgetag T2
 „frei“ (Abweichung `-`); die Schichtfolge sieht an T2 den Dienst ZX ab 07:00 vor. Die Planung tippt im Tagesblatt von T2
@@ -125,6 +127,23 @@ Fachseite. Der Test hält 8,0 fest und ist als „nach fachlicher Klärung ggf. 
 **ohne** Pause und kennzeichnet ihn `PAUSE_UNGUELTIG` (ein Stempel geht nie verloren, `server/funktionen/daten.mjs`). Das 422
 mit `code: PAUSE_UNGUELTIG` gibt es nur auf dem Vollschreibweg `PUT /api/bestand` (`erfassungPauseFehler`,
 `server/lib/gestalt.mjs`); die Oberfläche schreibt dort keine Pause. Beides ist belegt (Z1 Browser, Z2 HTTP).
+
+### Stand der Befunde (Nachtrag 2026-11-20)
+
+| Befund | Stand |
+|---|---|
+| B-H5 (H5b) | behoben, PR #397 gemergt |
+| B-I1 | PR #412 offen (zum Zeitpunkt dieses Nachtrags noch nicht gemergt) |
+| B-P2 | behoben, PR #410 gemergt |
+| B-P3 | offen |
+| B-Z3 | fachlich offen (Entscheidung der Fachseite) |
+
+### Wechselwirkung Integration-Regression #389 × #390 (behoben mit #399)
+
+Die Namenskorrekturen aus #389 (zugängliche Namen) und die E2E-Locator aus #390 wurden getrennt geprüft; auf dem
+Integrationskopf passten Namen und Locator nicht mehr zusammen (Regression). Behoben mit PR #399. Lehre: nach UI- und
+Namensänderungen die E2E-Suite in der CI gegen den aktuellen Integrationskopf prüfen, nicht nur gegen den Zweig. Ebenso:
+neue oder geänderte Testdateien der Prozesswachen (`prozess-wachen.test.js`) lokal laufen lassen (Lehre aus #410).
 
 ## 5. Restlücken
 

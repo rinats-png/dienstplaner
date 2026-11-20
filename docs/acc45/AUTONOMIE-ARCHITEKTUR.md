@@ -144,3 +144,12 @@ Nachweise: `pruefungen/dauerlauf.test.js` (reiner Kern, Zyklen) und `pruefungen/
 4. Konkrete Werte der Pflichtlimits (`--limit-starts-tag`, `--limit-starts-gesamt`, `--limit-laeufe-paket`, `--limit-laufzeit-min`, `--limit-wall-min-tag`) und Kostenrahmen; Vorschlag für den ersten Lauf: 2, 4, 2, 60, 120.
 5. Anpassung der Cloud-Routine (Entwurf `routine-vorspann.txt` bleibt unangewendet).
 6. Falls gewünscht: eigener CI-Job für den Prototyp (Workflow-Änderung).
+
+Checkliste vor jedem scharfen Lauf (Nachtrag 2026-11-20, Review-Hinweis #408):
+
+- `gitPfad` ist nur eine Binärdatei (`.exe` bzw. Binary, wie `ghPfad`), kein Verzeichnis und kein Skript.
+- Windows-Pfade strikt als Laufwerks- oder UNC-Pfad (kein `oo` ohne Laufwerk).
+- Meldung „git fehlt“ klar und eindeutig (Fehlermeldung bei fehlendem oder ungültigem `gitPfad` verbessern).
+- Allowlist installieren erst nach Betreiberfreigabe.
+- Kostenrahmen festgelegt (Punkt 4).
+- Berechtigungsstrategie für headless Worker entschieden (Punkt 3).
