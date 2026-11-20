@@ -66,3 +66,35 @@ describe("WP-33 Rest: weitere axe-Flächen", () => {
     }
   });
 });
+
+/* Befund CI #423 (2026-11-20): Herkunft je Test. Die frühere Formel `(h >> 8) % 240` ergab für rund die Hälfte der Tests
+   eine ungültige Adresse (negatives Oktett); der Server verwirft sie und zählt alle diese Tests unter 127.0.0.1 — die
+   gemeinsame Demo-Bremse auf /api/demos lief voll (429), und networkidle wartete je Schritt 15 s. */
+describe("Herkunft je Test (e2e/herkunft.mjs)", () => {
+  it("jede erzeugte Adresse ist gültig und wird vom Server als eigene Herkunft gelesen, nie 127.0.0.1", async () => {
+    const { herkunftFuerTest } = await import("../e2e/herkunft.mjs");
+    const { herkunftBestimmen, vertrauteListe } = await import("../server/lib/schutz.mjs");
+    const { isIP } = await import("node:net");
+    const v = vertrauteListe("127.0.0.1,::1");
+    const alt = (id, r) => { let h = 7; for (const z of `${id}:${r}`) h = (h * 31 + z.charCodeAt(0)) >>> 0; return `10.33.${(h >> 8) % 240}.${(h % 254) + 1}`; };
+    let altUngueltig = 0;
+    for (let i = 0; i < 2000; i++) {
+      const id = `a707cd05005453af93c6-${i.toString(16).padStart(20, "0")}`;
+      for (const r of [0, 1]) {
+        const ip = herkunftFuerTest(id, r);
+        expect(isIP(ip), ip).toBe(4);
+        expect(herkunftBestimmen("127.0.0.1", ip, v), ip).toBe(ip);
+        expect(herkunftFuerTest(id, r)).toBe(ip);                 // stabil je Test und Wiederholung
+        if (!isIP(alt(id, r))) altUngueltig++;
+      }
+    }
+    /* Gegenprobe: die alte Formel traf genau diesen Fehler (Rückfall auf die Gegenstelle) */
+    expect(altUngueltig).toBeGreaterThan(1000);
+    expect(herkunftBestimmen("127.0.0.1", "10.33.-164.113", v)).toBe("127.0.0.1");
+  });
+  it("die Testhilfe nutzt die Herkunftsfunktion (keine eigene Formel)", () => {
+    const q = readFileSync(new URL("../e2e/hilfen.mjs", import.meta.url), "utf8");
+    expect(q).toContain("herkunftFuerTest(testInfo.testId, testInfo.retry)");
+    expect(q).not.toMatch(/\(h >> 8\)/);
+  });
+});

@@ -7,6 +7,7 @@
    ändern). Alle axe-Läufe einer Seite gehen über eine Kette, damit sich Streifen- und Seitenscan nicht überschneiden.
    Der Konfliktdialog „Gleichzeitig bearbeitet“ lässt den Test mit genau dieser Meldung scheitern. */
 import { test as basis, expect } from "@playwright/test";
+import { herkunftFuerTest } from "./herkunft.mjs";
 import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -51,9 +52,8 @@ function seitenBeobachter(tags) {
  *  Bremsen je Herkunft die ganze Suite als einen Besucher. Der Server vertraut 127.0.0.1 als Proxy (global-setup.mjs). */
 export const test = basis.extend({
   page: async ({ page }, use, testInfo) => {
-    let h = 7;
-    for (const z of `${testInfo.testId}:${testInfo.retry}`) h = (h * 31 + z.charCodeAt(0)) >>> 0;
-    await page.context().setExtraHTTPHeaders({ "x-forwarded-for": `10.33.${(h >> 8) % 240}.${(h % 254) + 1}` });
+    /* Befund CI #423: früher mit Vorzeichen gerechnet, ungültige Adressen fielen auf 127.0.0.1 zurück (e2e/herkunft.mjs). */
+    await page.context().setExtraHTTPHeaders({ "x-forwarded-for": herkunftFuerTest(testInfo.testId, testInfo.retry) });
     page.setDefaultTimeout(15000);
     page.on("dialog", (d) => d.accept().catch(() => {}));
     await page.addInitScript(uhrVersetzen, versatzMs());            // QS-ZEIT: Browseruhr = Serveruhr (e2e/zeitbasis.mjs)
