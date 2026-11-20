@@ -6,17 +6,17 @@
     "BLOCKED": 91,
     "READY": 16,
     "IN_PROGRESS": 18,
-    "REVIEW": 15,
-    "INTEGRATED": 97,
+    "REVIEW": 10,
+    "INTEGRATED": 102,
     "DONE": 3
   },
   "jeStrang": {
     "acc45": {
       "pakete": 119,
-      "offen": 39,
+      "offen": 38,
       "restPT": {
-        "min": 61.4,
-        "max": 104.95
+        "min": 61.3,
+        "max": 104.75
       }
     },
     "wp19": {
@@ -37,10 +37,10 @@
     },
     "folge": {
       "pakete": 31,
-      "offen": 26,
+      "offen": 22,
       "restPT": {
-        "min": 28.400000000000002,
-        "max": 50.1
+        "min": 28.000000000000004,
+        "max": 49.300000000000004
       }
     },
     "extern": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 335.30000000000007,
-    "max": 575.5500000000002
+    "min": 334.8,
+    "max": 574.5500000000001
   },
   "kritischerPfad": {
     "summe": 70,
@@ -6344,12 +6344,12 @@
       "prio": "P2",
       "aufwandPT": {"min":1,"max":2},
       "abhaengigkeiten": ["V4-1","WP-40"],
-      "status": "REVIEW",
+      "status": "INTEGRATED",
       "stufen": {
         "implementiert": {"wert":true,"beleg":"acc45/v4/v4-2-markenrest: Test ddf3ad8c (15/19 rot auf 6e19564b), Umsetzung 71de0454; docs/acc45/v4-2-nachweis.md"},
         "lokalGetestet": {"wert":true,"beleg":"Lauf 2026-11-20 lokal, je Datei --maxWorkers=1: v4-markenrest 19/19, v4-tokens 32/32, kontrast 207/207, pwa 29/29, v4-app-stil 16/16, gestalt 19/19, wcag-wp40 35/35, oberflaeche-render 40/40 u. a. (v4-2-nachweis.md Abschnitt 4); CI-Schritt pruefung:v4-tokens"},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "reviewt": {"wert":true,"beleg":"Opus-Review #425 (FREIGABE nach Nachbesserung) am 2026-11-20"},
+        "integriert": {"wert":true,"beleg":"#425 in integration/release-v4 (014c86ab), CI grün auf exaktem Kopf, Merge mit Kopf-Pin"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -6372,12 +6372,12 @@
       "prio": "P1",
       "aufwandPT": {"min":0.5,"max":1},
       "abhaengigkeiten": ["V4-2"],
-      "status": "REVIEW",
+      "status": "INTEGRATED",
       "stufen": {
         "implementiert": {"wert":true,"beleg":"acc45/v4/v4-2b-variablen: Test 63132c7e (Unit 11/14 rot, E2E 5/5 rot auf 014c86ab), Umsetzung v4AppVariablen (src/v4/stil.js) im App-Stil (App.jsx bauStyles); docs/acc45/v4-2-nachweis.md Abschnitt 7"},
         "lokalGetestet": {"wert":true,"beleg":"Lauf 2026-11-20 lokal, je Datei --maxWorkers=1: v4-2b-variablen 14/14, v4-tokens 32/32, v4-app-stil 16/16, v4-markenrest 20/20, kontrast 207/207, wcag-wp40 35/35, oberflaeche-render 40/40 u. a.; E2E v4-variablen 5/5 und barrierefreiheit 14/14 (390x844, 1024x768); Bildbeleg F5 hell/dunkel 390/1280 px (v4-2-nachweis.md Abschnitt 7); CI-Schritt pruefung:v4-tokens"},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "reviewt": {"wert":true,"beleg":"Opus-Review #426 (FREIGABE) am 2026-11-20"},
+        "integriert": {"wert":true,"beleg":"#426 in integration/release-v4 (5876ff48), CI grün auf exaktem Kopf, Merge mit Kopf-Pin"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -6400,12 +6400,12 @@
       "prio": "P2",
       "aufwandPT": {"min":0.25,"max":0.5},
       "abhaengigkeiten": ["V4-2"],
-      "status": "REVIEW",
+      "status": "INTEGRATED",
       "stufen": {
         "implementiert": {"wert":true,"beleg":"acc45/v4/v4-2c-kontrast: Unit-Fassung 1 f27f3a28 15/55 rot auf 5876ff48, blieb mit Fix abb319e8 2/55 rot (Ring gegen aktiven Eintrag 2,11:1), daher Fassung 2 3a8e5b81 auf 'angrenzend' umgestellt (13/55 rot auf Basis; Abschwächung vor Grün, offengelegt); Review #430 A2: Fassung 3 edd746f3 wieder gegen Leiste UND Füllung (19/63 rot auf Basis, 4/63 rot auf abb319e8), Fix 89cf48e4: .slink:hover/.on auf var(--sl-hover)/var(--sl-an) (V4_SEITENLEISTE), Fokusring .seitenleiste :focus-visible in --v4-akzent-auf-dunkel; Mutation ohne Fokusregel 4/63 rot; E2E 2/2 rot auf Basis; docs/acc45/v4-2-nachweis.md Abschnitt 8"},
         "lokalGetestet": {"wert":true,"beleg":"Lauf 2026-11-20 lokal nach Review #430 (Kopf 89cf48e4), je Datei --maxWorkers=1: v4-app-stil 63/63, kontrast 207/207, v4-tokens 32/32, v4-markenrest 20/20, v4-2b-variablen 14/14, gestalt 19/19, wcag-wp40 35/35, oberflaeche-render 40/40 u. a.; E2E v4-seitenleiste-kontrast 2/2 (390x844, axe 0); Schrift hell Hover 11,43:1 / Aktiv 9,42:1 (vorher 1,76:1), dunkel 14,27:1 / 11,74:1; Fokusring hell 7,04/4,71/5,71:1, dunkel 13,50/9,19/11,17:1 gegen Leiste/Aktiv/Hover; Bildbeleg Schublade hell/dunkel (v4-2-nachweis.md Abschnitt 8)"},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "reviewt": {"wert":true,"beleg":"Opus-Review #430 (FREIGABE, A2 umgesetzt) am 2026-11-20"},
+        "integriert": {"wert":true,"beleg":"#430 in integration/release-v4 (eeb529c6), CI grün auf exaktem Kopf, Merge mit Kopf-Pin"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -6428,12 +6428,12 @@
       "prio": "P2",
       "aufwandPT": {"min":0.25,"max":0.5},
       "abhaengigkeiten": ["V4-2c"],
-      "status": "REVIEW",
+      "status": "INTEGRATED",
       "stufen": {
         "implementiert": {"wert":true,"beleg":"acc45/v4/schublade-fokus: Tests zuerst df9ad42b (E2E v4-schublade-fokus 1/1 rot auf Basis eeb529c6: Fokus blieb auf der Menütaste bei prefers-reduced-motion: reduce); Ursache im Browser belegt (beim focus() liefen visibility-Übergänge von 0,01 ms auf .marke/.snav/.sfuss, .slink.on erbte hidden); Fix: src/ui/geraete.js, offene Schublade bei reduzierter Bewegung transition:none (Leiste und Inhalt); docs/acc45/v4-2-nachweis.md Abschnitt 9"},
         "lokalGetestet": {"wert":true,"beleg":"Lauf 2026-11-20 lokal, je Datei --maxWorkers=1: geraete-wp21 + geraete-wp21-ablaeufe 41/41, geraete-wp21-ablaeufe-render 67/67, v4-app-stil 63/63, wcag-wp40 35/35, tour-dialog 2/2, e2e-flaechen 10/10; E2E (E2E_PORT=3287, 390x844) v4-schublade-fokus 1/1 und v4-seitenleiste-kontrast 2/2 (Fokus ohne Nachhilfe des Tests)"},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "reviewt": {"wert":true,"beleg":"Opus-Review #432 (FREIGABE, 2 Hinweise NIEDRIG) am 2026-11-20"},
+        "integriert": {"wert":true,"beleg":"#432 in integration/release-v4 (02988d05), CI grün auf exaktem Kopf, Merge mit Kopf-Pin"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -6764,12 +6764,12 @@
       "prio": "P1",
       "aufwandPT": {"min":0.5,"max":1},
       "abhaengigkeiten": [],
-      "status": "REVIEW",
+      "status": "INTEGRATED",
       "stufen": {
         "implementiert": {"wert":true,"beleg":"PR #428 (acc45/release/vps-zugang-inventur): deploy/inventur.sh (Forced Command strikt, Schicht 1 env_namen/compose_lesen, Schicht 2 Maskierung, fester PATH, root-eigen /usr/local/sbin), deploy/inventur-sammler.sh und deploy/inventur-lesen.sh (Phase 2), docs/acc45/VPS-ZUGANG-EINRICHTUNG.md mit Betreiberentscheidungen E-1 bis E-5 und Abschnitt 7 Sicherheitsnachweis"},
         "lokalGetestet": {"wert":true,"beleg":"Git Bash (Windows), --maxWorkers=1: inventur-skript 30/30, inventur-phase2 12/12, prozess-wachen 15/15, doku 5/5, verdrahtung 8/8, ci-abdeckung 8/8, acc45-status 17/17; bash -n/sh -n grün. Rot vorher (Mutation): Schicht-1-Schutz entfernt (compose stderr, env_namen) → 4 Fälle rot; docker inspect --format {{json .Config.Env}} (m6) → 5 Fälle rot. shellcheck: lokal nicht vorhanden, Ergebnis nur aus CI (Betrieb: Deploy-Skripte) des Kopfes"},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "reviewt": {"wert":true,"beleg":"Opus-Review #428 (FREIGABE nach AUF-1..3, H-a..H-d) am 2026-11-20"},
+        "integriert": {"wert":true,"beleg":"#428 in integration/release-v4 (092be6e2), CI grün auf exaktem Kopf, Merge mit Kopf-Pin"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
