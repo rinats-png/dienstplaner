@@ -6,10 +6,11 @@
    Demo-Betrieb wird nur gelesen (Gegenprobe Mandantentrennung). Nur erfundene Namen (Marke ImportE2e), Codes nie ausgegeben.
 
      I0  Einrichtung: Leitung meldet sich erstmals im Browser an; eine Beschäftigte über die API (Dublettenprobe).
-     I1  Import gemischt: gültige Zeile, Zeile mit neuer Einheit („mit anlegen“ angehakt), fehlender Nachname, ungültiges
-         Eintrittsdatum, bereits vorhandene Person → Vorschau zählt sie getrennt; Übernahme legt genau die fehlerfreie an
-         (Wochenstunden, Eintritt), nichts Fehlerhaftes, keine Dublette. Heutiges Verhalten B-I1: die Zeile mit neuer
-         Einheit gilt als fehlerhaft, der Haken „mit anlegen“ wirkt nicht.
+     I1  Import gemischt: gültige Zeile, zwei Zeilen mit derselben neuen Einheit in zwei Schreibweisen, fehlender Nachname,
+         ungültiges Eintrittsdatum, bereits vorhandene Person → Vorschau zählt sie getrennt. Ohne Haken „mit anlegen“ (Vorgabe
+         aus) ist die neue Einheit ein Fehler; mit Haken (Leitung, org.edit) „wird neu angelegt“. Übernahme legt die drei
+         fehlerfreien an und GENAU EINE neue Einheit (B-I1 behoben), nichts Fehlerhaftes, keine Dublette; Server-Gegenprobe.
+     I1b Planung (ohne org.edit, Demo-Betrieb, nur Prüfen und Abbrechen): kein Haken, die neue Einheit bleibt ein Fehler.
      I2  „Abbrechen“ in der Vorschau übernimmt nichts; ohne Inhalt bleibt „Prüfen“ gesperrt.
      I3  Mandantentrennung: Die Leitung des Demo-Betriebs sieht keine der importierten Personen (Server, ihre Sicht).
    Nur Projekt 1024x768 (schreibt Daten). zeit-ok: kein eigener Uhrbezug, Laufkennung nur als eindeutiger Raumname. */
@@ -94,8 +95,9 @@ test.describe.serial("Lokale E2E-Abnahme Hauptfunktionen 3: Personalimport Erfol
   };
   const kennzahl = (blatt, name) => blatt.getByText(name, { exact: true }).locator("xpath=..");
 
-  test("I1 Import gemischt: genau die fehlerfreie Zeile übernommen, Fehler und Dublette nicht; neue Einheit heute fehlerhaft (B-I1)", async ({ page }) => {
+  test("I1 Import gemischt: fehlerfreie Zeilen übernommen, neue Einheit mit Haken genau einmal angelegt (B-I1), Fehler und Dublette nicht", async ({ page }) => {
     const NEU_E = `Station Neu ${MK}`;
+    const NEU_E_VARIANTE = ` station  neu ${MK.toLowerCase()} `;
     const v = await schreibvorgaengeVerfolgen(page);
     await anmeldenBrowser(page, C.l);
     await geheZu(page, "Personal");
@@ -105,37 +107,70 @@ test.describe.serial("Lokale E2E-Abnahme Hauptfunktionen 3: Personalimport Erfol
       "Nachname;Vorname;Einheit;Wochenstunden;Eintritt",
       `Eins-${MK};Ina;${C.einheit.name};30;2024-02-01`,
       `Zwei-${MK};Ida;${NEU_E};20;2023-05-01`,
+      `Vier-${MK};Iva;${NEU_E_VARIANTE};25;2023-06-01`,
       `;Ohne;${C.einheit.name};39;2024-01-01`,
       `Drei-${MK};Ira;${C.einheit.name};39;2025-13-45`,
       `Vorhanden-${MK};Lia;${C.einheit.name};39;2020-01-01`,
     ].join("\n"));
     await blatt.getByRole("button", { name: "Prüfen" }).click();
     await expect(kennzahl(blatt, "Übernehmbar")).toBeVisible();
-    const vorschau = (await blatt.innerText()).replace(/\s+/g, " ");
-    /* Befund B-I1 (heutiges Verhalten, NICHT repariert): Die Zeile mit neuer Einheit gilt als fehlerhaft („Einheit … unbekannt“,
-       src/lib/fachlogik.js importPruefen), obwohl die Vorschau „Neue Einheiten 1“ zählt und „Fehlende Einheiten … mit anlegen“
-       angehakt anbietet — übernommen werden nur fehlerfreie Zeilen, der Haken bleibt ohne Wirkung. Nach der Behebung:
-       Übernehmbar 2, Fehlerhaft 3, Zeile „Zwei“ mit neuer Einheit angelegt. „Fehlerhaft“ zählt die Dublette mit (nicht übernehmbar). */
-    for (const [name, wert] of [["Übernehmbar", "1"], ["Fehlerhaft", "4"], ["Bereits vorhanden", "1"], ["Neue Einheiten", "1"]])
+    let vorschau = (await blatt.innerText()).replace(/\s+/g, " ");
+    /* Ohne Haken (Vorgabe aus): die Zeilen mit neuer Einheit sind fehlerhaft. „Fehlerhaft“ zählt die Dublette mit. */
+    const anlegen = blatt.getByRole("checkbox", { name: "Fehlende Einheiten und Qualifikationen mit anlegen" });
+    await expect(anlegen).not.toBeChecked();
+    for (const [name, wert] of [["Übernehmbar", "1"], ["Fehlerhaft", "5"], ["Bereits vorhanden", "1"], ["Neue Einheiten", "1"]])
       await expect(kennzahl(blatt, name), `${name} — Vorschau: ${vorschau.slice(0, 1500)}`).toHaveText(name + wert);
     await expect(blatt.getByRole("row").filter({ hasText: `Zwei-${MK}, Ida` })).toContainText(`Einheit „${NEU_E}" unbekannt`);
+    /* B-I1 behoben: Mit Haken ist die neue Einheit kein Fehler, sondern „wird neu angelegt“ — beide Schreibweisen EINE Einheit. */
+    await anlegen.check();
+    vorschau = (await blatt.innerText()).replace(/\s+/g, " ");
+    for (const [name, wert] of [["Übernehmbar", "3"], ["Fehlerhaft", "3"], ["Bereits vorhanden", "1"], ["Neue Einheiten", "1"]])
+      await expect(kennzahl(blatt, name), `${name} (mit Haken) — Vorschau: ${vorschau.slice(0, 1500)}`).toHaveText(name + wert);
+    await expect(blatt.getByRole("row").filter({ hasText: `Zwei-${MK}, Ida` })).toContainText(`Einheit „${NEU_E}" wird neu angelegt`);
+    await expect(blatt.getByRole("row").filter({ hasText: `Vier-${MK}, Iva` })).toContainText("wird neu angelegt");
     await expect(blatt.getByRole("row").filter({ hasText: `Drei-${MK}, Ira` }), "ungültiges Eintrittsdatum ist ein Fehler").toContainText("nein");
-    await expect(blatt.getByRole("checkbox", { name: "Fehlende Einheiten und Qualifikationen mit anlegen" })).toBeChecked();
-    const knopf = blatt.getByRole("button", { name: "1 Personen übernehmen" });
+    const knopf = blatt.getByRole("button", { name: "3 Personen übernehmen" });
     await expect(knopf).toBeEnabled();
     await knopf.click();
     await expect(blatt).toBeHidden();
-    await expect.poll(async () => (await mandant(C.lT)).personen.length, { timeout: 20000 }).toBe(vorher + 1);
+    await expect.poll(async () => (await mandant(C.lT)).personen.length, { timeout: 20000 }).toBe(vorher + 3);
     await seiteZu(page, v);
     const m = await mandant(C.lT);
-    expect(m.einheiten.find((e) => e.name === NEU_E), "B-I1: Einheit trotz Haken nicht angelegt").toBeUndefined();
+    /* Server-Gegenprobe: genau EINE neue Einheit (Name aus der ersten Schreibweise der Datei), beide Personen darin. */
+    const neu = m.einheiten.filter((e) => e.name.toLowerCase().replace(/\s+/g, " ").trim() === NEU_E.toLowerCase());
+    expect(neu.map((e) => e.name), "B-I1: genau eine neue Einheit").toEqual([NEU_E]);
     const nach = (n) => m.personen.filter((p) => p.nachname === n);
     expect(nach(`Eins-${MK}`).map((p) => [p.vorname, p.wochenstunden, p.eintritt, p.zugehoerigkeit.at(-1).einheitId]))
       .toEqual([["Ina", 30, "2024-02-01", C.einheit.id]]);
-    expect(nach(`Zwei-${MK}`), "B-I1: Zeile mit neuer Einheit nicht übernommen").toEqual([]);
+    for (const [n, vn, std] of [[`Zwei-${MK}`, "Ida", 20], [`Vier-${MK}`, "Iva", 25]])
+      expect(nach(n).map((p) => [p.vorname, p.wochenstunden, p.zugehoerigkeit.at(-1).einheitId]), `B-I1: ${n} in der neuen Einheit`)
+        .toEqual([[vn, std, neu[0].id]]);
     expect(nach(`Drei-${MK}`), "ungültiges Eintrittsdatum nicht übernommen").toEqual([]);
     expect(m.personen.some((p) => p.vorname === "Ohne"), "ohne Nachnamen nicht übernommen").toBe(false);
     expect(nach(`Vorhanden-${MK}`), "keine Dublette").toHaveLength(1);
+  });
+
+  test("I1b Planung ohne org.edit: kein Haken, neue Einheit bleibt ein Fehler (Demo-Betrieb, nur Prüfen und Abbrechen)", async ({ page }) => {
+    const planer = JSON.parse(process.env[ZUGAENGE_VAR] || "{}").planer;
+    expect(planer, "Demo-Zugang Planung").toBeTruthy();
+    const pT = await anmeldenApi(planer);
+    const vorher = JSON.stringify((await mandant(pT)).einheiten.map((e) => e.id).sort());
+    const v = await schreibvorgaengeVerfolgen(page);
+    await anmeldenBrowser(page, planer);
+    await geheZu(page, "Personal");
+    const blatt = await oeffnen(page);
+    const e0 = (await mandant(pT)).einheiten.find((e) => !e.pool) || (await mandant(pT)).einheiten[0];
+    await blatt.locator("textarea").fill(`Nachname;Vorname;Einheit\nPlanung-${MK};Pia;Station Planung ${MK}\nPlanung2-${MK};Pit;${e0.name}\n`);
+    await blatt.getByRole("button", { name: "Prüfen" }).click();
+    await expect(kennzahl(blatt, "Neue Einheiten")).toHaveText("Neue Einheiten1");
+    await expect(blatt.getByRole("checkbox", { name: "Fehlende Einheiten und Qualifikationen mit anlegen" })).toHaveCount(0);
+    await expect(blatt.getByText("Fehlende Einheiten und Qualifikationen legt nur die Leitung an.", { exact: false })).toBeVisible();
+    await expect(blatt.getByRole("row").filter({ hasText: `Planung-${MK}, Pia` })).toContainText("unbekannt");
+    await expect(blatt.getByRole("button", { name: "1 Personen übernehmen" })).toBeEnabled();
+    await blatt.getByRole("button", { name: "Abbrechen" }).click();
+    await expect(blatt).toBeHidden();
+    await seiteZu(page, v);
+    expect(JSON.stringify((await mandant(pT)).einheiten.map((e) => e.id).sort()), "keine Einheit angelegt").toBe(vorher);
   });
 
   test("I2 Abbrechen in der Vorschau übernimmt nichts; ohne Inhalt bleibt Prüfen gesperrt", async ({ page }) => {
@@ -160,9 +195,9 @@ test.describe.serial("Lokale E2E-Abnahme Hauptfunktionen 3: Personalimport Erfol
     const t = await anmeldenApi(demoLeitung);
     const roh = JSON.stringify((await api("/api/bestand", { token: t })).bestand);
     expect(roh.length, "Demo-Bestand gelesen").toBeGreaterThan(1000);
-    for (const n of [`Eins-${MK}`, `Vorhanden-${MK}`, `Haus ${MK}`]) expect(roh, n).not.toContain(n);
+    for (const n of [`Eins-${MK}`, `Vorhanden-${MK}`, `Haus ${MK}`, `Zwei-${MK}`, `Station Neu ${MK}`]) expect(roh, n).not.toContain(n);
     /* Gegenprobe: im eigenen Betrieb stehen sie */
     const eigen = JSON.stringify(await mandant(C.lT));
-    for (const n of [`Eins-${MK}`, `Vorhanden-${MK}`]) expect(eigen, n).toContain(n);
+    for (const n of [`Eins-${MK}`, `Vorhanden-${MK}`, `Zwei-${MK}`, `Station Neu ${MK}`]) expect(eigen, n).toContain(n);
   });
 });
