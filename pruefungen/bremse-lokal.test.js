@@ -17,8 +17,10 @@ import path from "node:path";
 
 /* Gezielte Störungen der Ablage. Die echte Ablage bleibt darunter; nur wenn
    `stoerung` für eine Methode und einen Schlüssel ja sagt, wirft der Aufruf
-   wie ein Plattenfehler (EIO). */
-const { stoerung } = vi.hoisted(() => ({ stoerung: { wirft: null } }));
+   wie ein Plattenfehler (EIO). `haelt` liefert für einen Aufruf optional ein
+   Versprechen, auf das er vor der echten Ablage wartet (gleichzeitige Anfragen
+   in der Schwebe halten). */
+const { stoerung } = vi.hoisted(() => ({ stoerung: { wirft: null, haelt: null } }));
 vi.mock("../server/lib/ablage.mjs", async (original) => {
   const echt = await original();
   return {
@@ -38,6 +40,8 @@ vi.mock("../server/lib/ablage.mjs", async (original) => {
               /** @type {any} */ (e).code = "EIO";
               return Promise.reject(e);
             }
+            const halt = stoerung.haelt && stoerung.haelt(String(name), key, ablage);
+            if (halt) return halt.then(() => wert.apply(ziel, args));
             return wert.apply(ziel, args);
           };
         },
@@ -46,7 +50,7 @@ vi.mock("../server/lib/ablage.mjs", async (original) => {
   };
 });
 
-let wurzel, bremse, entlasten, GRENZEN, notbremse, NOTGRENZEN;
+let wurzel, bremse, entlasten, GRENZEN, WEITERE, notbremse, NOTGRENZEN;
 
 /* Jeder Bremsaufruf geht mehrfach auf die Platte; auf einem belasteten
    Rechner dauert eine Reihe von hundert Aufrufen mehr als fünf Sekunden. */
@@ -57,11 +61,12 @@ beforeAll(async () => {
   process.env.CENTRIC_DATEN = wurzel;
   process.env.CENTRIC_ABLAGE = "dateien";
   delete process.env.REDIS_REST_URL;
-  ({ bremse, entlasten, GRENZEN, notbremse, NOTGRENZEN } = await import("../server/lib/schutz.mjs"));
+  ({ bremse, entlasten, GRENZEN, WEITERE, notbremse, NOTGRENZEN } = await import("../server/lib/schutz.mjs"));
 });
 
 afterEach(() => {
   stoerung.wirft = null;
+  stoerung.haelt = null;
   vi.useRealTimers();
 });
 
@@ -432,4 +437,78 @@ describe("/api/anmelden", () => {
     expect(e.status, JSON.stringify(e)).toBe(429);
     expect(Number(e.wartet)).toBeGreaterThan(0);
   }, 60000);
+});
+
+/* ==========================================================================
+   GLEICHZEITIGE ANFRAGEN: die wirksame Grenze ist die eingestellte (CI zu #277)
+
+   Die Mitzählung schwebender Anfragen (A-2 globale Grenze, Parallelprüfung) galt
+   zuerst für JEDE Art mit Ziel- oder Gesamtgrenze. Sie zählt im Zweifel doppelt —
+   bei der Anmeldung griff die Bremse dann schon bei etwa der Hälfte der Grenze, und
+   ein Bündel von Fehlversuchen wurde abgewiesen, bevor es ausgewertet war
+   (anmeldesperre I7b). Jetzt nur noch für einladung-nachweis. Für alle anderen gilt:
+   genau so viele gleichzeitige Versuche wie die Grenze nennt kommen durch, der
+   nächste nicht.
+   ========================================================================== */
+describe("Gleichzeitige Anfragen: keine vorzeitige Sperre", () => {
+  /** Ein frischer Zeitpunkt kurz nach einer vollen Stunde, `tage` Tage voraus — leere Fenster für Ziel und Gesamt. */
+  const frisch = (tage) => {
+    const p = 3600 * 1000;
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Math.ceil((Date.now() + tage * 86400 * 1000) / p) * p + 1000);
+  };
+
+  for (const [art, tage] of [["anmelden", 40], ["anmelden-konto", 41], ["registrierung", 42]]) {
+    it(`${art}: so viele gleichzeitige Versuche einer Kennung, wie die Grenze nennt, kommen alle durch; der nächste nicht`, async () => {
+      frisch(tage);
+      const n = GRENZEN[art].versuche;
+      const k = `a:gleichzeitig-kennung-${art}`;
+      const erg = await Promise.all(Array.from({ length: n }, (_, i) => bremse(art, k, `z-kennung-${art}-${i}`)));
+      expect(erg.map((b) => b.frei), JSON.stringify(erg)).toEqual(Array(n).fill(true));
+      expect((await bremse(art, k, `z-kennung-${art}-x`)).frei).toBe(false);
+    });
+
+    it(`${art}: so viele gleichzeitige Versuche auf ein Ziel, wie dessen Grenze nennt, kommen alle durch; der nächste nicht`, async () => {
+      frisch(tage + 10);
+      const n = WEITERE[art].ziel.versuche;
+      const ziel = `z-gleichzeitig-${art}`;
+      const erg = await Promise.all(Array.from({ length: n }, (_, i) => bremse(art, `a:gleichzeitig-ziel-${art}-${i}`, ziel)));
+      expect(erg.map((b) => b.frei), JSON.stringify(erg)).toEqual(Array(n).fill(true));
+      const danach = await bremse(art, `a:gleichzeitig-ziel-${art}-x`, ziel);
+      expect(danach.frei).toBe(false);
+      expect(danach.dimension).toBe("ziel");
+    });
+  }
+
+  for (const [art, tage] of [["anmelden", 70], ["anmelden-konto", 71], ["registrierung", 72]]) {
+    it(`${art}: gestaffelt — während die ersten Versuche noch laufen, kommen die übrigen bis zur Grenze durch (kein Doppeltzählen)`, async () => {
+      frisch(tage);
+      const n = GRENZEN[art].versuche;
+      const erste = Math.floor(n / 2);
+      const k = `a:gestaffelt-${art}`;
+      /* Die erste Welle hält beim Vermerk ihres eigenen Versuchs an — gezählt (im Speicher), aber noch nicht fertig. */
+      let loslassen, gehalten = 0;
+      const tor = new Promise((r) => { loslassen = r; });
+      stoerung.haelt = (methode, key) => {
+        if (methode === "setJSON" && key.startsWith(`v:${art}:${k}:`) && gehalten < erste) { gehalten++; return tor; }
+        return null;
+      };
+      const welle1 = Array.from({ length: erste }, (_, i) => bremse(art, k, `z-gestaffelt-${art}-${i}`));
+      for (let i = 0; i < 2000 && gehalten < erste; i++) await new Promise((r) => setTimeout(r, 5));
+      expect(gehalten, "erste Welle in der Schwebe").toBe(erste);
+      const welle2 = Array.from({ length: n - erste }, (_, i) => bremse(art, k, `z-gestaffelt-${art}-b${i}`));
+      /* Die zweite Welle läuft bis zu ihrem eigenen Vermerk durch, dann darf auch die erste weiter. */
+      await new Promise((r) => setTimeout(r, 50));
+      loslassen();
+      const erg = await Promise.all([...welle1, ...welle2]);
+      expect(erg.map((b) => b.frei), JSON.stringify(erg)).toEqual(Array(n).fill(true));
+      expect((await bremse(art, k, `z-gestaffelt-${art}-x`)).frei, "der nächste nicht").toBe(false);
+    });
+  }
+
+  it("einladung-nachweis bleibt dicht: 100 gleichzeitige Versuche einer Person → höchstens die Grenze kommt durch", async () => {
+    frisch(60);
+    const erg = await Promise.all(Array.from({ length: 100 }, () => bremse("einladung-nachweis", "a:gleichzeitig-nachweis", "b:raum")));
+    expect(erg.filter((b) => b.frei).length).toBeLessThanOrEqual(GRENZEN["einladung-nachweis"].versuche);
+  });
 });
