@@ -7,7 +7,8 @@ import { ereignis } from "../lib/gesund-zaehler.mjs";
 import { bestandFuerRolle, bestandFuerAntwort, zusammenfuehren, schreibumfang, absageText, rolleVergebbar, sitzungsRolleBekannt,
   wirksameRolle, SCHREIBEN_NEIN, SCHREIBEN_VOLL, eigenerMandant, darf, fachpruefungOffen, sammelAnzahlSetzen, einwilligungsAenderungen, freigabeRuecknahmen, abschlussRecht } from "../lib/rechte.mjs";
 import { schutzKonfliktMitteilungen, schutzEntferntAnzahl } from "../lib/bestaetigungen.mjs";
-import { fachpruefungUebermittlungAsync, strukturAenderung, strukturBremse, letzteLaufzeit } from "../lib/schutzdurchsetzung.mjs";
+import { fachpruefungUebermittlungAsync, strukturAenderung, strukturBremse, letzteLaufzeit,
+  wiederherstellungsPruefung, wiederherstellungsBerichtZeile, WIEDERHERSTELLEN_GRENZEN } from "../lib/schutzdurchsetzung.mjs";
 import { pruefeGestalt, schrumpfung, SICHERUNGSSCHWELLE, mandantenKennungenGeprueft, uebergabenAngleichen,
   personenAngleichen, personenFehler, dienstartenFehler, dienstartenAngleichen, kalendertagFehler, erfassungPauseFehler } from "../lib/gestalt.mjs";
 import { ablageSchluessel, altHash } from "../lib/codes.mjs";
@@ -309,6 +310,8 @@ async function sicherungsschluesselAbgleichen(store, raum) {
 /** Wege, die Personal, Rollen oder den Bestand im Ganzen ändern können: immer abgleichen. Alle anderen höchstens alle
     zehn Sekunden je Raum, damit häufige Schreibvorgänge (Stempeln) nicht jedes Mal zahlen. */
 const SK_IMMER_ABGLEICHEN = new Set(["bestand", "bestand/teile", "wiederherstellen"]);
+/** Laufende Wiederherstellungs-Prüfungen in diesem Prozess (Delta-Review #419; Obergrenze WIEDERHERSTELLEN_GRENZEN.gleichzeitig). */
+let wiederherstellenLaufend = 0;
 const skZuletzt = new Map();
 
 /** WP-48.3: Teilweg nur mit Schalter, nur für schreibende Rollen des eigenen Betriebs — der Betreiber (mehrere
@@ -3311,6 +3314,17 @@ async function behandeln(req, context, ctx) {
           text: absageText(s.rolle) }, 403);
       if (!frisch(s)) return neuAnmelden();
       const kW = kennung(req, s);
+      /* Delta-Review #419: Beginn der Anfrage (Gesamtgrenze unten) und prozessweite Obergrenze gleichzeitiger
+         Wiederherstellungs-Prüfungen — vor der Bremse, damit ein belegter Prozess keinen Versuch verbraucht. */
+      const t0W = performance.now();
+      if (wiederherstellenLaufend >= WIEDERHERSTELLEN_GRENZEN.gleichzeitig)
+        return antwort({ fehler: "Gerade laufen andere Wiederherstellungen.",
+          text: "Es wurde nichts zurückgespielt, und der Versuch zählt nicht. Bitte in einigen Minuten noch einmal versuchen.",
+          code: "WIEDERHERSTELLEN_BELEGT" }, 503, { "retry-after": "60" });
+      wiederherstellenLaufend++;
+      let platzFrei = false;
+      const platzFreigeben = () => { if (!platzFrei) { platzFrei = true; wiederherstellenLaufend--; } };
+      try {
       const bW = await bremse("schreiben", kW);
       if (!bW.frei) return zuVielAntwort(bW.wartet);
       const bW2 = await bremse("wiederherstellen", kW);
@@ -3320,27 +3334,23 @@ async function behandeln(req, context, ctx) {
       if (!marke || !MARKE.test(String(marke)))
         return antwort({ fehler: "Keine gültige Marke." }, 400);
 
-      /* Unter der Sperre des Raums: Die Prüfung „Stand unverändert", die
-         Sicherung des jetzigen Stands und der Tausch bilden eine Folge.
-         Ohne Sperre konnte zwischen Prüfung und Tausch jemand speichern —
-         seine Arbeit fehlte dann in der Sicherung „vor Wiederherstellung". */
-      return await unterRaumsperre(s.bestand, async () => {
-        /* Fünfter Review B-1: Lesezeit des Stands, der unten als „vor Wiederherstellung" gesichert wird. */
-        const lesezeitW = new Date().toISOString();
-        const jetztGelesen = await bestandLesenStreng(store, s.bestand);
-        if (!jetztGelesen) return antwort({ fehler: "Kein Bestand vorhanden." }, 404);
+      /* Den zurückzuspielenden Stand aus einem gelesenen Stand bauen und prüfen (Form, Orte). Zweimal benutzt:
+         vor der Raumsperre für die Fachprüfung (P2-21) und unter der Sperre für den Tausch. Zurück kommt
+         entweder eine fertige Antwort ({ ende }) oder der Stand ({ w }). */
+      const vorbereiten = async (jetztGelesen) => {
+        if (!jetztGelesen) return { ende: antwort({ fehler: "Kein Bestand vorhanden." }, 404) };
         if (etagW === undefined || etagW === null || String(etagW) !== String(jetztGelesen.stand))
-          return antwort({ fehler: "konflikt",
+          return { ende: antwort({ fehler: "konflikt",
             text: "Der Bestand hat sich geändert. Bitte neu laden und die Wiederherstellung erneut bestätigen.",
-            etag: jetztGelesen.stand }, 409);
+            etag: jetztGelesen.stand }, 409) };
 
         /* Offene Korrekturrevision (WP-16c): kein Zurückspielen, das Ist und Abschlüsse still verändert. */
         if ((jetztGelesen.bestand.mandanten || []).some(hatOffeneKorrektur)) {
           await protokoll("schreiben", kW, "abgewiesen", "Wiederherstellen: Korrektur offen", wer);
-          return antwort({ fehler: "Es läuft eine Korrektur nach dem Lohnexport. Wiederherstellen ist erst nach ihrem Abschluss möglich.", code: "KORREKTUR_OFFEN" }, 409);
+          return { ende: antwort({ fehler: "Es läuft eine Korrektur nach dem Lohnexport. Wiederherstellen ist erst nach ihrem Abschluss möglich.", code: "KORREKTUR_OFFEN" }, 409) };
         }
         const alt2 = await store.get(`sicherung:${s.bestand}:${marke}`, { type: "json" });
-        if (!alt2) return antwort({ fehler: "Diese Sicherung gibt es nicht." }, 404);
+        if (!alt2) return { ende: antwort({ fehler: "Diese Sicherung gibt es nicht." }, 404) };
         const metaW = await store.getMetadata(`sicherung:${s.bestand}:${marke}`).catch(() => null);
 
         const w = betriebWiederherstellen(jetztGelesen.bestand, alt2, s,
@@ -3349,15 +3359,90 @@ async function behandeln(req, context, ctx) {
             zeitquelle: metaW?.metadata?.zeitquelle === "lesezeit" ? "lesezeit" : null });
         if (w.verweigert) {
           await protokoll("schreiben", kW, "abgewiesen", `wiederherstellen ${marke}: ${w.verweigert}`, wer);
-          return antwort({ fehler: "Wiederherstellung nicht möglich.", text: w.verweigert }, w.status);
+          return { ende: antwort({ fehler: "Wiederherstellung nicht möglich.", text: w.verweigert }, w.status) };
         }
         w.bestand = personenAngleichen(uebergabenAngleichen(w.bestand));
         const form = pruefeGestalt(w.bestand, { vorher: jetztGelesen.bestand });
         if (!form.ok)
-          return antwort({ fehler: "Diese Sicherung ist unbrauchbar.", text: form.grund }, 422);
+          return { ende: antwort({ fehler: "Diese Sicherung ist unbrauchbar.", text: form.grund }, 422) };
         /* Geänderte Standort- und Einsatzortangaben müssen gültig sein (Wertebereiche, Quelle, Art). */
         const ortW = bestandStandorteFehler(jetztGelesen.bestand, w.bestand);
-        if (ortW) return antwort({ fehler: "Diese Sicherung ist unbrauchbar.", text: ortW }, 422);
+        if (ortW) return { ende: antwort({ fehler: "Diese Sicherung ist unbrauchbar.", text: ortW }, 422) };
+        const ortJetztW = eigenerBetrieb(personenAngleichen(jetztGelesen.bestand), s);
+        const ortNeuW = eigenerBetrieb(w.bestand, s);
+        if (!ortJetztW || !ortNeuW)
+          return { ende: antwort({ fehler: "Diese Sicherung ist unbrauchbar.", text: "Der eigene Betrieb ist nicht prüfbar." }, 422) };
+        /* Abdruck der Sicherung: Der Bericht gilt nur für genau diese Sicherung (Delta-Review #419). */
+        const abdruck = createHash("sha256").update(JSON.stringify(alt2)).digest("hex");
+        return { w, ortJetztW, ortNeuW, abdruck };
+      };
+
+      /* P2-21 (Empfehlung B, ENTSCHEIDUNGSLISTE): Fachprüfung der zurückgespielten Einteilungen mit derselben
+         Rechnung wie beim Speichern (Ruhezeit, Schutzregeln, Qualifikation, Höchstzahl, Mindestbesetzung) —
+         als Bericht, nicht als Sperre: Die Datenrettung bleibt möglich, die neuen Befunde (Anzahl je Regel,
+         ohne Person, Tag oder Merkmal) stehen in der Antwort, im Betriebsprotokoll und im Serverprotokoll.
+         Review #419 (Auflage 1): Die Prüfung rechnet VOR der Raumsperre mit eigenem Zeitbudget
+         (WIEDERHERSTELLEN_BUDGET_MS) — andere Schreiber desselben Raums warten nicht. Unter der Sperre gilt der
+         Bericht nur für genau den geprüften Stand (Stand gleich, sonst 409 wie bisher).
+         Fail-closed: Rechnet die Prüfung nicht zu Ende (Zeitbudget, Fehler), wird nichts zurückgespielt. Der
+         Versuch zählt zur Bremse „wiederherstellen" (5 je Stunde): Ein nicht gezählter Abbruch erlaubte beliebig
+         viele 30-s-Rechnungen. Notweg für sehr große Abweichungen: docs/BETRIEB-SICHERUNG.md (Betreiber, Ablage).
+         Der zurückgespielte Stand selbst (Ist, Abschlüsse, Abrechnung) bleibt unverändert; Sperren wie beim
+         Speichern (Option C′) ist Betreiberentscheidung. */
+      const vor = await vorbereiten(await bestandLesenStreng(store, s.bestand));
+      if ("ende" in vor) return vor.ende;
+      const gepruefterStand = String(etagW);
+      let fachW = null;
+      try { fachW = await wiederherstellungsPruefung(vor.ortJetztW.betrieb, vor.ortNeuW.betrieb); }
+      catch { fachW = null; await protokoll("fehler", kW, "wiederherstellen", "Fachprüfung: Ausnahme beim Rechnen").catch(() => {}); }
+      if (!fachW || !("bericht" in fachW)) {
+        await protokoll("schreiben", kW, "abgewiesen", `wiederherstellen ${marke}: Fachprüfung nicht abgeschlossen`, wer);
+        return antwort({ fehler: "Die Fachprüfung dieser Wiederherstellung ist nicht fertig geworden.",
+          text: "Es wurde nichts zurückgespielt. Mit dieser Sicherung bricht ein erneuter Versuch voraussichtlich wieder ab, "
+            + "und jeder Versuch zählt zur Grenze von fünf Wiederherstellungen je Stunde. Bitte den Betreiber verständigen "
+            + "(Notweg über die Ablage).",
+          code: "FACHPRUEFUNG_OFFEN" }, 503);
+      }
+      const berichtW = fachW.bericht;
+      const berichtZeileW = wiederherstellungsBerichtZeile(berichtW);
+      platzFreigeben();                                                     // die teure Rechnung ist vorbei
+
+      /* Unter der Sperre des Raums: Die Prüfung „Stand unverändert", die
+         Sicherung des jetzigen Stands und der Tausch bilden eine Folge.
+         Ohne Sperre konnte zwischen Prüfung und Tausch jemand speichern —
+         seine Arbeit fehlte dann in der Sicherung „vor Wiederherstellung". */
+      return await unterRaumsperre(s.bestand, async () => {
+        /* Fünfter Review B-1: Lesezeit des Stands, der unten als „vor Wiederherstellung" gesichert wird. */
+        const lesezeitW = new Date().toISOString();
+        const jetztGelesen = await bestandLesenStreng(store, s.bestand);
+        /* Der Bericht gilt nur für genau den geprüften Stand (Review #419, Auflage 1). */
+        if (jetztGelesen && String(jetztGelesen.stand) !== gepruefterStand)
+          return antwort({ fehler: "konflikt",
+            text: "Der Bestand hat sich geändert. Bitte neu laden und die Wiederherstellung erneut bestätigen.",
+            etag: jetztGelesen.stand }, 409);
+        const unter = await vorbereiten(jetztGelesen);
+        if ("ende" in unter) return unter.ende;
+        const { w, ortNeuW } = unter;
+        if (unter.abdruck !== vor.abdruck)
+          return antwort({ fehler: "konflikt",
+            text: "Die Sicherung hat sich während der Prüfung geändert. Es wurde nichts zurückgespielt. Bitte neu laden und erneut bestätigen.",
+            etag: jetztGelesen.stand }, 409);
+        /* Delta-Review #419 (Auflage 2): Prüfung + Warten auf die Raumsperre + Lesen dürfen die Proxy-Grenze (60 s)
+           nicht reißen. Ist die Gesamtgrenze erreicht, VOR dem Schreiben abbrechen — dann ist sicher nichts geändert. */
+        if (performance.now() - t0W > WIEDERHERSTELLEN_GRENZEN.gesamtMs) {
+          await protokoll("schreiben", kW, "abgewiesen", `wiederherstellen ${marke}: Zeitgrenze vor dem Schreiben`, wer);
+          return antwort({ fehler: "Die Wiederherstellung hat zu lange gedauert.",
+            text: "Es wurde nichts zurückgespielt (abgebrochen vor dem Schreiben). Meist war gerade viel zu speichern. "
+              + "Bitte später noch einmal versuchen; der Versuch zählt zur Grenze von fünf Wiederherstellungen je Stunde.",
+            code: "WIEDERHERSTELLEN_ZEIT" }, 503);
+        }
+        /* Sichtbar für die Leitung: im Eintrag „wiederhergestellt" des Betriebsprotokolls (nur neuer Eintrag). */
+        w.bestand = { ...w.bestand, mandanten: w.bestand.mandanten.map((m) => (m && m.id === ortNeuW.betrieb.id
+          && Array.isArray(m.protokoll) && m.protokoll[0] && m.protokoll[0].id === `w-${marke}`
+          ? { ...m, protokoll: [{ ...m.protokoll[0], text: `${m.protokoll[0].text} · ${berichtZeileW}`.slice(0, 600) }, ...m.protokoll.slice(1)] }
+          : m)) };
+        /* Auditierbar, bevor getauscht wird: Bericht im Serverprotokoll. */
+        await protokoll("schreiben", kW, "pruefung", `wiederherstellen ${marke}: ${berichtZeileW}`.slice(0, 400), wer);
 
         /* Erst den jetzigen Stand wegschreiben, dann tauschen. */
         const m2 = markeNeu();
@@ -3378,9 +3463,11 @@ async function behandeln(req, context, ctx) {
         }
         await protokoll("schreiben", kW, "erfolg",
           `wiederhergestellt aus ${marke}${w.stempelBehalten ? ` · ${w.stempelBehalten} Stempel behalten` : ""}`
-          + `${w.fristen ? ` · Fristen (${w.fristen.modus}): ${w.fristen.text}` : ""}`.slice(0, 400), wer);
-        return antwort({ ok: true, etag: ergW.stand, marke, fristen: w.fristen || null });
+          + `${w.fristen ? ` · Fristen (${w.fristen.modus}): ${w.fristen.text}` : ""}`.slice(0, 400)
+          + ` · ${berichtZeileW}`.slice(0, 400), wer);
+        return antwort({ ok: true, etag: ergW.stand, marke, fristen: w.fristen || null, fachpruefung: berichtW });
       });
+      } finally { platzFreigeben(); }
     }
 
     return antwort({ fehler: "Unbekannter Pfad." }, 404);

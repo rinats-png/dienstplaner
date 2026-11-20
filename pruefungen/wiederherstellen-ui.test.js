@@ -100,6 +100,53 @@ describe("Regeln und Texte", () => {
     expect(belegt.titel).toBe("Gerade nicht möglich");
     expect(belegt.text).toMatch(/nichts geändert/);
   });
+
+  it("P2-21 (Delta-Review #419): eigene 503 der Fachprüfung zeigen den Servertext, ohne „in einer Minute noch einmal“", () => {
+    const text = "Es wurde nichts zurückgespielt. Mit dieser Sicherung bricht ein erneuter Versuch voraussichtlich wieder ab.";
+    for (const code of ["FACHPRUEFUNG_OFFEN", "WIEDERHERSTELLEN_ZEIT", "WIEDERHERSTELLEN_BELEGT"]) {
+      const m = U.ergebnisMeldung({ status: 503, daten: { code, text } });
+      expect(m.ok, code).toBe(false);
+      expect(m.titel, code).toBe(U.WIEDERHERSTELLEN_CODES[code]);
+      expect(m.text, code).toBe(text);
+      expect(m.text, code).not.toMatch(/in einer Minute/);
+    }
+    expect(U.ergebnisMeldung({ status: 503, daten: { code: "FACHPRUEFUNG_OFFEN" } }).text).toMatch(/nichts geändert/);
+  });
+
+  it("Delta-Review 2: Netzwerkfehler nach dem Senden → Ergebnis unklar; 401 → freundlich neu anmelden; kein Rohtext", () => {
+    const netz = U.ergebnisMeldung(U.fehlerNachSenden(new TypeError("Failed to fetch")));
+    expect(netz).toMatchObject({ ok: false, neuLaden: true, titel: "Ergebnis unklar" });
+    expect(netz.text).toMatch(/Sicherungsliste/);
+    expect(netz.text).not.toMatch(/Failed to fetch|nichts geändert/);
+    const ab = U.ergebnisMeldung(U.fehlerNachSenden(new Error("nicht-angemeldet")));
+    expect(ab).toMatchObject({ ok: false, neuAnmelden: true, titel: "Bitte neu anmelden" });
+    expect(ab.text).not.toMatch(/nicht-angemeldet/);
+    expect(ab.text).toMatch(/nichts geändert/);                               // 401: der Server hat nichts angenommen
+    /* Status 0 aus den Prüfungen VOR dem Senden (speicher.js) bleibt „nicht gesendet“. */
+    expect(U.ergebnisMeldung({ status: 0, daten: { fehler: "Die Anmeldung ließ sich nicht prüfen. Bitte erneut versuchen." } }))
+      .toMatchObject({ titel: "Nicht zurückgespielt", text: "Die Anmeldung ließ sich nicht prüfen. Bitte erneut versuchen." });
+    /* Rückfallzweig (etwa 500): keine Behauptung „nichts geändert“. */
+    const fuenf = U.ergebnisMeldung({ status: 500, daten: { fehler: "Serverfehler", text: "Das hat nicht geklappt." } });
+    expect(fuenf).toMatchObject({ ok: false, neuLaden: true, titel: "Ergebnis unklar" });
+    expect(fuenf.text).not.toMatch(/nichts geändert/);
+  });
+
+  it("die Ansicht nutzt fehlerNachSenden statt des rohen Fehlertexts", async () => {
+    const { readFile: lesen } = await import("node:fs/promises");
+    const q = await lesen(path.join(path.dirname(fileURLToPath(import.meta.url)), "../src/ansichten/sicherungenverwalten.jsx"), "utf8");
+    expect(q).toMatch(/catch \(e\) \{ a = fehlerNachSenden\(e\); \}/);
+    expect(q).not.toMatch(/fehler: String\(\(e && e\.message\) \|\| e\) \} \}; \}/);
+  });
+
+  it("502/504 (Proxy-Zeitgrenze): Ergebnis unklar, Sicherungsliste prüfen — nie „nichts geändert“", () => {
+    for (const status of [502, 504]) {
+      const m = U.ergebnisMeldung({ status, daten: {} });
+      expect(m).toMatchObject({ ok: false, neuLaden: true, titel: "Ergebnis unklar" });
+      expect(m.text).toMatch(/unklar/);
+      expect(m.text).toMatch(/Sicherungsliste/);
+      expect(m.text).not.toMatch(/nichts geändert/);
+    }
+  });
 });
 
 describe("Oberfläche gerendert", () => {

@@ -95,6 +95,18 @@ export const UNLESBAR_TEXT = "Ein Teil des gespeicherten Bestands ist gerade nic
   + "in der Anwendung nicht möglich — mit Absicht: Sonst ginge der unlesbare Teil verloren. Bitte den Betreiber "
   + "verständigen; der Rückweg steht im Betriebshandbuch (BETRIEB-SICHERUNG, Abschnitt 4a „Unlesbare Datei“).";
 
+/** P2-21: Absagen der Wiederherstellung mit eigenem Servertext (503) und ihr Titel. */
+export const WIEDERHERSTELLEN_CODES = Object.freeze({
+  FACHPRUEFUNG_OFFEN: "Fachprüfung nicht fertig geworden",
+  WIEDERHERSTELLEN_ZEIT: "Abgebrochen, nichts zurückgespielt",
+  WIEDERHERSTELLEN_BELEGT: "Gerade andere Wiederherstellungen",
+});
+/** Antwort kam nicht an (Proxy-Zeitgrenze 502/504): Ergebnis offen, nicht „nichts geändert“. */
+export const UNKLAR_TEXT = "Die Antwort des Servers kam nicht rechtzeitig an. Ob zurückgespielt wurde, ist unklar. "
+  + "Bitte neu laden und prüfen: Steht in der Sicherungsliste eine Sicherung „automatisch vor Wiederherstellung“ "
+  + "von eben und zeigt das Änderungsprotokoll „wiederhergestellt“, wurde zurückgespielt. Erst danach gegebenenfalls "
+  + "erneut versuchen.";
+
 /**
  * Was eine Antwort von /api/wiederherstellen für die Leitung bedeutet.
  * @param {{ status: number, daten?: any }} a
@@ -132,11 +144,38 @@ export function ergebnisMeldung({ status, daten } = { status: 0 }) {
     return { ok: false, titel: "Gerade zu viele Versuche", text: "Bitte in einigen Minuten noch einmal versuchen." };
   if (status === 503 && d.code === "BESTAND_UNLESBAR")
     return { ok: false, titel: "Nicht lesbar", text: UNLESBAR_TEXT };
+  /* P2-21 (Delta-Review #419): eigene Absagen der Fachprüfung beim Wiederherstellen — der Server sagt selbst, ob ein
+     erneuter Versuch hilft und ob er zur Bremse zählt; kein pauschales „in einer Minute noch einmal“. */
+  if (status === 503 && WIEDERHERSTELLEN_CODES[d.code])
+    return { ok: false, titel: WIEDERHERSTELLEN_CODES[d.code],
+      text: typeof d.text === "string" && d.text ? d.text : nichts };
+  /* Proxy-Zeitgrenze (502/504): Die Antwort kam nicht an — ob der Server noch geschrieben hat, ist offen. */
+  if (status === 502 || status === 504)
+    return { ok: false, neuLaden: true, titel: "Ergebnis unklar", text: UNKLAR_TEXT };
   if (status === 503)
     return { ok: false, titel: "Gerade nicht möglich",
       text: `Der Server ist gerade ausgelastet oder wird neu gestartet. ${nichts} Bitte in einer Minute noch einmal versuchen.` };
+  /* Delta-Review 2 #419: 401 — der Server hat die Anfrage gar nicht angenommen, also sicher nichts geändert. */
+  if (status === 401)
+    return { ok: false, neuAnmelden: true, titel: "Bitte neu anmelden",
+      text: `Die Anmeldung ist abgelaufen. ${nichts} Bitte neu anmelden und erneut versuchen.` };
+  /* Netzwerkfehler NACH dem Senden (fehlerNachSenden): Ob der Server geschrieben hat, ist offen. */
+  if (status === 0 && d.unklar)
+    return { ok: false, neuLaden: true, titel: "Ergebnis unklar", text: UNKLAR_TEXT };
+  /* Status 0 ohne `unklar`: Die Anfrage ging nicht hinaus (speicher.js prüft vor dem Senden) — nichts geändert. */
   if (status === 0)
     return { ok: false, titel: "Nicht zurückgespielt", text: d.fehler || "Keine Verbindung zum Server." };
-  return { ok: false, titel: d.fehler || "Nicht zurückgespielt",
-    text: d.text || nichts };
+  /* Alles Übrige (etwa 500): Der Server kann schon geschrieben haben — keine Behauptung „nichts geändert“. */
+  return { ok: false, neuLaden: true, titel: "Ergebnis unklar", text: UNKLAR_TEXT };
+}
+
+/**
+ * Ein Fehler, den der Aufruf NACH dem Senden wirft (speicher.js `ruf`): 401 wirft „nicht-angemeldet“ — dann hat der
+ * Server nichts angenommen; alles andere (Netz weg, Verbindung abgebrochen) lässt das Ergebnis offen. Nie roher Text.
+ * @param {any} e
+ * @returns {{ status: number, daten: any }}
+ */
+export function fehlerNachSenden(e) {
+  if (e && e.message === "nicht-angemeldet") return { status: 401, daten: {} };
+  return { status: 0, daten: { unklar: true } };
 }
