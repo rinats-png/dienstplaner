@@ -1,5 +1,5 @@
 /* ==========================================================================
-   V4-IST (2026-11-21): Formebene im Inventarwerkzeug (werkzeug/v4-inventar.mjs).
+   V4-IST (2026-11-20): Formebene im Inventarwerkzeug (werkzeug/v4-inventar.mjs).
 
    Anlass: Das Inventar meldete „0 % Formensystem“, weil es nur <V4Karte/V4Knopf/…> zählte. Die V4-Form erreicht die
    Oberfläche heute aber über die Oberflächenschicht (src/v4/app-stil.js) auf den Altklassen .karte/.btn/.inp/…, die
@@ -18,6 +18,7 @@ import {
   hauptansichtenMarkdown, kennzahlen,
 } from "../werkzeug/v4-inventar.mjs";
 import { V4_APP_KLASSEN } from "../src/v4/app-stil.js";
+import { KONFLIKTZONEN } from "../werkzeug/acc45-backlog.mjs";
 
 const WURZEL = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (p) => readFileSync(join(WURZEL, p), "utf8").replace(/\r\n/g, "\n");
@@ -65,9 +66,20 @@ describe("Formkennzahlen und Stufen", () => {
     expect(k.formLiterale).toBe(2);
   });
 
+  it("Form-Literale: borderRadius als Zeichenkette zählt; boxShadow \"none\" und Kommentare zählen nicht", () => {
+    expect(formKennzahlen("style={{ borderRadius: \"50%\" }} style={{ borderRadius: '8px 8px 0 0' }}", ov).formLiterale).toBe(2);
+    expect(formKennzahlen("style={{ boxShadow: \"none\" }} style={{ boxShadow: 'var(--v4-schatten)' }}", ov).formLiterale).toBe(0);
+    expect(formKennzahlen("/* früher: borderRadius: 8, boxShadow: \"0 0 1px x\" */\n// borderRadius: 4\nconst a = 1;", ov).formLiterale).toBe(0);
+  });
+
   it("sichtbar nur mit Markup; reine Logik ist nicht sichtbar", () => {
     expect(formKennzahlen("export const a = 1;", ov).sichtbar).toBe(false);
     expect(formKennzahlen("return <div>x</div>;", ov).sichtbar).toBe(true);
+  });
+
+  it("sichtbar: Markup nur im Kommentar zählt nicht (ui/raster.js)", () => {
+    expect(formKennzahlen("/* Zellen sind <td> im Raster */\n// <button> fokussieren\nexport const f = () => 1;", ov).sichtbar).toBe(false);
+    expect(formKennzahlen(lies("src/ui/raster.js"), ov).sichtbar).toBe(false);
   });
 
   it("Rangfolge der Formstufen", () => {
@@ -117,8 +129,17 @@ describe("Gesamtlauf", () => {
   }, 60000);
 
   it("Ist-Stand-Dokument nennt Werkzeugaufruf und Test", () => {
-    const doc = lies("docs/acc45/V4-IST-STAND-2026-11-21.md");
+    const doc = lies("docs/acc45/V4-IST-STAND-2026-11-20.md");
     expect(doc).toContain("node werkzeug/v4-inventar.mjs --hauptansichten");
     expect(doc).toContain("pruefungen/v4-ist-stand.test.js");
+  });
+
+  it("SSOT (Review #418): V4-3b mit Konfliktzone src/ansichten, V4-6 hängt an V4-3a/b/c, V4-3 auf den Rest gesenkt", () => {
+    expect(KONFLIKTZONEN).toContain("src/ansichten");
+    const w = JSON.parse(lies("docs/acc45/work-packages.json"));
+    const p = (id) => w.pakete.find((x) => x.id === id);
+    expect(p("V4-3b").konfliktzonen).toContain("src/ansichten");
+    for (const d of ["V4-3a", "V4-3b", "V4-3c"]) expect(p("V4-6").abhaengigkeiten).toContain(d);
+    expect(p("V4-3").aufwandPT).toEqual({ min: 1, max: 2 });
   });
 });

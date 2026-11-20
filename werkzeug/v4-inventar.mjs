@@ -11,7 +11,7 @@
      node werkzeug/v4-inventar.mjs --markdown   Tabellen für docs/acc45/V4-INVENTAR.md
      node werkzeug/v4-inventar.mjs --json       vollständige Daten
      node werkzeug/v4-inventar.mjs --streng     Exit 1 bei Datei ohne ZUORDNUNG oder verschwundener Datei im Dokument
-     node werkzeug/v4-inventar.mjs --hauptansichten   Formebene je Hauptansicht (docs/acc45/V4-IST-STAND-2026-11-21.md)
+     node werkzeug/v4-inventar.mjs --hauptansichten   Formebene je Hauptansicht (docs/acc45/V4-IST-STAND-2026-11-20.md)
    Test: pruefungen/v4-inventar.test.js, pruefungen/v4-ist-stand.test.js (npm run pruefung:querschnitt).
    ========================================================================== */
 import { readFileSync, readdirSync, existsSync } from "node:fs";
@@ -249,7 +249,7 @@ const RE = {
   importe: /(?:from\s+|import\(\s*)["'](\.{1,2}\/[^"']+)["']/g,
 };
 
-/* ------------------------------------------- Formebene (V4-IST, 2026-11-21)
+/* ------------------------------------------- Formebene (V4-IST, 2026-11-20)
    Die V4-Form erreicht eine Datei auf vier Wegen: V4-Basiskomponenten (<V4Karte …>), Klassen der Oberflächenschicht
    direkt im className (auch in Ternären), über einen Baustein, der eine solche Klasse setzt (<Card>, <Btn>, <Inp>,
    <Seitenkarte>, <Fenster> …), oder über var(--v4-…) im Inline-Stil (Einstieg). Die ursprüngliche Spalte „V4-Bst.“
@@ -333,8 +333,9 @@ export function formTraegerIn(text, klassen) {
   return namen.sort();
 }
 
-/** Inline-Formwerte, die an den Tokens vorbeigehen: borderRadius als Zahl, boxShadow als Literal. */
-const RE_FORM_LITERAL = /borderRadius:\s*\d|boxShadow:\s*["'`]/g;
+/** Inline-Formwerte, die an den Tokens vorbeigehen: borderRadius als Zahl oder Zeichenkette (nicht var(…)),
+ *  boxShadow als Zeichenkette (nicht "none", nicht var(…)). Gezählt im Text ohne Kommentare. */
+const RE_FORM_LITERAL = /borderRadius:\s*(?:\d|["'`](?!\s*var\())|boxShadow:\s*["'`](?!\s*(?:none|var\())/g;
 /** Erzeugt die Datei Markup (JSX-Element, className oder Inline-Stil)? Reine Logik-/Stilquellen sind nicht „sichtbar“. */
 const RE_SICHTBAR = /<[a-z][a-z0-9]*[\s>/]|className=|style=\{/;
 
@@ -346,11 +347,12 @@ export function formKennzahlen(text, overlayKlassen = [], traeger = []) {
     for (const n of m[1].split(",")) importiert.add(n.trim().split(/\s+as\s+/).pop().trim());
   }
   const tr = new Set(traeger.filter((n) => importiert.has(n)));
+  const code = ohneKommentare(String(text));
   return {
-    sichtbar: RE_SICHTBAR.test(text),
+    sichtbar: RE_SICHTBAR.test(code),
     formDirekt: klassenWoerter(text).filter((w) => fk.has(w)).length,
     formBaustein: [...String(text).matchAll(/<([A-Z]\w*)\b/g)].filter((m) => tr.has(m[1])).length,
-    formLiterale: zaehle(text, RE_FORM_LITERAL),
+    formLiterale: zaehle(code, RE_FORM_LITERAL),
   };
 }
 
@@ -376,7 +378,7 @@ export const formErreicht = (stufe) => FORM_ERREICHT.has(stufe);
 
 /**
  * Hauptansicht (Gliederung des Ist-Stands, Urteil): Einstieg, Speicherlage, Telefonschale und Import nach Datei,
- * sonst nach Familie. Rein für die Auswertung in docs/acc45/V4-IST-STAND-2026-11-21.md.
+ * sonst nach Familie. Rein für die Auswertung in docs/acc45/V4-IST-STAND-2026-11-20.md.
  */
 export const HAUPTANSICHT_DATEIEN = {
   Einstieg: ["src/main.jsx", "src/startbild.jsx", "src/verlustweg.jsx", "src/betreiber-2fa.jsx", "src/rechtstexte.jsx",
@@ -722,7 +724,7 @@ export function zusammenfassung(inv) {
         ohneBackdropLuecke: z((x) => x.backdropOhneRueckfall === 0),
         mitAxe: z((x) => x.tests.includes("e2e-flaechen/axe")),
         mitTestbezug: z((x) => x.tests.length > 0),
-        /* Formebene und sichtbarer Nenner (V4-IST 2026-11-21) */
+        /* Formebene und sichtbarer Nenner (V4-IST 2026-11-20) */
         sichtbar: z((x) => x.sichtbar),
         form: Object.fromEntries(FORM_STUFEN.map((s) => [s, z((x) => x.form === s)])),
         formErreicht: z((x) => formErreicht(x.form)),
@@ -764,7 +766,7 @@ export function jeHauptansicht(inv) {
   return raus;
 }
 
-/** Tabelle je Hauptansicht für docs/acc45/V4-IST-STAND-2026-11-21.md. */
+/** Tabelle je Hauptansicht für docs/acc45/V4-IST-STAND-2026-11-20.md. */
 export function hauptansichtenMarkdown(inv) {
   const h = jeHauptansicht(inv);
   const z = ["| Hauptansicht | Dateien (sichtbar) | Zeilen | Form erreicht | davon direkt / Baustein / Token | Farbrein | Farbliterale | Form-Literale | Inline-Stile | Dialog | Zustand | axe | WP-40 | voll V4 |",

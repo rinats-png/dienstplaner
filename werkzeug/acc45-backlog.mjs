@@ -32,7 +32,8 @@ export const STATUS = ["BLOCKED", "READY", "IN_PROGRESS", "REVIEW", "CI_FAILED",
 export const STATUS_QUELLE = Object.freeze(["BLOCKED", "READY", "IN_PROGRESS", "REVIEW", "INTEGRATED", "DONE"]);
 export const STRAENGE = Object.freeze(["acc45", "wp19", "intelligence", "folge", "extern"]);
 export const STUFEN = Object.freeze(["implementiert", "lokalGetestet", "reviewt", "integriert", "stagingGeprueft", "fachlichFreigegeben", "produktiv"]);
-export const KONFLIKTZONEN = Object.freeze(["App.jsx", "daten.mjs", "rechte.mjs", "sicht.mjs", "package.json", "stempelintegritaet.mjs"]);
+/* "src/ansichten": breite Änderungen über viele Ansichtsdateien (V4-3b, Review #418), nicht parallel zu anderen solchen PRs. */
+export const KONFLIKTZONEN = Object.freeze(["App.jsx", "daten.mjs", "rechte.mjs", "sicht.mjs", "package.json", "stempelintegritaet.mjs", "src/ansichten"]);
 export const ERLEDIGT = Object.freeze(["INTEGRATED", "VERIFIED", "DONE"]);
 export const NUR_REIHENFOLGE = Object.freeze(["WP-09"]);
 

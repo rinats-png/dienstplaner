@@ -39,8 +39,8 @@
       "pakete": 24,
       "offen": 19,
       "restPT": {
-        "min": 31.6,
-        "max": 55.1
+        "min": 26.6,
+        "max": 47.1
       }
     },
     "extern": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 338.4,
-    "max": 580.35
+    "min": 333.4,
+    "max": 572.35
   },
   "kritischerPfad": {
     "summe": 70,
@@ -6367,10 +6367,10 @@
     },
     {
       "id": "V4-3",
-      "titel": "V4: Modulmigration (V4Karte/V4Knopf/V4Feld/V4Dialog statt Overlay)",
+      "titel": "V4: gezielter Einsatz von V4Feld/V4Dialog/V4Hinweis, wo Zugänglichkeit fehlt (Rest nach V4-3a/b/c)",
       "strang": "folge",
       "prio": "P2",
-      "aufwandPT": {"min":6,"max":10},
+      "aufwandPT": {"min":1,"max":2},
       "abhaengigkeiten": ["V4-1","WP-40","WP-48-GB"],
       "status": "BLOCKED",
       "stufen": {
@@ -6387,11 +6387,11 @@
       "modell": "opus",
       "konfliktzonen": ["App.jsx"],
       "pr": [],
-      "nachweis": "docs/acc45/V4-INTEGRATIONSSTAND-2026-11-20.md",
-      "akzeptanz": "Module nach Inventar migriert, V4-Bausteine produktiv genutzt, keine Verhaltensänderung, 38 rgb/rgba-Literale abgebaut",
+      "nachweis": "docs/acc45/V4-IST-STAND-2026-11-20.md",
+      "akzeptanz": "V4Feld für Formulare ohne verbundenes Label/Fehlertext, V4Dialog für Dialograhmen ohne Fokusfalle, V4Hinweis für Statusbänder ohne role; keine Verhaltensänderung; Bausteintausch (Card/Btn → V4Karte/V4Knopf) kein Pflichtziel",
       "tests": "Unit, E2E",
       "dateien": "src/ansichten, src/App.jsx",
-      "notiz": "Analyse 2026-11-20 (V4-Integrationsstand); PT sind Schätzung der Analyse, nicht belegt. Messung V4-IST 2026-11-21 (docs/acc45/V4-IST-STAND-2026-11-21.md): Form erreicht 123/159 sichtbare Dateien über die Oberflächenschicht; Rest sind Inline-Formwerte und Altstil. Vorschlag: V4-3a/b/c übernehmen und V4-3 auf gezielten Einsatz von V4Feld/V4Dialog/V4Hinweis verkleinern (Koordinatorentscheidung)."
+      "notiz": "Analyse 2026-11-20 (V4-Integrationsstand); PT sind Schätzung der Analyse, nicht belegt. Messung V4-IST 2026-11-20 (docs/acc45/V4-IST-STAND-2026-11-20.md): Form erreicht 123/159 sichtbare Dateien über die Oberflächenschicht; Rest sind Inline-Formwerte und Altstil. Vorschlag: V4-3a/b/c übernehmen und V4-3 auf gezielten Einsatz von V4Feld/V4Dialog/V4Hinweis verkleinern (Koordinatorentscheidung). Review #418 (2026-11-20): Form über die Stilschicht zählt als V4-Stufe 1, Bausteintausch kein Pflichtziel, feste Werte → Tokens; Aufwand 6–10 PT auf V4-3a/b/c verteilt, V4-3 auf den Rest (1–2 PT) gesenkt."
     },
     {
       "id": "V4-3a",
@@ -6415,11 +6415,11 @@
       "modell": "opus",
       "konfliktzonen": ["App.jsx"],
       "pr": [],
-      "nachweis": "docs/acc45/V4-IST-STAND-2026-11-21.md",
+      "nachweis": "docs/acc45/V4-IST-STAND-2026-11-20.md",
       "akzeptanz": "Feste Radien/Schatten der Querschnittsklassen in src/App.jsx und src/gestalt/stil.js aus --v4-Tokens; Klassennamen und E2E-Locators unverändert; Bildnachweis hell/dunkel der betroffenen Ansichten (pruefungen/browser/v4-abnahme.mjs)",
       "tests": "Unit, E2E",
       "dateien": "src/App.jsx, src/gestalt/stil.js",
-      "notiz": "Vorschlag V4-IST 2026-11-21 (Messung werkzeug/v4-inventar.mjs --hauptansichten); PT sind Schätzung. Ersetzt bei Annahme einen Teil von V4-3."
+      "notiz": "Übernommen (Review #418), V4-IST 2026-11-20 (Messung werkzeug/v4-inventar.mjs --hauptansichten); PT sind Schätzung. Ersetzt einen Teil des früheren V4-3."
     },
     {
       "id": "V4-3b",
@@ -6441,13 +6441,13 @@
       "branch": null,
       "agent": null,
       "modell": "sonnet",
-      "konfliktzonen": [],
+      "konfliktzonen": ["src/ansichten"],
       "pr": [],
-      "nachweis": "docs/acc45/V4-IST-STAND-2026-11-21.md",
+      "nachweis": "docs/acc45/V4-IST-STAND-2026-11-20.md",
       "akzeptanz": "Inline borderRadius/boxShadow-Literale je Hauptansicht durch Tokens oder Bausteinklassen ersetzt (Zählstand 221 in 78 Dateien sinkt messbar); keine Änderung an Fachlogik, Rollen, Accessible Names oder Klassennamen; Bildnachweis hell/dunkel je Ansicht",
       "tests": "Unit, E2E",
       "dateien": "src/ansichten",
-      "notiz": "Vorschlag V4-IST 2026-11-21; Reihenfolge Plan, Personal, Zeit/Abrechnung, Einstellungen, Lage, Betreiber, Import, Telefonschale, Einstieg; PT sind Schätzung. Ersetzt bei Annahme einen Teil von V4-3."
+      "notiz": "Übernommen (Review #418), V4-IST 2026-11-20; Reihenfolge Plan, Personal, Zeit/Abrechnung, Einstellungen, Lage, Betreiber, Import, Telefonschale, Einstieg; PT sind Schätzung. Ersetzt einen Teil des früheren V4-3."
     },
     {
       "id": "V4-3c",
@@ -6471,11 +6471,11 @@
       "modell": "sonnet",
       "konfliktzonen": [],
       "pr": [],
-      "nachweis": "docs/acc45/V4-IST-STAND-2026-11-21.md",
+      "nachweis": "docs/acc45/V4-IST-STAND-2026-11-20.md",
       "akzeptanz": "Formstufe „ohne V4-Form“ (werkzeug/v4-inventar.mjs) für sichtbare Kundendateien leer oder begründet; Branchenmodule mit Bildnachweis im Demo-Betrieb mit Paket; 2FA- und Verlustweg unverändert sicher (Gate 6)",
       "tests": "Unit, E2E",
       "dateien": "src/module, src/ansichten, src/*.jsx",
-      "notiz": "Vorschlag V4-IST 2026-11-21 (36 sichtbare Dateien ohne V4-Form); PT sind Schätzung. Ersetzt bei Annahme einen Teil von V4-3."
+      "notiz": "Übernommen (Review #418), V4-IST 2026-11-20 (36 sichtbare Dateien ohne V4-Form); PT sind Schätzung. Ersetzt einen Teil des früheren V4-3."
     },
     {
       "id": "V4-4",
@@ -6539,7 +6539,7 @@
       "strang": "folge",
       "prio": "P2",
       "aufwandPT": {"min":2,"max":4},
-      "abhaengigkeiten": ["V4-3","V4-4"],
+      "abhaengigkeiten": ["V4-3","V4-4","V4-3a","V4-3b","V4-3c"],
       "status": "BLOCKED",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
