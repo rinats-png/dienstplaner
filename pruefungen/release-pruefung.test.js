@@ -181,6 +181,7 @@ describe("G1 CI", () => {
     const x = (u) => ({ id: 50, name: "extra", status: "completed", conclusion: "success", head_sha: K, ...u });
     expect(g1([...checks(), x({ conclusion: "cancelled" })]).ergebnis).toBe("NO-GO");
     expect(g1([...checks(), x({ status: "queued", conclusion: null })]).ergebnis).toBe("NO-GO");
+    expect(g1([...checks(), x({ status: "in_progress", conclusion: "success" })]).ergebnis).toBe("NO-GO"); // Status zählt für sich
     expect(g1([...checks(), x({ conclusion: "skipped" })]).ergebnis).toBe("GO");
   });
   it("eigener Gate-Job (release-gate) wird nicht mitgezählt, auch wenn er noch läuft", () => {
@@ -318,7 +319,7 @@ describe("G3 Schalter und unfertige Funktionen", () => {
     const g = g3Schalter({ codeNamen: e.codeNamen, klassen: e.klassen, vorlagen: e.vorlagen, unfertig: e.unfertig, quelltexte: e.quelltexte }, KONFIG_STANDARD);
     expect(g.gruende).toEqual([]);
     expect(e.codeNamen.length).toBeGreaterThan(50);
-  });
+  }, 60_000); // liest den ganzen Server-Code
 });
 
 describe("G4 Bild und Freigabeliste", () => {
@@ -338,6 +339,10 @@ describe("G4 Bild und Freigabeliste", () => {
     expect(fall({ digest: "sha256:cccc" })).toBe("NO-GO");
     expect(fall({ digest: D + "0" })).toBe("NO-GO");
     expect(fall({ digest: "x" + D })).toBe("NO-GO");
+    for (const d of ["x" + D, D + "0", "sha256:cccc"]) {
+      const g = g4Bild({ digest: d, kandidat: K, bild: bild({ digest: d }), liste: l, berichtVorhanden: true, jetztMs: JETZT_MS }, KONFIG_STANDARD);
+      expect(g.gruende.join(), d).toMatch(/nicht sha256:<64 hex>/);
+    }
   });
   it("fehlendes Label, falsche Provenienz, fehlende Provenienz, fehlende Bildangaben, fehlender Bericht → NO-GO", () => {
     expect(fall({ bild: bildAngabenLesen({ abgefragtAm: "2026-11-20T11:00:00Z", digest: D, provenienzRevision: K }) })).toBe("NO-GO");
@@ -548,7 +553,9 @@ describe("Hilfen und Aufruf", () => {
     expect(JSON.parse(nogo.stdout).nogo).toContain("G6");
     expect(lauf(["--offline"]).status).toBe(2);
     expect(lauf(["--kandidat", "HEAD", "--basis", "HEAD", "--jetzt", JETZT]).status).toBe(2); // --jetzt online verboten
-    expect(lauf(["--kandidat", "HEAD"]).status).toBe(2); // --basis ist Pflicht
+    const ohneBasis = lauf(["--kandidat", "HEAD"]);
+    expect(ohneBasis.status).toBe(2); // --basis ist Pflicht
+    expect(ohneBasis.stderr).toMatch(/--basis .*fehlt \(Pflicht/);
     expect(lauf(["--kandidat", "HEAD", "--basis", "--gibtsnicht"]).status).toBe(2);
     expect(lauf(["--kandidat", "HEAD", "--basis", "gibt-es-nicht-rel1"]).status).toBe(2); // rev-parse --verify
     expect(lauf(["--kandidat", "HEAD", "--basis", "--output=x"]).status).toBe(2); // keine Option als Revision
@@ -557,5 +564,5 @@ describe("Hilfen und Aufruf", () => {
     const zeigen = lauf(["--konfig-zeigen"]);
     expect(zeigen.status).toBe(0);
     expect(JSON.parse(zeigen.stdout).pflichtChecks).toEqual(PFLICHT);
-  });
+  }, 120_000); // viele Kindprozesse
 });

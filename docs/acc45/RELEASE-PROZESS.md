@@ -49,11 +49,17 @@ Nur der Betreiber löst ein Deployment aus. Claude startet nie einen Deploy-Work
 
 ## 4. Ablauf
 
+Die Release-Prüfung läuft **zweimal**: als Vorprüfung vor Phase 1 (G4, G6, G7, G10 sind dann noch offen, Feld
+`vorpruefungOk`) und als Endprüfung nach Phase 2 (alle Gates, Exit 0). `--basis` ist Pflicht: der Commit des
+vorigen Releases (Zeile `aktiv` vor dem Listen-PR). Das Werkzeug leitet die Basis bewusst nicht aus der Liste ab,
+weil die Zeile des Kandidaten sie nach dem Listen-PR überdeckt und ein gesperrtes Altbild keine Basis sein darf.
+
 | Phase | Was | Wer | Beleg | Verweis |
 |---|---|---|---|---|
-| 0 Gates | `node werkzeug/release-pruefung.mjs --kandidat <sha> --digest <sha256:…> --release-id <id> --bild-info <datei> --nachweise <verz>`; Exit 0 = GO | Claude, Betreiber liest | JSON-Ausgabe im Release-PR | Abschnitt 6 |
-| 1 Sicherung und Restore-Probe | Sicherung außer Haus jünger als 26 h; Restore-Probe und Widerrufbuch-Probe jünger als 35 Tage; vor dem ersten Wechsel zusätzlich Probe K0–K11 | Betreiber | `letzte-erfolgreiche.json`, `probe-status.json`, `widerrufbuch-probe-status.json` (G6) | [BETRIEB-SICHERUNG.md](../BETRIEB-SICHERUNG.md), [PRODUKTIONSWEG](PRODUKTIONSWEG-VORBEREITUNG-2026-11-20.md) §4 |
-| 2 Bild-Digest | Bild aus `main` bauen (`deploy.yml`, nur `bauen`); Digest, Label, Provenienz prüfen; Listen-PR (Kandidat `aktiv`, voriges Bild `vorherig` oder `gesperrt`) | Claude baut, Betreiber merged Listen-PR | G4 | [FREIGEGEBENE-IMAGES.md](../../deploy/FREIGEGEBENE-IMAGES.md), Produktionsweg §3.3a, §3.7 |
+| 0 Vorprüfung | `node werkzeug/release-pruefung.mjs --kandidat <bild-commit> --basis <voriger-release-commit> --digest <sha256:…> --release-id <id> --bild-info <datei>`; erwartet: `vorpruefungOk: true` (G1, G2, G3, G5, G8, G9 GO) | Claude, Betreiber liest | JSON im Release-PR | Abschnitt 6 |
+| 1 Sicherung und Restore-Probe | Sicherung außer Haus jünger als 26 h; Restore-Probe und Widerrufbuch-Probe jünger als 35 Tage; vor dem ersten Wechsel zusätzlich Probe K0–K11; die drei Statusdateien unter `docs/acc45/releases/<id>/nachweise/` ablegen (ohne Personendaten) | Betreiber | `letzte-erfolgreiche.json`, `probe-status.json`, `widerrufbuch-probe-status.json` (G6) | [BETRIEB-SICHERUNG.md](../BETRIEB-SICHERUNG.md), [PRODUKTIONSWEG](PRODUKTIONSWEG-VORBEREITUNG-2026-11-20.md) §4 |
+| 2 Bild-Digest, Liste, Freigabe | Bild aus `main` (schon vor Phase 0 gebaut); Listen-PR (Kandidat `aktiv`, voriges Bild `vorherig` oder `gesperrt`); Freigabedatei. Danach ändert HEAD seit dem Kandidaten nur diese Pfade | Claude: Listen-PR; Betreiber: Merge und Freigabedatei | G4, G7, G10 | [FREIGEGEBENE-IMAGES.md](../../deploy/FREIGEGEBENE-IMAGES.md), Produktionsweg §3.3a, §3.7 |
+| 2b Endprüfung | derselbe Aufruf mit `--nachweise docs/acc45/releases/<id>/nachweise`; **Exit 0** Pflicht (online, echte Uhr) | Claude, Betreiber | JSON im Release-PR | Abschnitt 6 |
 | 3 Deploy-Skript | erst `--trocken`, dann echt; Fehlerstrategie aus der Freigabedatei (`r0` oder `ruecksprung`) | Betreiber | `betrieb-protokoll.log` | [BEREITSTELLUNG.md](../../BEREITSTELLUNG.md) Schritt 3, `deploy/deploy.sh` |
 | 4 Smoke | automatisch in `deploy.sh` (healthy, `deploy-smoke.mjs`, Log, Manifestabgleich); danach ein Abruf von außen über die Domain | `deploy.sh`, Betreiber | Ausgabe `SMOKE OK` | `deploy/deploy-smoke.mjs` |
 | 5 Live-Abnahme | Go-Kriterien G-a bis G-f innerhalb 60 min | Betreiber | Vermerk mit Uhrzeit | Produktionsweg §3.6 Phase 2 |
@@ -61,10 +67,16 @@ Nur der Betreiber löst ein Deployment aus. Claude startet nie einen Deploy-Work
 
 Bricht eine Phase ab, beginnt der Ablauf wieder bei Phase 0 mit einem neuen Kandidaten.
 
+**Bildangaben (`--bild-info`):** eine JSON-Datei `{ "abgefragtAm": "<ISO-Zeit>", "quelle": "docker buildx imagetools inspect …", "roh": <Ausgabe von --format '{{json .}}'> }`.
+Die Abfrage darf höchstens 7 Tage alt sein; Digest, Label und Provenienz darin müssen zum Kandidaten passen.
+
 ## 5. Freigabedatei
 
-Pfad: `docs/acc45/releases/<id>.freigabe.json`. Der Betreiber commitet sie selbst. Das Werkzeug prüft nur, ob sie
-vorhanden, unverändert commitet und passend ist; es prüft nicht, wer sie commitet hat.
+Pfad: `docs/acc45/releases/<id>.freigabe.json`. Der Betreiber commitet sie selbst. Das Werkzeug prüft Struktur,
+Vorhandensein, unveränderten Commit-Stand und Übereinstimmung; es prüft **nicht**, wer sie commitet hat. Diese Lücke
+schließt nur der Branch-Schutz: `docs/acc45/releases/` und `deploy/FREIGEGEBENE-IMAGES.md` sollten über
+`CODEOWNERS` (Inhaber) und Pflicht-Review auf `main` geschützt sein ([BETREIBER-BRANCHSCHUTZ.md](BETREIBER-BRANCHSCHUTZ.md)).
+Eine Datei mit falscher Struktur gilt für alle Gates als nicht vorhanden.
 
 ```json
 {
@@ -78,14 +90,16 @@ vorhanden, unverändert commitet und passend ist; es prüft nicht, wer sie commi
   "rueckweg": { "strategie": "r0", "entscheidungO1": "a", "entscheidungO2": "a" },
   "migration": { "freigegeben": true, "basisCommit": "<40 hex>", "abgedeckt": ["W-4", "W-5", "STARTBLOCK"], "bericht": "<Pfad zum Probebericht>" },
   "reviewBestaetigt": [412],
-  "akzeptiertePakete": [{ "id": "WP-16", "grund": "<Begründung>" }]
+  "akzeptiertePakete": [{ "id": "WP-16", "grund": "<Begründung>" }],
+  "akzeptierteBefunde": [{ "id": "V4-2b", "grund": "<Begründung>" }],
+  "akzeptierteCommits": [{ "sha": "<7–40 hex>", "grund": "<Begründung, z. B. Review in #N>" }]
 }
 ```
 
 - `rueckweg`: `strategie` ist Pflicht. Ohne Zeile `vorherig` sind O-1 und O-2 Pflicht (Produktionsweg §6).
 - `migration`: nur nötig, wenn G5 betroffene Startschreibvorgänge meldet. `abgedeckt` nennt alle gemeldeten Einträge.
 - `reviewBestaetigt`: PRs, die G2 als „manuelle Bestätigung“ meldet.
-- `akzeptiertePakete`: nur mit Grund; jedes Paket einzeln.
+- `akzeptiertePakete`, `akzeptierteBefunde`, `akzeptierteCommits`: nur mit Grund; jeder Eintrag einzeln.
 
 ## 6. Gates (Kurzfassung)
 
@@ -93,18 +107,19 @@ Einzelheiten und Konfiguration: Kopf von `werkzeug/release-pruefung.mjs`, Ausgab
 
 | Gate | GO, wenn |
 |---|---|
-| G1 | alle Pflicht-Check-Runs auf dem Kopf-SHA abgeschlossen und `success` |
-| G2 | jeder PR im Paket hat einen Review-Beleg (GitHub-Review eines anderen Kontos, `REVIEW-NACHWEIS*.md`, SSOT-Stufe reviewt, PR-Text) oder ist vom Betreiber bestätigt |
-| G3 | kein Schalter und keine unfertige Funktion in `.env.example`, `deploy/compose.yml`, `Dockerfile`, Staging-Vorlagen aktiv |
-| G4 | Digest vollständig; Label und Provenienz = Kandidat; Freigabeliste gültig, Zeile `aktiv` für den Kandidaten |
-| G5 | keine Startschreib-Quelle (W-1…W-9, `server.mjs`) geändert, oder Betreiberfreigabe deckt alle ab |
-| G6 | Sicherung, Restore-Probe, Widerrufbuch-Probe aktuell und `ok` |
+| G1 | alle Pflicht-Check-Runs auf dem Kandidaten-SHA abgeschlossen und `success`; jeder Lauf zählt; Läufe ohne `head_sha` sind NO-GO; eigene Gate-Jobs zählen nicht |
+| G2 | jeder PR im Paket hat einen Review-Beleg (GitHub-Review eines anderen Kontos, letzte positive Aussage in `REVIEW-NACHWEIS*.md`, SSOT-Stufe reviewt) oder ist bestätigt; kein Commit ohne PR (außer akzeptiert). PR-Text allein zählt nicht |
+| G3 | jeder `CENTRIC_`-Name im Server-Code des Kandidaten ist in [RELEASE-SCHALTER.json](RELEASE-SCHALTER.json) klassifiziert; kein Schalter und keine unfertige Funktion in `.env.example`, `deploy/compose.yml`, `Dockerfile`, Staging-Vorlagen aktiv (auch nicht als `${X:-wert}`, Vergleich mit trim/Kleinschreibung) |
+| G4 | Digest vollständig; Bildangaben aktuell; Label und Provenienz = Kandidat; Freigabeliste gültig, Zeile `aktiv` mit Kandidaten-Commit |
+| G5 | keine Startschreib-Quelle (W-1…W-9, `server.mjs`) geändert oder neu, oder Betreiberfreigabe deckt alle ab |
+| G6 | Sicherung (mit `snapshot_id`), Restore-Probe, Widerrufbuch-Probe (mit `art`, `ergebnis: ok`) aktuell |
 | G7 | Rückweg dokumentiert |
-| G8 | kein unfertiges P0/P1-Paket im Paket |
-| G9 | kein offener P0/P1-Befund |
-| G10 | Freigabedatei vorhanden, commitet, passend |
+| G8 | kein unfertiges P0/P1-Paket im Paket (außer akzeptiert) |
+| G9 | kein offener P0/P1-Befund (außer akzeptiert); REL-* sind der Release-Prozess selbst und zählen nicht |
+| G10 | Freigabedatei gültig, commitet, passend; HEAD enthält den Kandidaten und ändert seitdem nur Liste und Freigabedatei |
 
-Ein NO-GO wird nicht übersteuert. Eine Konfigurationsänderung (`--konfig`) ist selbst ein PR mit Review.
+Ein NO-GO wird nicht übersteuert. Die Konfiguration steht nur im Werkzeug (`--konfig-zeigen`); es gibt kein
+`--konfig`. Offline (Fixture) und `--jetzt` enden nie mit Exit 0, sondern mit Exit 3 (übersteuert).
 
 ## Anhang A — Vorschlag Workflow-Härtung (REL-2, nur Text)
 
@@ -125,34 +140,49 @@ Der Job `vps` behält `group: produktion`. Auf dem VPS sollten `ruecksprung.sh` 
 `deploy.sh` selbst (Sperre schon gehalten, Kennzeichen über die Umgebung).
 
 **A.2 Gate-Job vor `vps`.** Neuer Job `release-gate` mit `needs: [pruefung, sicherheit]`, `permissions: contents: read,
-checks: read, pull-requests: read`. Er ruft das Werkzeug auf und bricht bei Exit ≠ 0 ab. `vps` bekommt
-`needs: [pruefung, sicherheit, release-gate]`. Neue Eingabe `release_id` (Pflicht bei `ausliefern`).
+checks: read, pull-requests: read, packages: read`. Er ruft das Werkzeug auf und bricht bei Exit ≠ 0 ab. `vps`
+bekommt `needs: [pruefung, sicherheit, release-gate]`. Neue Eingaben `kandidat` (Bild-Commit), `basis` (voriger
+Release-Commit) und `release_id` (Pflicht bei `ausliefern`). Wichtig: `--kandidat` ist der **Bild-Commit**, nicht
+`$GITHUB_SHA` (der Lauf startet auf `main` mit Liste und Freigabedatei; G10 prüft, dass dazwischen nur diese Pfade
+liegen). Der Job heißt `release-gate`; G1 nimmt ihn aus (`eigeneChecks`). Eingaben gehen über `env:`, nie direkt
+als `${{ inputs.* }}` in `run:` (Schutz vor Einschleusung).
 
 ```yaml
   release-gate:
     needs: [pruefung, sicherheit]
     if: ${{ inputs.ausliefern }}
     runs-on: ubuntu-latest
-    permissions: { contents: read, checks: read, pull-requests: read }
+    permissions: { contents: read, checks: read, pull-requests: read, packages: read }
+    env:
+      KANDIDAT: ${{ inputs.kandidat }}
+      BASIS: ${{ inputs.basis }}
+      DIGEST: ${{ inputs.digest }}
+      RELEASE_ID: ${{ inputs.release_id }}
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@<gepinnt>
         with: { fetch-depth: 0, persist-credentials: false }
       - uses: actions/setup-node@<gepinnt>
         with: { node-version: "22" }
-      - name: Release-Prüfung
-        env: { GH_TOKEN: "${{ github.token }}" }
+      - name: Bildangaben (nur lesend)
         run: |
-          node werkzeug/release-pruefung.mjs --kandidat "$GITHUB_SHA" --digest "${{ inputs.digest }}" \
-            --release-id "${{ inputs.release_id }}" --bild-info bild-info.json --nachweise nachweise \
-            > release-pruefung.json
+          set -euo pipefail
+          [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || exit 1
+          roh="$(docker buildx imagetools inspect "ghcr.io/${GITHUB_REPOSITORY}@$DIGEST" --format '{{json .}}')"
+          jq -n --arg t "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --argjson roh "$roh" \
+            '{abgefragtAm: $t, quelle: "docker buildx imagetools inspect", roh: $roh}' > bild-info.json
+      - name: Release-Prüfung
+        run: |
+          node werkzeug/release-pruefung.mjs --kandidat "$KANDIDAT" --basis "$BASIS" --digest "$DIGEST" \
+            --release-id "$RELEASE_ID" --bild-info bild-info.json \
+            --nachweise "docs/acc45/releases/$RELEASE_ID/nachweise" > release-pruefung.json
       - uses: actions/upload-artifact@<gepinnt>
         if: always()
         with: { name: release-pruefung, path: release-pruefung.json }
 ```
 
-Offen für REL-2: Woher kommen `bild-info.json` (Vorschlag: `docker buildx imagetools inspect … --format '{{json .}}'`
-im Job, nur lesend, `packages: read`) und die Nachweise G6 (Vorschlag: der Betreiber legt die drei Statusdateien als
-Teil der Freigabe unter `docs/acc45/releases/<id>/nachweise/` ab; sie enthalten keine Personendaten).
+Offen für REL-2: Format der Eingaben prüfen (`release_id` gegen das Muster, `kandidat`/`basis` als 40 hex), bevor sie
+an das Werkzeug gehen; das Werkzeug prüft selbst noch einmal (`rev-parse --verify --end-of-options`).
 
 **A.3 Smoke und Rückweg im Workflow.** `deploy.sh` macht Smoke und R0 schon selbst (`deploy.sh:474-519`, `:288-344`).
 Ergänzung im Job `vps` nach dem SSH-Schritt: ein Abruf von außen über die Domain (`curl -sf https://<domain>/gesund`

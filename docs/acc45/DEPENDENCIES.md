@@ -578,5 +578,5 @@ flowchart LR
 | DEP-4 | folge | P3 | 0,5–1 | 0,5–1 | – | – | opus | BLOCKED |
 | REL-1 | folge | P1 | 1–1,5 | 0,2–0,3 | – | – | opus | REVIEW |
 | REL-2 | folge | P1 | 1–2 | 1–2 | REL-1 | – | opus | BLOCKED |
-| REL-3 | folge | P1 | 1–2 | 1–2 | REL-1 | – | opus | BLOCKED |
+| REL-3 | folge | P1 | 1–2 | 1–2 | REL-1, WP-09 | – | opus | BLOCKED |
 | REL-4 | folge | P1 | 1–1,5 | 1–1,5 | REL-3, E-7, E-8 | – | sonnet | BLOCKED |

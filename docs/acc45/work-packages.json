@@ -6791,7 +6791,7 @@
       "strang": "folge",
       "prio": "P1",
       "aufwandPT": {"min":1,"max":2},
-      "abhaengigkeiten": ["REL-1"],
+      "abhaengigkeiten": ["REL-1","WP-09"],
       "status": "BLOCKED",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
@@ -6811,7 +6811,7 @@
       "akzeptanz": "Kandidat auf main (Merge-Freigabe B-9), Bild über deploy.yml (nur bauen, Start durch Betreiber), Digest/Label/Provenienz = Commit (G4 GO), Listen-PR nach O-1, Migrationsbericht G5 mit Probe K4, Release-Prüfung bis auf Betreiber-Gates GO",
       "tests": "release-pruefung.mjs gegen den Kandidaten",
       "dateien": "deploy/FREIGEGEBENE-IMAGES.md, docs/acc45/releases/",
-      "notiz": "Braucht Betreiberhandlungen: Merge-Freigabe nach main (B-9), Start des Bau-Workflows, Freigabe der Listenänderung (B-6), Entscheidung O-1. Aufwand SCHÄTZUNG."
+      "notiz": "Abhängigkeiten außerhalb der SSOT (Betreiberhandlungen, Produktionsweg §2): B-9 Merge-Freigabe des Kandidaten nach main (über WP-09), Start des Bau-Workflows durch den Betreiber, B-6 Freigabe der Listenänderung, O-1 Rolle von 274bfa0 (vorherig oder gesperrt). Aufwand SCHÄTZUNG."
     },
     {
       "id": "REL-4",

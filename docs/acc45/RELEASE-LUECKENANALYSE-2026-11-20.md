@@ -66,8 +66,11 @@ Sicherungen auf dem VPS, eine Freigabe je Release und eine Prüfung vor dem Job 
   Schalter (z. B. `pruefung:import-schalter`).
 - **Lücken (vor REL-1):** Keine Liste unfertiger Funktionen; keine Prüfung über alle Vorlagen. Push und Mail hängen
   nicht an einem Schalter, sondern an gesetzten Schlüsseln (`VAPID_*`, `RESEND_API_KEY`, `CENTRIC_SMTP_*`).
-- **Neu:** [RELEASE-UNFERTIG.json](RELEASE-UNFERTIG.json) und G3 (Vorlagen `.env.example`, `deploy/compose.yml`,
-  `Dockerfile`, Staging-Vorlagen; Oberflächenkonstante `IMPORT_DATEI_AKTIV`). Heute GO.
+- **Neu:** [RELEASE-UNFERTIG.json](RELEASE-UNFERTIG.json), [RELEASE-SCHALTER.json](RELEASE-SCHALTER.json) und G3.
+  G3 sucht jeden `CENTRIC_`-Namen im Server-Code des Kandidaten; ein Name ohne Klasse (schalter-aus, standard-an,
+  sicher-aktiv, konfiguration) ist NO-GO. Geprüft werden `.env.example`, `deploy/compose.yml` (auch Listenform
+  `- X=wert`), `Dockerfile`, Staging-Vorlagen und die Oberflächenkonstante `IMPORT_DATEI_AKTIV`; Werte wie im Server
+  getrimmt und klein geschrieben, Vorgabewerte in `${X:-wert}` zählen. Heute GO.
 - **Rest:** Die echte Produktions-`.env` prüft G3 nicht (liegt nur auf dem VPS). Vorschlag REL-3: Betreiber liefert die
   **Schlüsselnamen** nach V-6; ein Zusatz prüft sie gegen die Liste. Werte bleiben auf dem VPS.
 
