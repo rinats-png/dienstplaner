@@ -157,8 +157,8 @@ export function Lagebild({ sitz, oeffneTag, akt }) {
               {kommend.slice(0, 40).map((b, i) => (
                 <div key={b.id + i} className="achtungszeile"
                   {...klickbar(() => (b.art === "besetzung" || b.art === "qualifikation") && b.ref && darfEinheit(sitz, sitz.person.bereich)
-                    ? akt.oeffneSchnellbesetzung(b.datum, String(b.ref).split("|")[0]) : oeffneTag(b.datum),
-                    `${fKurz(b.datum)}: ${b.titel}`)}>
+                    ? akt.oeffneSchnellbesetzung(b.datum, String(b.ref).split("|")[0]) : oeffneTag(b.datum))}>
+                  {/* WP-40 (WCAG 2.5.3): kein eigener Name; die Zeile heißt, was sichtbar in ihr steht (Titel, Datum). */}
                   <Punkt ton={b.schwere === "danger" ? "danger" : "warn"} />
                   <span className="t">{b.titel}</span>
                   <span className="d" style={NUM}>{fKurz(b.datum)}</span>

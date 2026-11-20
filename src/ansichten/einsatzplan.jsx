@@ -2,7 +2,7 @@
 import { useState, useMemo } from "react";
 import { dim_, pad, dow, pISO } from "../regelwerk.js";
 import { heute, MON, DOW, fKurz } from "../lib/datum.js";
-import { darfEinheit, offeneAbweichungen, useSchutzkonflikte, aktive, abwesenheitAm, istStunden, sollStunden, personTag } from "../lib/fachlogik.js";
+import { darfEinheit, offeneAbweichungen, useSchutzkonflikte, aktive, abwesenheitAm, istStunden, sollStunden, personTag, abwArt } from "../lib/fachlogik.js";
 import { einheitAm } from "../../server/lib/fachpruefung.mjs";
 import { H1, Seg, Lab, Card, klickbar } from "../ui/bausteine.jsx";
 import { Scrollbereich } from "../ui/scrollbereich.jsx";
@@ -16,6 +16,13 @@ import { Zelle } from "../ui/leisten.jsx";
 import { WARNSTUFEN, befundText } from "../warnstufen.js";
 import { ISTDATEN_TEXT } from "../istdaten.js";
 import { n1, sgn } from "../lib/format.js";
+
+/* WP-40 (WCAG 2.5.3 Label in Name): das Kürzel, das Zelle (ui/leisten.jsx) sichtbar zeigt — Abwesenheit vor Dienst —,
+   als Anfang des zugänglichen Namens der Tageszelle; leer, wenn die Zelle nur „·“ zeigt. */
+const zelleKurz = (da, abw) => {
+  const k = abw ? abwArt(abw.art).kurz : da ? da.kurz : "";
+  return k ? `${k} · ` : "";
+};
 
 /* ============================== EINSATZPLAN ============================== */
 export function Einsatzplan({ sitz, ym, setYm, akt, oeffnePerson }) {
@@ -89,7 +96,9 @@ export function Einsatzplan({ sitz, ym, setYm, akt, oeffnePerson }) {
             const ist = istStunden(m, p, ym), soll = sollStunden(m, p, ym);
             const diff = ist.nichtVerfuegbar ? null : ist.gesamt - soll;
             return (<tr key={p.id} className="row">
-              <td {...klickbar(() => oeffnePerson(p.id), `${p.nachname}, ${p.vorname} öffnen`)}
+              {/* WP-40 (WCAG 2.5.3): Personenzelle ohne eigenen Namen (heißt, was sichtbar steht); Tageszellen beginnen mit
+                 dem sichtbaren Kürzel. */}
+              <td {...klickbar(() => oeffnePerson(p.id))}
                 style={{ position: "sticky", left: 0, background: C.flaeche,
                 zIndex: 1, padding: "8px 20px", borderBottom: `1px solid ${C.lineSoft}`, cursor: "pointer" }}>
                 <div style={{ fontSize: 13.5, whiteSpace: "nowrap" }}>{p.nachname}, {p.vorname}</div>
@@ -97,7 +106,7 @@ export function Einsatzplan({ sitz, ym, setYm, akt, oeffnePerson }) {
               {tage.map((d) => { const t = personTag(m, p, d);
                 return (<td key={d}
                   {...klickbar(editierbar ? () => klick(p, d) : null,
-                    `${p.nachname}, ${p.vorname} am ${fKurz(d)}: ${map[t.dienstId] ? map[t.dienstId].name : "frei"}`)}
+                    `${zelleKurz(map[t.dienstId], t.abwesenheit)}${p.nachname}, ${p.vorname} am ${fKurz(d)}: ${map[t.dienstId] ? map[t.dienstId].name : "frei"}`)}
                   style={{ padding: "4px 1px", textAlign: "center",
                   borderBottom: `1px solid ${C.lineSoft}`, cursor: editierbar ? "pointer" : "default",
                   background: t.quelle === "abweichung" ? C.warnLight : d === d0 ? C.accentLight : "transparent" }}>

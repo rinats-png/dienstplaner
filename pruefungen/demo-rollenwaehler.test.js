@@ -58,7 +58,7 @@ describe("Betreiberzugang: Nachweis der Anmeldbarkeit", () => {
 describe("Migration auf isolierter Datenkopie (nur lesender Bericht)", () => {
   let orig, kopie;
   const lauf = (daten, ...arg) => spawnSync(process.execPath, [path.join(WURZEL, "werkzeug", "kunde-abloesen.mjs"), ...arg],
-    { env: { ...process.env, CENTRIC_DATEN: daten, CENTRIC_ABLAGE: "dateien" }, encoding: "utf8" });
+    { env: { ...process.env, CENTRIC_DATEN: daten, CENTRIC_ABLAGE: "dateien" }, encoding: "utf8", timeout: 20_000 });
   const alles = async (dir) => {
     const aus = {};
     const geh = async (d) => { for (const e of await readdir(d, { withFileTypes: true })) {

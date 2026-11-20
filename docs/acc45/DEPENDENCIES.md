@@ -4,7 +4,7 @@ Erzeugt von `werkzeug/acc45-backlog.mjs` aus `docs/acc45/work-packages.json` (ni
 
 **Kritischer Pfad gemeinsam** (offener Entwicklungsaufwand, ohne extern): WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **50–90 PT**
 **Ohne Intelligence:** WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 → WP-42a → WP-42 = **22,5–35 PT**
-**Offener Entwicklungsaufwand:** 328,4–563,35 PT in 91 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
+**Offener Entwicklungsaufwand:** 327,9–562,35 PT in 90 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
 
 WP-09 ist nur Livegang-Reihenfolge und zählt im Pfad nicht als Abhängigkeit. Der Graph zeigt nur offene Pakete.
 
@@ -101,7 +101,6 @@ flowchart LR
     WP_28b["WP-28b<br/>IN_PROGRESS"]
     WP_07b["WP-07b<br/>REVIEW"]
     WP_PILOT["WP-PILOT<br/>IN_PROGRESS"]
-    V4_0["V4-0<br/>READY"]
     V4_1["V4-1<br/>BLOCKED"]
     V4_2["V4-2<br/>BLOCKED"]
     V4_3["V4-3<br/>BLOCKED"]
@@ -303,7 +302,6 @@ flowchart LR
   WR_7 --> WR_8
   OPT_4 --> WR_9
   WR_4 --> WR_BETREIBER
-  V4_0 --> V4_1
   V4_1 --> V4_2
   WP_40 --> V4_2
   V4_1 --> V4_3
@@ -535,7 +533,7 @@ flowchart LR
 | BE-1 | acc45 | P1 | 2–4 | 0 | – | – | opus | INTEGRATED |
 | BE-2 | acc45 | P1 | 2–4 | 0 | – | – | opus | INTEGRATED |
 | BE-3 | acc45 | P2 | 2–4 | 2–4 | – | – | sonnet | BLOCKED |
-| V4-0 | folge | P2 | 0,5–1 | 0,5–1 | – | – | opus | READY |
+| V4-0 | folge | P2 | 0,5–1 | 0 | – | – | opus | INTEGRATED |
 | V4-1 | folge | P2 | 2–3 | 2–3 | V4-0 | – | opus | BLOCKED |
 | V4-2 | folge | P2 | 1–2 | 1–2 | V4-1, WP-40 | App.jsx | opus | BLOCKED |
 | V4-3 | folge | P2 | 6–10 | 6–10 | V4-1, WP-40, WP-48-GB | App.jsx | opus | BLOCKED |

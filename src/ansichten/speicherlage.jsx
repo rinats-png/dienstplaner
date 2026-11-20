@@ -209,6 +209,9 @@ export function NichtGespeichert({ lage, melde, aufGeloest, onKonflikt = null })
         {l.text}</p>
       {ohneAbsage && <p style={{ fontSize: 13.5, lineHeight: 1.6, margin: "0 0 14px", maxWidth: "72ch" }}>
         {OHNE_ABSAGE_TEXT}</p>}
+      {/* E1 (Review #397): Begründung des Servers zu einer 403 (speicher.js `grund`) — als Text, nie als Markup. */}
+      {typeof lage.grund === "string" && lage.grund && <p style={{ fontSize: 13.5, lineHeight: 1.6, margin: "0 0 14px",
+        maxWidth: "72ch", overflowWrap: "anywhere" }}>Begründung: {lage.grund}</p>}
       {l.verwerfen && (lage.bereich || lage.text) && <p style={{ fontSize: 13.5, lineHeight: 1.6, margin: "0 0 14px", maxWidth: "72ch" }}>
         {lage.bereich ? <>Bereich: <strong>{lage.bereich}</strong>. </> : null}{lage.text}</p>}
       <div style={{ display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center" }}>
@@ -378,7 +381,8 @@ export function Offlineleiste({ lage }) {
       background: C.warnLight, border: `1px solid ${C.warn}33`,
       display: "flex", gap: 14, alignItems: "baseline", flexWrap: "wrap" }}>
       <span style={{ fontSize: 14, fontWeight: 640 }}>Keine Verbindung</span>
-      <span style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.55, flex: 1, minWidth: 260 }}>
+      {/* min(): auch in der Telefonschale bei 320 px kein waagrechtes Scrollen (B-P2). */}
+      <span style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.55, flex: 1, minWidth: "min(260px, 100%)" }}>
         Der Plan ist lesbar, aber Änderungen lassen sich nicht speichern.
         {alter ? ` Der angezeigte Stand wurde ${alter} geholt.` : ""}
         {" "}Sobald die Verbindung zurück ist, verschwindet dieser Hinweis.

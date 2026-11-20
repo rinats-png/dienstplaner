@@ -6,7 +6,7 @@ import { C } from "../farben.js";
 import { Card, Lab, Schalter, Filterleiste, Planzelle, Btn, Sel, H1 } from "../ui/bausteine.jsx";
 import { Scrollbereich } from "../ui/scrollbereich.jsx";
 import { lesbar, NUM } from "../ui/thema.js";
-import { DOW, MON, heute, fLang } from "../lib/datum.js";
+import { DOW, DOW_LANG, MON, heute, fLang } from "../lib/datum.js";
 import { n1 } from "../lib/format.js";
 import { Zeitwahl } from "../gestalt/ansichten.jsx";
 import { feiertag } from "../../server/lib/feiertage.mjs";
@@ -21,6 +21,14 @@ import { anzahlWort } from "../lib/rollen.js";
 import { zelleBedienbar } from "../ui/raster.js";
 import { monatsLage } from "../lib/planhilfen.js";
 
+/* WP-40 (WCAG 2.5.3 Label in Name): Der zugängliche Name einer Plan-Zelle beginnt mit dem, was sichtbar in ihr steht
+   (Kopf: „So“ bzw. „Fei“ und „01“; Einheit: Kürzel und „2 ab“; Besetzung: „3/4“), danach folgt die Erklärung.
+   Kopfzellen beginnen weiter mit „Tag · “ (pruefungen/browser/geraete-wp21-ablaeufe.mjs sucht danach). */
+function kopfName(d, fei, eng) {
+  const t = pISO(d);
+  return `Tag · ${fei ? "Fei" : DOW[dow(d)]}, ${pad(t.getDate())}. ${MON[t.getMonth()]} ${t.getFullYear()}`
+    + `${fei ? ` · ${fei} · ${DOW_LANG[dow(d)]}` : ""}${eng ? " · Engpass" : ""}`;
+}
 
 export function Monatsplan({ sitz, ym, setYm, oeffneTag, akt, schmal,
   standortId = ALLE_STANDORTE, setStandortId = () => {} }) {
@@ -110,8 +118,7 @@ export function Monatsplan({ sitz, ym, setYm, oeffneTag, akt, schmal,
               const eng = Object.values(bes[d]).some((x) => x.status !== "ok");
               const blass = nurKnapp && !eng;
               return (<th key={d}
-                {...zelleBedienbar(() => oeffneTag(d),
-                  `Tag · ${fLang(d)}${fei ? ` · ${fei}` : ""}${eng ? " · Engpass" : ""}`)}
+                {...zelleBedienbar(() => oeffneTag(d), kopfName(d, fei, eng))}
                 style={{ padding: "9px 0 8px", borderBottom: `1px solid ${C.lineSoft}`, minWidth: 33, cursor: "pointer",
                   opacity: blass ? .3 : 1,
                   /* Nur noch der Kalender: Wochenende und Feiertag teilen sich
@@ -121,7 +128,8 @@ export function Monatsplan({ sitz, ym, setYm, oeffneTag, akt, schmal,
                   background: d === d0 ? C.accentLight : (fei || we) ? C.flaecheStill : "transparent",
                   boxShadow: d === d0 ? `inset 0 -2px 0 ${C.accent}` : "none" }}>
                 <div style={{ fontSize: 10.5, color: fei ? C.warn : we ? C.dim : C.dimmer, fontWeight: fei ? 700 : 500 }}>{fei ? "Fei" : DOW[dow(d)]}</div>
-                <div style={{ fontSize: 13, color: d === d0 ? C.accent : C.text, fontWeight: d === d0 ? 700 : 500, ...NUM }}>{pad(pISO(d).getDate())}</div>
+                {/* WP-40: unsichtbares Leerzeichen, damit der Kopf „So 01“ liest und nicht „So01“ (WCAG 2.5.3). */}
+                {" "}<div style={{ fontSize: 13, color: d === d0 ? C.accent : C.text, fontWeight: d === d0 ? 700 : 500, ...NUM }}>{pad(pISO(d).getDate())}</div>
               </th>); })}
           </tr></thead>
           <tbody>
@@ -141,7 +149,7 @@ export function Monatsplan({ sitz, ym, setYm, oeffneTag, akt, schmal,
                   const fehlt = aktive(m, d).filter((p) => einheitAm(p, d) === e.id && abwesenheitAm(m, p.id, d)).length;
                   return (<td key={d}
                     {...zelleBedienbar(() => oeffneTag(d),
-                      `${fLang(d)} · ${e.name}${da ? ` · ${da.name}` : " · frei"}${fehlt > 0 ? ` · ${fehlt} abwesend` : ""}`)}
+                      `${da ? `${da.kurz}${fehlt > 0 ? ` ${fehlt} ab` : ""} · ` : ""}${fLang(d)} · ${e.name}${da ? ` · ${da.name}` : " · frei"}${fehlt > 0 ? ` · ${fehlt} abwesend` : ""}`)}
                     style={{ padding: "6px 2px", textAlign: "center",
                     borderBottom: `1px solid ${C.lineSoft}`, cursor: "pointer",
                     background: d === d0 ? C.accentLight
@@ -168,7 +176,7 @@ export function Monatsplan({ sitz, ym, setYm, oeffneTag, akt, schmal,
                   const kalender = dow(d) >= 5 || feiertag(d, m.bundesland);
                   return (<td key={d}
                     {...zelleBedienbar(() => oeffneTag(d),
-                      `${fLang(d)} · ${da.name} · ${besetztText(b)}${b.qualFehlt ? " · Fachkraftquote nicht erfüllt" : ""}`)}
+                      `${b.anzahl}/${sollAnzeige(b)} · ${fLang(d)} · ${da.name} · ${besetztText(b)}${b.qualFehlt ? " · Fachkraftquote nicht erfüllt" : ""}`)}
                     style={{ textAlign: "center", padding: "5px 1px", cursor: "pointer",
                       /* Fläche trägt den Kalender, nicht den Zustand. Der
                          Zustand steht in Zahl und Füllstand — „3/4" sagt, wie

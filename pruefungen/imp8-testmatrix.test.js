@@ -43,7 +43,7 @@ async function lesenUndAnalysieren(buffer, name, mandant = betrieb()) {
 const werteOhne = (a) => a.datensaetze.map((d) => d.werte);
 
 /* ---------------- HTTP-Gerüst (Handler im Wegwerfverzeichnis) ---------------- */
-let wurzel, laden, imp, B, V, sitzungAnlegen, token, nr = 0, raumNr = 0;
+let schalterVorher, wurzel, laden, imp, B, V, sitzungAnlegen, token, nr = 0, raumNr = 0;
 const kopf = (extra = {}) => { nr += 1;
   return { host: WIRT, origin: `http://${WIRT}`, "x-forwarded-for": `10.88.${Math.floor(nr / 250) % 250}.${nr % 250}`,
     authorization: `Bearer ${token}`, ...extra }; };
@@ -70,6 +70,7 @@ async function dateienIn(dir) {
 
 beforeAll(async () => {
   wurzel = await mkdtemp(path.join(tmpdir(), "centric-imp8-"));
+  schalterVorher = process.env.CENTRIC_IMPORT_AKTIV;
   process.env.CENTRIC_IMPORT_AKTIV = "true";   // Server-Schalter (Vorgabe aus); diese Datei prüft den eingeschalteten Import
   process.env.CENTRIC_DATEN = wurzel;
   process.env.CENTRIC_ABLAGE = "dateien";
@@ -88,7 +89,11 @@ beforeAll(async () => {
   token = (await sitzungAnlegen({ bestand: raum, name: "Test LT", rolle: "leitung", person: "l1", betrieb: 0, mandantId: "m1", einheit: null },
     2 * 3600 * 1000)).token;
 });
-afterAll(async () => { if (wurzel) await rm(wurzel, { recursive: true, force: true }); });
+afterAll(async () => {
+  if (schalterVorher === undefined) delete process.env.CENTRIC_IMPORT_AKTIV;   // Server-Schalter wie vorher
+  else process.env.CENTRIC_IMPORT_AKTIV = schalterVorher;
+  if (wurzel) await rm(wurzel, { recursive: true, force: true });
+});
 afterEach(() => { V._zuruecksetzen(); });
 
 describe("IMP-8 Gültige Dateien und Formate (F01–F06)", { timeout: 120000 }, () => {
@@ -117,16 +122,43 @@ describe("IMP-8 Gültige Dateien und Formate (F01–F06)", { timeout: 120000 }, 
     expect(a.zuordnung.personalnummer).toBe(0);
     expect(a.zaehler.gesamt).toBe(5);
   });
+  it("F02 [HTTP] CSV mit UTF-8-BOM: Upload 201 ohne Hinweis, Analyse ordnet die erste Überschrift zu", async () => {
+    const up = await hochladen(F.csvMitBom(), "f02-bom.csv");
+    expect(up.status, JSON.stringify(up)).toBe(201);
+    expect(up.format).toBe("csv");
+    expect(up.hinweise).toEqual([]);
+    const an = await schritt("analyse", { vorgang: up.vorgang });
+    expect(an.status).toBe(200);
+    expect(an.zuordnung.personalnummer).toBe(0);
+    expect(an.spalten[0].kopf).toBe("Personalnummer");
+    expect(an.zaehler).toMatchObject({ gesamt: 5, fehlerhaft: 0 });
+  });
   it("F03 [Unit] CSV in Windows-1252: Umlaut erhalten, Hinweis ZEICHENSATZ_ERSATZ", async () => {
     const { r, a } = await lesenUndAnalysieren(F.csv1252(), "f03-ansi.csv");
     expect(hat(r, "ZEICHENSATZ_ERSATZ")).toBe(true);
     expect(a.datensaetze[0].werte.nachname).toBe("Müller-Testperson");
+  });
+  it("F03 [HTTP] CSV in Windows-1252: Upload meldet ZEICHENSATZ_ERSATZ, Analyse liefert den Umlaut", async () => {
+    const up = await hochladen(F.csv1252(), "f03-ansi.csv");
+    expect(up.status, JSON.stringify(up)).toBe(201);
+    expect(hat(up, "ZEICHENSATZ_ERSATZ")).toBe(true);
+    const an = await schritt("analyse", { vorgang: up.vorgang });
+    expect(an.status).toBe(200);
+    expect(an.datensaetze[0].werte.nachname).toBe("Müller-Testperson");
   });
   it("F04 [Unit] TSV (Endung .tsv): Tab als Trenner", async () => {
     const { r, a } = await lesenUndAnalysieren(F.fixture("f04-tabs.tsv"), "f04-tabs.tsv");
     expect(r.format).toBe("tsv");
     expect(a.zaehler).toMatchObject({ gesamt: 2, fehlerhaft: 0 });
     expect(a.datensaetze[0].werte.personalnummer).toBe("TP-2001");
+  });
+  it("F04 [HTTP] TSV: Upload 201 mit Format tsv, Analyse zwei Personen ohne Fehler", async () => {
+    const up = await hochladen(F.fixture("f04-tabs.tsv"), "f04-tabs.tsv");
+    expect(up.status, JSON.stringify(up)).toBe(201);
+    expect(up.format).toBe("tsv");
+    const an = await schritt("analyse", { vorgang: up.vorgang });
+    expect(an.zaehler).toMatchObject({ gesamt: 2, fehlerhaft: 0 });
+    expect(an.datensaetze.map((d) => d.werte.personalnummer)).toEqual(["TP-2001", "TP-2002"]);
   });
   it("F05 [Unit] XLSX: Datumszelle als Rohzahl plus Text, Analyse liefert ISO-Datum und Zahl", async () => {
     const { r, a } = await lesenUndAnalysieren(F.xlsxGueltig(), "f05.xlsx");
@@ -146,6 +178,21 @@ describe("IMP-8 Gültige Dateien und Formate (F01–F06)", { timeout: 120000 }, 
     expect(s.r.format).toBe("xls");
     expect(werteOhne(s.a)).toEqual(werteOhne(x.a));
   });
+  it("F06 [HTTP] XLS (BIFF): Upload 201 mit Format xls, Analyse liefert dieselben Werte wie die XLSX-Mappe über den Endpunkt", async () => {
+    const x = await hochladen(F.xlsxGueltig(), "f05.xlsx");
+    expect(x.status, JSON.stringify(x)).toBe(201);
+    const xa = await schritt("analyse", { vorgang: x.vorgang });
+    expect(xa.status).toBe(200);
+    expect(xa.datensaetze).toHaveLength(2);
+    const s = await hochladen(F.xlsGueltig(), "f06.xls");
+    expect(s.status, JSON.stringify(s)).toBe(201);
+    expect(s.format).toBe("xls");
+    const sa = await schritt("analyse", { vorgang: s.vorgang });
+    expect(sa.status).toBe(200);
+    expect(sa.datensaetze).toHaveLength(2);
+    expect(sa.datensaetze.map((d) => d.werte)).toEqual(xa.datensaetze.map((d) => d.werte));
+    expect(sa.zaehler.fehlerhaft).toBe(0);
+  });
 });
 
 describe("IMP-8 Datum (F07–F08)", { timeout: 120000 }, () => {
@@ -164,6 +211,26 @@ describe("IMP-8 Datum (F07–F08)", { timeout: 120000 }, () => {
     }
     expect(a.zaehler.fehlerhaft).toBe(5);
   });
+  it("F07 [HTTP] Datumsformen über den Endpunkt: fünf ungültige Zeilen nur überspringen, Meldung ohne Wert; leer = null", async () => {
+    const up = await hochladen(F.fixture("f07-datumsformate.csv"), "f07.csv");
+    expect(up.status, JSON.stringify(up)).toBe(201);
+    const an = await schritt("analyse", { vorgang: up.vorgang });
+    expect(an.status).toBe(200);
+    const d = an.datensaetze;
+    expect(d.map((x) => x.werte.eintritt).slice(0, 2)).toEqual(["2026-02-01", "2026-02-01"]);
+    expect(d).toHaveLength(8);
+    expect(d[6].werte.eintritt).toBeNull();
+    expect(d[6].fehler).toEqual([]);
+    for (const i of [2, 3, 4, 5, 7]) {
+      expect(d[i].fehler, `Zeile ${i + 1}`).toContain("Eintrittsdatum ungültig");
+      expect(d[i].werte.eintritt, `Zeile ${i + 1}`).toBeNull();
+      expect(d[i].erlaubt).toEqual(["ueberspringen"]);
+    }
+    const meldungen = JSON.stringify(d.map((x) => [x.fehler, x.hinweise]));
+    for (const roh of ["31.02.2026", "2024-02-30", "01.13.2026", "demnaechst", "02/01/2026"])   // nennt das Feld, nie den Wert
+      expect(meldungen.includes(roh), roh).toBe(false);
+    expect(an.zaehler.fehlerhaft).toBe(5);
+  });
   it("F08 [Unit] 1904-Mappe: Parser normiert auf 1900, Analyse liefert dieselben Kalendertage wie 1900-Mappe", async () => {
     const a1900 = await lesenUndAnalysieren(F.xlsxGueltig(), "f08-1900.xlsx");
     const a1904 = await lesenUndAnalysieren(F.xlsx1904(), "f08-1904.xlsx");
@@ -173,6 +240,18 @@ describe("IMP-8 Datum (F07–F08)", { timeout: 120000 }, () => {
     expect(a1900.r.datumssystemQuelle).toBeUndefined();
     expect(werteOhne(a1904.a).map((w) => w.eintritt)).toEqual(["2026-02-01", "2026-03-15"]);   // keine zweite Verschiebung
     expect(werteOhne(a1904.a)).toEqual(werteOhne(a1900.a));
+  });
+  it("F08 [HTTP] 1904-Mappe: Upload meldet DATUMSSYSTEM_1904, Analyse trägt den Datumshinweis und dieselben Kalendertage", async () => {
+    const up = await hochladen(F.xlsx1904(), "f08-1904.xlsx");
+    expect(up.status, JSON.stringify(up)).toBe(201);
+    expect(hat(up, "DATUMSSYSTEM_1904")).toBe(true);
+    const an = await schritt("analyse", { vorgang: up.vorgang });
+    expect(an.status).toBe(200);
+    expect(an.datumHinweis).toMatch(/1904/);
+    expect(an.datensaetze.map((d) => d.werte.eintritt)).toEqual(["2026-02-01", "2026-03-15"]);   // keine zweite Verschiebung
+    const u = await hochladen(F.xlsxGueltig(), "f08-1900.xlsx");
+    expect(hat(u, "DATUMSSYSTEM_1904")).toBe(false);
+    expect((await schritt("analyse", { vorgang: u.vorgang })).datumHinweis).toBeUndefined();
   });
 });
 
@@ -247,6 +326,33 @@ describe("IMP-8 Dubletten (F10–F11)", { timeout: 120000 }, () => {
       "f11c.csv", betrieb([bestandPerson]));
     expect(einzeln.a.datensaetze[0].dublette).toMatchObject({ art: "personalnummer-aehnlich", personId: "b1" });
     expect(einzeln.a.datensaetze[0].vorgabe).toBe("klaeren");
+  });
+  it("F11 [HTTP] Treffer gegen den Bestand des Betriebs über den Endpunkt: exakte, ähnliche und Namens-Treffer klären, neue Nummer neu", async () => {
+    const up = await hochladen(F.fixture("f11-gegen-bestand.csv"), "f11.csv");
+    expect(up.status, JSON.stringify(up)).toBe(201);
+    const an = await schritt("analyse", { vorgang: up.vorgang });
+    expect(an.status).toBe(200);
+    const d = an.datensaetze;
+    expect(d[0].dublette).toMatchObject({ art: "personalnummer", personId: "b1" });
+    expect(d[0].erlaubt).toEqual(["aktualisieren", "ueberspringen", "klaeren"]);
+    expect(d.map((x) => x.vorgabe)).toEqual(["klaeren", "neu", "klaeren"]);
+    expect(d[2].dublette).toMatchObject({ art: "name", personId: "b1" });
+    expect(d).toHaveLength(3);
+    V._zuruecksetzen();
+    /* Ähnliche Nummer nur als EINZELZEILE: f11b enthält zwei sich gegenseitig ähnelnde Zeilen, deren Doppelprüfung in der
+       Datei beide auch ohne Bestandstreffer auf „klären“ setzt; das würde den Bestandsvergleich nicht belegen (Review #409). */
+    for (const nummer of ["TP-00-01", "tp0001"]) {
+      const up2 = await hochladen(Buffer.from(`Personalnummer;Nachname;Vorname;Einheit
+${nummer};Testperson 52;Fiktiv;Wohnbereich 1
+`), "f11c.csv");
+      expect(up2.status, JSON.stringify(up2)).toBe(201);
+      const an2 = await schritt("analyse", { vorgang: up2.vorgang });
+      expect(an2.status).toBe(200);
+      expect(an2.datensaetze, nummer).toHaveLength(1);
+      expect(an2.datensaetze[0].dublette, nummer).toMatchObject({ art: "personalnummer-aehnlich", personId: "b1" });
+      expect(an2.datensaetze[0].vorgabe, nummer).toBe("klaeren");
+      V._zuruecksetzen();
+    }
   });
 });
 
@@ -377,6 +483,15 @@ describe("IMP-8 Dateinamen, Spalten, nicht unterstützte Formate (F17–F20)", {
     expect(a.zaehler).toMatchObject({ gesamt: 2, fehlerhaft: 0 });
     expect(JSON.stringify(a.datensaetze)).not.toMatch(/Testkonfession|Testort|blau|gruen/);
     expect(a.datensaetze[0].vorgabe).toBe("neu");
+  });
+  it("F18 [HTTP] Unbekannte Spalten über den Endpunkt: nicht zugeordnet, Werte in keinem Datensatz der Antwort", async () => {
+    const up = await hochladen(F.fixture("f18-unbekannte-spalten.csv"), "f18.csv");
+    expect(up.status, JSON.stringify(up)).toBe(201);
+    const an = await schritt("analyse", { vorgang: up.vorgang });
+    expect(an.status).toBe(200);
+    expect(an.spalten.filter((s) => s.feld === null).map((s) => s.kopf)).toEqual(["Konfession", "Geburtsort", "Lieblingsfarbe"]);
+    expect(an.zaehler).toMatchObject({ gesamt: 2, fehlerhaft: 0 });
+    expect(JSON.stringify(an.datensaetze)).not.toMatch(/Testkonfession|Testort|blau|gruen/);
   });
   it("F19 [Unit] Pflichtspalte Einheit fehlt: fehlendePflicht, keine Datensätze", async () => {
     const { a } = await lesenUndAnalysieren(F.fixture("f19-pflichtspalte-fehlt.csv"), "f19.csv");

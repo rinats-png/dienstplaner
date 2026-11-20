@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { istLoopback } from "../pruefungen/browser/abnahme-kern.mjs";
-import { BASIS, PORT, ROLLEN, ZUSATZ_ZUGAENGE, ZUGAENGE_VAR, BETREIBER_VAR } from "./umgebung.mjs";
+import { BASIS, PORT, ROLLEN, ZUSATZ_ZUGAENGE, OEFFNEN_ZUGAENGE, ZUGAENGE_VAR, BETREIBER_VAR } from "./umgebung.mjs";
 import { ABNAHME_ZEITPUNKT, UHR_VERSATZ_VAR, uhrVersetzen, abnahmeHeute } from "./zeitbasis.mjs";
 
 const WURZEL = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -103,6 +103,13 @@ export default async function globalSetup() {
     for (const [k, p] of ZUSATZ_ZUGAENGE.map((k, i) => [k, aktiv("mitarbeiter")[i + 1]])) {
       if (!p) throw new Error(`Demo-Bestand ohne weitere aktive Beschäftigte für ${k}`);
       eintraege.push({ rolle: "mitarbeiter", personId: p.id, name: "E2E " + k });
+      schluessel.push(k);
+    }
+    /* WP-48-GB: frische Personen ohne Tourzustand nur für e2e/oeffnen-parallel.spec.mjs (umgebung.mjs). */
+    for (const [k, r, i] of OEFFNEN_ZUGAENGE) {
+      const p = aktiv(r)[i];
+      if (!p) throw new Error(`Demo-Bestand ohne weitere aktive Person der Rolle ${r} für ${k}`);
+      eintraege.push({ rolle: r, personId: p.id, name: "E2E " + k });
       schluessel.push(k);
     }
     const zz = await j("/api/zugaenge", { bestand: RAUM, eintraege }, bt);
