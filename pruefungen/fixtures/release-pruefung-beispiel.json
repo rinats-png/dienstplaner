@@ -1,0 +1,41 @@
+{
+  "hinweis": "Beispiel-Fixture für werkzeug/release-pruefung.mjs --offline (REL-1). Erfundene Werte, keine echten Digests oder Commits. Alle Gates GO; offline endet der Lauf trotzdem mit Exit 3 (übersteuert), nie mit 0.",
+  "kandidatCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "basisCommit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "checkRuns": [
+    { "id": 1, "name": "pruefen", "status": "completed", "conclusion": "success", "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+    { "id": 2, "name": "browser-abnahme", "status": "completed", "conclusion": "success", "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+    { "id": 3, "name": "abhaengigkeiten", "status": "completed", "conclusion": "success", "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+    { "id": 4, "name": "geheimnisse", "status": "completed", "conclusion": "success", "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+    { "id": 5, "name": "interne-pruefung", "status": "completed", "conclusion": "success", "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+    { "id": 6, "name": "muster", "status": "completed", "conclusion": "success", "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+    { "id": 7, "name": "shellcheck", "status": "completed", "conclusion": "success", "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+    { "id": 8, "name": "compose", "status": "completed", "conclusion": "success", "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+    { "id": 9, "name": "caddy-vorlage", "status": "completed", "conclusion": "success", "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+    { "id": 10, "name": "skripte", "status": "completed", "conclusion": "success", "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+    { "id": 11, "name": "bild-scan", "status": "completed", "conclusion": "success", "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
+  ],
+  "commits": [
+    { "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "eltern": ["2222222222222222222222222222222222222222", "3333333333333333333333333333333333333333"], "betreff": "Merge pull request #11 from beispiel/acc45/paket-y" },
+    { "sha": "3333333333333333333333333333333333333333", "eltern": ["2222222222222222222222222222222222222222"], "betreff": "Paket y" },
+    { "sha": "2222222222222222222222222222222222222222", "eltern": ["bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "1111111111111111111111111111111111111111"], "betreff": "Merge pull request #10 from beispiel/acc45/paket-x" },
+    { "sha": "1111111111111111111111111111111111111111", "eltern": ["bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"], "betreff": "Paket x" }
+  ],
+  "prs": { "11": { "autor": "a", "reviews": [{ "state": "APPROVED", "autor": "b" }] } },
+  "geaenderteDateien": ["server/lib/widerrufbuch.mjs", "server.mjs", "src/App.jsx"],
+  "neueDateien": [],
+  "stand": { "kandidatIstVorfahr": true, "geaendertSeitKandidat": ["deploy/FREIGEGEBENE-IMAGES.md", "docs/acc45/releases/v4-r1.freigabe.json"] },
+  "bildInfo": {
+    "abgefragtAm": "2026-11-20T11:00:00Z",
+    "quelle": "docker buildx imagetools inspect --format '{{json .}}'",
+    "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "provenienzRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "nachweise": {
+    "sicherung": { "zeit": "2026-11-20T03:00:00Z", "dateien": 10, "bytes": 100, "snapshot_id": "beispiel" },
+    "restoreProbe": { "art": "wiederherstellungsprobe", "zeit": "2026-11-10T03:00:00Z", "ergebnis": "ok", "abweichend": 0, "fehlend": 0 },
+    "widerrufbuchProbe": { "art": "widerrufbuch-probe", "zeit": "2026-11-10T04:00:00Z", "ergebnis": "ok" }
+  },
+  "freigabeCommitet": true
+}
