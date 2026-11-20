@@ -6358,7 +6358,7 @@
       "agent": null,
       "modell": "opus",
       "konfliktzonen": ["App.jsx"],
-      "pr": [],
+      "pr": ["#425"],
       "nachweis": "docs/acc45/v4-2-nachweis.md",
       "akzeptanz": "manifest.webmanifest/index.html auf V4-Farben; Wortmarke als SVG; Avatar-Paare aus Tokens (src/farben.js); Glas-Rückfall für reduzierte Transparenz in src/gestalt/stil.js und App.jsx; rgba-Reste in App.jsx auf Tokens; vorschau.png/Marketing-Bilder gegen das C-Logo geprüft",
       "tests": "Unit, E2E",
