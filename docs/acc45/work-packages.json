@@ -6442,7 +6442,7 @@
       "agent": null,
       "modell": "opus",
       "konfliktzonen": [],
-      "pr": [],
+      "pr": ["#432"],
       "nachweis": "docs/acc45/v4-2-nachweis.md",
       "akzeptanz": "Schublade (< 1025 px) per Enter auf der Menütaste geöffnet: Fokus auf dem aktiven Eintrag mit sichtbarem Fokusring, bei reduzierter und nicht reduzierter Bewegung; Escape und Auswahl eines Eintrags geben den Fokus an die Menütaste zurück; E2E ohne Fokussetzen durch den Test; keine Gestaltungsänderung",
       "tests": "Unit, E2E",
