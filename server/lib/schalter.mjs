@@ -97,3 +97,21 @@ export const hilfeModus = () => {
    Nur genau `true` schaltet ein.
    -------------------------------------------------------------------------- */
 export const schichtmodellPflegeAn = () => process.env.CENTRIC_SCHICHTMODELL_PFLEGE === "true";
+
+/* --------------------------------------------------------------------------
+   PLANWIRKUNG DER SCHICHTMODELLE JE PERSON (IMP-6, ENTSCHEIDUNGSLISTE P2-4 Punkt 6) — Vorgabe AUS
+
+   CENTRIC_SCHICHTMODELL_WIRKUNG  Ist er an, rechnet die Planrechnung je Person und Tag
+                 mit dem zugeordneten Schichtmodell (server/lib/fachpruefung.mjs,
+                 planDienst): Wechsel am Folgetag mit eigener Zykluslänge und eigenem
+                 Versatz, Lücke = kein Dienst aus einem Modell (Q5), Überschneidung =
+                 „uneindeutig“ (nie still gewählt). Aus: die Planrechnung bleibt
+                 byte-gleich zum Stand ohne Modelle (pruefungen/imp6-planwirkung.test.js).
+                 STAND PR 1 (Rechenkern): Der Schalter ist definiert, aber noch mit
+                 KEINEM Weg verbunden — auch genau `true` ändert nichts. Die Verbindung
+                 (Server-Einstieg, Oberfläche, Schutzrechnung, Anzeige, Sicht der
+                 Beschäftigten) folgt in PR 2. Einschalten erst nach PR 2, der Klärung
+                 von P2-4 Punkt 8 (Wiederherstellen) und mit Betreiberfreigabe.
+   Nur genau `true` schaltet ein.
+   -------------------------------------------------------------------------- */
+export const schichtmodellWirkungAn = () => process.env.CENTRIC_SCHICHTMODELL_WIRKUNG === "true";

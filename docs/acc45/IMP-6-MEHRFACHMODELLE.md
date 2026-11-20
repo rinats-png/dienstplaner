@@ -86,7 +86,8 @@ Ausgabe nur als Anzahlen und Zeilennummern. Der Zwischenspeicher bezieht Tag, Mo
 
 ## Nicht in diesem Paket (Folgeschritte)
 
-- Wirkung auf die Planrechnung (`dienstAm`, Oberfläche, Fachprüfung): Einschalten ist eine eigene Entscheidung.
+- Wirkung auf die Planrechnung (`dienstAm`, Oberfläche, Fachprüfung): Einschalten ist eine eigene Entscheidung. Rechenkern
+  seit 2026-11-20 hinter `CENTRIC_SCHICHTMODELL_WIRKUNG` gebaut (aus, nicht verbunden), siehe unten „Planwirkung“.
 - Oberfläche für Beschäftigte („Mein Schichtmodell“): nicht gebaut (P2-19 (d)). Die Pflege für Planung/Leitung ist gebaut, siehe unten.
 - Übernahme der Importzuordnungen in den Bestand (IMP-6 Übernahme) und IMP-7 (historische Pläne) bauen auf dieser Bibliothek auf.
 
@@ -202,3 +203,44 @@ Die Anzeige rechnet wie der Server mit der **festen** Rollenmatrix (`MATRIX_STD`
 Betriebsmatrix `m.matrix`: Eine Rolle, der nur die Betriebsmatrix `staff.edit` und `pattern.edit` gibt, sähe sonst die Pflege,
 und der Server verwürfe ihre Änderung still (Felder ohne Recht wirkungslos). `darfSchichtmodelle` in
 `src/lib/schichtmodelle-pflege.js`; Gleichlauf je Rolle mit `rechte.mjs` `darf` in `imp6-oberflaeche` D1b. Serververhalten unverändert.
+
+## Planwirkung (P2-4 Punkt 6) — PR 1: Rechenkern (Branch `acc45/imp/imp-6-planwirkung`, 2026-11-20)
+
+Betreiberauftrag 2026-11-20: Integration der Schichtmodelle in die tatsächliche Dienstplanung, mit historischen
+Gültigkeiten, Übergängen, Überschneidungen und den bisherigen Entscheidungen; kein produktives Aktivieren vor vollständiger
+Funktions- und Sicherheitsprüfung. Wegen des Umfangs in zwei PRs: **PR 1** (dieser) Rechenkern und Prüfungen mit Schalter AUS;
+**PR 2** Verdrahtung (Server-Einstieg, Oberfläche, Schutzrechnung-Auslöser, Anzeige, Sicht der Beschäftigten, Export/Lagebild).
+
+**Schalter `CENTRIC_SCHICHTMODELL_WIRKUNG`** (`server/lib/schalter.mjs`, `schichtmodellWirkungAn`; nur genau `true`; Vorgabe aus;
+`.env.example` auskommentiert; Betriebshandbuch). **In PR 1 mit keinem Weg verbunden:** Die Planrechnung liest die Wirkung
+über `schichtmodellWirkungAktiv()` (`server/lib/fachpruefung.mjs`); die Quelle setzt nur `schichtmodellWirkungSetzen`, und das
+ruft in `server/` und `src/` niemand auf (Wächter `imp6-planwirkung` S). Grund: Ohne PR 2 rechneten Server und Oberfläche
+verschieden (Planung sähe das Betriebsmodell, der Server prüfte nach Modellen). `RELEASE-UNFERTIG.json` (PR #427) ist noch nicht
+gemergt; der Schalter ist dort nachzutragen (unfertig, Vorgabe aus).
+
+**Eine Stelle für die Schichtfolge:** `planDienst(m, p, d)` (Schichtfolge mit Teilzeit, ohne Abweichung/Posten/Abwesenheit).
+AUS: wörtlich der bisherige Ausdruck (`einheitDienst` der Einheit mit `teilzeitDienst`). AN: `schichtmodellLageAm`:
+
+| Lage am Tag | Ergebnis |
+|---|---|
+| Betriebsmodell (auch implizit, ohne Feld) | Schichtfolge der Einheit wie bisher (AN = AUS, geprüft) |
+| eigenes Modell | Zyklustag ab „Gültig ab“ mit Versatz, Kalendertage (Zeitumstellung zählt nicht); Wechsel frühestens Folgetag (Q1, Schreibweg) |
+| „keine“ (Lücke, befristetes Ende, Q5) | kein Dienst aus einem Modell; nie das Betriebsmodell; Abweichungen gelten weiter |
+| mehrdeutig (Überschneidung, nur über alte Sicherung speicherbar) | „uneindeutig“: kein Dienst, nie still gewählt; `schichtmodellKlaerungen` listet die Tage |
+| ungültig (Versatz, unbekanntes Modell, fehlender Beginn) | kein Dienst; Klärungsfall |
+| Springer / nicht im Schichtdienst | keine Folge (wie bisher) |
+
+Teilzeit-Quote im eigenen Modell über dessen Zyklustage (`teilzeitModell`; Entscheidung P2-28). Verdrahtet in PR 1: `personTag`
+(Oberfläche, `server/lib/engine/plan.mjs`), `dienstAm` (Server, Stempel, Selbstauskunft, Fachprüfung), `planTag` und
+Postenbesetzung (Einfrieren beim Monatsabschluss; mit AN besetzt einen Posten nur, wer nach seinem Modell den Gruppendienst hat),
+Planrechner der Schutzrechnung (`schutzdurchsetzung.mjs`, `am`), Ersatzvorschlag („hätte regulär frei“). **Nicht in PR 1
+(PR 2):** Auslöser der Schutzrechnung bei geänderten Modellen/Zuordnungen (`planStrukturSchritte`, B-H5-Vorbedingung in P2-4),
+Oberfläche (`src/`: Merker aus `GET /api/bestand`, Monatsplan/Lagebild/Aushang je Einheit, Aktionen `plan.js`/`begleitung.js`,
+`urlaubskonto`, Änderungen gegenüber der Freigabe), Sicht der Beschäftigten auf die Pläne anderer (Q4: nur das eigene Modell —
+die anderen brauchen den gerechneten Dienst vom Server, nie deren Modelle), Export/Import-Pfade.
+
+**Historische Tage.** Abgeschlossene Monate rechnen Soll, Ist, Konto, Zuschläge und Lohnexport aus dem Eingefrorenen — die Wirkung
+ändert sie nicht (geprüft: Abschluss bei AUS, danach AN unverändert; Abschluss bei AN friert das damals gültige Modell ein, späteres
+AUS ändert nichts). Die Zuordnungen selbst sind gegen Rückwirkung geschützt (Regel 3). **Offen:** Zuordnungen, die vor dem
+Einschalten schon gelten, rechneten bei AN vergangene offene Tage, freigegebene Pläne und die Plananzeige abgeschlossener Monate
+neu — Vorprüfung `wirkungsVorpruefung` gebaut, Entscheidung P2-27 (Empfehlung Stichtag). Frage 7 → P2-25, Frage 8 → P2-26.
