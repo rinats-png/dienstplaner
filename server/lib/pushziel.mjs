@@ -33,6 +33,16 @@
        Adresse und beide höchstens Port 443.
    Erst dann zählt die Positivliste.
 
+   DEP-1 (web-push 4, Neubewertung von S1): web-push 4 verbindet nicht mehr
+   über url.parse, sondern über new URL (hostname, port) — also mit
+   demselben Parser wie diese Prüfung. Der Unterschied, den S1 schließt,
+   besteht für den Versand damit nicht mehr. Die Doppelprüfung bleibt
+   trotzdem: Sie ist strenger (verwirft alles, was die Parser verschieden
+   lesen), kostet nichts und schützt bei einem Rückfall auf eine ältere
+   Bibliothek oder einem weiteren Aufrufer mit url.parse. Dass web-push
+   tatsächlich zu dem geprüften Host auf Port 443 verbindet, belegt
+   pruefungen/webpush-echt.test.js über die echte Bibliothek.
+
    Geprüft wird zweimal: beim Anmelden (zustellung.mjs) und unmittelbar vor
    dem Senden (webpush.mjs) — so sind auch früher gespeicherte Anmeldungen
    abgedeckt.
