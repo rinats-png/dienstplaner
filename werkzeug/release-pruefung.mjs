@@ -83,7 +83,9 @@ export const KONFIG_STANDARD = Object.freeze({
   sammelZweig: "^(release|integration|main)(/|$)",
   schalterSuche: ["server", "server.mjs"],
   schalterDatei: "docs/acc45/RELEASE-SCHALTER.json",
-  schalterKlassen: ["schalter-aus", "standard-an", "sicher-aktiv", "konfiguration"],
+  schalterKlassen: ["schalter-aus", "standard-an", "sicher-aktiv", "freigabepflichtig", "konfiguration"],
+  // Diese Vorlagen müssen NODE_ENV=production setzen (Faktorpflicht, Epochenbindung hängen daran).
+  nodeEnvPflicht: ["deploy/compose.yml", "Dockerfile"],
   vorlagen: [
     { pfad: ".env.example", art: "env", pflicht: true },
     { pfad: "deploy/compose.yml", art: "compose", pflicht: true },
@@ -230,24 +232,46 @@ export function g1Ci(checkRuns, kandidat, konfig) {
 
 /* ----------------------------------------------------------- G2 — Review */
 
-const NEGATIV = /nicht|ausstehend|abgelehnt|verweigert|offen\b|fehlt/i;
+// Verneinung, Vorbehalt, Zweifel: im Zweifel kein Beleg.
+const NEGATIV = /nicht|\bkein|unerledigt|unmergebar|ausstehend|abgelehnt|verweigert|\boffen\b|fehlt|erst nach|vorbehalt|bedingt|no-go|nicht\s+mergen|\?|\bnein\b/i;
+const POSITIV = /(?<![A-Za-zÄÖÜäöü-])(MERGEBAR|MERGE-OK|erledigt)(?![A-Za-zÄÖÜäöü-])/gi;
+
+/** Bewertet ein Urteil: zählt nur die letzte Aussage (nach dem letzten „;“ oder „→“); positiv nur ohne Vorbehalt. */
+export function urteilPositiv(urteil) {
+  const teile = String(urteil).split(/;|→/);
+  const letzte = teile[teile.length - 1].trim();
+  if (!letzte || NEGATIV.test(letzte)) return false;
+  const pos = [...letzte.matchAll(POSITIV)];
+  if (!pos.length) return false;
+  // Ein späteres „MIT AUFLAGEN“ hebt ein früheres positives Wort auf.
+  const auflage = [...letzte.matchAll(/MIT[ -]AUFLAGEN/gi)];
+  const letztePos = pos[pos.length - 1].index;
+  return !auflage.some((a) => a.index > letztePos);
+}
 
 /**
- * PR-Nummern mit positivem Urteil aus den Tabellen in REVIEW-NACHWEIS*.md. Die Dateien werden nach Namen
- * (Datum) geordnet gelesen; die LETZTE Aussage je PR zählt. Positiv: MERGEBAR oder erledigt, ohne Verneinung,
- * ohne Ausstehendes, nicht auf „MIT AUFLAGEN“ endend.
+ * PR-Nummern mit positivem Urteil aus den Tabellen in REVIEW-NACHWEIS*.md. Dateien nach Namen (Datum) geordnet;
+ * die LETZTE Aussage je PR zählt (eine spätere negative Zeile hebt eine frühere positive auf). Die Spalte des
+ * Urteils kommt aus der Kopfzeile (`| PR | … Urteil … |`), sonst die dritte Spalte. Erste Zelle: `#N` oder `#N Titel`.
  */
 export function reviewNachweiseLesen(texte) {
   const belegt = new Map();
   const sortiert = [...texte].sort((a, b) => String(a.datei).localeCompare(String(b.datei)));
   for (const { datei, text } of sortiert) {
+    let spalte = 2;
     for (const zeile of String(text ?? "").split(/\r?\n/)) {
-      const m = /^\|\s*#(\d+)\s*\|([^|]*)\|([^|]*)\|/.exec(zeile);
-      if (!m) continue;
-      const urteil = m[3].trim();
-      const ok = /MERGEBAR|erledigt/i.test(urteil) && !NEGATIV.test(urteil) && !/MIT AUFLAGEN\s*\)?\s*$/i.test(urteil);
+      if (!/^\s*\|/.test(zeile)) continue;
+      const zellen = zeile.trim().replace(/^\||\|$/g, "").split("|").map((z) => z.trim());
+      if (/^PR$/i.test(zellen[0] || "")) {
+        const i = zellen.findIndex((z) => /urteil/i.test(z));
+        spalte = i > 0 ? i : 2;
+        continue;
+      }
+      const m = /^#(\d+)\b/.exec(zellen[0] || "");
+      if (!m || zellen.length <= spalte) continue;
+      const urteil = zellen[spalte];
       const nr = Number(m[1]);
-      if (ok) belegt.set(nr, `${datei}: ${m[2].trim()} — ${urteil}`);
+      if (urteilPositiv(urteil)) belegt.set(nr, `${datei}: ${zellen[0]} — ${urteil}`);
       else belegt.delete(nr);
     }
   }
@@ -270,7 +294,7 @@ export function ssotReviewBelege(ssot) {
 const PR_MERGE = /^Merge pull request #(\d+) from (\S+)/;
 const PR_SQUASH = /\((?:PR )?#(\d+)\)\s*$/;
 
-/** PR-Nummern aus den Betreffs: „Merge pull request #N“ und Squash „… (#N)“. */
+/** PR-Nummern aus den Betreffs: „Merge pull request #N“ und Squash „… (#N)“ / „… (PR #N)“. Nur Kandidaten — belegt erst die GitHub-Bestätigung. */
 export function prsAusCommits(commits) {
   const s = new Set();
   for (const c of commits || []) {
@@ -283,10 +307,13 @@ export function prsAusCommits(commits) {
 }
 
 /**
- * Commits im Bereich ohne PR: weder selbst PR-Merge/Squash noch auf der Zweigseite (M^1..M^2) eines PR-Merges.
- * Sammel-PRs (Zweig release/…, integration/…, main) decken nichts ab: Was darin steckt, braucht einen eigenen PR.
+ * Commits im Bereich ohne PR. Ein Betreff allein belegt nichts (er ist frei wählbar): Ein Merge- oder
+ * Squash-Commit zählt nur, wenn GitHub den PR bestätigt (`bestaetigung[N]`: gemergt, mergeCommit = dieser Commit).
+ * Die Zweigseite (M^1..M^2) eines bestätigten Merges zählt nur mit den Commits, die GitHub für den PR nennt, und
+ * nicht bei Sammel-PRs (Zweig release/…, integration/…, main).
+ * bestaetigung: { [N]: { gemergt: boolean, mergeCommit: sha, zweig: headRef, commits: [sha] } }
  */
-export function commitsOhnePr(commits, konfig = KONFIG_STANDARD) {
+export function commitsOhnePr(commits, konfig = KONFIG_STANDARD, bestaetigung = {}) {
   const liste = (commits || []).filter((c) => istObjekt(c) && typeof c.sha === "string");
   const nachSha = new Map(liste.map((c) => [c.sha, c]));
   const vorfahren = (start) => {
@@ -301,28 +328,47 @@ export function commitsOhnePr(commits, konfig = KONFIG_STANDARD) {
     return s;
   };
   const sammel = new RegExp(konfig.sammelZweig);
+  const best = istObjekt(bestaetigung) ? bestaetigung : {};
   const abgedeckt = new Set();
   for (const c of liste) {
     const b = String(c.betreff || "");
-    const m = PR_MERGE.exec(b);
-    if (m || PR_SQUASH.test(b)) abgedeckt.add(c.sha);
-    const zweig = m ? m[2].replace(/^[^/]+\//, "") : "";
-    if (m && (c.eltern || []).length >= 2 && !sammel.test(zweig)) {
+    const m = PR_MERGE.exec(b) || PR_SQUASH.exec(b);
+    if (!m) continue;
+    const p = best[m[1]];
+    if (!istObjekt(p) || p.gemergt !== true || p.mergeCommit !== c.sha) continue;
+    abgedeckt.add(c.sha);
+    const prCommits = new Set(Array.isArray(p.commits) ? p.commits : []);
+    if (PR_MERGE.test(b) && (c.eltern || []).length >= 2 && !sammel.test(String(p.zweig || ""))) {
       const links = vorfahren(c.eltern[0]);
-      for (const x of vorfahren(c.eltern[1])) if (!links.has(x)) abgedeckt.add(x);
+      for (const x of vorfahren(c.eltern[1])) if (!links.has(x) && prCommits.has(x)) abgedeckt.add(x);
     }
   }
   return liste.filter((c) => !abgedeckt.has(c.sha)).map((c) => ({ sha: c.sha, betreff: String(c.betreff || "") }));
 }
 
-export function g2Review({ prs, commitsOhnePr: ohne, prAngaben = {}, dokBelege = new Map(), ssotBelege = new Map(), freigabe = null }) {
+/** Liegt ein GitHub-Review eines anderen Kontos vor, dessen letzter Stand APPROVED ist, ohne offenes CHANGES_REQUESTED? */
+function githubFreigabe(a) {
+  const reviews = Array.isArray(a?.reviews) ? a.reviews : [];
+  const letzter = new Map();
+  for (const r of reviews) {
+    if (!istObjekt(r) || !r.autor || r.autor === a.autor) continue;
+    if (r.state === "APPROVED" || r.state === "CHANGES_REQUESTED" || r.state === "DISMISSED") letzter.set(r.autor, r.state);
+  }
+  const zustaende = [...letzter.values()];
+  if (zustaende.includes("CHANGES_REQUESTED")) return null;
+  return [...letzter].find(([, s]) => s === "APPROVED")?.[0] ?? null;
+}
+
+export function g2Review({ prs, commitsOhnePr: ohne, anzahlCommits, prAngaben = {}, dokBelege = new Map(), ssotBelege = new Map(), freigabe = null }) {
   const g = gate("G2", "Unabhängiges Review je PR, kein Commit ohne PR");
   if (!Array.isArray(prs) || !Array.isArray(ohne)) return nogo(g, "PR- oder Commit-Liste des Kandidaten nicht ermittelbar (fail-closed)");
+  const anzahl = Number.isInteger(anzahlCommits) ? anzahlCommits : prs.length + ohne.length;
+  if (anzahl === 0) return nogo(g, "leerer Commit-Bereich Basis..Kandidat — ein leeres Paket ist nie GO");
   const bestaetigt = new Set((freigabe?.reviewBestaetigt || []).map(Number));
   for (const nr of prs) {
     const a = prAngaben?.[nr] || prAngaben?.[String(nr)];
-    const fremdReview = (Array.isArray(a?.reviews) ? a.reviews : []).find((r) => r?.state === "APPROVED" && r.autor && r.autor !== a.autor);
-    if (fremdReview) { g.belege.push(`#${nr}: GitHub-Review APPROVED von ${fremdReview.autor}`); continue; }
+    const fremd = githubFreigabe(a);
+    if (fremd) { g.belege.push(`#${nr}: GitHub-Review APPROVED von ${fremd}`); continue; }
     if (dokBelege.has(nr)) { g.belege.push(`#${nr}: ${dokBelege.get(nr)}`); continue; }
     if (ssotBelege.has(nr)) { g.belege.push(`#${nr}: ${ssotBelege.get(nr)}`); continue; }
     if (bestaetigt.has(nr)) { g.belege.push(`#${nr}: vom Betreiber in der Freigabedatei bestätigt`); continue; }
@@ -360,21 +406,39 @@ export function vorlageLesen(text, art) {
   const werte = new Map();
   const zeilen = String(text ?? "").replace(/\\\r?\n/g, " ").split(/\r?\n/);
   const ohneKommentar = (v) => v.replace(/\s+#.*$/, "").trim();
+  const ohneQuote = (v) => v.trim().replace(/^(["'])(.*)\1$/, "$2");
+  const argVorgaben = new Map();
   for (const z of zeilen) {
     if (/^\s*#/.test(z)) continue;
     if (art === "env") {
-      const m = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(z);
+      const m = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=(.*)$/.exec(z);
       if (m) werte.set(m[1], ohneKommentar(m[2]));
     } else if (art === "compose") {
+      // YAML-Flow: environment: { A: "x", B: y }
+      const flow = /^\s*[A-Za-z_-]+\s*:\s*\{(.*)\}\s*$/.exec(z);
+      if (flow) {
+        for (const teil of flow[1].split(",")) {
+          const p = /^\s*["']?([A-Za-z_][A-Za-z0-9_]*)["']?\s*[:=]\s*(.*)$/.exec(teil);
+          if (p && /^[A-Z]/.test(p[1])) werte.set(p[1], ohneQuote(p[2]));
+        }
+        continue;
+      }
       const m = /^\s+(?:-\s*["']?)?([A-Za-z_][A-Za-z0-9_]*)\s*[:=]\s*(.*?)["']?\s*$/.exec(z);
       if (m && /^[A-Z]/.test(m[1])) werte.set(m[1], ohneKommentar(m[2]));
     } else if (art === "dockerfile") {
-      const m = /^\s*ENV\s+(.*)$/i.exec(z);
+      // ENV und ARG (ARG-Vorgaben wirken über ENV X=$X weiter).
+      const m = /^\s*(ENV|ARG)\s+(.*)$/i.exec(z);
       if (!m) continue;
-      const rest = m[1];
+      const rest = m[2];
+      const istArg = m[1].toUpperCase() === "ARG";
       if (/=/.test(rest)) {
-        for (const p of rest.matchAll(/([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|'[^']*'|\S*)/g)) werte.set(p[1], p[2]);
-      } else {
+        for (const p of rest.matchAll(/([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|'[^']*'|\S*)/g)) {
+          if (istArg) { argVorgaben.set(p[1], p[2]); werte.set(p[1], p[2]); continue; }
+          // ENV X=$Y / ${Y}: wirkt mit der ARG-Vorgabe von Y
+          const bezug = /^\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?$/.exec(p[2]);
+          werte.set(p[1], bezug && argVorgaben.has(bezug[1]) ? argVorgaben.get(bezug[1]) : p[2]);
+        }
+      } else if (m[1].toUpperCase() === "ENV") {
         const p = /^([A-Za-z_][A-Za-z0-9_]*)\s+(.*)$/.exec(rest.trim());
         if (p) werte.set(p[1], p[2].trim());
       }
@@ -385,13 +449,14 @@ export function vorlageLesen(text, art) {
 
 /**
  * Wert einer Vorlage, wie er wirkt: Anführungszeichen weg; `<…>`, `${X}`, `${X:?…}`, `$X` sind Platzhalter (null,
- * der Wert kommt aus der .env); `${X:-w}`, `${X-w}`, `${X:=w}`, `${X=w}` liefern den Vorgabewert w.
+ * der Wert kommt aus der .env); `${X:-w}`, `${X-w}`, `${X:=w}`, `${X=w}` liefern den Vorgabewert w; `${X:+w}`,
+ * `${X+w}` liefern w (vorsichtig: so, als sei X gesetzt).
  */
 export function wertAufloesen(roh) {
   if (roh == null) return null;
   let w = String(roh).trim().replace(/^(["'])(.*)\1$/, "$2").trim();
   for (let i = 0; i < 10; i++) {
-    const vorgabe = /^\$\{[A-Za-z_][A-Za-z0-9_]*:?[-=](.*)\}$/.exec(w);
+    const vorgabe = /^\$\{[A-Za-z_][A-Za-z0-9_]*:?[-=+](.*)\}$/.exec(w);
     if (vorgabe) { w = vorgabe[1].trim().replace(/^(["'])(.*)\1$/, "$2"); continue; }
     break;
   }
@@ -408,7 +473,7 @@ export function abweichend(roh, erlaubt) {
   return !erlaubt.map((x) => String(x).toLowerCase()).includes(n);
 }
 
-export function g3Schalter({ codeNamen, klassen, vorlagen, unfertig, quelltexte }, konfig) {
+export function g3Schalter({ codeNamen, klassen, vorlagen, unfertig, quelltexte, freigabe = null }, konfig) {
   const g = gate("G3", "Schalter Standard AUS, unfertige Funktionen nicht aktiv");
   if (!Array.isArray(codeNamen) || codeNamen.length === 0) nogo(g, "keine CENTRIC_-Namen im Server-Code gefunden (fail-closed)");
   if (!istObjekt(klassen?.variablen)) return nogo(g, `${konfig.schalterDatei} fehlt oder ist ungültig (fail-closed)`);
@@ -419,6 +484,8 @@ export function g3Schalter({ codeNamen, klassen, vorlagen, unfertig, quelltexte 
   }
   const unklassifiziert = (codeNamen || []).filter((n) => !Object.hasOwn(kl, n));
   if (unklassifiziert.length) nogo(g, `unklassifizierte CENTRIC_-Namen im Server-Code (in ${konfig.schalterDatei} einordnen): ${unklassifiziert.join(", ")}`);
+  const freigegeben = new Map((Array.isArray(freigabe?.freigegebeneSchalter) ? freigabe.freigegebeneSchalter : [])
+    .filter((x) => istObjekt(x) && typeof x.name === "string" && String(x.grund || "").trim()).map((x) => [x.name, x.grund]));
   for (const v of vorlagen || []) {
     if (v.text == null) {
       if (v.pflicht) nogo(g, `Pflichtvorlage fehlt: ${v.pfad}`);
@@ -426,11 +493,22 @@ export function g3Schalter({ codeNamen, klassen, vorlagen, unfertig, quelltexte 
     }
     const werte = vorlageLesen(v.text, v.art);
     for (const [name, roh] of werte) {
+      if (name === "NODE_ENV" && abweichend(roh, ["production"])) nogo(g, `${v.pfad}: NODE_ENV=${roh} (nur production; Faktorpflicht und Epochenbindung hängen daran)`);
       const e = kl[name];
-      if (!istObjekt(e)) continue;
+      if (!istObjekt(e)) {
+        if (/^CENTRIC_/.test(name)) nogo(g, `${v.pfad}: unklassifizierte Variable ${name} (in ${konfig.schalterDatei} einordnen)`);
+        continue;
+      }
       const sicher = Array.isArray(e.sicherWerte) ? e.sicherWerte : [];
       if (e.klasse === "schalter-aus" && abweichend(roh, [...konfig.ausWerte, ...sicher])) nogo(g, `${v.pfad}: Schalter ${name} aktiv (${roh})`);
       if (e.klasse === "standard-an" && abweichend(roh, sicher)) nogo(g, `${v.pfad}: ${name} weicht vom Standard ab (${roh})`);
+      if (e.klasse === "freigabepflichtig" && abweichend(roh, [...konfig.ausWerte, ...sicher])) {
+        if (freigegeben.has(name)) g.belege.push(`${v.pfad}: ${name} aktiv, freigegeben: ${freigegeben.get(name)}`);
+        else nogo(g, `${v.pfad}: ${name} aktiv ohne Betreiberfreigabe (freigegebeneSchalter in der Freigabedatei)`);
+      }
+    }
+    if (konfig.nodeEnvPflicht.includes(v.pfad) && wertAufloesen(werte.get("NODE_ENV")) !== "production") {
+      nogo(g, `${v.pfad}: NODE_ENV=production fehlt`);
     }
     for (const f of unfertig.funktionen) {
       if (!istObjekt(f)) { nogo(g, `${konfig.unfertigDatei}: ungültiger Eintrag`); continue; }
@@ -535,10 +613,14 @@ export function migrationsbericht({ basis, kandidat, geaenderteDateien, neueDate
   };
 }
 
-export function g5Migration(bericht, freigabe) {
+export function g5Migration(bericht, freigabe, liste = null) {
   const g = gate("G5", "Datenmigration und Startschreibvorgänge");
   if (!bericht || !Array.isArray(bericht.eintraege) || bericht.fehler) {
     return nogo(g, `Änderungen gegen den vorigen Release nicht ermittelbar${bericht?.fehler ? ": " + bericht.fehler : ""} (fail-closed)`);
+  }
+  // Die Basis muss ein Release laut Freigabeliste sein (aktiv, vorherig oder gesperrt), sonst ist der Vergleich wertlos.
+  if (liste && !liste.zeilen.some((z) => z.commit === bericht.basis)) {
+    nogo(g, `Basis ${bericht.basis} steht in keiner Zeile der Freigabeliste (FREIGEGEBENE-IMAGES.md)`);
   }
   const zuPruefen = [...bericht.betroffen];
   if (bericht.startblockGeaendert) zuPruefen.push("STARTBLOCK");
@@ -670,6 +752,7 @@ export function freigabeSchema(f) {
   const mitGrund = (x) => istObjekt(x) && typeof x.id === "string" && typeof x.grund === "string" && x.grund.trim() !== "";
   reihe("akzeptiertePakete", mitGrund);
   reihe("akzeptierteBefunde", mitGrund);
+  reihe("freigegebeneSchalter", (x) => istObjekt(x) && typeof x.name === "string" && typeof x.grund === "string" && x.grund.trim() !== "");
   reihe("akzeptierteCommits", (x) => istObjekt(x) && /^[0-9a-f]{7,40}$/.test(x.sha || "") && typeof x.grund === "string" && x.grund.trim() !== "");
   if (f.rueckweg !== undefined && !istObjekt(f.rueckweg)) fe.push("rueckweg: kein Objekt");
   if (f.migration !== undefined) {
@@ -682,6 +765,7 @@ export function freigabeSchema(f) {
 export function g10Freigabe({ releaseId, freigabe, freigabeFehler, commitet, kandidat, digest, stand }, konfig = KONFIG_STANDARD) {
   const g = gate("G10", "Betreiberfreigabe für diesen Release");
   if (!istObjekt(stand) || stand.kandidatIstVorfahr !== true) nogo(g, "HEAD enthält den Kandidaten nicht (oder nicht ermittelbar)");
+  if (!istObjekt(stand) || stand.headGepusht !== true) nogo(g, "HEAD ist nicht auf origin (gepusht) — lokale Stände gelten nicht");
   else if (!Array.isArray(stand.geaendertSeitKandidat)) nogo(g, "Änderungen seit dem Kandidaten nicht ermittelbar");
   else {
     const fremd = stand.geaendertSeitKandidat.filter((p) => !konfig.erlaubtNachKandidat.some((e) => (e.endsWith("/") ? p.startsWith(e) : p === e)));
@@ -723,13 +807,13 @@ export function auswerten(e, konfig = KONFIG_STANDARD) {
   const prs = commitsOk
     ? [...new Set([...prsAusCommits(e.commits), ...e.commits.flatMap((c) => zugeordnet(c.sha))])].sort((a, b) => a - b)
     : undefined;
-  const ohne = commitsOk ? commitsOhnePr(e.commits, konfig).filter((c) => zugeordnet(c.sha).length === 0) : undefined;
+  const ohne = commitsOk ? commitsOhnePr(e.commits, konfig, e.prBestaetigung).filter((c) => zugeordnet(c.sha).length === 0) : undefined;
   const gates = [
     g1Ci(e.checkRuns, e.kandidat, konfig),
-    g2Review({ prs, commitsOhnePr: ohne, prAngaben: istObjekt(e.prAngaben) ? e.prAngaben : {}, dokBelege: reviewNachweiseLesen(e.reviewTexte || []), ssotBelege: ssotReviewBelege(e.ssot), freigabe }),
-    g3Schalter({ codeNamen: e.codeNamen, klassen: e.klassen, vorlagen: e.vorlagen || [], unfertig: e.unfertig, quelltexte: e.quelltexte }, konfig),
+    g2Review({ prs, commitsOhnePr: ohne, anzahlCommits: commitsOk ? e.commits.length : undefined, prAngaben: istObjekt(e.prAngaben) ? e.prAngaben : {}, dokBelege: reviewNachweiseLesen(e.reviewTexte || []), ssotBelege: ssotReviewBelege(e.ssot), freigabe }),
+    g3Schalter({ codeNamen: e.codeNamen, klassen: e.klassen, vorlagen: e.vorlagen || [], unfertig: e.unfertig, quelltexte: e.quelltexte, freigabe }, konfig),
     g4Bild({ digest: e.digest, kandidat: e.kandidat, bild: bildAngabenLesen(e.bildRoh), liste, berichtVorhanden: e.berichtVorhanden, jetztMs: e.jetztMs }, konfig),
-    g5Migration(bericht, freigabe),
+    g5Migration(bericht, freigabe, liste),
     g6Sicherung(e.nachweise, e.jetztMs, konfig),
     g7Rueckweg({ liste, kandidat: e.kandidat, digest: e.digest }, freigabe, konfig),
     g8Blocker(e.ssot, prs, freigabe, konfig),
@@ -794,6 +878,28 @@ function quelle(wurzel, rev) {
   return { lesen, dateien, gibt };
 }
 
+function nachweiseAusQuelle(q, verz) {
+  const basis = String(verz).replace(/\\/g, "/").replace(/\/+$/, "");
+  const l = (n) => { const t = q.lesen(`${basis}/${n}`); try { return t == null ? null : JSON.parse(t); } catch { return null; } };
+  return { sicherung: l("letzte-erfolgreiche.json"), restoreProbe: l("probe-status.json"), widerrufbuchProbe: l("widerrufbuch-probe-status.json") };
+}
+
+/**
+ * Semantische Prüfung der Basis (online, vor jedem Netzaufruf): echter Vorfahr des Kandidaten, nicht gleich,
+ * Bereich nicht leer, und Commit einer Zeile der Freigabeliste in HEAD. Liefert eine Fehlermeldung oder null.
+ */
+export function basisPruefen(wurzel, basis, kandidat, konfig = KONFIG_STANDARD) {
+  if (basis === kandidat) return "Basis = Kandidat (leerer Bereich)";
+  try { git(wurzel, ["merge-base", "--is-ancestor", basis, kandidat]); } catch { return "Basis ist kein Vorfahr des Kandidaten"; }
+  let anzahl = 0;
+  try { anzahl = Number(git(wurzel, ["rev-list", "--count", `${basis}..${kandidat}`])); } catch { return "Bereich nicht ermittelbar"; }
+  if (!(anzahl > 0)) return "leerer Commit-Bereich";
+  let liste = null;
+  try { liste = execFileSync("git", ["show", `HEAD:${konfig.freigabeListe}`], { cwd: wurzel, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }); } catch { liste = null; }
+  if (!freigabelisteLesen(liste).zeilen.some((z) => z.commit === basis)) return `Basis steht in keiner Zeile von ${konfig.freigabeListe} (HEAD)`;
+  return null;
+}
+
 function nachweiseLesen(verz) {
   if (!verz) return {};
   const l = (n) => { try { return JSON.parse(readFileSync(resolve(verz, n), "utf8")); } catch { return null; } };
@@ -804,6 +910,7 @@ function nachweiseLesen(verz) {
 export function sammeln(opt, konfig = KONFIG_STANDARD) {
   const w = opt.wurzel;
   const fx = istObjekt(opt.fixture) ? opt.fixture : {};
+  const gh = typeof opt.gh === "function" ? opt.gh : (pfad, extra) => ghApi(opt.wurzel, pfad, extra);
   const online = !opt.offline;
   const e = { releaseId: opt.releaseId, digest: opt.digest, jetztMs: opt.jetztMs, modus: online ? "online" : "offline-fixture", jetztUeberschrieben: !!opt.jetztUeberschrieben };
 
@@ -847,12 +954,16 @@ export function sammeln(opt, konfig = KONFIG_STANDARD) {
 
   // Bild und Nachweise
   e.bildRoh = online ? (opt.bildInfo ? jsonLesen(lesenPfad(opt.bildInfo)).wert : null) : (fx.bildInfo ?? null);
-  e.nachweise = (!online && fx.nachweise) ? fx.nachweise : nachweiseLesen(opt.nachweise);
+  // Nachweise: offline aus Fixture oder Dateisystem; online nur aus HEAD (commitet), nie aus dem Arbeitsstand.
+  e.nachweise = !online
+    ? (fx.nachweise ? fx.nachweise : nachweiseLesen(opt.nachweise))
+    : (opt.nachweise ? nachweiseAusQuelle(hq, opt.nachweise) : {});
 
   if (!online) {
     e.checkRuns = fx.checkRuns;
     e.commits = fx.commits;
     e.commitPrZuordnung = fx.commitPrZuordnung;
+    e.prBestaetigung = fx.prBestaetigung;
     e.prAngaben = istObjekt(fx.prs) ? fx.prs : {};
     e.geaenderteDateien = fx.geaenderteDateien;
     e.neueDateien = Array.isArray(fx.neueDateien) ? fx.neueDateien : [];
@@ -875,19 +986,36 @@ export function sammeln(opt, konfig = KONFIG_STANDARD) {
   try {
     let vorfahr = true;
     try { git(w, ["merge-base", "--is-ancestor", e.kandidat, "HEAD"]); } catch { vorfahr = false; }
-    e.stand = { kandidatIstVorfahr: vorfahr, geaendertSeitKandidat: vorfahr ? git(w, ["diff", "--name-only", e.kandidat, "HEAD"]).split("\n").filter(Boolean) : null };
+    let gepusht = false;
+    try { gepusht = git(w, ["branch", "-r", "--contains", "HEAD"]).trim() !== ""; } catch { gepusht = false; }
+    e.stand = { kandidatIstVorfahr: vorfahr, headGepusht: gepusht, geaendertSeitKandidat: vorfahr ? git(w, ["diff", "--name-only", e.kandidat, "HEAD"]).split("\n").filter(Boolean) : null };
   } catch { e.stand = null; }
   try {
-    const seiten = ghApi(w, `repos/${konfig.repo}/commits/${e.kandidat}/check-runs?per_page=100`, ["--paginate", "--slurp"]);
+    // filter=all: alle Läufe, nicht nur den jüngsten je Name (sonst gälte „ein roter Lauf bleibt rot“ nur offline).
+    const seiten = gh(`repos/${konfig.repo}/commits/${e.kandidat}/check-runs?per_page=100&filter=all`, ["--paginate", "--slurp"]);
     e.checkRuns = seiten.flatMap((s) => s.check_runs || []);
   } catch { e.checkRuns = null; }
   // Commits ohne PR-Merkmal im Betreff: GitHub fragen, zu welchen gemergten PRs sie gehören (nur GET).
   e.commitPrZuordnung = {};
   const sammel = new RegExp(konfig.sammelZweig);
+  // PR-Betreffs bestätigen: gemergt, merge_commit_sha, Zweig, Commits des PR (höchstens 250 laut GitHub).
+  e.prBestaetigung = {};
+  const prDaten = {};
+  for (const nr of Array.isArray(e.commits) ? prsAusCommits(e.commits) : []) {
+    try {
+      const p = gh(`repos/${konfig.repo}/pulls/${nr}`);
+      prDaten[nr] = p;
+      const seiten = gh(`repos/${konfig.repo}/pulls/${nr}/commits?per_page=100`, ["--paginate", "--slurp"]);
+      e.prBestaetigung[nr] = {
+        gemergt: !!p.merged_at, mergeCommit: p.merge_commit_sha || null, zweig: String(p.head?.ref || ""),
+        commits: seiten.flat().map((x) => x.sha),
+      };
+    } catch { /* ohne Bestätigung: der Betreff belegt nichts (fail-closed) */ }
+  }
   if (Array.isArray(e.commits)) {
-    for (const c of commitsOhnePr(e.commits, konfig)) {
+    for (const c of commitsOhnePr(e.commits, konfig, e.prBestaetigung)) {
       try {
-        const l = ghApi(w, `repos/${konfig.repo}/commits/${c.sha}/pulls`);
+        const l = gh(`repos/${konfig.repo}/commits/${c.sha}/pulls`);
         e.commitPrZuordnung[c.sha] = l.filter((p) => p.merged_at && !sammel.test(String(p.head?.ref || ""))).map((p) => p.number);
       } catch { /* ohne Antwort: bleibt „ohne PR“ (fail-closed) */ }
     }
@@ -899,8 +1027,8 @@ export function sammeln(opt, konfig = KONFIG_STANDARD) {
   for (const nr of allePrs) {
     if (dok.has(nr) || ssotBeleg.has(nr)) continue; // Dokumentbeleg genügt; spart Abfragen
     try {
-      const p = ghApi(w, `repos/${konfig.repo}/pulls/${nr}`);
-      const r = ghApi(w, `repos/${konfig.repo}/pulls/${nr}/reviews?per_page=100`);
+      const p = prDaten[nr] || gh(`repos/${konfig.repo}/pulls/${nr}`);
+      const r = gh(`repos/${konfig.repo}/pulls/${nr}/reviews?per_page=100`, ["--paginate", "--slurp"]).flat();
       e.prAngaben[nr] = { autor: p.user?.login, reviews: r.map((x) => ({ state: x.state, autor: x.user?.login })) };
     } catch { /* ohne Angaben: G2 listet den PR zur manuellen Bestätigung */ }
   }
@@ -939,7 +1067,11 @@ export function kurzfassung(r) {
 function main(argv) {
   let o;
   try { o = argumenteLesen(argv); } catch (err) { console.error("Aufruf: " + err.message); return 2; }
-  if (o.konfigZeigen) { console.log(JSON.stringify(KONFIG_STANDARD, null, 2)); return 0; }
+  if (o.konfigZeigen) {
+    if (argv.length !== 1) { console.error("Aufruf: --konfig-zeigen steht allein"); return 2; }
+    console.log(JSON.stringify(KONFIG_STANDARD, null, 2));
+    return 0;
+  }
   const wurzel = resolve(o.wurzel || fileURLToPath(new URL("..", import.meta.url)));
   let fixture = null;
   let jetztMs;
@@ -958,6 +1090,8 @@ function main(argv) {
     o.basisSha = revisionAufloesen(wurzel, o.basis);
     if (!o.kandidatSha) { console.error(`Aufruf: --kandidat ${o.kandidat} ist kein Commit`); return 2; }
     if (!o.basisSha) { console.error(`Aufruf: --basis ${o.basis} ist kein Commit`); return 2; }
+    const basisFehler = basisPruefen(wurzel, o.basisSha, o.kandidatSha);
+    if (basisFehler) { console.error(`Aufruf: Basis ungeeignet: ${basisFehler}`); return 2; }
     jetztMs = Date.now();
   }
   let r;

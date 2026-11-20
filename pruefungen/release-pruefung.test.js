@@ -319,7 +319,7 @@ describe("G3 Schalter und unfertige Funktionen", () => {
     ]) expect(g3(t, art).ergebnis, t).toBe("NO-GO");
   });
   it("sichere Werte und sicher-aktive Schalter → GO", () => {
-    for (const t of ["# CENTRIC_DEMO=true\n", "CENTRIC_DEMO=false\n", "CENTRIC_DATENSCHUTZLAUF=vorschau\n", "CENTRIC_ERSTLEITUNG_STRENG=true\n",
+    for (const t of ["# CENTRIC_DEMO=true\n", "CENTRIC_DEMO=false\n", "CENTRIC_DATENSCHUTZLAUF=vorschau\n", "CENTRIC_ZWEIFAKTOR_PFLICHT=1\n",
       "CENTRIC_AUFRAEUMEN=an\n", "VAPID_PRIVATE=<OPTIONAL>\n", "CENTRIC_DEMO=${CENTRIC_DEMO}\n"]) expect(g3(t).ergebnis, t).toBe("GO");
   });
   it("unfertige Funktion aktiv (Push-Schlüssel, Schichtmodell) → NO-GO", () => {
@@ -513,7 +513,7 @@ describe("G8, G9 SSOT", () => {
 });
 
 describe("G10 Freigabe und Stand", () => {
-  const STAND = { kandidatIstVorfahr: true, geaendertSeitKandidat: ["deploy/FREIGEGEBENE-IMAGES.md", "docs/acc45/releases/v4-r1.freigabe.json"] };
+  const STAND = { kandidatIstVorfahr: true, headGepusht: true, geaendertSeitKandidat: ["deploy/FREIGEGEBENE-IMAGES.md", "docs/acc45/releases/v4-r1.freigabe.json"] };
   const fall = (f, x = {}) => g10Freigabe({ releaseId: "v4-r1", freigabe: f, commitet: true, kandidat: K, digest: D, stand: STAND, ...x }, KONFIG_STANDARD);
   it("passende, commitete Freigabe → GO", () => expect(fall(FREIGABE).ergebnis).toBe("GO"));
   it("abweichender Digest, Commit, Umgebung, fehlende Person, nicht commitet, ungültige ID → NO-GO", () => {
