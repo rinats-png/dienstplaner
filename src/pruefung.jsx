@@ -18,6 +18,7 @@ import { verbindlichkeit } from "./regelwerk.js";
 /* Die Ortsprüfung beim Stempeln gibt es nur einmal (server/lib/geo.mjs). */
 import { abstandMeter, geoUrteil } from "../server/lib/geo.mjs";
 import { vergebbareRollen, RANG as ROLLEN_RANG } from "../server/lib/rollenvergabe.mjs";
+import { orgSchluessel, orgAnzeigeName, orgNameMerken } from "../server/lib/import/org.mjs";
 /* WP-I12c: Den Szenarienvergleich (planKennzahlen) gibt es nur einmal, im Rechenkern
    (server/lib/engine/kennzahlen.mjs, weitergereicht über src/lib/fachlogik.js). Die frühere
    Kopie hier rief verteilung mit einem Monat statt von/bis auf (spanne undefined, wochenenden NaN). */
@@ -2161,21 +2162,34 @@ function importPruefen(m, kopf, daten, zu, entscheidungen = {}, optionen = {}) {
   const rollen = ROLLEN.filter((r) => !r.extern).map((r) => r.id);
   /* Auflage D: Rolle des Anwenders; ohne Angabe gilt die niedrigste Rolle, die importieren darf (Planung). */
   const vergebbar = IMPORT_VERGEBBAR[optionen.vergeber || "planer"] || [];
+  /* B-I1: Fehlende Einheiten und Qualifikationen anlegen nur auf ausdrücklichen Wunsch (Haken) und nur mit dem Recht dazu —
+     die Oberfläche setzt einheitenAnlegen nur mit org.edit (Leitung). Ohne Wunsch bleibt eine unbekannte Einheit oder
+     Qualifikation ein Fehler; mit Wunsch ist sie keiner, sondern wird in der Vorschau als „wird neu angelegt“ gezeigt.
+     Zugeordnet wird nach derselben Regel wie im Dateiimport (server/lib/import/org.mjs, orgSchluessel: Groß-/Kleinschreibung,
+     Leerraum, unsichtbare Zeichen egal), Schreibvarianten in der Datei ergeben EINE neue Einheit. */
+  const einheitenAnlegen = optionen.einheitenAnlegen === true;
+  const einheiten = (m.einheiten || []).filter((e) => e && typeof e === "object");
+  const qualKatalog = (m.qualifikationen || []).filter((q) => q && typeof q === "object");
+  const qualTreffer = (q) => {
+    const k = orgSchluessel(q);
+    const t = qualKatalog.filter((x) => orgSchluessel(x.name) === k);
+    return [...new Set((t.length ? t : qualKatalog.filter((x) => orgSchluessel(x.kurz) === k)).map((x) => x.id))];
+  };
   const roh = daten.map((f, i) => {
     const hol = (k) => (zu[k] !== undefined ? (f[zu[k]] || "").trim() : "");
     const nachname = hol("nachname"), vorname = hol("vorname");
-    const einheitName = hol("einheit");
-    const einheit = m.einheiten.find((e) => e.name.toLowerCase() === einheitName.toLowerCase());
+    const einheitName = orgAnzeigeName(hol("einheit"));
+    const einheit = einheitName ? einheiten.find((e) => orgSchluessel(e.name) === orgSchluessel(einheitName)) : undefined;
     const std = parseFloat((hol("wochenstunden") || "").replace(",", ".")) || m.einstellungen.sollWochenstunden;
     const rolleRoh = hol("rolle").toLowerCase();
     const rolleErkannt = rollen.find((x) => x === rolleRoh)
       || (ROLLEN.find((x) => x.label.toLowerCase() === rolleRoh) || {}).id || null;
     const rolleId = rolleRoh ? rolleErkannt : "mitarbeiter";
-    const qualNamen = hol("qualifikationen").split(/[,/|]/).map((x) => x.trim()).filter(Boolean);
-    const quals = qualNamen.map((q) => (m.qualifikationen.find((x) =>
-      x.name.toLowerCase() === q.toLowerCase() || x.kurz.toLowerCase() === q.toLowerCase()) || {}).id).filter(Boolean);
-    const fehlendeQuals = qualNamen.filter((q) => !m.qualifikationen.some((x) =>
-      x.name.toLowerCase() === q.toLowerCase() || x.kurz.toLowerCase() === q.toLowerCase()));
+    const qualNamen = [];
+    for (const q of hol("qualifikationen").split(/[,/|]/)) orgNameMerken(qualNamen, q);
+    const quals = [...new Set(qualNamen.map(qualTreffer).filter((t) => t.length === 1).map((t) => t[0]))];
+    const fehlendeQuals = qualNamen.filter((q) => !qualTreffer(q).length);
+    const mehrdeutigeQuals = qualNamen.filter((q) => qualTreffer(q).length > 1);
     /* Auflage C: leer bleibt leer (null, nicht heute); ungültig ist ein Fehler. */
     const eintrittRoh = hol("eintritt");
     const eintrittErgebnis = eintrittPruefen(eintrittRoh);
@@ -2188,7 +2202,9 @@ function importPruefen(m, kopf, daten, zu, entscheidungen = {}, optionen = {}) {
     const fehler = [];
     if (!nachname) fehler.push("Nachname fehlt");
     if (!vorname) fehler.push("Vorname fehlt");
-    if (einheitName && !einheit) fehler.push(`Einheit „${einheitName}" unbekannt`);
+    if (einheitName && !einheit && !einheitenAnlegen) fehler.push(`Einheit „${einheitName}" unbekannt`);
+    for (const q of einheitenAnlegen ? [] : fehlendeQuals) fehler.push(`Qualifikation „${q}" unbekannt`);
+    for (const q of mehrdeutigeQuals) fehler.push(`Qualifikation „${q}" mehrdeutig`);
     if (!einheitName) fehler.push("Einheit fehlt");
     if (!eintrittErgebnis.ok) fehler.push(eintrittErgebnis.fehler);
     /* Auflage D: Rolle, die der Anwender nicht vergeben darf, ist ein Fehler. Ohne Rollenspalte gilt
@@ -2282,6 +2298,7 @@ function importPruefen(m, kopf, daten, zu, entscheidungen = {}, optionen = {}) {
           : dublette.vertauscht ? "Name (Vor-/Nachname vertauscht) bereits vorhanden, bitte klären"
             : "Name bereits vorhanden, bitte klären";
     return { nr: i + 1, nachname, vorname, einheitName, einheitId: einheit ? einheit.id : null,
+      einheitNeu: !!einheitName && !einheit && einheitenAnlegen,
       funktion: hol("funktion") || "Fachkraft", wochenstunden: std,
       urlaubsanspruch: parseInt(hol("urlaubsanspruch"), 10) || 30, eintritt, rolle: rolleId,
       /* Auflage C: eintrittLeer heißt „Zelle leer“, nicht „kein gültiges Datum“ (ungültig ist ein Fehler, nicht
@@ -2299,8 +2316,8 @@ function importPruefen(m, kopf, daten, zu, entscheidungen = {}, optionen = {}) {
   });
   return { zeilen, gut: zeilen.filter((z) => z.ok).length, fehlerhaft: zeilen.filter((z) => !z.ok).length,
     doppelt: zeilen.filter((z) => z.doppelt).length,
-    neueEinheiten: [...new Set(zeilen.filter((z) => z.einheitName && !z.einheitId).map((z) => z.einheitName))],
-    neueQuals: [...new Set(zeilen.flatMap((z) => z.fehlendeQuals))] };
+    neueEinheiten: zeilen.filter((z) => z.einheitName && !z.einheitId).reduce((l, z) => { orgNameMerken(l, z.einheitName); return l; }, []),
+    neueQuals: zeilen.flatMap((z) => z.fehlendeQuals).reduce((l, q) => { orgNameMerken(l, q); return l; }, []) };
 }
 const IMPORT_BEISPIEL = `Nachname;Vorname;Einheit;Funktion;Wochenstunden;Urlaub;Eintritt;Rolle;Qualifikationen;Teilzeit
 Meier;Sabine;Schichtgruppe 1;Fachkraft;41;30;01.03.2021;mitarbeiter;SK,EH;

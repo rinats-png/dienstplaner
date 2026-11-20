@@ -19,8 +19,8 @@
          Monatsplan zeigt sie, das Tagesblatt nennt die neuen Zeiten und teilt die Beschäftigte ein (vorher: kein Tag).
      H5  Schichtplanung (Planung) im Tagesblatt: „Raus“ und „+ S“ ändern den Plan (Server); Gegenprobe über die API: ZX
          ausdrücklich am Folgetag (9 h nach dem Spätdienst) → 403 Ruhezeit, nichts gespeichert.
-     H5b Befund B-H5 (heutiges Verhalten): dieselbe Einteilung über „+ ZX“ im Tagesblatt löscht nur die Abweichung (Rückkehr
-         zur Schichtfolge) und wird angenommen (200) — die Ruhezeitsperre greift dort nicht.
+     H5b B-H5 behoben: dieselbe Einteilung über „+ ZX“ im Tagesblatt löscht nur die Abweichung (Rückkehr zur
+         Schichtfolge) — der Server prüft den Dienst aus der Schichtfolge wie einen gesetzten: 403 Ruhezeit, „-“ bleibt.
    Nur Projekt 1024x768 (schreibt Daten). zeit-ok: kein eigener Uhrbezug — Tage relativ zum festen Abnahmetag (abnahmeHeute),
    Laufkennung nur als eindeutiger Raumname. */
 import { test, expect, geheZu, schreibvorgaengeVerfolgen } from "./hilfen.mjs";
@@ -167,8 +167,9 @@ test.describe.serial("Lokale E2E-Abnahme Hauptfunktionen 1: Personal, Dienstart,
     await expect.poll(async () => (await neuAufServer()).map((p) => [p.vorname, p.rolle, p.eintritt, p.austritt]), { timeout: 20000 })
       .toEqual([["Nora", "mitarbeiter", "2025-01-01", null]]);
     expect((await neuAufServer()).length, "Fehlerfall hat nichts angelegt, genau eine Person").toBe(1);
-    /* bearbeiten: Akte öffnen, Wochenstunden */
-    await page.getByRole("button", { name: `${NEU}, Nora öffnen` }).click();
+    /* bearbeiten: Akte öffnen, Wochenstunden. Seit WP-40 (#389, WCAG 2.5.3) hat die Personenzelle keinen eigenen Namen
+       mehr („… öffnen“), sie heißt wie ihr sichtbarer Inhalt — darum Teilname „Nachname, Vorname“. */
+    await page.getByRole("button", { name: `${NEU}, Nora` }).click();
     const akte = page.getByRole("dialog", { name: `Nora ${NEU}` });
     await expect(akte).toBeVisible();
     await akte.getByLabel("Wochenstunden", { exact: true }).fill("32");
@@ -211,7 +212,7 @@ test.describe.serial("Lokale E2E-Abnahme Hauptfunktionen 1: Personal, Dienstart,
     await expect(page.getByRole("row").filter({ hasText: `Mitarbeiterin-${MK}` })).toHaveCount(1);
     await expect(page.getByRole("button", { name: "Person hinzufügen" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Importieren" })).toHaveCount(0);
-    await page.getByRole("button", { name: `Mitarbeiterin-${MK}, Lia öffnen` }).click();
+    await page.getByRole("button", { name: `Mitarbeiterin-${MK}, Lia` }).click();
     const akte = page.getByRole("dialog", { name: `Lia Mitarbeiterin-${MK}` });
     await expect(akte).toBeVisible();
     await expect(akte.getByRole("button", { name: "Austritt eintragen" })).toHaveCount(0);
@@ -296,7 +297,7 @@ test.describe.serial("Lokale E2E-Abnahme Hauptfunktionen 1: Personal, Dienstart,
     /* Planwirkung: jeder Tag des Monats trägt die Dienstart; das Tagesblatt nennt die neuen Zeiten und teilt ein */
     await geheZu(page, "Monatsplan");
     await expect(page.locator(`[role=gridcell][aria-label$=" · ${C.einheit.name} · ${ZX}"]`)).toHaveCount(tageImMonat);
-    await page.locator(`[role=gridcell][aria-label^="${fLang(T1)} · ${C.einheit.name} · "]`).click();
+    await page.locator(`[role=gridcell][aria-label*="${fLang(T1)} · ${C.einheit.name} · "]`).click();
     const tag = page.getByRole("dialog", { name: fLang(T1) });
     await expect(tag).toBeVisible();
     /* Das Blatt öffnet auf der ersten Dienstart (F aus der Vorlage „leer“) — zur neuen wechseln */
@@ -318,7 +319,7 @@ test.describe.serial("Lokale E2E-Abnahme Hauptfunktionen 1: Personal, Dienstart,
     await anmeldenBrowser(page, C.p1);
     await geheZu(page, "Monatsplan");
     const tagOeffnen = async (iso) => {
-      await page.locator(`[role=gridcell][aria-label^="${fLang(iso)} · ${C.einheit.name} · "]`).click();
+      await page.locator(`[role=gridcell][aria-label*="${fLang(iso)} · ${C.einheit.name} · "]`).click();
       const t = page.getByRole("dialog", { name: fLang(iso) });
       await expect(t).toBeVisible();
       await t.getByRole("button", { name: /^ZX \d+\/\d+$/ }).click();     // öffnet sonst auf F (erste Dienstart)
@@ -354,12 +355,11 @@ test.describe.serial("Lokale E2E-Abnahme Hauptfunktionen 1: Personal, Dienstart,
     expect((await ab())[`a1|${T2}`], "abgewiesen: Folgetag bleibt frei").toBe("-");
   });
 
-  /* Befund B-H5 (docs/acc45/LOKALE-E2E-ABNAHME-2026-11-20.md §4), Produktfehler, NICHT in src/server repariert:
-     Dieselbe Einteilung (ZX am Folgetag, 9 h nach dem Spätdienst) geht durch, wenn sie im Tagesblatt über „+ ZX“
-     entsteht. Die Oberfläche löscht dann die Abweichung „-“ (ZX ist ohnehin der Plan der Schichtfolge), und die
-     Schutzdurchsetzung des Servers prüft den Tag offenbar nicht als geänderte Einteilung. Der Test hält das HEUTIGE
-     Verhalten fest (wie L4a/L4c damals) und wird nach der Behebung umgekehrt: dann 403 und Abweichung bleibt „-“. */
-  test("H5b (Befund B-H5) Rückkehr zur Schichtfolge im Tagesblatt umgeht heute die Ruhezeitsperre", async ({ page }) => {
+  /* B-H5 (docs/acc45/LOKALE-E2E-ABNAHME-2026-11-20.md §4), behoben in PR #397: Dieselbe Einteilung (ZX am Folgetag,
+     9 h nach dem Spätdienst) entsteht im Tagesblatt über „+ ZX“. Die Oberfläche löscht dann die Abweichung „-“ (ZX ist
+     ohnehin der Plan der Schichtfolge). Der Server prüft eine gelöschte Abweichung ab heute wie eine gesetzte
+     Einteilung (server/lib/schutzdurchsetzung.mjs): 403 Ruhezeit unter 11 Stunden, gespeichert bleibt „-“. */
+  test("H5b (B-H5 behoben) Rückkehr zur Schichtfolge im Tagesblatt: Ruhezeitsperre greift (403)", async ({ page }) => {
     const ab = async () => (await mandant(C.lT)).abweichungen || {};
     const puts = [];
     page.on("response", async (r) => { if (r.request().method() === "PUT" && new URL(r.url()).pathname === "/api/bestand")
@@ -368,17 +368,18 @@ test.describe.serial("Lokale E2E-Abnahme Hauptfunktionen 1: Personal, Dienstart,
     const v = await schreibvorgaengeVerfolgen(page);
     await anmeldenBrowser(page, C.p1);
     await geheZu(page, "Monatsplan");
-    await page.locator(`[role=gridcell][aria-label^="${fLang(T2)} · ${C.einheit.name} · "]`).click();
+    await page.locator(`[role=gridcell][aria-label*="${fLang(T2)} · ${C.einheit.name} · "]`).click();
     const blatt = page.getByRole("dialog", { name: fLang(T2) });
     await expect(blatt).toBeVisible();
     await blatt.getByRole("button", { name: /^ZX \d+\/\d+$/ }).click();
     await blatt.locator(".karte").filter({ hasText: `Lia Mitarbeiterin-${MK}` }).getByRole("button", { name: "+ ZX" }).click();
     await expect.poll(() => puts.length, { timeout: 20000 }).toBeGreaterThan(0);
-    expect(puts[0][0], `heute angenommen (Befund B-H5): ${puts[0][1]}`).toBe(200);
-    await expect.poll(async () => (await ab())[`a1|${T2}`], { timeout: 20000 }).toBeUndefined();
-    /* Wirkung: a1 ist am Folgetag wieder über die Schichtfolge im ZX (07:00) eingeteilt — 9 h nach dem Spätdienst */
-    await expect(blatt.locator(".karte").filter({ hasText: `Lia Mitarbeiterin-${MK}` }).getByRole("button", { name: "Raus" })).toBeVisible();
+    expect(puts[0][0], `abgewiesen (B-H5 behoben): ${puts[0][1]}`).toBe(403);
+    expect(puts[0][1]).toContain(`Einteilung am ${T2} nicht möglich: Ruhezeit unter 11 Stunden.`);
     await page.keyboard.press("Escape");
     await seiteZu(page, v);
+    /* Kein späterer Versuch ging durch; gespeichert bleibt der Folgetag frei. */
+    expect(puts.every(([st]) => st !== 200), `kein angenommener PUT: ${JSON.stringify(puts)}`).toBe(true);
+    expect((await ab())[`a1|${T2}`], "abgewiesen: Folgetag bleibt frei").toBe("-");
   });
 });
