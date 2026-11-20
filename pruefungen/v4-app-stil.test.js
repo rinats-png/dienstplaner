@@ -292,7 +292,7 @@ describe("V4-2c: Seitenleisten-Einträge (.slink) – Kontrast je Zustand, Thema
       const los = (k) => (d[k] === undefined ? undefined : ersetzeVar(d[k], vars));
       if (d.color !== undefined) farbe = los("color");
       return { el, grund: los("background-color") ?? los("background") ?? "transparent", farbe,
-        display: los("display"), outline: los("outline") };
+        display: los("display"), outline: los("outline"), outlineAbstand: los("outline-offset") };
     });
   };
 
@@ -351,7 +351,10 @@ describe("V4-2c: Seitenleisten-Einträge (.slink) – Kontrast je Zustand, Thema
     const flaeche = flaecheUnter(st);
     const daneben = flaecheUnter(st, st.length - 1); /* Fläche um den Eintrag (Seitenleiste) */
     const ring = eintrag.outline && !/\bnone\b/.test(eintrag.outline) ? farbeIn(eintrag.outline) : null;
-    return { st, eintrag, flaeche, daneben, text: verh(mische(farbeIn(eintrag.farbe), flaeche), flaeche),
+    /* Angrenzende Farben des Rings (1.4.11): mit outline-offset > 0 liegt zwischen Ring und Eintrag ein Spalt in der
+       Farbe der Seitenleiste, der Ring grenzt dann innen und außen an die Seitenleiste; ohne Abstand innen an den Eintrag. */
+    const abstand = parseFloat(eintrag.outlineAbstand || "0") || 0;
+    return { st, eintrag, flaeche, daneben, abstand, text: verh(mische(farbeIn(eintrag.farbe), flaeche), flaeche),
       fokus: ring ? { gegenDaneben: verh(mische(ring, daneben), daneben), gegenEintrag: verh(mische(ring, flaeche), flaeche) } : null };
   };
 
@@ -375,13 +378,14 @@ describe("V4-2c: Seitenleisten-Einträge (.slink) – Kontrast je Zustand, Thema
         });
       }
       for (const [zustand, opt] of ZUSTAENDE.filter(([z]) => z.includes("focus-visible"))) {
-        it(`${layout} ${breite} px, ${thema}, ${zustand}: Fokusring >= 3:1 gegen Seitenleiste und Eintrag`, () => {
+        it(`${layout} ${breite} px, ${thema}, ${zustand}: Fokusring >= 3:1 gegen die angrenzenden Farben`, () => {
           const m = messen(thema, breite, opt);
           expect(m.fokus, `outline ${m.eintrag.outline}`).not.toBeNull();
           expect(m.eintrag.outline).toMatch(/\bsolid\b/);
           expect(parseFloat(m.eintrag.outline), "Ringbreite in px").toBeGreaterThanOrEqual(2);
           expect(m.fokus.gegenDaneben, `Ring gegen Seitenleiste ${alsText(m.daneben)}`).toBeGreaterThanOrEqual(3);
-          expect(m.fokus.gegenEintrag, `Ring gegen Eintrag ${alsText(m.flaeche)}`).toBeGreaterThanOrEqual(3);
+          if (m.abstand <= 0) expect(m.fokus.gegenEintrag, `Ring gegen Eintrag ${alsText(m.flaeche)}`).toBeGreaterThanOrEqual(3);
+          else expect(m.abstand, "Spalt zwischen Ring und Eintrag in px").toBeGreaterThanOrEqual(1);
         });
       }
       it(`${layout} ${breite} px, ${thema}: normal, Hover und Aktiv sind verschiedene Flächen`, () => {

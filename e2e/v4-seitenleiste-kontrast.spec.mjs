@@ -4,12 +4,14 @@
    Die axe-Specs (barrierefreiheit*.spec.mjs) messen ohne geöffnete Schublade; diese Spec öffnet sie per Tastatur
    (Menütaste, Enter: der Fokus springt auf den aktiven Eintrag, ui/geraete.js seitenleisteFokus) und misst im Browser:
    aktiver Eintrag mit Fokusring, ein anderer Eintrag im Hover, Text >= 4,5:1 auf der gemischten Fläche, Fokusring
-   >= 3:1 gegen Seitenleiste und Eintrag; danach axe (WCAG 2.2 AA) mit offener Schublade.
+   >= 3:1 gegen die angrenzenden Farben (bei outline-offset > 0 die Seitenleiste); danach axe (WCAG 2.2 AA) mit offener
+   Schublade.
    Übergänge der Einträge sind für die Messung abgeschaltet (zusätzliches Stilelement nur im Test): Ein Zwischenbild
    der Überblendung hätte eine zu helle Fläche und damit falsch hohe Werte.
    Bremsen-Bilanz: 2 Anmeldungen als Leitung je Lauf (nur Projekt 390x844). Code und Herkunft je Test aus dem Zugangspool
    (anmelden() in hilfen.mjs, e2e/herkunft.mjs, umgebung.mjs ZUGANG_POOL); Bremse „anmelden-code“ 20 je 300 s und Code.
-   Zeitgrenze 150 s je Fall wie v4-variablen.spec.mjs. Bilder hängen am Testergebnis, nicht im Repo. */
+   Zeitgrenze 150 s je Fall wie v4-variablen.spec.mjs. Keine Bildschirmfotos (playwright.config.mjs); die
+   Messwerte stehen als Anmerkung „kontrast“ am Testergebnis. */
 import { test, expect, anmelden, axePruefen } from "./hilfen.mjs";
 import { V4_FARBEN } from "../src/v4/tokens.js";
 
@@ -35,7 +37,7 @@ async function messen(page, selektor) {
     return {
       leiste: leiste.backgroundColor, grund: cs.backgroundColor, farbe: cs.color,
       text: verh(schrift, flaeche),
-      ring: ring ? { breite: parseFloat(cs.outlineWidth), gegenLeiste: verh(mische(ring, grund), grund), gegenEintrag: verh(mische(ring, flaeche), flaeche) } : null,
+      ring: ring ? { breite: parseFloat(cs.outlineWidth), abstand: parseFloat(cs.outlineOffset) || 0, gegenLeiste: verh(mische(ring, grund), grund), gegenEintrag: verh(mische(ring, flaeche), flaeche) } : null,
       fokusSichtbar: e.matches(":focus-visible"),
     };
   }, selektor);
@@ -67,8 +69,8 @@ test.describe("V4-2c: Seitenleisten-Einträge in der Schublade (390 px)", () => 
       expect(an.ring, "Fokusring vorhanden").not.toBeNull();
       expect(an.ring.breite).toBeGreaterThanOrEqual(2);
       expect(an.ring.gegenLeiste, "Fokusring gegen Seitenleiste").toBeGreaterThanOrEqual(3);
-      expect(an.ring.gegenEintrag, "Fokusring gegen Eintrag").toBeGreaterThanOrEqual(3);
-      await testInfo.attach(`schublade-aktiv-fokus-${thema}`, { body: await page.screenshot(), contentType: "image/png" });
+      /* Mit Abstand (outline-offset) liegt zwischen Ring und Eintrag ein Spalt in der Farbe der Seitenleiste. */
+      if (an.ring.abstand <= 0) expect(an.ring.gegenEintrag, "Fokusring gegen Eintrag").toBeGreaterThanOrEqual(3);
 
       /* Hover auf einem anderen Eintrag. */
       const anderer = page.locator(".seitenleiste .slink:not(.on)").first();
@@ -79,9 +81,8 @@ test.describe("V4-2c: Seitenleisten-Einträge in der Schublade (390 px)", () => 
       expect(hover.text, `Hover: ${hover.farbe} auf ${hover.grund}`).toBeGreaterThanOrEqual(4.5);
       expect(hover.grund, "Hover und aktiv unterscheidbar").not.toBe(an.grund);
       await anderer.evaluate((e) => e.removeAttribute("data-v4-2c-hover"));
-      await testInfo.attach(`schublade-hover-${thema}`, { body: await page.screenshot(), contentType: "image/png" });
       testInfo.annotations.push({ type: "kontrast", description: `${thema}: aktiv ${an.text}:1 (${an.grund}), Hover ${hover.text}:1 (${hover.grund}), `
-        + `Fokusring ${an.ring.gegenLeiste}:1 gegen Leiste, ${an.ring.gegenEintrag}:1 gegen Eintrag` });
+        + `Fokusring ${an.ring.gegenLeiste}:1 gegen Leiste, ${an.ring.gegenEintrag}:1 gegen Eintrag, Abstand ${an.ring.abstand} px` });
 
       await axePruefen(page, testInfo, "schublade-leitung");
     });
