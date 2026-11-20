@@ -50,8 +50,8 @@ export const gestaltStil = () => `
 .suchfeld .inp{padding-left:40px; border-radius:var(--r-pille);}
 
 /* Fortschritt, Checkliste, Erklärkasten, Sparkline */
-.fortschritt{background:${C.flaecheStill}; border-radius:999px; overflow:hidden;}
-.fortschritt > i{display:block; height:100%; border-radius:999px; background:${C.accent};}
+.fortschritt{background:${C.flaecheStill}; border-radius:var(--v4-r-pille); overflow:hidden;}
+.fortschritt > i{display:block; height:100%; border-radius:var(--v4-r-pille); background:${C.accent};}
 .checkliste{list-style:none; margin:0; padding:0;}
 .checkliste li{display:flex; align-items:center; gap:10px; padding:7px 0; font-size:13.5px;}
 .checkliste li.erledigt .text{color:${C.dim}; text-decoration:line-through;}
@@ -99,7 +99,7 @@ export const gestaltStil = () => `
   transition:background .14s, color .14s;}
 .bpille:hover{background:${C.flaecheStill}; color:${C.text};}
 .bpille.on{background:${C.accentLight}; color:${C.accent}; font-weight:620;}
-.bzahl,.uzahl{min-width:18px; height:18px; padding:0 5px; border-radius:999px; font-size:11px; font-weight:600;
+.bzahl,.uzahl{min-width:18px; height:18px; padding:0 5px; border-radius:var(--v4-r-pille); font-size:11px; font-weight:600;
   display:inline-flex; align-items:center; justify-content:center; font-variant-numeric:tabular-nums;}
 .bzahl{background:${C.warnLight}; color:${C.warn};}
 .uzahl{background:${C.accentLight}; color:${C.accent};}
@@ -111,7 +111,7 @@ export const gestaltStil = () => `
 .ikn:hover{background:${C.flaecheStill}; color:${C.text};}
 .ikn-klein{width:32px; height:32px;}
 .ikn-zahl{position:absolute; top:3px; right:2px; min-width:16px; height:16px; padding:0 4px;
-  border-radius:999px; background:${C.accent}; color:${C.aufAkzent}; font-size:10px; font-weight:600;
+  border-radius:var(--v4-r-pille); background:${C.accent}; color:${C.aufAkzent}; font-size:10px; font-weight:600;
   display:flex; align-items:center; justify-content:center; font-variant-numeric:tabular-nums;}
 .ansichtknopf{display:flex; align-items:center; gap:6px; height:40px; padding:0 12px 0 16px; flex-shrink:0;
   border:1px solid ${C.line}; border-radius:var(--r-pille); background:${C.flaeche}; color:${C.text};
@@ -240,7 +240,7 @@ button.kachel{cursor:pointer; display:block; width:100%;}
 .legende li{display:flex; align-items:center; gap:7px;}
 .legende b{font-weight:650;}
 
-.namenschip{display:inline-flex; align-items:center; gap:8px; padding:4px 12px 4px 4px; border-radius:999px;
+.namenschip{display:inline-flex; align-items:center; gap:8px; padding:4px 12px 4px 4px; border-radius:var(--v4-r-pille);
   background:${C.flaecheStill}; font-size:13px; max-width:100%;}
 .namenschip .n{overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0;}
 
@@ -333,7 +333,7 @@ button.kachel{cursor:pointer; display:block; width:100%;}
 .wegzeile{display:flex; align-items:flex-start; gap:16px; flex-wrap:wrap; padding:15px var(--pad-x);
   border-bottom:1px solid ${C.lineSoft};}
 .wegzeile:last-child{border-bottom:0;}
-.wegsymbol{width:40px; height:40px; border-radius:12px; flex-shrink:0; display:flex; align-items:center;
+.wegsymbol{width:40px; height:40px; border-radius:var(--v4-r-mittel); flex-shrink:0; display:flex; align-items:center;
   justify-content:center; background:${C.accentLight}; color:${C.accent};}
 
 /* Handbuch: Kapitelliste, Kapitel, Stand — Liste und Stand kleben unter der Kopfzeile (112 px) */

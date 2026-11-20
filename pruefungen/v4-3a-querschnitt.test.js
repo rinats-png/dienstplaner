@@ -24,7 +24,7 @@ import { describe, it, expect, beforeAll } from "vitest";
 import { createElement as h } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { V4_RADIEN } from "../src/v4/tokens.js";
-import { festeFormwerte, globalerStil, GLOBALE_STILDATEIEN } from "../werkzeug/v4-inventar.mjs";
+import { festeFormwerte, globalerStil, GLOBALE_STILDATEIEN, formStufe } from "../werkzeug/v4-inventar.mjs";
 
 let appCss = "";
 
@@ -131,11 +131,16 @@ describe("V4-3a: Messung im Zählwerkzeug", () => {
   it("globaler Stil: App.jsx und gestalt/stil.js; Zählstand nach V4-3a höchstens 7/1 und 7/2", () => {
     expect(GLOBALE_STILDATEIEN).toEqual(["src/App.jsx", "src/gestalt/stil.js"]);
     const g = globalerStil();
-    /* Vor V4-3a (Basis d5cb1317): App.jsx 17 Radien / 1 Schatten, gestalt/stil.js 12 / 2.
+    /* Vor V4-3a (Basis d5cb1317): App.jsx 17 Radien / 1 Schatten, gestalt/stil.js 13 / 2.
        Rest nach V4-3a: Fokusring, Bildlaufleisten, Tastenmarken, Akzentkante, Punkte, Telefonschale (m-*), tabbar. */
     expect(g["src/App.jsx"].radien).toBeLessThanOrEqual(7);
     expect(g["src/App.jsx"].schatten).toBeLessThanOrEqual(1);
     expect(g["src/gestalt/stil.js"].radien).toBeLessThanOrEqual(7);
     expect(g["src/gestalt/stil.js"].schatten).toBeLessThanOrEqual(2);
+  });
+
+  it("reine Stilquelle mit var(--v4-…) bleibt „nicht sichtbar“ (Nenner und Stufensumme unverändert)", () => {
+    expect(formStufe({ sichtbar: false, v4Baustein: 0, formDirekt: 0, formBaustein: 0, tokenVar: 3 })).toBe("nicht sichtbar");
+    expect(formStufe({ sichtbar: true, v4Baustein: 0, formDirekt: 0, formBaustein: 0, tokenVar: 3 })).toBe("Token direkt");
   });
 });
