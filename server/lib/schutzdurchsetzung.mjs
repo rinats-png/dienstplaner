@@ -21,7 +21,8 @@
       (Löschlauf, Aufbewahrung) nicht.
    2. Mittelbar: Ändert die Übermittlung Dienstarten, Schichtfolge (zyklus,
       anker), Einheiten (Versatz) oder Personen (Zugehörigkeit, Springer,
-      Schichtdienst, Teilzeit, Eintritt, Austritt, Status), rechnet der Server
+      Schichtdienst, Teilzeit, Eintritt, Austritt, Status) — mit Planwirkung
+      (IMP-6, Vorgabe aus) auch Schichtmodelle und Zuordnungen —, rechnet der Server
       für jede Person die nächsten SCHUTZ_HORIZONT_TAGE Tage vorher und
       nachher nach — nur dort, wo sich für die Einteilung etwas geändert haben
       kann (Dienst, Dienstart, Nachbartage, Woche, Person, Betriebsvorgaben).
@@ -75,7 +76,7 @@ import { schutzEinsatz, addDays, tagUTC } from "./schutzpruefung.mjs";
 import { heuteBerlin } from "./zeiterfassung.mjs";
 import { BEFUND_KATALOG, sperrtBefund, befundText } from "./bestaetigungen.mjs";
 import { einteilungsBefunde, imDienst, mindestOhneFeiertag, einheitAm, einheitDienst, teilzeitDienst,
-  landFuerEinheit, planDienst, schichtmodellWirkungAktiv } from "./fachpruefung.mjs";
+  landFuerEinheit, planDienst, schichtmodellWirkungAktiv, schichtmodellPlanfelder } from "./fachpruefung.mjs";
 
 /** Wie weit der Server mittelbare Änderungen voraus nachrechnet (Tage ab heute). */
 export const SCHUTZ_HORIZONT_TAGE = 120;
@@ -132,7 +133,10 @@ function planStrukturGeaendert(altM, neuM) {
 }
 /** Dasselbe in Häppchen (Nachtrag WP-22b, Review HOCH 2): je Person eine Gelegenheit zum Nachgeben. */
 function* planStrukturSchritte(altM, neuM, zeitUm = () => false, weiter = () => {}) {
-  for (const f of ["dienstarten", "zyklus", "anker", "einheiten"])
+  /* IMP-6 Planwirkung (Vorgabe aus): Mit AN bestimmen auch die Modelldefinitionen und die Zuordnungen je Person den Plan
+     und lösen die mittelbare Nachrechnung aus; mit AUS sind die Listen leer — wie bisher. */
+  const wirkung = schichtmodellPlanfelder();
+  for (const f of ["dienstarten", "zyklus", "anker", "einheiten", ...wirkung.betrieb])
     if (hat(neuM, f) && !gleich(altM[f], neuM[f])) return true;
   const alt = new Map(liste(altM.personen).map((p) => [String(p.id), p]));
   for (const p of liste(neuM.personen)) {
@@ -144,7 +148,7 @@ function* planStrukturSchritte(altM, neuM, zeitUm = () => false, weiter = () => 
     /* Review M2: auch Schutzmerkmale und Einwilligungen — wer sie ändert,
        ändert, ob bestehende Einteilungen zulässig sind. */
     for (const f of ["zugehoerigkeit", "springer", "imSchichtdienst", "teilzeit", "wochenstunden", "eintritt", "austritt", "status",
-      "mutterschutz", "mutterschutzEinwilligungen", "geburtstag", "geburtsdatum"])
+      "mutterschutz", "mutterschutzEinwilligungen", "geburtstag", "geburtsdatum", ...wirkung.person])
       if (!gleich(a[f], p[f])) return true;
   }
   return false;

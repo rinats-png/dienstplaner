@@ -15,7 +15,7 @@
    ========================================================================== */
 import { addDays, montag, toMin, dow, dauer, pad, stundengrenzeHinweis } from "../regelwerk.mjs";
 import { einteilungsBefunde, einheitAm, einheitDienst, imDienst, nachtAnteil, nachtschwelle, schichtmodellWirkungAktiv,
-  schichtmodellLageAm } from "../fachpruefung.mjs";
+  schichtmodellLageAm, schichtfolgeAm } from "../fachpruefung.mjs";
 import { istVerfuegbar, zeitraumJahr } from "../istdaten.mjs";
 import { sperrtBefund as sperrtArt } from "../bestaetigungen.mjs";
 import { memo, besetzung, personTag, abwesenheitAm, abwArt, stundenkonto, istStunden, nachweisStand, qualGueltig } from "./plan.mjs";
@@ -216,10 +216,14 @@ export function ersatzVorschlaege(m, d, dienstId, ctx) {
     if (p.springer) { punkte += 28; gruende.push("Springerpool"); }
     else {
       const eid = einheitAm(p, d);
-      /* IMP-6 Planwirkung (Vorgabe aus): die Folge des zugeordneten Modells; aus wörtlich wie bisher. */
-      const regulaer = schichtmodellWirkungAktiv() ? (() => { const l = schichtmodellLageAm(m, p, d); return l.art === "dienst" && !!l.dienstId; })()
-        : eid && einheitDienst(m, eid, d);
-      if (regulaer) { punkte -= 10; gruende.push("hätte regulär frei"); }
+      /* IMP-6 Planwirkung (Vorgabe aus): die Folge des zugeordneten Modells; aus wörtlich wie bisher (schichtfolgeAm).
+         Review #429 Hinweis 3: An Tagen ohne eindeutiges Modell (Lücke nach Q5, Überschneidung, ungültige Zuordnung)
+         gilt weder „hätte regulär frei“ noch „in der Dienstphase“ — beides wäre eine Aussage über eine Folge, die es an
+         diesem Tag nicht gibt. Neutral: keine Punkte, der Grund wird genannt (die Planung entscheidet). */
+      const lage = schichtmodellWirkungAktiv() ? schichtmodellLageAm(m, p, d) : null;
+      if (lage && (lage.art === "keine" || lage.art === "uneindeutig" || lage.art === "ungueltig"))
+        gruende.push(lage.art === "keine" ? "kein Schichtmodell an diesem Tag" : "Schichtmodell unklar (Klärung)");
+      else if (schichtfolgeAm(m, p, d, () => eid && einheitDienst(m, eid, d))) { punkte -= 10; gruende.push("hätte regulär frei"); }
       else { punkte += 8; gruende.push("in der Dienstphase"); }
       if (p.teilzeit && p.teilzeit.aktiv) { punkte -= 6; gruende.push("Teilzeit"); }
     }

@@ -48,6 +48,8 @@ import { widerrufbuchStart, buchGeprueft } from "./server/lib/widerrufbuch.mjs";
 import { kontobuchStart, kontobuchGeprueft } from "./server/lib/kontowiderrufbuch.mjs";
 import { kanalStarten, haltObergrenze, HALT_ORDNER } from "./server/lib/schreibhalt.mjs";
 import { vertrauteListe, herkunftBestimmen, xffOhneVertrauenMelden, adresseFuersProtokoll } from "./server/lib/schutz.mjs";
+/* IMP-6 Planwirkung: Quelle der Planrechnung = CENTRIC_SCHICHTMODELL_WIRKUNG (Vorgabe aus; je Aufruf gelesen). */
+import "./server/lib/schichtmodell-wirkung.mjs";
 
 const PORT = Number(process.env.PORT) || 3000;
 

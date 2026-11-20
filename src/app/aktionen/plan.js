@@ -1,6 +1,6 @@
 /* WP-39: Aktionen aus dem Aktionsobjekt `akt` in src/App.jsx (AppInnen), Text unveraendert.
    Der Kontext k kommt aus AppInnen (useMemo von akt) und traegt dieselben Werte wie vorher der Abschluss. */
-import { einheitAm, einheitDienst, imDienst } from "../../../server/lib/fachpruefung.mjs";
+import { einheitAm, einheitDienst, imDienst, schichtfolgeAm } from "../../../server/lib/fachpruefung.mjs";
 import { darfEinheit, vorlauf, istFreigegeben, personTag, schutzSperre, abwesenheitAm, bestaetigungVermerken, abwArt, abwesenheitTagAufheben, freigabeStand, planAbbild, EXPORT_STAND, lohnexportRueckfrage, VORLAGEN, genehmigungsStand, antragUmsetzen, eintrittPruefen, eintrittUebernehmen } from "../../lib/fachlogik.js";
 import { uid } from "../../lib/format.js";
 import { REGELSTAND, addDays } from "../../regelwerk.js";
@@ -48,7 +48,8 @@ export function aktionenPlan(k) {
         const p = m.personen.find((x) => x.id === pid); if (!p) return m;
         const eid = einheitAm(p, d);
         if (!darfEinheit({ db: ref.current, mandant: m, person: sitz.person, rolle: "kunde" }, eid)) { melde("Keine Berechtigung für diesen Bereich."); return m; }
-        const plan = eid ? einheitDienst(m, eid, d) : null;
+        /* IMP-6 Planwirkung (Vorgabe aus): bei AN der Plan nach dem Modell der Person; aus wörtlich wie bisher. */
+        const plan = schichtfolgeAm(m, p, d, () => (eid ? einheitDienst(m, eid, d) : null));
         const ab = { ...m.abweichungen }, key = `${pid}|${d}`;
         const vorher = ab[key] !== undefined ? ab[key] : plan;
         if ((dienstId === "-" && !plan) || dienstId === plan) delete ab[key]; else ab[key] = dienstId;
