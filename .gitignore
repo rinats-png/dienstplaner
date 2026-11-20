@@ -12,3 +12,6 @@ daten-dev
 # Abnahmebilder des Design-Befehls (lokal, groß)
 design/abnahme
 __pycache__
+
+# REL-0: Rohausgabe der Produktionsinventur nie ins (öffentliche) Repository
+inventur-roh*

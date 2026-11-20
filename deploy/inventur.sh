@@ -1,40 +1,48 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # =====================================================================
 #  inventur.sh — LESENDE Produktionsinventur des VPS (REL-0)
 #
 #  Führt V-1 bis V-9 aus docs/acc45/PRODUKTIONSWEG-VORBEREITUNG-2026-11-20.md
 #  §2.1 aus, dazu R-1 (Ressourcen) und R-2 (Mounts, Compose-Projektpfad).
-#  Einrichtung des Zugangs: docs/acc45/VPS-ZUGANG-EINRICHTUNG.md.
+#  Einrichtung und Sicherheitsnachweis: docs/acc45/VPS-ZUGANG-EINRICHTUNG.md.
+#
+#  Ablage auf dem VPS: /usr/local/sbin/centric-inventur.sh (root:root 0755,
+#  Verzeichnis root-eigen) — NICHT im Betriebsverzeichnis, das dem Konto
+#  gehört.
 #
 #  Aufruf:
-#    ./inventur.sh            Inventur auf stdout
-#    ./inventur.sh --hilfe    diese Kurzhilfe
+#    centric-inventur.sh            Inventur auf stdout
+#    centric-inventur.sh --hilfe    Kurzhilfe
 #  Als Forced Command (authorized_keys):
-#    command="/opt/apps/centric-dienstplanung/inventur.sh",restrict,no-pty ssh-ed25519 AAAA… inventur-centric
-#    Erlaubt ist nur der Befehl „inventur“ (oder kein Befehl). Jeder andere
-#    Befehl in SSH_ORIGINAL_COMMAND wird abgewiesen (Rückgabe 2).
+#    command="/usr/local/sbin/centric-inventur.sh",restrict,no-pty,no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-user-rc ssh-ed25519 AAAA… inventur-centric
+#    SSH_ORIGINAL_COMMAND muss fehlen, leer oder genau „inventur“ sein.
+#    Jeder andere Wert (auch scp/sftp/rsync, „inventur; id“, „INVENTUR“,
+#    „inventur “) → Rückgabe 2, bevor irgendein Abschnitt läuft.
 #
-#  Was das Skript NIE tut: Werte der .env ausgeben (nur Schlüsselnamen),
-#  docker pull/up/run/rm/rmi/tag/restart/stop/kill, compose up/down,
-#  Dateien anlegen, ändern oder löschen, Schlüsselkörper aus authorized_keys
-#  ausgeben, Logzeilen mit Inhalt ausgeben (nur Zeit, Skript, Ereignisname).
-#  Einziger docker exec: der feste /gesund-Aufruf im App-Container (V-9).
-#  Hinweis: /gesund legt im Container eine kleine Probe data/.gesund an
-#  (siehe PRODUKTIONSWEG-VORBEREITUNG §2.1, V-9) — ohne Fachdaten.
+#  Schicht 1 (Quelle, maßgeblich): jeder Abschnitt liest nur Namen, Status,
+#  Prüfsummen und Metadaten. Aus der .env nur Schlüsselnamen (env_namen),
+#  nie Werte; Fehlertexte von docker compose werden verworfen, weil sie
+#  .env-Zeilen enthalten können. Betriebsprotokoll nur Zeit, Skript,
+#  Ereignisname. authorized_keys nur Optionen, Typ, Fingerabdruck.
+#  Schicht 2 (nur zusätzlich): maskieren() über die gesamte Ausgabe.
 #
-#  Zwei Schutzschichten: (1) jeder Abschnitt liest nur Namen, Status,
-#  Prüfsummen und Metadaten; (2) die gesamte Ausgabe läuft durch
-#  maskieren() (Adressen, E-Mail, Tokens, Schlüssel, NAME=Wert).
+#  Was das Skript NIE tut: docker pull/up/run/rm/rmi/tag/restart/stop/kill,
+#  compose up/down, Dateien anlegen, ändern oder löschen. Einziger docker
+#  exec: der feste /gesund-Aufruf im App-Container (V-9; /gesund legt im
+#  Container die Probe data/.gesund an, siehe §2.1 V-9).
 #
-#  Fehler: jeder Abschnitt läuft für sich. Scheitert er, steht eine Meldung
-#  in der Ausgabe und das Skript macht mit dem nächsten Abschnitt weiter.
+#  Härtung: fester PATH, BASH_ENV/ENV entfernt, umask 077, LC_ALL=C,
+#  Shebang /bin/bash (kein env-Suchpfad).
 #
-#  Umgebung (nur für Prüfungen; auf dem VPS gelten die Vorgaben):
+#  Umgebung NUR für Prüfungen (sshd mit PermitUserEnvironment no und
+#  AcceptEnv LANG LC_*, systemd und cron setzen sie nicht):
+#    INVENTUR_PRUEFPFAD     ersetzt den festen PATH (Docker-Stub)
+#    INVENTUR_MASKE=aus     schaltet Schicht 2 ab (Nachweis Schicht 1)
 #    CENTRIC_VERZ          (/opt/apps/centric-dienstplanung)
 #    CENTRIC_DIENST        (centric-dp-web)
 #    CENTRIC_BILD_REPO     (ghcr.io/rinats-png/dienstplaner)
-#    CENTRIC_KONTO_HOME    Heimatverzeichnis des Kontos, dem CENTRIC_VERZ
-#                          gehört (aus getent; sonst $HOME)
+#    CENTRIC_KONTO_HOME    Heimatverzeichnis des Besitzers von CENTRIC_VERZ
+#                          (aus getent; sonst $HOME)
 #    CENTRIC_HOME_WURZEL   (/home) weitere authorized_keys (nur lesbare)
 #    CENTRIC_ZEITGRENZE    (30) Sekunden je Docker-Aufruf
 #
@@ -42,9 +50,22 @@
 #  gescheitert (Ausgabe trotzdem vollständig) · 2 Aufruf/abgewiesen
 #  Prüfung: pruefungen/inventur-skript.test.js
 # =====================================================================
+# Die Abschnittsfunktionen (v1 … r2, v_kopf) laufen nur indirekt über
+# abschnitt "<name>" <funktion>; shellcheck erkennt das nicht.
+# shellcheck disable=SC2329
 set -euo pipefail
 umask 077
 export LC_ALL=C
+PATH="${INVENTUR_PRUEFPFAD:-/usr/sbin:/usr/bin:/sbin:/bin}"
+export PATH
+unset BASH_ENV ENV CDPATH
+
+# Forced Command: nur „inventur“ oder kein Befehl. Alles andere abweisen,
+# bevor irgendetwas anderes geschieht.
+if [[ -n "${SSH_ORIGINAL_COMMAND:-}" && "${SSH_ORIGINAL_COMMAND}" != "inventur" ]]; then
+  printf 'abgewiesen: nur der Befehl "inventur" ist erlaubt\n' >&2
+  exit 2
+fi
 
 VERZ="${CENTRIC_VERZ:-/opt/apps/centric-dienstplanung}"
 DIENST="${CENTRIC_DIENST:-centric-dp-web}"
@@ -66,12 +87,6 @@ case "$#:${1:-}" in
   *) hilfe >&2; exit 2 ;;
 esac
 
-# Forced Command: nur „inventur“ oder kein Befehl. Alles andere abweisen.
-if [[ -n "${SSH_ORIGINAL_COMMAND:-}" && "${SSH_ORIGINAL_COMMAND}" != "inventur" ]]; then
-  printf 'abgewiesen: nur der Befehl "inventur" ist erlaubt\n' >&2
-  exit 2
-fi
-
 [[ "$ZEITGRENZE" =~ ^[1-9][0-9]{0,2}$ ]] || ZEITGRENZE=30
 
 # --- Hilfen -------------------------------------------------------------
@@ -83,17 +98,57 @@ docker_lesen() {
   if hat timeout; then timeout "$ZEITGRENZE" docker "$@"; else docker "$@"; fi
 }
 
-# Zweite Schutzschicht für JEDE Ausgabezeile.
+# docker compose liest die .env. Seine Fehlertexte können .env-Zeilen
+# enthalten (z. B. Syntaxfehler mit Zeileninhalt). Deshalb: stderr
+# verwerfen, nur Unterbefehl und Rückgabe melden.
+compose_lesen() {
+  local rc=0
+  docker_lesen compose "$@" 2>/dev/null || rc=$?
+  if ((rc)); then
+    printf 'docker compose %s fehlgeschlagen (Rückgabe %s, Fehlertext unterdrückt)\n' "$1" "$rc" >&2
+    return "$rc"
+  fi
+}
+
+# Schicht 1 für die .env: NUR Schlüsselnamen. Versteht „export NAME=“,
+# Leerzeichen vor/nach dem Namen, CRLF, Kommentare und Werte in
+# Anführungszeichen über mehrere Zeilen (Folgezeilen werden übersprungen).
+# Ausgegeben wird nur, was danach wie ein Bezeichner aussieht.
+env_namen() {
+  [[ -f .env ]] || { printf '.env fehlt\n' >&2; return 1; }
+  awk '
+    { sub(/\r$/, "") }
+    offen != "" { if (index($0, offen) > 0) offen = ""; next }
+    {
+      z = $0
+      sub(/^[ \t]+/, "", z)
+      sub(/^export[ \t]+/, "", z)
+      if (!match(z, /^[A-Za-z_][A-Za-z0-9_]*[ \t]*=/)) next
+      n = substr(z, 1, RLENGTH)
+      w = substr(z, RLENGTH + 1)
+      sub(/[ \t]*=$/, "", n)
+      sub(/^[ \t]+/, "", w)
+      q = substr(w, 1, 1)
+      if ((q == "\"" || q == "\047") && index(substr(w, 2), q) == 0) offen = q
+      print n
+    }' .env | { grep -E '^[A-Za-z_][A-Za-z0-9_]*$' || true; } | sort -u
+}
+
+# Schicht 2 (nur zusätzlich) für JEDE Ausgabezeile.
 #  - IPv4 außer 0.0.0.0 und 127.x, IPv6 (ab vier Gruppen oder mit ::)
-#  - E-Mail-Adressen
+#  - Zugangsdaten in URLs (://name:wort@), E-Mail-Adressen
 #  - Schlüsselkörper (ssh-…/ecdsa-… AAAA…), PEM-Blöcke
 #  - Tokens (ghp_, github_pat_, sk-ant-, xox?-, Bearer/Basic)
-#  - NAME=Wert (Großbuchstaben-Namen) außer IMAGE_DIGEST/IMAGE_TAG
-#  - Zugangsdaten in URLs (://name:wort@)
+#  - name=Wert (jeder Bezeichner, auch klein) außer IMAGE_DIGEST/IMAGE_TAG
+#    und command= (Forced-Command-Option in V-8)
 #  - Werte zu Namen mit PASS/SECRET/TOKEN/KEY/… („Name: Wert“, „name=Wert“)
 #  - lange Base64-Folgen (awk-Stufe unten); SHA256:-Fingerabdrücke und
 #    sha256:-Digests bleiben lesbar
 maskieren() {
+  if [[ "${INVENTUR_MASKE:-an}" == "aus" ]]; then
+    cat
+    return
+  fi
   sed -E \
     -e 's/-----BEGIN [A-Z ]*PRIVATE KEY-----.*/<privater-schluessel>/' \
     -e 's/-----END [A-Z ]*PRIVATE KEY-----.*/<privater-schluessel>/' \
@@ -113,9 +168,9 @@ maskieren() {
     -e 's/[0-9a-fA-F]{1,4}(:[0-9a-fA-F]{1,4})*::([0-9a-fA-F]{1,4}(:[0-9a-fA-F]{1,4})*)?/<ipv6>/g' \
     -e 's/(^|[^0-9a-fA-F:<\[])::[0-9a-fA-F]{1,4}(:[0-9a-fA-F]{1,4})*(\/[0-9]{1,3})?/\1<ipv6>/g' \
     -e 's/__ALLE4__/0.0.0.0/g; s/__LOKAL4__/127.x/g; s/__LOKAL6__/::1/g' \
-    -e 's/\bIMAGE_(DIGEST|TAG)=/__BILD_\1__/g' \
-    -e 's/\b([A-Z][A-Z0-9_]*)=[^[:space:]]*/\1=<maskiert>/g' \
-    -e 's/__BILD_(DIGEST|TAG)__/IMAGE_\1=/g' \
+    -e 's/\b(IMAGE_DIGEST|IMAGE_TAG|command)=/__SCHUTZ_\1__/g' \
+    -e 's/\b([A-Za-z_][A-Za-z0-9_]*)=[^[:space:]]*/\1=<maskiert>/g' \
+    -e 's/__SCHUTZ_(IMAGE_DIGEST|IMAGE_TAG|command)__/\1=/g' \
     -e 's/\b([A-Za-z0-9_]*(PASS|PASSWORT|PASSWORD|SECRET|GEHEIM|TOKEN|KEY|SCHLUESSEL|PFEFFER|SALT|CREDENTIAL)[A-Za-z0-9_]*)(["'"'"']?[[:space:]]*[:=][[:space:]]*)("[^"]*"|'"'"'[^'"'"']*'"'"'|[^,;}[:space:]]+)/\1\3<maskiert>/gI' |
     awk '{
       # Base64-artige Folgen ab 32 Zeichen mit Groß-, Kleinbuchstaben und
@@ -156,7 +211,7 @@ abschnitt() {
 }
 
 # Heimatverzeichnis des Kontos, dem das Betriebsverzeichnis gehört
-# (admin, uid 1000). Gilt auch, wenn das Skript per sudo läuft.
+# (admin, uid 1000). Gilt auch, wenn das Skript als root läuft (Phase 2).
 konto_home() {
   if [[ -n "${CENTRIC_KONTO_HOME:-}" ]]; then printf '%s\n' "$CENTRIC_KONTO_HOME"; return; fi
   local besitzer zeile
@@ -176,13 +231,17 @@ v_kopf() {
   printf 'Rechner: %s\n' "$(uname -n)"
   printf 'Konto: %s (uid %s)\n' "$(id -un)" "$(id -u)"
   printf 'Betriebsverzeichnis: %s\n' "$VERZ"
+  # Nachweis für restrict/no-pty/no-agent-forwarding (Negativproben N-5, N-11):
+  # nur ja/nein, nie der Wert von SSH_AUTH_SOCK.
+  if [[ -n "${SSH_AUTH_SOCK:-}" ]]; then printf 'Agent-Weiterleitung: gesetzt\n'; else printf 'Agent-Weiterleitung: nicht gesetzt\n'; fi
+  if [[ -t 0 ]]; then printf 'Terminal: ja\n'; else printf 'Terminal: nein\n'; fi
   printf 'Skript: '
   sha256sum "${BASH_SOURCE[0]}"
 }
 
 v1() {
   cd "$VERZ"
-  docker_lesen compose ps
+  compose_lesen ps
   docker_lesen inspect "$DIENST" --format '{{.Image}} {{.Config.Image}} {{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{else}}ohne-health{{end}} {{.State.StartedAt}} {{.RestartCount}}'
 }
 
@@ -193,12 +252,14 @@ v2() {
   docker_lesen images --digests --no-trunc "$BILD_REPO"
 }
 
+# Bildreferenz: aus der .env nur, ob IMAGE_DIGEST/IMAGE_TAG als Name
+# vorkommen; die wirksame Referenz zeigt compose config (nur image:).
 v3() {
   cd "$VERZ"
-  printf -- '-- .env (nur IMAGE_DIGEST/IMAGE_TAG):\n'
-  grep -E '^(IMAGE_DIGEST|IMAGE_TAG)=' .env || printf '(keine Zeile IMAGE_DIGEST/IMAGE_TAG)\n'
+  printf -- '-- Schlüssel IMAGE_DIGEST/IMAGE_TAG in .env (nur Namen):\n'
+  env_namen | { grep -xE 'IMAGE_DIGEST|IMAGE_TAG' || printf '(weder IMAGE_DIGEST noch IMAGE_TAG)\n'; }
   printf -- '-- docker compose config (nur image:):\n'
-  docker_lesen compose config | grep -E '^[[:space:]]+image:'
+  compose_lesen config | grep -E '^[[:space:]]+image:'
 }
 
 v4() {
@@ -211,7 +272,7 @@ v4() {
   done
   if ((${#dateien[@]})); then sha256sum "${dateien[@]}"; else printf '(keine Betriebsdateien)\n'; fi
   printf -- '-- Versionen:\n'
-  docker_lesen compose version
+  compose_lesen version
   docker_lesen version --format '{{.Server.Version}}'
 }
 
@@ -229,10 +290,7 @@ v5() {
 
 v6() {
   cd "$VERZ"
-  [[ -f .env ]] || { printf '.env fehlt\n'; return 1; }
-  # Nur Namen: alles ab dem ersten „=“ wird verworfen. Werte erreichen
-  # die Ausgabe nicht; maskieren() ist die zweite Schicht.
-  grep -oE '^[A-Za-z_][A-Za-z0-9_]*=' .env | tr -d '=' | sort
+  env_namen
 }
 
 v7() {
@@ -250,7 +308,12 @@ v7() {
   printf -- '-- Sicherungsverzeichnisse:\n'
   local d
   for d in "$KONTO_HOME/sicherung" "$KONTO_HOME/sicherung/lokal" "$VERZ/deploy-sicherungen"; do
-    if [[ -d "$d" ]]; then printf '%s:\n' "$d"; ls -la "$d" | head -n 40; else printf '%s: fehlt\n' "$d"; fi
+    if [[ -d "$d" ]]; then
+      printf '%s:\n' "$d"
+      find "$d" -mindepth 1 -maxdepth 1 -printf '%M %u:%g %s %TY-%Tm-%Td %f\n' | sort -k6 | head -n 40
+    else
+      printf '%s: fehlt\n' "$d"
+    fi
   done
   printf -- '-- letzte erfolgreiche Sicherung:\n'
   if [[ -f "$KONTO_HOME/sicherung/letzte-erfolgreiche.json" ]]; then
@@ -273,7 +336,7 @@ v8() {
     stat -c '%U:%G %a' "$f"
     printf 'Zeilen mit Schlüssel: %s\n' "$(grep -cvE '^[[:space:]]*(#|$)' "$f" || true)"
     printf 'deploy.sh --ssh: %s\n' "$(grep -c 'deploy.sh --ssh' "$f" || true)"
-    printf 'inventur.sh: %s\n' "$(grep -c 'inventur.sh' "$f" || true)"
+    printf 'centric-inventur: %s\n' "$(grep -c 'centric-inventur' "$f" || true)"
     # je Schlüsselzeile: Optionen vor dem Typ und der Typ; Körper und Kommentar fallen weg
     sed -nE \
       -e 's/^[[:space:]]*(ssh-[a-z0-9-]+|ecdsa-sha2-[a-z0-9-]+|sk-[a-z0-9@.-]+)[[:space:]]+AAAA.*/Optionen: (keine) | Typ: \1/p' \
@@ -312,7 +375,7 @@ r1() {
 }
 
 r2() {
-  docker_lesen inspect "$DIENST" --format '{{range .Mounts}}{{.Type}} {{.Source}} -> {{.Destination}} rw={{.RW}}{{println}}{{end}}'
+  docker_lesen inspect "$DIENST" --format '{{range .Mounts}}{{.Type}} {{.Source}} -> {{.Destination}} schreibbar:{{.RW}}{{println}}{{end}}'
   docker_lesen inspect "$DIENST" --format 'Compose-Projekt: {{index .Config.Labels "com.docker.compose.project"}} Pfad: {{index .Config.Labels "com.docker.compose.project.working_dir"}} Dateien: {{index .Config.Labels "com.docker.compose.project.config_files"}}'
 }
 

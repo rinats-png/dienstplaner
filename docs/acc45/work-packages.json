@@ -6731,15 +6731,15 @@
     },
     {
       "id": "REL-0",
-      "titel": "VPS-Zugang und Inventur: Forced-Command-Zugang nur für deploy/inventur.sh, lesende Produktionsinventur V-1 bis V-9",
+      "titel": "VPS-Zugang und Inventur: Forced-Command-Zugang nur für die lesende Produktionsinventur V-1 bis V-9 (Phase 1), Konto ohne Docker-Rechte mit root-Sammler (Phase 2, Entwurf)",
       "strang": "acc45",
       "prio": "P1",
       "aufwandPT": {"min":0.5,"max":1},
       "abhaengigkeiten": [],
       "status": "REVIEW",
       "stufen": {
-        "implementiert": {"wert":true,"beleg":"Branch acc45/release/vps-zugang-inventur: deploy/inventur.sh (lesend, Forced Command, Maskierung in zwei Schichten), docs/acc45/VPS-ZUGANG-EINRICHTUNG.md (Abschnitte 0 bis 6, Varianten A/B), pruefungen/inventur-skript.test.js"},
-        "lokalGetestet": {"wert":true,"beleg":"pruefungen/inventur-skript.test.js 20/20 grün unter Git Bash (Windows), --maxWorkers=1; rot vorher: Mutation cat .env + docker pull + Umlenkung ließ 10 Fälle scheitern; bash -n grün; shellcheck lokal nicht vorhanden, läuft in CI (Betrieb: Deploy-Skripte, deploy/*.sh)"},
+        "implementiert": {"wert":true,"beleg":"PR #428 (acc45/release/vps-zugang-inventur): deploy/inventur.sh (Forced Command strikt, Schicht 1 env_namen/compose_lesen, Schicht 2 Maskierung, fester PATH, root-eigen /usr/local/sbin), deploy/inventur-sammler.sh und deploy/inventur-lesen.sh (Phase 2), docs/acc45/VPS-ZUGANG-EINRICHTUNG.md mit Betreiberentscheidungen E-1 bis E-5 und Abschnitt 7 Sicherheitsnachweis"},
+        "lokalGetestet": {"wert":true,"beleg":"Git Bash (Windows), --maxWorkers=1: inventur-skript 30/30, inventur-phase2 12/12, prozess-wachen 15/15, doku 5/5, verdrahtung 8/8, ci-abdeckung 8/8, acc45-status 17/17; bash -n/sh -n grün. Rot vorher (Mutation): Schicht-1-Schutz entfernt (compose stderr, env_namen) → 4 Fälle rot; docker inspect --format {{json .Config.Env}} (m6) → 5 Fälle rot. shellcheck: lokal nicht vorhanden, Ergebnis nur aus CI (Betrieb: Deploy-Skripte) des Kopfes"},
         "reviewt": {"wert":false,"beleg":null},
         "integriert": {"wert":false,"beleg":null},
         "stagingGeprueft": {"wert":false,"beleg":null},
@@ -6750,12 +6750,12 @@
       "agent": null,
       "modell": "opus",
       "konfliktzonen": ["package.json"],
-      "pr": [],
-      "nachweis": "docs/acc45/VPS-ZUGANG-EINRICHTUNG.md; pruefungen/inventur-skript.test.js",
+      "pr": ["#428"],
+      "nachweis": "docs/acc45/VPS-ZUGANG-EINRICHTUNG.md (Abschnitt 7); pruefungen/inventur-skript.test.js; pruefungen/inventur-phase2.test.js",
       "akzeptanz": "Skript liest nur (keine Schreibbefehle, nur erlaubte Docker-Unterbefehle, genau ein fester docker exec für /gesund), gibt nie .env-Werte, Schlüsselkörper, E-Mail, Adressen oder Tokens aus, fail-soft je Abschnitt; Forced Command weist andere Befehle ab; Anleitung mit Befehl, Erwartung, Weiter-nur-wenn und Rückweg je Schritt; Prüfsumme in der Anleitung = Datei; Betreiber richtet den Zugang ein und legt die Inventur ab",
       "tests": "Unit (Bash gegen Docker-Stub), Quelltext-Wächter",
-      "dateien": "deploy/inventur.sh, docs/acc45/VPS-ZUGANG-EINRICHTUNG.md, pruefungen/inventur-skript.test.js, package.json (pruefung:querschnitt)",
-      "notiz": "Betreiberhandlung offen: Abschnitte 0 bis 5 der Anleitung (Schlüssel erzeugen, Bestandsaufnahme in der IONOS-Remotekonsole, eine Zeile in authorized_keys anhängen, Skript mit Prüfsumme installieren, Negativproben, Inventur ablegen). Kein Zugriff auf den VPS durch Agenten. Entscheidungsfragen E-1 bis E-5 in der Anleitung (Variante A empfohlen; Ablage im öffentlichen Repository nur als Zusammenfassung empfohlen). Deployment-Zugang bleibt getrennt (DEPLOY-AUTOMATISIERUNG §2.5)."
+      "dateien": "deploy/inventur.sh, deploy/inventur-sammler.sh, deploy/inventur-lesen.sh, docs/acc45/VPS-ZUGANG-EINRICHTUNG.md, pruefungen/inventur-skript.test.js, pruefungen/inventur-phase2.test.js, pruefungen/inventur-hilfen.mjs, package.json (pruefung:querschnitt)",
+      "notiz": "Betreiberentscheidungen 2026-11-20: E-1 Variante A (keine sudo-Regel), E-2 Passphrase (Automatik-Schlüssel nur Konzept), E-3 kein from=, E-4 root:root 0755 unter /usr/local/sbin, E-5 nur maskierte Zusammenfassung ins Repo. Opus-Review #428 (Kopf 4590b34c) B-1 shellcheck rot (SC2329, SC2012) und A-1 bis A-5, H-3, H-5 eingearbeitet. Vor manueller Einrichtung: unabhängiges Opus-Sicherheitsreview (Delta) und volle CI auf dem exakten Kopf. Betreiberhandlung offen: Abschnitte 0 bis 5. Phase 2 (Konto inventur, Timer, sshd Match-Block) braucht eigene Freigabe. Kein Zugriff auf den VPS durch Agenten."
     }
   ]
 }
