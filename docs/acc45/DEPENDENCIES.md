@@ -4,7 +4,7 @@ Erzeugt von `werkzeug/acc45-backlog.mjs` aus `docs/acc45/work-packages.json` (ni
 
 **Kritischer Pfad gemeinsam** (offener Entwicklungsaufwand, ohne extern): WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **50–90 PT**
 **Ohne Intelligence:** WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 → WP-42a → WP-42 = **22,5–35 PT**
-**Offener Entwicklungsaufwand:** 332,2–569,95 PT in 97 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
+**Offener Entwicklungsaufwand:** 332,95–571,45 PT in 99 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
 
 WP-09 ist nur Livegang-Reihenfolge und zählt im Pfad nicht als Abhängigkeit. Der Graph zeigt nur offene Pakete.
 
@@ -103,6 +103,8 @@ flowchart LR
     WP_PILOT["WP-PILOT<br/>IN_PROGRESS"]
     V4_1["V4-1<br/>IN_PROGRESS"]
     V4_2["V4-2<br/>REVIEW"]
+    V4_2b["V4-2b<br/>BLOCKED"]
+    V4_2c["V4-2c<br/>BLOCKED"]
     V4_3["V4-3<br/>BLOCKED"]
     V4_3a["V4-3a<br/>BLOCKED"]
     V4_3b["V4-3b<br/>BLOCKED"]
@@ -311,6 +313,8 @@ flowchart LR
   WR_4 --> WR_BETREIBER
   V4_1 --> V4_2
   WP_40 --> V4_2
+  V4_2 --> V4_2b
+  V4_2 --> V4_2c
   V4_1 --> V4_3
   WP_40 --> V4_3
   WP_48_GB --> V4_3
@@ -550,6 +554,8 @@ flowchart LR
 | V4-0 | folge | P2 | 0,5–1 | 0 | – | – | opus | INTEGRATED |
 | V4-1 | folge | P2 | 2–3 | 1–1,5 | V4-0 | package.json | opus | IN_PROGRESS |
 | V4-2 | folge | P2 | 1–2 | 0,2–0,4 | V4-1, WP-40 | App.jsx | opus | REVIEW |
+| V4-2b | folge | P1 | 0,5–1 | 0,5–1 | V4-2 | App.jsx | opus | BLOCKED |
+| V4-2c | folge | P2 | 0,25–0,5 | 0,25–0,5 | V4-2 | – | opus | BLOCKED |
 | V4-3 | folge | P2 | 1–2 | 1–2 | V4-1, WP-40, WP-48-GB | App.jsx | opus | BLOCKED |
 | V4-3a | folge | P2 | 1–1,5 | 1–1,5 | V4-2 | App.jsx | opus | BLOCKED |
 | V4-3b | folge | P2 | 4–7 | 4–7 | V4-3a | src/ansichten | sonnet | BLOCKED |

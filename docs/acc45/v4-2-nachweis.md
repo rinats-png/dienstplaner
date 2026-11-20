@@ -18,9 +18,25 @@ Danach 19/19 grün.
 | 3 | Avatar-Paare in V3-Tönen (`#017070`, `#3FBFBF` …) in `farben.js` | `v4AvatarPaare(thema)` in `src/v4/tokens.js`: acht Paare als Farbschlüssel aus `V4_FARBEN`; `farben.js` ohne Hexfarbe | Avatar 2/2, `kontrast.test.js` Avatar-Töne (16 Paare ≥ 4,5:1) |
 | 4 | `backdrop-filter` ohne Rückfall: `gestalt/stil.js` (10), `App.jsx` (1) — Gate 4 | `gestalt/stil.js`: `@supports not (backdrop-filter…)` und `@media (prefers-reduced-transparency: reduce)` → `.kopfblock/.tabbar/.m-kopf/.m-tabs` opak (`var(--c-flaeche)` = `V4_GLAS.grund`), Weichzeichner aus; `.m-blattrahmen` und `.sheet-back` (App.jsx) ohne Weichzeichner, Abdunklung bleibt | Glas-Rückfall 6/6 |
 | 5 | 25 rgb/rgba- und 9 Hex-Literale in `App.jsx` (Schatten, Seitenleiste) | `V4_SCHATTEN` um `hoch/toast/regler/schublade` ergänzt (hell auf V4-Schattenton 7,30,34); neu `V4_SEITENLEISTE`; `App.jsx` liest beide (`--schatten-*`, `--sl-*`) | Farbliterale 5/5 |
-| 6 | Gruppenüberschrift der Seitenleiste (`.sgruppe`, 10,5 px) mit Weiß .40 = 3,5:1 (AA verfehlt) | Token `schriftGruppe` .55 = 5,3:1 (hell) / 6,0:1 (dunkel); übrige Werte unverändert übernommen | Seitenleiste ≥ 4,5:1 |
+| 6 | Gruppenüberschrift der Seitenleiste (`.sgruppe`, 10,5 px) mit Weiß .40 = 3,5:1 (AA verfehlt) | Token `schriftGruppe` .55 = 5,3:1 (hell) / 6,0:1 (dunkel); die übrigen Werte der Seitenleiste (`V4_SEITENLEISTE`) unverändert übernommen | Seitenleiste ≥ 4,5:1 |
+| 7 | Review #425 A1: Seitenleiste und Telefonkopf sagten „CENTRIC“ zweimal an (Logo `role=img aria-label` und Wortmarke `alt`) | `Wortmarke` mit `alt`-Eigenschaft; neben dem Logo `alt=""` (App.jsx `.marke`, mobil.jsx `.m-wort`); Kopfzeile und Einstieg (Bildmarke `aria-hidden`) behalten `alt="CENTRIC"`. Commit f80f81dd rot (1 von 20), Fix 0bcf7de4, danach 20/20 | Name nur einmal |
 
 `V4_TOKENS_VERSION` bleibt 1: kein bestehender Tokenwert wurde geändert, nur ergänzt. Kein bestehender Test angepasst.
+
+**Sichtbare Wertänderungen (Review #425 H3).** App.jsx las bisher eigene Werte; jetzt liest es die Tokens. Dadurch
+ändern sich diese Werte:
+
+| Wert | vorher (App.jsx) | jetzt (Token) |
+|---|---|---|
+| Schattenfarbton hell (alle Ebenen) | rgba(7,19,23,…) | rgba(7,30,34,…) |
+| `--schatten` hell (Karte) | .04 / .05 | .05 / .06 |
+| `--schatten-blatt` hell | .18 | .20 |
+| `--schatten-blatt` dunkel | .5 | .55 |
+| `--schatten-hoch`, `--schatten-toast` hell | .10/.14, .28 (Ton 7,19,23) | gleiche Deckkraft, Ton 7,30,34 |
+| `.sgruppe` Schrift (Seitenleiste) | Weiß .40 | Weiß .55 |
+| Avatar-Paare | V3-Töne | V4-Farbschlüssel (s. Befund 3) |
+
+Alle übrigen Werte der Seitenleiste und die dunklen Schatten außer `blatt` sind unverändert.
 
 ## 2. Bildmaterial gegen das C-Logo (nur Prüfung)
 
@@ -69,13 +85,42 @@ Vergleich Basis 6e19564b gegen Branch, `ROLLEN=leitung reflow`, je allein laufen
 - Glas ohne Rückfall bleibt in `ansichten/ablauf.jsx`, `bestaetigungsfrage.jsx`, `fenster.jsx`, `kommandoleiste.jsx`,
   `speicherlage.jsx`, `teilkonflikt.jsx` (je 1, Inline-`backdropFilter` der Rücken). Nicht im Auftrag (nur
   `gestalt/stil.js`, `App.jsx`); Inline-Stile brauchen eine Klasse für die Medienabfrage → V4-3a/V4-3b.
-- Befund außerhalb des Pakets: Die `--v4-*`-Variablen kommen nur aus `v4EinstiegAnwenden()` (`src/main.jsx:84,634`).
-  Nach einem Neuladen mit bestehender Sitzung wird sie nicht aufgerufen; außerdem folgen `--v4-*` nach dem Einstieg der
-  Systemeinstellung, nicht `data-thema` der Anwendung. `v4AppStil()` liest `--v4-*`. Deshalb nutzt V4-2 in `App.jsx`
-  eigene Variablen aus den Tokens (`--schatten-*`, `--sl-*`). Klärung in V4-3a.
-- Befund außerhalb des Pakets: `html[data-v4-app] .slink.on/.slink:hover` setzt `var(--v4-glas)` (hell: Weiß .72) auf
-  die dunkle Seitenleiste mit weißer Schrift (rechnerisch etwa 1,8:1, nur Schublade < 1025 px, helles Thema). Nicht
-  geändert (`src/v4/app-stil.js`, Gestaltung V4-3a).
+- **P1 vor Release, Paket V4-2b** (Abschnitt 6): `--v4-*` fehlen nach Neuladen mit Sitzung. Nicht in diesem PR behoben.
+- **Paket V4-2c, MITTEL-HOCH** (Abschnitt 6): `.slink.on/.slink:hover` im hellen Thema 1,76:1 (WCAG 1.4.3). Nicht in
+  diesem PR behoben.
 - Startsequenz (`src/startbild.jsx`) zeigt unter der Bildmarke noch „CENTRIC“ als Text (Bildnachweis
   `fehler-anmeldung-1280-dark`); nicht in der Akzeptanz genannt, Canvas-Ablauf mit Abtastung — eigener Folgeschritt.
 - Paketabhängigkeiten V4-1/WP-40 laut SSOT nicht integriert; Umsetzung auf Auftrag trotzdem, Status REVIEW.
+
+## 6. Browserbeleg zu Review #425 H2 und V4-2c (nicht behoben, neue Pakete)
+
+Lauf 2026-11-20 auf 0bcf7de4: eigener `vite build`, `node server.mjs` auf 127.0.0.1 mit Wegwerf-Datenordner und
+zufälligem Verwaltungsschlüssel, Rolle Leitung, Playwright-Chromium mit `colorScheme` light bzw. dark, Dienstarbeiter
+blockiert. Ablauf: anmelden, messen, neu laden (F5, Sitzung bleibt), messen. Bilder nur im Scratchpad.
+
+| Messung (1280 px) | hell vor F5 | hell nach F5 | dunkel vor F5 | dunkel nach F5 |
+|---|---|---|---|---|
+| `<style id="v4-stil">` vorhanden | ja | **nein** | ja | **nein** |
+| `--v4-flaeche` | `#fffefa` | **leer** | `#0e3034` | **leer** |
+| `.seitenleiste` background | rgb(14,48,52) | **rgba(0,0,0,0)** | rgb(7,30,34) | **rgba(0,0,0,0)** |
+| `.karte` background | rgb(255,254,250) | **rgba(0,0,0,0)** | rgb(14,48,52) | **rgba(0,0,0,0)** |
+| `.btn-primary` background | rgb(11,96,88) | **rgba(0,0,0,0)** | rgb(185,239,220) | **rgba(0,0,0,0)** |
+
+Ergebnis: Nach dem Neuladen mit Sitzung sind die Flächen von Seitenleiste, Karte und Primärknopf transparent. Das Bild
+der Schublade (390 px, hell, nach F5) zeigt weiße Navigationsschrift direkt über dem hellen Inhalt; sie ist praktisch
+nicht lesbar. Ursache: `v4Stil()` wird nur in `v4EinstiegAnwenden()` (`src/v4/thema.js:58-66`) eingesetzt;
+`src/main.jsx:84` ruft das nur ohne Sitzung. Die Regeln in `src/v4/app-stil.js` (`html[data-v4-app] …`) lesen `--v4-*`
+und werden ungültig. Zusätzlich folgen `--v4-*` dem Systemthema bzw. `data-v4-thema`, nicht `data-thema` der
+Anwendung. → **Paket V4-2b, P1 vor Release** (SSOT, Konfliktzone App.jsx, Abhängigkeit V4-2).
+
+Schublade 390 px, Kontrast weiße Schrift auf `.slink.on` bzw. `.slink:hover` (Fläche über der Seitenleiste gemischt),
+vor F5:
+
+| | hell | dunkel |
+|---|---|---|
+| `.slink.on` | rgba(255,255,252,.72) → **1,76:1** | rgba(25,65,68,.62) → 13,4:1 |
+| `.slink:hover` | rgba(255,255,252,.72) → **1,76:1** | rgba(25,65,68,.62) → 13,4:1 |
+
+(Die Reviewzahl 1,85:1 für Hover ist rechnerisch; gemessen sind Hover und aktiv gleich, weil beide `var(--v4-glas)`
+tragen.) WCAG 1.4.3 im hellen Thema verfehlt. → **Paket V4-2c, MITTEL-HOCH** (SSOT, Datei `src/v4/app-stil.js`).
+Nach F5 ist der Wert nicht messbar (Seitenleiste transparent, siehe oben).

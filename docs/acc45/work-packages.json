@@ -1,9 +1,9 @@
 {
   "schema": 2,
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
-  "anzahl": 232,
+  "anzahl": 234,
   "statusZaehlung": {
-    "BLOCKED": 88,
+    "BLOCKED": 90,
     "READY": 17,
     "IN_PROGRESS": 18,
     "REVIEW": 9,
@@ -36,11 +36,11 @@
       }
     },
     "folge": {
-      "pakete": 24,
-      "offen": 19,
+      "pakete": 26,
+      "offen": 21,
       "restPT": {
-        "min": 25.400000000000002,
-        "max": 44.7
+        "min": 26.150000000000002,
+        "max": 46.2
       }
     },
     "extern": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 332.2,
-    "max": 569.95
+    "min": 332.95,
+    "max": 571.45
   },
   "kritischerPfad": {
     "summe": 70,
@@ -6364,6 +6364,62 @@
       "tests": "Unit, E2E",
       "dateien": "src/, public/",
       "notiz": "Analyse 2026-11-20 (V4-Integrationsstand); PT sind Schätzung der Analyse, nicht belegt. Stand 2026-11-20: umgesetzt auf Branch acc45/v4/v4-2-markenrest (PR gegen integration/release-v4, nicht gemergt); Abhängigkeiten V4-1/WP-40 laut SSOT offen, Umsetzung auf Auftrag. Rest: Glas ohne Rückfall in 6 Ansichtsdateien (Inline, V4-3a/b); Marketingreihe marketing/posts in V3-Palette ohne C-Logo (Designentscheidung, nur gemeldet)."
+    },
+    {
+      "id": "V4-2b",
+      "titel": "V4: --v4-*-Variablen in der Anwendung immer gesetzt und an data-thema gebunden (Neuladen mit Sitzung)",
+      "strang": "folge",
+      "prio": "P1",
+      "aufwandPT": {"min":0.5,"max":1},
+      "abhaengigkeiten": ["V4-2"],
+      "status": "BLOCKED",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": null,
+      "modell": "opus",
+      "konfliktzonen": ["App.jsx"],
+      "pr": [],
+      "nachweis": "docs/acc45/v4-2-nachweis.md",
+      "akzeptanz": "Nach Anmeldung und Neuladen (F5) mit Sitzung sind --v4-* gesetzt; .seitenleiste/.karte/.btn-primary haben opake Flächen; --v4-* folgen data-thema der Anwendung (nicht nur dem System); Browserbeleg hell/dunkel",
+      "tests": "Unit, E2E",
+      "dateien": "src/v4/, src/main.jsx, src/App.jsx",
+      "notiz": "Befund Review #425 (H2), Browserbeleg 2026-11-20 in docs/acc45/v4-2-nachweis.md Abschnitt 6: nach Neuladen fehlt #v4-stil, computed background von .seitenleiste/.karte/.btn-primary ist rgba(0,0,0,0) (hell und dunkel); Schublade mit weißer Schrift auf hellem Grund unlesbar. Ursache: v4Stil() nur über v4EinstiegAnwenden (src/v4/thema.js), main.jsx:84 ruft es nur ohne Sitzung. P1 vor Release."
+    },
+    {
+      "id": "V4-2c",
+      "titel": "V4: Kontrast aktiver/gehoverter Eintrag der Seitenleiste im hellen Thema (WCAG 1.4.3)",
+      "strang": "folge",
+      "prio": "P2",
+      "aufwandPT": {"min":0.25,"max":0.5},
+      "abhaengigkeiten": ["V4-2"],
+      "status": "BLOCKED",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": null,
+      "modell": "opus",
+      "konfliktzonen": [],
+      "pr": [],
+      "nachweis": "docs/acc45/v4-2-nachweis.md",
+      "akzeptanz": ".slink.on und .slink:hover auf der Seitenleiste in beiden Themen >= 4,5:1 (gemessen auf der gerenderten Fläche); Test und Browserbeleg hell/dunkel",
+      "tests": "Unit, E2E",
+      "dateien": "src/v4/app-stil.js",
+      "notiz": "Befund Review #425, Schwere MITTEL-HOCH. Browserbeleg 2026-11-20 (v4-2-nachweis.md Abschnitt 6): hell .slink.on/.slink:hover Hintergrund var(--v4-glas) rgba(255,255,252,.72) unter weißer Schrift = 1,76:1; dunkel 13,4:1. Nur Schublade < 1025 px."
     },
     {
       "id": "V4-3",
