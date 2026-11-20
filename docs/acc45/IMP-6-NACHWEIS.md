@@ -176,3 +176,24 @@ E3 verlangt, dass nur `src/ansichten/schichtmodelle.jsx` und `src/app/aktionen/p
 - **Behebung (nur Testaufbau, Serverregel unverändert):** `global-setup.mjs` legt je Rolle drei weitere Codes für dieselbe Person an (`ZUGANG_POOL = 4`, eigener Aufruf wegen höchstens 20 Einträgen je Aufruf); Browser- (`hilfen.mjs zugangscode`) und API-Anmeldung (Abnahme B) wählen je Test stabil einen Code (`herkunft.mjs codeSchluessel`) — wie mehrere Geräte einer Person. Prüfung in `pruefungen/e2e-flaechen.test.js` (stabil, nur Pool-Schlüssel, gleichmäßig verteilt, Rückfall auf den Rollenzugang; Verdrahtung in Testhilfe, Abnahme B und Aufbau).
 - **Branch** mit `origin/integration/release-v4` (#424 Vitest 5, #425 V4-2) zusammengeführt, ohne Konflikte.
 - **Lokal (nach Merge):** Planer-Specs (barrierefreiheit, teilkonflikt, abnahme-b-ablaeufe, barrierefreiheit-flaechen) sowie lokale-abnahme-luecken und imp6-schichtmodelle bei 430x932 und 1024x768: 51 bestanden, 29 übersprungen (Projektbindung), 0 rot, 14,5 min. Grenze dieses Belegs: Der Entwicklungsrechner ist langsamer als CI und erreicht 20 Planer-Anmeldungen in 5 Minuten ohnehin kaum; maßgeblich für die Lastbremse ist der nächste CI-Lauf. e2e-flaechen, prozess-wachen, imp6-oberflaeche 76/76; doku 5/5, verdrahtung 8/8, ci-abdeckung 8/8; eslint ohne Fehler.
+
+## Nachtrag 2026-11-20 (f): Planwirkung PR 1 — Rechenkern (Branch `acc45/imp/imp-6-planwirkung`)
+
+- **Umfang:** Rechenkern der Planwirkung (P2-4 Punkt 6) hinter `CENTRIC_SCHICHTMODELL_WIRKUNG` (Vorgabe aus; in PR 1 mit
+  keinem Weg verbunden). Aufteilung wegen Umfang > 5 PT: PR 2 = Verdrahtung (Server-Einstieg, Oberfläche, Auslöser der
+  Schutzrechnung, Anzeige/Lagebild/Export, Sicht der Beschäftigten). Beschreibung: `IMP-6-MEHRFACHMODELLE.md`, „Planwirkung“.
+- **Code:** `server/lib/schichtmodell-kern.mjs` (neu, Kern ohne Importe, aus `schichtzuordnung.mjs` ausgelagert und dort
+  re-exportiert — Schnittstelle unverändert); `server/lib/fachpruefung.mjs` (`planDienst`, `schichtmodellLageAm`,
+  `teilzeitModell`, `schichtmodellKlaerungen`, Merker `schichtmodellWirkungSetzen/Aktiv`); Aufrufe in `engine/plan.mjs`
+  (`personTag`), `fachpruefung.mjs` (`dienstAm`), `isteinfrieren.mjs` (`planTag`, Postenbesetzung), `schutzdurchsetzung.mjs`
+  (Planrechner `am`), `engine/einsatz.mjs` (Ersatzvorschlag); `schichtzuordnung.mjs` `wirkungsVorpruefung`; `schalter.mjs`
+  `schichtmodellWirkungAn`.
+- **Prüfung:** `pruefungen/imp6-planwirkung.test.js` (in `pruefung:imp6-mehrfachmodelle`): K Tabelle (8 Längen × 6 Wechseltage
+  × 3 Versatzpaare, drei Rechnungen = Referenz), L Lücke/Überschneidung/ungültig/Springer, N Nacht über Mitternacht am
+  Wechseltag (Fachprüfung und Server-Schutzrechnung, Zeitumstellung 9 h/7 h), T Teilzeit, M Besetzung und Posten, D3 Differenz
+  (AUS byte-gleich mit Modellen/Lücken/Überschneidungen; AN ohne eigene Modelle byte-gleich; Gegenprobe), A abgeschlossene
+  Monate, V Vorprüfung, R Rollen, F 8 000 Zufallsfälle gegen die Referenz, S Schalter und Wächter, Q7 Selbstauskunft.
+- **Geänderter bestehender Test (begründet):** `imp6-zyklen-grenzfaelle` D2 — ERLAUBT um `schichtmodell-kern.mjs` und
+  `fachpruefung.mjs` erweitert (Kern ausgelagert; `fachpruefung.mjs` ist die eine Stelle der Planrechnung, die ihn liest),
+  Suchausdruck zusätzlich um Importe des Kerns verschärft. Differenz D selbst unverändert.
+- **Entscheidungsvorlagen:** P2-25 (Frage 7), P2-26 (Frage 8), P2-27 (Stichtag beim Einschalten), P2-28 (Teilzeit/Urlaubskonto).
