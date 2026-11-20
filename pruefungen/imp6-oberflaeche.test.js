@@ -505,20 +505,21 @@ describe("E Verdrahtung", () => {
     /* nur die Ansicht und die Aktionen nutzen die Pflegehilfe — keine Rechen- oder Planmodule */
     const alle = (rel) => readdirSync(new URL(`../${rel}/`, import.meta.url), { withFileTypes: true }).flatMap((e) =>
       e.isDirectory() ? alle(`${rel}/${e.name}`) : /\.(js|jsx|mjs)$/.test(e.name) ? [`${rel}/${e.name}`] : []);
-    const nutzer = alle("src").filter((r) => r !== "src/lib/schichtmodelle-pflege.js" && quelle(`../${r}`).includes("schichtmodelle-pflege"));
+    const inhalt = new Map(alle("src").map((r) => [r, quelle(`../${r}`)]));   // einmal lesen
+    const nutzer = [...inhalt.keys()].filter((r) => r !== "src/lib/schichtmodelle-pflege.js" && inhalt.get(r).includes("schichtmodelle-pflege"));
     expect(nutzer.sort()).toEqual(["src/ansichten/schichtmodelle.jsx", "src/app/aktionen/plan.js"]);
     /* Delta-Review H-b: anzuwendendesModell/modellDienstAm nur als reine Anzeige — einzige Stelle der Oberfläche ist lageAm
        in der Pflegehilfe, und lageAm wird nur von der Ansicht als Text gezeigt (kein Rechen- oder Planmodul). */
     const pflege = quelle("../src/lib/schichtmodelle-pflege.js");
     expect(pflege.match(/anzuwendendesModell\(/g) || []).toHaveLength(1);
     expect(pflege).toMatch(/export function lageAm\([^)]*\) \{\n {2}const r = anzuwendendesModell\(m, p, datum\);/);
-    const rechnet = alle("src").filter((r) => /anzuwendendesModell|modellDienstAm/.test(quelle(`../${r}`)));
+    const rechnet = [...inhalt.keys()].filter((r) => /anzuwendendesModell|modellDienstAm/.test(inhalt.get(r)));
     expect(rechnet).toEqual(["src/lib/schichtmodelle-pflege.js"]);
-    const lageNutzer = alle("src").filter((r) => r !== "src/lib/schichtmodelle-pflege.js" && /\blageAm\b/.test(quelle(`../${r}`)));
+    const lageNutzer = [...inhalt.keys()].filter((r) => r !== "src/lib/schichtmodelle-pflege.js" && /\blageAm\b/.test(inhalt.get(r)));
     expect(lageNutzer).toEqual(["src/ansichten/schichtmodelle.jsx"]);
     /* die Ansicht verwendet nur .text und .ton (Anzeige), nichts davon geht in eine Aktion */
     const ansicht = quelle("../src/ansichten/schichtmodelle.jsx");
     expect([...ansicht.matchAll(/(heuteLage|morgenLage)\.(\w+)/g)].map((x) => x[2]).every((k) => k === "text" || k === "ton")).toBe(true);
     expect(ansicht).not.toMatch(/akt\.[\w]+\([^)]*(heuteLage|morgenLage)/);
-  });
+  }, 60000);   // liest alle Dateien unter src/ (unter Last über die Vorgabe von 5 s)
 });
