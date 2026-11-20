@@ -272,9 +272,33 @@ Stellen (Definition, Server-Einstieg, `speicher.js`) plus die Meldung in `daten.
    eigene Zuordnung (Q4). Mit unvollständigen Daten rechnete die Oberfläche für andere still das Betriebsmodell (gegen Q5); sie
    bekommen deshalb keine Angabe und bleiben beim bisherigen Stand. Lösung: der Server liefert den gerechneten Dienst, nie die
    Modelle anderer (keine neuen Leserechte). Bis dahin sähen sie bei AN auch die eigene Folge nach dem Betriebsmodell.
+   **Schreibweg der Teilrollen (Nachtrag Review #431): nicht nur Anzeige, sondern Datenintegrität beim Schreiben.** Szenario
+   bei AN: Die Schichtverantwortung setzt bei einer Person mit eigenem Modell den Dienst, der der Betriebsfolge entspricht.
+   Ihr Client hat keinen Merker und hält diesen Dienst für den „Plan“ (`src/app/aktionen/plan.js`, `setzeAbweichung`, ~Z. 52:
+   `dienstId === plan` → Abweichung gelöscht). Der Server meldet ihr den Merker nicht (`server/funktionen/daten.mjs`, ~Z. 1419)
+   und rechnet selbst nach dem Modell der Person. Nach dem Speichern gilt also still der **Modelldienst**, nicht der gewählte
+   Dienst; Änderungsliste und Mitteilung beruhen auf der Betriebsfolge des Clients. Dasselbe gilt für jeden Weg der Teilrollen, der „Abweichung = Plan“
+   wegnormalisiert. **Vorbedingung vor AN:** vom Server gerechneter Dienst für die Teilrollen, mit **Sicht und Schreibweg**
+   (der Client vergleicht beim Schreiben mit dem Dienst des Servers, oder der Server normalisiert selbst; nie mit der
+   Betriebsfolge, wenn die Person ein eigenes Modell hat).
 2. **P2-26** (Wiederherstellen), **P2-27** (Stichtag), **P2-25** (Art. 15), **P2-24 (b)** (Versionierung), **P2-28** (Teilzeit-Quote):
-   nicht entschieden, nichts daran geändert. Urlaubskonto bei AN nach dem Modell: Q5 („nie still das Betriebsmodell“) lässt für
+   nicht entschieden, nichts daran geändert. Urlaubskonto bei AN nach dem Modell: **gebaut als Vorschlag hinter AN,
+   Entscheidung P2-28 offen (Kategorie C)**. Begründung des Vorschlags: Q5 („nie still das Betriebsmodell“) lässt für
    eine Person mit eigenem Modell keine andere Zählung zu; die Teilzeitfrage von P2-28 berührt das nicht (gezählt wird wie bisher
    die rohe Folge ohne Quote). Vergangene Urlaubstage offener Jahre rechneten bei AN neu — das ist Teil von P2-27.
 3. **`RELEASE-UNFERTIG.json`** (#427): Eintrag `CENTRIC_SCHICHTMODELL_WIRKUNG` (unfertig, Vorgabe aus) erst nach dem Merge von #427.
 4. Release-Gate-Warnung bei gesetztem, aber nicht genau `true` (REL-1, Hinweis 4 aus #429): nicht Teil dieses PR.
+
+**Vorbedingungen vor AN (Liste, Stand Nachtrag Review #431).** Der Schalter bleibt AUS, bis alle Punkte erledigt oder
+entschieden sind:
+1. Teilrollen (Beschäftigte, Schichtverantwortung, Betriebsrat): vom Server gerechneter Dienst mit Sicht **und Schreibweg**
+   (siehe „Bewusst nicht gebaut“ 1, Szenario Schichtverantwortung).
+2. Entscheidungen P2-26, P2-27; dazu P2-24 (b), P2-25, P2-28 beim Betreiber.
+3. `RELEASE-UNFERTIG.json`-Eintrag nach dem Merge von #427; Release-Gate-Warnung (REL-1).
+4. **Teilzeitprofil (Befund 4, Review #431):** `teilzeitProfil` (`src/lib/fachlogik.js`, ~Z. 1743) rechnet aus `m.zyklus` ohne
+   `einheitDienst(` — der Wächter `imp6-planwirkung` S erfasst die Stelle deshalb nicht. Bei AN zeigte es für eine Person mit
+   eigenem Modell die Dienste je Zyklus des Betriebsmodells. Gehört zu P2-28 (Teilzeit im eigenen Modell).
+5. **Offline-Merker (Befund 5, Review #431):** `src/speicher.js` (`lies`, ~Z. 381) übernimmt `schichtmodellWirkung` auch aus
+   einer Antwort aus dem Speicher des Dienstarbeiters (`ausSpeicher`). Nach dem Abschalten am Server rechnet ein Offline-Client
+   weiter mit den Modellen, bis er wieder online liest. Vor AN klären: gemerkte Antwort nicht als Quelle des Merkers nehmen
+   (oder beim Abschalten den Speicher verwerfen).
