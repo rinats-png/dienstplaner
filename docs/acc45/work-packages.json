@@ -6391,7 +6391,7 @@
       "akzeptanz": "V4Feld für Formulare ohne verbundenes Label/Fehlertext, V4Dialog für Dialograhmen ohne Fokusfalle, V4Hinweis für Statusbänder ohne role; keine Verhaltensänderung; Bausteintausch (Card/Btn → V4Karte/V4Knopf) kein Pflichtziel",
       "tests": "Unit, E2E",
       "dateien": "src/ansichten, src/App.jsx",
-      "notiz": "Analyse 2026-11-20 (V4-Integrationsstand); PT sind Schätzung der Analyse, nicht belegt. Messung V4-IST 2026-11-20 (docs/acc45/V4-IST-STAND-2026-11-20.md): Form erreicht 123/159 sichtbare Dateien über die Oberflächenschicht; Rest sind Inline-Formwerte und Altstil. Vorschlag: V4-3a/b/c übernehmen und V4-3 auf gezielten Einsatz von V4Feld/V4Dialog/V4Hinweis verkleinern (Koordinatorentscheidung). Review #418 (2026-11-20): Form über die Stilschicht zählt als V4-Stufe 1, Bausteintausch kein Pflichtziel, feste Werte → Tokens; Aufwand 6–10 PT auf V4-3a/b/c verteilt, V4-3 auf den Rest (1–2 PT) gesenkt."
+      "notiz": "Analyse 2026-11-20 (V4-Integrationsstand); PT sind Schätzung der Analyse, nicht belegt. Messung V4-IST 2026-11-20 (docs/acc45/V4-IST-STAND-2026-11-20.md): Stufe 1: 123/158, voll V4 70/158 sichtbare Dateien; Rest sind Inline-Formwerte und Altstil. Vorschlag: V4-3a/b/c übernehmen und V4-3 auf gezielten Einsatz von V4Feld/V4Dialog/V4Hinweis verkleinern (Koordinatorentscheidung). Review #418 (2026-11-20): Form über die Stilschicht zählt als V4-Stufe 1, Bausteintausch kein Pflichtziel, feste Werte → Tokens; Aufwand 6–10 PT auf V4-3a/b/c verteilt, V4-3 auf den Rest (1–2 PT) gesenkt."
     },
     {
       "id": "V4-3a",
@@ -6444,7 +6444,7 @@
       "konfliktzonen": ["src/ansichten"],
       "pr": [],
       "nachweis": "docs/acc45/V4-IST-STAND-2026-11-20.md",
-      "akzeptanz": "Inline borderRadius/boxShadow-Literale je Hauptansicht durch Tokens oder Bausteinklassen ersetzt (Zählstand 221 in 78 Dateien sinkt messbar); keine Änderung an Fachlogik, Rollen, Accessible Names oder Klassennamen; Bildnachweis hell/dunkel je Ansicht",
+      "akzeptanz": "Inline borderRadius/boxShadow-Literale je Hauptansicht durch Tokens oder Bausteinklassen ersetzt (Zählstand 215 in 75 Dateien sinkt messbar); keine Änderung an Fachlogik, Rollen, Accessible Names oder Klassennamen; Bildnachweis hell/dunkel je Ansicht",
       "tests": "Unit, E2E",
       "dateien": "src/ansichten",
       "notiz": "Übernommen (Review #418), V4-IST 2026-11-20; Reihenfolge Plan, Personal, Zeit/Abrechnung, Einstellungen, Lage, Betreiber, Import, Telefonschale, Einstieg; PT sind Schätzung. Ersetzt einen Teil des früheren V4-3."
@@ -6475,7 +6475,7 @@
       "akzeptanz": "Formstufe „ohne V4-Form“ (werkzeug/v4-inventar.mjs) für sichtbare Kundendateien leer oder begründet; Branchenmodule mit Bildnachweis im Demo-Betrieb mit Paket; 2FA- und Verlustweg unverändert sicher (Gate 6)",
       "tests": "Unit, E2E",
       "dateien": "src/module, src/ansichten, src/*.jsx",
-      "notiz": "Übernommen (Review #418), V4-IST 2026-11-20 (36 sichtbare Dateien ohne V4-Form); PT sind Schätzung. Ersetzt einen Teil des früheren V4-3."
+      "notiz": "Übernommen (Review #418), V4-IST 2026-11-20 (35 sichtbare Dateien ohne V4-Form); PT sind Schätzung. Ersetzt einen Teil des früheren V4-3."
     },
     {
       "id": "V4-4",
