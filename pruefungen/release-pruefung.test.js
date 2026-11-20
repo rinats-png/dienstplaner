@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   KONFIG_STANDARD, auswerten, sammeln, freigabelisteLesen, g1Ci, g2Review, g3Schalter, g4Bild, g5Migration,
   g6Sicherung, g7Rueckweg, g8Blocker, g9Befunde, g10Freigabe, migrationsbericht, reviewNachweiseLesen,
@@ -85,8 +86,12 @@ beforeEach(() => {
   repoKopie("src/lib/import-schnittstelle.js");
   datei("docs/acc45/work-packages.json", SSOT);
   datei("docs/acc45/REVIEW-NACHWEIS-2026-11-20.md", "| PR | Modell | Urteil | Stand |\n|---|---|---|---|\n| #10 | Opus | 2 Runden → MERGEBAR | gemergt |\n");
-  datei("docs/acc45/releases/v4-r1.freigabe.json", FREIGABE);
+  // Delta-Review 7: die Freigabe bindet die ausgelieferten Vorlagen per SHA-256 (vorlagenHashes)
+  datei("docs/acc45/releases/v4-r1.freigabe.json", { ...FREIGABE, vorlagenHashes: hashesIn(w, [".env.example", "deploy/compose.yml", "Dockerfile"]) });
 });
+function hashesIn(wurzel, pfade) {
+  return Object.fromEntries(pfade.map((p) => [p, createHash("sha256").update(Buffer.from(readFileSync(join(wurzel, p), "utf8"), "utf8")).digest("hex")]));
+}
 afterEach(() => rmSync(w, { recursive: true, force: true }));
 
 const pruefe = (fx = fixtureGo(), opt = {}) =>
@@ -1228,4 +1233,86 @@ describe("Delta-Review 6 #427: Nachschärfung gegen überlebende Mutanten", () =
     expect(g.ergebnis).toBe("NO-GO");
     expect(g.gruende.join()).toMatch(/compose\.override\.yml/);
   });
+});
+
+describe("Delta-Review 7 #427: Scanner-Lücken B1–B6", () => {
+  const g3v = (text, art = "compose", pfad = "v") => g3Schalter({ codeNamen: ["CENTRIC_DEMO"], klassen: KL, unfertig: UNFERTIG,
+    quelltexte: { "src/lib/import-schnittstelle.js": "export const IMPORT_DATEI_AKTIV = false;" }, vorlagen: [{ pfad, art, pflicht: true, text }] }, KONFIG_STANDARD);
+
+  it("B1: Dockerfile-Fortsetzung verbindet ohne Leerzeichen (wie Docker), auch mit CRLF", () => {
+    for (const t of ["ENV CENT\\\nRIC_DEMO=true\n", "ENV X=1 CENT\\\nRIC_DEMO=true\n", "ENV CENT\\\r\nRIC_DEMO=true\r\n", "ENV CENTRIC_DE\\\nMO=true\n"]) {
+      expect(g3v(t, "dockerfile").ergebnis, JSON.stringify(t)).toBe("NO-GO");
+    }
+  });
+  it("B2/B3: Parser-Direktiven nur exakt „# syntax=docker/dockerfile:1“ in Zeile 1", () => {
+    for (const t of ["# escape=`\nENV CENTRIC_DEMO=false\n", "# check=skip=all\nENV CENTRIC_DEMO=false\n", "# syntax=evil/frontend:1\nENV CENTRIC_DEMO=false\n",
+      "ENV CENTRIC_DEMO=false\n# syntax=docker/dockerfile:1\n", "#syntax = docker/dockerfile:1\nENV A=1\n", "# Syntax=docker/dockerfile:1.4\nENV A=1\n"]) {
+      expect(g3v(t, "dockerfile").ergebnis, JSON.stringify(t)).toBe("NO-GO");
+    }
+    expect(g3v("# syntax=docker/dockerfile:1\nENV CENTRIC_DEMO=false\n", "dockerfile").ergebnis).toBe("GO");
+  });
+  it("B4: YAML-Tag „!“ außerhalb von Anführungszeichen in compose ist unlesbar", () => {
+    for (const t of ["    environment:\n      !!binary Q0VOVFJJQ19ERU1P: \"true\"\n", "    environment: { !!binary Q0VOVFJJQ19ERU1P: \"true\" }\n",
+      "    environment:\n      FOO: !!str x\n"]) expect(g3v(t).ergebnis, JSON.stringify(t)).toBe("NO-GO");
+    expect(g3v("    environment:\n      FOO: \"a!b\"\n").ergebnis).toBe("GO");
+  });
+  it("B5: Dockerfile nur bekannte Anweisungen, CMD nur in bekannter Form; compose ohne command/entrypoint", () => {
+    for (const t of ["CMD [\"node\",\"--env-file=deploy/x.env\",\"server.mjs\"]\n", "ENTRYPOINT [\"sh\"]\n", "ONBUILD RUN x\n", "SHELL [\"sh\", \"-c\"]\n",
+      "ADD x.env /app/\n", "CMD node server.mjs\n"]) expect(g3v(t, "dockerfile").ergebnis, JSON.stringify(t)).toBe("NO-GO");
+    expect(g3v("FROM node:22\nWORKDIR /app\nCOPY . .\nRUN npm ci\nUSER node\nEXPOSE 3000\nVOLUME [\"/data\"]\nCMD [\"node\", \"server.mjs\"]\n", "dockerfile").ergebnis).toBe("GO");
+    for (const t of ["    command: sh -c \"exec env CENTR''IC_DEMO=true node server.mjs\"\n", "    entrypoint: [\"sh\"]\n", "    command:\n      - node\n"]) {
+      expect(g3v(t).ergebnis, JSON.stringify(t)).toBe("NO-GO");
+    }
+  });
+  it("B6: COMPOSE_* in env-Vorlagen ist verboten", () => {
+    for (const t of ["COMPOSE_FILE=compose.yml:deploy/zusatz.yaml\n", "COMPOSE_PROFILES=x\n", "export COMPOSE_PATH_SEPARATOR=:\n"]) {
+      expect(g3v(t, "env").ergebnis, t).toBe("NO-GO");
+    }
+  });
+});
+
+describe("Delta-Review 7 #427: Vorlagen per SHA-256 an die Freigabe gebunden", () => {
+  it("echte Vorlagen mit korrekter Liste → G3 GO", () => {
+    expect(gateVon(pruefe(), "G3").ergebnis).toBe("GO");
+  });
+  it("geänderte Vorlage nach der Freigabe → G3 NO-GO (Hash)", () => {
+    datei("deploy/compose.yml", readFileSync(join(w, "deploy/compose.yml"), "utf8") + "# Kommentar\n");
+    const g = gateVon(pruefe(), "G3");
+    expect(g.ergebnis).toBe("NO-GO");
+    expect(g.gruende.join()).toMatch(/deploy\/compose\.yml.*Hash/);
+  });
+  it("zusätzliche Vorlage dieser Art (auch nicht geprüft) → G3 NO-GO", () => {
+    datei("deploy/zusatz.env.beispiel", "A=1\n");
+    expect(gateVon(pruefe(), "G3").gruende.join()).toMatch(/deploy\/zusatz\.env\.beispiel/);
+    datei("deploy/x/Dockerfile.alt", "FROM x\n");
+    expect(gateVon(pruefe(), "G3").gruende.join()).toMatch(/Dockerfile\.alt/);
+  });
+  it("fehlende Liste, fehlender Eintrag, überzähliger Eintrag → G3 NO-GO; Vorprüfung bleibt möglich", () => {
+    datei("docs/acc45/releases/v4-r1.freigabe.json", FREIGABE);
+    const r = pruefe();
+    expect(gateVon(r, "G3").gruende.join()).toMatch(/vorlagenHashes/);
+    expect(r.vorpruefungOk).toBe(true); // Bindung gehört zur Endprüfung
+    const h = hashesIn(w, [".env.example", "deploy/compose.yml", "Dockerfile"]);
+    const { Dockerfile: _weg, ...ohneDocker } = h;
+    datei("docs/acc45/releases/v4-r1.freigabe.json", { ...FREIGABE, vorlagenHashes: ohneDocker });
+    expect(gateVon(pruefe(), "G3").gruende.join()).toMatch(/Dockerfile/);
+    datei("docs/acc45/releases/v4-r1.freigabe.json", { ...FREIGABE, vorlagenHashes: { ...h, "deploy/gibtsnicht.env": "a".repeat(64) } });
+    expect(gateVon(pruefe(), "G3").gruende.join()).toMatch(/gibtsnicht/);
+  });
+  it("Freigabe-Schema: vorlagenHashes nur Pfad → 64 hex", () => {
+    expect(freigabeSchema({ ...FREIGABE, vorlagenHashes: { a: "xyz" } }).join()).toMatch(/vorlagenHashes/);
+    expect(freigabeSchema({ ...FREIGABE, vorlagenHashes: ["a"] }).join()).toMatch(/vorlagenHashes/);
+  });
+  it("Repository-Stand: alle Vorlagen dieser Art sind gelistet, keine unbekannte", () => {
+    const e = sammeln({ wurzel: WURZEL, offline: true, fixture: {}, jetztMs: JETZT_MS });
+    expect(e.vorlagenStand.unbekannt).toEqual([]);
+    expect(Object.keys(e.vorlagenStand.dateien).sort()).toEqual([...KONFIG_STANDARD.gebundeneVorlagen].sort());
+  }, 60_000);
+  it("CLI --vorlagen-hashes gibt die Hashes des Kandidaten aus (Vorlage für die Freigabe)", () => {
+    const fx = join(w, "fixture.json");
+    writeFileSync(fx, JSON.stringify(fixtureGo()));
+    const r = spawnSync(process.execPath, [WERKZEUG, "--offline", "--fixture", fx, "--wurzel", w, "--vorlagen-hashes"], { encoding: "utf8" });
+    expect(r.status, r.stderr).toBe(0);
+    expect(JSON.parse(r.stdout)).toEqual(hashesIn(w, [".env.example", "deploy/compose.yml", "Dockerfile"]));
+  }, 60_000);
 });
