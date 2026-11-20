@@ -22,6 +22,7 @@ import * as PUF from "./stempelpuffer.js";
 import { mitEinmaligerAngabe } from "./module/ausnahmeweg.js";
 import { teilwegStart } from "./app/teilkonflikt.js";
 import { schichtmodellPflegeSetzen } from "./lib/schichtmodell-schalter.js";
+import { schichtmodellWirkungSetzen } from "../server/lib/fachpruefung.mjs";
 import { teilSpeichern, teilEntscheiden, sicherungInhalt, sitzungsAbdruck, ruhig as teilRuhig } from "./app/teilweg-steuerung.js";
 
 const SCHLUESSEL = "centric:token";
@@ -375,6 +376,9 @@ export async function lies() {
   etag = daten.etag;
   /* IMP-6/P2-24 B: Pflege der Schichtmodelle nur, wenn der Server den Schalter meldet (fehlt die Angabe: aus). */
   schichtmodellPflegeSetzen(daten.schichtmodellPflege === true);
+  /* IMP-6 Planwirkung (Vorgabe aus): Die Planrechnung der Oberfläche folgt den Schichtmodellen nur, wenn der Server es
+     meldet — er meldet es nur Rollen, die alle Zuordnungen sehen. Fehlt die Angabe: aus (bisheriger Stand). */
+  schichtmodellWirkungSetzen(daten.schichtmodellWirkung === true);
   /* Delta-Review #381 (9): frisch gelesen mit dem geprüften Merkmal — der Merker des Sitzungsendes ist erledigt. */
   if (!ausSpeicher && vorSitzungsende && gelesenFuer && token === gelesenFuer && vorSitzungsende.fuer === gelesenFuer)
     vorSitzungsende = null;

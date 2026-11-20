@@ -7,7 +7,8 @@
    (fachpruefung.mjs, Planwirkung hinter CENTRIC_SCHICHTMODELL_WIRKUNG)
    ihn lesen kann, ohne über schichtzuordnung.mjs → monatsabschluss.mjs →
    isteinfrieren.mjs einen Importkreis zu bilden. Diese Datei importiert
-   nichts und hat auf oberster Ebene keine Aufrufe.
+   nichts; auf oberster Ebene steht nur der leere Zwischenspeicher des
+   Modellverzeichnisses (WeakMap), kein Aufruf mit Wirkung.
 
    Datenmodell und Regeln: docs/acc45/IMP-6-MEHRFACHMODELLE.md.
    ========================================================================== */
@@ -16,6 +17,8 @@
 export const BETRIEB_MODELL = "betrieb";
 export const ZUORDNUNG_FELD = "schichtmodellZuordnungen";
 export const MODELLE_FELD = "schichtmodelle";
+/** Felder, die bei eingeschalteter Planwirkung die Planrechnung bestimmen (Auslöser der Schutzrechnung). */
+export const WIRKUNG_FELDER = Object.freeze({ betrieb: Object.freeze([MODELLE_FELD]), person: Object.freeze([ZUORDNUNG_FELD]) });
 
 const TAG = /^(\d{4})-(\d{2})-(\d{2})$/;
 const istObjekt = (x) => !!x && typeof x === "object" && !Array.isArray(x);
@@ -34,12 +37,35 @@ export const zwischen = (a, b) => Math.round((tagMs(b) - tagMs(a)) / 86400000);
 export const plusTage = (s, n) => new Date(tagMs(s) + n * 86400000).toISOString().slice(0, 10);
 const mod = (a, n) => ((a % n) + n) % n;
 
-/** Die Modelle des Betriebs als Verzeichnis (nur wohlgeformte Einträge). */
+/** Die Modelle des Betriebs als Verzeichnis (nur wohlgeformte Einträge). Jeder Aufruf liefert eine neue Karte. */
 export function modellVerzeichnis(m) {
   const aus = new Map();
   for (const x of (m && Array.isArray(m[MODELLE_FELD]) ? m[MODELLE_FELD] : []))
     if (istObjekt(x) && typeof x.id === "string" && x.id !== BETRIEB_MODELL && Array.isArray(x.tage) && x.tage.length) aus.set(x.id, x);
   return aus;
+}
+
+/* Zwischenspeicher (Review #429 Hinweis 2): Die Planrechnung fragt das Verzeichnis je Person und Tag bis zu dreimal ab.
+   Gemerkt wird je Liste der Modelle (WeakMap, kein Halten fremder Bestände) mit einem Abbild jedes Eintrags (Objekt,
+   Kennung, Folge, Länge der Folge). Jede Änderung — neue Liste, Eintrag ersetzt, Kennung, Folge oder Länge an Ort und
+   Stelle geändert — ergibt ein neues Verzeichnis; der Inhalt einer unveränderten Folge wird nicht kopiert, die Karte
+   zeigt auf die Einträge selbst. Nur für Leser dieses Moduls und der Planrechnung; die Karte nie verändern. */
+const GEMERKT = new WeakMap();
+const abbildGleich = (abbild, liste) => abbild.length === liste.length * 4
+  && liste.every((x, i) => abbild[4 * i] === x && (!istObjekt(x)
+    || (abbild[4 * i + 1] === x.id && abbild[4 * i + 2] === x.tage && abbild[4 * i + 3] === (Array.isArray(x.tage) ? x.tage.length : -1))));
+/** Das Verzeichnis wie modellVerzeichnis, gemerkt je Liste der Modelle. Die gelieferte Karte nicht verändern. */
+export function modellVerzeichnisGemerkt(m) {
+  const liste = m && Array.isArray(m[MODELLE_FELD]) ? m[MODELLE_FELD] : null;
+  if (!liste) return modellVerzeichnis(m);
+  const z = GEMERKT.get(liste);
+  if (z && abbildGleich(z.abbild, liste)) return z.karte;
+  const karte = modellVerzeichnis(m);
+  const abbild = [];
+  for (const x of liste) abbild.push(x, istObjekt(x) ? x.id : undefined, istObjekt(x) ? x.tage : undefined,
+    istObjekt(x) && Array.isArray(x.tage) ? x.tage.length : -1);
+  GEMERKT.set(liste, { abbild, karte });
+  return karte;
 }
 
 /** Die implizite Zuordnung des Altbestands: das Betriebsmodell, unbefristet. */
@@ -80,7 +106,7 @@ export function anzuwendendesModell(m, p, datum) {
   const z = treffer[0];
   if (z.modellId === BETRIEB_MODELL)
     return { art: "modell", modellId: BETRIEB_MODELL, zuordnungId: z.id ?? null, versatz: null, anker: null, quelle: "betrieb" };
-  const modell = modellVerzeichnis(m).get(z.modellId);
+  const modell = modellVerzeichnisGemerkt(m).get(z.modellId);
   if (!modell) return { art: "ungueltig", grund: "modell-unbekannt" };
   if (!z.gueltigAb) return { art: "ungueltig", grund: "anker" };
   /* Versatz: fehlt er (oder ist leer), gilt Zyklustag 1 wie im Datenmodell. Ein gespeicherter Wert außerhalb 0 … n−1 oder
@@ -101,7 +127,7 @@ export function anzuwendendesModell(m, p, datum) {
  * @returns {{ nummer: number, index: number, tage: string[] }}
  */
 export function modellLage(m, r, datum) {
-  const tage = /** @type {any} */ (modellVerzeichnis(m).get(r.modellId)).tage;
+  const tage = /** @type {any} */ (modellVerzeichnisGemerkt(m).get(r.modellId)).tage;
   const nummer = zwischen(r.anker, datum) + r.versatz;
   return { nummer, index: mod(nummer, tage.length), tage };
 }

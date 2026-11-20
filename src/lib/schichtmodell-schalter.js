@@ -11,3 +11,15 @@ let an = false;
 export function schichtmodellPflegeSetzen(wert) { an = wert === true; }
 /** Zeigt die Oberfläche die Pflege? */
 export const schichtmodellPflegeAn = () => an;
+
+/**
+ * Hinweis der Anzeigen je Einheit (Aushang, Monatsplan, Lagebild) bei eingeschalteter Planwirkung (IMP-6): Die Zeile
+ * zeigt die Schichtfolge des Betriebs; `n` Personen der Einheit folgen ihr nicht (eigenes Modell, Lücke, Klärung).
+ * Nur eine Zahl, keine Namen. n = 0 (immer bei Planwirkung AUS): null — die Anzeige bleibt wie bisher.
+ * @param {number} n
+ * @returns {string | null}
+ */
+export function schichtmodellHinweis(n) {
+  if (!(n > 0)) return null;
+  return `Schichtfolge des Betriebs · ${n} ${n === 1 ? "Person" : "Personen"} mit eigenem Schichtmodell (oder an einzelnen Tagen ohne Modell) – ihr Dienst steht im Plan je Person.`;
+}

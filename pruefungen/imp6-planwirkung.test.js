@@ -23,7 +23,7 @@
    V. Vorprüfung vor dem Einschalten (vergangene, freigegebene, abgeschlossene Tage).
    R. Rollen: Sicht von Leitung, Planung, Beschäftigten, Betriebsrat (Q4).
    F. Zufallsmuster gegen die Referenz.
-   S. Schalter: nur genau "true"; in PR 1 mit keinem Weg verbunden.
+   S. Schalter: nur genau "true"; seit PR 2 an genau drei Stellen verbunden (Wächter), Gesamtsuche einheitDienst(.
    Q7. Selbstauskunft (Art. 15 DSGVO) für schichtmodellZuordnungen: Stand.
 
    Feste Uhr (Fake-Timer) für die Planrechnung; die Bibliothek bekommt Tage übergeben.
@@ -595,7 +595,7 @@ describe("F. Zufallsmuster gegen die Referenz (feste Startwerte)", () => {
 });
 
 /* ======================================================================== */
-describe("S. Schalter CENTRIC_SCHICHTMODELL_WIRKUNG (Vorgabe AUS; PR 1: mit keinem Weg verbunden)", () => {
+describe("S. Schalter CENTRIC_SCHICHTMODELL_WIRKUNG (Vorgabe AUS; PR 2: verbunden, Wächter mit Positivliste)", () => {
   const wurzel = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
   const dateien = (rel) => readdirSync(path.join(wurzel, rel)).flatMap((n) => {
     const r = `${rel}/${n}`;
@@ -611,7 +611,8 @@ describe("S. Schalter CENTRIC_SCHICHTMODELL_WIRKUNG (Vorgabe AUS; PR 1: mit kein
       }
       process.env.CENTRIC_SCHICHTMODELL_WIRKUNG = "true";
       expect(S.schichtmodellWirkungAn()).toBe(true);
-      /* PR 1: auch gesetzt wirkt er nicht — die Planrechnung bleibt aus. */
+      /* Die Planrechnung liest die Umgebung nie selbst: ohne den Server-Einstieg (server/lib/schichtmodell-wirkung.mjs,
+         geprüft in imp6-verdrahtung W) bleibt sie aus — diese Datei bindet ihn nicht ein. */
       expect(FP.schichtmodellWirkungAktiv()).toBe(false);
     } finally {
       if (vorher === undefined) delete process.env.CENTRIC_SCHICHTMODELL_WIRKUNG; else process.env.CENTRIC_SCHICHTMODELL_WIRKUNG = vorher;
@@ -624,24 +625,54 @@ describe("S. Schalter CENTRIC_SCHICHTMODELL_WIRKUNG (Vorgabe AUS; PR 1: mit kein
     FP.schichtmodellWirkungSetzen(() => true);
     expect(FP.schichtmodellWirkungAktiv()).toBe(true);
   });
-  it("Wächter PR 1: kein Weg in server/ oder src/ setzt die Quelle (die Verbindung ist PR 2 — dann diese Prüfung bewusst umstellen)", () => {
+  it("Wächter PR 2: genau drei Stellen verbinden die Quelle — Definition, Server-Einstieg, Antwort des Servers an die Oberfläche", () => {
+    /* PR 1 verlangte hier „kein Weg“. PR 2 stellt bewusst um: der Server setzt die Quelle aus CENTRIC_SCHICHTMODELL_WIRKUNG
+       (schichtmodell-wirkung.mjs, bei jedem Aufruf gelesen), daten.mjs meldet sie der Oberfläche (nur Rollen mit voller
+       Sicht), src/speicher.js setzt den Merker allein aus dieser Antwort. Jede weitere Stelle macht diese Prüfung rot. */
     const treffer = [...dateien("server"), ...dateien("src")].filter((r) => /schichtmodellWirkungSetzen|schichtmodellWirkungAn\s*\(/.test(readFileSync(path.join(wurzel, r), "utf8")));
-    expect(treffer.sort()).toEqual(["server/lib/fachpruefung.mjs"]);
+    expect(treffer.sort()).toEqual(["server/funktionen/daten.mjs", "server/lib/fachpruefung.mjs", "server/lib/schichtmodell-wirkung.mjs", "src/speicher.js"]);
     expect(readFileSync(path.join(wurzel, "server/lib/schalter.mjs"), "utf8")).toContain("export const schichtmodellWirkungAn = () => process.env.CENTRIC_SCHICHTMODELL_WIRKUNG === \"true\"");
     expect(readFileSync(path.join(wurzel, "server/lib/fachpruefung.mjs"), "utf8").match(/schichtmodellWirkungSetzen\(/g)).toHaveLength(1);
+    expect(readFileSync(path.join(wurzel, "server/lib/schichtmodell-wirkung.mjs"), "utf8").match(/schichtmodellWirkungSetzen\(/g)).toEqual(["schichtmodellWirkungSetzen("]);
+    expect(readFileSync(path.join(wurzel, "src/speicher.js"), "utf8")).toMatch(/schichtmodellWirkungSetzen\(daten\.schichtmodellWirkung === true\)/);
+    /* nie fest eingeschaltet */
+    for (const r of treffer) expect(readFileSync(path.join(wurzel, r), "utf8"), r).not.toMatch(/schichtmodellWirkungSetzen\(\s*(true|\(\) => true)/);
   });
-  it("Wächter: die Planrechnung liest die Schichtfolge nur über planDienst / schichtmodellLageAm (Altausdruck nur im AUS-Zweig)", () => {
-    /* Jede Stelle der Server-Planrechnung, die einheitDienst für eine Person rechnet, führt die Planwirkung. Neue Stellen
-       ohne Wirkung fielen sonst bei AN still auf das Betriebsmodell zurück. Grenze: erkennt nur den Aufruf im Quelltext. */
-    const erwartet = {
-      "server/lib/engine/plan.mjs": 0,
-      "server/lib/engine/einsatz.mjs": 1,               // AUS-Zweig „hätte regulär frei“
+  it("Wächter (Gesamtsuche): jeder Aufruf von einheitDienst( in server/ und src/ steht auf der Positivliste — mit Grund", () => {
+    /* Review #429 Hinweis 1. Jede Stelle, die die Schichtfolge einer Einheit für eine PERSON rechnet, muss die Planwirkung
+       führen (planDienst, schichtfolgeAm oder ein ausdrücklicher AUS-Zweig); sonst fiele sie bei AN still auf das
+       Betriebsmodell zurück (gegen Q5). Stellen, die die Folge einer EINHEIT anzeigen (Aushang, Monatsplan, Lagebild), zeigen
+       bewusst das Betriebsmodell und nennen bei AN die Zahl der Personen mit eigenem Modell. Eine neue Fundstelle oder eine
+       geänderte Anzahl macht diese Prüfung rot — dann bewusst einordnen. Grenze: erkennt nur den Aufruf im Quelltext. */
+    const POSITIV = {
+      "server/lib/fachpruefung.mjs": 3,                 // Definition, planDienst AUS-Zweig, schichtmodellLageAm (Betriebsmodell)
+      "server/lib/engine/einsatz.mjs": 1,               // Ersatzvorschlag: alter Ausdruck in schichtfolgeAm
       "server/lib/isteinfrieren.mjs": 1,                // AUS-Zweig Postenbesetzung
       "server/lib/schutzdurchsetzung.mjs": 1,           // AUS-Zweig folgeAm (Zwischenspeicher je Einheit)
-      "server/lib/fachpruefung.mjs": 3,                 // Definition, planDienst AUS-Zweig, schichtmodellLageAm (Betriebsmodell)
+      "server/lib/schichtzuordnung.mjs": 2,             // modellDienstAm (Betriebsmodell), wirkungsVorpruefung (bisherige Folge)
+      "src/app/aktionen/plan.js": 1,                    // setzeAbweichung: alter Ausdruck in schichtfolgeAm
+      "src/app/aktionen/begleitung.js": 1,              // mehrfachDienst: alter Ausdruck in schichtfolgeAm
+      "src/lib/fachlogik.js": 2,                        // urlaubskonto, planVergleich: alter Ausdruck in schichtfolgeAm
+      "src/lib/aushang.js": 1,                          // Folge der Einheit (Betriebsmodell), Hinweis bei AN
+      "src/ansichten/monatsplan.jsx": 1,                // Zeile je Einheit (Betriebsmodell), Hinweis bei AN
+      "src/ansichten/lagebild.jsx": 2,                  // Einheit im Regeldienst, Schichtfolge zwei Wochen (Betriebsmodell), Hinweis bei AN
+      "src/pruefung.jsx": 12,                           // Selbsttest mit eigener Kopie (rechnet nicht den Plan der Anwendung)
     };
-    for (const [datei, n] of Object.entries(erwartet))
-      expect((readFileSync(path.join(wurzel, datei), "utf8").match(/einheitDienst\(m, eid, d\)/g) || []).length, datei).toBe(n);
+    const gefunden = {};
+    for (const r of [...dateien("server"), ...dateien("src")]) {
+      const n = (readFileSync(path.join(wurzel, r), "utf8").match(/einheitDienst\(/g) || []).length;
+      if (n) gefunden[r] = n;
+    }
+    expect(gefunden).toEqual(POSITIV);
+    /* Personenbezogene Stellen der Oberfläche: nur als alter Ausdruck innerhalb von schichtfolgeAm (AUS wörtlich wie bisher). */
+    for (const r of ["src/app/aktionen/plan.js", "src/app/aktionen/begleitung.js", "src/lib/fachlogik.js", "server/lib/engine/einsatz.mjs"]) {
+      const q = readFileSync(path.join(wurzel, r), "utf8");
+      const zeilen = q.split("\n").filter((z) => z.includes("einheitDienst("));
+      for (const z of zeilen) expect(z, r).toMatch(/schichtfolgeAm\(m, p, d, \(\) => .*einheitDienst\(m, eid, d\)/);
+    }
+    /* Anzeigen je Einheit: der Hinweis hängt an abweichendVomBetriebsmodell (bei AUS 0 ohne Rechnung). */
+    for (const r of ["src/lib/aushang.js", "src/ansichten/monatsplan.jsx", "src/ansichten/lagebild.jsx"])
+      expect(readFileSync(path.join(wurzel, r), "utf8"), r).toMatch(/abweichendVomBetriebsmodell\(/);
   });
 });
 

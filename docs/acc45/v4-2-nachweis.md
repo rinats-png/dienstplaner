@@ -277,3 +277,47 @@ verdrahtung 8/8, ci-abdeckung 8/8, acc45-status 17/17.
 **Offen / Risiken.** Vollregression nur in CI. Neuer Befund außerhalb V4-2c: Beim Öffnen der Schublade per Tastatur
 springt der Fokus nicht auf den aktiven Eintrag (WP-21-Fokusführung wirkt nicht; belegt lokal und in CI). Eigenes Paket
 nötig (Ursache vermutlich Zeitpunkt des `focus()` gegenüber dem Sichtbarkeitsübergang der Schublade; nicht geprüft).
+
+## 9. V4-2d — Fokus beim Öffnen der Schublade per Tastatur (WCAG 2.4.3)
+
+Basis `origin/integration/release-v4` eeb529c6 (Merge #430), Branch `acc45/v4/schublade-fokus`.
+
+**Befund.** Abschnitt 8, Nachtrag CI #430: Nach Enter auf der Menütaste ist die Schublade offen, der Fokus bleibt auf
+`button.kopf-menue`. `seitenleisteFokus` (`src/ui/geraete.js`) ruft `focus()` auf dem aktiven Eintrag auf; der Browser
+verwirft den Aufruf.
+
+**Ursache (im Browser belegt, Chromium der Suite, 390x844).** Zustand im Moment des `focus()` (Diagnose mit
+umhülltem `HTMLElement.prototype.focus`, nicht eingecheckt):
+
+| Einstellung | Leiste `visibility` | `.slink.on` `visibility` | laufende Übergänge | Fokus gesetzt |
+|---|---|---|---|---|
+| `prefers-reduced-motion: reduce` (Vorgabe der Suite) | hidden | hidden | `visibility` auf `.marke`, `.snav`, `.sfuss` | nein |
+| `no-preference` | visible | visible | keine | ja |
+
+`App.jsx` setzt bei reduzierter Bewegung global `*{transition-duration:.01ms !important}`. Die Kinder der Leiste haben
+die Vorgabe `transition-property: all`. Damit wird der geerbte Wechsel `hidden → visible` dort ein Übergang von
+0,01 ms. `seitenleisteFokus` läuft im selben Takt wie das Rendern; der Übergang steht noch am Anfang, der Eintrag erbt
+`hidden` und ist nicht fokussierbar. Die Vermutung „Zeitpunkt gegenüber dem Sichtbarkeitsübergang“ trifft zu, aber
+nur bei reduzierter Bewegung. Ein erster Versuch (nur die Leiste selbst ohne `visibility`-Übergang) reichte nicht: Die
+Leiste war dann sichtbar, der Eintrag erbte weiter `hidden` von `.snav`.
+
+**Änderung.** `src/ui/geraete.js`, im Block `max-width: 1024px`: bei `prefers-reduced-motion: reduce` gilt für
+`.seitenleiste.offen` und alle Nachfahren `transition:none !important` (schlägt die globale `*`-Regel über die
+Spezifität). Sichtbar gleich: 0 ms statt 0,01 ms. Zuklappen, Fokusrückgabe und Gestaltung unverändert; keine neue
+Fokusfalle.
+
+**Test zuerst** (Commit df9ad42b, rot auf eeb529c6):
+- `e2e/v4-schublade-fokus.spec.mjs` (nur 390x844, 1 Anmeldung): Enter → Fokus auf `.slink[aria-current="page"]` mit
+  `:focus-visible`; Escape → Fokus auf der Menütaste, `aria-expanded="false"`; erneut Enter, Eintrag per Enter wählen →
+  Fokus auf der Menütaste. Beide Einstellungen (`reduce`, `no-preference`); der Test setzt den Fokus nie selbst.
+  Auf Basis: rot bei `reduce`, Schritt 1. Mit Änderung: 1/1 grün.
+- `pruefungen/geraete-wp21.test.js`: Vertrag der Stilregel (globale Regel vorhanden, Ausnahme für die offene Leiste,
+  Zuklappen unverändert). Die Fassung in df9ad42b prüfte den ersten, unzureichenden Ansatz; sie wurde mit dem Fix auf die
+  tatsächliche Regel umgestellt (rot auf Basis in beiden Fassungen).
+
+**Lokal** (je Datei `--maxWorkers=1`): geraete-wp21 + geraete-wp21-ablaeufe 41/41, geraete-wp21-ablaeufe-render 67/67,
+v4-app-stil 63/63, wcag-wp40 35/35, tour-dialog 2/2, e2e-flaechen 10/10. E2E (`E2E_PORT=3287`, 390x844):
+v4-schublade-fokus 1/1, v4-seitenleiste-kontrast 2/2; deren Zustandsprotokoll „Versuch 1“ erscheint nicht mehr (der
+Fokus liegt ohne Nachhilfe der Spec auf dem aktiven Eintrag).
+
+**Offen / Risiken.** Vollregression nur in CI. Echte Geräte und Vorlesesoftware nicht geprüft (WP-21, E-5).
