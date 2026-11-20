@@ -243,13 +243,18 @@ describe("G2 Review und Commits ohne PR", () => {
       c("3", ["b"], "Fix etwas (#13)"),
       c("8", ["b"], "Hauptzweig direkt"),
     ];
-    expect(commitsOhnePr(commits, KONFIG_STANDARD).map((x) => x.sha[0]).sort()).toEqual(["5", "7", "8"]);
+    const best = {
+      416: { gemergt: true, mergeCommit: "9".repeat(40), zweig: "release/rc-2026-11-21", commits: ["7".repeat(40), "6".repeat(40), "4".repeat(40), "5".repeat(40), "3".repeat(40)] },
+      12: { gemergt: true, mergeCommit: "6".repeat(40), zweig: "acc45/paket", commits: ["4".repeat(40)] },
+      13: { gemergt: true, mergeCommit: "3".repeat(40), zweig: "acc45/fix", commits: [] },
+    };
+    expect(commitsOhnePr(commits, KONFIG_STANDARD, best).map((x) => x.sha[0]).sort()).toEqual(["5", "7", "8"]);
     expect(prsAusCommits(commits)).toEqual([12, 13, 416]);
   });
   it("Squash mit „(PR #N)“ und GitHub-Zuordnung (Rebase-Merge) decken ab; Sammel-PR-Zuordnung nicht", () => {
     const c = (sha, eltern, betreff) => ({ sha: sha.repeat(40), eltern: eltern.map((e) => e.repeat(40)), betreff });
     expect(prsAusCommits([c("1", ["b"], "SI-P9: Härtung (PR #114)")])).toEqual([114]);
-    expect(commitsOhnePr([c("1", ["b"], "SI-P9: Härtung (PR #114)")], KONFIG_STANDARD)).toEqual([]);
+    expect(commitsOhnePr([c("1", ["b"], "SI-P9: Härtung (PR #114)")], KONFIG_STANDARD, { 114: { gemergt: true, mergeCommit: "1".repeat(40), zweig: "x", commits: [] } })).toEqual([]);
     const fx = fixtureGo();
     fx.commits.push({ sha: "4".repeat(40), eltern: [B], betreff: "rebase-gemergt" });
     fx.commits.push({ sha: "5".repeat(40), eltern: [B], betreff: "nur im Sammel-PR" });
@@ -271,6 +276,7 @@ describe("G2 Review und Commits ohne PR", () => {
     const fx = fixtureGo();
     fx.commits.push({ sha: "4".repeat(40), eltern: [B], betreff: "Direkt gepusht" });
     fx.commits.push({ sha: "6".repeat(40), eltern: [B], betreff: "Neu (#12)" });
+    fx.prBestaetigung[12] = { gemergt: true, mergeCommit: "6".repeat(40), zweig: "acc45/neu", commits: [] };
     const r = pruefe(fx);
     expect(gateVon(r, "G2").ergebnis).toBe("NO-GO");
     expect(r.paket.commitsOhnePr.map((x) => x.sha)).toEqual(["4".repeat(40)]);
@@ -579,4 +585,156 @@ describe("Hilfen und Aufruf", () => {
     expect(zeigen.status).toBe(0);
     expect(JSON.parse(zeigen.stdout).pflichtChecks).toEqual(PFLICHT);
   }, 120_000); // viele Kindprozesse
+});
+
+describe("Delta-Review #427: Fälschung, Basis, Wertlücken, Kandidaten-Stand", () => {
+  const c = (sha, eltern, betreff) => ({ sha: sha.repeat(40), eltern: eltern.map((e) => e.repeat(40)), betreff });
+  const FAELSCHUNG = [
+    c("f", ["b", "e"], "Merge pull request #423 from rinats-png/fake"),
+    c("e", ["b"], "boeser Commit"),
+    c("9", ["f"], "noch ein boeser (#423)"),
+  ];
+  it("N-B1: PR-Betreff ohne GitHub-Bestätigung deckt nichts ab (auch nicht die Zweigseite)", () => {
+    expect(commitsOhnePr(FAELSCHUNG).map((x) => x.sha[0]).sort()).toEqual(["9", "e", "f"]);
+    const g = g2Review({ prs: prsAusCommits(FAELSCHUNG), commitsOhnePr: commitsOhnePr(FAELSCHUNG), dokBelege: new Map([[423, "x"]]) });
+    expect(g.ergebnis).toBe("NO-GO");
+  });
+  it("N-B1: merge_commit_sha ≠ Commit, nicht gemergt oder Zweigcommit nicht im PR → nicht abgedeckt", () => {
+    const best = (x) => ({ 423: { gemergt: true, mergeCommit: "f".repeat(40), zweig: "acc45/echt", commits: ["e".repeat(40)], ...x } });
+    expect(commitsOhnePr(FAELSCHUNG, KONFIG_STANDARD, best()).map((x) => x.sha[0])).toEqual(["9"]);
+    expect(commitsOhnePr(FAELSCHUNG, KONFIG_STANDARD, best({ mergeCommit: "1".repeat(40) })).map((x) => x.sha[0]).sort()).toEqual(["9", "e", "f"]);
+    expect(commitsOhnePr(FAELSCHUNG, KONFIG_STANDARD, best({ gemergt: false })).map((x) => x.sha[0]).sort()).toEqual(["9", "e", "f"]);
+    expect(commitsOhnePr(FAELSCHUNG, KONFIG_STANDARD, best({ commits: [] })).map((x) => x.sha[0]).sort()).toEqual(["9", "e"]);
+    expect(commitsOhnePr(FAELSCHUNG, KONFIG_STANDARD, best({ zweig: "release/rc" })).map((x) => x.sha[0]).sort()).toEqual(["9", "e"]);
+  });
+  it("N-B1 Gesamtlauf: gefälschter Merge im Bereich → G2 NO-GO", () => {
+    const fx = fixtureGo();
+    fx.commits.unshift({ sha: "f".repeat(40), eltern: [K, "e".repeat(40)], betreff: "Merge pull request #10 from x/fake" });
+    fx.commits.push({ sha: "e".repeat(40), eltern: [B], betreff: "boese" });
+    const r = pruefe(fx);
+    expect(r.paket.commitsOhnePr.map((x) => x.sha[0]).sort()).toEqual(["e", "f"]);
+    expect(gateVon(r, "G2").ergebnis).toBe("NO-GO");
+  });
+  it("N-B2: leerer Commit-Bereich ist nie GO; Basis nicht in der Freigabeliste → G5 NO-GO", () => {
+    expect(g2Review({ prs: [], commitsOhnePr: [] }).ergebnis).toBe("NO-GO");
+    const fx = fixtureGo();
+    fx.commits = [];
+    expect(gateVon(pruefe(fx), "G2").ergebnis).toBe("NO-GO");
+    const fy = fixtureGo();
+    fy.basisCommit = "e".repeat(40);
+    const g5 = gateVon(pruefe(fy), "G5");
+    expect(g5.ergebnis).toBe("NO-GO");
+    expect(g5.gruende.join()).toMatch(/Freigabeliste/);
+  });
+  it("N-B2 CLI: Basis = Kandidat, Basis kein Vorfahr, Basis nicht in der Liste → Exit 2 (vor jedem Netzaufruf)", () => {
+    const lauf = (args) => spawnSync(process.execPath, [WERKZEUG, ...args], { encoding: "utf8", cwd: WURZEL });
+    const gleich = lauf(["--kandidat", "HEAD", "--basis", "HEAD", "--release-id", "x1y", "--digest", D]);
+    expect(gleich.status).toBe(2);
+    expect(gleich.stderr).toMatch(/Basis/);
+    expect(lauf(["--kandidat", "HEAD~1", "--basis", "HEAD", "--release-id", "x1y", "--digest", D]).status).toBe(2);
+    const nichtGelistet = lauf(["--kandidat", "HEAD", "--basis", "HEAD~1", "--release-id", "x1y", "--digest", D]);
+    expect(nichtGelistet.status).toBe(2);
+    expect(nichtGelistet.stderr).toMatch(/FREIGEGEBENE-IMAGES/);
+  }, 60_000);
+  it("Auflage 2: unbekannte CENTRIC_-Variable in einer Vorlage → NO-GO", () => {
+    const g = g3Schalter({ codeNamen: ["CENTRIC_DEMO"], klassen: KL, unfertig: UNFERTIG, quelltexte: { "src/lib/import-schnittstelle.js": "export const IMPORT_DATEI_AKTIV = false;" },
+      vorlagen: [{ pfad: "v", art: "compose", pflicht: true, text: "    environment:\n      CENTRIC_NEU_FUNKTION: \"true\"\n" }] }, KONFIG_STANDARD);
+    expect(g.ergebnis).toBe("NO-GO");
+    expect(g.gruende.join()).toMatch(/CENTRIC_NEU_FUNKTION/);
+  });
+  const g3 = (text, art = "env", pfad = "v", freigabe = null) => g3Schalter({ codeNamen: ["CENTRIC_DEMO"], klassen: KL, unfertig: UNFERTIG, freigabe,
+    quelltexte: { "src/lib/import-schnittstelle.js": "export const IMPORT_DATEI_AKTIV = false;" }, vorlagen: [{ pfad, art, pflicht: true, text }] }, KONFIG_STANDARD);
+  it("Auflage 3: CENTRIC_ERSTLEITUNG_STRENG ist freigabepflichtig", () => {
+    expect(KL.variablen.CENTRIC_ERSTLEITUNG_STRENG.klasse).toBe("freigabepflichtig");
+    expect(g3("CENTRIC_ERSTLEITUNG_STRENG=true\n").ergebnis).toBe("NO-GO");
+    expect(g3("CENTRIC_ERSTLEITUNG_STRENG=true\n", "env", "v", { freigegebeneSchalter: [{ name: "CENTRIC_ERSTLEITUNG_STRENG", grund: "Bestandsanalyse 2026-12-01" }] }).ergebnis).toBe("GO");
+    expect(g3("CENTRIC_ERSTLEITUNG_STRENG=true\n", "env", "v", { freigegebeneSchalter: [{ name: "CENTRIC_ERSTLEITUNG_STRENG" }] }).ergebnis).toBe("NO-GO");
+    expect(g3("CENTRIC_ERSTLEITUNG_STRENG=false\n").ergebnis).toBe("GO");
+  });
+  it("Auflage 4: Vorbehalte und Verneinungen sind kein Beleg; Format mit Titel und Urteil-Spalte wird gelesen", () => {
+    const b = reviewNachweiseLesen([{ datei: "REVIEW-NACHWEIS-a.md", text: [
+      "| #5 | x | MERGEBAR |", "| #5 | y | NICHT MERGEBAR |", "| #6 | x | unerledigt |", "| #7 | x | UNMERGEBAR |",
+      "| #8 | x | MERGEBAR erst nach Behebung B1 |", "| #9 | x | NO-GO, MERGEBAR? nein |", "| #10 | x | MERGEBAR MIT AUFLAGEN (A1 offen) |",
+      "| #11 | x | 2 Runden (MIT AUFLAGEN, MERGEBAR) |",
+    ].join("\n") }]);
+    expect([...b.keys()]).toEqual([11]);
+    const f = reviewNachweiseLesen([{ datei: "docs/acc45/REVIEW-NACHWEIS-2026-11-19.md", text: [
+      "| PR | Geprüfter Head | Reviewer-Modell | Urteil | Wesentliche Befunde / Behebung | Merge-Commit |",
+      "|---|---|---|---|---|---|",
+      "| #360 BE-1 Passwörter | 050e75a0; Delta f464531c | Opus | MERGE-MIT-AUFLAGEN; Delta MERGE-OK | behoben | x |",
+      "| #361 Kapern | 24242d39 | Opus | NICHT MERGEN; Delta MERGE-MIT-AUFLAGEN | offen | y |",
+      "| #362 WP-28b | 414476c4 | Opus | MERGE-MIT-AUFLAGEN (nur grüne CI) | – | z |",
+    ].join("\n") }]);
+    expect([...f.keys()]).toEqual([360]);
+  });
+  it("Hinweis: CHANGES_REQUESTED nach APPROVED hebt den Beleg auf", () => {
+    const pr = (reviews) => g2Review({ prs: [7], commitsOhnePr: [], anzahlCommits: 1, prAngaben: { 7: { autor: "a", reviews } } }).ergebnis;
+    expect(pr([{ state: "APPROVED", autor: "b" }])).toBe("GO");
+    expect(pr([{ state: "APPROVED", autor: "b" }, { state: "CHANGES_REQUESTED", autor: "b" }])).toBe("NO-GO");
+    expect(pr([{ state: "APPROVED", autor: "b" }, { state: "CHANGES_REQUESTED", autor: "c" }])).toBe("NO-GO");
+    expect(pr([{ state: "CHANGES_REQUESTED", autor: "b" }, { state: "APPROVED", autor: "b" }])).toBe("GO");
+  });
+  it("Auflage 7: Wertlücken ${X:+w}, ARG, YAML-Flow, Leerzeichen, NODE_ENV", () => {
+    expect(wertAufloesen("${X:+true}")).toBe("true");
+    expect(g3("    environment:\n      CENTRIC_DEMO: ${X:+true}\n", "compose").ergebnis).toBe("NO-GO");
+    expect(g3("ARG CENTRIC_DEMO=true\nENV CENTRIC_DEMO=$CENTRIC_DEMO\n", "dockerfile").ergebnis).toBe("NO-GO");
+    expect(g3("    environment: { CENTRIC_DEMO: \"true\", NODE_ENV: production }\n", "compose").ergebnis).toBe("NO-GO");
+    expect(g3("CENTRIC_DEMO = true\n").ergebnis).toBe("NO-GO");
+    expect(g3("NODE_ENV=development\n").ergebnis).toBe("NO-GO");
+    expect(g3("NODE_ENV=production\n").ergebnis).toBe("GO");
+    expect(g3("    environment:\n      PORT: \"3000\"\n", "compose", "deploy/compose.yml").ergebnis).toBe("NO-GO"); // NODE_ENV Pflicht
+    expect(g3("    environment:\n      NODE_ENV: production\n", "compose", "deploy/compose.yml").ergebnis).toBe("GO");
+  });
+  it("Hinweis: HEAD nicht gepusht → G10 NO-GO", () => {
+    const fx = fixtureGo();
+    fx.stand.headGepusht = false;
+    expect(gateVon(pruefe(fx), "G10").ergebnis).toBe("NO-GO");
+    delete fx.stand.headGepusht;
+    expect(gateVon(pruefe(fx), "G10").ergebnis).toBe("NO-GO");
+  });
+  it("Auflage 6: --konfig-zeigen ist exklusiv", () => {
+    const r = spawnSync(process.execPath, [WERKZEUG, "--konfig-zeigen", "--offline"], { encoding: "utf8" });
+    expect(r.status).toBe(2);
+  });
+});
+
+describe("Auflage 5: Online-Pfad liest den Kandidaten-Stand (temporäres Git-Repo, gh-Stub)", () => {
+  let repo;
+  const g = (...args) => {
+    const r = spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false", ...args], { cwd: repo, encoding: "utf8" });
+    if (r.status !== 0) throw new Error(r.stderr);
+    return r.stdout.trim();
+  };
+  const schreib = (rel, inhalt) => { mkdirSync(join(repo, rel, ".."), { recursive: true }); writeFileSync(join(repo, rel), typeof inhalt === "string" ? inhalt : JSON.stringify(inhalt)); };
+  beforeEach(() => { repo = mkdtempSync(join(tmpdir(), "rel1-git-")); g("init", "-q"); });
+  afterEach(() => rmSync(repo, { recursive: true, force: true }));
+
+  it("RELEASE-SCHALTER.json nur in HEAD und Arbeitsstand, nicht im Kandidaten → G3 NO-GO; Nachweise nur im Arbeitsstand → G6 NO-GO; gh mit filter=all", () => {
+    schreib("server.mjs", 'process.env.CENTRIC_DEMO === "true";\n');
+    schreib(".env.example", "NODE_ENV=production\n");
+    schreib("docs/acc45/RELEASE-UNFERTIG.json", UNFERTIG);
+    g("add", "-A"); g("commit", "-q", "-m", "Basis");
+    const basis = g("rev-parse", "HEAD");
+    schreib("server.mjs", 'process.env.CENTRIC_DEMO === "true"; // Kandidat\n');
+    g("add", "-A"); g("commit", "-q", "-m", "Kandidat");
+    const kandidat = g("rev-parse", "HEAD");
+    schreib("docs/acc45/RELEASE-SCHALTER.json", KL);
+    g("add", "-A"); g("commit", "-q", "-m", "HEAD danach");
+    schreib("nachweise/letzte-erfolgreiche.json", NACHWEISE.sicherung);
+    schreib("nachweise/probe-status.json", NACHWEISE.restoreProbe);
+    schreib("nachweise/widerrufbuch-probe-status.json", NACHWEISE.widerrufbuchProbe);
+    const pfade = [];
+    const gh = (pfad) => { pfade.push(pfad); throw new Error("kein Netz im Test"); };
+    const e = sammeln({ wurzel: repo, offline: false, kandidatSha: kandidat, basisSha: basis, releaseId: "v4-r1", digest: D, jetztMs: JETZT_MS, nachweise: "nachweise", gh });
+    expect(e.klassen).toBe(null);
+    expect(e.unfertig).not.toBe(null);
+    expect(e.codeNamen).toEqual(["CENTRIC_DEMO"]);
+    expect(e.stand.geaendertSeitKandidat).toEqual(["docs/acc45/RELEASE-SCHALTER.json"]);
+    const r = auswerten(e);
+    expect(gateVon(r, "G3").gruende.join()).toMatch(/RELEASE-SCHALTER\.json fehlt/);
+    expect(gateVon(r, "G6").ergebnis).toBe("NO-GO");
+    expect(gateVon(r, "G1").ergebnis).toBe("NO-GO");
+    expect(pfade.some((p) => /check-runs\?.*filter=all/.test(p))).toBe(true);
+    expect(r.modus).toBe("online");
+  }, 60_000);
 });
