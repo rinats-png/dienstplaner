@@ -11,7 +11,12 @@ export default defineConfig({
   outputDir: "./e2e/ergebnisse/artefakte",
   globalSetup: "./e2e/global-setup.mjs",
   /* Nacheinander: Alle Rollen arbeiten im selben Demo-Betrieb. Parallel geöffnete Sitzungen lösten im ersten Lauf den
-     Dialog „Gleichzeitig bearbeitet“ aus, der die Navigation verdeckte; ein Test soll keinen Konflikt entscheiden müssen. */
+     Dialog „Gleichzeitig bearbeitet“ aus, der die Navigation verdeckte; ein Test soll keinen Konflikt entscheiden müssen.
+     Ursache behoben (WP-48-GB, #271/#365/#374): bloßes Öffnen schreibt nicht mehr, belegt mit mehreren gleichzeitigen
+     Browser-Kontexten in e2e/oeffnen-parallel.spec.mjs. workers: 1 bleibt, weil praktisch alle Specs
+     schreiben: anmelden() (hilfen.mjs) schließt mit tourZu() eine offene Tour (schreibt), dazu die Abläufe von Abnahme A/B,
+     Teilkonflikt und lokaler Abnahme. Ausgenommen ist nur oeffnen-parallel.spec.mjs selbst. Parallele Worker ergäben
+     echte, zu Recht gemeldete Konflikte. */
   fullyParallel: false,
   workers: 1,
   retries: 0,

@@ -102,7 +102,7 @@ try {
   await L.pg.locator(".bpille:visible", { hasText: /Im Dienst/ }).first().click();
   await L.pg.locator(".utab:visible", { hasText: /^Lagebild/ }).first().click();
   await L.pg.waitForTimeout(1500);
-  const tagBtn = L.pg.getByRole("button", { name: /Tag öffnen/ }).locator("visible=true").first();
+  const tagBtn = L.pg.getByRole("button", { name: /^Tag öffnen$/ }).locator("visible=true").first();
   if (await tagBtn.count()) { await tagBtn.click().catch(() => {}); await L.pg.waitForTimeout(800); }
   const dlg = await L.pg.locator('[aria-modal="true"]').count();
   ok("„Tag öffnen“ im Lagebild öffnet das Tagesdetail", dlg > 0);

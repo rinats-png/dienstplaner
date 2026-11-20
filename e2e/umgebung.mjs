@@ -14,6 +14,13 @@ export const ROLLEN = Object.freeze(["mitarbeiter", "subplaner", "planer", "leit
  *  Einstempeln und einer eingestempelt, unabhängig vom schreibenden Ablauf B7 (e2e/abnahme-b-ablaeufe.spec.mjs). */
 export const ZUSATZ_ZUGAENGE = Object.freeze(["stempeluhr-ein", "stempeluhr-aus"]);
 
+/** WP-48-GB (e2e/oeffnen-parallel.spec.mjs): frische Zugänge für Personen, die KEIN anderer Test anmeldet — ohne
+ *  Tourzustand, damit ein Schreibvorgang beim bloßen Öffnen (etwa ein Tour-Selbststart) auch im Suite-Lauf auffällt.
+ *  [Schlüssel, Rolle, Index unter den aktiven Personen der Rolle]; Index 0 hat der Rollenzugang, Mitarbeiter 1 und 2
+ *  haben die Stempeluhr-Zugänge. */
+export const OEFFNEN_ZUGAENGE = Object.freeze([["oeffnen-planer", "planer", 1], ["oeffnen-subplaner", "subplaner", 1],
+  ["oeffnen-mitarbeiter", "mitarbeiter", 3]]);
+
 /** Umgebungsvariable, über die global-setup.mjs die Zugangscodes an die Testprozesse reicht (nie ausgegeben). */
 export const ZUGAENGE_VAR = "CENTRIC_E2E_ZUGAENGE";
 

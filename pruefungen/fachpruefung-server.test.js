@@ -17,7 +17,7 @@
 
    Aufruf: npx vitest run pruefungen/fachpruefung-server.test.js
    ========================================================================== */
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
 import { bestandFuerRolle, zusammenfuehren } from "../server/lib/rechte.mjs";
 import { heuteBerlin, tagePlus } from "../server/lib/zeiterfassung.mjs";
 import { bestaetigungenBetriebsrat } from "../server/lib/sicht.mjs";
@@ -326,4 +326,178 @@ describe("Fachprüfung: „heute“ ist der Berliner Tag, nicht der UTC-Tag", ()
       } finally { vi.useRealTimers(); }
     });
   }
+});
+
+/* ==========================================================================
+   B-H5: Eine GELÖSCHTE Abweichung ist eine geänderte Einteilung. Am Tag gilt
+   wieder der Dienst aus der Schichtfolge — er wird geprüft wie ein gesetzter
+   (RECHTEMATRIX: „jede neue oder geänderte Einteilung“; § 5 ArbZG; Schutz).
+   Ebenso Tage, die eine gelöschte oder verkürzte Abwesenheit wieder
+   dienstpflichtig macht (Stufe 2). Nur ab heute; vergangene Tage nicht.
+   Feste Uhr: heute = Mittwoch, 18.11.2026 (Berlin). Jeder Fall außer den
+   ausdrücklich „bleibt 200“ genannten ist auf dem Stand vor B-H5 rot.
+   ========================================================================== */
+describe("B-H5: gelöschte Abweichung — der Dienst aus der Schichtfolge wird geprüft", () => {
+  const H = "2026-11-18";                                                     // Mittwoch
+  const T1 = "2026-11-25", T2 = "2026-11-26";                                // Mittwoch, Donnerstag
+  const VOR1 = "2026-11-11", VOR2 = "2026-11-12";                            // vor heute
+  /* Schichtfolge je Wochentag (Mo = 0, Anker Montag): nur donnerstags `don`. */
+  const gH = (don = "F", extra = {}) => {
+    const gg = g(extra);
+    gg.mandanten[0].zyklus = { tage: ["-", "-", "-", don, "-", "-", "-"] };
+    gg.mandanten[0].dienstarten.push({ id: "N", name: "Nacht", start: "22:00", ende: "06:00", pause: 30 },
+      { id: "N1", name: "Nacht kurz", start: "01:30", ende: "05:30", pause: 0 });
+    /* Nur Personen mit vollständigen Qualifikationen — Altbefunde anderer Personen stören nicht, lenken aber ab. */
+    gg.mandanten[0].personen = gg.mandanten[0].personen.filter((p) => !["oq", "oB"].includes(p.id));
+    return gg;
+  };
+  const abw = (gg, werte) => Object.assign(gg.mandanten[0].abweichungen, werte);
+  const loeschen = (...k) => (m) => { for (const x of k) delete m.abweichungen[x]; };
+  beforeAll(() => { vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date(`${H}T10:00:00Z`)); });
+  afterAll(() => { vi.useRealTimers(); });
+
+  it("Uhr steht fest (Berliner Betriebstag)", () => { expect(heuteBerlin()).toBe(H); });
+
+  it("1. Spät am Vortag, „-“ gelöscht, Schichtfolge Früh: 403 Ruhezeit unter 11 Stunden (wie gesetzt)", () => {
+    const gg = gH("F"); abw(gg, { [`a1|${T1}`]: "S", [`a1|${T2}`]: "-" });
+    const e = schreiben(gg, "PL", loeschen(`a1|${T2}`));
+    expect(e.verweigert).toMatch(/Einteilung am 2026-11-26 nicht möglich: Ruhezeit unter 11 Stunden/);
+    expect(e.status).not.toBe(409);
+    expect(e.mandanten).toBeUndefined();                                     // nichts zum Speichern
+    /* Gegenprobe: dieselbe Einteilung ausdrücklich gesetzt — dieselbe Antwort. */
+    const g2 = gH("F"); abw(g2, { [`a1|${T1}`]: "S", [`a1|${T2}`]: "-" });
+    expect(schreiben(g2, "PL", (m) => { m.abweichungen[`a1|${T2}`] = "F"; }).verweigert).toBe(e.verweigert);
+  });
+
+  it("2. unter der Vorgabe des Betriebs (12 h): 409, mit Einzelbestätigung zur Zelle ohne Abweichung 200", () => {
+    const gg = gH("N1"); abw(gg, { [`a1|${T1}`]: "F", [`a1|${T2}`]: "-" });  // Früh bis 14 Uhr, Folgetag 1:30 → 11,5 h
+    const ohne = schreiben(gg, "LT", loeschen(`a1|${T2}`));
+    expect(ohne.status).toBe(409);
+    expect(ohne.fachbefunde).toEqual([{ personId: "a1", datum: T2, dienstId: "N1",
+      befunde: [{ regel: "ruhezeitBetrieb", stufe: "achtung", text: "Ruhezeit unter der Vorgabe von Tarif oder Betrieb" }] }]);
+    const mit = schreiben(gg, "LT", (m) => { loeschen(`a1|${T2}`)(m);
+      m.bestaetigungen.push(bestaetigung("a1", T2, "N1", [{ regel: "ruhezeitBetrieb", stufe: "achtung" }])); });
+    angenommen(mit);
+    expect(Object.prototype.hasOwnProperty.call(mit.mandanten[0].abweichungen, `a1|${T2}`)).toBe(false);
+    expect(mit.mandanten[0].bestaetigungen.some((b) => b.personId === "a1" && b.datum === T2)).toBe(true);
+  });
+
+  it("2b. Oberfläche: die Bestätigung aus dem Warndialog (App.jsx, bestaetigungVermerken) deckt die Zelle ohne Abweichung — keine Schleife", async () => {
+    const { bestaetigungVermerken } = await import("../src/lib/fachlogik.js");
+    const gg = gH("N1"); abw(gg, { [`a1|${T1}`]: "F", [`a1|${T2}`]: "-" });
+    const ohne = schreiben(gg, "PL", loeschen(`a1|${T2}`));
+    expect(ohne.status).toBe(409);
+    /* Wie App.jsx onBestaetigen: Einträge aus der 409, dann derselbe Stand noch einmal mit Bestätigung. */
+    const best = { eintraege: ohne.fachbefunde.map((f) => ({ personId: f.personId, datum: f.datum, dienstId: f.dienstId, befunde: f.befunde })),
+      gelesen: false, grundArt: null };
+    const zweiter = schreiben(gg, "PL", (m) => { loeschen(`a1|${T2}`)(m);
+      Object.assign(m, bestaetigungVermerken(m, best, { personId: "p1", name: "V Np1", rolle: "planer" }, "speichern")); });
+    angenommen(zweiter);
+    expect(Object.prototype.hasOwnProperty.call(zweiter.mandanten[0].abweichungen, `a1|${T2}`)).toBe(false);
+  });
+
+  it("3. gelöscht, abgeleiteter Dienst ohne Befund: 200 (bleibt 200)", () => {
+    const gg = gH("F"); abw(gg, { [`a1|${T2}`]: "-" });
+    angenommen(schreiben(gg, "PL", loeschen(`a1|${T2}`)));
+  });
+
+  it("4. Abweichung gleich der Schichtfolge gelöscht: kein neuer Befund, 200 (Altbestand bleibt, bleibt 200)", () => {
+    const gg = gH("F"); abw(gg, { [`a1|${T1}`]: "S", [`a1|${T2}`]: "F" });   // gespeicherter Ruhezeitbefund (Altbestand)
+    const e = schreiben(gg, "PL", loeschen(`a1|${T2}`));
+    angenommen(e);
+    expect(e.mandanten[0].abweichungen[`a1|${T1}`]).toBe("S");                 // nichts still korrigiert
+  });
+
+  it("5. Mutterschutz: „-“ an einem Nachtdienst der Schichtfolge gelöscht → 403 mit neutralem Text", () => {
+    const gg = gH("N"); abw(gg, { [`mu|${T2}`]: "-" });
+    const e = schreiben(gg, "PL", loeschen(`mu|${T2}`));
+    expect(e.verweigert).toMatch(/nicht möglich: Schutz- oder Einsatzregel der Person/);
+    expect(JSON.stringify(e)).not.toMatch(/MuSchG|Mutter|Schwanger|Geburt/);
+  });
+
+  it("6. gelöschter Schlüssel vor heute: 200 (Löschlauf, Aufbewahrung — bleibt 200)", () => {
+    const gg = gH("N"); abw(gg, { [`a1|${VOR1}`]: "S", [`a1|${VOR2}`]: "-", [`mu|${VOR2}`]: "-" });   // Mutterschutz und Ruhezeit — beides vergangen
+    angenommen(schreiben(gg, "PL", loeschen(`a1|${VOR2}`, `mu|${VOR2}`)));
+  });
+
+  it("7. Mindestbesetzung: zusätzlicher Dienst gelöscht, fällt unter die Vorgabe → 409 untergrenze", () => {
+    const gg = gH("-"); abw(gg, { [`a1|${T2}`]: "B", [`a2|${T2}`]: "B" });
+    const e = schreiben(gg, "PL", loeschen(`a2|${T2}`));
+    expect(e.status).toBe(409);
+    expect(e.fachbefunde).toEqual([{ personId: "a2", datum: T2, dienstId: "B",
+      befunde: [{ regel: "untergrenze", stufe: "achtung", text: "Mindestbesetzung unterschritten" }] }]);
+    angenommen(schreiben(gg, "PL", (m) => { loeschen(`a2|${T2}`)(m);
+      m.bestaetigungen.push(bestaetigung("a2", T2, "B", [{ regel: "untergrenze", stufe: "achtung" }])); }));
+  });
+
+  it("8. kein Alleindienst: die Partnerin geht durch die Löschung zurück zur Schichtfolge → Befund an der Kollegin (403)", () => {
+    const gg = gH("-");
+    gg.mandanten[0].personen.push(person("al", "mitarbeiter", "e1", { qualifikationen: ["qG", "qB"], einschraenkungen: { keinAlleindienst: true } }));
+    abw(gg, { [`al|${T2}`]: "F", [`a2|${T2}`]: "F" });
+    const e = schreiben(gg, "PL", loeschen(`a2|${T2}`));
+    expect(e.verweigert).toMatch(/nicht möglich: darf nicht allein eingeteilt werden/);
+  });
+
+  it("9a. Schichtverantwortung im eigenen Bereich: dieselbe Sperre", () => {
+    const gg = gH("F"); abw(gg, { [`a1|${T1}`]: "S", [`a1|${T2}`]: "-" });
+    expect(schreiben(gg, "SV", loeschen(`a1|${T2}`)).verweigert).toMatch(/Ruhezeit unter 11 Stunden/);
+  });
+
+  it("9b. Schichtverantwortung: Befund außerhalb des Bereichs sperrt allgemein, ohne fremde Kennung", () => {
+    const gg = gH("-");
+    gg.mandanten[0].einheiten.push({ id: "e2", versatzTage: 0 });
+    gg.mandanten[0].personen.push(person("f1", "mitarbeiter", "e2", { qualifikationen: ["qG", "qB"], einschraenkungen: { keinAlleindienst: true } }));
+    abw(gg, { [`f1|${T2}`]: "F", [`a2|${T2}`]: "F" });
+    const e = schreiben(gg, "SV", loeschen(`a2|${T2}`));
+    expect(e.verweigert).toMatch(/außerhalb deines Bereichs/);
+    expect(e.status).not.toBe(409);
+    expect(JSON.stringify(e)).not.toMatch(/f1|Nf1|2026-11-26/);
+  });
+
+  it("9c. Orakel: Löschen im fremden Bereich — dieselbe Antwort, ob dort ein Befund entstünde oder nicht", () => {
+    const fremd = (vortag) => {
+      const gg = gH("F");
+      gg.mandanten[0].einheiten.push({ id: "e2", versatzTage: 0 });
+      gg.mandanten[0].personen.push(person("f2", "mitarbeiter", "e2", { qualifikationen: ["qG", "qB"] }));
+      abw(gg, { [`f2|${T1}`]: vortag, [`f2|${T2}`]: "-" });
+      return gg;
+    };
+    const mitBefund = schreiben(fremd("S"), "SV", loeschen(`f2|${T2}`));     // ergäbe Ruhezeit 8 h
+    const ohneBefund = schreiben(fremd("F"), "SV", loeschen(`f2|${T2}`));
+    expect(mitBefund.verweigert).toBeTruthy();
+    expect(mitBefund.verweigert).toBe(ohneBefund.verweigert);                // die Rechteprüfung entscheidet zuerst
+    expect(mitBefund.status).toBe(ohneBefund.status);
+    expect(mitBefund.verweigert).not.toMatch(/Ruhezeit|Befund|Bestätigung/);
+  });
+
+  it("10. Stufe 2: Abwesenheit ab heute verkürzt oder gelöscht, der Dienst aus der Schichtfolge verletzt die Ruhezeit → 403", () => {
+    const mitUrlaub = () => {
+      const gg = gH("F"); abw(gg, { [`a1|${T1}`]: "S" });
+      gg.mandanten[0].abwesenheiten.push({ id: "abw-u", personId: "a1", art: "urlaub", von: T2, bis: "2026-11-27" });
+      return gg;
+    };
+    const e = schreiben(mitUrlaub(), "PL", (m) => { m.abwesenheiten = m.abwesenheiten.map((a) => (a.id === "abw-u" ? { ...a, von: "2026-11-27" } : a)); });
+    expect(e.verweigert).toMatch(/Einteilung am 2026-11-26 nicht möglich: Ruhezeit unter 11 Stunden/);
+    expect(schreiben(mitUrlaub(), "PL", (m) => { m.abwesenheiten = []; }).verweigert).toMatch(/Ruhezeit unter 11 Stunden/);
+  });
+
+  it("11. Stufe 2: Abwesenheit in der Vergangenheit gelöscht, Art geändert: 200 (bleibt 200)", () => {
+    const gg = gH("N"); abw(gg, { [`a1|${T1}`]: "S" });
+    gg.mandanten[0].abwesenheiten.push({ id: "abw-v", personId: "mu", art: "urlaub", von: VOR2, bis: VOR2 },
+      { id: "abw-k", personId: "a1", art: "urlaub", von: T2, bis: T2 });
+    angenommen(schreiben(gg, "PL", (m) => { m.abwesenheiten = m.abwesenheiten.filter((a) => a.id !== "abw-v"); }));
+    angenommen(schreiben(gg, "PL", (m) => { m.abwesenheiten = m.abwesenheiten.map((a) => (a.id === "abw-k" ? { ...a, art: "krank" } : a)); }));
+  });
+
+  it("12. Stufe 2: Obergrenze — zu viele wieder dienstpflichtige Tage auf einmal sperren (fail-closed)", async () => {
+    const { ABWESENHEIT_TAGE_MAX, SCHUTZ_HORIZONT_TAGE } = await import("../server/lib/schutzdurchsetzung.mjs");
+    const gg = gH("F");
+    gg.mandanten[0].zyklus = { tage: ["F", "F", "F", "F", "F", "F", "F"] };
+    const n = Math.ceil(ABWESENHEIT_TAGE_MAX / SCHUTZ_HORIZONT_TAGE) + 2;
+    for (let i = 0; i < n; i++) {
+      gg.mandanten[0].personen.push(person(`v${i}`, "mitarbeiter", "e1", { qualifikationen: ["qG", "qB"] }));
+      gg.mandanten[0].abwesenheiten.push({ id: `abw-l${i}`, personId: `v${i}`, art: "sonstiges", von: H, bis: "2027-12-31" });
+    }
+    expect(schreiben(gg, "PL", (m) => { m.abwesenheiten = []; }).verweigert).toMatch(/zu vielen Tagen auf einmal/);
+  });
 });

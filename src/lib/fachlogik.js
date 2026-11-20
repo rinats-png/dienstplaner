@@ -7,6 +7,7 @@ import { heute, fKurz, fDatum, MON, fLang, zeitpunktText } from "./datum.js";
 import { MATRIX_STD, ROLLEN, rollenName, anzahlWort } from "./rollen.js";
 import { planFreigabeAktiv } from "../../server/lib/planfreigabe.mjs";
 import { vergebbareRollen, RANG as ROLLEN_RANG } from "../../server/lib/rollenvergabe.mjs";
+import { orgSchluessel, orgAnzeigeName, orgNameMerken, orgAnlegen } from "../../server/lib/import/org.mjs";
 import { VERSION as BESTAND_VERSION } from "../migration.js";
 import { STUFEN, stufeVon, ZUSATZ_PLANER, KONTAKT_AB_PLANER, KONTAKT_AB_ZUSCHLAGSSTANDORTE } from "../stufen.js";
 import { eingefrorenerMonat, abschlussLuecke, freezeStatus, feiertagFuer, zuschlagTagAddieren, zuschlagStand, eingefrorenerBetrieb, eingefrorenFuerPerson, datevAusFreeze, datevHinweise, abschlussLuecken, abschlussLueckeText,
@@ -1970,11 +1971,24 @@ export function importPruefen(m, kopf, daten, zu, entscheidungen = {}, optionen 
   const rollen = ROLLEN.filter((r) => !r.extern).map((r) => r.id);
   /* Auflage D: Rolle des Anwenders; ohne Angabe gilt die niedrigste Rolle, die importieren darf (Planung). */
   const vergebbar = IMPORT_VERGEBBAR[optionen.vergeber || "planer"] || [];
+  /* B-I1: Fehlende Einheiten und Qualifikationen anlegen nur auf ausdrücklichen Wunsch (Haken) und nur mit dem Recht dazu —
+     die Oberfläche setzt einheitenAnlegen nur mit org.edit (Leitung). Ohne Wunsch bleibt eine unbekannte Einheit oder
+     Qualifikation ein Fehler; mit Wunsch ist sie keiner, sondern wird in der Vorschau als „wird neu angelegt“ gezeigt.
+     Zugeordnet wird nach derselben Regel wie im Dateiimport (server/lib/import/org.mjs, orgSchluessel: Groß-/Kleinschreibung,
+     Leerraum, unsichtbare Zeichen egal), Schreibvarianten in der Datei ergeben EINE neue Einheit. */
+  const einheitenAnlegen = optionen.einheitenAnlegen === true;
+  const einheiten = (m.einheiten || []).filter((e) => e && typeof e === "object");
+  const qualKatalog = (m.qualifikationen || []).filter((q) => q && typeof q === "object");
+  const qualTreffer = (q) => {
+    const k = orgSchluessel(q);
+    const t = qualKatalog.filter((x) => orgSchluessel(x.name) === k);
+    return [...new Set((t.length ? t : qualKatalog.filter((x) => orgSchluessel(x.kurz) === k)).map((x) => x.id))];
+  };
   const roh = daten.map((f, i) => {
     const hol = (k) => (zu[k] !== undefined ? (f[zu[k]] || "").trim() : "");
     const nachname = hol("nachname"), vorname = hol("vorname");
-    const einheitName = hol("einheit");
-    const einheit = m.einheiten.find((e) => e.name.toLowerCase() === einheitName.toLowerCase());
+    const einheitName = orgAnzeigeName(hol("einheit"));
+    const einheit = einheitName ? einheiten.find((e) => orgSchluessel(e.name) === orgSchluessel(einheitName)) : undefined;
     const std = parseFloat((hol("wochenstunden") || "").replace(",", ".")) || m.einstellungen.sollWochenstunden;
     const rolleRoh = hol("rolle").toLowerCase();
     /* Datenreview PR #130: Nur eine leere Rollenangabe heißt „mitarbeiter“; eine unbekannte wird nicht
@@ -1982,11 +1996,11 @@ export function importPruefen(m, kopf, daten, zu, entscheidungen = {}, optionen 
     const rolleErkannt = rollen.find((x) => x === rolleRoh)
       || (ROLLEN.find((x) => x.label.toLowerCase() === rolleRoh) || {}).id || null;
     const rolleId = rolleRoh ? rolleErkannt : "mitarbeiter";
-    const qualNamen = hol("qualifikationen").split(/[,/|]/).map((x) => x.trim()).filter(Boolean);
-    const quals = qualNamen.map((q) => (m.qualifikationen.find((x) =>
-      x.name.toLowerCase() === q.toLowerCase() || x.kurz.toLowerCase() === q.toLowerCase()) || {}).id).filter(Boolean);
-    const fehlendeQuals = qualNamen.filter((q) => !m.qualifikationen.some((x) =>
-      x.name.toLowerCase() === q.toLowerCase() || x.kurz.toLowerCase() === q.toLowerCase()));
+    const qualNamen = [];
+    for (const q of hol("qualifikationen").split(/[,/|]/)) orgNameMerken(qualNamen, q);
+    const quals = [...new Set(qualNamen.map(qualTreffer).filter((t) => t.length === 1).map((t) => t[0]))];
+    const fehlendeQuals = qualNamen.filter((q) => !qualTreffer(q).length);
+    const mehrdeutigeQuals = qualNamen.filter((q) => qualTreffer(q).length > 1);
     /* Eintritt: leer bleibt leer (null), nie heute(); ein nicht lesbares oder unmögliches Datum wird
        gemeldet. Im Import ist der Eintritt fachlich optional (pflicht: false). */
     const eintrittRoh = hol("eintritt");
@@ -2001,7 +2015,9 @@ export function importPruefen(m, kopf, daten, zu, entscheidungen = {}, optionen 
     const fehler = [];
     if (!nachname) fehler.push("Nachname fehlt");
     if (!vorname) fehler.push("Vorname fehlt");
-    if (einheitName && !einheit) fehler.push(`Einheit „${einheitName}" unbekannt`);
+    if (einheitName && !einheit && !einheitenAnlegen) fehler.push(`Einheit „${einheitName}" unbekannt`);
+    for (const q of einheitenAnlegen ? [] : fehlendeQuals) fehler.push(`Qualifikation „${q}" unbekannt`);
+    for (const q of mehrdeutigeQuals) fehler.push(`Qualifikation „${q}" mehrdeutig`);
     if (!einheitName) fehler.push("Einheit fehlt");
     if (!eintrittErgebnis.ok) fehler.push(eintrittErgebnis.fehler);
     /* Auflage D: Rolle, die der Anwender nicht vergeben darf, ist ein Fehler. Ohne Rollenspalte gilt
@@ -2100,6 +2116,7 @@ export function importPruefen(m, kopf, daten, zu, entscheidungen = {}, optionen 
           : dublette.vertauscht ? "Name (Vor-/Nachname vertauscht) bereits vorhanden, bitte klären"
             : "Name bereits vorhanden, bitte klären";
     return { nr: i + 1, nachname, vorname, einheitName, einheitId: einheit ? einheit.id : null,
+      einheitNeu: !!einheitName && !einheit && einheitenAnlegen,
       funktion: hol("funktion") || "Fachkraft", wochenstunden: std,
       urlaubsanspruch: parseInt(hol("urlaubsanspruch"), 10) || 30, eintritt, rolle: rolleId,
       /* Auflage C: eintrittLeer heißt „Zelle leer“, nicht „kein gültiges Datum“ (ungültig ist ein Fehler, nicht
@@ -2117,8 +2134,8 @@ export function importPruefen(m, kopf, daten, zu, entscheidungen = {}, optionen 
   });
   return { zeilen, gut: zeilen.filter((z) => z.ok).length, fehlerhaft: zeilen.filter((z) => !z.ok).length,
     doppelt: zeilen.filter((z) => z.doppelt).length,
-    neueEinheiten: [...new Set(zeilen.filter((z) => z.einheitName && !z.einheitId).map((z) => z.einheitName))],
-    neueQuals: [...new Set(zeilen.flatMap((z) => z.fehlendeQuals))] };
+    neueEinheiten: zeilen.filter((z) => z.einheitName && !z.einheitId).reduce((l, z) => { orgNameMerken(l, z.einheitName); return l; }, []),
+    neueQuals: zeilen.flatMap((z) => z.fehlendeQuals).reduce((l, q) => { orgNameMerken(l, q); return l; }, []) };
 }
 export const IMPORT_BEISPIEL = `Nachname;Vorname;Einheit;Funktion;Wochenstunden;Urlaub;Eintritt;Rolle;Qualifikationen;Teilzeit
 Meier;Sabine;Schichtgruppe 1;Fachkraft;41;30;01.03.2021;mitarbeiter;SK,EH;
@@ -2145,6 +2162,50 @@ export function importGegenBestand(personen, zeilen) {
     uebernehmen.push(z);
   }
   return { uebernehmen, uebersprungen };
+}
+
+/** B-I1: Einheiten und Qualifikationen der übernehmbaren Zeilen gegen den AKTUELLEN Bestand auflösen und, nur wenn
+ *  darfAnlegen (Haken gesetzt UND org.edit), fehlende anlegen — über orgAnlegen aus server/lib/import/org.mjs, also mit
+ *  denselben Vorgaben wie der Dateiimport (Name aus der Datei; Versatz, Standort, Farbe, Kürzel nach der dortigen Regel;
+ *  Qualifikationen ohne Sonderstatus). Zugeordnet wird nach orgSchluessel (Groß-/Kleinschreibung, Leerraum, unsichtbare
+ *  Zeichen egal): Was inzwischen existiert, wird verwendet, Schreibvarianten ergeben EINE neue Einheit. Eine Zeile, deren
+ *  Einheit oder Qualifikation fehlt und nicht angelegt werden darf, oder deren Qualifikation mehrdeutig ist, wird mit
+ *  Fehler übersprungen, nicht der ersten Einheit zugeordnet und nicht ohne die Qualifikation angelegt (der frühere Rückfall
+ *  „einheiten[0]“ war toter Code: übernehmbare Zeilen trugen immer eine bekannte Einheit; kein Vorfall).
+ *  Verändert m nicht; gibt eine Kopie mit erweiterten Einheiten/Qualifikationen zurück.
+ *  @returns {{ mandant: object, uebernehmen: { zeile: object, einheitId: string, qualifikationen: string[] }[],
+ *    uebersprungen: { nr: number, personalnummer: string, fehler: string }[], neueEinheiten: string[], neueQualifikationen: string[] }} */
+export function importOrgAufloesen(m, zeilen, darfAnlegen, id = uid) {
+  const neuM = { ...m, einheiten: [...(m.einheiten || [])], qualifikationen: [...(m.qualifikationen || [])] };
+  const einheitFuer = (z) => (neuM.einheiten.find((e) => e && z.einheitId && e.id === z.einheitId)
+    || neuM.einheiten.find((e) => e && z.einheitName && orgSchluessel(e.name) === orgSchluessel(z.einheitName)) || {}).id || null;
+  /* null: fehlt; undefined: mehrdeutig */
+  const qualFuer = (q) => {
+    const k = orgSchluessel(q);
+    const t = neuM.qualifikationen.filter((x) => x && orgSchluessel(x.name) === k);
+    const ids = [...new Set((t.length ? t : neuM.qualifikationen.filter((x) => x && orgSchluessel(x.kurz) === k)).map((x) => x.id))];
+    return ids.length === 1 ? ids[0] : ids.length ? undefined : null;
+  };
+  const plan = { neueEinheiten: [], neueStandorte: [], neueQualifikationen: [], neu: [] };
+  const vorgemerkt = [], uebersprungen = [];
+  for (const z of zeilen || []) {
+    const qs = (z.fehlendeQuals || []).map((q) => [q, qualFuer(q)]);
+    const fehlt = [...(einheitFuer(z) ? [] : [`Einheit „${z.einheitName}" unbekannt`]),
+      ...qs.filter(([, q]) => q === null).map(([n]) => `Qualifikation „${n}" unbekannt`)];
+    const mehrdeutig = qs.filter(([, q]) => q === undefined).map(([n]) => `Qualifikation „${n}" mehrdeutig`);
+    if (mehrdeutig.length || (fehlt.length && !darfAnlegen)) {
+      uebersprungen.push({ nr: z.nr, personalnummer: z.personalnummer || "", fehler: `Zeile ${z.nr}: ${[...fehlt, ...mehrdeutig].join(", ")}` });
+      continue;
+    }
+    if (!einheitFuer(z)) orgNameMerken(plan.neueEinheiten, z.einheitName);
+    for (const [n, q] of qs) if (q === null) orgNameMerken(plan.neueQualifikationen, n);
+    vorgemerkt.push(z);
+  }
+  if (darfAnlegen) orgAnlegen(neuM, plan, { id, orgEdit: true });
+  const uebernehmen = vorgemerkt.map((z) => ({ zeile: z, einheitId: einheitFuer(z),
+    qualifikationen: [...new Set([...(z.qualifikationen || []), ...(z.fehlendeQuals || []).map(qualFuer).filter(Boolean)])] }));
+  return { mandant: neuM, uebernehmen, uebersprungen,
+    neueEinheiten: darfAnlegen ? plan.neueEinheiten : [], neueQualifikationen: darfAnlegen ? plan.neueQualifikationen : [] };
 }
 
 /* ==========================================================================
