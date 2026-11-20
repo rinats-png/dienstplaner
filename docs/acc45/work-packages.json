@@ -1,10 +1,10 @@
 {
   "schema": 2,
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
-  "anzahl": 225,
+  "anzahl": 229,
   "statusZaehlung": {
-    "BLOCKED": 85,
-    "READY": 16,
+    "BLOCKED": 87,
+    "READY": 18,
     "IN_PROGRESS": 17,
     "REVIEW": 7,
     "INTEGRATED": 97,
@@ -36,11 +36,11 @@
       }
     },
     "folge": {
-      "pakete": 17,
-      "offen": 12,
+      "pakete": 21,
+      "offen": 16,
       "restPT": {
-        "min": 21.1,
-        "max": 37.1
+        "min": 25.6,
+        "max": 45.1
       }
     },
     "extern": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 327.9,
-    "max": 562.35
+    "min": 332.4,
+    "max": 570.35
   },
   "kritischerPfad": {
     "summe": 70,
@@ -6476,6 +6476,118 @@
       "tests": "Unit, E2E",
       "dateien": "docs/",
       "notiz": "Analyse 2026-11-20 (V4-Integrationsstand); PT sind Schätzung der Analyse, nicht belegt. Betreiberentscheidung offen."
+    },
+    {
+      "id": "DEP-1",
+      "titel": "Abhängigkeit: web-push 4 Migration",
+      "strang": "folge",
+      "prio": "P2",
+      "aufwandPT": {"min":0.5,"max":1},
+      "abhaengigkeiten": [],
+      "status": "READY",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": null,
+      "modell": "opus",
+      "konfliktzonen": [],
+      "pr": ["#404"],
+      "nachweis": "docs/acc45/ENTSCHEIDUNGSLISTE.md (P3-9), Bewertung Dependabot 2026-11-20",
+      "akzeptanz": "web-push 4 (reines ESM, keine default-Exports) wird mit benannten Importen genutzt; Test gegen das echte Modul (Exportform, ohne Netz) ergänzt und der Mock in mail-push-anbieter.test.js an die echte Exportform angepasst; pushziel.mjs-Begründung (SSRF, Parser-Gleichlauf) und Test neu bewertet; proxy-agent-negotiate geprüft; Opus-Sicherheitsreview; Push-Schalter bleiben AUS",
+      "tests": "Unit",
+      "dateien": "server/lib/webpush.mjs, server/lib/pushziel.mjs, pruefungen/mail-push-anbieter.test.js, pruefungen/sicherheit-intern.test.js, package.json",
+      "notiz": "Quelle: Bewertung offener Dependabot-PRs #400 bis #407 vom 2026-11-20 (nur lesend erhoben, Basis integration/release-v4 @ 105f6c83); Aufwand ist eine SCHÄTZUNG der Bewertung, nicht belegt. Der Dependabot-PR wird nicht geschlossen; Schließen entscheidet der Betreiber. Befund: web-push 4.0.0 hat nur benannte Exporte; server/lib/webpush.mjs:62-64 nutzt webpush.default.setVapidDetails, mit v4 ein TypeError, den das catch still zu {ok:false, klasse:temporaer, fehler:netz} macht (Push würde lautlos nie zugestellt). CI bleibt grün, weil pruefungen/mail-push-anbieter.test.js:23 web-push mit { default: {...} } mockt. pushziel.mjs (Review S1) begründet den Parser-Gleichlauf mit url.parse in 3.6.x; v4 nutzt new URL, Begründung und sicherheit-intern.test.js neu bewerten (SI-01). Neue transitive Abhängigkeit proxy-agent-negotiate 1.1.0 prüfen. Ohne VAPID-Schlüssel endet sendePush vor dem Import (trocken), daher aktuell kein sichtbarer Schaden. Aufwand SCHÄTZUNG 0,5 bis 1 PT plus Sicherheitsreview (Opus). Dependabot-PR #404, nicht mergen (funktionaler Defekt); Schließen entscheidet der Betreiber."
+    },
+    {
+      "id": "DEP-2",
+      "titel": "Abhängigkeit: Vitest 5 Migration",
+      "strang": "folge",
+      "prio": "P3",
+      "aufwandPT": {"min":0.5,"max":1},
+      "abhaengigkeiten": [],
+      "status": "READY",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": null,
+      "modell": "opus",
+      "konfliktzonen": [],
+      "pr": ["#405"],
+      "nachweis": "docs/acc45/ENTSCHEIDUNGSLISTE.md (P3-9), Bewertung Dependabot 2026-11-20",
+      "akzeptanz": "describe.sequential und it.sequential in den 6 betroffenen Testdateien ersetzt (12 Stellen), volle Suite grün, Titel bei .each/.for geprüft; Opus-Review",
+      "tests": "Unit",
+      "dateien": "pruefungen/, package.json",
+      "notiz": "Quelle: Bewertung offener Dependabot-PRs #400 bis #407 vom 2026-11-20 (nur lesend erhoben, Basis integration/release-v4 @ 105f6c83); Aufwand ist eine SCHÄTZUNG der Bewertung, nicht belegt. Der Dependabot-PR wird nicht geschlossen; Schließen entscheidet der Betreiber. Vitest 5 entfernt die sequential-Optionen (zugunsten von concurrent); der Lauf von PR #405 scheitert mit describe.sequential is not a function in abnahme-a-ablauf.test.js:115, die rund 190 Folgeschritte wurden übersprungen (der Lauf belegt nichts über den Rest der Suite). Betroffen: 12 Stellen in 6 Dateien (abnahme-a-ablauf, erstleitung-abbruch, erstleitung-betreiber-put, erstleitung-entscheidungen, erstleitung, konto-parallel). Node 22 und Vite 6.4.5 passen. Aufwand SCHÄTZUNG 0,5 bis 1 PT. Opus-Review Pflicht (Prüfwerkzeug, kritischer Pfad). Dependabot-PR #405, nicht mergen."
+    },
+    {
+      "id": "DEP-3",
+      "titel": "Abhängigkeit: React 19 Migration",
+      "strang": "folge",
+      "prio": "P3",
+      "aufwandPT": {"min":3,"max":5},
+      "abhaengigkeiten": [],
+      "status": "BLOCKED",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": null,
+      "modell": "opus",
+      "konfliktzonen": [],
+      "pr": ["#406"],
+      "nachweis": "docs/acc45/ENTSCHEIDUNGSLISTE.md (P3-9), Bewertung Dependabot 2026-11-20",
+      "akzeptanz": "Betreiberentscheid und Zeitpunkt nach dem Pilot; react und react-dom gemeinsam gehoben, @vitejs/plugin-react, eslint-plugin-react(-hooks) geprüft, volle Browser-Abnahme und Smartphone-Test; Opus-Review",
+      "tests": "Unit, E2E",
+      "dateien": "package.json, src/, e2e/",
+      "notiz": "Quelle: Bewertung offener Dependabot-PRs #400 bis #407 vom 2026-11-20 (nur lesend erhoben, Basis integration/release-v4 @ 105f6c83); Aufwand ist eine SCHÄTZUNG der Bewertung, nicht belegt. Der Dependabot-PR wird nicht geschlossen; Schließen entscheidet der Betreiber. Blockiert: Betreiberentscheid offen, nicht vor dem Pilot (Stack ist bewusst React 18). PR #406 hebt nur react-dom auf 19.3.1 (Peer react ^19.3.1), npm ci scheitert mit ERESOLVE, der PR kann so nie grün werden. Der Code nutzt bereits createRoot; ReactDOM.render, defaultProps, propTypes, forwardRef, findDOMNode und react-dom/test-utils kommen nicht vor; Risiko liegt in Laufzeitdetails (StrictMode, Refs, Hydration), e2e und axe. Aufwand SCHÄTZUNG 3 bis 5 PT inklusive voller Browser-Abnahme und Smartphone-Test. Ein dependabot.yml-Ignore oder eine React-Gruppe wäre sinnvoll, Änderung unter .github/ nur mit Freigabe (siehe P3-9)."
+    },
+    {
+      "id": "DEP-4",
+      "titel": "Abhängigkeit: ESLint 10 Migration",
+      "strang": "folge",
+      "prio": "P3",
+      "aufwandPT": {"min":0.5,"max":1},
+      "abhaengigkeiten": [],
+      "status": "BLOCKED",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": null,
+      "modell": "opus",
+      "konfliktzonen": [],
+      "pr": ["#407"],
+      "nachweis": "docs/acc45/ENTSCHEIDUNGSLISTE.md (P3-9), Bewertung Dependabot 2026-11-20",
+      "akzeptanz": "eslint, @eslint/js, Plugins und globals gemeinsam gehoben, neue recommended-Befunde abgearbeitet, Lint grün; Opus-Review",
+      "tests": "Lint",
+      "dateien": "eslint.config.js, package.json",
+      "notiz": "Quelle: Bewertung offener Dependabot-PRs #400 bis #407 vom 2026-11-20 (nur lesend erhoben, Basis integration/release-v4 @ 105f6c83); Aufwand ist eine SCHÄTZUNG der Bewertung, nicht belegt. Der Dependabot-PR wird nicht geschlossen; Schließen entscheidet der Betreiber. Blockiert durch Upstream: eslint-plugin-react 7.37.5 (aktuelle latest) unterstützt ESLint 10 nicht (Peer eslint bis ^9.7); dazu @eslint/js ^9 und eslint-plugin-react-hooks 5.2.0. PR #407 scheitert mit ERESOLVE bei npm ci. Flat Config ist bereits vorhanden. ESLint 10 bringt viele neue transitive Pakete (cacheable, keyv, hookified, u. a.) mit neuen Maintainer-Kreisen, vor Aufnahme prüfen. Aufwand SCHÄTZUNG 0,5 bis 1 PT. Aufnahme, sobald das Plugin ESLint 10 unterstützt. Dependabot-PR #407; Schließen entscheidet der Betreiber."
     }
   ]
 }
