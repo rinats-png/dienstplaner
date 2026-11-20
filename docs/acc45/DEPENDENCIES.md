@@ -4,7 +4,7 @@ Erzeugt von `werkzeug/acc45-backlog.mjs` aus `docs/acc45/work-packages.json` (ni
 
 **Kritischer Pfad gemeinsam** (offener Entwicklungsaufwand, ohne extern): WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **50–90 PT**
 **Ohne Intelligence:** WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 → WP-42a → WP-42 = **22,5–35 PT**
-**Offener Entwicklungsaufwand:** 332,55–570,65 PT in 99 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
+**Offener Entwicklungsaufwand:** 332,65–570,85 PT in 100 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
 
 WP-09 ist nur Livegang-Reihenfolge und zählt im Pfad nicht als Abhängigkeit. Der Graph zeigt nur offene Pakete.
 
@@ -49,6 +49,7 @@ flowchart LR
     ABN_C1["ABN-C1<br/>BLOCKED"]
     WP_ZEIT["WP-ZEIT<br/>IN_PROGRESS"]
     BE_3["BE-3<br/>BLOCKED"]
+    REL_0["REL-0<br/>REVIEW"]
   end
   subgraph wp19[WP-19-Module]
     WP_19_1["WP-19.1<br/>BLOCKED"]
@@ -567,3 +568,4 @@ flowchart LR
 | DEP-2 | folge | P3 | 0,5–1 | 0,1–0,2 | – | – | opus | REVIEW |
 | DEP-3 | folge | P3 | 3–5 | 3–5 | – | – | opus | BLOCKED |
 | DEP-4 | folge | P3 | 0,5–1 | 0,5–1 | – | – | opus | BLOCKED |
+| REL-0 | acc45 | P1 | 0,5–1 | 0,1–0,2 | – | package.json | opus | REVIEW |

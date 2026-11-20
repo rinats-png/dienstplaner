@@ -18,17 +18,17 @@ oder `"teilweise"`, jeweils mit Beleg (PR, Commit, Nachweis). „Geplant“, „
 <!-- AUTO:BEGIN -->
 Erzeugt aus `docs/acc45/work-packages.json` (Schema 2) mit `node werkzeug/acc45-backlog.mjs status-schreiben` — nicht von Hand ändern.
 
-**Pakete gesamt:** 234 · BLOCKED 90 · READY 16 · IN_PROGRESS 18 · REVIEW 10 · INTEGRATED 97 · DONE 3
+**Pakete gesamt:** 235 · BLOCKED 90 · READY 16 · IN_PROGRESS 18 · REVIEW 11 · INTEGRATED 97 · DONE 3
 
 | Strang | Pakete | BLOCKED | READY | IN_PROGRESS | REVIEW | INTEGRATED | DONE | offener Aufwand PT |
 |---|---|---|---|---|---|---|---|---|
-| ACC45 | 118 | 27 | 0 | 7 | 4 | 78 | 2 | 61,3–104,75 |
+| ACC45 | 119 | 27 | 0 | 7 | 5 | 78 | 2 | 61,4–104,95 |
 | WP-19-Module | 15 | 13 | 0 | 1 | 0 | 1 | 0 | 64,5–100,5 |
 | Intelligence | 40 | 20 | 0 | 7 | 0 | 13 | 0 | 181–320 |
 | Folgepakete | 26 | 12 | 0 | 3 | 6 | 5 | 0 | 25,75–45,4 |
 | Extern/Entscheidungen | 35 | 18 | 16 | 0 | 0 | 0 | 1 | 20,35–46,1 |
 
-Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **332,55–570,65 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
+Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **332,65–570,85 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
 
 **Kritische Pfade** (offener Aufwand, Mitte der Spanne maßgeblich):
 
@@ -71,6 +71,7 @@ Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **332,55–570
 | V4-2 V4: Markenrest (theme-color/Manifest, Wortmarke als SVG, Avatar-Paare, Rückfall für reduzierte Transparenz) | REVIEW | `acc45/v4/v4-2-markenrest` | Analyse 2026-11-20 (V4-Integrationsstand); PT sind Schätzung der Analyse, nicht belegt. Stand 2026-11-20: umgesetzt auf Branch acc45/v4/v4-2-markenrest (PR gegen integration/release-v4, nicht gemergt); Abhängigkeiten V4-1/WP-40 laut SSOT offen, Umsetzung auf Auftrag. Rest: Glas ohne Rückfall in 6 Ansichtsdateien (Inline, V4-3a/b); Marketingreihe marketing/posts in V3-Palette ohne C-Logo (Designentscheidung, nur gemeldet). |
 | DEP-1 Abhängigkeit: web-push 4 Migration | REVIEW | `acc45/dep/dep-1-web-push-4` | Quelle: Bewertung offener Dependabot-PRs #400 bis #407 vom 2026-11-20 (nur lesend erhoben, Basis integration/release-v4 @ 105f6c83); Aufwand ist eine SCHÄTZUNG der Bewertung, nicht belegt. Der Dependabot-PR wird nicht geschlossen; Schließen entscheidet der Betreiber. Befund: web-push 4.0.0 hat nur benannte Exporte; server/lib/webpush.mjs:62-64 nutzt webpush.default.setVapidDetails, mit v4 ein TypeError, den das catch still zu {ok:false, klasse:temporaer, fehler:netz} macht (Push würde lautlos nie zugestellt). CI bleibt grün, weil pruefungen/mail-push-anbieter.test.js:23 web-push mit { default: {...} } mockt. pushziel.mjs (Review S1) begründet den Parser-Gleichlauf mit url.parse in 3.6.x; v4 nutzt new URL, Begründung und sicherheit-intern.test.js neu bewerten (SI-01). Neue transitive Abhängigkeit proxy-agent-negotiate 1.1.0 prüfen. Ohne VAPID-Schlüssel endet sendePush vor dem Import (trocken), daher aktuell kein sichtbarer Schaden. Aufwand SCHÄTZUNG 0,5 bis 1 PT plus Sicherheitsreview (Opus). Dependabot-PR #404, nicht mergen (funktionaler Defekt); Schließen entscheidet der Betreiber. |
 | DEP-2 Abhängigkeit: Vitest 5 Migration | REVIEW | `acc45/dep/dep-2-vitest-5` | Quelle: Bewertung offener Dependabot-PRs #400 bis #407 vom 2026-11-20 (nur lesend erhoben, Basis integration/release-v4 @ 105f6c83); Aufwand ist eine SCHÄTZUNG der Bewertung, nicht belegt. Der Dependabot-PR wird nicht geschlossen; Schließen entscheidet der Betreiber. Vitest 5 entfernt die sequential-Optionen (zugunsten von concurrent); der Lauf von PR #405 scheitert mit describe.sequential is not a function in abnahme-a-ablauf.test.js:115, die rund 190 Folgeschritte wurden übersprungen (der Lauf belegt nichts über den Rest der Suite). Betroffen: 12 Stellen in 6 Dateien (abnahme-a-ablauf, erstleitung-abbruch, erstleitung-betreiber-put, erstleitung-entscheidungen, erstleitung, konto-parallel). Node 22 und Vite 6.4.5 passen. Aufwand SCHÄTZUNG 0,5 bis 1 PT. Opus-Review Pflicht (Prüfwerkzeug, kritischer Pfad). Dependabot-PR #405, nicht mergen. |
+| REL-0 VPS-Zugang und Inventur: Forced-Command-Zugang nur für deploy/inventur.sh, lesende Produktionsinventur V-1 bis V-9 | REVIEW | `acc45/release/vps-zugang-inventur` | Betreiberhandlung offen: Abschnitte 0 bis 5 der Anleitung (Schlüssel erzeugen, Bestandsaufnahme in der IONOS-Remotekonsole, eine Zeile in authorized_keys anhängen, Skript mit Prüfsumme installieren, Negativproben, Inventur ablegen). Kein Zugriff auf den VPS durch Agenten. Entscheidungsfragen E-1 bis E-5 in der Anleitung (Variante A empfohlen; Ablage im öffentlichen Repository nur als Zusammenfassung empfohlen). Deployment-Zugang bleibt getrennt (DEPLOY-AUTOMATISIERUNG §2.5). |
 
 ### Bereit zum Start (0)
 
@@ -327,6 +328,7 @@ WP-40 (acc45, 1,5–2,25 PT offen) · WP-28b (folge, 0,5–1 PT offen) · WP-I4 
 | V4-2 | REVIEW | ✓ | ✓ | – | – | – | – | – |
 | DEP-1 | REVIEW | ✓ | ✓ | – | – | – | – | – |
 | DEP-2 | REVIEW | ✓ | ✓ | – | – | – | – | – |
+| REL-0 | REVIEW | ✓ | ✓ | – | – | – | – | – |
 <!-- AUTO:END -->
 
 ## Klärungen und Widersprüche (2026-11-03)

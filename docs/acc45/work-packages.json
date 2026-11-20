@@ -1,22 +1,22 @@
 {
   "schema": 2,
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
-  "anzahl": 234,
+  "anzahl": 235,
   "statusZaehlung": {
     "BLOCKED": 90,
     "READY": 16,
     "IN_PROGRESS": 18,
-    "REVIEW": 10,
+    "REVIEW": 11,
     "INTEGRATED": 97,
     "DONE": 3
   },
   "jeStrang": {
     "acc45": {
-      "pakete": 118,
-      "offen": 38,
+      "pakete": 119,
+      "offen": 39,
       "restPT": {
-        "min": 61.3,
-        "max": 104.75
+        "min": 61.4,
+        "max": 104.95
       }
     },
     "wp19": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 332.55,
-    "max": 570.6500000000001
+    "min": 332.65000000000003,
+    "max": 570.8500000000001
   },
   "kritischerPfad": {
     "summe": 70,
@@ -6728,6 +6728,34 @@
       "tests": "Lint",
       "dateien": "eslint.config.js, package.json",
       "notiz": "Quelle: Bewertung offener Dependabot-PRs #400 bis #407 vom 2026-11-20 (nur lesend erhoben, Basis integration/release-v4 @ 105f6c83); Aufwand ist eine SCHÄTZUNG der Bewertung, nicht belegt. Der Dependabot-PR wird nicht geschlossen; Schließen entscheidet der Betreiber. Blockiert durch Upstream: eslint-plugin-react 7.37.5 (aktuelle latest) unterstützt ESLint 10 nicht (Peer eslint bis ^9.7); dazu @eslint/js ^9 und eslint-plugin-react-hooks 5.2.0. PR #407 scheitert mit ERESOLVE bei npm ci. Flat Config ist bereits vorhanden. ESLint 10 bringt viele neue transitive Pakete (cacheable, keyv, hookified, u. a.) mit neuen Maintainer-Kreisen, vor Aufnahme prüfen. Aufwand SCHÄTZUNG 0,5 bis 1 PT. Aufnahme, sobald das Plugin ESLint 10 unterstützt. Dependabot-PR #407; Schließen entscheidet der Betreiber."
+    },
+    {
+      "id": "REL-0",
+      "titel": "VPS-Zugang und Inventur: Forced-Command-Zugang nur für deploy/inventur.sh, lesende Produktionsinventur V-1 bis V-9",
+      "strang": "acc45",
+      "prio": "P1",
+      "aufwandPT": {"min":0.5,"max":1},
+      "abhaengigkeiten": [],
+      "status": "REVIEW",
+      "stufen": {
+        "implementiert": {"wert":true,"beleg":"Branch acc45/release/vps-zugang-inventur: deploy/inventur.sh (lesend, Forced Command, Maskierung in zwei Schichten), docs/acc45/VPS-ZUGANG-EINRICHTUNG.md (Abschnitte 0 bis 6, Varianten A/B), pruefungen/inventur-skript.test.js"},
+        "lokalGetestet": {"wert":true,"beleg":"pruefungen/inventur-skript.test.js 20/20 grün unter Git Bash (Windows), --maxWorkers=1; rot vorher: Mutation cat .env + docker pull + Umlenkung ließ 10 Fälle scheitern; bash -n grün; shellcheck lokal nicht vorhanden, läuft in CI (Betrieb: Deploy-Skripte, deploy/*.sh)"},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": "acc45/release/vps-zugang-inventur",
+      "agent": null,
+      "modell": "opus",
+      "konfliktzonen": ["package.json"],
+      "pr": [],
+      "nachweis": "docs/acc45/VPS-ZUGANG-EINRICHTUNG.md; pruefungen/inventur-skript.test.js",
+      "akzeptanz": "Skript liest nur (keine Schreibbefehle, nur erlaubte Docker-Unterbefehle, genau ein fester docker exec für /gesund), gibt nie .env-Werte, Schlüsselkörper, E-Mail, Adressen oder Tokens aus, fail-soft je Abschnitt; Forced Command weist andere Befehle ab; Anleitung mit Befehl, Erwartung, Weiter-nur-wenn und Rückweg je Schritt; Prüfsumme in der Anleitung = Datei; Betreiber richtet den Zugang ein und legt die Inventur ab",
+      "tests": "Unit (Bash gegen Docker-Stub), Quelltext-Wächter",
+      "dateien": "deploy/inventur.sh, docs/acc45/VPS-ZUGANG-EINRICHTUNG.md, pruefungen/inventur-skript.test.js, package.json (pruefung:querschnitt)",
+      "notiz": "Betreiberhandlung offen: Abschnitte 0 bis 5 der Anleitung (Schlüssel erzeugen, Bestandsaufnahme in der IONOS-Remotekonsole, eine Zeile in authorized_keys anhängen, Skript mit Prüfsumme installieren, Negativproben, Inventur ablegen). Kein Zugriff auf den VPS durch Agenten. Entscheidungsfragen E-1 bis E-5 in der Anleitung (Variante A empfohlen; Ablage im öffentlichen Repository nur als Zusammenfassung empfohlen). Deployment-Zugang bleibt getrennt (DEPLOY-AUTOMATISIERUNG §2.5)."
     }
   ]
 }
