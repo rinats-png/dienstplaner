@@ -39,7 +39,7 @@ describe("B-P2: Offline-Hinweis auch in der Telefonschale", () => {
     m.personen = [...(m.personen || []), ich];
     const sitz = { rolle: "mitarbeiter", db: { mandanten: [m] }, mandant: m, person: ich };
     const akt = new Proxy({}, { get: () => () => {} });
-    const geholt = new Date(Date.now() - 5 * 60000).toISOString();
+    const geholt = new Date(Date.now() - 5 * 60000).toISOString();   // zeit-ok: relativer Zeitstempel (jetzt minus 5 Min) nur für die Anzeige „vor 5 Minuten“, keine Kalenderabhängigkeit
     const mit = renderToStaticMarkup(h(M.MobilSchale, { sitz, akt, dialoge: null, aufRechner: () => {},
       hinweise: h(L.Offlineleiste, { lage: { geholt } }) }));
     const t = text(mit);
