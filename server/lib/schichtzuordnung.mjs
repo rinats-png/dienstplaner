@@ -32,6 +32,14 @@
 import { einheitAm, einheitDienst } from "./fachpruefung.mjs";
 import { abgeschlosseneMonate, monatText } from "./monatsabschluss.mjs";
 
+/** Stabile Codes der inhaltlichen Absagen (403) des Schreibwegs: SCHICHTMODELL_<Code der Prüfung>, etwa
+    SCHICHTMODELL_UEBERSCHNEIDUNG, SCHICHTMODELL_RUECKWIRKEND, SCHICHTMODELL_DIENSTART_VERWENDET. Die Oberfläche
+    (src/speicher.js) erkennt die Absage am Präfix, nicht am Text (Folgepunkt 1 aus PR #423). */
+export const SCHICHTMODELL_CODE_PRAEFIX = "SCHICHTMODELL_";
+/** Der 403-Code zu einem Prüfcode (unbekannt oder leer: SCHICHTMODELL_ABGEWIESEN). @param {unknown} code */
+export const schichtmodellAbsageCode = (code) => SCHICHTMODELL_CODE_PRAEFIX
+  + (typeof code === "string" && /^[A-Z_]{1,40}$/.test(code) ? code : "ABGEWIESEN");
+
 /** Kennung des bisherigen Betriebsmodells (m.zyklus); reserviert, nie Kennung eines eigenen Modells. */
 export const BETRIEB_MODELL = "betrieb";
 export const ZUORDNUNG_FELD = "schichtmodellZuordnungen";

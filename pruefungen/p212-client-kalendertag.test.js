@@ -127,7 +127,9 @@ describe("Leiste „nicht gespeichert“", () => {
   });
   it("Differenz: die übrigen Lagen zeigen weder Bereichszeile noch Verwerfen-Knopf", async () => {
     const { SPEICHERLAGE } = await rendern(null);
-    for (const art of Object.keys(SPEICHERLAGE).filter((a) => a !== "kalendertag")) {
+    /* IMP-6 Oberfläche: „schichtmodell“ ist die zweite Lage mit Verwerfen-Weg und Bereichszeile (gleiche Begründung wie
+       hier: ein zweiter Versuch schickte denselben Stand); geprüft in pruefungen/imp6-oberflaeche.test.js (C5). */
+    for (const art of Object.keys(SPEICHERLAGE).filter((a) => a !== "kalendertag" && a !== "schichtmodell")) {
       const { html } = await rendern({ art, text: "XQZ-Lagetext", status: 500, zeit: "2026-03-01T08:00:00.000Z" });
       expect(html, art).not.toContain("Änderungen verwerfen und neu laden");
       expect(html, art).not.toContain("Bereich:");

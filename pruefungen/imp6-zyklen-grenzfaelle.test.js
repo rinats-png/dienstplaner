@@ -263,8 +263,11 @@ describe("D. Differenz alt/neu: Altbestand rechnet mit genau einem Modell je Per
 describe("D2. Wächter: nur bekannte Module lesen Zuordnungen und Modelldefinitionen (Quelltextsuche)", () => {
   /* Wer die Zuordnung in die Planrechnung bringt, schaltet die Planwirkung ein (P2-4 Punkt 6) und muss vorher Punkt 8
      (Wiederherstellen) lösen — dann diese Liste bewusst erweitern und die Differenzprüfung D umstellen. */
+  /* IMP-6 Oberfläche (bewusste Erweiterung, keine Planwirkung): src/lib/schichtmodelle-pflege.js ist die einzige Stelle der
+     Oberfläche, die die Felder nennt (Pflege: Entwurf prüfen, Feld setzen, Lage anzeigen). Ansicht und Aktionen gehen nur
+     über sie; dass weder sie noch die Planrechnung (fachlogik.js) einander nutzen, prüft imp6-oberflaeche E3. */
   const ERLAUBT = ["server/lib/schichtzuordnung.mjs", "server/lib/rechte.mjs", "server/lib/sicht.mjs", "server/funktionen/daten.mjs",
-    "server/lib/import/schichtvorschau.mjs"];
+    "server/lib/import/schichtvorschau.mjs", "src/lib/schichtmodelle-pflege.js"];
   const wurzel = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
   const dateien = (rel) => readdirSync(path.join(wurzel, rel)).flatMap((n) => {
     const r = `${rel}/${n}`;

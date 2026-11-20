@@ -7,11 +7,12 @@
    ändern). Alle axe-Läufe einer Seite gehen über eine Kette, damit sich Streifen- und Seitenscan nicht überschneiden.
    Der Konfliktdialog „Gleichzeitig bearbeitet“ lässt den Test mit genau dieser Meldung scheitern. */
 import { test as basis, expect } from "@playwright/test";
+import { herkunftFuerTest, codeSchluessel } from "./herkunft.mjs";
 import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { AXE_GATE, AXE_TAGS, ZUGAENGE_VAR } from "./umgebung.mjs";
+import { AXE_GATE, AXE_TAGS, ZUGAENGE_VAR, ZUGANG_POOL } from "./umgebung.mjs";
 import { uhrVersetzen, versatzMs } from "./zeitbasis.mjs";
 
 const HIER = path.dirname(fileURLToPath(import.meta.url));
@@ -51,9 +52,8 @@ function seitenBeobachter(tags) {
  *  Bremsen je Herkunft die ganze Suite als einen Besucher. Der Server vertraut 127.0.0.1 als Proxy (global-setup.mjs). */
 export const test = basis.extend({
   page: async ({ page }, use, testInfo) => {
-    let h = 7;
-    for (const z of `${testInfo.testId}:${testInfo.retry}`) h = (h * 31 + z.charCodeAt(0)) >>> 0;
-    await page.context().setExtraHTTPHeaders({ "x-forwarded-for": `10.33.${(h >> 8) % 240}.${(h % 254) + 1}` });
+    /* Befund CI #423: früher mit Vorzeichen gerechnet, ungültige Adressen fielen auf 127.0.0.1 zurück (e2e/herkunft.mjs). */
+    await page.context().setExtraHTTPHeaders({ "x-forwarded-for": herkunftFuerTest(testInfo.testId, testInfo.retry) });
     page.setDefaultTimeout(15000);
     page.on("dialog", (d) => d.accept().catch(() => {}));
     await page.addInitScript(uhrVersetzen, versatzMs());            // QS-ZEIT: Browseruhr = Serveruhr (e2e/zeitbasis.mjs)
@@ -92,11 +92,16 @@ async function meldungenAuswerten(page, testInfo) {
   expect(probleme, `axe WCAG 2.2 AA auf Meldungsstreifen @ ${viewport}: serious/critical (keine Ausnahmen)`).toEqual([]);
 }
 
-function code(rolle) {
+/** Zugangscode der Rolle für den laufenden Test: einer aus dem Pool der Rolle, stabil je Test (Befund CI #423, Lastbremse je
+    Code; umgebung.mjs ZUGANG_POOL). Außerhalb eines Tests der Rollenzugang. */
+export function zugangscode(rolle) {
   const alle = JSON.parse(process.env[ZUGAENGE_VAR] || "{}");
   if (!alle[rolle]) throw new Error(`Kein Testzugang für ${rolle} (global-setup.mjs gelaufen?)`);
-  return alle[rolle];
+  let id = "";
+  try { id = basis.info().testId; } catch { /* nicht in einem Test */ }
+  return alle[codeSchluessel(alle, rolle, id, id ? ZUGANG_POOL : 1)];
 }
+const code = zugangscode;
 
 async function tourZu(page) {
   for (const zu of ['[aria-label="Tour schließen"]', 'button:has-text("Später")', 'button:has-text("Tour überspringen")']) {
