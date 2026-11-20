@@ -17,7 +17,7 @@
    Oberfläche, die C.text, C.accent … liest, unverändert weiterläuft. Die
    Verlaufs- und Kopfzeilenwerte sind Deckkräfte, deren Kontrast
    pruefungen/kontrast.test.js und v4-tokens.test.js nachrechnen. */
-import { v4AlsAltePalette } from "./v4/tokens.js";
+import { v4AlsAltePalette, v4AvatarPaare } from "./v4/tokens.js";
 
 const C = { ...v4AlsAltePalette("hell") };
 const C_DUNKEL = v4AlsAltePalette("dunkel");
@@ -28,23 +28,18 @@ const C_DUNKEL = v4AlsAltePalette("dunkel");
    erzwingt den Neuaufbau. */
 const C_HELL = { ...C };
 
-/* Namenszeichen (Avatar): acht Paare aus der Palette — Fläche ist die
-   Tönung, Schrift die Volltönung, jedes Paar ≥ 4,5:1 (kontrast.test.js).
-   Im Dunkelmodus dunkle Tönung mit heller Schrift. Die Paare stehen hier
-   und nicht in der Oberfläche, damit keine Farbe außerhalb dieser Datei
-   erfunden wird. Reihenfolge: [Fläche, Schrift]. */
-const AVATAR_HELL = [
-  ["#DFF0F0", "#017070"], ["#E4EDF1", "#316C81"], ["#DFF0F0", "#023441"], ["#FFE0C0", "#955410"],
-  ["#DFEFE7", "#0E6B45"], ["#E4E9F1", "#35506B"], ["#ECEAF3", "#4C4668"], ["#DFEFE7", "#2E6B4F"],
-];
-const AVATAR_DUNKEL = [
-  ["#13292C", "#3FBFBF"], ["#152A33", "#7FC4DC"], ["#13292C", "#7FE0E0"], ["#2A2013", "#F0B060"],
-  ["#0F2620", "#4ADE9B"], ["#16222E", "#8FB1D4"], ["#1E1B2C", "#B5AEDB"], ["#122820", "#7FD1A6"],
-];
+/* Namenszeichen (Avatar): acht Paare aus den V4-Tokens (v4AvatarPaare) —
+   Fläche ist eine Tönung, Schrift die Volltönung, jedes Paar ≥ 4,5:1
+   (kontrast.test.js). Im Dunkelmodus dunkle Tönung mit heller Schrift.
+   V4-2: vorher standen hier eigene V3-Töne. Reihenfolge: [Fläche, Schrift]. */
+const AVATAR_HELL = v4AvatarPaare("hell");
+const AVATAR_DUNKEL = v4AvatarPaare("dunkel");
+/** Gilt gerade das dunkle Erscheinungsbild? (Einstieg und Anwendung schreiben beide in C.) */
+const dunkelAktiv = () => C.bg === C_DUNKEL.bg;
 /** Die Paare des gerade gültigen Erscheinungsbildes. */
-const avatarToene = () => (C.bg === C_DUNKEL.bg ? AVATAR_DUNKEL : AVATAR_HELL);
+const avatarToene = () => (dunkelAktiv() ? AVATAR_DUNKEL : AVATAR_HELL);
 
-export { C, C_DUNKEL, C_HELL, AVATAR_HELL, AVATAR_DUNKEL, avatarToene };
+export { C, C_DUNKEL, C_HELL, AVATAR_HELL, AVATAR_DUNKEL, avatarToene, dunkelAktiv };
 
 /* Die Palette als CSS-Variablen. Sie erreichen Stellen, an die ein
    JavaScript-Objekt nicht kommt: Bildlaufleisten, Auswahlfelder und die

@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { C } from "../farben.js";
+import { C, dunkelAktiv } from "../farben.js";
 import { Icon } from "./icons.jsx";
 import { Menue } from "./bausteine.jsx";
-import { Marke } from "../marke.jsx";
+import { Marke, Wortmarke } from "../marke.jsx";
 import { SEITENLEISTE_ID } from "../ui/geraete.js";
 
 /* ==========================================================================
@@ -105,7 +105,7 @@ export function Kopfblock({
 
         <div className="kopf-marke" title={betrieb}>
           <Bildmarke size={26} />
-          <span className="wort">CENTRIC</span>
+          <span className="wort"><Wortmarke hell={dunkelAktiv()} hoehe={13} /></span>
           {betrieb && <><span className="trenner" aria-hidden="true" /><span className="betrieb">{betrieb}</span></>}
         </div>
 

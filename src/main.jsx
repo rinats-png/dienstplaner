@@ -3,9 +3,9 @@ import { createRoot } from "react-dom/client";
 import App from "./App.jsx";
 import * as SP from "./speicher.js";
 import "./schrift.css";
-import { C } from "./farben.js";
+import { C, dunkelAktiv } from "./farben.js";
 import { RechtFenster, RechtLeiste } from "./rechtstexte.jsx";
-import { Marke } from "./marke.jsx";
+import { Marke, Wortmarke } from "./marke.jsx";
 import Startbild from "./startbild.jsx";
 import { ANWENDUNG_URL } from "./kontakt.js";
 import Ringregler from "./ringregler.jsx";
@@ -58,7 +58,7 @@ const Markenzeile = () => (
   <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 36 }}>
     <Marke data-marke-ziel="" />
     <div>
-      <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: ".14em" }}>CENTRIC</div>
+      <Wortmarke hell={dunkelAktiv()} hoehe={16} style={{ margin: "4px 0 3px" }} />
       <div style={{ fontSize: 13, color: C.dim, marginTop: 2 }}>Dienstplanung im Schichtbetrieb</div>
     </div>
   </div>);

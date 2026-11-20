@@ -6,7 +6,7 @@ import { positionHolen, stempelVorgang, geoPruefungAn, MARKIERUNG_TEXT, koordMit
 import { nachtschwelle, nachtAnteil, einheitAm } from "../../server/lib/fachpruefung.mjs";
 import { verknuepfungAnwenden } from "../verknuepfung.js";
 import { pad, addDays, dow, between, dim_, dauer } from "../regelwerk.js";
-import { C } from "../farben.js";
+import { C, dunkelAktiv } from "../farben.js";
 import { klickbar, Rubrik, Schalter, Btn, Inp, Sel, Field, Seg, Pill } from "../ui/bausteine.jsx";
 import { lesbar, NUM } from "../ui/thema.js";
 import { useDialogFokus } from "../ui/dialogfokus.js";
@@ -30,6 +30,7 @@ import { darfSelbstEintragen, laufendeRunde, selbstplanStand } from "../lib/selb
 import { NOTRUF_ARTEN } from "../lib/notrufe.js";
 import { NAV_BETREIBER, NAV_KUNDE, ansichtErlaubt } from "../app/navigation.js";
 import { Logo } from "../ui/logo.jsx";
+import { Wortmarke } from "../marke.jsx";
 import { urlaubAntragFehler } from "../lib/antragpruefung.js";
 import { Fehlerband } from "../gestalt/ansichten.jsx";
 import { KrankmeldungenOffen } from "./krankmeldungen-offen.jsx";
@@ -629,7 +630,7 @@ export function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge, startTab, 
     <div className="m-schale">
       <header className="m-kopf">
         <Logo size={24} />
-        <span className="m-wort">CENTRIC</span>
+        <span className="m-wort"><Wortmarke hell={dunkelAktiv()} hoehe={12} alt="" /></span>
         <button onClick={() => oeffnen("post")} className="m-postknopf"
           aria-label={`Mitteilungen${ungelesen ? `, ${ungelesen} ungelesen` : ""}`}>
           <Icon n="brief" size={19} />
