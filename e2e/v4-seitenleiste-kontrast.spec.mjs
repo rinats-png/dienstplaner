@@ -43,6 +43,21 @@ async function messen(page, selektor) {
   }, selektor);
 }
 
+/** Wo liegt der Fokus, und was könnte ihn halten? (aktives Element, Schublade, offene Dialoge, Fensterfokus) */
+async function fokusZustand(page) {
+  return page.evaluate(() => {
+    const a = document.activeElement;
+    const leiste = document.querySelector(".seitenleiste");
+    return {
+      aufAktiv: !!a && a.matches(".seitenleiste .slink.on"),
+      aktiv: a ? `${a.tagName.toLowerCase()}${a.className ? "." + String(a.className).trim().split(/\s+/).join(".") : ""}` : null,
+      leiste: leiste ? { klasse: leiste.className, sichtbar: getComputedStyle(leiste).visibility } : null,
+      dialoge: [...document.querySelectorAll('[aria-modal="true"]')].map((d) => (d.getAttribute("aria-label") || d.textContent || "").trim().slice(0, 60)),
+      fensterFokus: document.hasFocus(),
+    };
+  });
+}
+
 test.describe("V4-2c: Seitenleisten-Einträge in der Schublade (390 px)", () => {
   test.setTimeout(150_000);
   for (const [thema, system] of FAELLE) {
@@ -59,10 +74,22 @@ test.describe("V4-2c: Seitenleisten-Einträge in der Schublade (390 px)", () => 
       await taste.focus();
       await page.keyboard.press("Enter");
       await expect(page.locator(".seitenleiste.offen")).toBeVisible();
+      /* Bedingung statt Pause: Die Schublade ist erst fokussierbar, wenn ihre berechnete Sichtbarkeit „visible“ ist
+         (ui/geraete.js: visibility mit Übergang). */
+      await expect.poll(() => page.evaluate(() => getComputedStyle(document.querySelector(".seitenleiste")).visibility),
+        { timeout: 10000, message: "Schublade sichtbar" }).toBe("visible");
       const aktiv = ".seitenleiste .slink.on";
-      /* Die App setzt den Fokus beim Öffnen selbst; liegt er (noch) nicht dort, setzt ihn der Test. Letzte Eingabe war die
-         Tastatur, daher gilt :focus-visible (unten geprüft). */
-      if (!(await page.locator(aktiv).evaluate((e) => e === document.activeElement))) await page.locator(aktiv).focus();
+      /* Fokus auf den aktiven Eintrag: Die App setzt ihn beim Öffnen selbst (seitenleisteFokus). Liegt er nicht dort, setzt
+         ihn der Test, nach einer Tastenbetätigung (Tastatur-Modalität, damit :focus-visible gilt; unten geprüft). Wiederholt
+         bis zur Zeitgrenze; im Fehlerfall nennt die Meldung das aktive Element und offene Dialoge (CI-Befund #430). */
+      let versuch = 0;
+      await expect.poll(async () => {
+        const z = await fokusZustand(page);
+        /* Beleg im Lauf-Log (CI-Befund #430: lokal grün, in CI „inactive“): Zustand je Versuch, solange nicht am Ziel. */
+        if (!z.aufAktiv && versuch < 5) console.log(`V4-2c Fokus ${thema} Versuch ${++versuch}: ${JSON.stringify(z)}`);
+        if (!z.aufAktiv) { await page.keyboard.press("Shift"); await page.locator(aktiv).focus().catch(() => {}); }
+        return fokusZustand(page);
+      }, { timeout: 15000, message: "Fokus auf dem aktiven Eintrag" }).toMatchObject({ aufAktiv: true });
       await expect(page.locator(aktiv)).toBeFocused();
       const t = V4_FARBEN[thema];
       const an = await messen(page, aktiv);
