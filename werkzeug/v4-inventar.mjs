@@ -10,6 +10,7 @@
      node werkzeug/v4-inventar.mjs              Kurzfassung (Zählstand)
      node werkzeug/v4-inventar.mjs --markdown   Tabellen für docs/acc45/V4-INVENTAR.md
      node werkzeug/v4-inventar.mjs --json       vollständige Daten
+     node werkzeug/v4-inventar.mjs --streng     Exit 1 bei Datei ohne ZUORDNUNG oder verschwundener Datei im Dokument
    Test: pruefungen/v4-inventar.test.js (npm run pruefung:querschnitt).
    ========================================================================== */
 import { readFileSync, readdirSync, existsSync } from "node:fs";
@@ -41,11 +42,12 @@ export const FAMILIEN = {
   betreiber: "Betreiberkonsole",
   website: "Öffentliche Website",
   querschnitt: "Querschnitt (Baustein, Schale, Dialog)",
+  offen: "Nicht zugeordnet (neue Datei, ZUORDNUNG ergänzen)",
 };
 
 /**
  * Familie und Zweck je Datei. Zuordnung ist ein Urteil (Dateiname, Exporte, Navigation), keine Messung.
- * Fehlt eine Datei hier, meldet der Test sie (neue Ansicht = Inventar ergänzen).
+ * Fehlt eine Datei hier, bekommt sie die Familie „offen“; der Test warnt, `--streng` endet mit Exit 1.
  */
 export const ZUORDNUNG = {
   "src/App.jsx": ["querschnitt", "Anwendungsschale: Navigation, Ansichtswahl, Dialogblock, Stil"],
@@ -463,7 +465,7 @@ export async function inventar() {
     const text = texte.get(datei);
     const k = kennzahlen(text, V4_APP_KLASSEN);
     const tokens = gruppe === "V4" ? "Quelle" : tokenStufe(k);
-    const zu = ZUORDNUNG[datei] || (QUERSCHNITT_ORT.test(datei) ? ["querschnitt", null] : [null, null]);
+    const zu = ZUORDNUNG[datei] || (QUERSCHNITT_ORT.test(datei) ? ["querschnitt", null] : ["offen", null]);
     const ids = routen.get(datei) || [];
     let rollenSicht, rollenArt;
     if (QUERSCHNITT_ORT.test(datei)) { rollenSicht = []; rollenArt = "Querschnitt"; }
@@ -522,7 +524,7 @@ export function zusammenfassung(inv) {
     zeilen: summe((x) => x.zeilen),
     jeGruppe,
     jeFamilie,
-    ohneFamilie: e.filter((x) => !x.familie).map((x) => x.datei),
+    ohneFamilie: e.filter((x) => !ZUORDNUNG[x.datei]).map((x) => x.datei),
     navigationseintraege: inv.navAnzahl,
     gerouteteAnsichten: inv.appAnsichten.length,
     tokens,
@@ -575,6 +577,7 @@ export function alsMarkdown(inv) {
   const fams = [...Object.keys(FAMILIEN)];
   for (const fam of fams) {
     const e = inv.eintraege.filter((x) => x.familie === fam);
+    if (fam === "offen" && !e.length) continue;
     zeilen.push(`### ${FAMILIEN[fam]} (${e.length})`, "");
     if (!e.length) { zeilen.push("Keine Datei im App-Repository.", ""); continue; }
     zeilen.push("| Datei | Zweck | Rollen (Art) | Tokens | V4-Bst. | rgb/hex | Overlay | Inline | Glas o. R. | aria+role | Dialog | Zustand | Tests | Aufwand |");
@@ -588,8 +591,32 @@ export function alsMarkdown(inv) {
   return zeilen.join("\n");
 }
 
+/** Dateinamen aus den Tabellen des Inventardokuments (Pfade relativ zu src/). */
+export function dokumentDateien(text) {
+  return [...String(text).matchAll(/^\| ((?:ansichten|module|ui|gestalt|v4)\/[^ |]+|[A-Za-z0-9-]+\.jsx) \|/gm)].map((m) => `src/${m[1]}`);
+}
+
+/**
+ * Strenge Befunde für V4-Wellen und Koordinator (im Test nur Warnung):
+ * Dateien ohne ZUORDNUNG und im Dokument genannte, aber verschwundene Dateien.
+ */
+export function strengeBefunde(inv, dokText, gibtEs = (d) => existsSync(join(WURZEL, d))) {
+  return {
+    ohneZuordnung: inv.eintraege.filter((x) => !ZUORDNUNG[x.datei]).map((x) => x.datei),
+    verschwundenImDokument: dokumentDateien(dokText).filter((d) => !gibtEs(d)),
+  };
+}
+export const strengerAusgang = (b) => (b.ohneZuordnung.length || b.verschwundenImDokument.length ? 1 : 0);
+
 async function hauptprogramm(argv) {
   const inv = await inventar();
+  if (argv.includes("--streng")) {
+    const pfad = join(WURZEL, "docs/acc45/V4-INVENTAR.md");
+    const b = strengeBefunde(inv, existsSync(pfad) ? readFileSync(pfad, "utf8") : "");
+    console.log(JSON.stringify(b, null, 1));
+    process.exitCode = strengerAusgang(b);
+    return;
+  }
   if (argv.includes("--json")) { console.log(JSON.stringify({ zusammenfassung: zusammenfassung(inv), ...inv }, null, 1)); return; }
   if (argv.includes("--markdown")) { console.log(alsMarkdown(inv)); return; }
   console.log(JSON.stringify(zusammenfassung(inv), null, 1));

@@ -6318,7 +6318,7 @@
       "abhaengigkeiten": ["V4-0"],
       "status": "IN_PROGRESS",
       "stufen": {
-        "implementiert": {"wert":true,"beleg":"docs/acc45/V4-INVENTAR.md, werkzeug/v4-inventar.mjs (Branch docs/v4-1-inventar)"},
+        "implementiert": {"wert":"teilweise","beleg":"Inventar ja (docs/acc45/V4-INVENTAR.md, werkzeug/v4-inventar.mjs), Baseline nur Plan (kein Bildvergleich)"},
         "lokalGetestet": {"wert":true,"beleg":"pruefungen/v4-inventar.test.js (13 Tests, lokal grün; in pruefung:querschnitt)"},
         "reviewt": {"wert":false,"beleg":null},
         "integriert": {"wert":false,"beleg":null},

@@ -2,9 +2,11 @@
    V4-1: Inventar der Oberflächendateien (werkzeug/v4-inventar.mjs, docs/acc45/V4-INVENTAR.md).
 
    Geprüft: die Zählfunktionen an kleinen Beispielen (auch Gegenproben), die Ableitung von Ansicht → Datei aus App.jsx,
-   die Rollenordnung, Determinismus des Gesamtlaufs, Vollständigkeit der Familienzuordnung (eine neue Oberflächendatei
-   ohne Zuordnung macht diese Prüfung rot: Inventar ergänzen) und dass das Inventardokument keine verschwundenen Dateien
-   nennt. Rein lesend: kein Netz, keine Uhr, keine Kindprozesse.
+   die Rollenordnung, Determinismus des Gesamtlaufs, Nenner-Invariante, keine toten ZUORDNUNG-Einträge.
+   Nur Warnung (console.warn), nicht rot: neue Oberflächendatei ohne ZUORDNUNG (Familie „offen“) und im Dokument
+   genannte, inzwischen verschwundene Datei (das Dokument ist ein datierter Schnappschuss). Hart prüfen das
+   `node werkzeug/v4-inventar.mjs --streng` (Exit 1) für V4-Wellen und Koordinator.
+   Rein lesend: kein Netz, keine Uhr, keine Kindprozesse.
    Aufruf: npx vitest run pruefungen/v4-inventar.test.js
    ========================================================================== */
 import { describe, it, expect } from "vitest";
@@ -13,7 +15,7 @@ import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   kennzahlen, tokenStufe, aufwandsklasse, ordneRollen, ansichtenAusApp, inventar, zusammenfassung, alsMarkdown,
-  ZUORDNUNG, FAMILIEN, dateiliste,
+  ZUORDNUNG, FAMILIEN, dateiliste, dokumentDateien, strengeBefunde, strengerAusgang,
 } from "../werkzeug/v4-inventar.mjs";
 import { NAV_KUNDE, NAV_BETREIBER } from "../src/app/navigation.js";
 
@@ -96,15 +98,24 @@ describe("Ansicht → Datei aus App.jsx", () => {
 });
 
 describe("Gesamtlauf", () => {
-  it("deterministisch, vollständig zugeordnet, ohne verwaiste Zuordnung", async () => {
+  it("deterministisch, ohne tote Zuordnung; ZUORDNUNG nennt nur Familien aus FAMILIEN", async () => {
     const a = await inventar(), b = await inventar();
     expect(alsMarkdown(a)).toBe(alsMarkdown(b));
     const z = zusammenfassung(a);
     expect(z.dateien).toBe(dateiliste().length);
-    expect(z.ohneFamilie, "neue Oberflächendatei: Familie/Zweck in ZUORDNUNG (werkzeug/v4-inventar.mjs) ergänzen").toEqual([]);
     for (const x of a.eintraege) expect(Object.keys(FAMILIEN), x.datei).toContain(x.familie);
-    for (const d of Object.keys(ZUORDNUNG)) expect(existsSync(join(WURZEL, d)), d).toBe(true);
-    for (const [fam] of Object.values(ZUORDNUNG)) expect(Object.keys(FAMILIEN)).toContain(fam);
+    for (const d of Object.keys(ZUORDNUNG)) expect(existsSync(join(WURZEL, d)), `tote Zuordnung: ${d}`).toBe(true);
+    for (const [fam] of Object.values(ZUORDNUNG)) {
+      expect(Object.keys(FAMILIEN)).toContain(fam);
+      expect(fam).not.toBe("offen");
+    }
+  });
+
+  it("neue Datei ohne Zuordnung: nur Warnung, Familie „offen“", async () => {
+    const inv = await inventar();
+    const ohne = zusammenfassung(inv).ohneFamilie;
+    if (ohne.length) console.warn(`V4-Inventar: ohne ZUORDNUNG (Familie „offen“, werkzeug/v4-inventar.mjs ergänzen): ${ohne.join(", ")}`);
+    for (const d of ohne) expect(inv.eintraege.find((x) => x.datei === d).familie).toBe("offen");
   });
 
   it("Anteile haben einen Nenner: Summe der Token-Stufen ist die Dateizahl", async () => {
@@ -117,12 +128,25 @@ describe("Gesamtlauf", () => {
 
 describe("Inventardokument", () => {
   const doc = lies("docs/acc45/V4-INVENTAR.md");
-  it("nennt Werkzeug und Test und keine verschwundene Datei", () => {
+  it("nennt Werkzeug und Test; verschwundene Dateien nur als Warnung (datierter Schnappschuss)", () => {
     expect(doc).toContain("werkzeug/v4-inventar.mjs");
     expect(doc).toContain("pruefungen/v4-inventar.test.js");
-    const genannt = [...doc.matchAll(/^\| ((?:ansichten|module|ui|gestalt|v4)\/[^ |]+|[A-Za-z0-9-]+\.jsx) \|/gm)].map((m) => `src/${m[1]}`);
+    const genannt = dokumentDateien(doc);
     expect(genannt.length).toBeGreaterThan(0);
-    for (const d of genannt) expect(existsSync(join(WURZEL, d)), d).toBe(true);
+    const weg = genannt.filter((d) => !existsSync(join(WURZEL, d)));
+    if (weg.length) console.warn(`V4-Inventar: im Dokument genannt, aber nicht mehr vorhanden: ${weg.join(", ")}`);
+  });
+
+  it("--streng: Exit 1 bei Datei ohne Zuordnung oder verschwundener Dokumentdatei, sonst 0", () => {
+    const inv = { eintraege: [{ datei: "src/ansichten/lagebild.jsx" }, { datei: "src/ansichten/neu-ohne.jsx" }] };
+    const dok = "| ansichten/lagebild.jsx | x |\n| ansichten/weg.jsx | y |\n| App.jsx | z |";
+    expect(dokumentDateien(dok)).toEqual(["src/ansichten/lagebild.jsx", "src/ansichten/weg.jsx", "src/App.jsx"]);
+    const gibtEs = (d) => d !== "src/ansichten/weg.jsx";
+    const b = strengeBefunde(inv, dok, gibtEs);
+    expect(b).toEqual({ ohneZuordnung: ["src/ansichten/neu-ohne.jsx"], verschwundenImDokument: ["src/ansichten/weg.jsx"] });
+    expect(strengerAusgang(b)).toBe(1);
+    expect(strengerAusgang(strengeBefunde({ eintraege: [{ datei: "src/ansichten/lagebild.jsx" }] }, "| ansichten/lagebild.jsx | x |", () => true))).toBe(0);
+    expect(strengerAusgang({ ohneZuordnung: [], verschwundenImDokument: ["src/x.jsx"] })).toBe(1);
   });
 
   it("keine Binärdateien als Bildbasis im Repository (Baseline liegt außerhalb)", () => {

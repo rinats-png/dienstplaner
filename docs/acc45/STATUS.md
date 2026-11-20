@@ -320,7 +320,7 @@ WP-40 (acc45, 1,5–2,25 PT offen) · WP-28b (folge, 0,5–1 PT offen) · WP-I4 
 | BE-2 | INTEGRATED | ✓ | ✓ | – | ✓ | – | – | – |
 | BE-3 | BLOCKED | T | T | – | T | – | – | – |
 | V4-0 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
-| V4-1 | IN_PROGRESS | ✓ | ✓ | – | – | – | – | – |
+| V4-1 | IN_PROGRESS | T | ✓ | – | – | – | – | – |
 <!-- AUTO:END -->
 
 ## Klärungen und Widersprüche (2026-11-03)

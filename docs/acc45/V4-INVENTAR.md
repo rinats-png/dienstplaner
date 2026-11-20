@@ -13,9 +13,12 @@ node werkzeug/v4-inventar.mjs --markdown   # Tabellen in Abschnitt 9
 node werkzeug/v4-inventar.mjs --json       # alle Daten je Datei
 ```
 
-Test: `pruefungen/v4-inventar.test.js` (in `npm run pruefung:querschnitt`). Er prüft die Zählfunktionen, die Zuordnung
-Ansicht → Datei, den Determinismus und dass jede Oberflächendatei eine Familie hat: eine neue Ansicht ohne Eintrag in
-`ZUORDNUNG` (werkzeug/v4-inventar.mjs) macht ihn rot. Damit bleibt das Inventar der Nenner.
+Test: `pruefungen/v4-inventar.test.js` (in `npm run pruefung:querschnitt`). Hart: Zählfunktionen mit Gegenproben,
+Zuordnung Ansicht → Datei, Determinismus, Nenner-Invariante, keine toten `ZUORDNUNG`-Einträge, jeder
+Navigationseintrag hat einen Ansichtszweig. Nur Warnung: eine neue Oberflächendatei ohne `ZUORDNUNG`-Eintrag (sie
+erscheint mit Familie „offen“) und eine im Abschnitt 9 genannte, inzwischen verschwundene Datei; dieses Dokument ist
+ein datierter Schnappschuss. Streng (Exit 1 bei beidem) für V4-Wellen und Koordinator:
+`node werkzeug/v4-inventar.mjs --streng`.
 
 ## 1. Umfang (Nenner) [belegt]
 
@@ -177,6 +180,20 @@ Je Welle kleine PRs (eine Familie oder ein Baustein), Konfliktzone `App.jsx` mit
 Zuordnung über die Beschriftung des Navigationseintrags ist dateigenau nur für geroutete Ansichten; für Dateien hinter
 derselben Beschriftung (z. B. Einladungen unter „Personal“) ist sie [vermutet]. WCAG-Status je Datei laut WP-40: nur
 „Testbezug ja/nein“ und Zahl der aria-/role-Attribute; eine WCAG-Bewertung je Datei gibt es nicht.
+
+## Grenzen des Werkzeugs (bekannte Risiken)
+
+- **App.jsx-Parser fragil:** Ansicht → Datei wird per Regex aus `aktiveView === "…" &&` und einem Fenster von
+  1 200 Zeichen gelesen. Ein Umbau von `App.jsx` in V4-3 (z. B. Ansichtstabelle statt Zweigen) kann die Zuordnung
+  brechen; der harte Test „jeder Navigationseintrag hat einen Ansichtszweig“ macht das sichtbar, dann Parser anpassen.
+- **Determinismus** ist nur im selben Prozess geprüft (zwei Läufe hintereinander), nicht über Betriebssysteme hinweg;
+  die Dateireihenfolge ist sortiert, die Zeilenenden werden auf LF gebracht.
+- **Groß-/Kleinschreibung:** `existsSync` ist unter Windows unabhängig davon; ein falsch geschriebener Pfad in
+  `ZUORDNUNG` fällt lokal nicht auf, erst in der CI (Linux).
+- **Kommentarentfernung** für Farbliterale ist ein Regex: `//` innerhalb einer Zeichenkette (ohne vorangestelltes
+  `:` oder Anführungszeichen) kann den Rest der Zeile abschneiden und ein Literal dort übersehen [vermutet: selten].
+- **Abhängigkeit:** Das Werkzeug importiert `src/app/navigation.js` (zieht `react` nach) und `src/lib/rollen.js`;
+  ohne `node_modules` (`npm ci`) läuft es nicht.
 
 ## 9. Volltabellen je Familie [belegt, erzeugt mit `--markdown`]
 
