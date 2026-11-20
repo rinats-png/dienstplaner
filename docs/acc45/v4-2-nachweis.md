@@ -181,3 +181,99 @@ eslint 0 Fehler (nur bestehende Warnungen), tsc 0. E2E (`E2E_PORT` frei gewählt
 14/14 (Projekte 390x844 und 1024x768).
 
 **Offen.** V4-2c (Kontrast `.slink.on`/`:hover` hell) bleibt eigenes Paket. Vollregression nur in CI.
+
+## 8. V4-2c — Kontrast der Seitenleisten-Einträge (`.slink`) hell und dunkel
+
+Basis `origin/integration/release-v4` 5876ff48 (Merge #426), Branch `acc45/v4/v4-2c-kontrast`.
+
+**Ursache (Code).** `src/v4/app-stil.js` setzte `.slink:hover` und `.slink.on` auf `var(--v4-glas)`. Das ist die
+Glasfläche des Inhalts (`V4_GLAS.*.flaeche`), nicht der Seitenleiste. Die Seitenleiste ist in beiden Themen dunkel, die
+Schrift ist weiß (`V4_SEITENLEISTE.schrift`). Hell: rgba(255,255,252,.72) über `#0e3034` = rgb(188,197,196) unter Weiß
+= **1,76:1**. Dunkel: 13,4:1, aber Hover und Aktiv waren dieselbe Fläche. Ab 1025 px ist die Seitenleiste ausgeblendet
+(`gestalt/stil.js`); der Befund war nur in der Schublade sichtbar. Geprüft werden trotzdem beide Layouts.
+
+**Test zuerst** (rot auf 5876ff48). Drei Fassungen des Unit-Tests, offen benannt:
+
+| Fassung | Kriterium Fokusring | auf Basis 5876ff48 | mit erstem Fix abb319e8 | Endstand |
+|---|---|---|---|---|
+| 1 (f27f3a28) | ≥ 3:1 gegen Seitenleiste **und** Füllung des Eintrags | 15/55 rot | **2/55 rot** (hell, Ring `#ac670e` gegen aktiven Eintrag 2,11:1) | – |
+| 2 (3a8e5b81) | nur gegen die **angrenzenden** Farben (bei Spalt 2 px nur Seitenleiste) | 13/55 rot | 55/55 | – |
+| 3 (edd746f3, Review #430 A2) | wieder ≥ 3:1 gegen Seitenleiste **und** Füllung (normal, Hover, Aktiv), unabhängig vom Spalt; neuer Zustand hover+focus-visible; Kurzform `outline` in Einzelwerte zerlegt | 19/63 rot | 4/63 rot (hell: Aktiv 2,11:1, Hover 2,56:1) | **63/63** (89cf48e4) |
+
+Fassung 2 war eine **Abschwächung vor Grün**: Die erste Fassung blieb auch mit dem Flächen-Fix rot (Ring gegen den
+aktiven Eintrag 2,11:1). Darum wurde das Kriterium auf „angrenzend“ umgestellt (WCAG 1.4.11 lässt das bei einem Spalt
+zu). Review #430 hat das beanstandet; Fassung 3 stellt die strenge Prüfung wieder her und behebt den Ring (A2).
+Mutation: Regel `.seitenleiste :focus-visible` entfernt → 4/63 rot (hell, Ring gegen Aktiv und Hover).
+
+| Test | rot (alt) | grün (neu) |
+|---|---|---|
+| `pruefungen/v4-app-stil.test.js`, Block „V4-2c“ (in `pruefung:querschnitt`): gerenderter App-Stil (App serverseitig), kleine Kaskade für html > … > `.seitenleiste` > `.snav` > `button.slink` (Spezifität, Reihenfolge, `!important`, `@media` nach Breite und Farbschema, Vererbung, `var()`, Kurzform `outline`), Flächen über die Vorfahren gemischt. Zustände normal/hover/aktiv/aktiv+hover/focus-visible/hover+focus-visible/aktiv+focus-visible × hell/dunkel × 390/1280 px: Text ≥ 4,5:1, Fokusring ≥ 3:1 gegen Seitenleiste und Füllung, Hover ≠ Aktiv ≠ normal | 19/63 rot | 63/63 |
+| `e2e/v4-seitenleiste-kontrast.spec.mjs` (neu, nur Projekt 390x844): Schublade per Tastatur öffnen, aktiver Eintrag mit Fokus, anderer Eintrag im Hover, Messung aus `getComputedStyle` (Ring gegen Leiste und Füllung des aktiven Eintrags), danach axe mit offener Schublade (`schublade-leitung`) | 2/2 rot (hell aktiv 1,76:1; dunkel Hover = Aktiv `rgba(25, 65, 68, 0.62)`) | 2/2, axe 0 Verstöße |
+
+In der E2E-Spec setzt der Test den Fokus selbst auf den aktiven Eintrag, falls er nach dem Öffnen noch nicht dort
+liegt; `:focus-visible` wird geprüft. Die axe-Specs `barrierefreiheit*.spec.mjs` öffnen die Schublade nicht, darum die
+neue Spec. Bremsen-Bilanz: 2 Leitungsanmeldungen je Lauf, Code und Herkunft aus dem Zugangspool (`anmelden()`).
+Kein bestehender Test geändert.
+
+**Fix (nur bestehende Tokens).** `src/v4/app-stil.js`:
+- `.slink:hover` → `var(--sl-hover)` (rgba(255,255,255,.07)), `.slink.on` → `var(--sl-an)` (rgba(255,255,255,.13)).
+  `--sl-*` setzt der App-Stil aus `V4_SEITENLEISTE` (`App.jsx` `seitenleisteVariablen`). Der erste Fix hatte dafür
+  eigene `--v4-seitenleiste-*` in `src/v4/stil.js` angelegt; nach Review #430 H2 wieder entfernt (Doppelung, gleiche
+  Quelle). `src/v4/stil.js` ist gleich der Basis.
+- Review #430 A2 (Betreiberentscheidung: bestehendes Token): `html[data-v4-app] .seitenleiste :focus-visible
+  {outline-color:var(--v4-akzent-auf-dunkel)}`. `--v4-akzent-auf-dunkel` setzt `v4AppVariablen()` je `data-thema`
+  (`V4_FARBEN.*.akzentAufDunkel`). Spezifität (0,3,1): über `html[data-v4-app] :focus-visible` (0,2,1, app-stil.js) und
+  `:focus-visible` (0,1,0, App.jsx); gleich `html[data-v4-app] .btn:focus-visible`, steht danach und gewinnt. Breite
+  und Abstand des Rings unverändert (3 px, 2 px).
+- Rand und Akzentkante von `.slink.on`, Klassennamen und Locators unverändert.
+
+**Neue Kontrastwerte** (gerechnet aus den Tokens, gleich im Unit-Test; E2E im Browser bestätigt):
+
+| Zustand | hell (Leiste `#0e3034`) | dunkel (Leiste `#071e22`) |
+|---|---|---|
+| normal (Schrift `schriftLeise` .74) | 8,37:1 | 9,82:1 |
+| Hover, Fläche rgb(31,62,66) / rgb(24,46,49) | **11,43:1** (vorher 1,76:1) | 14,27:1 (vorher 13,4:1) |
+| Aktiv, Fläche rgb(45,75,78) / rgb(39,59,63) | **9,42:1** (vorher 1,76:1) | 11,74:1 (vorher 13,4:1) |
+| Fokusring `akzentAufDunkel` gegen Leiste / Aktiv / Hover | **7,04 / 4,71 / 5,71:1** (vorher `#ac670e` 3,15 / 2,11 / 2,56) | 13,50 / 9,19 / 11,17:1 |
+
+**Bildbeleg** (lokal, 127.0.0.1, Wegwerfdaten, Kopie der Spec mit Bildschirmfoto nur im Scratchpad, nicht im Repo):
+Schublade 390 px, hell und dunkel, aktiver Eintrag „Start“ mit Fokusring und Eintrag „Ablauf“ im Hover. Weiße Schrift
+auf dunkler Tönung lesbar; Hover und Aktiv sichtbar verschieden (Aktiv heller, mit Akzentkante). Bilder vom ersten Fix
+(Ring noch `--v4-focus`).
+
+**Lokale Läufe.** Erster Fix (2026-11-20, je Datei `--maxWorkers=1`): v4-app-stil 55/55, kontrast 207/207, v4-tokens
+32/32, v4-markenrest 20/20, v4-2b-variablen 14/14, gestalt 19/19, wcag-wp40 35/35, oberflaeche-render 40/40,
+prozess-wachen 15/15, doku 5/5, verdrahtung 8/8 (`--testTimeout=60000`), ci-abdeckung 8/8, acc45-status 17/17; eslint 0
+Fehler, tsc 0; E2E (`E2E_PORT=3287`, 390x844) v4-seitenleiste-kontrast 2/2, barrierefreiheit 7 bestanden, 1
+übersprungen. Nach Review #430: siehe Nachtrag unten.
+
+**Hinweise aus Review #430 (nur vermerkt).**
+- H3: Der Rand von `.slink.on` (`--v4-glas-rand`) liegt hell bei 1,01:1 gegen die Leiste, also praktisch unsichtbar;
+  unverändert. Der aktive Zustand ist über Fläche (9,42:1 Schrift), Akzentkante (`akzentAufDunkel`) und
+  `aria-current="page"` erkennbar.
+- H4: Aktiv+Hover zeigt keine eigene Hover-Rückmeldung (`.slink.on` steht nach `:hover`, gleiche Spezifität); bewusst
+  so belassen.
+
+**Nachtrag nach Review #430** (2026-11-20, Kopf 89cf48e4, je Datei `--maxWorkers=1`): v4-app-stil 63/63, kontrast
+207/207, v4-tokens 32/32, v4-markenrest 20/20, v4-2b-variablen 14/14, gestalt 19/19, wcag-wp40 35/35,
+oberflaeche-render 40/40, verdrahtung 8/8 (`--testTimeout=60000`), ci-abdeckung 8/8, prozess-wachen 15/15, doku 5/5,
+acc45-status 17/17; eslint 0 Fehler in den geänderten Dateien, tsc 0. E2E v4-seitenleiste-kontrast 2/2
+(390x844, axe 0). Browserwerte (Anmerkung „kontrast“): hell Ring 7,04:1 gegen Leiste, 4,71:1 gegen aktiven Eintrag;
+dunkel 13,5:1 / 9,19:1; Schrift unverändert (hell aktiv 9,42:1, Hover 11,43:1; dunkel 11,74:1, 14,27:1).
+`origin/integration/release-v4` (5876ff48) ist bereits enthalten; kein neuer Kopf beim Abgleich.
+
+**Nachtrag CI #430** (Kopf 97cca4de, Läufe 44753608941/44753597861, browser-abnahme rot): `toBeFocused()` auf
+`.slink.on` lieferte in CI „inactive“ (390x844, 8 s), lokal grün. Beleg mit Zustandsprotokoll der Spec (CI-Lauf 44770823106,
+Job 136407695404, grün; lokal `--repeat-each=5` unter lint/tsc 10/10): Nach dem Öffnen per Enter bleibt der Fokus in
+beiden Umgebungen auf der Menütaste (`button.kopf-menue`), obwohl die Schublade offen und `visibility: visible` ist; keine
+`aria-modal`-Dialoge, Fensterfokus vorhanden. Die App-eigene Fokusführung (`seitenleisteFokus`, ui/geraete.js) landet also
+nicht. Der eine `locator.focus()` der alten Spec griff lokal beim ersten Versuch, in CI erst beim zweiten (Protokoll:
+„Versuch 2“); ohne Wiederholung blieb der Fokus auf der Menütaste. Lösung in der Spec (Messung unverändert): Sichtbarkeit
+abwarten, dann Fokus per `expect.poll` (Tastendruck für Tastatur-Modalität, `locator.focus()`, Zeitgrenze 15 s),
+`:focus-visible` weiter geprüft. Merge `origin/integration/release-v4` a279928d (Konflikte nur in erzeugten
+SSOT-Dateien). Lokal danach: v4-app-stil 63/63, kontrast 207/207, wcag-wp40 35/35, prozess-wachen 15/15, doku 5/5,
+verdrahtung 8/8, ci-abdeckung 8/8, acc45-status 17/17.
+
+**Offen / Risiken.** Vollregression nur in CI. Neuer Befund außerhalb V4-2c: Beim Öffnen der Schublade per Tastatur
+springt der Fokus nicht auf den aktiven Eintrag (WP-21-Fokusführung wirkt nicht; belegt lokal und in CI). Eigenes Paket
+nötig (Ursache vermutlich Zeitpunkt des `focus()` gegenüber dem Sichtbarkeitsübergang der Schublade; nicht geprüft).
