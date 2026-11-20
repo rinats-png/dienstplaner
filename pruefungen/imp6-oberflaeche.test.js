@@ -16,7 +16,7 @@
    Aufruf: npx vitest run pruefungen/imp6-oberflaeche.test.js
    ========================================================================== */
 // zeit-ok: Feste Tage als Zeichenketten; die Uhr fließt nur in lage.zeit von src/speicher.js (nicht verglichen).
-import { describe, it, expect, afterEach, vi } from "vitest";
+import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -24,8 +24,11 @@ import {
   folgeLesen, folgeText, unbekannteKennungen, zykluslaengeText, neueKennung, nutzerDesModells, modelleMitDienstart,
   entwurfPruefen, mitModellen, mitZuordnungen, lageAm, zeitraumText, zuordnungBegonnen, alleZuordnungsKennungen, personName,
 } from "../src/lib/schichtmodelle-pflege.js";
-import { schichtzuordnungZusammen, modellKuerzungFehler } from "../server/lib/schichtzuordnung.mjs";
-import { Schichtmodelle, darfSchichtmodelle } from "../src/ansichten/schichtmodelle.jsx";
+import { schichtzuordnungZusammen, modellKuerzungFehler, schichtmodellAbsageCode, SCHICHTMODELL_CODE_PRAEFIX } from "../server/lib/schichtzuordnung.mjs";
+import { Schichtmodelle, darfSchichtmodelle, ZuordnungsZeile } from "../src/ansichten/schichtmodelle.jsx";
+import { wirksamePerson } from "../src/lib/schichtmodelle-pflege.js";
+import { darf as serverDarf } from "../server/lib/rechte.mjs";
+import { schichtmodellPflegeSetzen, schichtmodellPflegeAn } from "../src/lib/schichtmodell-schalter.js";
 
 const HEUTE = "2026-11-20";
 const quelle = (p) => readFileSync(new URL(p, import.meta.url), "utf8").replace(/\r\n/g, "\n");
@@ -219,15 +222,19 @@ function echteGruende() {
 afterEach(() => { vi.unstubAllGlobals(); });
 
 describe("C Nicht gespeichert: Absagen zu Schichtmodellen", () => {
-  it("C1 die Erkennung trifft jeden echten Grund der Bibliothek und keine fremde 403", async () => {
-    const { istSchichtmodellGrund } = await import("../src/speicher.js");
+  it("C1 Erkennung am stabilen Code des Servers (Präfix SCHICHTMODELL_), nie am Text", async () => {
+    const { istSchichtmodellCode } = await import("../src/speicher.js");
     const gruende = echteGruende();
     expect(gruende.every(Boolean)).toBe(true);
     expect(gruende.map((g) => g.code)).toEqual(["UEBERSCHNEIDUNG", "RUECKWIRKEND", "MODELL_VERWENDET", "DIENSTART", "DIENSTART_VERWENDET", "FORM", "FORM"]);
-    for (const g of gruende) expect(istSchichtmodellGrund(g.text), g.text).toBe(true);
-    for (const t of ["Einteilung am 2026-11-21 nicht möglich: Ruhezeit 9 h.", "Keine Schreibberechtigung.", "Dienstarten: unbekannt",
-      "Schichtmodell", " Schichtmodelle: vorn Leerzeichen", "", null, undefined, 7])
-      expect(istSchichtmodellGrund(t), String(t)).toBe(false);
+    expect(SCHICHTMODELL_CODE_PRAEFIX).toBe("SCHICHTMODELL_");
+    for (const g of gruende) expect(istSchichtmodellCode(schichtmodellAbsageCode(g.code)), g.code).toBe(true);
+    expect(schichtmodellAbsageCode(undefined)).toBe("SCHICHTMODELL_ABGEWIESEN");
+    expect(schichtmodellAbsageCode("x<y")).toBe("SCHICHTMODELL_ABGEWIESEN");
+    /* Texte zählen nicht mehr (Folgepunkt 1 aus #423), auch nicht der echte Text; fremde und verstümmelte Codes nicht */
+    for (const t of [...gruende.map((g) => g.text), "STEMPEL_UNVERAENDERLICH", "UEBERSCHNEIDUNG", "schichtmodell_x", " SCHICHTMODELL_X",
+      `SCHICHTMODELL_${"A".repeat(60)}`, "SCHICHTMODELL_ü", "", null, undefined, 7])
+      expect(istSchichtmodellCode(t), String(t)).toBe(false);
   });
   it("C2 422 MODELL_VERKUERZT_VERSATZ: eigene Lage mit Text und Feld des Servers, Bereich „Schichtmodelle“", async () => {
     const text = "Schichtmodelle: Das Schichtmodell sm-zwei hätte nur noch 7 Zyklustage … Es wurde nichts geändert.";
@@ -239,8 +246,13 @@ describe("C Nicht gespeichert: Absagen zu Schichtmodellen", () => {
   });
   it("C3 inhaltliche 403 (Überschneidung): Lage „schichtmodell“ mit dem Grund als Text — nicht „keinRecht“", async () => {
     const g = echteGruende()[0];
-    const { fehler } = await absage({ status: 403, daten: { fehler: "Keine Schreibberechtigung für diese Änderung.", text: g.text } });
+    const { fehler } = await absage({ status: 403, daten: { fehler: "Keine Schreibberechtigung.", text: g.text, code: "SCHICHTMODELL_UEBERSCHNEIDUNG" } });
     expect(ohneZeit(fehler[0])).toEqual({ art: "schichtmodell", text: g.text, status: 403, feld: null, bereich: "Schichtmodelle" });
+  });
+  it("C3b rückwärtskompatibel (fail-safe): 403 mit Schichtmodell-Text, aber ohne Code bleibt „keinRecht“ mit Begründung", async () => {
+    const g = echteGruende()[0];
+    const { fehler } = await absage({ status: 403, daten: { fehler: "Keine Schreibberechtigung.", text: g.text } });
+    expect(ohneZeit(fehler[0])).toEqual({ art: "keinRecht", text: "Keine Schreibberechtigung.", status: 403, grund: g.text });
   });
   it("C4 Differenz: andere 403 und andere 422 bleiben wie bisher", async () => {
     const faelle = [
@@ -275,7 +287,67 @@ describe("C Nicht gespeichert: Absagen zu Schichtmodellen", () => {
 const sitzung = (rolle, mandant = betrieb()) => ({ rolle, mandant, person: { id: "p3", name: "Probe", rolle, bereich: "ALLE" } });
 const html = (sitz) => renderToStaticMarkup(React.createElement(Schichtmodelle, { sitz, akt: {}, heuteTag: HEUTE }));
 
+describe("S Schalter CENTRIC_SCHICHTMODELL_PFLEGE (P2-24 B, Vorgabe aus)", () => {
+  it("S1 Vorgabe aus: auch die Leitung sieht keinen Abschnitt", () => {
+    schichtmodellPflegeSetzen(false);
+    expect(schichtmodellPflegeAn()).toBe(false);
+    expect(html(sitzung("leitung"))).toBe("");
+    for (const w of ["true", 1, "1", {}, null, undefined]) { schichtmodellPflegeSetzen(w); expect(schichtmodellPflegeAn(), String(w)).toBe(false); }
+    schichtmodellPflegeSetzen(true);
+    expect(html(sitzung("leitung"))).toContain("Schichtmodelle je Person");
+    schichtmodellPflegeSetzen(false);
+  });
+  /** Echter Client: lies() mit der gegebenen GET-Antwort; danach der Merker. */
+  async function gelesen(zusatz) {
+    vi.resetModules();
+    vi.stubGlobal("sessionStorage", speicherAttrappe({ "centric:token": "t-pruefung" }));
+    vi.stubGlobal("localStorage", speicherAttrappe());
+    const m = betrieb();
+    vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ bestand: { version: 9, mandanten: [m] }, etag: "1", rolle: "leitung",
+      person: "p3", betrieb: 0, name: "L", schreiben: "voll", ...zusatz }), { status: 200, headers: { "content-type": "application/json" } }));
+    const SP = await import("../src/speicher.js");
+    const S = await import("../src/lib/schichtmodell-schalter.js");
+    S.schichtmodellPflegeSetzen(zusatz.schichtmodellPflege !== true);   // Gegenteil vorbelegen: lies() muss setzen
+    const r = await SP.lies();
+    return { an: S.schichtmodellPflegeAn(), r, m };
+  }
+  it("S2 die Quelle ist allein der Server: GET mit schichtmodellPflege: true → an; ohne Angabe oder anderer Wert → aus", async () => {
+    expect((await gelesen({ schichtmodellPflege: true })).an).toBe(true);
+    expect((await gelesen({})).an).toBe(false);
+    expect((await gelesen({ schichtmodellPflege: "true" })).an).toBe(false);
+  });
+  it("S3 Schalter aus: Modelle und Zuordnungen bleiben im gelesenen Zustand (kein Datenverlust beim nächsten Speichern)", async () => {
+    const { an, r, m } = await gelesen({});
+    expect(an).toBe(false);
+    expect(r.bestand.mandanten[0].schichtmodelle).toEqual(m.schichtmodelle);
+    expect(r.bestand.mandanten[0].personen[0].schichtmodellZuordnungen).toEqual(m.personen[0].schichtmodellZuordnungen);
+  });
+  it("S4 Schalter aus + Speichern anderer Daten: der gesendete Bestand trägt Modelle und Zuordnungen unverändert", async () => {
+    vi.resetModules();
+    vi.stubGlobal("sessionStorage", speicherAttrappe({ "centric:token": "t-pruefung" }));
+    vi.stubGlobal("localStorage", speicherAttrappe());
+    const puts = [];
+    vi.stubGlobal("fetch", async (url, opt = {}) => {
+      if ((opt.method || "GET") === "PUT") puts.push(JSON.parse(opt.body));
+      return new Response(JSON.stringify({ ok: true, etag: "2" }), { status: 200, headers: { "content-type": "application/json" } });
+    });
+    const SP = await import("../src/speicher.js");
+    const S = await import("../src/lib/schichtmodell-schalter.js");
+    expect(S.schichtmodellPflegeAn()).toBe(false);
+    const m = betrieb();
+    const geaendert = { ...m, personen: m.personen.map((p) => (p.id === "p2" ? { ...p, telefon: "123" } : p)) };
+    await SP.schreib({ version: 9, stand: 3, mandanten: [geaendert] }, { sofort: true });
+    expect(puts).toHaveLength(1);
+    const gesendet = puts[0].bestand.mandanten[0];
+    expect(gesendet.schichtmodelle).toEqual(m.schichtmodelle);
+    expect(gesendet.personen[0].schichtmodellZuordnungen).toEqual(m.personen[0].schichtmodellZuordnungen);
+  });
+});
+
 describe("D Ansicht", () => {
+  /* Die Ansicht selbst prüfen: Schalter gezielt an (wie in Entwicklung und isolierten Prüfungen). */
+  beforeEach(() => { schichtmodellPflegeSetzen(true); });
+  afterEach(() => { schichtmodellPflegeSetzen(false); });
   it("D1 Rechte wie der Server: Leitung und Planung ja; Beschäftigte, Schichtverantwortung, Betriebsrat, Betreiber nein", () => {
     expect(darfSchichtmodelle(sitzung("leitung"))).toBe(true);
     expect(darfSchichtmodelle(sitzung("planer"))).toBe(true);
@@ -285,6 +357,45 @@ describe("D Ansicht", () => {
     }
     expect(darfSchichtmodelle({ rolle: "betreiber", mandant: betrieb(), person: { id: "x", rolle: "leitung" } })).toBe(false);
     expect(darfSchichtmodelle(null)).toBe(false);
+  });
+  it("D1b Review #423 A1: Rechte aus der festen Matrix des Servers, nie aus der Betriebsmatrix", () => {
+    /* Betriebsmatrix gibt der Schichtverantwortung staff.edit + pattern.edit: der Server verwürfe still → keine Pflege */
+    const m = betrieb();
+    m.matrix = { subplaner: ["staff.edit", "pattern.edit", "org.edit"], leitung: [], planer: [] };
+    expect(darfSchichtmodelle({ rolle: "subplaner", mandant: m, person: { id: "s", rolle: "subplaner", bereich: "e1" } })).toBe(false);
+    expect(html({ rolle: "subplaner", mandant: m, person: { id: "s", rolle: "subplaner", bereich: "e1" } })).toBe("");
+    /* Betriebsmatrix nimmt Leitung/Planung die Rechte: der Server erlaubt es weiter → Pflege bleibt */
+    for (const r of ["leitung", "planer"]) expect(darfSchichtmodelle({ rolle: r, mandant: m, person: { id: "x", rolle: r, bereich: "ALLE" } }), r).toBe(true);
+    /* Zugang der Altrolle „kunde“ (Server: alle Rechte außer plan.publish) */
+    expect(darfSchichtmodelle({ rolle: "leitung", zugangRolle: "kunde", mandant: m, person: { id: "x", rolle: "mitarbeiter" } })).toBe(true);
+    /* Gleichlauf mit der Serverregel (rechte.mjs darf, feste MATRIX) für jede Rolle */
+    const server = (r) => serverDarf(r, "staff.edit") && (serverDarf(r, "org.edit") || serverDarf(r, "pattern.edit"));
+    for (const r of ["leitung", "planer", "subplaner", "mitarbeiter", "betriebsrat"])
+      expect(darfSchichtmodelle({ rolle: r, mandant: m, person: { id: "x", rolle: r, bereich: "ALLE" } }), r).toBe(server(r));
+  });
+  it("D1c Review #423 H1: eine neue Zeile mit geleertem „Gültig ab“ bleibt bearbeitbar; nur die Fortsetzung gilt als begonnen", () => {
+    const m = betrieb();
+    const z = { id: "n1", modellId: "sm-neun", gueltigAb: null, gueltigBis: null, versatz: 0 };
+    const zeile = (fortsetzung) => renderToStaticMarkup(React.createElement(ZuordnungsZeile, { z, i: 0, m, heute: HEUTE, alt: null,
+      fortsetzung, onAendern() {}, onEntfernen() {} }));
+    const tag = (h, label) => (h.match(new RegExp(`<(?:input|select)\\b[^>]*aria-label="${label}"[^>]*>`)) || [""])[0];
+    const neu = zeile(false);
+    expect(tag(neu, "Gültig ab, Zuordnung 1")).not.toContain(`disabled=""`);
+    expect(tag(neu, "Schichtmodell der Zuordnung 1")).not.toContain(`disabled=""`);
+    expect(neu).toContain("Zuordnung 1 entfernen");
+    const fort = zeile(true);
+    expect(tag(fort, "Gültig ab, Zuordnung 1")).toContain(`disabled=""`);
+    expect(fort).not.toContain("Zuordnung 1 entfernen");
+  });
+  it("D1d Review #423 H4: Personenauswahl robust bei leerer oder geänderter Liste", () => {
+    const l = [{ id: "a" }, { id: "b" }];
+    expect(wirksamePerson(l, null)).toBe("a");
+    expect(wirksamePerson(l, "b")).toBe("b");
+    expect(wirksamePerson(l, "weg")).toBe("a");
+    expect(wirksamePerson([], "b")).toBe("");
+    expect(wirksamePerson(undefined, null)).toBe("");
+    const m = betrieb(); m.personen = [];
+    expect(html(sitzung("leitung", m))).not.toContain("Zuordnungen je Person");
   });
   it("D2 Leitung: Hinweis ohne Planwirkung, beide Modelle mit eigener Zykluslänge, Nutzerzahl, Folge als Text", () => {
     const h = html(sitzung("leitung"));
@@ -347,6 +458,19 @@ describe("D Ansicht", () => {
 
 /* ---------- E Verdrahtung ---------- */
 describe("E Verdrahtung", () => {
+  it("E0 Schalter: Server meldet ihn nur bei genau „true“, Vorgabe aus; .env.example dokumentiert ihn auskommentiert", async () => {
+    const { schichtmodellPflegeAn: serverAn } = await import("../server/lib/schalter.mjs");
+    const vorher = process.env.CENTRIC_SCHICHTMODELL_PFLEGE;
+    try {
+      delete process.env.CENTRIC_SCHICHTMODELL_PFLEGE; expect(serverAn()).toBe(false);
+      for (const w of ["1", "TRUE", " true", "true ", "yes", "an"]) { process.env.CENTRIC_SCHICHTMODELL_PFLEGE = w; expect(serverAn(), w).toBe(false); }
+      process.env.CENTRIC_SCHICHTMODELL_PFLEGE = "true"; expect(serverAn()).toBe(true);
+    } finally { if (vorher === undefined) delete process.env.CENTRIC_SCHICHTMODELL_PFLEGE; else process.env.CENTRIC_SCHICHTMODELL_PFLEGE = vorher; }
+    const env = quelle("../.env.example");
+    expect(env).toMatch(/^# CENTRIC_SCHICHTMODELL_PFLEGE=true$/m);
+    expect(env).not.toMatch(/^CENTRIC_SCHICHTMODELL_PFLEGE=/m);
+    expect(quelle("../server/funktionen/daten.mjs")).toContain("...(schichtmodellPflegeAn() ? { schichtmodellPflege: true } : {})");
+  });
   it("E1 Schichtfolge bindet die Ansicht ein", () => {
     const q = quelle("../src/ansichten/schichtfolge.jsx");
     expect(q).toContain('import { Schichtmodelle } from "./schichtmodelle.jsx";');

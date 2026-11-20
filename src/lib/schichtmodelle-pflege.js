@@ -13,6 +13,25 @@ import { schichtzuordnungZusammen, modellKuerzungFehler, anzuwendendesModell, mo
   BETRIEB_MODELL, ZUORDNUNG_FELD, MODELLE_FELD, SCHICHTMODELL_GRENZEN, MODELL_VERKUERZT_VERSATZ }
   from "../../server/lib/schichtzuordnung.mjs";
 
+import { MATRIX_STD } from "./rollen.js";
+
+/**
+ * Darf diese Sitzung Schichtmodelle pflegen? Genau wie der Server (rechte.mjs: feste MATRIX, nie die Betriebsmatrix
+ * m.matrix): (org.edit oder pattern.edit) und staff.edit der Rolle, mit der der Server rechnet — beim Zugang der
+ * Altrolle „kunde“ diese (alle Rechte außer plan.publish), sonst die Rolle der Person. Betriebsrat und Betreiber nie.
+ * Review #423 A1: Eine Rolle, der nur die Betriebsmatrix die Rechte gibt, sähe sonst die Pflege, und der Server
+ * verwürfe ihre Änderung still (Felder ohne Recht wirkungslos) — nach dem Neuladen wäre sie weg.
+ * @param {any} sitz
+ */
+export function darfSchichtmodelle(sitz) {
+  if (!sitz || !sitz.person || sitz.rolle === "betreiber") return false;
+  if (sitz.zugangRolle === "kunde") return true;
+  const rolle = sitz.person.rolle;
+  if (rolle === "betriebsrat") return false;
+  const r = Object.prototype.hasOwnProperty.call(MATRIX_STD, rolle) ? MATRIX_STD[rolle] : [];
+  return r.includes("staff.edit") && (r.includes("org.edit") || r.includes("pattern.edit"));
+}
+
 export { BETRIEB_MODELL, ZUORDNUNG_FELD, MODELLE_FELD, SCHICHTMODELL_GRENZEN, MODELL_VERKUERZT_VERSATZ, plusTage };
 
 /** Zeichen für einen freien Zyklustag in der Folge. */
@@ -133,6 +152,12 @@ export function lageAm(m, p, datum) {
     - Date.UTC(+String(r.anker).slice(0, 4), +String(r.anker).slice(5, 7) - 1, +String(r.anker).slice(8, 10))) / 86400000);
   const tag = n ? ((((ab + (r.versatz || 0)) % n) + n) % n) + 1 : 0;
   return { ton: "ok", text: `${x ? x.name : r.modellId} — Zyklustag ${tag} von ${n}` };
+}
+
+/** Die wirksame Person der Auswahl: die gewählte, solange es sie gibt, sonst die erste der Liste, sonst "" (Review #423 H4). */
+export function wirksamePerson(personen, gewaehlt) {
+  const l = Array.isArray(personen) ? personen : [];
+  return gewaehlt !== null && gewaehlt !== undefined && l.some((p) => p && p.id === gewaehlt) ? gewaehlt : (l.length && l[0] ? l[0].id : "");
 }
 
 /** Anzeigename einer Person („Nachname, Vorname“; sonst Name oder Kennung). */

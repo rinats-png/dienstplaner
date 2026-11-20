@@ -167,9 +167,38 @@ Abschnitt „Schichtmodelle je Person“ in der Ansicht „Schichtfolge“ (`src
   Entwurf (sonst wären die Tage davor „kein Schichtmodell“ und damit rückwirkend geändert).
 - **Vorprüfung = Server:** `entwurfPruefen` (`src/lib/schichtmodelle-pflege.js`) ruft dieselbe Kette wie der Server
   (`schichtzuordnungZusammen`, danach `modellKuerzungFehler`) und zeigt deren Text; erst ohne Befund schreibt die Aktion.
-- **Absage des Servers:** 422 `MODELL_VERKUERZT_VERSATZ` und die inhaltlichen 403 werden unter „Nicht gespeichert“ zur Lage
+- **Absage des Servers:** 422 `MODELL_VERKUERZT_VERSATZ` und die inhaltlichen 403 (stabiler Code `SCHICHTMODELL_<Prüfcode>`) werden unter „Nicht gespeichert“ zur Lage
   „schichtmodell“ (Bereich „Schichtmodelle“, Text des Servers, Verwerfen-Weg, kein „Noch einmal senden“, keine Rollenmeldung).
 - **Nicht gebaut:** Planwirkung (P2-4 Punkt 6), Anzeige für Beschäftigte (P2-19 (d)), Versionierung laufender Modelle (P2-24 (b)).
 - **Prüfungen:** `pruefungen/imp6-oberflaeche.test.js` (in `pruefung:imp6-mehrfachmodelle`), `e2e/imp6-schichtmodelle.spec.mjs`
   (Browser, axe WCAG 2.2 AA); Wächter D2 in `imp6-zyklen-grenzfaelle` um die Pflegehilfe erweitert (einzige Stelle der Oberfläche,
   die die Felder nennt).
+
+## Schalter `CENTRIC_SCHICHTMODELL_PFLEGE` (P2-24 B, Betreiberentscheidung 2026-11-20)
+
+- **Wirkung:** nur die Anzeige. Ist der Schalter an (genau `true`), meldet `GET /api/bestand` `schichtmodellPflege: true`;
+  `src/speicher.js` setzt daraus den Merker (`src/lib/schichtmodell-schalter.js`), und die Ansicht zeigt den Abschnitt (zusätzlich
+  zum Pflegerecht). Fehlt die Angabe, bleibt der Abschnitt verborgen (fail-closed). Vorgabe: aus; `.env.example` auskommentiert.
+- **Kein Datenverlust bei AUS:** Die Modelle und Zuordnungen stehen weiter im gelesenen Bestand und gehen beim Speichern
+  unverändert mit; der Server behält Unverändertes byte-gleich (Regel 5). Eine Kopie ohne die Felder (älterer Client) behält
+  den gespeicherten Stand. Geprüft: `imp6-oberflaeche` S1–S4, `imp6-mehrfachmodelle` Abschnitt 9, E2E S6.
+- **Server-Schreibweg bei AUS: unverändert (geprüft und so entschieden).** Begründung:
+  1. P2-24 (a) betrifft die Verwechslungsgefahr in der Oberfläche, nicht die Unversehrtheit der Daten; die Modelle wirken nicht
+     auf den Plan (P2-4 Punkt 6 offen).
+  2. Alle Schutzregeln des Schreibwegs gelten unabhängig vom Schalter (Rechte nur Planung/Leitung/Kundenrolle, Form,
+     Überschneidung, historischer Schutz, Modell verkürzt 422, Protokoll). Ein Schreiben bei AUS ist also nie ungeprüft.
+  3. Ein Abweisen bei AUS änderte bestehende, integrierte Serverregeln (#263, #369, #372) und deren Prüfungen und könnte
+     Speichervorgänge blockieren, die gespeicherte Modelle nur mitführen — genau das soll ohne Datenverlust weiterlaufen.
+  4. Die Bremse „Dienstart löschen, solange ein Modell sie nennt“ (403) schützt auch bei AUS gespeicherte Daten; sie bliebe
+     bei einer Sperre des Schreibwegs nur dann richtig, wenn die Sperre fein unterschiede — mehr Code in der Konfliktzone
+     `rechte.mjs` ohne Schutzgewinn.
+  Festgeschrieben: `imp6-mehrfachmodelle` 9 „Schalter aus: der Schreibweg des Servers ist unverändert“.
+- **Entwicklung und isolierte Prüfungen:** `CENTRIC_SCHICHTMODELL_PFLEGE=true` setzen; die Komponentenprüfungen setzen den
+  Merker direkt, die E2E-Spec ergänzt die GET-Antwort des echten Servers für ihre Seite (andere Specs sehen nichts).
+
+## Rechte der Anzeige (Review #423 A1)
+
+Die Anzeige rechnet wie der Server mit der **festen** Rollenmatrix (`MATRIX_STD`/`rechte.mjs` `MATRIX`), nicht mit der
+Betriebsmatrix `m.matrix`: Eine Rolle, der nur die Betriebsmatrix `staff.edit` und `pattern.edit` gibt, sähe sonst die Pflege,
+und der Server verwürfe ihre Änderung still (Felder ohne Recht wirkungslos). `darfSchichtmodelle` in
+`src/lib/schichtmodelle-pflege.js`; Gleichlauf je Rolle mit `rechte.mjs` `darf` in `imp6-oberflaeche` D1b. Serververhalten unverändert.

@@ -21,7 +21,7 @@ import { raumLage, ersteinrichtungVermerken, neueZugaengeErlaubt, KUNDENRAUM_TEX
 import { herkunftsloseFeedsWiderrufen } from "../lib/feedwiderruf.mjs";
 import { kontoLesen, kontoLesenStreng, kontoSchreiben, kontoAendern, alleKonten, kontoVereinzeln, raumUebersicht }
   from "../lib/konten.mjs";
-import { demoAn, teilwegAn, abschlussSegmentweiseAn, abschlussOhneSperreAn } from "../lib/schalter.mjs";
+import { demoAn, teilwegAn, abschlussSegmentweiseAn, abschlussOhneSperreAn, schichtmodellPflegeAn } from "../lib/schalter.mjs";
 import { ABSCHLUSS_SEGMENT_AKTIONEN, ABSCHLUSS_VERSUCHE, abschlussAuswahl, abschlussTeile } from "../lib/abschluss-segmentweise.mjs";
 import { loeschlaufRecht, loeschlaufFormFehler, loeschlaufVorbereiten, ohneWirkung } from "../lib/loeschlauf.mjs";
 import { TEILWEG_FORMAT, teileFormFehler, teileAnwenden, teileVersionen, beruehrteVersionen, rumpfAbdruck, anfragePruefen, anfrageMerken, anfragenAufraeumen } from "../lib/teilweg.mjs";
@@ -1405,6 +1405,8 @@ async function behandeln(req, context, ctx) {
         einheit: s.einheit ?? null, demo: s.demo === true, schreiben: schreibumfang(s.rolle), inhaber: stempelInhaber(s),
         /* SI-P4: Gilt der gemerkte Zugang noch? Die wirksame Rolle kann sich seit der Anmeldung geändert haben. */
         merkenErlaubt: merkenErlaubt([s0.rolle, s.rolle], s0.zweifaktor === true), erstleitungStreng: strengG,
+        /* IMP-6/P2-24 B: Anzeige der Schichtmodell-Pflege nur mit Schalter (Vorgabe aus); fehlt die Angabe, bleibt sie aus. */
+        ...(schichtmodellPflegeAn() ? { schichtmodellPflege: true } : {}),
         geaendert: mit.zeit, durch: mit.durch });
     }
 
@@ -1711,8 +1713,9 @@ async function behandeln(req, context, ctx) {
         }
         if (zuSchreiben.verweigert) {
           await protokoll("schreiben", ks, "abgewiesen", zuSchreiben.verweigert, wer);
+          /* Stabiler Code, wo die Rechtekette einen setzt (Schichtmodelle: SCHICHTMODELL_…); sonst wie bisher ohne. */
           return antwort({ fehler: "Keine Schreibberechtigung.",
-            text: zuSchreiben.verweigert }, 403);
+            text: zuSchreiben.verweigert, ...(typeof zuSchreiben.code === "string" ? { code: zuSchreiben.code } : {}) }, 403);
         }
         /* Dienstarten (A-4, Betreiberentscheidung 2026-11-13): Eine NEUE Dienstart ohne mindest ist 422 — nichts wird
            still als 0 gelesen; ein neues oder geändertes mindest muss ganze Zahlen 0..999 tragen, sonst 422. Eine

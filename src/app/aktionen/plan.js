@@ -13,7 +13,8 @@ import { nurKorrekturGrund, bestaetigungsGrund } from "../../istdaten.js";
 import { rolle } from "../../lib/rollen.js";
 import { krankSchrittErlaubt } from "../../../server/lib/krankmeldung.mjs";
 import { krankRolle } from "../../lib/berechtigung.js";
-import { mitModellen, mitZuordnungen, modelleMitDienstart } from "../../lib/schichtmodelle-pflege.js";
+import { mitModellen, mitZuordnungen, modelleMitDienstart, darfSchichtmodelle } from "../../lib/schichtmodelle-pflege.js";
+import { schichtmodellPflegeAn } from "../../lib/schichtmodell-schalter.js";
 
 /** Datenreview PR #130 (5): Zugehörigkeit null-sicher sortieren — ab null/leer („von Anfang an“) vor jedem
  *  Datum, gleiche Werte in der bisherigen Reihenfolge (stabile Sortierung, deterministisch). Nicht exportiert:
@@ -359,7 +360,10 @@ export function aktionenPlan(k) {
         if (n > 0) { melde(`Dienstart wird noch ${n}× verwendet.`); return m; }
         /* IMP-6: Ein Schichtmodell, das die Dienstart nennt, sperrt das Löschen (Server: 403 DIENSTART_VERWENDET). */
         const sm = modelleMitDienstart(m, id);
-        if (sm.length) { melde(`Dienstart wird noch im Schichtmodell „${sm[0].name}“ verwendet. Bitte zuerst das Schichtmodell ändern.`); return m; }
+        /* Review #423 H3: Den Weg nur nennen, wenn diese Sitzung ihn hat (Schalter an und Pflegerecht wie der Server). */
+        if (sm.length) { melde(`Dienstart wird noch im Schichtmodell „${sm[0].name}“ verwendet. ${schichtmodellPflegeAn() && darfSchichtmodelle(sitz)
+          ? "Bitte zuerst das Schichtmodell ändern (Schichtfolge, Abschnitt „Schichtmodelle je Person“)."
+          : "Schichtmodelle ändern Planung oder Leitung; bitte dort melden."}`); return m; }
         return { ...m, dienstarten: m.dienstarten.filter((d) => d.id !== id) };
       }, "Dienstart gelöscht"),
 

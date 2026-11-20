@@ -112,9 +112,9 @@ export const SPEICHERLAGE = {
   schichtmodell: {
     titel: "Schichtmodell oder Zuordnung nicht gespeichert",
     text: "Der Server hat die Änderung an den Schichtmodellen abgewiesen; gespeichert wurde nichts, auch keine andere "
-      + "Änderung seit dem letzten Speichern. Der Grund steht unten. Ändere das Schichtmodell oder die Zuordnung "
-      + "entsprechend (unter „Schichtfolge“, Abschnitt „Schichtmodelle je Person“) — das nächste Speichern nimmt dann alle "
-      + "Änderungen mit. Oder verwirf die nicht gespeicherten Änderungen und lade neu; sichere sie vorher bei Bedarf als Datei.",
+      + "Änderung seit dem letzten Speichern. Der Grund steht unten. Wer Schichtmodelle pflegt (Planung oder "
+      + "Leitung), ändert das Schichtmodell oder die Zuordnung entsprechend — das nächste Speichern nimmt dann alle Änderungen "
+      + "mit. Sonst: die nicht gespeicherten Änderungen verwerfen und neu laden; vorher bei Bedarf als Datei sichern.",
     verwerfen: true,
   },
   /* Befund B-L4c / Review #381 (2): Nach dem Sitzungsende hat sich ein anderer Zugang angemeldet (anderer Inhaber).

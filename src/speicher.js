@@ -21,6 +21,7 @@
 import * as PUF from "./stempelpuffer.js";
 import { mitEinmaligerAngabe } from "./module/ausnahmeweg.js";
 import { teilwegStart } from "./app/teilkonflikt.js";
+import { schichtmodellPflegeSetzen } from "./lib/schichtmodell-schalter.js";
 import { teilSpeichern, teilEntscheiden, sicherungInhalt, sitzungsAbdruck, ruhig as teilRuhig } from "./app/teilweg-steuerung.js";
 
 const SCHLUESSEL = "centric:token";
@@ -372,6 +373,8 @@ export async function lies() {
   }
   if (status !== 200) throw new Error(daten?.fehler || "Laden fehlgeschlagen.");
   etag = daten.etag;
+  /* IMP-6/P2-24 B: Pflege der Schichtmodelle nur, wenn der Server den Schalter meldet (fehlt die Angabe: aus). */
+  schichtmodellPflegeSetzen(daten.schichtmodellPflege === true);
   /* Delta-Review #381 (9): frisch gelesen mit dem geprüften Merkmal — der Merker des Sitzungsendes ist erledigt. */
   if (!ausSpeicher && vorSitzungsende && gelesenFuer && token === gelesenFuer && vorSitzungsende.fuer === gelesenFuer)
     vorSitzungsende = null;
@@ -847,14 +850,17 @@ function kalendertagAngaben(f, d) {
   if (d && typeof d.feld === "string") f.feld = d.feld.slice(0, 200);
   if (d && typeof d.text === "string") f.text = d.text.slice(0, 500);
 }
-/* IMP-6 Oberfläche: Absagen zu Schichtmodellen und Zuordnungen. 422 MODELL_VERKUERZT_VERSATZ trägt Code, Feld und Text;
-   die übrigen Gründe (Überschneidung, rückwirkend, Modell noch verwendet, Dienstart noch im Modell …) kommen als 403 aus
-   der Rechtekette (rechte.mjs → schichtzuordnungZusammen) nur mit Text — erkannt an dessen festem Anfang (Prüfung
-   imp6-oberflaeche gegen die Bibliothek). Kein Rollenproblem, und „Noch einmal senden“ hülfe nicht (derselbe Stand). */
+/* IMP-6 Oberfläche: Absagen zu Schichtmodellen und Zuordnungen, erkannt nur am stabilen Code des Servers — nie am Text.
+   422 MODELL_VERKUERZT_VERSATZ trägt Code, Feld und Text; die inhaltlichen 403 aus der Rechtekette (Überschneidung,
+   rückwirkend, Modell noch verwendet, Dienstart noch im Modell …) tragen SCHICHTMODELL_<Prüfcode>
+   (Serverbibliothek der Schichtzuordnung: SCHICHTMODELL_CODE_PRAEFIX, schichtmodellAbsageCode). Eine 403 ohne diesen Code
+   (älterer Server) bleibt wie bisher „keinRecht“ mit der Begründung (fail-safe). Kein Rollenproblem, und „Noch einmal
+   senden“ hülfe nicht (derselbe Stand). */
 const SCHICHTMODELL_CODE = "MODELL_VERKUERZT_VERSATZ";
-const SCHICHTMODELL_GRUND = /^(Schichtmodelle: |Schichtmodell-Zuordnung \(|Dienstarten: Die Dienstart \S+ wird noch im Schichtmodell )/;
-/** Ist der Text einer 403 eine inhaltliche Absage zu Schichtmodellen? @param {unknown} text */
-export const istSchichtmodellGrund = (text) => typeof text === "string" && SCHICHTMODELL_GRUND.test(text);
+const SCHICHTMODELL_PRAEFIX = "SCHICHTMODELL_";
+/** Ist der Code einer 403 eine inhaltliche Absage zu Schichtmodellen? @param {unknown} code */
+export const istSchichtmodellCode = (code) => typeof code === "string" && code.length <= 60
+  && code.startsWith(SCHICHTMODELL_PRAEFIX) && /^[A-Z_]+$/.test(code);
 
 /** Bereich zu einem Feld des Servers („mandanten[0].abwesenheiten[2].bis" → „Abwesenheiten"), sonst null. */
 export function kalendertagBereich(feld) {
@@ -868,7 +874,7 @@ function fehlerart(e, status) {
   /* Ein Stempel ist ein Beleg (WP-06): Die Kopie widerspricht dem gespeicherten Stand — kein Rollenproblem,
      sondern ein veralteter Bestand. Der Rat ist „neu laden", nicht „Rolle prüfen". */
   if (status === 403 && e && e.code === "STEMPEL_UNVERAENDERLICH") return "stempelStand";
-  if (status === 403 && e && istSchichtmodellGrund(e.grund)) return "schichtmodell";
+  if (status === 403 && e && istSchichtmodellCode(e.code)) return "schichtmodell";
   if (status === 403) return "keinRecht";
   if (status === 413) return "zuGross";
   /* P2-12 (Folgepunkt (1) Review #344): Ein Eintrag mit einem Kalendertag, den es nicht gibt (2026-02-30) — keine

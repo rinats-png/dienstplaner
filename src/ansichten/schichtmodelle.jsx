@@ -19,18 +19,16 @@ import { Hinweisband, Fehlerband } from "../gestalt/ansichten.jsx";
 import { Zelle } from "../ui/leisten.jsx";
 import { C } from "../farben.js";
 import { NUM } from "../ui/thema.js";
-import { darf } from "../lib/berechtigung.js";
 import { heute as heuteBetrieb } from "../lib/datum.js";
+import { schichtmodellPflegeAn } from "../lib/schichtmodell-schalter.js";
 import {
   BETRIEB_MODELL, SCHICHTMODELL_GRENZEN, FREI, folgeLesen, folgeText, unbekannteKennungen, zykluslaengeText,
   neueKennung, alleZuordnungsKennungen, nutzerDesModells, entwurfPruefen, mitModellen, mitZuordnungen, modelleVon,
-  zuordnungenDerPerson, personName, lageAm, zeitraumText, zuordnungBegonnen, plusTage,
+  zuordnungenDerPerson, personName, lageAm, zeitraumText, zuordnungBegonnen, plusTage, darfSchichtmodelle, wirksamePerson,
 } from "../lib/schichtmodelle-pflege.js";
 
-/** Darf diese Sitzung Schichtmodelle pflegen? Wie der Server (rechte.mjs): (org.edit oder pattern.edit) und staff.edit. */
-export function darfSchichtmodelle(sitz) {
-  return !!sitz && !!sitz.person && darf(sitz, "staff.edit") && (darf(sitz, "org.edit") || darf(sitz, "pattern.edit"));
-}
+/* Rechte wie der Server (feste Matrix, Review zu PR 423 A1): src/lib/schichtmodelle-pflege.js. */
+export { darfSchichtmodelle };
 
 const kopie = (x) => JSON.parse(JSON.stringify(x));
 const VORSCHAU_TAGE = 28;
@@ -152,10 +150,12 @@ function ModellListe({ m, heute, akt }) {
 }
 
 /* ------------------------------ Zuordnungen ------------------------------ */
-function ZuordnungsZeile({ z, i, m, heute, alt, onAendern, onEntfernen }) {
+export function ZuordnungsZeile({ z, i, m, heute, alt, fortsetzung, onAendern, onEntfernen }) {
   const modelle = modelleVon(m);
-  /* Begonnen: gespeichert und Beginn bis heute — oder (neu) ohne Beginn, also „seit jeher“ (Fortsetzung des Betriebsmodells). */
-  const begonnen = alt ? zuordnungBegonnen(alt, heute) : z.gueltigAb === null;
+  /* Begonnen: gespeichert und Beginn bis heute — oder die vom Hinzufügen angelegte Fortsetzung des Betriebsmodells
+     („seit jeher“). Eine neue Zeile, deren „Gültig ab“ geleert wurde, gilt NICHT als begonnen (Review zu PR 423 H1): sie bleibt
+     bearbeitbar, die Vorprüfung meldet den fehlenden Beginn. */
+  const begonnen = alt ? zuordnungBegonnen(alt, heute) : !!fortsetzung;
   const eigenes = z.modellId !== BETRIEB_MODELL ? modelle.find((x) => x.id === z.modellId) : null;
   const map = Object.fromEntries(m.dienstarten.map((d) => [d.id, d]));
   const nr = i + 1;
@@ -204,10 +204,17 @@ function ZuordnungsZeile({ z, i, m, heute, alt, onAendern, onEntfernen }) {
 function ZuordnungenJePerson({ m, heute, akt }) {
   const personen = useMemo(() => [...(m.personen || [])].filter((p) => p && p.id)
     .sort((a, b) => personName(a).localeCompare(personName(b), "de")), [m.personen]);
-  const [pid, setPid] = useState(personen.length ? personen[0].id : "");
+  const [gewaehlt, setPid] = useState(/** @type {string | null} */ (null));
+  /* Review zu PR 423 H4: Die gewählte Person gilt nur, solange es sie gibt; sonst die erste der (geänderten) Liste. */
+  const pid = wirksamePerson(personen, gewaehlt);
   const person = personen.find((p) => p.id === pid) || null;
   const gespeichert = zuordnungenDerPerson(person);
-  const [entwurf, setEntwurf] = useState(/** @type {any[] | null} */ (null));
+  /* Der Entwurf gehört zu genau einer Person; wechselt sie (auch durch eine geänderte Liste), gilt er nicht mehr. */
+  const [entwurfZustand, setEntwurfZustand] = useState(/** @type {{ pid: string, liste: any[], fortsetzung: string[] } | null} */ (null));
+  const entwurf = entwurfZustand && entwurfZustand.pid === pid ? entwurfZustand.liste : null;
+  const fortsetzungIds = new Set(entwurfZustand && entwurfZustand.pid === pid ? entwurfZustand.fortsetzung : []);
+  const setEntwurf = (liste, fortsetzung) => setEntwurfZustand(liste === null ? null
+    : { pid, liste, fortsetzung: fortsetzung || (entwurfZustand && entwurfZustand.pid === pid ? entwurfZustand.fortsetzung : []) });
   const [fehler, setFehler] = useState(null);
   const liste = entwurf || gespeichert;
   const altNach = new Map(gespeichert.map((z) => [z.id, z]));
@@ -215,7 +222,7 @@ function ZuordnungenJePerson({ m, heute, akt }) {
   const morgen = plusTage(heute, 1);
 
   const wechselPerson = (id) => { setPid(id); setEntwurf(null); setFehler(null); };
-  const aendern = (neu) => { setEntwurf(neu); setFehler(null); };
+  const aendern = (neu, fortsetzung) => { setEntwurf(neu, fortsetzung); setFehler(null); };
   const hinzufuegen = () => {
     const ids = new Set([...alleZuordnungsKennungen(m), ...liste.map((z) => z.id)]);
     const modell = modelleVon(m)[0];
@@ -227,7 +234,7 @@ function ZuordnungenJePerson({ m, heute, akt }) {
        rückwirkend, der Server wiese ab). Nichts wird still entschieden: Beide Zeilen sind sichtbar und änderbar. */
     const fortsetzung = !liste.length
       ? [{ id: neueKennung("sz", ids), modellId: BETRIEB_MODELL, gueltigAb: null, gueltigBis: heute }] : [];
-    aendern([...liste.map((x) => ({ ...x })), ...fortsetzung, z]);
+    aendern([...liste.map((x) => ({ ...x })), ...fortsetzung, z], [...fortsetzungIds, ...fortsetzung.map((x) => x.id)]);
   };
   const uebernehmen = () => {
     const f = entwurfPruefen(m, mitZuordnungen(m, pid, liste), heute);
@@ -254,7 +261,7 @@ function ZuordnungenJePerson({ m, heute, akt }) {
         </div>}
         {!liste.length && <p style={{ fontSize: 13.5, color: C.dim, margin: "0 0 14px", lineHeight: 1.55 }}>
           Keine eigene Zuordnung — es gilt unbefristet die Schichtfolge des Betriebs.</p>}
-        {liste.map((z, i) => <ZuordnungsZeile key={z.id} z={z} i={i} m={m} heute={heute} alt={altNach.get(z.id) || null}
+        {liste.map((z, i) => <ZuordnungsZeile key={z.id} z={z} i={i} m={m} heute={heute} alt={altNach.get(z.id) || null} fortsetzung={fortsetzungIds.has(z.id)}
           onAendern={(n) => aendern(liste.map((x) => (x.id === z.id ? n : x)))}
           onEntfernen={() => aendern(liste.filter((x) => x.id !== z.id))} />)}
         {fehler && <Fehlerband style={{ margin: "4px 0 13px" }}>{fehler}</Fehlerband>}
@@ -275,7 +282,9 @@ function ZuordnungenJePerson({ m, heute, akt }) {
  * @param {{ sitz: any, akt: any, heuteTag?: string }} props heuteTag nur für Prüfungen (sonst der Betriebstag)
  */
 export function Schichtmodelle({ sitz, akt, heuteTag }) {
-  if (!darfSchichtmodelle(sitz)) return null;
+  /* P2-24 B: hinter dem Schalter CENTRIC_SCHICHTMODELL_PFLEGE (Vorgabe aus). Aus: nichts angezeigt; die Daten bleiben
+     im Zustand und gehen beim Speichern unverändert mit. */
+  if (!schichtmodellPflegeAn() || !darfSchichtmodelle(sitz)) return null;
   const m = sitz.mandant;
   const heute = heuteTag || heuteBetrieb();
   return (

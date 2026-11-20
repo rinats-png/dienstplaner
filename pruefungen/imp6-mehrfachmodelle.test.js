@@ -23,6 +23,8 @@
    6. Teilweg ist nie großzügiger als der Voll-PUT.
    7. Protokoll: nur Kennungen, keine Namen, keine Modellnamen.
    8. Importvorschau mit zwei Modellen je Person (ohne Schreiben, Schalter aus).
+   9. Stabile 403-Codes SCHICHTMODELL_… (Voll- und Teilweg) und Schalter CENTRIC_SCHICHTMODELL_PFLEGE (nur
+      Anzeige; aus: Modelle/Zuordnungen bleiben beim Speichern anderer Daten byte-gleich, Schreibweg unverändert).
 
    Aufruf: npx vitest run pruefungen/imp6-mehrfachmodelle.test.js --testTimeout=120000
    ========================================================================== */
@@ -824,5 +826,91 @@ describe("8. Importvorschau: zwei Modelle je Person (ohne Schreiben, Schalter au
       expect(a.status, weg).toBe(404);
     }
     expect((await gespeichert(raum)).bestand).toEqual(vorher.bestand);
+  });
+});
+
+/* ------------------------------------------------------------------------ */
+describe("9. Stabile 403-Codes (Folgepunkt 1 aus #423) und Schalter CENTRIC_SCHICHTMODELL_PFLEGE (P2-24 B)", () => {
+  const UEBERLAPP = (m) => { pA1(m).schichtmodellZuordnungen = [...ZUORDNUNGEN_A1(), { id: "x", modellId: "nacht", gueltigAb: M2, gueltigBis: null }]; };
+  const faelle = [
+    ["Überschneidung", UEBERLAPP, "SCHICHTMODELL_UEBERSCHNEIDUNG", /^Schichtmodell-Zuordnung \(Person a1\): Die Zuordnungen /],
+    ["laufende Zuordnung entfernt (rückwirkend)", (m) => { pA1(m).schichtmodellZuordnungen = [ZUORDNUNGEN_A1()[0]]; }, "SCHICHTMODELL_RUECKWIRKEND", /vergangene Tage/],
+    ["verwendetes Modell entfernt", (m) => { m.schichtmodelle = m.schichtmodelle.filter((x) => x.id !== "tag"); }, "SCHICHTMODELL_MODELL_VERWENDET", /noch Person a1 zugeordnet/],
+    ["Dienstart im Modell gelöscht", (m) => { m.dienstarten = m.dienstarten.filter((d) => d.id !== "N"); }, "SCHICHTMODELL_DIENSTART_VERWENDET", /Dienstart N wird noch im Schichtmodell nacht/],
+    ["Modell mit unbekannter Dienstart", (m) => { m.schichtmodelle = [...m.schichtmodelle, { id: "q", name: "Q", tage: ["Q"] }]; }, "SCHICHTMODELL_DIENSTART", /Dienstart des Betriebs/],
+  ];
+  for (const [titel, aendern, code, text] of faelle) {
+    it(`Voll-PUT, ${titel}: 403 mit code ${code}, Text unverändert, nichts gespeichert`, async () => {
+      const { raum, token } = await neuerRaum({ rollen: ["LT"] });
+      const vorher = await gespeichert(raum);
+      const a = await schreibeAls(token, "LT", aendern);
+      expect(a.status).toBe(403);
+      expect(a.code).toBe(code);
+      expect(a.fehler).toBe("Keine Schreibberechtigung.");
+      expect(String(a.text)).toMatch(text);
+      expect((await gespeichert(raum)).bestand).toEqual(vorher.bestand);
+    });
+  }
+  it("Teilweg, Überschneidung: derselbe Code wie der Voll-PUT", async () => {
+    const { raum, token } = await neuerRaum({ rollen: ["LT"] });
+    const vorher = await gespeichert(raum);
+    const g = await anfrage("/api/bestand", { token: token.LT });
+    expect(g.teile).toBeTruthy();
+    const m = kopie(g.bestand.mandanten[0]); UEBERLAPP(m);
+    const t = await anfrage("/api/bestand/teile", { methode: "POST", token: token.LT, rumpf: { format: 1, epoche: g.teile.epoche, durch: "Pruefung",
+      kern: { personen: { basis: g.teile.versionen["kern:personen"], wert: m.personen } } } });
+    expect(t.status, JSON.stringify(t).slice(0, 300)).toBe(403);
+    expect(t.code).toBe("SCHICHTMODELL_UEBERSCHNEIDUNG");
+    expect((await gespeichert(raum)).bestand).toEqual(vorher.bestand);
+  });
+  it("andere 403 tragen keinen SCHICHTMODELL_-Code (Differenz)", async () => {
+    const { token } = await neuerRaum({ rollen: ["BR"] });
+    const a = await schreibeAls(token, "BR", (m) => { m.personen[0].telefon = "9"; });
+    expect(a.status).toBe(403);
+    expect(String(a.code || "")).not.toMatch(/^SCHICHTMODELL_/);
+  });
+  it("Schalter: GET meldet schichtmodellPflege nur bei genau „true“ (Vorgabe aus)", async () => {
+    const { token } = await neuerRaum({ rollen: ["LT", "MA"] });
+    const vorher = process.env.CENTRIC_SCHICHTMODELL_PFLEGE;
+    try {
+      delete process.env.CENTRIC_SCHICHTMODELL_PFLEGE;
+      expect((await anfrage("/api/bestand", { token: token.LT })).schichtmodellPflege).toBeUndefined();
+      process.env.CENTRIC_SCHICHTMODELL_PFLEGE = "TRUE";
+      expect((await anfrage("/api/bestand", { token: token.LT })).schichtmodellPflege).toBeUndefined();
+      process.env.CENTRIC_SCHICHTMODELL_PFLEGE = "true";
+      expect((await anfrage("/api/bestand", { token: token.LT })).schichtmodellPflege).toBe(true);
+      /* nur Anzeige: Rechte bestimmt weiter die Rechtekette (die Beschäftigte sieht dieselbe Fähigkeit, aber keine Pflege) */
+      expect((await anfrage("/api/bestand", { token: token.MA })).schichtmodellPflege).toBe(true);
+    } finally { if (vorher === undefined) delete process.env.CENTRIC_SCHICHTMODELL_PFLEGE; else process.env.CENTRIC_SCHICHTMODELL_PFLEGE = vorher; }
+  });
+  it("Schalter aus + Speichern anderer Daten (Leitung, Planung): Modelle und Zuordnungen bleiben byte-gleich im Bestand", async () => {
+    delete process.env.CENTRIC_SCHICHTMODELL_PFLEGE;
+    const { raum, token } = await neuerRaum({ rollen: ["LT", "PL"] });
+    const vorher = await gespeichert(raum);
+    for (const k of ["LT", "PL"]) {
+      const a = await schreibeAls(token, k, (m) => { m.personen.find((p) => p.id === "m0").telefon = `0-${k}`; });
+      expect(a.status, `${k}: ${JSON.stringify(a).slice(0, 200)}`).toBe(200);
+    }
+    const nach = await gespeichert(raum);
+    expect(JSON.stringify(nach.m1.schichtmodelle)).toBe(JSON.stringify(vorher.m1.schichtmodelle));
+    expect(JSON.stringify(nach.a1.schichtmodellZuordnungen)).toBe(JSON.stringify(vorher.a1.schichtmodellZuordnungen));
+    expect(nach.m1.personen.find((p) => p.id === "m0").telefon).toBe("0-PL");
+  });
+  it("Schalter aus + Kopie ohne die Felder (älterer Client): gespeicherte Modelle und Zuordnungen bleiben", async () => {
+    delete process.env.CENTRIC_SCHICHTMODELL_PFLEGE;
+    const { raum, token } = await neuerRaum({ rollen: ["LT"] });
+    const vorher = await gespeichert(raum);
+    const a = await schreibeAls(token, "LT", (m) => { delete m.schichtmodelle; for (const p of m.personen) delete p.schichtmodellZuordnungen; });
+    expect(a.status, JSON.stringify(a).slice(0, 200)).toBe(200);
+    const nach = await gespeichert(raum);
+    expect(nach.m1.schichtmodelle).toEqual(vorher.m1.schichtmodelle);
+    expect(nach.a1.schichtmodellZuordnungen).toEqual(vorher.a1.schichtmodellZuordnungen);
+  });
+  it("Schalter aus: der Schreibweg des Servers ist unverändert (bewusste Entscheidung, siehe IMP-6-MEHRFACHMODELLE „Schalter“)", async () => {
+    delete process.env.CENTRIC_SCHICHTMODELL_PFLEGE;
+    const { raum, token } = await neuerRaum({ rollen: ["LT"] });
+    const a = await schreibeAls(token, "LT", WECHSEL);
+    expect(a.status, JSON.stringify(a).slice(0, 200)).toBe(200);
+    expect((await gespeichert(raum)).a1.schichtmodellZuordnungen.map((z) => z.id)).toEqual(["a1-alt", "a1-tag", "a1-nacht"]);
   });
 });

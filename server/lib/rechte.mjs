@@ -31,7 +31,7 @@ import { branchenmoduleZusammen, moduleinstellungenVerwerfen } from "./branchenm
 import { paketfelderGeprueft, preisgestaltungFuerKunde } from "./paketstand.mjs";
 import { modulSchreibwegeAnwenden } from "./modulschreibwege.mjs";
 import { vorgabenZusammen } from "./vorgaben.mjs";
-import { schichtzuordnungZusammen } from "./schichtzuordnung.mjs";
+import { schichtzuordnungZusammen, schichtmodellAbsageCode } from "./schichtzuordnung.mjs";
 import { anlagenZusammen } from "./modul-anlagen.mjs";
 import { maschinenqualZusammen } from "./modul-maschinenqual.mjs";
 import { geteilterdienstZusammen } from "./modul-geteilterdienst.mjs";
@@ -1685,7 +1685,7 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
          (vergangene, abgeschlossene, freigegebene Monate) weist der Server ab (Lücken sind zulässig: Frage 5 vom 2026-11-14); Wann/Wer/Version vom Server. Ohne Recht wirkungslos. */
       const modelle = schichtzuordnungZusammen(ort.betrieb, geschickt, { darf: (darf(rolle, "org.edit") || darf(rolle, "pattern.edit")) && darf(rolle, "staff.edit"),
         person: sitzung.person, jetzt: new Date().toISOString(), heute: heuteBerlin() });
-      if (modelle.grund) return { verweigert: modelle.grund };
+      if (modelle.grund) return { verweigert: modelle.grund, code: schichtmodellAbsageCode(modelle.code) };
       geschickt = modelle.mandant;
       /* Einwilligungen nach dem Mutterschutzgesetz: Form und Wann/Wer vom Server. */
       const einw = einwilligungenZusammen(ort.betrieb, geschickt, sitzung);

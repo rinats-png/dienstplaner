@@ -114,3 +114,38 @@ Angepasste bestehende Prüfungen (begründet):
   Ansicht und Aktionen die Pflegehilfe nutzen und `fachlogik.js` sie nicht kennt.
 
 Offen: P2-24 (Sichtbarkeit vor der Planwirkung; laufendes Modell ändern), P2-19 (d), P2-4 Punkte 6 bis 8.
+
+## Nachtrag 2026-11-20 (b): P2-24 B (Schalter), stabile 403-Codes, Review-Auflagen #423
+
+| Punkt | Umsetzung | Nachweis |
+|---|---|---|
+| P2-24 B Schalter `CENTRIC_SCHICHTMODELL_PFLEGE` (Vorgabe aus) | `server/lib/schalter.mjs`, `GET /api/bestand` `schichtmodellPflege`, `src/lib/schichtmodell-schalter.js`, `src/speicher.js` (lies), Ansicht | `imp6-oberflaeche` S1–S4, E0; `imp6-mehrfachmodelle` 9 (Schalter); E2E S6 |
+| Kein Datenverlust bei AUS | Daten bleiben im Zustand und gehen unverändert mit | `imp6-oberflaeche` S3/S4; `imp6-mehrfachmodelle` 9 (byte-gleich, Kopie ohne Felder); E2E S6 |
+| Server-Schreibweg bei AUS | bewusst unverändert, Begründung `IMP-6-MEHRFACHMODELLE.md` „Schalter“ | `imp6-mehrfachmodelle` 9 „Schreibweg unverändert“ |
+| Folgepunkt 1: stabile 403-Codes | `SCHICHTMODELL_<Prüfcode>` (`schichtmodellAbsageCode`), `rechte.mjs` 1 Zeile, `daten.mjs` reicht `code` durch; Client nur am Code, ohne Code fail-safe „keinRecht“ | `imp6-mehrfachmodelle` 9 (5 Codes Voll-PUT, Teilweg, Differenz); `imp6-oberflaeche` C1, C3, C3b |
+| A1 Rechte der Anzeige = feste Matrix des Servers | `darfSchichtmodelle` mit `MATRIX_STD`, Kundenzugang, nie Betriebsmatrix | `imp6-oberflaeche` D1b |
+| A2 echter Server-403 → Lage „schichtmodell“ | — | E2E S4b (PUT unterwegs um Überschneidung ergänzt, echter Server antwortet 403 `SCHICHTMODELL_UEBERSCHNEIDUNG`), `imp6-mehrfachmodelle` 9 |
+| H1 geleertes „Gültig ab“ | nur die beim Hinzufügen angelegte Fortsetzung gilt als begonnen | `imp6-oberflaeche` D1c |
+| H3 Texte ohne Pflegerecht | Dienstart-Löschmeldung nennt den Weg nur mit Schalter und Recht; Leiste ohne Annahme über Rechte | `imp6-oberflaeche` E2 (Quelltext) |
+| H4 Personenauswahl | `wirksamePerson`; Entwurf gehört genau einer Person | `imp6-oberflaeche` D1d |
+| H5 Stand-Satz ENTSCHEIDUNGSLISTE | Komma/„und“ berichtigt, P2-24 entschieden | — |
+
+### Angepasste Bestandsprüfungen: was sie weiterhin absichern
+
+**`pruefungen/p212-client-kalendertag.test.js`, Test „Differenz: die übrigen Lagen zeigen weder Bereichszeile noch Verwerfen-Knopf“.**
+Anforderung (P2-12 Folgepunkt 1, Review #354): Nur Lagen, bei denen „Noch einmal senden“ denselben abgewiesenen Stand
+schickte, bieten den Verwerfen-Weg und eine Bereichszeile an; jede andere Lage (Netz, Server, Rolle, Konflikt, Sitzung …)
+bleibt wie vor P2-12 — ohne Bereichszeile, ohne Verwerfen, die Textzeile genau einmal. Die Anpassung nimmt nur die neue Lage
+„schichtmodell“ aus, die genau in diese Klasse gehört (422/403 auf Inhalt: derselbe Stand scheitert wieder). Für alle
+übrigen Lagen gilt die Prüfung unverändert, auch für künftig hinzukommende (die Liste wird aus `SPEICHERLAGE` gebildet).
+Die neue Lage selbst prüft `imp6-oberflaeche` C5 mit denselben Aussagen (Bereichszeile, Verwerfen, Sichern, kein „Noch einmal
+senden“, keine Rollenmeldung). Nichts ist abgeschwächt: die ausgenommene Lage hat mehr Prüfungen als vorher (vorher gab es sie nicht).
+
+**`pruefungen/imp6-zyklen-grenzfaelle.test.js`, Abschnitt D2 (Wächter).** Anforderung (P2-4 Punkt 6, Vorbedingungen 8 und
+Differenz D): Kein Modul bringt die Zuordnungen oder Modelldefinitionen in die Planrechnung, ohne dass diese Liste bewusst
+erweitert und die Differenzprüfung D (Planrechnung bit-gleich mit und ohne Zuordnungen) umgestellt wird. Aufgenommen ist
+genau eine Datei, `src/lib/schichtmodelle-pflege.js` (Pflege: Entwurf mit der Serverbibliothek prüfen, Feld setzen, Lage
+anzeigen); sie rechnet keinen Dienst. Weiterhin abgesichert: (1) jede andere neue Fundstelle in `server/` oder `src/` macht
+D2 rot; (2) Ansicht und Aktionen nennen die Felder nicht selbst (sonst stünden sie in der Trefferliste); (3) `imp6-oberflaeche`
+E3 verlangt, dass nur `src/ansichten/schichtmodelle.jsx` und `src/app/aktionen/plan.js` die Pflegehilfe nutzen und weder
+`fachlogik.js` noch die Hilfe selbst `dienstAm`/`modellDienstAm` nennen; (4) Differenz D läuft unverändert bit-gleich.

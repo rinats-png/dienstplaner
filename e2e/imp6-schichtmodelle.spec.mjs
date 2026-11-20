@@ -11,7 +11,14 @@
      S3  Überschneidung: Die Vorprüfung meldet sie mit Text, „Übernehmen“ schreibt nichts (Server unverändert).
      S4  Modell verkürzt, Versatz ≥ neue Länge: Der echte Server antwortet 422 MODELL_VERKUERZT_VERSATZ (API); dieselbe
          Antwort im Browser erscheint unter „Nicht gespeichert“ mit dem Text des Servers, nicht als Rollenproblem.
+     S4b Echter Server-403 (Review #423 A2): Der PUT der App wird unterwegs um eine überschneidende Zuordnung ergänzt und
+         geht an den echten Server; dessen 403 mit code SCHICHTMODELL_UEBERSCHNEIDUNG erscheint als Lage „schichtmodell“.
      S5  axe WCAG 2.2 AA auf der Fläche „Schichtfolge mit Schichtmodellen“.
+     S6  Schalter aus (Vorgabe des Servers, P2-24 B): kein Abschnitt, auch nicht für die Leitung; eine andere Änderung unter
+         „Schichtfolge“ wird gespeichert, Modelle und Zuordnungen bleiben byte-gleich im Bestand.
+   Schalter: Der E2E-Server läuft mit der Vorgabe (CENTRIC_SCHICHTMODELL_PFLEGE nicht gesetzt). S1 bis S5 schalten die
+   Anzeige gezielt für diese Seite an, indem die GET-Antwort des echten Servers um `schichtmodellPflege: true` ergänzt
+   wird (genau das, was der Server mit Schalter an meldet); andere Specs sehen den Abschnitt nicht.
    Nur Projekt 1024x768 (schreibt Daten). zeit-ok: kein eigener Uhrbezug, Laufkennung nur als eindeutiger Raumname. */
 import { test, expect, geheZu, schreibvorgaengeVerfolgen, axePruefen } from "./hilfen.mjs";
 import { BASIS, BETREIBER_VAR } from "./umgebung.mjs";
@@ -56,7 +63,17 @@ async function seiteZu(page, verfolgung) {
   await verfolgung.abgeschlossen();
 }
 const bereich = (page) => page.getByTestId("schichtmodell-pflege");
+/** Schalter gezielt für diese Seite an: die GET-Antwort des echten Servers um die Fähigkeit ergänzen. */
+async function pflegeAn(page) {
+  await page.route("**/api/bestand", async (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    const r = await route.fetch();
+    const j = await r.json();
+    return route.fulfill({ response: r, json: { ...j, schichtmodellPflege: true } });
+  });
+}
 async function zurPflege(page) {
+  await pflegeAn(page);
   await anmeldenBrowser(page, C.l);
   await geheZu(page, "Schichtfolge");
   const b = bereich(page);
@@ -227,6 +244,38 @@ test.describe.serial("IMP-6 Oberfläche: Schichtmodelle und Zuordnungen je Perso
     expect(JSON.stringify(await mandant(C.lT))).toBe(vorher);
   });
 
+  test("S4b echter Server-403 (Überschneidung) erscheint als Lage „schichtmodell“ mit stabilem Code", async ({ page }) => {
+    const vorher = JSON.stringify(await mandant(C.lT));
+    const b = await zurPflege(page);
+    const echt = [];
+    await page.route("**/api/bestand", async (route) => {
+      if (route.request().method() !== "PUT") return route.fallback();
+      const rumpf = route.request().postDataJSON();
+      const p = rumpf.bestand.mandanten[0].personen.find((x) => x.id === "s1");
+      p.schichtmodellZuordnungen = [...p.schichtmodellZuordnungen,
+        { id: "sz-e2e-ueber", modellId: C.modelle[1].id, gueltigAb: C.morgen, gueltigBis: null, versatz: 0 }];
+      const r = await route.fetch({ postData: JSON.stringify(rumpf) });
+      echt.push({ status: r.status(), body: await r.json() });
+      return route.fulfill({ response: r });
+    });
+    await b.getByRole("button", { name: `Schichtmodell Zwei Wochen ${MK} bearbeiten` }).click();
+    const ed = b.getByTestId("schichtmodell-editor");
+    await ed.getByLabel("Name des Schichtmodells").fill(`Zwei Wochen ${MK} umbenannt`);
+    await ed.getByRole("button", { name: "Übernehmen" }).click();
+    const leiste = page.getByRole("alert").filter({ hasText: "Schichtmodell oder Zuordnung nicht gespeichert" });
+    await expect(leiste).toBeVisible({ timeout: 20000 });
+    expect(echt[0].status).toBe(403);
+    expect(echt[0].body.code).toBe("SCHICHTMODELL_UEBERSCHNEIDUNG");
+    await expect(leiste).toContainText("Bereich: Schichtmodelle");
+    await expect(leiste).toContainText("überschneiden sich");
+    await expect(page.getByText("Diese Änderung ist mit deiner Rolle nicht zulässig")).toHaveCount(0);
+    await leiste.getByRole("button", { name: "Änderungen verwerfen und neu laden" }).click();
+    await page.waitForLoadState("load");
+    await page.unroute("**/api/bestand");
+    await page.goto("about:blank");
+    expect(JSON.stringify(await mandant(C.lT)), "nichts gespeichert").toBe(vorher);
+  });
+
   test("S5 axe WCAG 2.2 AA: Schichtfolge mit Schichtmodellen und Zuordnungen", async ({ page }, testInfo) => {
     const v = await schreibvorgaengeVerfolgen(page);
     const b = await zurPflege(page);
@@ -235,5 +284,24 @@ test.describe.serial("IMP-6 Oberfläche: Schichtmodelle und Zuordnungen je Perso
     await axePruefen(page, testInfo, "schichtmodelle");
     await b.getByTestId("schichtmodell-editor").getByRole("button", { name: "Abbrechen" }).click();
     await seiteZu(page, v);
+  });
+
+  test("S6 Schalter aus: kein Abschnitt; andere Änderung gespeichert, Modelle und Zuordnungen bleiben", async ({ page }) => {
+    const vorher = await mandant(C.lT);
+    expect(vorher.schichtmodelle.length).toBe(2);
+    const v = await schreibvorgaengeVerfolgen(page);
+    await anmeldenBrowser(page, C.l);       // ohne pflegeAn: die Vorgabe des Servers
+    await geheZu(page, "Schichtfolge");
+    await expect(page.getByRole("heading", { name: "Zyklusraster" }).or(page.getByText("Zyklusraster")).first()).toBeVisible();
+    await expect(page.getByTestId("schichtmodell-pflege")).toHaveCount(0);
+    await expect(page.getByText("Schichtmodelle je Person")).toHaveCount(0);
+    /* eine andere Änderung unter „Schichtfolge“: Woche 1, Montag mit dem ersten Dienst belegen */
+    await page.getByRole("button", { name: /^Woche 1, Mo: .* — mit dem gewählten Dienst belegen$/ }).click();
+    await expect.poll(async () => JSON.stringify((await mandant(C.lT)).zyklus), { timeout: 20000 }).not.toBe(JSON.stringify(vorher.zyklus));
+    await seiteZu(page, v);
+    const nach = await mandant(C.lT);
+    expect(JSON.stringify(nach.schichtmodelle)).toBe(JSON.stringify(vorher.schichtmodelle));
+    expect(JSON.stringify(nach.personen.find((p) => p.id === "s1").schichtmodellZuordnungen))
+      .toBe(JSON.stringify(vorher.personen.find((p) => p.id === "s1").schichtmodellZuordnungen));
   });
 });
