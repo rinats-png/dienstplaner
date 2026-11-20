@@ -1316,3 +1316,11 @@ describe("Delta-Review 7 #427: Vorlagen per SHA-256 an die Freigabe gebunden", (
     expect(JSON.parse(r.stdout)).toEqual(hashesIn(w, [".env.example", "deploy/compose.yml", "Dockerfile"]));
   }, 60_000);
 });
+
+describe("Delta-Review 7 #427: Nachschärfung", () => {
+  it("fehlt der Vorlagenstand ganz (nicht ermittelt), ist G3 NO-GO (fail-closed)", () => {
+    const e = sammeln({ wurzel: w, offline: true, fixture: fixtureGo(), releaseId: "v4-r1", digest: D, jetztMs: JETZT_MS });
+    delete e.vorlagenStand;
+    expect(gateVon(auswerten(e), "G3").gruende.join()).toMatch(/Vorlagen des Kandidaten nicht ermittelbar/);
+  });
+});
