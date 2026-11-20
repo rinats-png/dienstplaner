@@ -6414,7 +6414,7 @@
       "agent": null,
       "modell": "opus",
       "konfliktzonen": [],
-      "pr": [],
+      "pr": ["#430"],
       "nachweis": "docs/acc45/v4-2-nachweis.md",
       "akzeptanz": ".slink.on und .slink:hover auf der Seitenleiste in beiden Themen >= 4,5:1 (gemessen auf der gerenderten Fläche); Test und Browserbeleg hell/dunkel",
       "tests": "Unit, E2E",
