@@ -90,7 +90,8 @@ beforeEach(() => {
   datei("docs/acc45/releases/v4-r1.freigabe.json", { ...FREIGABE, vorlagenHashes: hashesIn(w, [".env.example", "deploy/compose.yml", "Dockerfile"]) });
 });
 function hashesIn(wurzel, pfade) {
-  return Object.fromEntries(pfade.map((p) => [p, createHash("sha256").update(Buffer.from(readFileSync(join(wurzel, p), "utf8"), "utf8")).digest("hex")]));
+  // Delta-Review 8: gebunden werden Mode und rohe Bytes (kein Dekodieren): sha256("100644\0" + Inhalt)
+  return Object.fromEntries(pfade.map((p) => [p, createHash("sha256").update(Buffer.concat([Buffer.from("100644\0"), readFileSync(join(wurzel, p))])).digest("hex")]));
 }
 afterEach(() => rmSync(w, { recursive: true, force: true }));
 
@@ -1313,7 +1314,7 @@ describe("Delta-Review 7 #427: Vorlagen per SHA-256 an die Freigabe gebunden", (
     writeFileSync(fx, JSON.stringify(fixtureGo()));
     const r = spawnSync(process.execPath, [WERKZEUG, "--offline", "--fixture", fx, "--wurzel", w, "--vorlagen-hashes"], { encoding: "utf8" });
     expect(r.status, r.stderr).toBe(0);
-    expect(JSON.parse(r.stdout)).toEqual(hashesIn(w, [".env.example", "deploy/compose.yml", "Dockerfile"]));
+    expect(JSON.parse(r.stdout).vorlagenHashes).toEqual(hashesIn(w, [".env.example", "deploy/compose.yml", "Dockerfile"]));
   }, 60_000);
 });
 
@@ -1323,4 +1324,94 @@ describe("Delta-Review 7 #427: Nachschärfung", () => {
     delete e.vorlagenStand;
     expect(gateVon(auswerten(e), "G3").gruende.join()).toMatch(/Vorlagen des Kandidaten nicht ermittelbar/);
   });
+});
+
+describe("Delta-Review 8 #427: NODE_* außer NODE_ENV ist verboten", () => {
+  const g3v = (text, art) => g3Schalter({ codeNamen: ["CENTRIC_DEMO"], klassen: KL, unfertig: UNFERTIG,
+    quelltexte: { "src/lib/import-schnittstelle.js": "export const IMPORT_DATEI_AKTIV = false;" }, vorlagen: [{ pfad: "v", art, pflicht: true, text }] }, KONFIG_STANDARD);
+  it("NODE_OPTIONS und andere NODE_* in allen Formaten → NO-GO", () => {
+    const opt = "\"--import=data:text/javascript,process.env[String.fromCharCode(67)+'ENTRIC_DEMO']='true'\"";
+    for (const [t, art] of [
+      [`    environment:\n      NODE_OPTIONS: ${opt}\n`, "compose"],
+      [`ENV NODE_OPTIONS=${opt}\n`, "dockerfile"],
+      ["NODE_OPTIONS=--require=./x.js\n", "env"],
+      ["    environment:\n      - NODE_OPTIONS=--inspect\n", "compose"],
+      ["NODE_PATH=/tmp\n", "env"],
+      ["ENV NODE_TLS_REJECT_UNAUTHORIZED=0\n", "dockerfile"],
+    ]) expect(g3v(t, art).ergebnis, JSON.stringify(t)).toBe("NO-GO");
+    expect(g3v("NODE_ENV=production\n", "env").ergebnis).toBe("GO");
+  });
+});
+
+describe("Delta-Review 8 #427: Bindung an Mode und rohe Bytes (temporäres Git-Repo)", () => {
+  let repo;
+  const g = (...args) => {
+    const r = spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false", "-c", "core.autocrlf=false", ...args], { cwd: repo, encoding: "utf8" });
+    if (r.status !== 0) throw new Error(args.join(" ") + ": " + r.stderr);
+    return r.stdout.trim();
+  };
+  const blob = (inhalt) => {
+    const r = spawnSync("git", ["hash-object", "-w", "--stdin"], { cwd: repo, input: inhalt, encoding: "utf8" });
+    return r.stdout.trim();
+  };
+  const schreib = (rel, inhalt) => { mkdirSync(join(repo, rel, ".."), { recursive: true }); writeFileSync(join(repo, rel), inhalt); };
+  const stand = (k, b) => sammeln({ wurzel: repo, offline: false, kandidatSha: k, basisSha: b, releaseId: "x1y", digest: D, jetztMs: JETZT_MS, gh: () => { throw new Error("kein Netz"); } }).vorlagenStand;
+  let basis;
+  beforeEach(() => {
+    repo = mkdtempSync(join(tmpdir(), "rel1-r8-"));
+    g("init", "-q");
+    schreib(".env.example", "NODE_ENV=production\n");
+    schreib("Dockerfile", "FROM x\n");
+    schreib("docs/demo.txt", "CENTRIC_DEMO=true\n");
+    g("add", "-A"); g("commit", "-q", "-m", "Basis");
+    basis = g("rev-parse", "HEAD");
+  }, 60_000);
+  afterEach(() => rmSync(repo, { recursive: true, force: true }));
+
+  it("Symlink (Mode 120000) als Vorlage → nicht gebunden, G3 NO-GO; Ziel-Änderung ändert nichts daran", () => {
+    g("rm", "-q", "--cached", ".env.example");
+    g("update-index", "--add", "--cacheinfo", `120000,${blob("docs/demo.txt")},.env.example`);
+    g("commit", "-q", "-m", "Symlink");
+    const k = g("rev-parse", "HEAD");
+    const s = stand(k, basis);
+    expect(s.dateien[".env.example"]).toBeUndefined();
+    expect(s.unbekannt.join()).toMatch(/\.env\.example.*120000/);
+  }, 60_000);
+  it("Submodul-Eintrag (Mode 160000) als Vorlage → NO-GO", () => {
+    g("update-index", "--add", "--cacheinfo", `160000,${"1".repeat(40)},deploy/compose.yml`);
+    g("commit", "-q", "-m", "Submodul");
+    expect(stand(g("rev-parse", "HEAD"), basis).unbekannt.join()).toMatch(/deploy\/compose\.yml.*160000/);
+  }, 60_000);
+  it("Mode-Wechsel 100644 → 100755 ändert den Hash", () => {
+    const vorher = stand(basis, basis).dateien.Dockerfile;
+    g("update-index", "--chmod=+x", "Dockerfile");
+    g("commit", "-q", "-m", "ausführbar");
+    const nachher = stand(g("rev-parse", "HEAD"), basis).dateien.Dockerfile;
+    expect(vorher).toMatch(/^[0-9a-f]{64}$/);
+    expect(nachher).toMatch(/^[0-9a-f]{64}$/);
+    expect(nachher).not.toBe(vorher);
+  }, 60_000);
+  it("ungültige UTF-8-Bytes: verschiedene Bytes ergeben verschiedene Hashes (kein Dekodieren)", () => {
+    writeFileSync(join(repo, "Dockerfile"), Buffer.from([0x46, 0x52, 0x4f, 0x4d, 0x20, 0xff, 0x0a]));
+    g("add", "-A"); g("commit", "-q", "-m", "ff");
+    const a = stand(g("rev-parse", "HEAD"), basis).dateien.Dockerfile;
+    writeFileSync(join(repo, "Dockerfile"), Buffer.from([0x46, 0x52, 0x4f, 0x4d, 0x20, 0xfe, 0x0a]));
+    g("add", "-A"); g("commit", "-q", "-m", "fe");
+    const b = stand(g("rev-parse", "HEAD"), basis).dateien.Dockerfile;
+    expect(a).not.toBe(b);
+  }, 60_000);
+  it("CLI --vorlagen-hashes mit --basis zeigt je Vorlage geändert/unverändert/neu", () => {
+    schreib("Dockerfile", "FROM y\n");
+    schreib("deploy/compose.yml", "services: {}\n");
+    g("add", "-A"); g("commit", "-q", "-m", "Kandidat");
+    const k = g("rev-parse", "HEAD");
+    const r = spawnSync(process.execPath, [WERKZEUG, "--wurzel", repo, "--vorlagen-hashes", "--kandidat", k, "--basis", basis], { encoding: "utf8" });
+    expect(r.status, r.stderr).toBe(0);
+    const j = JSON.parse(r.stdout);
+    expect(Object.keys(j.vorlagenHashes).sort()).toEqual([".env.example", "Dockerfile", "deploy/compose.yml"]);
+    expect(j.vergleichMitBasis[".env.example"].status).toBe("unverändert");
+    expect(j.vergleichMitBasis.Dockerfile.status).toBe("geändert");
+    expect(j.vergleichMitBasis["deploy/compose.yml"]).toEqual({ basis: null, kandidat: j.vorlagenHashes["deploy/compose.yml"], status: "neu" });
+    expect(j.vergleichMitBasis.Dockerfile.basis).not.toBe(j.vergleichMitBasis.Dockerfile.kandidat);
+  }, 60_000);
 });
