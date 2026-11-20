@@ -1,12 +1,12 @@
 {
   "schema": 2,
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
-  "anzahl": 235,
+  "anzahl": 236,
   "statusZaehlung": {
     "BLOCKED": 88,
     "READY": 16,
     "IN_PROGRESS": 18,
-    "REVIEW": 13,
+    "REVIEW": 14,
     "INTEGRATED": 97,
     "DONE": 3
   },
@@ -36,11 +36,11 @@
       }
     },
     "folge": {
-      "pakete": 26,
-      "offen": 21,
+      "pakete": 27,
+      "offen": 22,
       "restPT": {
-        "min": 25.150000000000002,
-        "max": 44.2
+        "min": 25.200000000000003,
+        "max": 44.300000000000004
       }
     },
     "extern": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 332.05000000000007,
-    "max": 569.6500000000002
+    "min": 332.1000000000001,
+    "max": 569.7500000000002
   },
   "kritischerPfad": {
     "summe": 70,
@@ -6420,6 +6420,34 @@
       "tests": "Unit, E2E",
       "dateien": "src/v4/app-stil.js",
       "notiz": "Befund Review #425, Schwere MITTEL-HOCH. Browserbeleg 2026-11-20 (v4-2-nachweis.md Abschnitt 6): hell .slink.on/.slink:hover Hintergrund var(--v4-glas) rgba(255,255,252,.72) unter weißer Schrift = 1,76:1; dunkel 13,4:1. Nur Schublade < 1025 px."
+    },
+    {
+      "id": "V4-2d",
+      "titel": "V4: Fokus beim Öffnen der Seitenleisten-Schublade per Tastatur (WCAG 2.4.3)",
+      "strang": "folge",
+      "prio": "P2",
+      "aufwandPT": {"min":0.25,"max":0.5},
+      "abhaengigkeiten": ["V4-2c"],
+      "status": "REVIEW",
+      "stufen": {
+        "implementiert": {"wert":true,"beleg":"acc45/v4/schublade-fokus: Tests zuerst df9ad42b (E2E v4-schublade-fokus 1/1 rot auf Basis eeb529c6: Fokus blieb auf der Menütaste bei prefers-reduced-motion: reduce); Ursache im Browser belegt (beim focus() liefen visibility-Übergänge von 0,01 ms auf .marke/.snav/.sfuss, .slink.on erbte hidden); Fix: src/ui/geraete.js, offene Schublade bei reduzierter Bewegung transition:none (Leiste und Inhalt); docs/acc45/v4-2-nachweis.md Abschnitt 9"},
+        "lokalGetestet": {"wert":true,"beleg":"Lauf 2026-11-20 lokal, je Datei --maxWorkers=1: geraete-wp21 + geraete-wp21-ablaeufe 41/41, geraete-wp21-ablaeufe-render 67/67, v4-app-stil 63/63, wcag-wp40 35/35, tour-dialog 2/2, e2e-flaechen 10/10; E2E (E2E_PORT=3287, 390x844) v4-schublade-fokus 1/1 und v4-seitenleiste-kontrast 2/2 (Fokus ohne Nachhilfe des Tests)"},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": "acc45/v4/schublade-fokus",
+      "agent": null,
+      "modell": "opus",
+      "konfliktzonen": [],
+      "pr": ["#432"],
+      "nachweis": "docs/acc45/v4-2-nachweis.md",
+      "akzeptanz": "Schublade (< 1025 px) per Enter auf der Menütaste geöffnet: Fokus auf dem aktiven Eintrag mit sichtbarem Fokusring, bei reduzierter und nicht reduzierter Bewegung; Escape und Auswahl eines Eintrags geben den Fokus an die Menütaste zurück; E2E ohne Fokussetzen durch den Test; keine Gestaltungsänderung",
+      "tests": "Unit, E2E",
+      "dateien": "src/ui/geraete.js, e2e/v4-schublade-fokus.spec.mjs, pruefungen/geraete-wp21.test.js",
+      "notiz": "Befund aus CI #430 (v4-2-nachweis.md Abschnitt 8, Nachtrag): Fokusführung seitenleisteFokus (WP-21 Teil 2) wirkte nicht; betroffen nur Nutzer mit „Bewegung reduzieren“ (und die E2E-Suite, reducedMotion: reduce)."
     },
     {
       "id": "V4-3",

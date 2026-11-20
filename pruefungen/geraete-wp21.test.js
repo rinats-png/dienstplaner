@@ -47,6 +47,17 @@ describe("WP-21: Seitenleiste auf Telefon und Tablet", () => {
     expect(ausserhalb).not.toMatch(/\.seitenleiste/);
     expect(ausserhalb).toMatch(/@media \(min-width: 1025px\)\{ \.seiten-abdunkelung\{display:none !important;\} \}/);
   });
+  it("V4-2d: offen bei reduzierter Bewegung ohne Übergang in Leiste und Inhalt (Fokus beim Öffnen), Zuklappen unverändert", () => {
+    /* Befund CI #430 / V4-2d (belegt im Browser): Die globale Regel bei prefers-reduced-motion (transition-duration:.01ms
+       !important, App.jsx) machte den geerbten Sichtbarkeitswechsel in .marke/.snav/.sfuss (Vorgabe transition-property:all)
+       zu einem Übergang; beim focus() erbte der Eintrag noch „hidden“. Die offene Leiste und alles darin brauchen daher bei
+       reduzierter Bewegung transition:none mit !important (schlägt die globale *-Regel über die Spezifität). */
+    expect(app).toMatch(/@media \(prefers-reduced-motion: reduce\)\{\n  \*\{[^}]*transition-duration:\.01ms !important;\}/);
+    expect(schmalBlock[1]).toMatch(/@media \(prefers-reduced-motion: reduce\)\{ \.seitenleiste\.offen, \.seitenleiste\.offen \*\{transition:none !important;\} \}/);
+    /* Zuklappen unverändert: unsichtbar erst nach 0,24 s (Ende des Hinausschiebens). */
+    expect(schmalBlock[1]).toMatch(/\.seitenleiste\{visibility:hidden; transition:transform \.24s cubic-bezier\(\.4,0,\.2,1\), visibility 0s linear \.24s;\}/);
+    expect(schmalBlock[1]).toMatch(/\.seitenleiste\.offen\{visibility:visible; transition-delay:0s;\}/);
+  });
   it("die Abdunkelung deckt den Bildschirm hinter der Leiste ab und liegt darunter", () => {
     expect(schmalBlock[1]).toMatch(/\.seiten-abdunkelung\{position:fixed; inset:0; z-index:39;/);
     expect(app).toMatch(/\.seitenleiste\{\n[\s\S]{0,300}?z-index:40;/);
