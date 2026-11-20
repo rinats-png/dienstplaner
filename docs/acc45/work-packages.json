@@ -4902,12 +4902,12 @@
       "agent": "Hauptorchestrator",
       "modell": "haiku",
       "konfliktzonen": [],
-      "pr": ["#215"],
+      "pr": ["#215","#409"],
       "nachweis": "docs/acc45/IMPORT-PLAN.md",
       "akzeptanz": "Alle Fälle aus der Anforderungsliste durch Tests belegt; keine echten Personendaten",
       "tests": "siehe IMPORT-PLAN.md",
       "dateien": "pruefungen/import-fixtures/*, Tests",
-      "notiz": "Nur synthetische Daten. Stand 2026-11-12: PR #215 integriert: 20 Fälle auf Unit-Ebene belegt (12 zusätzlich über den echten Handler), E2E im Browser für alle 20 offen (Oberfläche ausgeschaltet), keine Befunde. docs/acc45/IMPORT-PLAN.md existiert im Repo nicht; die 20 Fälle sind aus IMPORT-VERTRAG.md und dem IMP-1-Nachweis rekonstruiert (Herleitung in docs/acc45/IMP-8-TESTMATRIX.md). Die Akzeptanz 'Alle Fälle aus der Anforderungsliste' ist damit nicht gegen eine Betreiberliste geprüft. Status bleibt IN_PROGRESS, bis Betreiber/Koordinator die Fallliste bestätigt."
+      "notiz": "Nur synthetische Daten. Stand 2026-11-12: PR #215 integriert: 20 Fälle auf Unit-Ebene belegt (12 zusätzlich über den echten Handler). Stand 2026-11-19 (PR #409, Branch test/imp8-testmatrix-rest): HTTP-Rest geschlossen, alle 20 Fälle auch über den echten Handler belegt (neu F02, F03, F04, F06, F07, F08, F11, F18), keine Befunde; E2E im Browser für alle 20 weiter offen (Dateiweg per IMPORT_DATEI_AKTIV/CENTRIC_IMPORT_AKTIV aus, Einschalten nur mit Betreiberfreigabe; Textweg-E2E zählt nicht, anderer Codepfad). docs/acc45/IMPORT-PLAN.md existiert im Repo nicht; die 20 Fälle sind aus IMPORT-VERTRAG.md und dem IMP-1-Nachweis rekonstruiert (Herleitung in docs/acc45/IMP-8-TESTMATRIX.md). Die Akzeptanz 'Alle Fälle aus der Anforderungsliste' ist damit nicht gegen eine Betreiberliste geprüft. Status bleibt IN_PROGRESS, bis Betreiber/Koordinator die Fallliste bestätigt."
     },
     {
       "id": "IMP-9",
