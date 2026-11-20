@@ -7,7 +7,7 @@
    Das Tagesdatum kommt aus ./zeit.mjs (heute) und ist für Gegenrechnungen festlegbar.
    ========================================================================== */
 import { ABW_WEITERE, entgeltStatus } from "./abwesenheitsarten.mjs";
-import { imDienst, einheitAm, einheitDienst, teilzeitDienst, nachtschwelle, nachweisStand as fpNachweisStand, qualGueltig as fpQualGueltig } from "../fachpruefung.mjs";
+import { imDienst, einheitAm, planDienst, nachtschwelle, nachweisStand as fpNachweisStand, qualGueltig as fpQualGueltig } from "../fachpruefung.mjs";
 import { postenBesatzung as postenBesatzungRechnen, mindestFuer, mindestTagOffen, eingefrorenerMonat, abschlussLuecke, freezeStatus, sollMonat, nachtAnteilAm, eingefrorenerTag, eingefrorenerDienst } from "../isteinfrieren.mjs";
 import { istEntwurfstag } from "../planfreigabe.mjs";
 import { dim_, pad, addDays, istNachtdienst } from "../regelwerk.mjs";
@@ -66,8 +66,8 @@ export function personTag(m, p, d) {
   const eid = einheitAm(p, d);
   // Geschäftszimmer: Planung und Leitung fahren keine Rotation mit.
   // Sie erscheinen im Plan nur durch ausdrückliche Zuweisung.
-  const roh = (eid && !p.springer && p.imSchichtdienst !== false) ? einheitDienst(m, eid, d) : null;
-  const plan = teilzeitDienst(m, p, d, roh);
+  /* Schichtfolge mit Teilzeit (IMP-6: bei eingeschalteter Planwirkung das zugeordnete Modell; aus: wörtlich wie bisher). */
+  const plan = planDienst(m, p, d, eid);
   const ab = m.abweichungen[`${p.id}|${d}`];
   let basis = ab !== undefined ? (ab === "-" ? null : ab) : plan;
   if (ab === undefined && plan) {

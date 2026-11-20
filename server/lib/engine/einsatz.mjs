@@ -14,7 +14,8 @@
    beim Laden von fachlogik.js; ohne Haken (Server) gilt null.
    ========================================================================== */
 import { addDays, montag, toMin, dow, dauer, pad, stundengrenzeHinweis } from "../regelwerk.mjs";
-import { einteilungsBefunde, einheitAm, einheitDienst, imDienst, nachtAnteil, nachtschwelle } from "../fachpruefung.mjs";
+import { einteilungsBefunde, einheitAm, einheitDienst, imDienst, nachtAnteil, nachtschwelle, schichtmodellWirkungAktiv,
+  schichtmodellLageAm } from "../fachpruefung.mjs";
 import { istVerfuegbar, zeitraumJahr } from "../istdaten.mjs";
 import { sperrtBefund as sperrtArt } from "../bestaetigungen.mjs";
 import { memo, besetzung, personTag, abwesenheitAm, abwArt, stundenkonto, istStunden, nachweisStand, qualGueltig } from "./plan.mjs";
@@ -215,7 +216,10 @@ export function ersatzVorschlaege(m, d, dienstId, ctx) {
     if (p.springer) { punkte += 28; gruende.push("Springerpool"); }
     else {
       const eid = einheitAm(p, d);
-      if (eid && einheitDienst(m, eid, d)) { punkte -= 10; gruende.push("hätte regulär frei"); }
+      /* IMP-6 Planwirkung (Vorgabe aus): die Folge des zugeordneten Modells; aus wörtlich wie bisher. */
+      const regulaer = schichtmodellWirkungAktiv() ? (() => { const l = schichtmodellLageAm(m, p, d); return l.art === "dienst" && !!l.dienstId; })()
+        : eid && einheitDienst(m, eid, d);
+      if (regulaer) { punkte -= 10; gruende.push("hätte regulär frei"); }
       else { punkte += 8; gruende.push("in der Dienstphase"); }
       if (p.teilzeit && p.teilzeit.aktiv) { punkte -= 6; gruende.push("Teilzeit"); }
     }

@@ -9,8 +9,8 @@
         "CENTRIC_SCHICHTMODELL_PFLEGE",
         "CENTRIC_SCHICHTMODELL_WIRKUNG"
       ],
-      "stand": "PFLEGE im Code (server/lib/schalter.mjs, #423), Vorgabe AUS; WIRKUNG vorsorglich (kommt mit der IMP-6-Planwirkung)",
-      "quelle": "server/lib/schalter.mjs; PR #423"
+      "stand": "beide im Code (server/lib/schalter.mjs: PFLEGE #423, WIRKUNG #429), Vorgabe AUS, nur genau true schaltet ein",
+      "quelle": "server/lib/schalter.mjs; PR #423, #429"
     },
     {
       "id": "import-dateiweg",

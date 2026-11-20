@@ -40,7 +40,7 @@
     },
     "CENTRIC_SCHICHTMODELL_WIRKUNG": {
       "klasse": "schalter-aus",
-      "quelle": "vorsorglich: IMP-6-Planwirkung"
+      "quelle": "server/lib/schalter.mjs (IMP-6-Planwirkung, #429; nur genau true)"
     },
     "CENTRIC_PRUEFLINK": {
       "klasse": "schalter-aus",
