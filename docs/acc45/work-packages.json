@@ -4,9 +4,9 @@
   "anzahl": 234,
   "statusZaehlung": {
     "BLOCKED": 90,
-    "READY": 17,
+    "READY": 16,
     "IN_PROGRESS": 18,
-    "REVIEW": 9,
+    "REVIEW": 10,
     "INTEGRATED": 97,
     "DONE": 3
   },
@@ -39,8 +39,8 @@
       "pakete": 26,
       "offen": 21,
       "restPT": {
-        "min": 26.150000000000002,
-        "max": 46.2
+        "min": 25.750000000000004,
+        "max": 45.400000000000006
       }
     },
     "extern": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 332.95,
-    "max": 571.45
+    "min": 332.55,
+    "max": 570.6500000000001
   },
   "kritischerPfad": {
     "summe": 70,
@@ -6652,25 +6652,25 @@
       "prio": "P3",
       "aufwandPT": {"min":0.5,"max":1},
       "abhaengigkeiten": [],
-      "status": "READY",
+      "status": "REVIEW",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #424, Commits 2c058c49 (Bump, rot) und a7a2aaa1 (Fix: 12x describe.sequential ersetzt, clearMocks:false) auf acc45/dep/dep-2-vitest-5"},
+        "lokalGetestet": {"wert":true,"beleg":"docs/acc45/DEP-2-NACHWEIS.md 4: querschnitt 273, fachpruefung-server 53, imp6 186, erstleitung-abbruch/-betreiber-put 15, konto-parallel/erstleitung-entscheidungen 14, oberflaeche-render+verdrahtung 48 (2x), ci-abdeckung 8, prozess-wachen 15, acc45-status 17, Mocks/Timer 179 grün unter 5.1.0; rot vorher: konto-parallel Sammelfehler; 5-s-Gegenprobe: 4.1.12 ebenso rot auf dem Laptop"},
         "reviewt": {"wert":false,"beleg":null},
         "integriert": {"wert":false,"beleg":null},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
       },
-      "branch": null,
+      "branch": "acc45/dep/dep-2-vitest-5",
       "agent": null,
       "modell": "opus",
       "konfliktzonen": [],
-      "pr": ["#405"],
-      "nachweis": "docs/acc45/ENTSCHEIDUNGSLISTE.md (P3-9), Bewertung Dependabot 2026-11-20",
+      "pr": ["#405","#424"],
+      "nachweis": "docs/acc45/DEP-2-NACHWEIS.md; docs/acc45/ENTSCHEIDUNGSLISTE.md (P3-9), Bewertung Dependabot 2026-11-20",
       "akzeptanz": "describe.sequential und it.sequential in den 6 betroffenen Testdateien ersetzt (12 Stellen), volle Suite grün, Titel bei .each/.for geprüft; Opus-Review",
       "tests": "Unit",
-      "dateien": "pruefungen/, package.json",
+      "dateien": "pruefungen/, package.json, package-lock.json, vite.config.js, docs/acc45/",
       "notiz": "Quelle: Bewertung offener Dependabot-PRs #400 bis #407 vom 2026-11-20 (nur lesend erhoben, Basis integration/release-v4 @ 105f6c83); Aufwand ist eine SCHÄTZUNG der Bewertung, nicht belegt. Der Dependabot-PR wird nicht geschlossen; Schließen entscheidet der Betreiber. Vitest 5 entfernt die sequential-Optionen (zugunsten von concurrent); der Lauf von PR #405 scheitert mit describe.sequential is not a function in abnahme-a-ablauf.test.js:115, die rund 190 Folgeschritte wurden übersprungen (der Lauf belegt nichts über den Rest der Suite). Betroffen: 12 Stellen in 6 Dateien (abnahme-a-ablauf, erstleitung-abbruch, erstleitung-betreiber-put, erstleitung-entscheidungen, erstleitung, konto-parallel). Node 22 und Vite 6.4.5 passen. Aufwand SCHÄTZUNG 0,5 bis 1 PT. Opus-Review Pflicht (Prüfwerkzeug, kritischer Pfad). Dependabot-PR #405, nicht mergen."
     },
     {

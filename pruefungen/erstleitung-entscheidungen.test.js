@@ -122,7 +122,7 @@ afterAll(async () => {
   await rm(daten, { recursive: true, force: true }).catch(() => {});
 });
 
-describe.sequential("E-D1: gewöhnlicher Leitungscode ohne Person (Befund F-0)", () => {
+describe("E-D1: gewöhnlicher Leitungscode ohne Person (Befund F-0)", { concurrent: false }, () => {
   it("Anmeldung abgewiesen (403, kontrollierte Meldung, keine Sitzung) — leerer Betrieb und Betrieb mit Personen", async () => {
     const [erst] = await betriebMitErstcodes("ent-a");
     const a = await anmelden(erst);
@@ -184,7 +184,7 @@ describe.sequential("E-D1: gewöhnlicher Leitungscode ohne Person (Befund F-0)",
   });
 });
 
-describe.sequential("E-D2: kein Rückfall in die Ersteinrichtung", () => {
+describe("E-D2: kein Rückfall in die Ersteinrichtung", { concurrent: false }, () => {
   it("ohne die Ausnahme „leerer Betrieb“: ein Planungscode ohne Person legt im leeren Betrieb keine Leitung an", async () => {
     await betriebAnlegen("ent-plan");
     const z = await anfrage("/api/zugaenge", { methode: "POST", token: betreiber, rumpf: { bestand: "ent-plan",
@@ -300,7 +300,7 @@ describe.sequential("E-D2: kein Rückfall in die Ersteinrichtung", () => {
   });
 });
 
-describe.sequential("E-Mail: keine übernommene Adresse", () => {
+describe("E-Mail: keine übernommene Adresse", { concurrent: false }, () => {
   it("die vom Server angelegte erste Leitungsperson hat keine Adresse — auch wenn der Betrieb eine Kontaktadresse hat", async () => {
     const [erst] = await betriebMitErstcodes("ent-mail");
     const g = await L.bestandLesenStreng(store(), "ent-mail");
@@ -329,7 +329,7 @@ describe.sequential("E-Mail: keine übernommene Adresse", () => {
   });
 });
 
-describe.sequential("Einladung 404/403: keine Unterscheidung, die Existenz verrät", () => {
+describe("Einladung 404/403: keine Unterscheidung, die Existenz verrät", { concurrent: false }, () => {
   it("unbekannte Person und Person eines fremden Betriebs: dieselbe 404; eine eigene, nicht vergebbare Rolle: 403 wie bisher", async () => {
     const [erst] = await betriebMitErstcodes("ent-fremd");
     const fremd = await anmelden(erst);
