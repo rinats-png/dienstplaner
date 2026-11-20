@@ -138,8 +138,47 @@ export const orgAnlegbar = (konflikte) => Array.isArray(konflikte) && konflikte.
 export function orgAnlegenPruefen({ anlegen, orgEdit }) {
   if (anlegen === true && orgEdit !== true)
     return { ok: false, status: 403, code: "ORG_EDIT_FEHLT",
-      nachricht: "Neue Einheiten, Standorte und Qualifikationen darf nur anlegen, wer die Organisation verwalten darf (org.edit)." };
+      nachricht: ORG_EDIT_NACHRICHT };
   return { ok: true, anlegen: anlegen === true && orgEdit === true };
+}
+const ORG_EDIT_NACHRICHT = "Neue Einheiten, Standorte und Qualifikationen darf nur anlegen, wer die Organisation verwalten darf (org.edit).";
+
+/** Protokolltext, mit dem der Textimport (src/app/aktionen/stammdaten.js, `importieren`) seinen Speichervorgang kennzeichnet. */
+export const TEXTIMPORT_PROTOKOLLTEXT = "Personal importiert";
+const ORG_FELDER = Object.freeze(["einheiten", "qualifikationen", "standorte"]);
+
+/**
+ * P2-22 (B-I1): Server-Durchsetzung von org.edit für den TEXTIMPORT auf dem allgemeinen Bestandsweg (PUT /api/bestand,
+ * Teilweg). Der Textimport speichert keinen eigenen Endpunkt, sondern den ganzen Betrieb; erkannt wird er am neuen
+ * Protokolleintrag „Personal importiert" in derselben Übermittlung (so kennzeichnet ihn jede ausgelieferte Fassung,
+ * auch die vor B-I1, deren Haken für jede Rolle vorab gesetzt war). Legt eine solche Übermittlung ohne org.edit eine
+ * Einheit, Qualifikation oder einen Standort an (Kennung, die der gespeicherte Betrieb nicht kennt, oder ein Eintrag
+ * ohne Form — fail-closed), weist der Server ab: dieselbe Regel wie im Dateiimport (IMP-5, orgAnlegenPruefen).
+ *
+ * Reichweite (ehrlich): Das schließt die Lücke für den Textimport der ausgelieferten Oberfläche, nicht für einen
+ * manipulierten Client — der lässt den Protokolleintrag weg und legt über das allgemeine Speichern an, wie es die
+ * Planung (pattern.edit) heute für Einheiten im Einrichtungsassistenten darf. Den allgemeinen Weg auf org.edit zu
+ * begrenzen, änderte das Verhalten der Planung: Entscheidungsliste P2-22 (Option B bzw. B').
+ * @param {any} gespeichert gespeicherter Betrieb
+ * @param {any} geschickt übermittelter Betrieb (vor dem Zusammenführen)
+ * @param {boolean} orgEdit hat die Sitzung org.edit?
+ * @returns {string|null} Grund der Absage oder null
+ */
+export function textimportOrgVerweigert(gespeichert, geschickt, orgEdit) {
+  if (orgEdit === true || !geschickt || typeof geschickt !== "object") return null;
+  const alt = gespeichert && typeof gespeichert === "object" ? gespeichert : {};
+  const alteEintraege = new Set((Array.isArray(alt.protokoll) ? alt.protokoll : [])
+    .filter((e) => e && typeof e === "object").map((e) => String(e.id)));
+  const textimport = (Array.isArray(geschickt.protokoll) ? geschickt.protokoll : []).some((e) => e && typeof e === "object"
+    && !alteEintraege.has(String(e.id)) && typeof e.text === "string" && e.text.trim() === TEXTIMPORT_PROTOKOLLTEXT);
+  if (!textimport) return null;
+  for (const feld of ORG_FELDER) {
+    if (!Array.isArray(geschickt[feld])) continue;
+    const vorhanden = new Set((Array.isArray(alt[feld]) ? alt[feld] : []).filter((x) => x && typeof x === "object").map((x) => String(x.id)));
+    if (geschickt[feld].some((x) => !x || typeof x !== "object" || !vorhanden.has(String(x.id))))
+      return ORG_EDIT_NACHRICHT;
+  }
+  return null;
 }
 
 /** Name zu einer Liste ergänzen, wenn er (ohne Groß-/Kleinschreibung) noch fehlt. */

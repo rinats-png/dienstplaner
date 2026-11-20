@@ -7,7 +7,8 @@ import { ereignis } from "../lib/gesund-zaehler.mjs";
 import { bestandFuerRolle, bestandFuerAntwort, zusammenfuehren, schreibumfang, absageText, rolleVergebbar, sitzungsRolleBekannt,
   wirksameRolle, SCHREIBEN_NEIN, SCHREIBEN_VOLL, eigenerMandant, darf, fachpruefungOffen, sammelAnzahlSetzen, einwilligungsAenderungen, freigabeRuecknahmen, abschlussRecht } from "../lib/rechte.mjs";
 import { schutzKonfliktMitteilungen, schutzEntferntAnzahl } from "../lib/bestaetigungen.mjs";
-import { fachpruefungUebermittlungAsync, strukturAenderung, strukturBremse, letzteLaufzeit } from "../lib/schutzdurchsetzung.mjs";
+import { fachpruefungUebermittlungAsync, strukturAenderung, strukturBremse, letzteLaufzeit,
+  wiederherstellungsPruefung, wiederherstellungsBerichtZeile } from "../lib/schutzdurchsetzung.mjs";
 import { pruefeGestalt, schrumpfung, SICHERUNGSSCHWELLE, mandantenKennungenGeprueft, uebergabenAngleichen,
   personenAngleichen, personenFehler, dienstartenFehler, dienstartenAngleichen, kalendertagFehler, erfassungPauseFehler } from "../lib/gestalt.mjs";
 import { ablageSchluessel, altHash } from "../lib/codes.mjs";
@@ -3356,6 +3357,36 @@ async function behandeln(req, context, ctx) {
         const ortW = bestandStandorteFehler(jetztGelesen.bestand, w.bestand);
         if (ortW) return antwort({ fehler: "Diese Sicherung ist unbrauchbar.", text: ortW }, 422);
 
+        /* P2-21 (Empfehlung B, ENTSCHEIDUNGSLISTE): Fachprüfung der zurückgespielten Einteilungen mit derselben
+           Rechnung wie beim Speichern (Ruhezeit, Schutzregeln, Qualifikation, Höchstzahl, Mindestbesetzung) —
+           als Bericht, nicht als Sperre: Die Datenrettung bleibt möglich, die neuen Befunde (Anzahl je Regel,
+           ohne Person, Tag oder Merkmal) stehen in der Antwort, im Betriebsprotokoll und im Serverprotokoll.
+           Fail-closed: Rechnet die Prüfung nicht zu Ende (Zeitbudget, Fehler) oder fehlt ein Betrieb, wird
+           nichts zurückgespielt. Der zurückgespielte Stand selbst (Ist, Abschlüsse, Abrechnung) bleibt
+           unverändert; Sperren wie beim Speichern (Option C) ist Betreiberentscheidung. */
+        const ortJetztW = eigenerBetrieb(personenAngleichen(jetztGelesen.bestand), s);
+        const ortNeuW = eigenerBetrieb(w.bestand, s);
+        if (!ortJetztW || !ortNeuW)
+          return antwort({ fehler: "Diese Sicherung ist unbrauchbar.", text: "Der eigene Betrieb ist nicht prüfbar." }, 422);
+        let fachW = null;
+        try { fachW = await wiederherstellungsPruefung(ortJetztW.betrieb, ortNeuW.betrieb); }
+        catch (e) { fachW = null; await protokoll("fehler", kW, "wiederherstellen", `Fachprüfung: ${String(e && e.message || e).slice(0, 160)}`).catch(() => {}); }
+        if (!fachW || !("bericht" in fachW)) {
+          await protokoll("schreiben", kW, "abgewiesen", `wiederherstellen ${marke}: Fachprüfung nicht abgeschlossen`, wer);
+          return antwort({ fehler: "Die Prüfung dauert gerade zu lange.",
+            text: "Es wurde nichts zurückgespielt. Bitte in einigen Sekunden noch einmal versuchen.",
+            code: "FACHPRUEFUNG_OFFEN" }, 503, { "retry-after": "5" });
+        }
+        const berichtW = fachW.bericht;
+        const berichtZeileW = wiederherstellungsBerichtZeile(berichtW);
+        /* Sichtbar für die Leitung: im Eintrag „wiederhergestellt" des Betriebsprotokolls (nur neuer Eintrag). */
+        w.bestand = { ...w.bestand, mandanten: w.bestand.mandanten.map((m) => (m && m.id === ortNeuW.betrieb.id
+          && Array.isArray(m.protokoll) && m.protokoll[0] && m.protokoll[0].id === `w-${marke}`
+          ? { ...m, protokoll: [{ ...m.protokoll[0], text: `${m.protokoll[0].text} · ${berichtZeileW}`.slice(0, 600) }, ...m.protokoll.slice(1)] }
+          : m)) };
+        /* Auditierbar, bevor getauscht wird: Bericht im Serverprotokoll. */
+        await protokoll("schreiben", kW, "pruefung", `wiederherstellen ${marke}: ${berichtZeileW}`.slice(0, 400), wer);
+
         /* Erst den jetzigen Stand wegschreiben, dann tauschen. */
         const m2 = markeNeu();
         await store.setJSON(`sicherung:${s.bestand}:${m2}`, jetztGelesen.bestand,
@@ -3375,8 +3406,9 @@ async function behandeln(req, context, ctx) {
         }
         await protokoll("schreiben", kW, "erfolg",
           `wiederhergestellt aus ${marke}${w.stempelBehalten ? ` · ${w.stempelBehalten} Stempel behalten` : ""}`
-          + `${w.fristen ? ` · Fristen (${w.fristen.modus}): ${w.fristen.text}` : ""}`.slice(0, 400), wer);
-        return antwort({ ok: true, etag: ergW.stand, marke, fristen: w.fristen || null });
+          + `${w.fristen ? ` · Fristen (${w.fristen.modus}): ${w.fristen.text}` : ""}`.slice(0, 400)
+          + ` · ${berichtZeileW}`.slice(0, 400), wer);
+        return antwort({ ok: true, etag: ergW.stand, marke, fristen: w.fristen || null, fachpruefung: berichtW });
       });
     }
 

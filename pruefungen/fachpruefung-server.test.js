@@ -501,3 +501,47 @@ describe("B-H5: gelöschte Abweichung — der Dienst aus der Schichtfolge wird g
     expect(schreiben(gg, "PL", (m) => { m.abwesenheiten = []; }).verweigert).toMatch(/zu vielen Tagen auf einmal/);
   });
 });
+
+/* P2-22 (B-I1): org.edit beim Textimport auch im Server. Der Textimport speichert über den allgemeinen Bestandsweg und
+   kennzeichnet sich mit dem neuen Protokolleintrag „Personal importiert"; legt er ohne org.edit Einheiten,
+   Qualifikationen oder Standorte an, weist der Server ab (Regel wie im Dateiimport IMP-5). Der allgemeine Speicherweg
+   bleibt unverändert (Reichweite: ENTSCHEIDUNGSLISTE P2-22, Option B'). */
+describe("P2-22: Textimport legt Einheiten/Qualifikationen nur mit org.edit an (Server)", () => {
+  let lfd = 0;
+  const textimport = (m) => { m.protokoll = [{ id: `l-ti-${++lfd}`, zeit: "egal", text: "Personal importiert" }, ...(m.protokoll || [])]; };
+  const neueEinheit = (m) => { m.einheiten.push({ id: `e-neu-${++lfd}`, name: "Station Neu", versatzTage: 0 }); };
+  const neueQual = (m) => { m.qualifikationen.push({ id: `q-neu-${++lfd}`, name: "Neue Schulung", kurz: "NS" }); };
+
+  it("Planung (ohne org.edit): Textimport mit neuer Einheit — abgewiesen (403-Grund org.edit)", () => {
+    const e = schreiben(g(), "PL", (m) => { textimport(m); neueEinheit(m); });
+    expect(e.verweigert).toMatch(/nur anlegen, wer die Organisation verwalten darf \(org\.edit\)/);
+  });
+  it("Planung: Textimport mit neuer Qualifikation — abgewiesen", () => {
+    expect(schreiben(g(), "PL", (m) => { textimport(m); neueQual(m); }).verweigert).toMatch(/org\.edit/);
+  });
+  it("Planung: Textimport mit neuem Standort — abgewiesen", () => {
+    const e = schreiben(g({ standorte: [{ id: "st1", name: "Zentrale" }] }), "PL", (m) => { textimport(m);
+      m.standorte.push({ id: "st-neu", name: "Neu" }); });
+    expect(e.verweigert).toMatch(/org\.edit/);
+  });
+  it("fail-closed: ein Eintrag ohne Form in einer Organisationsliste gilt beim Textimport als neu", () => {
+    expect(schreiben(g(), "PL", (m) => { textimport(m); m.qualifikationen.push(null); }).verweigert).toMatch(/org\.edit/);
+  });
+  it("Leitung (org.edit): Textimport mit neuer Einheit und Qualifikation — angenommen, gespeichert", () => {
+    const e = schreiben(g(), "LT", (m) => { textimport(m); neueEinheit(m); neueQual(m); });
+    angenommen(e);
+    expect(e.mandanten[0].einheiten.some((x) => x.name === "Station Neu")).toBe(true);
+    expect(e.mandanten[0].qualifikationen.some((x) => x.name === "Neue Schulung")).toBe(true);
+  });
+  it("Planung: Textimport nur mit bekannten Einheiten/Qualifikationen — angenommen (erlaubter Ablauf bleibt)", () => {
+    angenommen(schreiben(g(), "PL", (m) => { textimport(m);
+      m.personen.push(person("neu1", "mitarbeiter", "e1", { qualifikationen: ["qG"] })); }));
+  });
+  it("Planung: allgemeines Speichern ohne Textimport legt weiter Einheiten an (Einrichtungsassistent, pattern.edit) — unverändert", () => {
+    angenommen(schreiben(g(), "PL", (m) => { neueEinheit(m); }));
+  });
+  it("ein schon gespeicherter Eintrag „Personal importiert“ macht ein späteres Speichern nicht zum Textimport", () => {
+    const gg = g({ protokoll: [{ id: "l-alt", zeit: "egal", text: "Personal importiert" }] });
+    angenommen(schreiben(gg, "PL", (m) => { neueEinheit(m); }));
+  });
+});
