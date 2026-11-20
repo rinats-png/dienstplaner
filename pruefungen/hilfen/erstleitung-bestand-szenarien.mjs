@@ -180,6 +180,52 @@ function verdichten(x) {
   return { "#pruefsumme": sha(text), "#laenge": text.length, ...(personen.length ? { "#personen": personen } : {}) };
 }
 
+/* P2-21 (PR #419, dokumentierte Abweichung B-4 in erstleitung-bestand-differenz.test.js): Die Wiederherstellung
+   meldet seit P2-21 einen Fachprüfungsbericht — als Feld `fachpruefung` der Antwort und als Zusatz
+   „ · Fachprüfung: …“ im Protokolleintrag „wiederhergestellt“ des Betriebs. Beides wird hier VOR dem Maskieren und
+   Verdichten herausgenommen und gezählt; der Test prüft Form und Zahl ausdrücklich, der Rest muss der Basis
+   byte-gleich entsprechen. In der Basis (Golden-Erzeugung) gibt es beides nicht: dort ändert das nichts. */
+export const P21_ZUSATZ = / · Fachprüfung: [^"]*$/;
+export function p21Herausnehmen(schritte, ablage) {
+  const aus = { berichte: [], zusaetze: [] };
+  for (const st of schritte)
+    if (st.schritt === "Wiederherstellen" && istObjekt(st.rumpf) && Object.prototype.hasOwnProperty.call(st.rumpf, "fachpruefung")) {
+      aus.berichte.push(st.rumpf.fachpruefung);
+      const { fachpruefung: _weg, ...rest } = st.rumpf; // eslint-disable-line no-unused-vars
+      st.rumpf = rest;
+    }
+  const geh = (y) => {
+    if (Array.isArray(y)) { for (let i = 0; i < y.length; i++) y[i] = geh(y[i]); return y; }
+    if (istObjekt(y)) {
+      /* Nur der Text eines Protokolleintrags „wiederhergestellt“ (Kennung w-<Marke>). */
+      if (typeof y.id === "string" && y.id.startsWith("w-") && typeof y.text === "string" && P21_ZUSATZ.test(y.text)) {
+        aus.zusaetze.push(y.text.match(P21_ZUSATZ)[0]);
+        y.text = y.text.replace(P21_ZUSATZ, "");
+      }
+      for (const k of Object.keys(y)) y[k] = geh(y[k]);
+      return y;
+    }
+    return y;
+  };
+  geh(ablage);
+  for (const st of schritte) st.rumpf = geh(st.rumpf);                      // auch spätere Antworten (Vollausgabe) zeigen den Eintrag
+  /* Serverprotokoll: die neue Prüfzeile (Ausgang „pruefung“) und der Zusatz in der Erfolgszeile. */
+  aus.pruefzeilen = [];
+  for (let i = ablage.length - 1; i >= 0; i--) {
+    const e = ablage[i];
+    const d = e && e.wert && e.wert.daten;
+    if (!istObjekt(d) || typeof e.schluessel !== "string" || !e.schluessel.startsWith("centric-spur/") || d.art !== "schreiben") continue;
+    if (d.ausgang === "pruefung" && typeof d.zusatz === "string" && /^wiederherstellen \S+: Fachprüfung: /.test(d.zusatz)) {
+      aus.pruefzeilen.push(d.zusatz.replace(/^wiederherstellen \S+: /, ""));
+      ablage.splice(i, 1);
+    } else if (d.ausgang === "erfolg" && typeof d.zusatz === "string" && /^wiederhergestellt aus /.test(d.zusatz) && / · Fachprüfung: [^·]*$/.test(d.zusatz)) {
+      aus.zusaetze.push(d.zusatz.match(/ · Fachprüfung: [^·]*$/)[0]);
+      d.zusatz = d.zusatz.replace(/ · Fachprüfung: [^·]*$/, "");
+    }
+  }
+  return aus;
+}
+
 export function maskieren(x, register, tage = tagesangaben(), anker = wochenanker()) {
   const geh = (y) => {
     if (typeof y === "string") return maskeText(y, register, tage);
@@ -410,11 +456,12 @@ export async function lauf({ wurzel, schalter, meldung = () => {} }) {
       await new Promise((w) => setTimeout(w, 50));
       const nachher = await abbild(daten);
       const ablage = abbildDifferenz(vorher, nachher);
+      const p21 = p21Herausnehmen(schritte, ablage);
       const m = maskieren({ schritte, ablage }, register);
       const uhr = m.ablage.filter(uhrgetrieben).length;
       if (uhr) meldung(`    ${uhr} Schreibvorgang/-vorgänge nach der Uhr herausgenommen (UHRGETRIEBEN)`);
       m.ablage = m.ablage.filter((e) => !uhrgetrieben(e)).map((e) => JSON.stringify(e)).sort().map((e) => JSON.parse(e));
-      ergebnis[name] = { klasse, ...m };
+      ergebnis[name] = { klasse, ...m, p21 };
     }
 
     /* ---------------- Betreiber der Konsole (eigener Raum) ---------------- */

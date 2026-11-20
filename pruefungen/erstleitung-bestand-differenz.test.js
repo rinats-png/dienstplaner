@@ -76,10 +76,28 @@ function bindungBeimUmschluesseln(szenario, x) {
   x.ablage = x.ablage.map((e) => JSON.stringify(e)).sort().map((e) => JSON.parse(e));
 }
 
+/** B-4 (P2-21, PR #419): Die Wiederherstellung meldet einen Fachprüfungsbericht (Antwortfeld `fachpruefung`, Zusatz
+ *  „ · Fachprüfung: …“ im Protokolleintrag „wiederhergestellt“). Der Lauf nimmt beides vor dem Maskieren heraus
+ *  (p21Herausnehmen); hier wird geprüft, dass es GENAU das war: je erfolgreicher Wiederherstellung ein leerer Bericht
+ *  (Bestandsbetrieb ohne neue Befunde) und nur der Zusatz „keine neuen Befunde“; ohne Wiederherstellung nichts. */
+const LEERER_BERICHT = { einteilungen: 0, sperrend: 0, vergangen: 0, befunde: {}, dienstartUnbekannt: 0, begrenzt: false, konflikte: 0 };
+function fachpruefungsbericht(szenario, x) {
+  const p = x.p21 || { berichte: [], zusaetze: [], pruefzeilen: [] };
+  const erfolgreich = x.schritte.filter((s) => s.schritt === "Wiederherstellen" && s.status === 200).length;
+  expect(p.berichte, `${szenario}: B-4 Berichte`).toEqual(Array.from({ length: erfolgreich }, () => LEERER_BERICHT));
+  for (const z of p.zusaetze) expect(z, `${szenario}: B-4 Zusatz`).toBe(" · Fachprüfung: keine neuen Befunde");
+  /* Serverprotokoll: je erfolgreicher Wiederherstellung genau eine Prüfzeile (vor dem Tausch). */
+  expect(p.pruefzeilen || [], `${szenario}: B-4 Prüfzeilen`).toEqual(Array.from({ length: erfolgreich }, () => "Fachprüfung: keine neuen Befunde"));
+  if (!erfolgreich) expect(p.zusaetze, `${szenario}: B-4 ohne Wiederherstellung kein Zusatz`).toEqual([]);
+  else expect(p.zusaetze.length, `${szenario}: B-4 Zusatz im gespeicherten Betrieb`).toBeGreaterThan(0);
+  delete x.p21;
+}
+
 function bereinigt(szenario, ist) {
   const x = kopie(ist);
   ohneStrengAngabe(szenario, x);
   bindungBeimUmschluesseln(szenario, x);
+  fachpruefungsbericht(szenario, x);
   return x;
 }
 
@@ -88,6 +106,7 @@ const schritt = (e, name) => { const s = e.schritte.find((x) => x.schritt === na
 /** Für die Kipp-Szenarien: die bekannte Marke, Vermerk und Kennzeichen herausnehmen — der Rest muss der Basis gleichen. */
 function ohneRegime(x) {
   const y = kopie(x);
+  fachpruefungsbericht("kipp", y);                                          // B-4: in den Kipp-Szenarien ohne Wiederherstellung leer
   y.ablage = y.ablage.filter((a) => !/^centric\/erstleitung-regime:/.test(a.schluessel)).map((a) => {
     if (a.wert && a.wert.daten && a.wert.daten.erstleitung) { const c = kopie(a); delete c.wert.daten.erstleitung; return c; }
     return a;
