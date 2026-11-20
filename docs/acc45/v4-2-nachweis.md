@@ -262,4 +262,18 @@ acc45-status 17/17; eslint 0 Fehler in den geänderten Dateien, tsc 0. E2E v4-se
 dunkel 13,5:1 / 9,19:1; Schrift unverändert (hell aktiv 9,42:1, Hover 11,43:1; dunkel 11,74:1, 14,27:1).
 `origin/integration/release-v4` (5876ff48) ist bereits enthalten; kein neuer Kopf beim Abgleich.
 
-**Offen / Risiken.** Vollregression nur in CI.
+**Nachtrag CI #430** (Kopf 97cca4de, Läufe 44753608941/44753597861, browser-abnahme rot): `toBeFocused()` auf
+`.slink.on` lieferte in CI „inactive“ (390x844, 8 s), lokal grün. Beleg mit Zustandsprotokoll der Spec (CI-Lauf 44770823106,
+Job 136407695404, grün; lokal `--repeat-each=5` unter lint/tsc 10/10): Nach dem Öffnen per Enter bleibt der Fokus in
+beiden Umgebungen auf der Menütaste (`button.kopf-menue`), obwohl die Schublade offen und `visibility: visible` ist; keine
+`aria-modal`-Dialoge, Fensterfokus vorhanden. Die App-eigene Fokusführung (`seitenleisteFokus`, ui/geraete.js) landet also
+nicht. Der eine `locator.focus()` der alten Spec griff lokal beim ersten Versuch, in CI erst beim zweiten (Protokoll:
+„Versuch 2“); ohne Wiederholung blieb der Fokus auf der Menütaste. Lösung in der Spec (Messung unverändert): Sichtbarkeit
+abwarten, dann Fokus per `expect.poll` (Tastendruck für Tastatur-Modalität, `locator.focus()`, Zeitgrenze 15 s),
+`:focus-visible` weiter geprüft. Merge `origin/integration/release-v4` a279928d (Konflikte nur in erzeugten
+SSOT-Dateien). Lokal danach: v4-app-stil 63/63, kontrast 207/207, wcag-wp40 35/35, prozess-wachen 15/15, doku 5/5,
+verdrahtung 8/8, ci-abdeckung 8/8, acc45-status 17/17.
+
+**Offen / Risiken.** Vollregression nur in CI. Neuer Befund außerhalb V4-2c: Beim Öffnen der Schublade per Tastatur
+springt der Fokus nicht auf den aktiven Eintrag (WP-21-Fokusführung wirkt nicht; belegt lokal und in CI). Eigenes Paket
+nötig (Ursache vermutlich Zeitpunkt des `focus()` gegenüber dem Sichtbarkeitsübergang der Schublade; nicht geprüft).
