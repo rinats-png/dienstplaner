@@ -45,6 +45,13 @@
 #                          (aus getent; sonst $HOME)
 #    CENTRIC_HOME_WURZEL   (/home) weitere authorized_keys (nur lesbare)
 #    CENTRIC_ZEITGRENZE    (30) Sekunden je Docker-Aufruf
+#  Bei einer SSH-Sitzung (SSH_CONNECTION gesetzt) werden alle diese
+#  Variablen verworfen; dort gelten immer die festen Vorgaben.
+#
+#  Symbolische Links: Dateien, die das Konto kontrolliert
+#  (letzte-erfolgreiche.json, betrieb-protokoll.log, authorized_keys,
+#  Betriebsdateien für Prüfsummen), werden nur gelesen, wenn sie keine
+#  Links sind.
 #
 #  Rückgabe: 0 alle Abschnitte gelaufen · 1 mindestens ein Abschnitt
 #  gescheitert (Ausgabe trotzdem vollständig) · 2 Aufruf/abgewiesen
@@ -56,6 +63,10 @@
 set -euo pipefail
 umask 077
 export LC_ALL=C
+if [[ -n "${SSH_CONNECTION:-}" ]]; then
+  unset INVENTUR_PRUEFPFAD INVENTUR_MASKE CENTRIC_VERZ CENTRIC_DIENST CENTRIC_BILD_REPO \
+    CENTRIC_KONTO_HOME CENTRIC_HOME_WURZEL CENTRIC_ZEITGRENZE
+fi
 PATH="${INVENTUR_PRUEFPFAD:-/usr/sbin:/usr/bin:/sbin:/bin}"
 export PATH
 unset BASH_ENV ENV CDPATH
@@ -112,13 +123,21 @@ compose_lesen() {
 
 # Schicht 1 für die .env: NUR Schlüsselnamen. Versteht „export NAME=“,
 # Leerzeichen vor/nach dem Namen, CRLF, Kommentare und Werte in
-# Anführungszeichen über mehrere Zeilen (Folgezeilen werden übersprungen).
+# Anführungszeichen über mehrere Zeilen (Folgezeilen werden übersprungen;
+# ein maskiertes \" schließt einen doppelt zitierten Wert nicht).
 # Ausgegeben wird nur, was danach wie ein Bezeichner aussieht.
+# Grenze: ein Wert, der mit \\" (maskierter Backslash vor dem Schluss-
+# zeichen) endet, wird als offen gewertet; Folgen sind höchstens
+# fehlende Namen, nie Werte.
 env_namen() {
   [[ -f .env ]] || { printf '.env fehlt\n' >&2; return 1; }
   awk '
+    function schliesst(s, q) {
+      if (q == "\047") return index(s, q) > 0
+      return match(s, /(^|[^\\])"/) > 0
+    }
     { sub(/\r$/, "") }
-    offen != "" { if (index($0, offen) > 0) offen = ""; next }
+    offen != "" { if (schliesst($0, offen)) offen = ""; next }
     {
       z = $0
       sub(/^[ \t]+/, "", z)
@@ -129,7 +148,7 @@ env_namen() {
       sub(/[ \t]*=$/, "", n)
       sub(/^[ \t]+/, "", w)
       q = substr(w, 1, 1)
-      if ((q == "\"" || q == "\047") && index(substr(w, 2), q) == 0) offen = q
+      if ((q == "\"" || q == "\047") && !schliesst(substr(w, 2), q)) offen = q
       print n
     }' .env | { grep -E '^[A-Za-z_][A-Za-z0-9_]*$' || true; } | sort -u
 }
@@ -220,7 +239,7 @@ konto_home() {
     zeile="$(getent passwd "$besitzer" || true)"
     if [[ -n "$zeile" ]]; then printf '%s\n' "$zeile" | cut -d: -f6; return; fi
   fi
-  printf '%s\n' "$HOME"
+  printf '%s\n' "${HOME:-}"
 }
 KONTO_HOME="$(konto_home)"
 
@@ -268,7 +287,7 @@ v4() {
   printf -- '-- Prüfsummen:\n'
   local f dateien=()
   for f in compose.yml FREIGEGEBENE-IMAGES.md ./*.sh ./*.mjs; do
-    [[ -f "$f" ]] && dateien+=("$f")
+    [[ -f "$f" && ! -L "$f" ]] && dateien+=("$f")
   done
   if ((${#dateien[@]})); then sha256sum "${dateien[@]}"; else printf '(keine Betriebsdateien)\n'; fi
   printf -- '-- Versionen:\n'
@@ -316,9 +335,14 @@ v7() {
     fi
   done
   printf -- '-- letzte erfolgreiche Sicherung:\n'
-  if [[ -f "$KONTO_HOME/sicherung/letzte-erfolgreiche.json" ]]; then
-    head -c 2000 "$KONTO_HOME/sicherung/letzte-erfolgreiche.json"
-    printf '\n'
+  # Nur die festen Felder der Marke (deploy/sicherung/sicherung-ausser-haus.sh):
+  # zeit, dateien, bytes, snapshot_id. Alles andere wird verworfen.
+  local marke="$KONTO_HOME/sicherung/letzte-erfolgreiche.json"
+  if [[ -L "$marke" ]]; then
+    printf 'letzte-erfolgreiche.json ist ein symbolischer Link, nicht gelesen\n'
+  elif [[ -f "$marke" ]]; then
+    { grep -oE '"(zeit|snapshot_id)":"[0-9A-Za-z:.+-]{1,64}"' "$marke" || true; } | head -n 2
+    { grep -oE '"(dateien|bytes)":[0-9]{1,20}' "$marke" || true; } | head -n 2
   else
     printf '(keine Datei letzte-erfolgreiche.json)\n'
   fi
@@ -327,8 +351,10 @@ v7() {
 # Nur Optionen, Zähler und Fingerabdrücke — nie den Schlüsselkörper.
 v8() {
   local h f gesehen=" "
-  for h in "$KONTO_HOME" "$HOME" "$HOME_WURZEL"/*; do
+  for h in "$KONTO_HOME" "${HOME:-}" "$HOME_WURZEL"/*; do
+    [[ -n "$h" ]] || continue
     f="$h/.ssh/authorized_keys"
+    if [[ -L "$f" ]]; then printf '== %s: symbolischer Link, nicht gelesen\n' "$f"; continue; fi
     [[ -f "$f" && -r "$f" ]] || continue
     [[ "$gesehen" == *" $f "* ]] && continue
     gesehen+="$f "
@@ -356,7 +382,9 @@ v9() {
   printf -- '-- /gesund:\n'
   docker_lesen exec "$DIENST" node -e "fetch('http://127.0.0.1:3000/gesund').then(r=>r.text()).then(t=>console.log(t))" | head -c 2000
   printf '\n-- betrieb-protokoll.log (letzte 30, nur Zeit, Skript, Ereignis):\n'
-  if [[ -f betrieb-protokoll.log ]]; then
+  if [[ -L betrieb-protokoll.log ]]; then
+    printf 'betrieb-protokoll.log ist ein symbolischer Link, nicht gelesen\n'
+  elif [[ -f betrieb-protokoll.log ]]; then
     tail -n 30 betrieb-protokoll.log | awk '{
       e = $3; if (e !~ /^[A-Za-z0-9][A-Za-z0-9_-]*$/) e = "?"
       z = $1; if (z !~ /^[0-9T:Z-]+$/) z = "?"

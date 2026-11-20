@@ -31,7 +31,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync, chmodSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync, chmodSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -106,7 +106,7 @@ const STUB = [
   "  images) echo 'REPOSITORY TAG DIGEST IMAGE-ID'; echo 'ghcr.io/rinats-png/dienstplaner <none> sha256:@HEX@ @ID@' ;;",
   "  version) echo '27.3.1' ;;",
   "  stats) echo 'centric-dp-web 0.50% 120MiB / 1GiB 11.70%' ;;",
-  "  exec) echo '{\"status\":\"ok\",\"nutzer\":\"@MAIL@\",\"adresse\":\"@IP@\"}' ;;",
+  "  exec) if [[ -f \"$z/gesund\" ]]; then cat \"$z/gesund\"; else echo '{\"status\":\"ok\",\"nutzer\":\"@MAIL@\",\"adresse\":\"@IP@\"}'; fi ;;",
   '  *) echo "stub: docker $1 nicht erlaubt" >&2; exit 9 ;;',
   "esac",
   "",
@@ -177,7 +177,8 @@ function lauf(args = [], env = {}) {
     HOME: p(heim),
     ...env,
   };
-  for (const n of ["SSH_ORIGINAL_COMMAND", "SSH_AUTH_SOCK", "INVENTUR_MASKE", "BASH_ENV", "ENV"]) if (!(n in env)) delete umgebung[n];
+  for (const n of ["SSH_ORIGINAL_COMMAND", "SSH_AUTH_SOCK", "SSH_CONNECTION", "INVENTUR_MASKE", "BASH_ENV", "ENV"]) if (!(n in env)) delete umgebung[n];
+  for (const [k, v] of Object.entries(umgebung)) if (v === undefined) delete umgebung[k];
   const r = spawnSync(BASH, [p(SKRIPT), ...args], { encoding: "utf8", env: umgebung, timeout: 60000 });
   return { code: r.status, out: r.stdout, err: r.stderr, alles: r.stdout + r.stderr };
 }
@@ -241,7 +242,7 @@ beforeEach(() => {
   );
   datei(
     "heim/sicherung/letzte-erfolgreiche.json",
-    `{"zeit":"2026-11-19T02:00:00Z","schnappschuss":"4f2a9c1b","ziel":"s3:https://zugang:${SICHERUNG_GEHEIM}@objekt.example/eimer"}\n`,
+    `{"zeit":"2026-11-19T02:00:00Z","dateien":12,"bytes":3456,"snapshot_id":"4f2a9c1b","ziel":"s3:https://zugang:${SICHERUNG_GEHEIM}@objekt.example/eimer"}\n`,
   );
 });
 
@@ -362,7 +363,9 @@ describe.skipIf(!BASH)("deploy/inventur.sh: Schicht 1 (Quelle) ohne Maskierung",
     expect(r.code, r.alles).toBe(0);
     /* Nachweis, dass die Maske wirklich aus ist: die /gesund-Antwort des Stubs steht im Klartext da. */
     expect(r.out).toContain(MAIL);
-    for (const g of [GEHEIM, PFEFFER, ENV_TOKEN, ENV_MAIL, TOKEN, KOERPER_DEPLOY, KOERPER_INVENTUR]) expect(r.alles).not.toContain(g);
+    for (const g of [GEHEIM, PFEFFER, ENV_TOKEN, ENV_MAIL, TOKEN, SICHERUNG_GEHEIM, "zugang:", KOERPER_DEPLOY, KOERPER_INVENTUR]) {
+      expect(r.alles).not.toContain(g);
+    }
   });
 
   it("schwierige .env-Formen: nur Namen, nie ein Wert oder Wertteil (export, Leerzeichen, Anführung, mehrzeilig, CRLF, Kommentar, ohne =)", () => {
@@ -388,6 +391,9 @@ describe.skipIf(!BASH)("deploy/inventur.sh: Schicht 1 (Quelle) ohne Maskierung",
         "1ZIFFER_ZUERST=WERT-ZIFFER-181",
         "LEER=",
         "NACH_MEHRZEILIG=WERT-NACH-191",
+        'MEHR_ESC="WERT-ESC-1 \\"zitat\\"',
+        "ESC_FOLGE=WERT-ESC-2",
+        'ende-WERT-ESC-3"',
         "",
       ].join("\n"),
     );
@@ -405,6 +411,7 @@ describe.skipIf(!BASH)("deploy/inventur.sh: Schicht 1 (Quelle) ohne Maskierung",
         "LEER",
         "MEHRZEILIG",
         "MEHR_EINFACH",
+        "MEHR_ESC",
         "NACH_MEHRZEILIG",
       ]);
     }
@@ -434,9 +441,9 @@ describe.skipIf(!BASH)("deploy/inventur.sh: Schicht 1 (Quelle) ohne Maskierung",
 
 /* ------------------------------------------------------------------ */
 describe.skipIf(!BASH)("deploy/inventur.sh: Schicht 2 (Maskierung, nur zusätzlich)", () => {
-  it("ein absichtlich geleakter Wert in einer ausgegebenen Datei wird maskiert — und ohne Maske sichtbar", () => {
-    datei(
-      "heim/sicherung/letzte-erfolgreiche.json",
+  it("ein absichtlich geleakter Wert in einer ungefiltert ausgegebenen Antwort (/gesund) wird maskiert — und ohne Maske sichtbar", () => {
+    writeFileSync(
+      path.join(stubDir, "gesund"),
       `CENTRIC_SMTP_PASSWORT=${LECK} lower_var=${LECK}k kontakt=${MAIL} von ${IP} token ${TOKEN} "passwort": "${LECK}x" s3:https://zugang:${SICHERUNG_GEHEIM}@objekt.example/eimer\n`,
     );
     const offen = lauf([], { INVENTUR_MASKE: "aus" });
@@ -449,10 +456,51 @@ describe.skipIf(!BASH)("deploy/inventur.sh: Schicht 2 (Maskierung, nur zusätzli
     expect(r.out).toContain("s3:https://<zugang>@objekt.example/eimer");
   });
 
-  it("Sicherungsmarke: Zugangsdaten in der Ziel-URL werden maskiert, harmlose Felder bleiben", () => {
-    const r = lauf();
-    expect(r.out).toContain('"ziel":"s3:https://<zugang>@objekt.example/eimer"');
-    expect(r.out).toContain('"schnappschuss":"4f2a9c1b"');
+});
+
+describe.skipIf(!BASH)("deploy/inventur.sh: Sicherungsmarke, HOME, SSH-Sitzung, Links", () => {
+  it("Sicherungsmarke: nur die festen Felder zeit/dateien/bytes/snapshot_id — Ziel-URL nie, auch ohne Maske", () => {
+    for (const maske of ["aus", "an"]) {
+      const r = lauf([], { INVENTUR_MASKE: maske });
+      const v7 = abschnittText(r.out, "=== V-7", "=== V-8");
+      expect(v7, maske).toContain('"zeit":"2026-11-19T02:00:00Z"');
+      expect(v7, maske).toContain('"snapshot_id":"4f2a9c1b"');
+      expect(v7, maske).toContain('"dateien":12');
+      expect(v7, maske).toContain('"bytes":3456');
+      expect(r.alles, maske).not.toContain(SICHERUNG_GEHEIM);
+      expect(v7, maske).not.toContain("ziel");
+      expect(v7, maske).not.toContain("objekt.example");
+    }
+  });
+
+  it("ohne HOME-Variable (set -u): V-8 läuft, Rückgabe 0", () => {
+    const r = lauf([], { HOME: undefined });
+    expect(r.code, r.alles).toBe(0);
+    expect(r.out).not.toMatch(/--- V-8 .*: Abschnitt gescheitert/);
+    expect(r.out).toContain("centric-inventur: 1");
+  });
+
+  it("SSH-Sitzung (SSH_CONNECTION): Prüfvariablen werden verworfen — fester PATH, festes Verzeichnis, Maske an", () => {
+    const r = lauf([], { SSH_CONNECTION: "203.0.113.5 50000 192.0.2.10 22", INVENTUR_MASKE: "aus" });
+    expect(r.out).toContain("Betriebsverzeichnis: /opt/apps/centric-dienstplanung\n");
+    expect(aufrufe()).toEqual([]);
+    expect(r.alles).not.toContain("203.0.113.5");
+    for (const g of [GEHEIM, PFEFFER, ENV_TOKEN, SICHERUNG_GEHEIM]) expect(r.alles).not.toContain(g);
+  });
+
+  it.skipIf(process.platform === "win32")("symbolische Links (Marke, Protokoll, authorized_keys, Betriebsdatei) werden nicht gelesen", () => {
+    const fremd = path.join(tmp, "fremd.txt");
+    writeFileSync(fremd, `{"zeit":"LINKZIEL-ZEIT-1"} 2026-11-20T11:00:00Z link.sh LINKZIEL-EREIGNIS ssh-ed25519 ${KOERPER_DEPLOY} linkziel\n`);
+    for (const rel of ["heim/sicherung/letzte-erfolgreiche.json", "app/betrieb-protokoll.log", "heim/.ssh/authorized_keys", "app/compose.yml"]) {
+      rmSync(path.join(tmp, rel));
+      symlinkSync(fremd, path.join(tmp, rel));
+    }
+    const r = lauf([], { INVENTUR_MASKE: "aus" });
+    expect(r.out).toContain("letzte-erfolgreiche.json ist ein symbolischer Link, nicht gelesen");
+    expect(r.out).toContain("betrieb-protokoll.log ist ein symbolischer Link, nicht gelesen");
+    expect(r.out).toMatch(/authorized_keys: symbolischer Link, nicht gelesen/);
+    expect(r.out).not.toContain("LINKZIEL");
+    expect(r.out).not.toMatch(/[0-9a-f]{64} [ *]?compose\.yml/);
   });
 });
 

@@ -14,7 +14,7 @@
 #  (auch scp/sftp/rsync) → Rückgabe 2 ohne Ausgabe der Datei.
 #
 #  Rückgabe: 0 ausgegeben · 1 keine Inventur vorhanden · 2 Aufruf/abgewiesen
-#  Umgebung NUR für Prüfungen: INVENTUR_PRUEFDATEI
+#  Umgebung NUR für Prüfungen: INVENTUR_PRUEFDATEI (bei SSH_CONNECTION verworfen)
 #  Prüfung: pruefungen/inventur-phase2.test.js
 # =====================================================================
 set -eu
@@ -32,6 +32,9 @@ if [ "$#" -ne 0 ]; then
   exit 2
 fi
 
+if [ -n "${SSH_CONNECTION:-}" ]; then
+  unset INVENTUR_PRUEFDATEI
+fi
 DATEI="${INVENTUR_PRUEFDATEI:-/var/lib/centric-inventur/aktuell.txt}"
 if [ ! -f "$DATEI" ] || [ ! -r "$DATEI" ]; then
   printf 'keine Inventur vorhanden (Sammler noch nicht gelaufen?)\n' >&2

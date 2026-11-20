@@ -172,6 +172,13 @@ describe.skipIf(!BASH)("deploy/inventur-lesen.sh", () => {
     }
   });
 
+  it("SSH-Sitzung (SSH_CONNECTION): INVENTUR_PRUEFDATEI wird verworfen, es gilt nur die feste Datei", () => {
+    writeFileSync(path.join(ziel, "aktuell.txt"), "UMGELENKTE-DATEI\n");
+    const r = leser({ SSH_CONNECTION: "203.0.113.5 50000 192.0.2.10 22", SSH_ORIGINAL_COMMAND: "inventur" });
+    expect(r.out).not.toContain("UMGELENKTE-DATEI");
+    expect(r.code).toBe(existsSync("/var/lib/centric-inventur/aktuell.txt") ? 0 : 1);
+  });
+
   it("keine Datei → Rückgabe 1; Argumente → Rückgabe 2", () => {
     expect(leser().code).toBe(1);
     writeFileSync(path.join(ziel, "aktuell.txt"), "x\n");
@@ -218,7 +225,10 @@ describe("Phase 2: Quelltext-Wächter", () => {
     expect(sammlerText).toMatch(/^tmp="\$\(mktemp "\$ZIEL_VERZ\/\.aktuell\.XXXXXX"\)"$/m);
     expect(sammlerText).toMatch(/^mv -f -- "\$tmp" "\$ZIEL_VERZ\/aktuell\.txt"$/m);
     /* über /bin/bash, damit die Inventur auch ohne Ausführungsrecht der Datei läuft (CI-Befund Rückgabe 126) */
-    expect(sammlerText).toContain('env -u BASH_ENV -u ENV -u SSH_ORIGINAL_COMMAND /bin/bash "$INVENTUR" >"$tmp" 2>&1 || rc=$?');
+    expect(sammlerText).toContain('env -u BASH_ENV -u ENV -u SSH_ORIGINAL_COMMAND "${als[@]}" /bin/bash "$INVENTUR" >"$tmp" 2>&1 || rc=$?');
+    /* als root nie die Inventur als root: runuser auf den Besitzer des Betriebsverzeichnisses, root als Besitzer → Abbruch */
+    expect(sammlerText).toContain('als=(runuser -u "$konto" --)');
+    expect(sammlerText).toMatch(/if \[\[ -z "\$konto" \|\| "\$konto" == "root" \|\| "\$konto" == "UNKNOWN" \]\]; then\n[^\n]*\n\s+exit 5/);
     expect(sammlerText).toMatch(/^chmod 0640 "\$tmp"$/m);
     expect(sCode).not.toMatch(/\bdocker\b/);
     expect(sCode).not.toMatch(/\b(rm|cp|tee|install|mkdir|ln|dd|truncate|eval|source)\b\s/);

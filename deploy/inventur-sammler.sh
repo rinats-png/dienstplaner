@@ -12,7 +12,9 @@
 #    1. Zielverzeichnis /var/lib/centric-inventur muss existieren
 #       (root:inventur 0750). Der Sammler legt es nicht an.
 #    2. Temporärdatei IM Zielverzeichnis (mktemp), damit mv atomar ist.
-#    3. Inventur ohne BASH_ENV/ENV/SSH_ORIGINAL_COMMAND ausführen.
+#    3. Inventur ohne BASH_ENV/ENV/SSH_ORIGINAL_COMMAND ausführen, als
+#       root über runuser als Besitzer des Betriebsverzeichnisses (nie
+#       als root; Besitzer root → Rückgabe 5).
 #       Rückgabe 0 oder 1 (einzelne Abschnitte gescheitert): weiter.
 #       Jede andere Rückgabe: alte Datei bleibt, Temporärdatei wird
 #       gelöscht, Rückgabe 4.
@@ -20,6 +22,7 @@
 #
 #  Rückgabe: 0 abgelegt · 2 Aufruf · 3 Zielverzeichnis fehlt
 #            4 Inventur gescheitert (alte Datei unverändert)
+#            5 Besitzer des Betriebsverzeichnisses ungeeignet
 #
 #  Umgebung NUR für Prüfungen (systemd/cron setzen sie nicht):
 #    INVENTUR_PRUEFPFAD    ersetzt den festen PATH
@@ -37,6 +40,7 @@ unset BASH_ENV ENV CDPATH
 INVENTUR="${INVENTUR_PRUEFSKRIPT:-/usr/local/sbin/centric-inventur.sh}"
 ZIEL_VERZ="${INVENTUR_PRUEFZIEL:-/var/lib/centric-inventur}"
 GRUPPE="inventur"
+BETRIEB_VERZ="/opt/apps/centric-dienstplanung"
 
 case "$#:${1:-}" in
   0:) ;;
@@ -52,8 +56,22 @@ fi
 tmp="$(mktemp "$ZIEL_VERZ/.aktuell.XXXXXX")"
 trap 'rm -f -- "$tmp"' EXIT
 
+# Als root läuft die Inventur NICHT als root, sondern als das Konto, dem
+# das Betriebsverzeichnis gehört (runuser). So folgt kein root-Prozess
+# Links, die dieses Konto anlegen kann, und crontab -l zeigt dessen
+# Crontab. Docker-Zugriff hat das Konto über die Gruppe docker.
+als=()
+if [[ "$(id -u)" -eq 0 ]]; then
+  konto="$(stat -c '%U' "$BETRIEB_VERZ")"
+  if [[ -z "$konto" || "$konto" == "root" || "$konto" == "UNKNOWN" ]]; then
+    printf 'FEHLER: Besitzer von %s ungeeignet (%s); Inventur nicht als root\n' "$BETRIEB_VERZ" "${konto:-leer}" >&2
+    exit 5
+  fi
+  als=(runuser -u "$konto" --)
+fi
+
 rc=0
-env -u BASH_ENV -u ENV -u SSH_ORIGINAL_COMMAND /bin/bash "$INVENTUR" >"$tmp" 2>&1 || rc=$?
+env -u BASH_ENV -u ENV -u SSH_ORIGINAL_COMMAND "${als[@]}" /bin/bash "$INVENTUR" >"$tmp" 2>&1 || rc=$?
 if ((rc != 0 && rc != 1)); then
   printf 'FEHLER: Inventur endete mit Rückgabe %s; %s/aktuell.txt bleibt unverändert\n' "$rc" "$ZIEL_VERZ" >&2
   exit 4

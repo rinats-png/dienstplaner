@@ -141,6 +141,8 @@ ssh -V
 - **Weiter nur wenn:**
   - `pubkeyauthentication yes`;
   - `permituserenvironment no` (sonst könnte eine Datei `~/.ssh/environment` Variablen setzen);
+  - `acceptenv` nennt **nur** `LANG` und `LC_*` oder fehlt — kein `*`, kein `BASH_ENV`, kein `ENV`, kein `PATH`,
+    kein `INVENTUR_*`, kein `CENTRIC_*`, kein `SSH_*` (Abschnitte 7.3 und 7.4 stützen sich darauf);
   - `allowusers`/`allowgroups` fehlen **oder** schließen `<konto>` ein;
   - Version ≥ 7.2 (`restrict` gibt es ab 7.2).
 
@@ -251,9 +253,9 @@ allein reicht nicht: Wer das Dokument ändern kann, kann auch den Wert ändern.
 Soll-Werte der Prüfsummen (die Prüfung `pruefungen/inventur-skript.test.js` stellt sicher, dass
 sie zu den Dateien im Repository passen):
 
-- **SHA-256 von deploy/inventur.sh: `54d02d2fd0b750c961ca142cadf05ebfa5c7589c00e9834f4f1a24f3a2ed676d`**
-- **SHA-256 von deploy/inventur-sammler.sh: `072b9a003291ec9ea03e39e224cd77f1f7cb36b997b5b5b0fcb525eda949dcbc`** (nur Phase 2)
-- **SHA-256 von deploy/inventur-lesen.sh: `4deba91cbc24de02022571d4cd9ed861921dd082764132638a107a0fff17482c`** (nur Phase 2)
+- **SHA-256 von deploy/inventur.sh: `d99207298c121d8af32f7d4bfcf048e6f8f47951305741753d8b5493ff533c21`**
+- **SHA-256 von deploy/inventur-sammler.sh: `10db2a1d6328ba02a169d14662bbfb8d309256957b56c4524d62a35cf87247a6`** (nur Phase 2)
+- **SHA-256 von deploy/inventur-lesen.sh: `a2454b79eef621accd134b54335a16d788eec8cc3767beb9d44d68cf69f8d2ff`** (nur Phase 2)
 
 ### 3a. Skript holen (Weg 1: fester Commit, ohne Einfügen)
 
@@ -264,7 +266,7 @@ curl -fsSL -o /tmp/inventur.sh "https://raw.githubusercontent.com/rinats-png/die
 sha256sum /tmp/inventur.sh
 ```
 
-- **Erwartet:** `54d02d2fd0b750c961ca142cadf05ebfa5c7589c00e9834f4f1a24f3a2ed676d  /tmp/inventur.sh`.
+- **Erwartet:** `d99207298c121d8af32f7d4bfcf048e6f8f47951305741753d8b5493ff533c21  /tmp/inventur.sh`.
 - **Weiter nur wenn:** die Prüfsumme stimmt Zeichen für Zeichen.
 - **Sonst (Weg 2, Einfügen):** `nano /tmp/inventur.sh`, Inhalt aus dem Repository einfügen, speichern, erneut
   `sha256sum /tmp/inventur.sh`. Stimmt der Wert nicht (häufig: Tastaturbelegung der Konsole), Datei löschen
@@ -282,7 +284,7 @@ sha256sum /usr/local/sbin/centric-inventur.sh
 ```
 
 - **Erwartet:** `SYNTAX-OK`; `namei -l` zeigt für `/`, `/usr`, `/usr/local`, `/usr/local/sbin` jeweils
-  `drwxr-xr-x root root` und für die Datei `-rwxr-xr-x root root`; Prüfsumme `54d02d2fd0b750c961ca142cadf05ebfa5c7589c00e9834f4f1a24f3a2ed676d`.
+  `drwxr-xr-x root root` und für die Datei `-rwxr-xr-x root root`; Prüfsumme `d99207298c121d8af32f7d4bfcf048e6f8f47951305741753d8b5493ff533c21`.
 - **Weiter nur wenn:** jede Zeile von `namei -l` zeigt `root root` und kein Verzeichnis ist für Gruppe oder andere
   beschreibbar; Prüfsumme stimmt. Dann kann `<konto>` das Skript ausführen, aber weder die Datei noch ein Verzeichnis
   auf dem Pfad ändern (Abschnitt 7.4).
@@ -485,7 +487,7 @@ fehlschlägt oder wenn die Inventur nicht mehr gebraucht wird.
 ```bash
 A=~<konto>/.ssh/authorized_keys
 cp -p "$A" "$A.vor-widerruf-$(date -u +%Y%m%dT%H%M%SZ)"
-sed -i '\#^command="/usr/local/sbin/centric-inventur.sh",[a-zA-Z0-9,-]* ssh-ed25519 [A-Za-z0-9+/=]* inventur-centric$#d' "$A"
+sed -E -i '\#^(from="[^"]*",)?command="/usr/local/sbin/centric-inventur\.sh",[a-zA-Z0-9,-]* ssh-ed25519 [A-Za-z0-9+/=]* inventur-centric$#d' "$A"
 ssh-keygen -lf "$A"
 grep -c 'inventur-centric' "$A"
 ```
@@ -528,7 +530,7 @@ Workflow „Betrieb: Deploy-Skripte“.
 
 | Schicht | Was | Beleg (Test) |
 |---|---|---|
-| 1 Quelle (maßgeblich) | `.env` wird an genau einer Stelle gelesen (`env_namen`): awk gibt nur den Namen vor `=` aus, überspringt Folgezeilen mehrzeiliger Werte in Anführungszeichen, entfernt CR; danach lässt `grep` nur Bezeichner durch. Kein `cat`, kein `source`. `docker compose`-Fehlertexte (können `.env`-Zeilen zitieren) werden verworfen (`compose_lesen`). `compose config` nur `image:`-Zeilen. `docker inspect` nur mit festen Formaten: nie `.Config.Env`, nie `{{json .}}`/`{{json .Config}}`, Labels nur vier feste Namen. Betriebsprotokoll nur Zeit, Skript, Ereignis. `authorized_keys` nur Optionen, Typ, Fingerabdruck. | „Schicht 1 (Quelle) ohne Maskierung“: Lauf mit `INVENTUR_MASKE=aus`; Docker-Stub gibt bei jedem nicht freigegebenen `inspect`-Format Umgebungswerte aus; Allowlist der Docker-Aufrufe zeichengenau. Fälle `export`, Leerzeichen, `"…"`, `'…'`, mehrzeilig, CRLF, Kommentar, Zeile ohne `=`, `compose`-Fehlertext, Docker nicht erreichbar. Quelltext-Wächter: genau zwei Zeilen mit `.env` |
+| 1 Quelle (maßgeblich) | `.env` wird an genau einer Stelle gelesen (`env_namen`): awk gibt nur den Namen vor `=` aus, überspringt Folgezeilen mehrzeiliger Werte in Anführungszeichen, entfernt CR; danach lässt `grep` nur Bezeichner durch. Kein `cat`, kein `source`. `docker compose`-Fehlertexte (können `.env`-Zeilen zitieren) werden verworfen (`compose_lesen`). `compose config` nur `image:`-Zeilen. `docker inspect` nur mit festen Formaten: nie `.Config.Env`, nie `{{json .}}`/`{{json .Config}}`, Labels nur vier feste Namen. Sicherungsmarke `letzte-erfolgreiche.json` nur die festen Felder `zeit`, `dateien`, `bytes`, `snapshot_id`. Betriebsprotokoll nur Zeit, Skript, Ereignis. `authorized_keys` nur Optionen, Typ, Fingerabdruck. Dateien, die das Konto kontrolliert, nur wenn sie keine symbolischen Links sind. | „Schicht 1 (Quelle) ohne Maskierung“: Lauf mit `INVENTUR_MASKE=aus`; Docker-Stub gibt bei jedem nicht freigegebenen `inspect`-Format Umgebungswerte aus; Allowlist der Docker-Aufrufe zeichengenau. Fälle `export`, Leerzeichen, `"…"`, `'…'`, mehrzeilig, mehrzeilig mit `\"`, CRLF, Zugangsdaten in der Sicherungsmarke, Kommentar, Zeile ohne `=`, `compose`-Fehlertext, Docker nicht erreichbar. Quelltext-Wächter: genau zwei Zeilen mit `.env` |
 | 2 Maskierung (nur zusätzlich) | `maskieren()` über die gesamte Ausgabe: Adressen, E-Mail, URL-Zugangsdaten, Tokens, Schlüsselkörper, `name=Wert` (jeder Bezeichner, auch klein; ausgenommen `IMAGE_DIGEST`, `IMAGE_TAG`, `command`), lange Base64-Folgen | „Schicht 2“: absichtlich geleakter Wert in einer ausgegebenen Datei ist ohne Maske sichtbar und mit Maske ersetzt |
 
 Die Maskierung ist **keine** Begründung dafür, einen Wert zu lesen. Sie fängt nur Fehler von Schicht 1 ab.
@@ -576,7 +578,11 @@ Härtung im Skript (Quelltext-Wächter „Härtung …“): Shebang `#!/bin/bash
 Grenzen: bash liest `BASH_ENV` beim Start, also **bevor** `unset` wirkt. sshd setzt `BASH_ENV` nicht
 (`PermitUserEnvironment no`, `AcceptEnv` nur `LANG LC_*`); systemd und cron auch nicht. Die Variablen
 `INVENTUR_PRUEFPFAD`, `INVENTUR_MASKE`, `INVENTUR_PRUEF…` und `CENTRIC_…` dienen nur den Prüfungen; auf dem VPS setzt
-sie niemand (gleiche Begründung).
+sie niemand (gleiche Begründung). Zusätzlich verwirft das Skript (und der Leser `INVENTUR_PRUEFDATEI`) alle diese
+Variablen, sobald `SSH_CONNECTION` gesetzt ist (Test „SSH-Sitzung …“).
+
+Grenze `.env`: Endet ein doppelt zitierter mehrzeiliger Wert mit `\\"` (maskierter Backslash vor dem Schlusszeichen),
+bleibt der Wert für `env_namen` offen. Folge sind höchstens fehlende Namen in V-6, nie Werte.
 
 | Was | Pfad | Soll | Wer darf ändern |
 |---|---|---|---|
@@ -639,8 +645,13 @@ root (systemd-Timer)                         Konto inventur (SSH, Forced Command
 Schlüssel liest nur eine bereits maskierte Datei. Für eine automatische Abfrage (8.6) ist das der richtige Zugang.
 
 **Grenzen:** Aktualität = Timer-Abstand (Vorschlag 15 Minuten); die Zeile `Zeit (UTC)` im Kopf zeigt das Alter. Der
-Sammler läuft als root; Fehler im Inventur-Skript laufen damit als root (gleicher Quelltext, gleiche Wächter wie
-Phase 1). Die Ausgabe enthält die Inventur aller `authorized_keys` (root liest alle; nur Optionen und Fingerabdrücke).
+Sammler läuft als root, startet die Inventur aber mit `runuser` als Besitzer des Betriebsverzeichnisses (`<konto>`),
+nie als root; ist root der Besitzer, bricht er ab (Rückgabe 5). Damit folgt kein root-Prozess Links, die `<konto>`
+anlegt (`.env`, `betrieb-protokoll.log`, `letzte-erfolgreiche.json`), und `crontab -l` zeigt die Crontab von `<konto>`
+(nicht die von root). Root öffnet nur die Zieldatei in `/var/lib/centric-inventur` (root-eigen). Die Inventur selbst
+prüft zusätzlich auf symbolische Links (7.1). Verbleibende Grenze: `<konto>` ist über `docker` root-gleich und kann
+die Inventur-Ausgabe über seine eigenen Dateien beeinflussen, aber die Datei des Kontos `inventur` nicht direkt
+schreiben.
 
 ### 8.2 Warum die Login-Shell `/bin/sh` sein muss (nicht nologin)
 
@@ -670,14 +681,14 @@ install -d -o root -g inventur -m 0750 /var/lib/centric-inventur
 # 3 Skripte (Prüfsummen aus Abschnitt 3; Inventur-Skript siehe 3a/3b)
 curl -fsSL -o /tmp/s.sh "https://raw.githubusercontent.com/rinats-png/dienstplaner/<commit>/deploy/inventur-sammler.sh"
 curl -fsSL -o /tmp/l.sh "https://raw.githubusercontent.com/rinats-png/dienstplaner/<commit>/deploy/inventur-lesen.sh"
-sha256sum /tmp/s.sh /tmp/l.sh     # erwartet: 072b9a003291ec9ea03e39e224cd77f1f7cb36b997b5b5b0fcb525eda949dcbc und 4deba91cbc24de02022571d4cd9ed861921dd082764132638a107a0fff17482c
+sha256sum /tmp/s.sh /tmp/l.sh     # erwartet: 10db2a1d6328ba02a169d14662bbfb8d309256957b56c4524d62a35cf87247a6 und a2454b79eef621accd134b54335a16d788eec8cc3767beb9d44d68cf69f8d2ff
 install -o root -g root -m 0755 /tmp/s.sh /usr/local/sbin/centric-inventur-sammler.sh
 install -o root -g root -m 0755 /tmp/l.sh /usr/local/sbin/centric-inventur-lesen.sh
 rm /tmp/s.sh /tmp/l.sh
 
 # 4 Timer (alle 15 Minuten)
 printf '%s\n' '[Unit]' 'Description=CENTRIC lesende Inventur sammeln' '[Service]' 'Type=oneshot' \
-  'ExecStart=/usr/local/sbin/centric-inventur-sammler.sh' 'NoNewPrivileges=yes' 'PrivateTmp=yes' \
+  'ExecStart=/usr/local/sbin/centric-inventur-sammler.sh' 'Environment=HOME=/root' 'NoNewPrivileges=yes' 'PrivateTmp=yes' \
   > /etc/systemd/system/centric-inventur.service
 printf '%s\n' '[Unit]' 'Description=CENTRIC Inventur alle 15 Minuten' '[Timer]' 'OnBootSec=5min' \
   'OnUnitActiveSec=15min' '[Install]' 'WantedBy=timers.target' > /etc/systemd/system/centric-inventur.timer
