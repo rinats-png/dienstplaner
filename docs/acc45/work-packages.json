@@ -1,12 +1,12 @@
 {
   "schema": 2,
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
-  "anzahl": 234,
+  "anzahl": 238,
   "statusZaehlung": {
-    "BLOCKED": 90,
+    "BLOCKED": 93,
     "READY": 16,
     "IN_PROGRESS": 18,
-    "REVIEW": 10,
+    "REVIEW": 11,
     "INTEGRATED": 97,
     "DONE": 3
   },
@@ -36,11 +36,11 @@
       }
     },
     "folge": {
-      "pakete": 26,
-      "offen": 21,
+      "pakete": 30,
+      "offen": 25,
       "restPT": {
-        "min": 25.750000000000004,
-        "max": 45.400000000000006
+        "min": 28.950000000000003,
+        "max": 51.2
       }
     },
     "extern": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 332.55,
-    "max": 570.6500000000001
+    "min": 335.75,
+    "max": 576.45
   },
   "kritischerPfad": {
     "summe": 70,
@@ -6728,6 +6728,118 @@
       "tests": "Lint",
       "dateien": "eslint.config.js, package.json",
       "notiz": "Quelle: Bewertung offener Dependabot-PRs #400 bis #407 vom 2026-11-20 (nur lesend erhoben, Basis integration/release-v4 @ 105f6c83); Aufwand ist eine SCHÄTZUNG der Bewertung, nicht belegt. Der Dependabot-PR wird nicht geschlossen; Schließen entscheidet der Betreiber. Blockiert durch Upstream: eslint-plugin-react 7.37.5 (aktuelle latest) unterstützt ESLint 10 nicht (Peer eslint bis ^9.7); dazu @eslint/js ^9 und eslint-plugin-react-hooks 5.2.0. PR #407 scheitert mit ERESOLVE bei npm ci. Flat Config ist bereits vorhanden. ESLint 10 bringt viele neue transitive Pakete (cacheable, keyv, hookified, u. a.) mit neuen Maintainer-Kreisen, vor Aufnahme prüfen. Aufwand SCHÄTZUNG 0,5 bis 1 PT. Aufnahme, sobald das Plugin ESLint 10 unterstützt. Dependabot-PR #407; Schließen entscheidet der Betreiber."
+    },
+    {
+      "id": "REL-1",
+      "titel": "Release-Automatisierung Stufe 1: Release-Gates (Werkzeug), Lückenanalyse, Release-Richtlinie",
+      "strang": "folge",
+      "prio": "P1",
+      "aufwandPT": {"min":1,"max":1.5},
+      "abhaengigkeiten": [],
+      "status": "REVIEW",
+      "stufen": {
+        "implementiert": {"wert":true,"beleg":"Branch acc45/release/rel-1-gates: werkzeug/release-pruefung.mjs (G1–G10), docs/acc45/RELEASE-UNFERTIG.json, RELEASE-PROZESS.md, RELEASE-LUECKENANALYSE-2026-11-20.md"},
+        "lokalGetestet": {"wert":true,"beleg":"pruefungen/release-pruefung.test.js 45/45 grün (Vitest 5, --maxWorkers=1), positiv/negativ/fail-closed je Gate, 2 Mutanten (G1 fail-closed, G10 commitet) erkannt; Probelauf online gegen integration/release-v4 @ 014c86ab: NO-GO wie erwartet (G1, G3 GO), docs/acc45/RELEASE-LUECKENANALYSE-2026-11-20.md 3"},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": "acc45/release/rel-1-gates",
+      "agent": null,
+      "modell": "opus",
+      "konfliktzonen": [],
+      "pr": [],
+      "nachweis": "docs/acc45/RELEASE-LUECKENANALYSE-2026-11-20.md; docs/acc45/RELEASE-PROZESS.md",
+      "akzeptanz": "Werkzeug prüft G1–G10 maschinenlesbar, Ausgabe JSON, Exit 0 nur bei GO, fail-closed bei fehlenden Angaben; Lückenanalyse je Anforderung mit Datei:Zeile; Richtlinie Phase 0–6; Workflow-Vorschlag nur als Text; unabhängiges Review",
+      "tests": "Unit (pruefung:acc45-werkzeuge)",
+      "dateien": "werkzeug/release-pruefung.mjs, pruefungen/release-pruefung.test.js, docs/acc45/RELEASE-*.md, docs/acc45/RELEASE-UNFERTIG.json, package.json",
+      "notiz": "Betreiberauftrag Release-Automatisierung 2026-11-20 (Zielablauf Entwicklung → Review → CI → Integration → Release-Prüfung → Deployment → Live-Abnahme). Kein VPS, kein Workflow-Start, keine Workflow-Änderung. Aufwand SCHÄTZUNG."
+    },
+    {
+      "id": "REL-2",
+      "titel": "Release-Automatisierung Stufe 2: Workflow-Härtung (Concurrency, Gate-Job vor vps, Smoke von außen, Bau nur aus main)",
+      "strang": "folge",
+      "prio": "P1",
+      "aufwandPT": {"min":1,"max":2},
+      "abhaengigkeiten": ["REL-1"],
+      "status": "BLOCKED",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": null,
+      "modell": "opus",
+      "konfliktzonen": [],
+      "pr": [],
+      "nachweis": "Vorschlag: docs/acc45/RELEASE-PROZESS.md Anhang A",
+      "akzeptanz": "eigener PR mit Sicherheitsreview; Workflow-Concurrency; Job release-gate vor vps (Exit ≠ 0 bricht ab); Sperre .deploy.lock auch in ruecksprung.sh/abschalten.sh; Smoke über die Domain als Job-Schritt; Bild nur aus main mit provenance mode=max und SBOM; kein schedule/push",
+      "tests": "Unit (Workflow-Strukturtest), shellcheck, betrieb-deploy",
+      "dateien": ".github/workflows/deploy.yml, deploy/ruecksprung.sh, deploy/abschalten.sh, pruefungen/",
+      "notiz": "Wartet auf REL-1-Review. Workflow-Änderung = eigener PR, Sicherheitsreview Pflicht (Produktionsweg). Aufwand SCHÄTZUNG."
+    },
+    {
+      "id": "REL-3",
+      "titel": "Release-Automatisierung Stufe 3: erstes Release-Bild aus main bauen, Digest in die Liste, Release-Kandidat V4",
+      "strang": "folge",
+      "prio": "P1",
+      "aufwandPT": {"min":1,"max":2},
+      "abhaengigkeiten": ["REL-1"],
+      "status": "BLOCKED",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": null,
+      "modell": "opus",
+      "konfliktzonen": [],
+      "pr": [],
+      "nachweis": "docs/acc45/PRODUKTIONSWEG-VORBEREITUNG-2026-11-20.md B-6, B-9; docs/acc45/RELEASE-PROZESS.md Phase 2",
+      "akzeptanz": "Kandidat auf main (Merge-Freigabe B-9), Bild über deploy.yml (nur bauen, Start durch Betreiber), Digest/Label/Provenienz = Commit (G4 GO), Listen-PR nach O-1, Migrationsbericht G5 mit Probe K4, Release-Prüfung bis auf Betreiber-Gates GO",
+      "tests": "release-pruefung.mjs gegen den Kandidaten",
+      "dateien": "deploy/FREIGEGEBENE-IMAGES.md, docs/acc45/releases/",
+      "notiz": "Braucht Betreiberhandlungen: Merge-Freigabe nach main (B-9), Start des Bau-Workflows, Freigabe der Listenänderung (B-6), Entscheidung O-1. Aufwand SCHÄTZUNG."
+    },
+    {
+      "id": "REL-4",
+      "titel": "Release-Automatisierung Stufe 4: Live-Abnahme und Überwachung (24 h Beobachtung, Alarm, Abnahmevermerk)",
+      "strang": "folge",
+      "prio": "P1",
+      "aufwandPT": {"min":1,"max":1.5},
+      "abhaengigkeiten": ["REL-3","E-7","E-8"],
+      "status": "BLOCKED",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": null,
+      "modell": "sonnet",
+      "konfliktzonen": [],
+      "pr": [],
+      "nachweis": "docs/acc45/PRODUKTIONSWEG-VORBEREITUNG-2026-11-20.md 3.6; docs/BETRIEB-UEBERWACHUNG.md",
+      "akzeptanz": "Vorlage Live-Abnahmevermerk (G-a bis G-f), Beobachtungsplan 24 h, externer Check und Alarmkanal eingerichtet (E-8), Rückweg-Entscheidung dokumentiert; Abnahme durch Betreiber",
+      "tests": "Smoke von außen, /gesund",
+      "dateien": "docs/acc45/releases/, docs/BETRIEB-UEBERWACHUNG.md",
+      "notiz": "Wartet auf das erste Release (REL-3) und auf E-7/E-8. Aufwand SCHÄTZUNG."
     }
   ]
 }
