@@ -13,6 +13,7 @@ import { nurKorrekturGrund, bestaetigungsGrund } from "../../istdaten.js";
 import { rolle } from "../../lib/rollen.js";
 import { krankSchrittErlaubt } from "../../../server/lib/krankmeldung.mjs";
 import { krankRolle } from "../../lib/berechtigung.js";
+import { mitModellen, mitZuordnungen, modelleMitDienstart } from "../../lib/schichtmodelle-pflege.js";
 
 /** Datenreview PR #130 (5): Zugehörigkeit null-sicher sortieren — ab null/leer („von Anfang an“) vor jedem
  *  Datum, gleiche Werte in der bisherigen Reihenfolge (stabile Sortierung, deterministisch). Nicht exportiert:
@@ -342,6 +343,10 @@ export function aktionenPlan(k) {
       }, "Vorlage geladen"),
       setzeVersatz: (eid, tage) => mUpd((m) => ({ ...m, einheiten: m.einheiten.map((e) => e.id === eid
         ? { ...e, versatzTage: tage, versatz: Math.round(tage / 7) } : e) }), "Startpunkt geändert"),
+      /* IMP-6 Oberfläche: mehrere Schichtmodelle je Person. Die Ansicht (schichtmodelle.jsx) hat den Entwurf mit derselben
+         Bibliothek wie der Server geprüft; Wann/Wer/Version setzt der Server. Keine Wirkung auf die Planrechnung. */
+      setzeSchichtmodelle: (liste, text) => mUpd((m) => mitModellen(m, liste), text || "Schichtmodelle geändert"),
+      setzeSchichtmodellZuordnungen: (pid, liste, text) => mUpd((m) => mitZuordnungen(m, pid, liste), text || "Schichtmodell-Zuordnung geändert"),
 
       /* --- Dienstarten --- */
       neueDienstart: (f) => mUpd((m) => {
@@ -352,6 +357,9 @@ export function aktionenPlan(k) {
       loescheDienstart: (id) => mUpd((m) => {
         const n = m.zyklus.tage.filter((t) => t === id).length + Object.values(m.abweichungen).filter((v) => v === id).length;
         if (n > 0) { melde(`Dienstart wird noch ${n}× verwendet.`); return m; }
+        /* IMP-6: Ein Schichtmodell, das die Dienstart nennt, sperrt das Löschen (Server: 403 DIENSTART_VERWENDET). */
+        const sm = modelleMitDienstart(m, id);
+        if (sm.length) { melde(`Dienstart wird noch im Schichtmodell „${sm[0].name}“ verwendet. Bitte zuerst das Schichtmodell ändern.`); return m; }
         return { ...m, dienstarten: m.dienstarten.filter((d) => d.id !== id) };
       }, "Dienstart gelöscht"),
 

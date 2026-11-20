@@ -89,3 +89,28 @@ Umsetzung: `server/lib/import/schichtcache.mjs`, Aufruf über `schichtVorschauMi
   etwa 1,5 s synchron); die Vorschau nennt nur Zuordnungs- und Formkonflikte.
 - Oberfläche: Die Import-Ansicht kennt die Art `schichtzyklus` nicht (nur Personal); keine Anzeige der Modellvorschau, die Oberfläche bleibt aus (`IMPORT_DATEI_AKTIV`).
 - Vor jedem Einschalten ist die Prüfung nach § 13 (IMP-9) nötig.
+
+## Nachtrag 2026-11-20: Oberfläche (Pflege mehrerer Modelle je Person)
+
+Branch `acc45/imp/imp-6-ui` (PR gegen `integration/release-v4`, nicht gemergt). Beschreibung: `IMP-6-MEHRFACHMODELLE.md`, Abschnitt
+„Oberfläche“. Keine Planwirkung, kein Schalter, keine Workflow-Änderung, keine Serveränderung.
+
+| Akzeptanz | Nachweis |
+|---|---|
+| Mehrere Modelle je Person anzeigen und bearbeiten | `imp6-oberflaeche` D2–D5; E2E S1–S3 |
+| Unterschiedliche Zykluslängen (keine feste Länge) | `imp6-oberflaeche` A3 (1 … 1000), D2; E2E S1 (9 und 14 Tage) |
+| Bestehende Validierungen (Server) in der Oberfläche | `imp6-oberflaeche` B (15 Fälle: Befund der Oberfläche = Befund der Serverkette), E2E S3/S4 |
+| Verständliche Meldung bei 422 | `imp6-oberflaeche` C2/C5; E2E S4 (echter Server 422, Anzeige im Browser) |
+| Inhaltliche 403 nicht als Rollenproblem | `imp6-oberflaeche` C1/C3/C4 (Erkennung gegen die echten Texte, Differenz) |
+| Rechte wie der Server | `imp6-oberflaeche` D1 |
+| WP-40 zugängliche Namen, nur Bausteine/Tokens | `imp6-oberflaeche` D6/D7; E2E S5 (axe, ein Befund label-content-name-mismatch an den Anhängeknöpfen behoben) |
+
+Angepasste bestehende Prüfungen (begründet):
+- `pruefungen/p212-client-kalendertag.test.js` („Differenz: die übrigen Lagen zeigen weder Bereichszeile noch Verwerfen-Knopf“):
+  nimmt die neue Lage „schichtmodell“ aus; sie hat bewusst denselben Verwerfen-Weg wie „kalendertag“ (ein zweiter Versuch
+  schickte denselben Stand) und ist in `imp6-oberflaeche` C5 geprüft. Für alle übrigen Lagen gilt die Prüfung unverändert.
+- `pruefungen/imp6-zyklen-grenzfaelle.test.js` D2 (Wächter): `src/lib/schichtmodelle-pflege.js` in die Liste aufgenommen — bewusste
+  Erweiterung ohne Planwirkung; Ansicht und Aktionen nennen die Felder nicht selbst, und `imp6-oberflaeche` E3 sichert, dass nur
+  Ansicht und Aktionen die Pflegehilfe nutzen und `fachlogik.js` sie nicht kennt.
+
+Offen: P2-24 (Sichtbarkeit vor der Planwirkung; laufendes Modell ändern), P2-19 (d), P2-4 Punkte 6 bis 8.

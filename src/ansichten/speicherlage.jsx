@@ -106,6 +106,17 @@ export const SPEICHERLAGE = {
       + "Änderungen und lade neu; sichere sie vorher bei Bedarf als Datei.",
     verwerfen: true,
   },
+  /* IMP-6 Oberfläche: Der Server hat eine Änderung an Schichtmodellen oder Zuordnungen abgewiesen (422
+     MODELL_VERKUERZT_VERSATZ oder eine inhaltliche 403 aus schichtzuordnungZusammen). Kein Rollenproblem; ein zweiter
+     Versuch schickte denselben Stand. Der Text des Servers steht darunter (nur Kennungen, keine Namen). */
+  schichtmodell: {
+    titel: "Schichtmodell oder Zuordnung nicht gespeichert",
+    text: "Der Server hat die Änderung an den Schichtmodellen abgewiesen; gespeichert wurde nichts, auch keine andere "
+      + "Änderung seit dem letzten Speichern. Der Grund steht unten. Ändere das Schichtmodell oder die Zuordnung "
+      + "entsprechend (unter „Schichtfolge“, Abschnitt „Schichtmodelle je Person“) — das nächste Speichern nimmt dann alle "
+      + "Änderungen mit. Oder verwirf die nicht gespeicherten Änderungen und lade neu; sichere sie vorher bei Bedarf als Datei.",
+    verwerfen: true,
+  },
   /* Befund B-L4c / Review #381 (2): Nach dem Sitzungsende hat sich ein anderer Zugang angemeldet (anderer Inhaber).
      speicher.js hat nichts gesendet und die Eingaben der vorherigen Sitzung verworfen; die Seite lädt neu. */
   fremd: {

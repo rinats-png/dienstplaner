@@ -847,6 +847,15 @@ function kalendertagAngaben(f, d) {
   if (d && typeof d.feld === "string") f.feld = d.feld.slice(0, 200);
   if (d && typeof d.text === "string") f.text = d.text.slice(0, 500);
 }
+/* IMP-6 Oberfläche: Absagen zu Schichtmodellen und Zuordnungen. 422 MODELL_VERKUERZT_VERSATZ trägt Code, Feld und Text;
+   die übrigen Gründe (Überschneidung, rückwirkend, Modell noch verwendet, Dienstart noch im Modell …) kommen als 403 aus
+   der Rechtekette (rechte.mjs → schichtzuordnungZusammen) nur mit Text — erkannt an dessen festem Anfang (Prüfung
+   imp6-oberflaeche gegen die Bibliothek). Kein Rollenproblem, und „Noch einmal senden“ hülfe nicht (derselbe Stand). */
+const SCHICHTMODELL_CODE = "MODELL_VERKUERZT_VERSATZ";
+const SCHICHTMODELL_GRUND = /^(Schichtmodelle: |Schichtmodell-Zuordnung \(|Dienstarten: Die Dienstart \S+ wird noch im Schichtmodell )/;
+/** Ist der Text einer 403 eine inhaltliche Absage zu Schichtmodellen? @param {unknown} text */
+export const istSchichtmodellGrund = (text) => typeof text === "string" && SCHICHTMODELL_GRUND.test(text);
+
 /** Bereich zu einem Feld des Servers („mandanten[0].abwesenheiten[2].bis" → „Abwesenheiten"), sonst null. */
 export function kalendertagBereich(feld) {
   const m = typeof feld === "string" ? /^mandanten\[\d+\]\.([a-z]+)/.exec(feld) : null;
@@ -859,11 +868,13 @@ function fehlerart(e, status) {
   /* Ein Stempel ist ein Beleg (WP-06): Die Kopie widerspricht dem gespeicherten Stand — kein Rollenproblem,
      sondern ein veralteter Bestand. Der Rat ist „neu laden", nicht „Rolle prüfen". */
   if (status === 403 && e && e.code === "STEMPEL_UNVERAENDERLICH") return "stempelStand";
+  if (status === 403 && e && istSchichtmodellGrund(e.grund)) return "schichtmodell";
   if (status === 403) return "keinRecht";
   if (status === 413) return "zuGross";
   /* P2-12 (Folgepunkt (1) Review #344): Ein Eintrag mit einem Kalendertag, den es nicht gibt (2026-02-30) — keine
      unbekannte Störung, und „Noch einmal senden" hülfe nicht (derselbe Stand, dasselbe 422). */
   if (status === 422 && e && e.code === KALENDERTAG_CODE) return "kalendertag";
+  if (status === 422 && e && e.code === SCHICHTMODELL_CODE) return "schichtmodell";
   if (status && status >= 500) return "server";
   if (e && (e.name === "AbortError" || e.name === "TimeoutError")) return "netz";   // Zeitgrenze (B-2)
   if (e && e.teilNetz) return "netz";   // WP-48.5: Teilweg ohne Antwort (Ausgang unklar)
@@ -1061,7 +1072,7 @@ async function teilwegSchreiben(auftrag, beimSchliessen, vollGewuenscht, abbruch
   const f = new Error(String((d.code === "PERSONALNUMMER_DOPPELT" ? d.text : null) || d.fehler || r.meldung
     || "Speichern fehlgeschlagen."));
   if (typeof d.code === "string") /** @type {any} */ (f).code = d.code;
-  if (a.status === 422 && d.code === KALENDERTAG_CODE) kalendertagAngaben(f, d);
+  if (a.status === 422 && (d.code === KALENDERTAG_CODE || d.code === SCHICHTMODELL_CODE)) kalendertagAngaben(f, d);
   /* E1/B-P3: Begründung einer 403 auch auf dem Teilweg (wie beim Voll-PUT). */
   const g = grund403(a.status, d);
   if (g) /** @type {any} */ (f).grund = g;
@@ -1261,7 +1272,7 @@ async function schreibenAusfuehren(beimSchliessen) {
     if (status !== 200) {
       const f = new Error(daten?.fehler || "Speichern fehlgeschlagen.");
       if (daten && typeof daten.code === "string") f.code = daten.code;
-      if (status === 422 && f.code === KALENDERTAG_CODE) kalendertagAngaben(f, daten);
+      if (status === 422 && (f.code === KALENDERTAG_CODE || f.code === SCHICHTMODELL_CODE)) kalendertagAngaben(f, daten);
       /* E1 (Review #397): Die Begründung einer 403 (`text`, etwa „Einteilung am … nicht möglich: Ruhezeit …") geht mit
          in die Lage (grund403). */
       const g = grund403(status, daten);
@@ -1286,6 +1297,10 @@ async function schreibenAusfuehren(beimSchliessen) {
       /* Folgepunkt (1): Text des Servers (welcher Tag), Feld und Bereich — sonst wie bisher. */
       ? { art, text: String(e.text || e.message), status, zeit: new Date().toISOString(),
         feld: typeof e.feld === "string" ? e.feld : null, bereich: kalendertagBereich(e.feld) }
+      /* IMP-6 Oberfläche: Text des Servers (422 mit Feld, 403 als Begründung), Bereich „Schichtmodelle“. */
+      : art === "schichtmodell"
+        ? { art, text: String(e.text || e.grund || e.message), status, zeit: new Date().toISOString(),
+          feld: typeof e.feld === "string" ? e.feld : null, bereich: "Schichtmodelle" }
       : { art, text: String(e && e.message || e), status, zeit: new Date().toISOString(),
         ...(e && typeof e.grund === "string" ? { grund: e.grund } : {}) } };
     if (auftrag.onFehler) auftrag.onFehler({ ...gescheitert.lage, fehler: e });
