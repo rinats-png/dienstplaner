@@ -150,8 +150,11 @@ describe("Kopfzeilen: rechte Aktionsgruppen brechen um (320 px)", () => {
    .snav > button.slink: Selektor-Spezifität, Reihenfolge, !important, @media nach
    Breite und Farbschema, Vererbung von color und Custom Properties, var() mit
    Rückfall. Flächen werden über die Vorfahren gemischt (rgba über opak).
-   Schwellen: Text auf Fläche >= 4,5:1 (1.4.3), Fokusring >= 3:1 gegen die Fläche
-   daneben (1.4.11, 2.4.11/2.4.13). Keine Uhr im Spiel (reiner Stilvergleich).
+   Schwellen: Text auf Fläche >= 4,5:1 (1.4.3), Fokusring >= 3:1 gegen die
+   Seitenleiste UND gegen die Füllung des fokussierten Eintrags (normal, Hover,
+   Aktiv), unabhängig vom outline-offset (1.4.11 Nicht-Text-Kontrast; 2.4.13
+   Fokus-Erscheinung, AAA, als Richtwert; 2.4.11 ist „Focus Not Obscured“ und
+   kein Kontrastkriterium). Keine Uhr im Spiel (reiner Stilvergleich).
    ========================================================================== */
 describe("V4-2c: Seitenleisten-Einträge (.slink) – Kontrast je Zustand, Thema und Layout", () => {
   let appCss = "";
@@ -265,9 +268,13 @@ describe("V4-2c: Seitenleisten-Einträge (.slink) – Kontrast je Zustand, Thema
         if (!name || !wert) continue;
         const wichtig = /!important$/.test(wert);
         wert = wert.replace(/\s*!important$/, "");
-        const alt = sieger.get(name);
-        if (!alt || (wichtig && !alt.wichtig) || (wichtig === alt.wichtig && (vergleich(spez, alt.spez) > 0
-          || (vergleich(spez, alt.spez) === 0 && r.ord >= alt.ord)))) sieger.set(name, { wert, spez, ord: r.ord, wichtig });
+        /* Kurzform outline setzt auch die Einzelwerte (Farbe, Stil, Breite); sie konkurrieren mit outline-color usw. */
+        const namen = name === "outline" ? ["outline-color", "outline-style", "outline-width"] : [name];
+        for (const n of namen) {
+          const alt = sieger.get(n);
+          if (!alt || (wichtig && !alt.wichtig) || (wichtig === alt.wichtig && (vergleich(spez, alt.spez) > 0
+            || (vergleich(spez, alt.spez) === 0 && r.ord >= alt.ord)))) sieger.set(n, { wert, spez, ord: r.ord, wichtig });
+        }
       }
     }
     return Object.fromEntries([...sieger].map(([k, v]) => [k, v.wert]));
@@ -292,7 +299,8 @@ describe("V4-2c: Seitenleisten-Einträge (.slink) – Kontrast je Zustand, Thema
       const los = (k) => (d[k] === undefined ? undefined : ersetzeVar(d[k], vars));
       if (d.color !== undefined) farbe = los("color");
       return { el, grund: los("background-color") ?? los("background") ?? "transparent", farbe,
-        display: los("display"), outline: los("outline"), outlineAbstand: los("outline-offset") };
+        display: los("display"), ringFarbe: los("outline-color"), ringStil: los("outline-style"),
+        ringBreite: los("outline-width"), outlineAbstand: los("outline-offset") };
     });
   };
 
@@ -343,18 +351,18 @@ describe("V4-2c: Seitenleisten-Einträge (.slink) – Kontrast je Zustand, Thema
   const FOKUS = ["focus", "focus-visible"];
   const ZUSTAENDE = [
     ["normal", {}], ["hover", { zustaende: ["hover"] }], ["aktiv", { an: true }], ["aktiv+hover", { an: true, zustaende: ["hover"] }],
-    ["focus-visible", { zustaende: FOKUS }], ["aktiv+focus-visible", { an: true, zustaende: FOKUS }],
+    ["focus-visible", { zustaende: FOKUS }], ["hover+focus-visible", { zustaende: ["hover", ...FOKUS] }],
+    ["aktiv+focus-visible", { an: true, zustaende: FOKUS }],
   ];
   const messen = (thema, breite, opt) => {
     const st = berechnet(regelnVon(appCss), kette(thema, breite, opt), { breite, dunkel: thema === "dunkel" });
     const eintrag = st[st.length - 1];
     const flaeche = flaecheUnter(st);
     const daneben = flaecheUnter(st, st.length - 1); /* Fläche um den Eintrag (Seitenleiste) */
-    const ring = eintrag.outline && !/\bnone\b/.test(eintrag.outline) ? farbeIn(eintrag.outline) : null;
-    /* Angrenzende Farben des Rings (1.4.11): mit outline-offset > 0 liegt zwischen Ring und Eintrag ein Spalt in der
-       Farbe der Seitenleiste, der Ring grenzt dann innen und außen an die Seitenleiste; ohne Abstand innen an den Eintrag. */
-    const abstand = parseFloat(eintrag.outlineAbstand || "0") || 0;
-    return { st, eintrag, flaeche, daneben, abstand, text: verh(mische(farbeIn(eintrag.farbe), flaeche), flaeche),
+    const ring = eintrag.ringStil && !/\bnone\b/.test(eintrag.ringStil) ? farbeIn(eintrag.ringFarbe) : null;
+    /* Der Ring wird gegen beide Nachbarn geprüft: die Seitenleiste (Spalt und außen) und die Füllung des Eintrags.
+       Auch mit outline-offset (Spalt 2 px) soll der Ring neben der Füllung erkennbar sein (Review #430, A2). */
+    return { st, eintrag, flaeche, daneben, ring, text: verh(mische(farbeIn(eintrag.farbe), flaeche), flaeche),
       fokus: ring ? { gegenDaneben: verh(mische(ring, daneben), daneben), gegenEintrag: verh(mische(ring, flaeche), flaeche) } : null };
   };
 
@@ -378,14 +386,13 @@ describe("V4-2c: Seitenleisten-Einträge (.slink) – Kontrast je Zustand, Thema
         });
       }
       for (const [zustand, opt] of ZUSTAENDE.filter(([z]) => z.includes("focus-visible"))) {
-        it(`${layout} ${breite} px, ${thema}, ${zustand}: Fokusring >= 3:1 gegen die angrenzenden Farben`, () => {
+        it(`${layout} ${breite} px, ${thema}, ${zustand}: Fokusring >= 3:1 gegen Seitenleiste und Füllung des Eintrags`, () => {
           const m = messen(thema, breite, opt);
-          expect(m.fokus, `outline ${m.eintrag.outline}`).not.toBeNull();
-          expect(m.eintrag.outline).toMatch(/\bsolid\b/);
-          expect(parseFloat(m.eintrag.outline), "Ringbreite in px").toBeGreaterThanOrEqual(2);
-          expect(m.fokus.gegenDaneben, `Ring gegen Seitenleiste ${alsText(m.daneben)}`).toBeGreaterThanOrEqual(3);
-          if (m.abstand <= 0) expect(m.fokus.gegenEintrag, `Ring gegen Eintrag ${alsText(m.flaeche)}`).toBeGreaterThanOrEqual(3);
-          else expect(m.abstand, "Spalt zwischen Ring und Eintrag in px").toBeGreaterThanOrEqual(1);
+          expect(m.fokus, `outline-style ${m.eintrag.ringStil}`).not.toBeNull();
+          expect(m.eintrag.ringStil).toMatch(/\bsolid\b/);
+          expect(parseFloat(m.eintrag.ringBreite), "Ringbreite in px").toBeGreaterThanOrEqual(2);
+          expect(m.fokus.gegenDaneben, `Ring ${m.ring} gegen Seitenleiste ${alsText(m.daneben)}`).toBeGreaterThanOrEqual(3);
+          expect(m.fokus.gegenEintrag, `Ring ${m.ring} gegen Eintrag ${alsText(m.flaeche)}`).toBeGreaterThanOrEqual(3);
         });
       }
       it(`${layout} ${breite} px, ${thema}: normal, Hover und Aktiv sind verschiedene Flächen`, () => {
