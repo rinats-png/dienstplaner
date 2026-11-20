@@ -3,10 +3,10 @@
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
   "anzahl": 236,
   "statusZaehlung": {
-    "BLOCKED": 88,
+    "BLOCKED": 87,
     "READY": 16,
     "IN_PROGRESS": 18,
-    "REVIEW": 9,
+    "REVIEW": 10,
     "INTEGRATED": 102,
     "DONE": 3
   },
@@ -39,8 +39,8 @@
       "pakete": 27,
       "offen": 18,
       "restPT": {
-        "min": 24.800000000000004,
-        "max": 43.50000000000001
+        "min": 24.000000000000004,
+        "max": 42.300000000000004
       }
     },
     "extern": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 331.6,
-    "max": 568.7500000000001
+    "min": 330.8,
+    "max": 567.5500000000001
   },
   "kritischerPfad": {
     "summe": 70,
@@ -6484,26 +6484,26 @@
       "prio": "P2",
       "aufwandPT": {"min":1,"max":1.5},
       "abhaengigkeiten": ["V4-2"],
-      "status": "BLOCKED",
+      "status": "REVIEW",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"acc45/v4/v4-3a: Tests zuerst 8d573945 (pruefungen/v4-3a-querschnitt.test.js 7/9 rot auf Basis d5cb1317), Umsetzung 31abe67c: --v4-r-* im Grundstil (v4RadienVariablen), --r/--r-gross/--r-pille auf Tokens, Querschnittsklassen (.pille/.schicht/.leerzelle/.planzelle/.seg/.schalter/Badges/.slink/.sprung/.wegsymbol, Mobilregeln .karte/.blatt) aus var(--v4-r-…); Werkzeug festeFormwerte/globalerStil; docs/acc45/V4-IST-STAND-2026-11-20.md Nachtrag V4-3a"},
+        "lokalGetestet": {"wert":true,"beleg":"Lauf 2026-11-20 lokal, je Datei --maxWorkers=1: v4-3a-querschnitt 10/10, v4-app-stil 63/63, v4-2b-variablen 14/14, v4-ist-stand 16/16, v4-inventar 15/15, v4-tokens 32/32, v4-markenrest 20/20, gestalt 19/19, kontrast 207/207, wcag-wp40 35/35, wp40-zugaenglichkeit 28/28, geraete-wp21* 108/108, oberflaeche-render 40/40, imp6-oberflaeche 51/51, ci-abdeckung 8/8, e2e-flaechen 10/10, prozess-wachen 15/15; E2E (E2E_PORT=3287, 390x844) v4-querschnitt-form 1/1, v4-schublade-fokus, v4-seitenleiste-kontrast, v4-variablen grün; v4-abnahme reflow 390 hell/dunkel 98 Prüfungen, 3 Klick-Befunde der Schublade (hell) einzeln wiederholt 0 Befunde"},
         "reviewt": {"wert":false,"beleg":null},
         "integriert": {"wert":false,"beleg":null},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
       },
-      "branch": null,
+      "branch": "acc45/v4/v4-3a",
       "agent": null,
       "modell": "opus",
       "konfliktzonen": ["App.jsx"],
-      "pr": [],
+      "pr": ["#435"],
       "nachweis": "docs/acc45/V4-IST-STAND-2026-11-20.md",
       "akzeptanz": "Feste Radien/Schatten der Querschnittsklassen in src/App.jsx und src/gestalt/stil.js aus --v4-Tokens; Klassennamen und E2E-Locators unverändert; Bildnachweis hell/dunkel der betroffenen Ansichten (pruefungen/browser/v4-abnahme.mjs)",
       "tests": "Unit, E2E",
-      "dateien": "src/App.jsx, src/gestalt/stil.js",
-      "notiz": "Übernommen (Review #418), V4-IST 2026-11-20 (Messung werkzeug/v4-inventar.mjs --hauptansichten); PT sind Schätzung. Ersetzt einen Teil des früheren V4-3."
+      "dateien": "src/App.jsx, src/gestalt/stil.js, src/v4/stil.js, werkzeug/v4-inventar.mjs, pruefungen/v4-3a-querschnitt.test.js, e2e/v4-querschnitt-form.spec.mjs",
+      "notiz": "Übernommen (Review #418), V4-IST 2026-11-20 (Messung werkzeug/v4-inventar.mjs --hauptansichten); PT sind Schätzung. Ersetzt einen Teil des früheren V4-3. Umsetzung 2026-11-20 (docs/acc45/V4-IST-STAND-2026-11-20.md, Nachtrag V4-3a): ein PR, kein Schnitt nötig. Feste Radien im globalen Stil App.jsx 17→7, gestalt/stil.js 13→7 (Schatten 1/2 unverändert: Zustandsanzeigen); Form erreicht 124/159 und voll V4 71/159 unverändert (Zählung je Datei wertet den globalen Stil nicht)."
     },
     {
       "id": "V4-3b",
@@ -6531,7 +6531,7 @@
       "akzeptanz": "Inline borderRadius/boxShadow-Literale je Hauptansicht durch Tokens oder Bausteinklassen ersetzt (Zählstand 215 in 75 Dateien sinkt messbar); keine Änderung an Fachlogik, Rollen, Accessible Names oder Klassennamen; Bildnachweis hell/dunkel je Ansicht",
       "tests": "Unit, E2E",
       "dateien": "src/ansichten",
-      "notiz": "Übernommen (Review #418), V4-IST 2026-11-20; Reihenfolge Plan, Personal, Zeit/Abrechnung, Einstellungen, Lage, Betreiber, Import, Telefonschale, Einstieg; PT sind Schätzung. Ersetzt einen Teil des früheren V4-3."
+      "notiz": "Übernommen (Review #418), V4-IST 2026-11-20; Reihenfolge Plan, Personal, Zeit/Abrechnung, Einstellungen, Lage, Betreiber, Import, Telefonschale, Einstieg; PT sind Schätzung. Ersetzt einen Teil des früheren V4-3. Rest aus V4-3a (globaler Stil, kein passender Token): Telefonschale .m-zahl 10px, .m-tabs button 16px, .m-blatt 26px, .m-griff 3px; .tabbar button 14px (Plan/Wochenliste) — im jeweiligen Ansichts-PR mitnehmen oder als V4-Ausnahme begründen."
     },
     {
       "id": "V4-3c",
