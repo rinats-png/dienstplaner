@@ -121,6 +121,9 @@ export const KONFIG_STANDARD = Object.freeze({
   blocker: { prios: ["P0", "P1"], status: ["REVIEW", "BLOCKED", "IN_PROGRESS", "READY"] },
   befund: { straenge: ["folge"], idMuster: ["^ABN-", "^V4-"], ausnahmeMuster: ["^REL-"], prios: ["P0", "P1"], erledigt: ["DONE", "INTEGRATED", "VERIFIED"] },
   freigabeVerzeichnis: "docs/acc45/releases",
+  // „Gepusht“: origin muss dieses GitHub-Repository sein, und ein Freigabezweig muss genau auf HEAD zeigen.
+  repoUrlMuster: "^(?:https://github\\.com/|git@github\\.com:|ssh://git@github\\.com/)rinats-png/dienstplaner(?:\\.git)?/?$",
+  freigabeZweige: ["main"],
   // Seit dem Kandidaten dürfen in HEAD nur diese Pfade geändert sein (Listen-PR, Freigabedatei).
   erlaubtNachKandidat: ["docs/acc45/releases/", "deploy/FREIGEGEBENE-IMAGES.md"],
   // Ohne diese Gates ist die Vorprüfung (Phase 0) vollständig; sie folgen in der Endprüfung.
@@ -232,45 +235,45 @@ export function g1Ci(checkRuns, kandidat, konfig) {
 
 /* ----------------------------------------------------------- G2 — Review */
 
-// Verneinung, Vorbehalt, Zweifel: im Zweifel kein Beleg.
-const NEGATIV = /nicht|\bkein|unerledigt|unmergebar|ausstehend|abgelehnt|verweigert|\boffen\b|fehlt|erst nach|vorbehalt|bedingt|no-go|nicht\s+mergen|\?|\bnein\b/i;
-// Positivliste: Die Schlussaussage muss genau MERGEBAR, MERGE-OK oder erledigt sein (optional „Delta“ davor, Punkt dahinter).
-const SCHLUSS = /^(?:Delta\s+)?(?:MERGEBAR|MERGE-OK|erledigt)[.!]?$/i;
+// Echte Positivform (geschlossenes Vokabular). Ein Urteil wird an „;“, „→“, „,“, „(“, „)“, „—“, „–“ in Teile zerlegt.
+// Erlaubt ist nur: optional am Anfang „N Runden“ oder „Runde N“; danach nur Teile aus VERLAUF; der letzte Teil aus
+// SCHLUSS. Jedes andere Wort (Bedingung, Vorbehalt, Verneinung, Name, Hinweis) macht das Urteil zu „kein Beleg“.
+const RUNDEN = /^(?:\d+\s+Runden?|Runde\s+\d+)$/i;
+const VERLAUF = /^(?:Delta\s+)?(?:MIT AUFLAGEN|MERGE-MIT-AUFLAGEN|NICHT MERGEN|MERGEBAR|MERGE-OK|erledigt)$/i;
+const SCHLUSS = /^(?:Delta\s+)?(?:MERGEBAR|MERGE-OK|erledigt)\.?$/i;
 
-/**
- * Bewertet ein Urteil. Die letzte Aussage ist der Text nach dem letzten „;“ oder „→“. Sie darf keine Verneinung
- * und keinen Vorbehalt enthalten, und ihr letzter Teil (nach dem letzten „,“, „(“, „—“, „–“; schließende Klammern
- * entfernt) muss exakt auf der Positivliste stehen. Alles andere ist kein Beleg (im Zweifel nein).
- */
+/** Bewertet ein Urteil nach der echten Positivform; alles andere ist kein Beleg (im Zweifel nein). */
 export function urteilPositiv(urteil) {
-  const aussagen = String(urteil).split(/;|→/);
-  const letzte = aussagen[aussagen.length - 1].trim();
-  if (!letzte || NEGATIV.test(letzte)) return false;
-  const teile = letzte.split(/[,(—–]/);
-  const schluss = teile[teile.length - 1].replace(/[)\s]+$/, "").trim();
-  return SCHLUSS.test(schluss);
+  const teile = String(urteil).split(/[;→,()—–]/).map((x) => x.trim()).filter(Boolean);
+  if (!teile.length) return false;
+  if (RUNDEN.test(teile[0])) teile.shift();
+  if (!teile.length || !SCHLUSS.test(teile[teile.length - 1])) return false;
+  return teile.slice(0, -1).every((x) => VERLAUF.test(x));
 }
 
 /**
  * PR-Nummern mit positivem Urteil aus den Tabellen in REVIEW-NACHWEIS*.md. Dateien nach Namen (Datum) geordnet;
- * die LETZTE Aussage je PR zählt (eine spätere negative Zeile hebt eine frühere positive auf). Die Spalte des
- * Urteils kommt aus der Kopfzeile (`| PR | … Urteil … |`), sonst die dritte Spalte. Erste Zelle: `#N` oder `#N Titel`.
+ * die LETZTE Aussage je PR zählt (eine spätere negative Zeile hebt eine frühere positive auf). Gelesen werden nur
+ * Tabellen mit einer Kopfzeile, deren erste Zelle „PR“ ist und die eine Spalte „Urteil“ hat; die Spalte gilt nur
+ * für diese Tabelle (eine Zeile ohne „|“ beendet sie). Erste Zelle einer Datenzeile: `#N` oder `#N Titel`.
  */
 export function reviewNachweiseLesen(texte) {
   const belegt = new Map();
   const sortiert = [...texte].sort((a, b) => String(a.datei).localeCompare(String(b.datei)));
   for (const { datei, text } of sortiert) {
-    let spalte = 2;
+    let spalte = -1; // keine gültige Tabelle offen
     for (const zeile of String(text ?? "").split(/\r?\n/)) {
-      if (!/^\s*\|/.test(zeile)) continue;
+      if (!/^\s*\|/.test(zeile)) { spalte = -1; continue; }
       const zellen = zeile.trim().replace(/^\||\|$/g, "").split("|").map((z) => z.trim());
-      if (/^PR$/i.test(zellen[0] || "")) {
+      if (/^:?-{3,}:?$/.test(zellen[0] || "")) continue; // Trennzeile
+      const m = /^#(\d+)\b/.exec(zellen[0] || "");
+      if (!m) {
+        // jede andere Zeile ist eine Kopfzeile: neue Tabelle
         const i = zellen.findIndex((z) => /urteil/i.test(z));
-        spalte = i > 0 ? i : 2;
+        spalte = /^PR$/i.test(zellen[0] || "") && i > 0 ? i : -1;
         continue;
       }
-      const m = /^#(\d+)\b/.exec(zellen[0] || "");
-      if (!m || zellen.length <= spalte) continue;
+      if (spalte < 0 || zellen.length <= spalte) continue;
       const urteil = zellen[spalte];
       const nr = Number(m[1]);
       if (urteilPositiv(urteil)) belegt.set(nr, `${datei}: ${zellen[0]} — ${urteil}`);
@@ -348,17 +351,25 @@ export function commitsOhnePr(commits, konfig = KONFIG_STANDARD, bestaetigung = 
   return liste.filter((c) => !abgedeckt.has(c.sha)).map((c) => ({ sha: c.sha, betreff: String(c.betreff || "") }));
 }
 
-/** Liegt ein GitHub-Review eines anderen Kontos vor, dessen letzter Stand APPROVED ist, ohne offenes CHANGES_REQUESTED? */
+const REVIEW_ROLLEN = ["OWNER", "MEMBER", "COLLABORATOR"];
+
+/**
+ * Liegt ein GitHub-Review vor, das zählt? Gültig sind nur Reviews mit Konto (nicht der Autor), mit Rolle
+ * OWNER/MEMBER/COLLABORATOR. Je Reviewer zählt der letzte Stand; APPROVED zählt nur auf dem aktuellen PR-Kopf
+ * (`commit_id` = `head.sha`). Ein offenes CHANGES_REQUESTED eines gültigen Reviewers hebt alles auf.
+ */
 function githubFreigabe(a) {
-  const reviews = Array.isArray(a?.reviews) ? a.reviews : [];
+  if (!istObjekt(a) || typeof a.kopf !== "string" || !a.kopf) return null;
+  const reviews = Array.isArray(a.reviews) ? a.reviews : [];
   const letzter = new Map();
   for (const r of reviews) {
-    if (!istObjekt(r) || !r.autor || r.autor === a.autor) continue;
-    if (r.state === "APPROVED" || r.state === "CHANGES_REQUESTED" || r.state === "DISMISSED") letzter.set(r.autor, r.state);
+    if (!istObjekt(r) || typeof r.autor !== "string" || !r.autor || r.autor === a.autor) continue;
+    if (!REVIEW_ROLLEN.includes(r.assoc)) continue;
+    if (r.state === "APPROVED" || r.state === "CHANGES_REQUESTED" || r.state === "DISMISSED") letzter.set(r.autor, r);
   }
   const zustaende = [...letzter.values()];
-  if (zustaende.includes("CHANGES_REQUESTED")) return null;
-  return [...letzter].find(([, s]) => s === "APPROVED")?.[0] ?? null;
+  if (zustaende.some((r) => r.state === "CHANGES_REQUESTED")) return null;
+  return zustaende.find((r) => r.state === "APPROVED" && r.commit === a.kopf)?.autor ?? null;
 }
 
 export function g2Review({ prs, commitsOhnePr: ohne, anzahlCommits, prAngaben = {}, dokBelege = new Map(), ssotBelege = new Map(), freigabe = null }) {
@@ -403,59 +414,119 @@ export function codeNamenFinden(texte) {
   return [...s].sort();
 }
 
+/** Entfernt einen Zeilenkommentar „ # …“ außerhalb von Anführungszeichen. */
+function kommentarWeg(z) {
+  let q = null;
+  for (let i = 0; i < z.length; i++) {
+    const c = z[i];
+    if (q) { if (c === q) q = null; continue; }
+    if (c === '"' || c === "'") { q = c; continue; }
+    if (c === "#" && (i === 0 || /\s/.test(z[i - 1]))) return z.slice(0, i).replace(/\s+$/, "");
+  }
+  return z;
+}
+
+const ohneQuote = (v) => String(v).trim().replace(/,\s*$/, "").trim().replace(/^(["'])(.*)\1$/, "$2");
+
+/** Liest eine logische Zeile einer Vorlage; liefert [[Name, Rohwert], …]. */
+function zeileLesen(z, art, argVorgaben) {
+  const paare = [];
+  if (art === "env") {
+    const m = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=(.*)$/.exec(z);
+    if (m) paare.push([m[1], m[2].trim()]);
+  } else if (art === "compose") {
+    // YAML-Flow als Liste: environment: ["A=x", 'B=y']
+    const flowListe = /^\s*["']?[A-Za-z_-]+["']?\s*:\s*\[(.*)\]\s*$/.exec(z);
+    if (flowListe) {
+      for (const teil of flowListe[1].split(",")) {
+        const p = /^\s*["']?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)["']?\s*$/.exec(teil);
+        if (p) paare.push([p[1], p[2]]);
+      }
+      return paare;
+    }
+    // YAML-Flow: environment: { A: "x", B: y }
+    const flow = /^\s*["']?[A-Za-z_-]+["']?\s*:\s*\{(.*)\}\s*$/.exec(z);
+    if (flow) {
+      for (const teil of flow[1].split(",")) {
+        const p = /^\s*["']?([A-Za-z_][A-Za-z0-9_]*)["']?\s*[:=]\s*(.*)$/.exec(teil);
+        if (p) paare.push([p[1], ohneQuote(p[2])]);
+      }
+      return paare;
+    }
+    // Block: KEY: wert | "KEY": wert | - KEY=wert | - "KEY=wert" | "KEY=wert", (in mehrzeiliger Flow-Liste)
+    const m = /^\s*(?:-\s*)?(["']?)([A-Za-z_][A-Za-z0-9_]*)\1?\s*[:=]\s*(.*?)\s*$/.exec(z);
+    if (m && /^[A-Z]/.test(m[2])) {
+      const roh = m[3].replace(/,\s*$/, "");
+      paare.push([m[2], /^["'].*["']$/.test(roh) ? ohneQuote(roh) : roh.replace(/["']$/, "")]);
+    }
+  } else if (art === "dockerfile") {
+    // ENV und ARG (ARG-Vorgaben wirken über ENV X=$X weiter).
+    const m = /^\s*(ENV|ARG)\s+(.*)$/i.exec(z);
+    if (!m) return paare;
+    const rest = m[2];
+    const istArg = m[1].toUpperCase() === "ARG";
+    if (/=/.test(rest)) {
+      for (const p of rest.matchAll(/([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|'[^']*'|\S*)/g)) {
+        if (istArg) { argVorgaben.set(p[1], p[2]); paare.push([p[1], p[2]]); continue; }
+        const bezug = /^\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?$/.exec(p[2]);
+        paare.push([p[1], bezug && argVorgaben.has(bezug[1]) ? argVorgaben.get(bezug[1]) : p[2]]);
+      }
+    } else if (!istArg) {
+      const p = /^([A-Za-z_][A-Za-z0-9_]*)\s+(.*)$/.exec(rest.trim());
+      if (p) paare.push([p[1], p[2].trim()]);
+    }
+  }
+  return paare;
+}
+
+function logischeZeilen(text) {
+  return String(text ?? "").replace(/\\\r?\n/g, " ").split(/\r?\n/)
+    .filter((z) => !/^\s*#/.test(z)).map(kommentarWeg);
+}
+
 /** Liefert die gesetzten Variablen einer Vorlage: Map Name → Rohwert (nur nicht auskommentierte Zuweisungen). */
 export function vorlageLesen(text, art) {
   const werte = new Map();
-  const zeilen = String(text ?? "").replace(/\\\r?\n/g, " ").split(/\r?\n/);
-  const ohneKommentar = (v) => v.replace(/\s+#.*$/, "").trim();
-  const ohneQuote = (v) => v.trim().replace(/^(["'])(.*)\1$/, "$2");
   const argVorgaben = new Map();
-  for (const z of zeilen) {
-    if (/^\s*#/.test(z)) continue;
-    if (art === "env") {
-      const m = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=(.*)$/.exec(z);
-      if (m) werte.set(m[1], ohneKommentar(m[2]));
-    } else if (art === "compose") {
-      // YAML-Flow: environment: { A: "x", B: y }
-      // YAML-Flow als Liste: environment: ["A=x", 'B=y']
-      const flowListe = /^\s*[A-Za-z_-]+\s*:\s*\[(.*)\]\s*$/.exec(z);
-      if (flowListe) {
-        for (const teil of flowListe[1].split(",")) {
-          const p = /^\s*["']?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)["']?\s*$/.exec(teil);
-          if (p && /^[A-Z]/.test(p[1])) werte.set(p[1], p[2]);
-        }
-        continue;
-      }
-      const flow = /^\s*[A-Za-z_-]+\s*:\s*\{(.*)\}\s*$/.exec(z);
-      if (flow) {
-        for (const teil of flow[1].split(",")) {
-          const p = /^\s*["']?([A-Za-z_][A-Za-z0-9_]*)["']?\s*[:=]\s*(.*)$/.exec(teil);
-          if (p && /^[A-Z]/.test(p[1])) werte.set(p[1], ohneQuote(p[2]));
-        }
-        continue;
-      }
-      const m = /^\s+(?:-\s*["']?)?([A-Za-z_][A-Za-z0-9_]*)\s*[:=]\s*(.*?)["']?\s*$/.exec(z);
-      if (m && /^[A-Z]/.test(m[1])) werte.set(m[1], ohneKommentar(m[2]));
-    } else if (art === "dockerfile") {
-      // ENV und ARG (ARG-Vorgaben wirken über ENV X=$X weiter).
-      const m = /^\s*(ENV|ARG)\s+(.*)$/i.exec(z);
-      if (!m) continue;
-      const rest = m[2];
-      const istArg = m[1].toUpperCase() === "ARG";
-      if (/=/.test(rest)) {
-        for (const p of rest.matchAll(/([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|'[^']*'|\S*)/g)) {
-          if (istArg) { argVorgaben.set(p[1], p[2]); werte.set(p[1], p[2]); continue; }
-          // ENV X=$Y / ${Y}: wirkt mit der ARG-Vorgabe von Y
-          const bezug = /^\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?$/.exec(p[2]);
-          werte.set(p[1], bezug && argVorgaben.has(bezug[1]) ? argVorgaben.get(bezug[1]) : p[2]);
-        }
-      } else if (m[1].toUpperCase() === "ENV") {
-        const p = /^([A-Za-z_][A-Za-z0-9_]*)\s+(.*)$/.exec(rest.trim());
-        if (p) werte.set(p[1], p[2].trim());
-      }
+  for (const z of logischeZeilen(text)) for (const [k, v] of zeileLesen(z, art, argVorgaben)) werte.set(k, v);
+  return werte;
+}
+
+/**
+ * Zeilen, die einen CENTRIC_-Namen enthalten, den der Leser auf dieser Zeile nicht als Schlüssel erkennt
+ * (Bezüge wie `$CENTRIC_X`/`${CENTRIC_X}` ausgenommen). Solche Zeilen sind nicht sicher lesbar → fail-closed NO-GO.
+ */
+export function vorlageUnlesbar(text, art) {
+  const aus = [];
+  const argVorgaben = new Map();
+  for (const z of logischeZeilen(text)) {
+    const schluessel = new Set(zeileLesen(z, art, argVorgaben).map(([k]) => k));
+    const namen = [...z.matchAll(/(?<![$\w{])CENTRIC_[A-Z0-9_]*[A-Z0-9]/g)].map((m) => m[0]);
+    if (namen.some((n) => !schluessel.has(n))) aus.push(z.trim());
+  }
+  return aus;
+}
+
+/** env_file-Einträge einer Compose-Vorlage (Inline-Wert, Flow-Liste oder Blockliste). */
+export function envDateien(text) {
+  const zeilen = String(text ?? "").split(/\r?\n/).map(kommentarWeg);
+  const aus = [];
+  for (let i = 0; i < zeilen.length; i++) {
+    const m = /^(\s*)env_file\s*:\s*(.*)$/.exec(zeilen[i]);
+    if (!m) continue;
+    const wert = m[2].trim();
+    if (wert) {
+      for (const x of wert.replace(/^\[|\]$/g, "").split(",")) if (x.trim()) aus.push(ohneQuote(x));
+      continue;
+    }
+    for (let j = i + 1; j < zeilen.length; j++) {
+      const l = /^\s*-\s*(.+)$/.exec(zeilen[j]);
+      if (!l) { if (zeilen[j].trim() === "") continue; break; }
+      const pfad = /^path\s*:\s*(.+)$/.exec(l[1].trim());
+      aus.push(ohneQuote(pfad ? pfad[1] : l[1]));
     }
   }
-  return werte;
+  return aus;
 }
 
 /**
@@ -503,6 +574,10 @@ export function g3Schalter({ codeNamen, klassen, vorlagen, unfertig, quelltexte,
       continue;
     }
     const werte = vorlageLesen(v.text, v.art);
+    for (const z of vorlageUnlesbar(v.text, v.art)) nogo(g, `${v.pfad}: Zeile nicht sicher lesbar (CENTRIC_-Name nicht als Schlüssel erkannt): ${z.slice(0, 120)}`);
+    if (v.art === "compose") {
+      for (const f of envDateien(v.text)) if (f !== ".env") nogo(g, `${v.pfad}: env_file ${f} wird nicht geprüft (zulässig nur .env, Vorlage .env.example)`);
+    }
     for (const [name, roh] of werte) {
       if (name === "NODE_ENV" && abweichend(roh, ["production"])) nogo(g, `${v.pfad}: NODE_ENV=${roh} (nur production; Faktorpflicht und Epochenbindung hängen daran)`);
       const e = kl[name];
@@ -857,12 +932,17 @@ export function auswerten(e, konfig = KONFIG_STANDARD) {
 
 const ZEITGRENZE_MS = 60_000;
 
+/** Gemeinsame Optionen aller git- und gh-Aufrufe: nur lesen, Zeitgrenze 60 s. */
+export function ausfuehrOptionen(cwd, extra = {}) {
+  return { cwd, encoding: "utf8", maxBuffer: 512 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"], timeout: ZEITGRENZE_MS, ...extra };
+}
+
 function git(wurzel, args) {
-  return execFileSync("git", args, { cwd: wurzel, encoding: "utf8", maxBuffer: 512 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"], timeout: ZEITGRENZE_MS }).replace(/\s+$/, "");
+  return execFileSync("git", args, ausfuehrOptionen(wurzel)).replace(/\s+$/, "");
 }
 
 function ghApi(wurzel, pfad, extra = []) {
-  return JSON.parse(execFileSync("gh", ["api", ...extra, pfad], { cwd: wurzel, encoding: "utf8", maxBuffer: 256 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"], timeout: ZEITGRENZE_MS }));
+  return JSON.parse(execFileSync("gh", ["api", ...extra, pfad], ausfuehrOptionen(wurzel)));
 }
 
 /** Löst eine Revision sicher auf (keine Option als Revision). Fehler: null. */
@@ -887,7 +967,7 @@ function quelle(wurzel, rev) {
     };
     return { lesen, dateien: (wurzeln) => wurzeln.flatMap((r) => dateien(r)), gibt: (rel) => existsSync(join(wurzel, rel)) };
   }
-  const lesen = (rel) => { try { return execFileSync("git", ["show", `${rev}:${rel}`], { cwd: wurzel, encoding: "utf8", maxBuffer: 64 * 1024 * 1024, stdio: ["ignore", "pipe", "ignore"], timeout: ZEITGRENZE_MS }); } catch { return null; } };
+  const lesen = (rel) => { try { return execFileSync("git", ["show", `${rev}:${rel}`], ausfuehrOptionen(wurzel, { stdio: ["ignore", "pipe", "ignore"] })); } catch { return null; } };
   const dateien = (wurzeln) => { try { return git(wurzel, ["ls-tree", "-r", "--name-only", rev, "--", ...wurzeln]).split("\n").filter(Boolean); } catch { return []; } };
   const gibt = (rel) => { try { git(wurzel, ["cat-file", "-e", `${rev}:${rel}`]); return true; } catch { return false; } };
   return { lesen, dateien, gibt };
@@ -910,7 +990,7 @@ export function basisPruefen(wurzel, basis, kandidat, konfig = KONFIG_STANDARD) 
   try { anzahl = Number(git(wurzel, ["rev-list", "--count", `${basis}..${kandidat}`])); } catch { return "Bereich nicht ermittelbar"; }
   if (!(anzahl > 0)) return "leerer Commit-Bereich";
   let liste = null;
-  try { liste = execFileSync("git", ["show", `HEAD:${konfig.freigabeListe}`], { cwd: wurzel, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: ZEITGRENZE_MS }); } catch { liste = null; }
+  try { liste = execFileSync("git", ["show", `HEAD:${konfig.freigabeListe}`], ausfuehrOptionen(wurzel, { stdio: ["ignore", "pipe", "ignore"] })); } catch { liste = null; }
   const zeilen = freigabelisteLesen(liste).zeilen.filter((z) => z.commit === basis);
   if (!zeilen.length) return `Basis steht in keiner Zeile von ${konfig.freigabeListe} (HEAD)`;
   if (!zeilen.some((z) => z.status === "aktiv" || z.status === "vorherig")) return `Basis steht in ${konfig.freigabeListe} nicht als aktiv oder vorherig (gesperrt ist keine Basis)`;
@@ -992,8 +1072,8 @@ export function sammeln(opt, konfig = KONFIG_STANDARD) {
   // Online: Git-Angaben
   if (e.kandidat && e.basis) {
     try {
-      e.geaenderteDateien = git(w, ["diff", "--name-only", e.basis, e.kandidat]).split("\n").filter(Boolean);
-      e.neueDateien = git(w, ["diff", "--name-only", "--diff-filter=A", e.basis, e.kandidat]).split("\n").filter(Boolean);
+      e.geaenderteDateien = git(w, ["diff", "--no-renames", "--name-only", e.basis, e.kandidat]).split("\n").filter(Boolean);
+      e.neueDateien = git(w, ["diff", "--no-renames", "--name-only", "--diff-filter=A", e.basis, e.kandidat]).split("\n").filter(Boolean);
       e.commits = git(w, ["log", "--format=%H%x09%P%x09%s", `${e.basis}..${e.kandidat}`]).split("\n").filter(Boolean).map((z) => {
         const [sha, eltern, ...betreff] = z.split("\t");
         return { sha, eltern: eltern ? eltern.split(" ") : [], betreff: betreff.join("\t") };
@@ -1004,12 +1084,20 @@ export function sammeln(opt, konfig = KONFIG_STANDARD) {
     let vorfahr = true;
     try { git(w, ["merge-base", "--is-ancestor", e.kandidat, "HEAD"]); } catch { vorfahr = false; }
     let gepusht = false;
-    // Gepusht heißt: ein Zweig auf origin zeigt genau auf HEAD (git ls-remote, nur lesend).
+    // Gepusht heißt: origin ist dieses GitHub-Repository, und ein Freigabezweig (main) zeigt dort genau auf HEAD
+    // (git remote get-url, git ls-remote; nur lesend).
     try {
-      const kopf = git(w, ["rev-parse", "HEAD"]);
-      gepusht = git(w, ["ls-remote", "--heads", "origin"]).split("\n").some((z) => z.split("\t")[0] === kopf);
+      const url = git(w, ["remote", "get-url", "origin"]);
+      if (new RegExp(konfig.repoUrlMuster).test(url)) {
+        const kopf = git(w, ["rev-parse", "HEAD"]);
+        const zweige = new Set(konfig.freigabeZweige.map((z) => `refs/heads/${z}`));
+        gepusht = git(w, ["ls-remote", "--heads", "origin"]).split("\n").some((z) => {
+          const [sha, ref] = z.split("\t");
+          return sha === kopf && zweige.has(ref);
+        });
+      }
     } catch { gepusht = false; }
-    e.stand = { kandidatIstVorfahr: vorfahr, headGepusht: gepusht, geaendertSeitKandidat: vorfahr ? git(w, ["diff", "--name-only", e.kandidat, "HEAD"]).split("\n").filter(Boolean) : null };
+    e.stand = { kandidatIstVorfahr: vorfahr, headGepusht: gepusht, geaendertSeitKandidat: vorfahr ? git(w, ["diff", "--no-renames", "--name-only", e.kandidat, "HEAD"]).split("\n").filter(Boolean) : null };
   } catch { e.stand = null; }
   try {
     // filter=all: alle Läufe, nicht nur den jüngsten je Name (sonst gälte „ein roter Lauf bleibt rot“ nur offline).
@@ -1050,7 +1138,8 @@ export function sammeln(opt, konfig = KONFIG_STANDARD) {
     try {
       const p = prDaten[nr] || gh(`repos/${konfig.repo}/pulls/${nr}`);
       const r = gh(`repos/${konfig.repo}/pulls/${nr}/reviews?per_page=100`, ["--paginate", "--slurp"]).flat();
-      e.prAngaben[nr] = { autor: p.user?.login, reviews: r.map((x) => ({ state: x.state, autor: x.user?.login })) };
+      e.prAngaben[nr] = { autor: p.user?.login ?? null, kopf: p.head?.sha ?? null,
+        reviews: r.map((x) => ({ state: x.state, autor: x.user?.login ?? null, assoc: x.author_association ?? null, commit: x.commit_id ?? null })) };
     } catch { /* ohne Angaben: G2 listet den PR zur manuellen Bestätigung */ }
   }
   return e;

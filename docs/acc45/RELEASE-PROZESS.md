@@ -89,6 +89,9 @@ Grenzen, die das Werkzeug nicht schließt (bewusst dokumentiert):
   nur offene PRs. Rebase-gemergte Commits auf `integration/*` erscheinen deshalb als „ohne PR“ (fail-closed);
   Merge-Commits und Squash-Commits sind über `pulls/{n}` bestätigt.
 - **`akzeptierteCommits`** verlangt den vollen Commit (40 Zeichen); Präfixe gelten nicht.
+- **`--bild-info` ist eine lokale, unsignierte Datei.** Das Werkzeug prüft Digest, Label, Provenienz und Abfragezeit
+  darin, aber nicht, ob die Datei wirklich aus der Registry stammt. Wer sie erzeugt, kann sie fälschen. Abhilfe in
+  REL-2: Abfrage im Gate-Job selbst (`docker buildx imagetools inspect`, Anhang A.2), nicht als hochgeladene Datei.
 
 ```json
 {
@@ -122,15 +125,15 @@ Einzelheiten und Konfiguration: Kopf von `werkzeug/release-pruefung.mjs`, Ausgab
 | Gate | GO, wenn |
 |---|---|
 | G1 | alle Pflicht-Check-Runs auf dem Kandidaten-SHA abgeschlossen und `success`; abgefragt mit `filter=all`, jeder Lauf zählt (ein roter Lauf bleibt rot); Läufe ohne `head_sha` sind NO-GO; eigene Gate-Jobs zählen nicht |
-| G2 | jeder PR im Paket hat einen Review-Beleg (GitHub-Review eines anderen Kontos ohne spätere Änderungsforderung, in `REVIEW-NACHWEIS*.md` eine letzte Aussage ohne Verneinung oder Vorbehalt, die exakt auf `MERGEBAR`, `MERGE-OK` oder `erledigt` endet, SSOT-Stufe reviewt) oder ist bestätigt; jeder Commit gehört zu einem von GitHub bestätigten PR (gemergt, `merge_commit_sha`, Commits des PR; der Betreff allein belegt nichts), sonst `akzeptierteCommits`; leerer Bereich ist nie GO |
-| G3 | jeder `CENTRIC_`-Name im Server-Code des Kandidaten und in den Vorlagen ist in [RELEASE-SCHALTER.json](RELEASE-SCHALTER.json) klassifiziert; kein Schalter und keine unfertige Funktion in `.env.example`, `deploy/compose.yml`, `Dockerfile` (ENV und ARG), Staging-Vorlagen aktiv (auch nicht als `${X:-w}`/`${X:+w}`, YAML-Flow, Vergleich mit trim/Kleinschreibung); freigabepflichtige Schalter nur mit `freigegebeneSchalter`; `NODE_ENV` nur `production`, in `deploy/compose.yml` und `Dockerfile` Pflicht |
+| G2 | jeder PR im Paket hat einen Review-Beleg: GitHub-Review eines anderen Kontos mit Rolle OWNER/MEMBER/COLLABORATOR auf dem aktuellen PR-Kopf, ohne spätere Änderungsforderung; oder in `REVIEW-NACHWEIS*.md` (nur Tabellen mit Kopfzeile `PR … Urteil`) ein Urteil in echter Positivform (`[N Runden] [MIT AUFLAGEN, …] MERGEBAR`, `MIT AUFLAGEN → erledigt`, `…; Delta MERGE-OK`; jedes andere Wort = kein Beleg); oder SSOT-Stufe reviewt; oder bestätigt. Jeder Commit gehört zu einem von GitHub bestätigten PR (gemergt, `merge_commit_sha`, Commits des PR; der Betreff allein belegt nichts), sonst `akzeptierteCommits`; leerer Bereich ist nie GO |
+| G3 | jeder `CENTRIC_`-Name im Server-Code des Kandidaten und in den Vorlagen ist in [RELEASE-SCHALTER.json](RELEASE-SCHALTER.json) klassifiziert; kein Schalter und keine unfertige Funktion in `.env.example`, `deploy/compose.yml`, `Dockerfile` (ENV und ARG), Staging-Vorlagen aktiv (auch nicht als `${X:-w}`/`${X:+w}`, YAML-Flow als Abbildung oder Liste, ein- oder mehrzeilig, Schlüssel in Anführungszeichen, Vergleich mit trim/Kleinschreibung); eine Zeile mit `CENTRIC_`, die der Leser nicht als Schlüssel erkennt, ist NO-GO (kein vollständiger YAML-Parser, deshalb fail-closed); `env_file` nur `.env` (Vorlage `.env.example`); freigabepflichtige Schalter nur mit `freigegebeneSchalter`; `NODE_ENV` nur `production`, in `deploy/compose.yml` und `Dockerfile` Pflicht |
 | G4 | Digest vollständig; Bildangaben aktuell; Label und Provenienz = Kandidat; Freigabeliste gültig, Zeile `aktiv` mit Kandidaten-Commit |
 | G5 | keine Startschreib-Quelle (W-1…W-9, `server.mjs`) geändert oder neu, oder Betreiberfreigabe deckt alle ab |
 | G6 | Sicherung (mit `snapshot_id`), Restore-Probe, Widerrufbuch-Probe (mit `art`, `ergebnis: ok`) aktuell |
 | G7 | Rückweg dokumentiert |
 | G8 | kein unfertiges P0/P1-Paket im Paket (außer akzeptiert) |
 | G9 | kein offener P0/P1-Befund (außer akzeptiert); REL-* sind der Release-Prozess selbst und zählen nicht |
-| G10 | Freigabedatei gültig, commitet, passend; HEAD ist gepusht, enthält den Kandidaten und ändert seitdem nur Liste und Freigabedatei |
+| G10 | Freigabedatei gültig, commitet, passend; HEAD ist auf GitHub (`origin` = `rinats-png/dienstplaner`, Zweig `main` zeigt auf HEAD), enthält den Kandidaten und ändert seitdem nur Liste und Freigabedatei (Vergleich ohne Umbenennungserkennung, `--no-renames`) |
 
 Ein NO-GO wird nicht übersteuert. Die Konfiguration steht nur im Werkzeug (`--konfig-zeigen`); es gibt kein
 `--konfig`. Offline (Fixture) und `--jetzt` enden nie mit Exit 0, sondern mit Exit 3 (übersteuert).
