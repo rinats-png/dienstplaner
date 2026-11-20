@@ -239,7 +239,8 @@ export function g1Ci(checkRuns, kandidat, konfig) {
 // Erlaubt ist nur: optional am Anfang „N Runden“ oder „Runde N“; danach nur Teile aus VERLAUF; der letzte Teil aus
 // SCHLUSS. Jedes andere Wort (Bedingung, Vorbehalt, Verneinung, Name, Hinweis) macht das Urteil zu „kein Beleg“.
 const RUNDEN = /^(?:\d+\s+Runden?|Runde\s+\d+)$/i;
-const VERLAUF = /^(?:Delta\s+)?(?:MIT AUFLAGEN|MERGE-MIT-AUFLAGEN|NICHT MERGEN|MERGEBAR|MERGE-OK|erledigt)$/i;
+const VERLAUF = /^(?:Delta\s+)?(?:MIT AUFLAGEN|MERGE-MIT-AUFLAGEN|NICHT MERGEN|MERGEBAR|MERGE-OK)$/i;
+const AUFLAGE = /^(?:Delta\s+)?(?:MIT AUFLAGEN|MERGE-MIT-AUFLAGEN)$/i;
 const SCHLUSS = /^(?:Delta\s+)?(?:MERGEBAR|MERGE-OK|erledigt)\.?$/i;
 
 /** Bewertet ein Urteil nach der echten Positivform; alles andere ist kein Beleg (im Zweifel nein). */
@@ -248,6 +249,8 @@ export function urteilPositiv(urteil) {
   if (!teile.length) return false;
   if (RUNDEN.test(teile[0])) teile.shift();
   if (!teile.length || !SCHLUSS.test(teile[teile.length - 1])) return false;
+  // „erledigt“ heißt nur etwas direkt nach einer Auflage (die Auflagen sind erledigt).
+  if (/erledigt/i.test(teile[teile.length - 1]) && !(teile.length >= 2 && AUFLAGE.test(teile[teile.length - 2]))) return false;
   return teile.slice(0, -1).every((x) => VERLAUF.test(x));
 }
 
@@ -264,7 +267,8 @@ export function reviewNachweiseLesen(texte) {
     let spalte = -1; // keine gültige Tabelle offen
     for (const zeile of String(text ?? "").split(/\r?\n/)) {
       if (!/^\s*\|/.test(zeile)) { spalte = -1; continue; }
-      const zellen = zeile.trim().replace(/^\||\|$/g, "").split("|").map((z) => z.trim());
+      // Zellen an nicht maskierten Strichen trennen; \| ist ein Strich im Zelltext.
+      const zellen = zeile.trim().replace(/^\|/, "").replace(/(?<!\\)\|$/, "").split(/(?<!\\)\|/).map((z) => z.replace(/\\\|/g, "|").trim());
       if (/^:?-{3,}:?$/.test(zellen[0] || "")) continue; // Trennzeile
       const m = /^#(\d+)\b/.exec(zellen[0] || "");
       if (!m) {
@@ -359,7 +363,7 @@ const REVIEW_ROLLEN = ["OWNER", "MEMBER", "COLLABORATOR"];
  * (`commit_id` = `head.sha`). Ein offenes CHANGES_REQUESTED eines gültigen Reviewers hebt alles auf.
  */
 function githubFreigabe(a) {
-  if (!istObjekt(a) || typeof a.kopf !== "string" || !a.kopf) return null;
+  if (!istObjekt(a) || typeof a.kopf !== "string" || !a.kopf || typeof a.autor !== "string" || !a.autor) return null;
   const reviews = Array.isArray(a.reviews) ? a.reviews : [];
   const letzter = new Map();
   for (const r of reviews) {
@@ -426,107 +430,87 @@ function kommentarWeg(z) {
   return z;
 }
 
-const ohneQuote = (v) => String(v).trim().replace(/,\s*$/, "").trim().replace(/^(["'])(.*)\1$/, "$2");
-
-/** Liest eine logische Zeile einer Vorlage; liefert [[Name, Rohwert], …]. */
-function zeileLesen(z, art, argVorgaben) {
-  const paare = [];
-  if (art === "env") {
-    const m = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=(.*)$/.exec(z);
-    if (m) paare.push([m[1], m[2].trim()]);
-  } else if (art === "compose") {
-    // YAML-Flow als Liste: environment: ["A=x", 'B=y']
-    const flowListe = /^\s*["']?[A-Za-z_-]+["']?\s*:\s*\[(.*)\]\s*$/.exec(z);
-    if (flowListe) {
-      for (const teil of flowListe[1].split(",")) {
-        const p = /^\s*["']?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)["']?\s*$/.exec(teil);
-        if (p) paare.push([p[1], p[2]]);
-      }
-      return paare;
-    }
-    // YAML-Flow: environment: { A: "x", B: y }
-    const flow = /^\s*["']?[A-Za-z_-]+["']?\s*:\s*\{(.*)\}\s*$/.exec(z);
-    if (flow) {
-      for (const teil of flow[1].split(",")) {
-        const p = /^\s*["']?([A-Za-z_][A-Za-z0-9_]*)["']?\s*[:=]\s*(.*)$/.exec(teil);
-        if (p) paare.push([p[1], ohneQuote(p[2])]);
-      }
-      return paare;
-    }
-    // Block: KEY: wert | "KEY": wert | - KEY=wert | - "KEY=wert" | "KEY=wert", (in mehrzeiliger Flow-Liste)
-    const m = /^\s*(?:-\s*)?(["']?)([A-Za-z_][A-Za-z0-9_]*)\1?\s*[:=]\s*(.*?)\s*$/.exec(z);
-    if (m && /^[A-Z]/.test(m[2])) {
-      const roh = m[3].replace(/,\s*$/, "");
-      paare.push([m[2], /^["'].*["']$/.test(roh) ? ohneQuote(roh) : roh.replace(/["']$/, "")]);
-    }
-  } else if (art === "dockerfile") {
-    // ENV und ARG (ARG-Vorgaben wirken über ENV X=$X weiter).
-    const m = /^\s*(ENV|ARG)\s+(.*)$/i.exec(z);
-    if (!m) return paare;
-    const rest = m[2];
-    const istArg = m[1].toUpperCase() === "ARG";
-    if (/=/.test(rest)) {
-      for (const p of rest.matchAll(/([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|'[^']*'|\S*)/g)) {
-        if (istArg) { argVorgaben.set(p[1], p[2]); paare.push([p[1], p[2]]); continue; }
-        const bezug = /^\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?$/.exec(p[2]);
-        paare.push([p[1], bezug && argVorgaben.has(bezug[1]) ? argVorgaben.get(bezug[1]) : p[2]]);
-      }
-    } else if (!istArg) {
-      const p = /^([A-Za-z_][A-Za-z0-9_]*)\s+(.*)$/.exec(rest.trim());
-      if (p) paare.push([p[1], p[2].trim()]);
-    }
-  }
-  return paare;
-}
-
-function logischeZeilen(text) {
-  return String(text ?? "").replace(/\\\r?\n/g, " ").split(/\r?\n/)
-    .filter((z) => !/^\s*#/.test(z)).map(kommentarWeg);
-}
-
-/** Liefert die gesetzten Variablen einer Vorlage: Map Name → Rohwert (nur nicht auskommentierte Zuweisungen). */
-export function vorlageLesen(text, art) {
-  const werte = new Map();
-  const argVorgaben = new Map();
-  for (const z of logischeZeilen(text)) for (const [k, v] of zeileLesen(z, art, argVorgaben)) werte.set(k, v);
-  return werte;
-}
+const NAME = "[A-Za-z_][A-Za-z0-9_]*";
+// Werte, die in YAML keine einfache Zeichenkette sind (Block, Anker, Verweis, Tag, Flow) — nie als gelesen werten.
+const KEIN_SKALAR = /^[{[|>&*!]/;
+// Steuerwörter, die Werte aus anderen Dateien holen. Erlaubt ist nur genau `env_file: .env`.
+const STEUERWORT = /(?:^|[^A-Za-z0-9_])["']?(env_file|extends|include)["']?\s*:/;
+const ERLAUBTES_ENV_FILE = /^\s+env_file:\s*(["']?)\.env\1\s*$/;
 
 /**
- * Zeilen, die einen CENTRIC_-Namen enthalten, den der Leser auf dieser Zeile nicht als Schlüssel erkennt
- * (Bezüge wie `$CENTRIC_X`/`${CENTRIC_X}` ausgenommen). Solche Zeilen sind nicht sicher lesbar → fail-closed NO-GO.
+ * Liest eine Vorlage nach einer festen, kleinen Grammatik (Allowlist). Jede Zeile, die einen überwachten Namen
+ * (CENTRIC_*, NODE_ENV, Variablen unfertiger Funktionen) enthält und nicht genau einer bekannten Form entspricht,
+ * ist „unlesbar“ (fail-closed); ebenso jedes Steuerwort außer `env_file: .env`. Bezüge `$X` und `${X…}` zählen
+ * nicht als Vorkommen. Bekannte Formen:
+ *   env         NAME=wert | export NAME=wert
+ *   compose     ␣NAME: skalar | ␣"NAME": skalar | ␣- NAME=wert | ␣- "NAME=wert" | key: { NAME: skalar, … } | key: ["NAME=wert", …]
+ *   dockerfile  ENV|ARG NAME=wert [NAME=wert …] | ENV NAME wert | ARG NAME
+ * Liefert { funde: [[Name, Rohwert]] in Dateireihenfolge (jeder Fund einzeln), unlesbar: [Zeile] }.
  */
-export function vorlageUnlesbar(text, art) {
-  const aus = [];
+export function vorlageAuswerten(text, art, ueberwacht = []) {
+  const funde = [];
+  const unlesbar = [];
   const argVorgaben = new Map();
-  for (const z of logischeZeilen(text)) {
-    const schluessel = new Set(zeileLesen(z, art, argVorgaben).map(([k]) => k));
-    const namen = [...z.matchAll(/(?<![$\w{])CENTRIC_[A-Z0-9_]*[A-Z0-9]/g)].map((m) => m[0]);
-    if (namen.some((n) => !schluessel.has(n))) aus.push(z.trim());
+  const istUeberwacht = (n) => /^CENTRIC_/.test(n) || n === "NODE_ENV" || ueberwacht.includes(n);
+  const vorkommen = (z) => [...z.matchAll(/(?<!\$\{?)\b([A-Z][A-Z0-9_]*)\b/g)].map((m) => m[1]).filter(istUeberwacht);
+  const zeilen = String(text ?? "").replace(/\\\r?\n/g, " ").split(/\r?\n/);
+  for (const roh of zeilen) {
+    if (/^\s*#/.test(roh) || !roh.trim()) continue;
+    const z = kommentarWeg(roh);
+    const gelesen = [];
+    let m;
+    if (art === "env") {
+      if ((m = new RegExp(`^\\s*(?:export\\s+)?(${NAME})\\s*=(.*)$`).exec(z))) gelesen.push([m[1], m[2].trim()]);
+    } else if (art === "compose") {
+      if (STEUERWORT.test(z) && !ERLAUBTES_ENV_FILE.test(z)) { unlesbar.push(z.trim()); continue; }
+      if ((m = new RegExp(`^\\s+(["']?)(${NAME})\\1:\\s+(\\S.*)$`).exec(z)) && !KEIN_SKALAR.test(m[3].trim())) {
+        gelesen.push([m[2], m[3].trim()]);
+      } else if ((m = new RegExp(`^\\s+-\\s+(["']?)(${NAME})=(.*)\\1\\s*$`).exec(z))) {
+        gelesen.push([m[2], m[3]]);
+      } else if ((m = /^\s*(["']?)[A-Za-z_-]+\1:\s*\{([^{}[\]]*)\}\s*$/.exec(z))) {
+        for (const teil of m[2].split(",")) {
+          const p = new RegExp(`^\\s*(["']?)(${NAME})\\1\\s*:\\s*(.*?)\\s*$`).exec(teil);
+          if (p && !KEIN_SKALAR.test(p[3])) gelesen.push([p[2], p[3]]);
+        }
+      } else if ((m = /^\s*(["']?)[A-Za-z_-]+\1:\s*\[([^{}[\]]*)\]\s*$/.exec(z))) {
+        for (const teil of m[2].split(",")) {
+          const p = new RegExp(`^\\s*(["']?)(${NAME})=(.*?)\\1\\s*$`).exec(teil);
+          if (p) gelesen.push([p[2], p[3]]);
+        }
+      }
+    } else if (art === "dockerfile") {
+      if ((m = /^\s*(ENV|ARG)\s+(.*)$/i.exec(z))) {
+        const rest = m[2].trim();
+        const istArg = m[1].toUpperCase() === "ARG";
+        const paar = new RegExp(`(${NAME})=("[^"]*"|'[^']*'|\\S*)`, "g");
+        if (/=/.test(rest) && rest.replace(paar, "").trim() === "") {
+          for (const p of rest.matchAll(paar)) {
+            if (istArg) { argVorgaben.set(p[1], p[2]); gelesen.push([p[1], p[2]]); continue; }
+            const bezug = /^\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?$/.exec(p[2]);
+            gelesen.push([p[1], bezug && argVorgaben.has(bezug[1]) ? argVorgaben.get(bezug[1]) : p[2]]);
+          }
+        } else if (!/=/.test(rest)) {
+          const p = new RegExp(`^(${NAME})(?:\\s+(.*))?$`).exec(rest);
+          if (p && !istArg && p[2] !== undefined) gelesen.push([p[1], p[2].trim()]);
+          else if (p && istArg && p[2] === undefined) gelesen.push([p[1], ""]);
+        }
+      }
+    }
+    const schluessel = new Set(gelesen.map(([k]) => k));
+    if (vorkommen(z).some((n) => !schluessel.has(n))) { unlesbar.push(z.trim()); continue; }
+    for (const [k, v] of gelesen) funde.push([k, v]);
   }
-  return aus;
+  return { funde, unlesbar };
 }
 
-/** env_file-Einträge einer Compose-Vorlage (Inline-Wert, Flow-Liste oder Blockliste). */
-export function envDateien(text) {
-  const zeilen = String(text ?? "").split(/\r?\n/).map(kommentarWeg);
-  const aus = [];
-  for (let i = 0; i < zeilen.length; i++) {
-    const m = /^(\s*)env_file\s*:\s*(.*)$/.exec(zeilen[i]);
-    if (!m) continue;
-    const wert = m[2].trim();
-    if (wert) {
-      for (const x of wert.replace(/^\[|\]$/g, "").split(",")) if (x.trim()) aus.push(ohneQuote(x));
-      continue;
-    }
-    for (let j = i + 1; j < zeilen.length; j++) {
-      const l = /^\s*-\s*(.+)$/.exec(zeilen[j]);
-      if (!l) { if (zeilen[j].trim() === "") continue; break; }
-      const pfad = /^path\s*:\s*(.+)$/.exec(l[1].trim());
-      aus.push(ohneQuote(pfad ? pfad[1] : l[1]));
-    }
-  }
-  return aus;
+/** Map Name → Rohwert (letzter Fund); nur zur Anzeige. G3 bewertet jeden Fund einzeln (vorlageAuswerten). */
+export function vorlageLesen(text, art) {
+  return new Map(vorlageAuswerten(text, art).funde);
+}
+
+/** Nicht sicher lesbare Zeilen einer Vorlage (siehe vorlageAuswerten). */
+export function vorlageUnlesbar(text, art, ueberwacht = []) {
+  return vorlageAuswerten(text, art, ueberwacht).unlesbar;
 }
 
 /**
@@ -568,44 +552,41 @@ export function g3Schalter({ codeNamen, klassen, vorlagen, unfertig, quelltexte,
   if (unklassifiziert.length) nogo(g, `unklassifizierte CENTRIC_-Namen im Server-Code (in ${konfig.schalterDatei} einordnen): ${unklassifiziert.join(", ")}`);
   const freigegeben = new Map((Array.isArray(freigabe?.freigegebeneSchalter) ? freigabe.freigegebeneSchalter : [])
     .filter((x) => istObjekt(x) && typeof x.name === "string" && String(x.grund || "").trim()).map((x) => [x.name, x.grund]));
+  const unfertigVariablen = unfertig.funktionen.filter(istObjekt).flatMap((f) => (Array.isArray(f.variablen) ? f.variablen : []));
   for (const v of vorlagen || []) {
     if (v.text == null) {
       if (v.pflicht) nogo(g, `Pflichtvorlage fehlt: ${v.pfad}`);
       continue;
     }
-    const werte = vorlageLesen(v.text, v.art);
-    for (const z of vorlageUnlesbar(v.text, v.art)) nogo(g, `${v.pfad}: Zeile nicht sicher lesbar (CENTRIC_-Name nicht als Schlüssel erkannt): ${z.slice(0, 120)}`);
-    if (v.art === "compose") {
-      for (const f of envDateien(v.text)) if (f !== ".env") nogo(g, `${v.pfad}: env_file ${f} wird nicht geprüft (zulässig nur .env, Vorlage .env.example)`);
-    }
-    for (const [name, roh] of werte) {
+    const { funde, unlesbar } = vorlageAuswerten(v.text, v.art, unfertigVariablen);
+    for (const z of unlesbar) nogo(g, `${v.pfad}: Zeile nicht sicher lesbar (keine bekannte Form): ${z.slice(0, 120)}`);
+    // Jeder Fund einzeln: ein aktiver Fund irgendwo ist NO-GO, ein späterer Aus-Wert hebt ihn nicht auf.
+    for (const [name, roh] of funde) {
       if (name === "NODE_ENV" && abweichend(roh, ["production"])) nogo(g, `${v.pfad}: NODE_ENV=${roh} (nur production; Faktorpflicht und Epochenbindung hängen daran)`);
       const e = kl[name];
       if (!istObjekt(e)) {
         if (/^CENTRIC_/.test(name)) nogo(g, `${v.pfad}: unklassifizierte Variable ${name} (in ${konfig.schalterDatei} einordnen)`);
-        continue;
-      }
-      const sicher = Array.isArray(e.sicherWerte) ? e.sicherWerte : [];
-      if (e.klasse === "schalter-aus" && abweichend(roh, [...konfig.ausWerte, ...sicher])) nogo(g, `${v.pfad}: Schalter ${name} aktiv (${roh})`);
-      if (e.klasse === "standard-an" && abweichend(roh, sicher)) nogo(g, `${v.pfad}: ${name} weicht vom Standard ab (${roh})`);
-      if (e.klasse === "freigabepflichtig" && abweichend(roh, [...konfig.ausWerte, ...sicher])) {
-        if (freigegeben.has(name)) g.belege.push(`${v.pfad}: ${name} aktiv, freigegeben: ${freigegeben.get(name)}`);
-        else nogo(g, `${v.pfad}: ${name} aktiv ohne Betreiberfreigabe (freigegebeneSchalter in der Freigabedatei)`);
-      }
-    }
-    if (konfig.nodeEnvPflicht.includes(v.pfad) && wertAufloesen(werte.get("NODE_ENV")) !== "production") {
-      nogo(g, `${v.pfad}: NODE_ENV=production fehlt`);
-    }
-    for (const f of unfertig.funktionen) {
-      if (!istObjekt(f)) { nogo(g, `${konfig.unfertigDatei}: ungültiger Eintrag`); continue; }
-      const sicher = Array.isArray(f.sicherWerte) ? f.sicherWerte : [];
-      for (const name of Array.isArray(f.variablen) ? f.variablen : []) {
-        if (werte.has(name) && abweichend(werte.get(name), [...konfig.ausWerte, ...sicher])) {
-          nogo(g, `${v.pfad}: unfertige Funktion „${f.name}“ aktiv über ${name}`);
+      } else {
+        const sicher = Array.isArray(e.sicherWerte) ? e.sicherWerte : [];
+        if (e.klasse === "schalter-aus" && abweichend(roh, [...konfig.ausWerte, ...sicher])) nogo(g, `${v.pfad}: Schalter ${name} aktiv (${roh})`);
+        if (e.klasse === "standard-an" && abweichend(roh, sicher)) nogo(g, `${v.pfad}: ${name} weicht vom Standard ab (${roh})`);
+        if (e.klasse === "freigabepflichtig" && abweichend(roh, [...konfig.ausWerte, ...sicher])) {
+          if (freigegeben.has(name)) g.belege.push(`${v.pfad}: ${name} aktiv, freigegeben: ${freigegeben.get(name)}`);
+          else nogo(g, `${v.pfad}: ${name} aktiv ohne Betreiberfreigabe (freigegebeneSchalter in der Freigabedatei)`);
         }
       }
+      for (const f of unfertig.funktionen) {
+        if (!istObjekt(f) || !(Array.isArray(f.variablen) && f.variablen.includes(name))) continue;
+        const sicher = Array.isArray(f.sicherWerte) ? f.sicherWerte : [];
+        if (abweichend(roh, [...konfig.ausWerte, ...sicher])) nogo(g, `${v.pfad}: unfertige Funktion „${f.name}“ aktiv über ${name}`);
+      }
     }
-    g.belege.push(`${v.pfad}: geprüft (${werte.size} gesetzte Variablen)`);
+    if (konfig.nodeEnvPflicht.includes(v.pfad)) {
+      const nodeEnv = funde.filter(([k]) => k === "NODE_ENV");
+      if (!nodeEnv.length || nodeEnv.some(([, r]) => wertAufloesen(r) !== "production")) nogo(g, `${v.pfad}: NODE_ENV=production fehlt`);
+    }
+    if (unfertig.funktionen.some((f) => !istObjekt(f))) nogo(g, `${konfig.unfertigDatei}: ungültiger Eintrag`);
+    g.belege.push(`${v.pfad}: geprüft (${funde.length} Funde)`);
   }
   for (const f of unfertig.funktionen) {
     for (const k of (istObjekt(f) && Array.isArray(f.quelltextKonstanten) ? f.quelltextKonstanten : [])) {
@@ -937,12 +918,15 @@ export function ausfuehrOptionen(cwd, extra = {}) {
   return { cwd, encoding: "utf8", maxBuffer: 512 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"], timeout: ZEITGRENZE_MS, ...extra };
 }
 
+/** Ausführung aller git/gh-Aufrufe (im Test ersetzbar, um die Optionen zu prüfen). */
+export const ausfuehren = { exec: execFileSync };
+
 function git(wurzel, args) {
-  return execFileSync("git", args, ausfuehrOptionen(wurzel)).replace(/\s+$/, "");
+  return ausfuehren.exec("git", args, ausfuehrOptionen(wurzel)).replace(/\s+$/, "");
 }
 
 function ghApi(wurzel, pfad, extra = []) {
-  return JSON.parse(execFileSync("gh", ["api", ...extra, pfad], ausfuehrOptionen(wurzel)));
+  return JSON.parse(ausfuehren.exec("gh", ["api", ...extra, pfad], ausfuehrOptionen(wurzel)));
 }
 
 /** Löst eine Revision sicher auf (keine Option als Revision). Fehler: null. */
@@ -967,7 +951,7 @@ function quelle(wurzel, rev) {
     };
     return { lesen, dateien: (wurzeln) => wurzeln.flatMap((r) => dateien(r)), gibt: (rel) => existsSync(join(wurzel, rel)) };
   }
-  const lesen = (rel) => { try { return execFileSync("git", ["show", `${rev}:${rel}`], ausfuehrOptionen(wurzel, { stdio: ["ignore", "pipe", "ignore"] })); } catch { return null; } };
+  const lesen = (rel) => { try { return ausfuehren.exec("git", ["show", `${rev}:${rel}`], ausfuehrOptionen(wurzel, { stdio: ["ignore", "pipe", "ignore"] })); } catch { return null; } };
   const dateien = (wurzeln) => { try { return git(wurzel, ["ls-tree", "-r", "--name-only", rev, "--", ...wurzeln]).split("\n").filter(Boolean); } catch { return []; } };
   const gibt = (rel) => { try { git(wurzel, ["cat-file", "-e", `${rev}:${rel}`]); return true; } catch { return false; } };
   return { lesen, dateien, gibt };
@@ -990,7 +974,7 @@ export function basisPruefen(wurzel, basis, kandidat, konfig = KONFIG_STANDARD) 
   try { anzahl = Number(git(wurzel, ["rev-list", "--count", `${basis}..${kandidat}`])); } catch { return "Bereich nicht ermittelbar"; }
   if (!(anzahl > 0)) return "leerer Commit-Bereich";
   let liste = null;
-  try { liste = execFileSync("git", ["show", `HEAD:${konfig.freigabeListe}`], ausfuehrOptionen(wurzel, { stdio: ["ignore", "pipe", "ignore"] })); } catch { liste = null; }
+  try { liste = ausfuehren.exec("git", ["show", `HEAD:${konfig.freigabeListe}`], ausfuehrOptionen(wurzel, { stdio: ["ignore", "pipe", "ignore"] })); } catch { liste = null; }
   const zeilen = freigabelisteLesen(liste).zeilen.filter((z) => z.commit === basis);
   if (!zeilen.length) return `Basis steht in keiner Zeile von ${konfig.freigabeListe} (HEAD)`;
   if (!zeilen.some((z) => z.status === "aktiv" || z.status === "vorherig")) return `Basis steht in ${konfig.freigabeListe} nicht als aktiv oder vorherig (gesperrt ist keine Basis)`;
