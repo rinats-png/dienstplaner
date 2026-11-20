@@ -100,6 +100,28 @@ describe("Regeln und Texte", () => {
     expect(belegt.titel).toBe("Gerade nicht möglich");
     expect(belegt.text).toMatch(/nichts geändert/);
   });
+
+  it("P2-21 (Delta-Review #419): eigene 503 der Fachprüfung zeigen den Servertext, ohne „in einer Minute noch einmal“", () => {
+    const text = "Es wurde nichts zurückgespielt. Mit dieser Sicherung bricht ein erneuter Versuch voraussichtlich wieder ab.";
+    for (const code of ["FACHPRUEFUNG_OFFEN", "WIEDERHERSTELLEN_ZEIT", "WIEDERHERSTELLEN_BELEGT"]) {
+      const m = U.ergebnisMeldung({ status: 503, daten: { code, text } });
+      expect(m.ok, code).toBe(false);
+      expect(m.titel, code).toBe(U.WIEDERHERSTELLEN_CODES[code]);
+      expect(m.text, code).toBe(text);
+      expect(m.text, code).not.toMatch(/in einer Minute/);
+    }
+    expect(U.ergebnisMeldung({ status: 503, daten: { code: "FACHPRUEFUNG_OFFEN" } }).text).toMatch(/nichts geändert/);
+  });
+
+  it("502/504 (Proxy-Zeitgrenze): Ergebnis unklar, Sicherungsliste prüfen — nie „nichts geändert“", () => {
+    for (const status of [502, 504]) {
+      const m = U.ergebnisMeldung({ status, daten: {} });
+      expect(m).toMatchObject({ ok: false, neuLaden: true, titel: "Ergebnis unklar" });
+      expect(m.text).toMatch(/unklar/);
+      expect(m.text).toMatch(/Sicherungsliste/);
+      expect(m.text).not.toMatch(/nichts geändert/);
+    }
+  });
 });
 
 describe("Oberfläche gerendert", () => {

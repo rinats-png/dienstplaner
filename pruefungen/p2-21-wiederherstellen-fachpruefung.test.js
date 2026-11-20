@@ -190,6 +190,67 @@ describe("P2-21: fail-closed — ohne abgeschlossene Prüfung wird nichts zurüc
   }
 });
 
+describe("P2-21: Zeitgrenzen und Obergrenze (Delta-Review #419)", () => {
+  it("Budget + Sperre + I/O bleiben unter der Proxy-Grenze (60 s): Prüfung 30 s, Abbruch vor dem Schreiben ab 45 s", () => {
+    expect(SD.WIEDERHERSTELLEN_GRENZEN.budgetMs).toBe(30000);
+    expect(SD.WIEDERHERSTELLEN_GRENZEN.gesamtMs).toBeLessThanOrEqual(60000 - 15000);
+    expect(SD.WIEDERHERSTELLEN_GRENZEN.budgetMs + 15000).toBeLessThanOrEqual(SD.WIEDERHERSTELLEN_GRENZEN.gesamtMs);
+  });
+  it("Gesamtgrenze überschritten: 503 WIEDERHERSTELLEN_ZEIT vor dem Schreiben — Stand und Sicherungen unverändert", async () => {
+    const vorher = await gespeichert();
+    const marke = await sicherungAblegen(betrieb({ [`a1|${tag(50)}`]: "F" }));
+    const anzahl = await sicherungen();
+    const alt = SD.WIEDERHERSTELLEN_GRENZEN.gesamtMs;
+    SD.WIEDERHERSTELLEN_GRENZEN.gesamtMs = -1;
+    try {
+      const w = await wiederherstellen(marke);
+      expect(w.status, w.roh).toBe(503);
+      expect(w.code).toBe("WIEDERHERSTELLEN_ZEIT");
+      expect(w.text).toMatch(/nichts zurückgespielt/);
+    } finally { SD.WIEDERHERSTELLEN_GRENZEN.gesamtMs = alt; }
+    expect(await gespeichert()).toEqual(vorher);
+    expect(await sicherungen()).toBe(anzahl);
+  });
+  it("prozessweite Obergrenze gleichzeitiger Prüfungen: 503 WIEDERHERSTELLEN_BELEGT, ohne die Bremse zu verbrauchen", async () => {
+    const marke = await sicherungAblegen(betrieb({ [`a1|${tag(51)}`]: "F" }));
+    const alt = SD.WIEDERHERSTELLEN_GRENZEN.gleichzeitig;
+    const grenze = S.GRENZEN.wiederherstellen;
+    S.GRENZEN.wiederherstellen = { ...grenze, versuche: 1 };                 // ein verbrauchter Versuch fiele auf
+    SD.WIEDERHERSTELLEN_GRENZEN.gleichzeitig = 0;
+    try {
+      for (let i = 0; i < 3; i++) {
+        const w = await wiederherstellen(marke);
+        expect(w.status, w.roh).toBe(503);
+        expect(w.code).toBe("WIEDERHERSTELLEN_BELEGT");
+        expect(w.text).toMatch(/zählt nicht/);
+      }
+    } finally { SD.WIEDERHERSTELLEN_GRENZEN.gleichzeitig = alt; S.GRENZEN.wiederherstellen = grenze; }
+    /* Danach wieder frei; der Zähler ist nach jedem Ausgang zurückgegeben. */
+    const ok = await wiederherstellen(marke);
+    expect(ok.status, ok.roh).toBe(200);
+  });
+  it("zwei gleichzeitige Prüfungen dürfen laufen, die dritte nicht", async () => {
+    const marke = await sicherungAblegen(betrieb({ [`a2|${tag(52)}`]: "F" }));
+    let freigeben = () => {};
+    steuer.halt = new Promise((ok) => { freigeben = ok; });
+    let gestartet = 0;
+    const zwei = new Promise((ok) => { steuer.start = () => { if (++gestartet === 2) ok(); }; });
+    steuer.modus = "halten";
+    try {
+      const r = await anfrage("/api/bestand", { methode: "GET", token: T.l1 });
+      const a = anfrage("/api/wiederherstellen", { token: T.l1, rumpf: { marke, etag: r.etag } });
+      const b = anfrage("/api/wiederherstellen", { token: T.l1, rumpf: { marke, etag: r.etag } });
+      await zwei;
+      const dritte = await anfrage("/api/wiederherstellen", { token: T.l1, rumpf: { marke, etag: r.etag } });
+      expect(dritte.status, dritte.roh).toBe(503);
+      expect(dritte.code).toBe("WIEDERHERSTELLEN_BELEGT");
+      freigeben();
+      const st = [(await a).status, (await b).status].sort();
+      expect(st).toEqual([200, 409]);                                          // die zweite trifft den neuen Stand
+    } finally { steuer.modus = null; freigeben(); }
+  });
+});
+
 describe("P2-21: Die Prüfung hält die Raumsperre nicht (Review #419, Auflage 1)", () => {
   it("während die Prüfung rechnet, speichert ein anderer Schreiber; danach 409, nichts zurückgespielt", async () => {
     const marke = await sicherungAblegen(betrieb({ [`a1|${tag(30)}`]: "S", [`a1|${tag(31)}`]: "F" }));

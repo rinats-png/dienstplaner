@@ -95,6 +95,18 @@ export const UNLESBAR_TEXT = "Ein Teil des gespeicherten Bestands ist gerade nic
   + "in der Anwendung nicht möglich — mit Absicht: Sonst ginge der unlesbare Teil verloren. Bitte den Betreiber "
   + "verständigen; der Rückweg steht im Betriebshandbuch (BETRIEB-SICHERUNG, Abschnitt 4a „Unlesbare Datei“).";
 
+/** P2-21: Absagen der Wiederherstellung mit eigenem Servertext (503) und ihr Titel. */
+export const WIEDERHERSTELLEN_CODES = Object.freeze({
+  FACHPRUEFUNG_OFFEN: "Fachprüfung nicht fertig geworden",
+  WIEDERHERSTELLEN_ZEIT: "Abgebrochen, nichts zurückgespielt",
+  WIEDERHERSTELLEN_BELEGT: "Gerade andere Wiederherstellungen",
+});
+/** Antwort kam nicht an (Proxy-Zeitgrenze 502/504): Ergebnis offen, nicht „nichts geändert“. */
+export const UNKLAR_TEXT = "Die Antwort des Servers kam nicht rechtzeitig an. Ob zurückgespielt wurde, ist unklar. "
+  + "Bitte neu laden und prüfen: Steht in der Sicherungsliste eine Sicherung „automatisch vor Wiederherstellung“ "
+  + "von eben und zeigt das Änderungsprotokoll „wiederhergestellt“, wurde zurückgespielt. Erst danach gegebenenfalls "
+  + "erneut versuchen.";
+
 /**
  * Was eine Antwort von /api/wiederherstellen für die Leitung bedeutet.
  * @param {{ status: number, daten?: any }} a
@@ -132,6 +144,14 @@ export function ergebnisMeldung({ status, daten } = { status: 0 }) {
     return { ok: false, titel: "Gerade zu viele Versuche", text: "Bitte in einigen Minuten noch einmal versuchen." };
   if (status === 503 && d.code === "BESTAND_UNLESBAR")
     return { ok: false, titel: "Nicht lesbar", text: UNLESBAR_TEXT };
+  /* P2-21 (Delta-Review #419): eigene Absagen der Fachprüfung beim Wiederherstellen — der Server sagt selbst, ob ein
+     erneuter Versuch hilft und ob er zur Bremse zählt; kein pauschales „in einer Minute noch einmal“. */
+  if (status === 503 && WIEDERHERSTELLEN_CODES[d.code])
+    return { ok: false, titel: WIEDERHERSTELLEN_CODES[d.code],
+      text: typeof d.text === "string" && d.text ? d.text : nichts };
+  /* Proxy-Zeitgrenze (502/504): Die Antwort kam nicht an — ob der Server noch geschrieben hat, ist offen. */
+  if (status === 502 || status === 504)
+    return { ok: false, neuLaden: true, titel: "Ergebnis unklar", text: UNKLAR_TEXT };
   if (status === 503)
     return { ok: false, titel: "Gerade nicht möglich",
       text: `Der Server ist gerade ausgelastet oder wird neu gestartet. ${nichts} Bitte in einer Minute noch einmal versuchen.` };

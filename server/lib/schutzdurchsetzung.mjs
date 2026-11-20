@@ -338,9 +338,16 @@ export async function fachpruefungUebermittlungAsync(altM, neuM, heute = heuteBe
 
 /** P2-21 (Review #419, Auflage 1): eigenes Zeitbudget der Wiederherstellung. Sie ist selten (Bremse 5 je Stunde, nur
     Leitung) und rechnet AUSSERHALB der Raumsperre (daten.mjs) in Häppchen — andere Betriebe und andere Schreiber
-    desselben Raums warten nicht. 40 s bleiben unter der Antwortzeitgrenze des Proxys (60 s, Caddyfile).
-    Messwerte und Notweg: docs/acc45/p2-21-nachweis.md. */
-export const WIEDERHERSTELLEN_BUDGET_MS = 40000;
+    desselben Raums warten nicht. Delta-Review #419 (Auflage 2): Die Antwort muss samt Wartezeit auf die Raumsperre
+    (höchstens 15 s, raumsperre.mjs) und Lesen/Schreiben sicher unter der Antwortzeitgrenze des Proxys bleiben (60 s,
+    Caddyfile.vorlage) — sonst 504 bei womöglich doch geschriebenem Stand. Daher:
+      budgetMs     Prüfung höchstens 30 s;
+      gesamtMs     ist seit Beginn der Anfrage mehr als 45 s vergangen, bricht daten.mjs unter der Sperre VOR dem
+                   Schreiben ab (503, nichts geschrieben) — bleiben 15 s für das Schreiben;
+      gleichzeitig höchstens so viele Wiederherstellungs-Prüfungen gleichzeitig im Prozess (sonst 503, vor der Bremse).
+    Veränderlich nur für Prüfungen. Messwerte und Notweg: docs/acc45/p2-21-nachweis.md. */
+export const WIEDERHERSTELLEN_GRENZEN = { budgetMs: 30000, gesamtMs: 45000, gleichzeitig: 2 };
+export const WIEDERHERSTELLEN_BUDGET_MS = WIEDERHERSTELLEN_GRENZEN.budgetMs;
 
 /**
  * P2-21: Fachprüfung einer Wiederherstellung als Bericht (Empfehlung B — warnen
@@ -359,7 +366,7 @@ export const WIEDERHERSTELLEN_BUDGET_MS = 40000;
  * @returns {Promise<{ zeitbudget: true } | { bericht: Wiederherstellungsbericht }>}
  */
 export async function wiederherstellungsPruefung(altM, neuM, heute = heuteBerlin(), opt = {}) {
-  const r = await fachpruefungUebermittlungAsync(altM, neuM, heute, { budgetMs: opt.budgetMs || WIEDERHERSTELLEN_BUDGET_MS, bericht: true });
+  const r = await fachpruefungUebermittlungAsync(altM, neuM, heute, { budgetMs: opt.budgetMs || WIEDERHERSTELLEN_GRENZEN.budgetMs, bericht: true });
   if (r && r.zeitbudget) return { zeitbudget: true };
   const b = (r && r.bericht) || leererBericht();
   return { bericht: { ...b, konflikte: r && Array.isArray(r.konflikte) ? r.konflikte.length : 0 } };
