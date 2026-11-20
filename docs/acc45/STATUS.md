@@ -18,17 +18,17 @@ oder `"teilweise"`, jeweils mit Beleg (PR, Commit, Nachweis). „Geplant“, „
 <!-- AUTO:BEGIN -->
 Erzeugt aus `docs/acc45/work-packages.json` (Schema 2) mit `node werkzeug/acc45-backlog.mjs status-schreiben` — nicht von Hand ändern.
 
-**Pakete gesamt:** 232 · BLOCKED 89 · READY 17 · IN_PROGRESS 18 · REVIEW 8 · INTEGRATED 97 · DONE 3
+**Pakete gesamt:** 232 · BLOCKED 89 · READY 16 · IN_PROGRESS 18 · REVIEW 9 · INTEGRATED 97 · DONE 3
 
 | Strang | Pakete | BLOCKED | READY | IN_PROGRESS | REVIEW | INTEGRATED | DONE | offener Aufwand PT |
 |---|---|---|---|---|---|---|---|---|
 | ACC45 | 118 | 27 | 0 | 7 | 4 | 78 | 2 | 61,3–104,75 |
 | WP-19-Module | 15 | 13 | 0 | 1 | 0 | 1 | 0 | 64,5–100,5 |
 | Intelligence | 40 | 20 | 0 | 7 | 0 | 13 | 0 | 181–320 |
-| Folgepakete | 24 | 11 | 1 | 3 | 4 | 5 | 0 | 26,2–46,3 |
+| Folgepakete | 24 | 11 | 0 | 3 | 5 | 5 | 0 | 25,8–45,5 |
 | Extern/Entscheidungen | 35 | 18 | 16 | 0 | 0 | 0 | 1 | 20,35–46,1 |
 
-Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **333–571,55 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
+Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **332,6–570,75 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
 
 **Kritische Pfade** (offener Aufwand, Mitte der Spanne maßgeblich):
 
@@ -69,10 +69,11 @@ Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **333–571,55
 | WP-ZEIT Betriebstag und Zeitzone: betrieblicher Kalendertag statt Gerätedatum, Zuschläge in den Umstellungsnächten | IN_PROGRESS | `–` | Von Hand angelegt (2026-11-17): bisher kein SSOT-Paket, obwohl PR #296, #301, #303, #315 gemergt sind (BACKLOG-PHASEN.md Abschnitt 7 Punkt 6). Stufe entschieden laut Betreiberentscheidung 2026-11-14 (ENTSCHEIDUNGSLISTE.md); eine Entscheidung ist keine Produktionsfreigabe. Nicht belegt: stagingGeprueft, fachlichFreigegeben, produktiv aktiviert. Betreiberentscheidungen E1 bis E8 am 2026-11-14. Review: Quelle prüfen (reviewt nicht belegt). Verwandt: QS-ZEIT (#305, #309). Priorität, Strang und Aufwand sind eine vorläufige Einordnung nach docs/acc45/BACKLOG-PHASEN.md, vom Betreiber nicht bestätigt; Aufwand ist eine SCHÄTZUNG. Nachtrag 2026-11-18: PR #344 (57d49e3d, P2-12 Teil, Variante B, Schritte 1+2): zentrale Zeitbasis weist unechte Kalendertage ab (kalendertagEcht, UNGUELTIGER_KALENDERTAG; Eingabewege Selbstauskunft, Korrekturantrag, Entscheidung und PUT /api/bestand mit 422, Alteinträge unverändert). Schritt 3 (Abschlusssperre UNVOLLSTAENDIG) nicht begonnen, wartet auf Betreiberentscheidung zu historischen Folgen. Status bleibt IN_PROGRESS. Nachtrag 2026-11-18 (Abend): PR #354 (02a3869a): Client zeigt die Lage kalendertag mit Feld und Bereich, ohne Noch-einmal-senden, mit Sichern und Verwerfen; einzelnes Zurücknehmen bewusst nicht gebaut (Datenverlustrisiko). PR #356 (dfcd8309): Kalendertagsprüfung auch für anfragen von/bis, ausschreibungen datum und Krankmeldungsfälle, Tage ohne Nullen und zuschlagWert (Folgepunkte 2 bis 4 aus den Reviews zu #344); Alteinträge bleiben unverändert speicherbar; die Review-Befunde B1 und B2 (Kapern, Existenzorakel) sind nicht Teil davon und stehen im noch offenen PR #361. PR #357 (a8ce186b): zeitpunktAusWanduhr über eine je Jahr gegen Intl geprüfte Umstellungstabelle (Europe/Berlin, ganze Minuten 2000 bis 2999), Differenzialtest bitgleich; das Ziel am Stück (< 200 ms) ist laut PR weiter nicht erreicht, der Rest liegt in monatsabschluss.mjs und isteinfrieren.mjs. Schritt 3 (Abschlusssperre) unverändert nicht begonnen. Status bleibt IN_PROGRESS. |
 | V4-1 V4: Inventar und Screenshot-Baseline (MIGRATION Schritt 2) | IN_PROGRESS | `docs/v4-1-inventar` | Analyse 2026-11-20 (V4-Integrationsstand); PT sind Schätzung der Analyse, nicht belegt. Umsetzung 2026-11-20 (Branch docs/v4-1-inventar, PR gegen integration/release-v4): Inventar 172 Dateien (167 ohne src/v4) mit Zählwerkzeug und Test; Screenshot-Baseline nur als Plan (keine Binärdateien, nicht in CI). Status nach Merge setzt der Koordinator. |
 | DEP-1 Abhängigkeit: web-push 4 Migration | REVIEW | `acc45/dep/dep-1-web-push-4` | Quelle: Bewertung offener Dependabot-PRs #400 bis #407 vom 2026-11-20 (nur lesend erhoben, Basis integration/release-v4 @ 105f6c83); Aufwand ist eine SCHÄTZUNG der Bewertung, nicht belegt. Der Dependabot-PR wird nicht geschlossen; Schließen entscheidet der Betreiber. Befund: web-push 4.0.0 hat nur benannte Exporte; server/lib/webpush.mjs:62-64 nutzt webpush.default.setVapidDetails, mit v4 ein TypeError, den das catch still zu {ok:false, klasse:temporaer, fehler:netz} macht (Push würde lautlos nie zugestellt). CI bleibt grün, weil pruefungen/mail-push-anbieter.test.js:23 web-push mit { default: {...} } mockt. pushziel.mjs (Review S1) begründet den Parser-Gleichlauf mit url.parse in 3.6.x; v4 nutzt new URL, Begründung und sicherheit-intern.test.js neu bewerten (SI-01). Neue transitive Abhängigkeit proxy-agent-negotiate 1.1.0 prüfen. Ohne VAPID-Schlüssel endet sendePush vor dem Import (trocken), daher aktuell kein sichtbarer Schaden. Aufwand SCHÄTZUNG 0,5 bis 1 PT plus Sicherheitsreview (Opus). Dependabot-PR #404, nicht mergen (funktionaler Defekt); Schließen entscheidet der Betreiber. |
+| DEP-2 Abhängigkeit: Vitest 5 Migration | REVIEW | `acc45/dep/dep-2-vitest-5` | Quelle: Bewertung offener Dependabot-PRs #400 bis #407 vom 2026-11-20 (nur lesend erhoben, Basis integration/release-v4 @ 105f6c83); Aufwand ist eine SCHÄTZUNG der Bewertung, nicht belegt. Der Dependabot-PR wird nicht geschlossen; Schließen entscheidet der Betreiber. Vitest 5 entfernt die sequential-Optionen (zugunsten von concurrent); der Lauf von PR #405 scheitert mit describe.sequential is not a function in abnahme-a-ablauf.test.js:115, die rund 190 Folgeschritte wurden übersprungen (der Lauf belegt nichts über den Rest der Suite). Betroffen: 12 Stellen in 6 Dateien (abnahme-a-ablauf, erstleitung-abbruch, erstleitung-betreiber-put, erstleitung-entscheidungen, erstleitung, konto-parallel). Node 22 und Vite 6.4.5 passen. Aufwand SCHÄTZUNG 0,5 bis 1 PT. Opus-Review Pflicht (Prüfwerkzeug, kritischer Pfad). Dependabot-PR #405, nicht mergen. |
 
-### Bereit zum Start (1)
+### Bereit zum Start (0)
 
-DEP-2 (folge, 0,5–1 PT)
+–
 
 ### In Arbeit, fortsetzbar (14)
 
@@ -184,7 +185,7 @@ WP-40 (acc45, 1,5–2,25 PT offen) · WP-28b (folge, 0,5–1 PT offen) · WP-I4 
 
 ✓ belegt · T teilweise (z. B. nur Server-Teilumfang) · – nicht erreicht oder nicht belegt. „Staging“, „Freigabe“ und
 „prod.“ stehen nur mit Beleg auf ✓. Gezeigt sind alle Pakete mit mindestens einer erreichten Stufe; alle übrigen
-62 offenen Entwicklungspakete stehen auf allen Stufen auf „–“.
+61 offenen Entwicklungspakete stehen auf allen Stufen auf „–“.
 
 | Paket | Status | impl. | lokal | Review | integr. | Staging | Freigabe | prod. |
 |---|---|---|---|---|---|---|---|---|
@@ -323,6 +324,7 @@ WP-40 (acc45, 1,5–2,25 PT offen) · WP-28b (folge, 0,5–1 PT offen) · WP-I4 
 | V4-0 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | V4-1 | IN_PROGRESS | T | ✓ | – | – | – | – | – |
 | DEP-1 | REVIEW | ✓ | ✓ | – | – | – | – | – |
+| DEP-2 | REVIEW | ✓ | ✓ | – | – | – | – | – |
 <!-- AUTO:END -->
 
 ## Klärungen und Widersprüche (2026-11-03)
