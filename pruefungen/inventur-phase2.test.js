@@ -137,8 +137,12 @@ describe.skipIf(!BASH)("deploy/inventur-sammler.sh", () => {
     schreiben(path.join(app, ".env"), `IMAGE_DIGEST=sha256:${"a".repeat(64)}\nCENTRIC_SMTP_PASSWORT=${GEHEIM}\n`);
     mkdirSync(path.join(app, "data"));
     schreiben(path.join(bin, "docker"), "#!/bin/sh\necho 'Cannot connect to the Docker daemon' >&2\nexit 1\n", true);
+    /* Kopie OHNE Ausführungsrecht: der Sammler startet die Inventur über /bin/bash (CI-Befund Rückgabe 126). */
+    const kopie = path.join(tmp, "centric-inventur.sh");
+    writeFileSync(kopie, readFileSync(INVENTUR));
+    chmodSync(kopie, 0o644);
     const r = sammler({
-      INVENTUR_PRUEFSKRIPT: p(INVENTUR),
+      INVENTUR_PRUEFSKRIPT: p(kopie),
       INVENTUR_PRUEFPFAD: `${posixPfad(bin)}:${FESTER_PFAD}`,
       CENTRIC_VERZ: p(app),
       CENTRIC_KONTO_HOME: p(path.join(tmp, "heim")),
@@ -213,7 +217,8 @@ describe("Phase 2: Quelltext-Wächter", () => {
     expect(sammlerText.startsWith("#!/bin/bash\n")).toBe(true);
     expect(sammlerText).toMatch(/^tmp="\$\(mktemp "\$ZIEL_VERZ\/\.aktuell\.XXXXXX"\)"$/m);
     expect(sammlerText).toMatch(/^mv -f -- "\$tmp" "\$ZIEL_VERZ\/aktuell\.txt"$/m);
-    expect(sammlerText).toMatch(/env -u BASH_ENV -u ENV -u SSH_ORIGINAL_COMMAND "\$INVENTUR" >"\$tmp" 2>&1/);
+    /* über /bin/bash, damit die Inventur auch ohne Ausführungsrecht der Datei läuft (CI-Befund Rückgabe 126) */
+    expect(sammlerText).toContain('env -u BASH_ENV -u ENV -u SSH_ORIGINAL_COMMAND /bin/bash "$INVENTUR" >"$tmp" 2>&1 || rc=$?');
     expect(sammlerText).toMatch(/^chmod 0640 "\$tmp"$/m);
     expect(sCode).not.toMatch(/\bdocker\b/);
     expect(sCode).not.toMatch(/\b(rm|cp|tee|install|mkdir|ln|dd|truncate|eval|source)\b\s/);

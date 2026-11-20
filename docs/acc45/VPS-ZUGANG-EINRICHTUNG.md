@@ -252,7 +252,7 @@ Soll-Werte der Prüfsummen (die Prüfung `pruefungen/inventur-skript.test.js` st
 sie zu den Dateien im Repository passen):
 
 - **SHA-256 von deploy/inventur.sh: `54d02d2fd0b750c961ca142cadf05ebfa5c7589c00e9834f4f1a24f3a2ed676d`**
-- **SHA-256 von deploy/inventur-sammler.sh: `2941c2dce9a798bd5c2446e94cb01ce4035b7332df7938d64916c0db9100fc7e`** (nur Phase 2)
+- **SHA-256 von deploy/inventur-sammler.sh: `072b9a003291ec9ea03e39e224cd77f1f7cb36b997b5b5b0fcb525eda949dcbc`** (nur Phase 2)
 - **SHA-256 von deploy/inventur-lesen.sh: `4deba91cbc24de02022571d4cd9ed861921dd082764132638a107a0fff17482c`** (nur Phase 2)
 
 ### 3a. Skript holen (Weg 1: fester Commit, ohne Einfügen)
@@ -670,7 +670,7 @@ install -d -o root -g inventur -m 0750 /var/lib/centric-inventur
 # 3 Skripte (Prüfsummen aus Abschnitt 3; Inventur-Skript siehe 3a/3b)
 curl -fsSL -o /tmp/s.sh "https://raw.githubusercontent.com/rinats-png/dienstplaner/<commit>/deploy/inventur-sammler.sh"
 curl -fsSL -o /tmp/l.sh "https://raw.githubusercontent.com/rinats-png/dienstplaner/<commit>/deploy/inventur-lesen.sh"
-sha256sum /tmp/s.sh /tmp/l.sh     # erwartet: 2941c2dce9a798bd5c2446e94cb01ce4035b7332df7938d64916c0db9100fc7e und 4deba91cbc24de02022571d4cd9ed861921dd082764132638a107a0fff17482c
+sha256sum /tmp/s.sh /tmp/l.sh     # erwartet: 072b9a003291ec9ea03e39e224cd77f1f7cb36b997b5b5b0fcb525eda949dcbc und 4deba91cbc24de02022571d4cd9ed861921dd082764132638a107a0fff17482c
 install -o root -g root -m 0755 /tmp/s.sh /usr/local/sbin/centric-inventur-sammler.sh
 install -o root -g root -m 0755 /tmp/l.sh /usr/local/sbin/centric-inventur-lesen.sh
 rm /tmp/s.sh /tmp/l.sh

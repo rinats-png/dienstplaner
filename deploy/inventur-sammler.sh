@@ -53,7 +53,7 @@ tmp="$(mktemp "$ZIEL_VERZ/.aktuell.XXXXXX")"
 trap 'rm -f -- "$tmp"' EXIT
 
 rc=0
-env -u BASH_ENV -u ENV -u SSH_ORIGINAL_COMMAND "$INVENTUR" >"$tmp" 2>&1 || rc=$?
+env -u BASH_ENV -u ENV -u SSH_ORIGINAL_COMMAND /bin/bash "$INVENTUR" >"$tmp" 2>&1 || rc=$?
 if ((rc != 0 && rc != 1)); then
   printf 'FEHLER: Inventur endete mit Rückgabe %s; %s/aktuell.txt bleibt unverändert\n' "$rc" "$ZIEL_VERZ" >&2
   exit 4
