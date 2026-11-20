@@ -368,6 +368,15 @@ describe("D Ansicht", () => {
     for (const r of ["leitung", "planer"]) expect(darfSchichtmodelle({ rolle: r, mandant: m, person: { id: "x", rolle: r, bereich: "ALLE" } }), r).toBe(true);
     /* Zugang der Altrolle „kunde“ (Server: alle Rechte außer plan.publish) */
     expect(darfSchichtmodelle({ rolle: "leitung", zugangRolle: "kunde", mandant: m, person: { id: "x", rolle: "mitarbeiter" } })).toBe(true);
+    /* Delta-Review H-a: Es zählt die Rolle der Sitzung (Zugang, Server: sitzung.rolle), nicht die der angezeigten Person */
+    expect(darfSchichtmodelle({ rolle: "kunde", zugangRolle: "mitarbeiter", mandant: m, person: { id: "x", rolle: "leitung", bereich: "ALLE" } })).toBe(false);
+    expect(darfSchichtmodelle({ rolle: "kunde", zugangRolle: "subplaner", mandant: m, person: { id: "x", rolle: "planer", bereich: "ALLE" } })).toBe(false);
+    expect(darfSchichtmodelle({ rolle: "kunde", zugangRolle: "planer", mandant: m, person: { id: "x", rolle: "mitarbeiter", bereich: "e1" } })).toBe(true);
+    expect(darfSchichtmodelle({ rolle: "kunde", zugangRolle: "betriebsrat", mandant: m, person: { id: "x", rolle: "leitung", bereich: "ALLE" } })).toBe(false);
+    expect(darfSchichtmodelle({ rolle: "kunde", zugangRolle: "betreiber", mandant: m, person: { id: "x", rolle: "leitung", bereich: "ALLE" } })).toBe(false);
+    for (const r of ["leitung", "planer", "subplaner", "mitarbeiter", "betriebsrat"])
+      expect(darfSchichtmodelle({ rolle: "kunde", zugangRolle: r, mandant: m, person: { id: "x", rolle: "mitarbeiter", bereich: "ALLE" } }), `Zugang ${r}`)
+        .toBe(serverDarf(r, "staff.edit") && (serverDarf(r, "org.edit") || serverDarf(r, "pattern.edit")));
     /* Gleichlauf mit der Serverregel (rechte.mjs darf, feste MATRIX) für jede Rolle */
     const server = (r) => serverDarf(r, "staff.edit") && (serverDarf(r, "org.edit") || serverDarf(r, "pattern.edit"));
     for (const r of ["leitung", "planer", "subplaner", "mitarbeiter", "betriebsrat"])
@@ -498,5 +507,18 @@ describe("E Verdrahtung", () => {
       e.isDirectory() ? alle(`${rel}/${e.name}`) : /\.(js|jsx|mjs)$/.test(e.name) ? [`${rel}/${e.name}`] : []);
     const nutzer = alle("src").filter((r) => r !== "src/lib/schichtmodelle-pflege.js" && quelle(`../${r}`).includes("schichtmodelle-pflege"));
     expect(nutzer.sort()).toEqual(["src/ansichten/schichtmodelle.jsx", "src/app/aktionen/plan.js"]);
+    /* Delta-Review H-b: anzuwendendesModell/modellDienstAm nur als reine Anzeige — einzige Stelle der Oberfläche ist lageAm
+       in der Pflegehilfe, und lageAm wird nur von der Ansicht als Text gezeigt (kein Rechen- oder Planmodul). */
+    const pflege = quelle("../src/lib/schichtmodelle-pflege.js");
+    expect(pflege.match(/anzuwendendesModell\(/g) || []).toHaveLength(1);
+    expect(pflege).toMatch(/export function lageAm\([^)]*\) \{\n {2}const r = anzuwendendesModell\(m, p, datum\);/);
+    const rechnet = alle("src").filter((r) => /anzuwendendesModell|modellDienstAm/.test(quelle(`../${r}`)));
+    expect(rechnet).toEqual(["src/lib/schichtmodelle-pflege.js"]);
+    const lageNutzer = alle("src").filter((r) => r !== "src/lib/schichtmodelle-pflege.js" && /\blageAm\b/.test(quelle(`../${r}`)));
+    expect(lageNutzer).toEqual(["src/ansichten/schichtmodelle.jsx"]);
+    /* die Ansicht verwendet nur .text und .ton (Anzeige), nichts davon geht in eine Aktion */
+    const ansicht = quelle("../src/ansichten/schichtmodelle.jsx");
+    expect([...ansicht.matchAll(/(heuteLage|morgenLage)\.(\w+)/g)].map((x) => x[2]).every((k) => k === "text" || k === "ton")).toBe(true);
+    expect(ansicht).not.toMatch(/akt\.[\w]+\([^)]*(heuteLage|morgenLage)/);
   });
 });

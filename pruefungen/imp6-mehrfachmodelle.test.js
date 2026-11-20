@@ -896,6 +896,23 @@ describe("9. Stabile 403-Codes (Folgepunkt 1 aus #423) und Schalter CENTRIC_SCHI
     expect(JSON.stringify(nach.a1.schichtmodellZuordnungen)).toBe(JSON.stringify(vorher.a1.schichtmodellZuordnungen));
     expect(nach.m1.personen.find((p) => p.id === "m0").telefon).toBe("0-PL");
   });
+  it("Schalter aus + Teilweg mit anderer Änderung (Delta-Review H-c): Modelle und Zuordnungen bleiben byte-gleich", async () => {
+    delete process.env.CENTRIC_SCHICHTMODELL_PFLEGE;
+    const { raum, token } = await neuerRaum({ rollen: ["LT"] });
+    const vorher = await gespeichert(raum);
+    const g = await anfrage("/api/bestand", { token: token.LT });
+    expect(g.teile).toBeTruthy();
+    expect(g.schichtmodellPflege).toBeUndefined();
+    const m = kopie(g.bestand.mandanten[0]);
+    m.personen.find((p) => p.id === "m0").telefon = "0-teil";
+    const t = await anfrage("/api/bestand/teile", { methode: "POST", token: token.LT, rumpf: { format: 1, epoche: g.teile.epoche, durch: "Pruefung",
+      kern: { personen: { basis: g.teile.versionen["kern:personen"], wert: m.personen } } } });
+    expect(t.status, JSON.stringify(t).slice(0, 300)).toBe(200);
+    const nach = await gespeichert(raum);
+    expect(nach.m1.personen.find((p) => p.id === "m0").telefon).toBe("0-teil");
+    expect(JSON.stringify(nach.m1.schichtmodelle)).toBe(JSON.stringify(vorher.m1.schichtmodelle));
+    expect(JSON.stringify(nach.a1.schichtmodellZuordnungen)).toBe(JSON.stringify(vorher.a1.schichtmodellZuordnungen));
+  });
   it("Schalter aus + Kopie ohne die Felder (älterer Client): gespeicherte Modelle und Zuordnungen bleiben", async () => {
     delete process.env.CENTRIC_SCHICHTMODELL_PFLEGE;
     const { raum, token } = await neuerRaum({ rollen: ["LT"] });

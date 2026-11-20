@@ -18,7 +18,8 @@ import { MATRIX_STD } from "./rollen.js";
 /**
  * Darf diese Sitzung Schichtmodelle pflegen? Genau wie der Server (rechte.mjs: feste MATRIX, nie die Betriebsmatrix
  * m.matrix): (org.edit oder pattern.edit) und staff.edit der Rolle, mit der der Server rechnet — beim Zugang der
- * Altrolle „kunde“ diese (alle Rechte außer plan.publish), sonst die Rolle der Person. Betriebsrat und Betreiber nie.
+ * Altrolle „kunde“ diese (alle Rechte außer plan.publish), sonst die Rolle des Zugangs (sitz.zugangRolle = sitzung.rolle
+ * des Servers), nur ohne diese Angabe die Rolle der Person. Betriebsrat und Betreiber nie.
  * Review #423 A1: Eine Rolle, der nur die Betriebsmatrix die Rechte gibt, sähe sonst die Pflege, und der Server
  * verwürfe ihre Änderung still (Felder ohne Recht wirkungslos) — nach dem Neuladen wäre sie weg.
  * @param {any} sitz
@@ -26,7 +27,8 @@ import { MATRIX_STD } from "./rollen.js";
 export function darfSchichtmodelle(sitz) {
   if (!sitz || !sitz.person || sitz.rolle === "betreiber") return false;
   if (sitz.zugangRolle === "kunde") return true;
-  const rolle = sitz.person.rolle;
+  /* Delta-Review #423 H-a: die Rolle der Sitzung (Zugang, wie der Server mit sitzung.rolle); nur ohne Angabe die der Person. */
+  const rolle = typeof sitz.zugangRolle === "string" && sitz.zugangRolle ? sitz.zugangRolle : sitz.person.rolle;
   if (rolle === "betriebsrat") return false;
   const r = Object.prototype.hasOwnProperty.call(MATRIX_STD, rolle) ? MATRIX_STD[rolle] : [];
   return r.includes("staff.edit") && (r.includes("org.edit") || r.includes("pattern.edit"));

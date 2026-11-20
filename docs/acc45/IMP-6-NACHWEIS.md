@@ -113,7 +113,7 @@ Angepasste bestehende Prüfungen (begründet):
   Erweiterung ohne Planwirkung; Ansicht und Aktionen nennen die Felder nicht selbst, und `imp6-oberflaeche` E3 sichert, dass nur
   Ansicht und Aktionen die Pflegehilfe nutzen und `fachlogik.js` sie nicht kennt.
 
-Offen: P2-24 (Sichtbarkeit vor der Planwirkung; laufendes Modell ändern), P2-19 (d), P2-4 Punkte 6 bis 8.
+Offen: P2-24 (b) Versionierung laufender Modelle (Kategorie C, Betreiberentscheidung; gebaut gilt A, nichts gebaut) — P2-24 (a) ist am 2026-11-20 entschieden (B) und umgesetzt, siehe Nachtrag (b); P2-19 (d), P2-4 Punkte 6 bis 8.
 
 ## Nachtrag 2026-11-20 (b): P2-24 B (Schalter), stabile 403-Codes, Review-Auflagen #423
 
@@ -149,3 +149,12 @@ anzeigen); sie rechnet keinen Dienst. Weiterhin abgesichert: (1) jede andere neu
 D2 rot; (2) Ansicht und Aktionen nennen die Felder nicht selbst (sonst stünden sie in der Trefferliste); (3) `imp6-oberflaeche`
 E3 verlangt, dass nur `src/ansichten/schichtmodelle.jsx` und `src/app/aktionen/plan.js` die Pflegehilfe nutzen und weder
 `fachlogik.js` noch die Hilfe selbst `dienstAm`/`modellDienstAm` nennen; (4) Differenz D läuft unverändert bit-gleich.
+
+## Nachtrag 2026-11-20 (c): Delta-Review #423 (Auflagen nur Doku, Hinweise)
+
+- A-1/A-2: P2-24 geteilt nachgeführt — (a) entschieden B und umgesetzt; (b) Versionierung laufender Modelle **offen** (Kategorie C, Betreiberentscheidung; gebaut gilt A, nichts gebaut). „Folge bei Nichtentscheidung“ berichtigt (Pflege bei AUS nicht sichtbar).
+- H-a: `darfSchichtmodelle` rechnet mit der Rolle der Sitzung (`sitz.zugangRolle` = `sitzung.rolle` des Servers), nur ohne Angabe mit der Rolle der Person; Gleichlauf je Zugangsrolle mit `rechte.mjs` `darf` (`imp6-oberflaeche` D1b).
+- H-b: `anzuwendendesModell` steht in der Oberfläche nur in `lageAm` (eine Stelle), `lageAm` nur in der Ansicht und nur mit `.text`/`.ton` (reine Anzeige); kein anderes `src/`-Modul nennt `anzuwendendesModell`/`modellDienstAm` (`imp6-oberflaeche` E3).
+- H-c: Teilweg bei Schalter AUS mit anderer Änderung: Modelle und Zuordnungen byte-gleich (`imp6-mehrfachmodelle` 9).
+- H-e: Betriebshandbuch, Schaltertabelle: Hinweis vor dem Pilot — bei AUS ist „Dienstart löschen“ an einem gespeicherten Modell in der Oberfläche nicht auflösbar.
+- Branch auf den aktuellen Stand von `origin/integration/release-v4` zusammengeführt.
