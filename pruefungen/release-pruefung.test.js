@@ -321,7 +321,9 @@ describe("G3 Schalter und unfertige Funktionen", () => {
   });
   it("sichere Werte und sicher-aktive Schalter → GO", () => {
     for (const t of ["# CENTRIC_DEMO=true\n", "CENTRIC_DEMO=false\n", "CENTRIC_DATENSCHUTZLAUF=vorschau\n", "CENTRIC_ZWEIFAKTOR_PFLICHT=1\n",
-      "CENTRIC_AUFRAEUMEN=an\n", "VAPID_PRIVATE=<OPTIONAL>\n", "CENTRIC_DEMO=${CENTRIC_DEMO}\n"]) expect(g3(t).ergebnis, t).toBe("GO");
+      "CENTRIC_AUFRAEUMEN=an\n", "VAPID_PRIVATE=<OPTIONAL>\n"]) expect(g3(t).ergebnis, t).toBe("GO");
+    // Delta-Review 6: kein „$“ in env-Vorlagen, auch nicht als Selbstbezug
+    expect(g3("CENTRIC_DEMO=${CENTRIC_DEMO}\n").ergebnis).toBe("NO-GO");
   });
   it("unfertige Funktion aktiv (Push-Schlüssel, Schichtmodell) → NO-GO", () => {
     for (const t of ["VAPID_PRIVATE=echterwert\n", "CENTRIC_SCHICHTMODELL_PFLEGE=true\n", "CENTRIC_SCHICHTMODELL_WIRKUNG=an\n", "RESEND_API_KEY=${RESEND_API_KEY:-x}\n"]) {
@@ -1117,4 +1119,95 @@ describe("Delta-Review 5 #427: git und gh laufen wirklich mit Zeitgrenze", () =>
     expect(aufrufe.some(([bin]) => bin === "gh")).toBe(true);
     expect(aufrufe.filter(([, t]) => t !== 60_000)).toEqual([]);
   }, 90_000);
+});
+
+describe("Delta-Review 6 #427: „\\“ und „$“ nur in benannten Formen", () => {
+  const g3v = (text, art = "compose", pfad = "v", extra = {}) => g3Schalter({ codeNamen: ["CENTRIC_DEMO"], klassen: KL, unfertig: UNFERTIG,
+    quelltexte: { "src/lib/import-schnittstelle.js": "export const IMPORT_DATEI_AKTIV = false;" }, vorlagen: [{ pfad, art, pflicht: true, text }], ...extra }, KONFIG_STANDARD);
+
+  it("N1: Kommentar mit „\\“ verschluckt keine aktive Zeile (env, compose, Dockerfile)", () => {
+    for (const [t, art] of [
+      ["# Hinweis \\\nCENTRIC_DEMO=true\n", "env"],
+      ["    environment:\n      # Hinweis \\\n      CENTRIC_DEMO: \"true\"\n", "compose"],
+      ["    environment:\n      FOO: bar # \\\n      CENTRIC_DEMO: \"true\"\n", "compose"],
+      ["# Hinweis \\\nENV CENTRIC_DEMO=true\n", "dockerfile"],
+      ["ENV A=1 # x \\\n    B=2\nENV CENTRIC_DEMO=false\n", "dockerfile"],
+      ["RUN echo \\\nENV CENTRIC_DEMO=true\n", "dockerfile"],
+      ["ENV A=1 \\\n", "dockerfile"],
+    ]) expect(g3v(t, art).ergebnis, JSON.stringify(t)).toBe("NO-GO");
+  });
+  it("N2: Escapes in Anführungszeichen sind unlesbar", () => {
+    for (const t of [
+      "    environment:\n      \"CENTRIC\\x5FDEMO\": \"true\"\n", "    environment:\n      \"CENTRIC_DEMO\": \"tr\\u0075e\"\n",
+      "    environment:\n      - \"CENTRIC\\x5FDEMO=true\"\n", "    environment: { \"CENTRIC\\x5FDEMO\": \"true\" }\n",
+      "    \"env\\x5Ffile\": prod.env\n", "    \"ext\\x65nds\":\n      file: x.yml\n",
+    ]) expect(g3v(t).ergebnis, JSON.stringify(t)).toBe("NO-GO");
+  });
+  it("N3: Dockerfile mit „\\“ oder „$“ im Schlüssel ist unlesbar", () => {
+    for (const t of ["ENV CENTRIC\\_DEMO=true\n", "ARG P=CENTRIC\nENV ${P}_DEMO=true\n", "ENV $P=true\n"]) {
+      expect(g3v(t, "dockerfile").ergebnis, JSON.stringify(t)).toBe("NO-GO");
+    }
+  });
+  it("N4: Verweise auf andere Werte derselben Vorlage sind NO-GO", () => {
+    for (const [t, art] of [
+      ["ARG HALLO=true\nENV CENTRIC_DEMO=${HALLO:-false}\n", "dockerfile"],
+      ["ARG HALLO=true\nENV CENTRIC_DEMO=\"$HALLO\"\n", "dockerfile"],
+      ["ENV HALLO=true\nENV CENTRIC_DEMO=$HALLO\n", "dockerfile"],
+      ["ARG CENTRIC_DEMO\nENV CENTRIC_DEMO=$CENTRIC_DEMO\n", "dockerfile"],
+      ["HALLO=true\nCENTRIC_DEMO=${HALLO}\n", "env"],
+      ["    environment:\n      CENTRIC_DEMO: ${HALLO}\n", "compose"],
+      ["    environment:\n      CENTRIC_DEMO: ${CENTRIC_DEMO:?fehlt}\n", "compose"],
+      ["    environment:\n      FOO: ${BAR:?x}\n", "compose"],
+      ["    command: [\"sh\", \"-c\", \"echo $HOME\"]\n", "compose"],
+    ]) expect(g3v(t, art).ergebnis, JSON.stringify(t)).toBe("NO-GO");
+  });
+  it("benannte Formen der echten Vorlagen bleiben lesbar", () => {
+    for (const [t, art] of [
+      ["    image: ghcr.io/x/y@${IMAGE_DIGEST:?IMAGE_DIGEST fehlt – nur Digests}\n", "compose"],
+      ["    environment:\n      STAGING_HOST: ${STAGING_HOST:?STAGING_HOST fehlt (staging.<domain>)}\n", "compose"],
+      ["ARG VITE_X\nENV VITE_X=$VITE_X \\\n    VITE_Y=${VITE_Y}\n", "dockerfile"],
+      ["ENV NODE_ENV=production \\\n    PORT=3000 \\\n    CENTRIC_DATEN=/data\n", "dockerfile"],
+      ["RUN rm -rf /a \\\n      /b \\\n      /c\n", "dockerfile"],
+    ]) expect(vorlageUnlesbar(t, art), JSON.stringify(t)).toEqual([]);
+  });
+  it("N5: weitere Compose-Dateien (z. B. compose.override.yml) werden geladen, aber nicht geprüft → NO-GO", () => {
+    const g = g3v("    environment:\n      NODE_ENV: production\n", "compose", "v", { composeDateien: ["deploy/compose.yml", "deploy/compose.override.yml"] });
+    expect(g.ergebnis).toBe("NO-GO");
+    expect(g.gruende.join()).toMatch(/compose\.override\.yml/);
+    expect(g3v("    environment:\n      NODE_ENV: production\n", "compose", "v", { composeDateien: ["deploy/compose.yml", "deploy/staging-o2/compose.yml"] }).ergebnis).toBe("GO");
+  });
+  it("N5: Repository-Stand — die gefundenen Compose-Dateien sind genau die geprüften", () => {
+    const e = sammeln({ wurzel: WURZEL, offline: true, fixture: {}, jetztMs: JETZT_MS });
+    expect([...e.composeDateien].sort()).toEqual(["deploy/compose.yml", "deploy/staging-o2/compose.yml"]);
+  }, 60_000);
+
+  // Eigenschaftstests: deterministischer Zufall (feste Saat), keine Uhr.
+  const zufall = (saat) => () => { saat = (saat * 1103515245 + 12345) % 2147483648; return saat / 2147483648; };
+  const wahl = (r, a) => a[Math.floor(r() * a.length)];
+  const AKTIV = { env: "CENTRIC_DEMO=true", compose: "      CENTRIC_DEMO: \"true\"", dockerfile: "ENV CENTRIC_DEMO=true" };
+  const RAUSCHEN = {
+    env: ["# Hinweis \\", "# x", "FOO=bar \\", "FOO=\"a\\\"", "HALLO=$X", "A=${B:-c}", "B='x' # k \\", "", "export C=1", "D=\"#\" \\"],
+    compose: ["      # Hinweis \\", "      FOO: bar # \\", "      FOO: \"a\\\"", "      X: ${Y}", "      - \"Z=1\" \\", "    environment:", "      ", "      Q: 'a # b' \\", "      R: |", "      S: >-"],
+    dockerfile: ["# Hinweis \\", "RUN echo \\", "ENV A=1 # \\", "ARG H=true", "ENV B=$H \\", "LABEL x=\"\\\"", "ENV C=\"#\" \\", "", "RUN a \\\\", "ENV D=${H:-x}"],
+  };
+  it.each(["env", "compose", "dockerfile"])("Eigenschaft (%s): Rauschen vor/nach einer aktiven Zeile ergibt nie GO", (art) => {
+    const r = zufall(art.length * 7919);
+    for (let i = 0; i < 400; i++) {
+      const vor = Array.from({ length: Math.floor(r() * 4) }, () => wahl(r, RAUSCHEN[art]));
+      const nach = Array.from({ length: Math.floor(r() * 3) }, () => wahl(r, RAUSCHEN[art]));
+      const kopf = art === "compose" ? ["services:", "  app:", "    environment:"] : [];
+      const text = [...kopf, ...vor, AKTIV[art], ...nach, ""].join("\n");
+      expect(g3v(text, art).ergebnis, JSON.stringify(text)).toBe("NO-GO");
+    }
+  });
+  it.each(["env", "compose", "dockerfile"])("Eigenschaft (%s): Escape- und Verweisformen eines aktiven Schalters ergeben nie GO", (art) => {
+    const schluessel = ["CENTRIC\\x5FDEMO", "CENTRIC\\_DEMO", "CENTRIC\\u005FDEMO", "${P}_DEMO", "CENTRIC_$X", "CENTRIC_DEMO"];
+    const werte = ["true", "${HALLO}", "$HALLO", "${HALLO:-false}", "\"$HALLO\"", "\"tr\\u0075e\"", "${CENTRIC_DEMO:-true}"];
+    for (const k of schluessel) for (const w of werte) {
+      const zeile = art === "env" ? `${k}=${w}` : art === "dockerfile" ? `ENV ${k}=${w}` : `      "${k}": ${w}`;
+      const vorspann = art === "env" ? "HALLO=true\nP=CENTRIC" : art === "dockerfile" ? "ARG HALLO=true\nARG P=CENTRIC" : "services:\n  app:\n    environment:\n      HALLO: \"true\"";
+      const text = `${vorspann}\n${zeile}\n`;
+      expect(g3v(text, art).ergebnis, JSON.stringify(text)).toBe("NO-GO");
+    }
+  });
 });
