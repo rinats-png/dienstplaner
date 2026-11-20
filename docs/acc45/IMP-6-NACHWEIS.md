@@ -204,3 +204,25 @@ E3 verlangt, dass nur `src/ansichten/schichtmodelle.jsx` und `src/app/aktionen/p
   fachpruefung-server 63, p212-kalendertag 59, p212-client-kalendertag 12, prozess-wachen 15, doku 5, verdrahtung 8,
   ci-abdeckung 8, acc45-status 17, endgeraete-speicher 6, wp39-app-aufbau 4; eslint ohne Befund; tsc ohne Befund;
   `acc45-backlog pruefen` OK; `vorpruefung --paket IMP-6` ohne harte Verstöße.
+
+## Nachtrag 2026-11-20 (g): Review #429 (Opus, mit Auflagen) — nur Tests und Doku
+
+- **A1 (Test M, Posten):** Der Test behauptete „a1 vorn“, der Startindex `between(anker, 2027-11-03) % 2 = 1` setzte aber a2 vorn —
+  die Mutation M8 (Posten bei AN ohne `r !== posten.quelle`) überlebte. Jetzt Tag 2027-11-04 (gerader Abstand, im Test
+  ausgerechnet): a1 mit Nachtmodell steht wirklich vorn; zusätzlich `postenBesatzung` = `["a2"]`. **M8 jetzt rot** (lokal,
+  Mutation von Hand gesetzt und zurückgenommen).
+- **A2 (Springer):** neuer Fall in T „Springer mit Einheit“ — AUS und AN, ohne und mit eigener Zuordnung, drei Rechnungen und
+  `planDienst` = null, Gegenprobe ohne `springer` mit Diensten. **M5a (AUS-Zweig von `planDienst` ohne `!p.springer`) jetzt rot.**
+- **A3 (offen für REL-1/PR 2):** `RELEASE-UNFERTIG.json` kommt mit #427 (nicht gemergt). Dort ist
+  `CENTRIC_SCHICHTMODELL_WIRKUNG` als unfertig (Vorgabe aus) einzutragen — sobald #427 gemergt ist, spätestens mit PR 2.
+- **Laufzeit in CI (geprüft, Lauf 44741581647, Job `pruefen`):** `imp6-planwirkung` 81 Tests in 21,0 s; der ganze Schritt
+  „Mehrere Schichtmodelle je Person (IMP-6 Teil 2)“ 22 s. Die Jobdauer 35:35 min kommt nicht aus diesem Schritt (längste
+  Schritte: BE-2 A1 213 s, Teilspeicherung 149 s, Gate-Proben 116/103 s). Die lokale Dauer (12 min) liegt am belasteten
+  Entwicklungsrechner. Keine Workflow-Änderung.
+- **Notizen für PR 2 (Hinweise des Reviews):**
+  1. Wächter S zur Gesamtsuche `einheitDienst(` in `server/` und `src/` mit Positivliste ausbauen — in `src/` heute noch ohne
+     Wirkung: `fachlogik.js` (`urlaubskonto`, Vergleich mit dem Freigabestand), `app/aktionen/plan.js:51`,
+     `app/aktionen/begleitung.js:85`, `lib/aushang.js`, `ansichten/monatsplan.jsx`, `ansichten/lagebild.jsx`.
+  2. `modellVerzeichnis` wird je Person und Tag bis zu dreimal neu gebaut → Zwischenspeicher je Bestand (nur bei AN).
+  3. Ersatzvorschlag: bei Lücke oder „uneindeutig“ gilt heute „in der Dienstphase +8“ — bewusst entscheiden.
+  4. Release-Gate-Warnung, wenn `CENTRIC_SCHICHTMODELL_WIRKUNG` gesetzt, aber nicht genau `true` ist (REL-1).

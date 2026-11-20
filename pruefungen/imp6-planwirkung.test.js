@@ -294,6 +294,21 @@ describe("T. Teilzeit", () => {
     /* Wochentage wie dow() des Regelwerks: Montag = 0 … Sonntag = 6 (also Di und Do). */
     expect(tage.map((d) => FP.dienstAm(m, p, d) || "-").join("")).toBe(tage.map((d) => ([1, 3].includes((new Date(`${d}T12:00:00Z`).getUTCDay() + 6) % 7) ? "F" : "-")).join(""));
   });
+  it("Springer mit Einheit (Review #429 A2): keine Folge — AUS wie bisher, AN ebenso, auch mit eigener Zuordnung", () => {
+    const tage = tageVon("2027-01-01", "2027-01-14");
+    for (const zuordnungen of [null, [zu("a", "frueh1", "2026-12-01", null, 0)]]) {
+      const p = person("sp", zuordnungen, { springer: true });
+      const m = betrieb([p]);
+      const ohne = { ...p, springer: false };                          // Gegenprobe: ohne springer gäbe es Dienste
+      for (const w of [false, true]) {
+        FP.schichtmodellWirkungSetzen(w);
+        expect(tage.some((d) => FP.dienstAm(betrieb([ohne]), ohne, d)), `Gegenprobe ${w}`).toBe(true);
+        for (const d of tage) gleichDrei(m, p, d, null, `${w ? "AN" : "AUS"} ${d} ${zuordnungen ? "mit" : "ohne"} Zuordnung`);
+        for (const d of tage) expect(FP.planDienst(m, p, d), d).toBe(null);
+      }
+      aus();
+    }
+  });
   it("Betriebsmodell mit Teilzeit: AN gleich AUS", () => {
     const p = person("a1", null, { wochenstunden: 25, teilzeit: { aktiv: true, modus: "quote" } });
     const m = betrieb([p], { einstellungen: { ruhezeit: 11, sollWochenstunden: 40 } });
@@ -321,11 +336,16 @@ describe("M. Mehrere Modelle in einem Betrieb, Besetzung und Posten", () => {
     const m = betrieb([person("a1", [zu("a", "nacht1", "2027-11-01", null, 0)]), person("a2", [zu("b", "frueh1", "2027-11-01", null, 0)])]);
     m.dienstarten.push(posten);
     an();
+    /* Review #429 A1: Der Pool ist nach Kennung geordnet ([a1, a2]), der Start ist between(anker, Tag) % 2. Am 04.11.2027
+       ist der Abstand zum Anker gerade — der Start liegt auf a1 (Nacht): Die Person mit dem falschen Modell steht wirklich
+       vorn. Ohne den Abgleich r === posten.quelle nähme a1 den einzigen Platz, a2 bliebe bei F. */
+    const TAG = "2027-11-04";
+    expect(Math.round((Date.UTC(2027, 10, 4) - Date.UTC(2026, 0, 5)) / 86400000) % 2).toBe(0);
     const mm = kopie(m);
-    /* a1 (Nacht) steht in der Pool-Reihenfolge vorn, besetzt den Posten aber nicht; a2 (F) besetzt ihn. */
-    expect(PL.personTag(mm, mm.personen[1], "2027-11-03").dienstId).toBe("PF");
-    expect(PL.personTag(mm, mm.personen[0], "2027-11-03").dienstId).toBe("N");
-    const pt = IE.planTag(mm, mm.personen[1], "2027-11-03");
+    expect(PL.personTag(mm, mm.personen[1], TAG).dienstId).toBe("PF");
+    expect(PL.personTag(mm, mm.personen[0], TAG).dienstId).toBe("N");
+    expect([...IE.postenBesatzung(mm, "e1", TAG, "PF")]).toEqual(["a2"]);
+    const pt = IE.planTag(mm, mm.personen[1], TAG);
     expect(pt.dienstId).toBe("PF");
   });
 });
