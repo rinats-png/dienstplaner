@@ -49,12 +49,13 @@ const WORTMARKE = { dunkel: "/centric-wortmarke.svg", hell: "/centric-wortmarke-
 /**
  * Die Wortmarke als Bild. `hoehe` in CSS-Pixeln, die Breite folgt dem
  * Seitenverhältnis der Datei. Der Alternativtext trägt den Namen, wie vorher
- * der Text.
+ * der Text. `alt=""`, wo daneben schon das Logo (role=img, aria-label) den
+ * Namen ansagt — sonst hört man „CENTRIC“ zweimal.
  */
-export function Wortmarke({ hell = false, hoehe = 13, className = "", style }) {
+export function Wortmarke({ hell = false, hoehe = 13, alt = "CENTRIC", className = "", style }) {
   const breite = Math.round((hoehe * WORTMARKE.b) / WORTMARKE.h * 10) / 10;
   return (
-    <img src={hell ? WORTMARKE.hell : WORTMARKE.dunkel} alt="CENTRIC" width={breite} height={hoehe}
+    <img src={hell ? WORTMARKE.hell : WORTMARKE.dunkel} alt={alt} width={breite} height={hoehe}
       className={`wortmarke${className ? ` ${className}` : ""}`} draggable={false}
       style={{ display: "block", flexShrink: 0, ...style }} />);
 }

@@ -167,10 +167,6 @@ self.addEventListener("fetch", (e) => {
     return;
   }
 
-  /* --- Bauteile: Speicher zuerst --------------------------------------
-     Der Dateiname trägt einen Hashwert des Inhalts. Ändert sich der
-     Inhalt, ändert sich der Name — eine gespeicherte Datei kann deshalb
-     nie veraltet sein. */
   /* --- Wortmarke (V4-2): Netz zuerst, sonst die beim Einrichten geholte Datei.
      Ohne diesen Zweig zeigte die Kopfzeile offline nur den Alternativtext. */
   if (WORTMARKEN.includes(url.pathname)) {
@@ -185,6 +181,10 @@ self.addEventListener("fetch", (e) => {
     return;
   }
 
+  /* --- Bauteile: Speicher zuerst --------------------------------------
+     Der Dateiname trägt einen Hashwert des Inhalts. Ändert sich der
+     Inhalt, ändert sich der Name — eine gespeicherte Datei kann deshalb
+     nie veraltet sein. */
   if (istBauteil(url)) {
     e.respondWith((async () => {
       const c = await caches.open(SCHALE);

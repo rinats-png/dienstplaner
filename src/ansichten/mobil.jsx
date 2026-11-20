@@ -630,7 +630,7 @@ export function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge, startTab, 
     <div className="m-schale">
       <header className="m-kopf">
         <Logo size={24} />
-        <span className="m-wort"><Wortmarke hell={dunkelAktiv()} hoehe={12} /></span>
+        <span className="m-wort"><Wortmarke hell={dunkelAktiv()} hoehe={12} alt="" /></span>
         <button onClick={() => oeffnen("post")} className="m-postknopf"
           aria-label={`Mitteilungen${ungelesen ? `, ${ungelesen} ungelesen` : ""}`}>
           <Icon n="brief" size={19} />

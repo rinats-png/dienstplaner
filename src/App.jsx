@@ -1809,7 +1809,7 @@ function AppInnen() {
           <div className="marke">
             <Logo size={26} hell />
             <div style={{ minWidth: 0 }}>
-              <Wortmarke hell hoehe={13} />
+              <Wortmarke hell hoehe={13} alt="" />
               <div style={{ fontSize: 11.5, color: "var(--sl-schrift-fuss)", marginTop: 2,
                 whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                 {istBetreiber ? "Betreiberkonsole" : sitz.mandant.name}</div>
