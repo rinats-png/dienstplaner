@@ -170,6 +170,11 @@ mit belegten Reviews an (Quelle: Nachweisdateien je Paket). Weg (b) ist ehrliche
 (Betreiberentscheidung 2026-11-13: Direkt-Merges bedingt anerkannt). Für den ersten Release braucht jeder davon eine
 Annahme mit Grund in `akzeptierteCommits`, oder der Betreiber entscheidet eine Sammelannahme als neue Regel (dann
 Werkzeug-PR). Ab Branch-Schutz (B-12/Branch-Schutz `main` und `integration/*`) entstehen keine neuen.
+**Befund G2 (Betreff-Umgehung, Delta-Review #427 N-B1, behoben):** Werkzeug v2 wertete einen Betreff „Merge pull
+request #N …“ oder „… (#N)“ als Beleg, samt Zweigseite. Ein lokal erzeugter Merge mit gefälschtem Betreff hätte so jeden
+Commit „abgedeckt“. Seit v3 zählt ein Betreff nur, wenn GitHub den PR bestätigt (gemergt, `merge_commit_sha` = dieser
+Commit, Zweigcommits laut `pulls/{n}/commits`, kein Sammel-PR). Die Zahlen in der Tabelle oben stammen aus v2; der
+Probelauf v3 steht in der PR-Beschreibung bzw. im Review-Kommentar.
 **Befund G8:** Das Paket enthält Code unfertiger P0/P1-Pakete. Ein Release braucht für jedes davon eine Annahme mit
 Grund in `akzeptiertePakete` (z. B. „hinter Schalter AUS“) oder den Abschluss des Pakets.
 

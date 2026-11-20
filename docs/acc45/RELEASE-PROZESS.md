@@ -51,7 +51,7 @@ Nur der Betreiber löst ein Deployment aus. Claude startet nie einen Deploy-Work
 
 Die Release-Prüfung läuft **zweimal**: als Vorprüfung vor Phase 1 (G4, G6, G7, G10 sind dann noch offen, Feld
 `vorpruefungOk`) und als Endprüfung nach Phase 2 (alle Gates, Exit 0). `--basis` ist Pflicht: der Commit des
-vorigen Releases (Zeile `aktiv` vor dem Listen-PR). Das Werkzeug leitet die Basis bewusst nicht aus der Liste ab,
+vorigen Releases. Online prüft das Werkzeug vor jedem Netzaufruf: Basis ist echter Vorfahr des Kandidaten, nicht gleich, Bereich nicht leer, Commit einer Zeile der Freigabeliste; sonst Exit 2. Gemeint ist die Zeile `aktiv` vor dem Listen-PR. Das Werkzeug leitet die Basis bewusst nicht aus der Liste ab,
 weil die Zeile des Kandidaten sie nach dem Listen-PR überdeckt und ein gesperrtes Altbild keine Basis sein darf.
 
 | Phase | Was | Wer | Beleg | Verweis |
@@ -92,14 +92,15 @@ Eine Datei mit falscher Struktur gilt für alle Gates als nicht vorhanden.
   "reviewBestaetigt": [412],
   "akzeptiertePakete": [{ "id": "WP-16", "grund": "<Begründung>" }],
   "akzeptierteBefunde": [{ "id": "V4-2b", "grund": "<Begründung>" }],
-  "akzeptierteCommits": [{ "sha": "<7–40 hex>", "grund": "<Begründung, z. B. Review in #N>" }]
+  "akzeptierteCommits": [{ "sha": "<7–40 hex>", "grund": "<Begründung, z. B. Review in #N>" }],
+  "freigegebeneSchalter": [{ "name": "CENTRIC_ERSTLEITUNG_STRENG", "grund": "<Bestandsanalyse, Datum>" }]
 }
 ```
 
 - `rueckweg`: `strategie` ist Pflicht. Ohne Zeile `vorherig` sind O-1 und O-2 Pflicht (Produktionsweg §6).
 - `migration`: nur nötig, wenn G5 betroffene Startschreibvorgänge meldet. `abgedeckt` nennt alle gemeldeten Einträge.
 - `reviewBestaetigt`: PRs, die G2 als „manuelle Bestätigung“ meldet.
-- `akzeptiertePakete`, `akzeptierteBefunde`, `akzeptierteCommits`: nur mit Grund; jeder Eintrag einzeln.
+- `akzeptiertePakete`, `akzeptierteBefunde`, `akzeptierteCommits`, `freigegebeneSchalter`: nur mit Grund; jeder Eintrag einzeln.
 
 ## 6. Gates (Kurzfassung)
 
@@ -107,16 +108,16 @@ Einzelheiten und Konfiguration: Kopf von `werkzeug/release-pruefung.mjs`, Ausgab
 
 | Gate | GO, wenn |
 |---|---|
-| G1 | alle Pflicht-Check-Runs auf dem Kandidaten-SHA abgeschlossen und `success`; jeder Lauf zählt; Läufe ohne `head_sha` sind NO-GO; eigene Gate-Jobs zählen nicht |
-| G2 | jeder PR im Paket hat einen Review-Beleg (GitHub-Review eines anderen Kontos, letzte positive Aussage in `REVIEW-NACHWEIS*.md`, SSOT-Stufe reviewt) oder ist bestätigt; kein Commit ohne PR (außer akzeptiert). PR-Text allein zählt nicht |
-| G3 | jeder `CENTRIC_`-Name im Server-Code des Kandidaten ist in [RELEASE-SCHALTER.json](RELEASE-SCHALTER.json) klassifiziert; kein Schalter und keine unfertige Funktion in `.env.example`, `deploy/compose.yml`, `Dockerfile`, Staging-Vorlagen aktiv (auch nicht als `${X:-wert}`, Vergleich mit trim/Kleinschreibung) |
+| G1 | alle Pflicht-Check-Runs auf dem Kandidaten-SHA abgeschlossen und `success`; abgefragt mit `filter=all`, jeder Lauf zählt (ein roter Lauf bleibt rot); Läufe ohne `head_sha` sind NO-GO; eigene Gate-Jobs zählen nicht |
+| G2 | jeder PR im Paket hat einen Review-Beleg (GitHub-Review eines anderen Kontos ohne spätere Änderungsforderung, letzte vorbehaltlose positive Aussage in `REVIEW-NACHWEIS*.md`, SSOT-Stufe reviewt) oder ist bestätigt; jeder Commit gehört zu einem von GitHub bestätigten PR (gemergt, `merge_commit_sha`, Commits des PR; der Betreff allein belegt nichts), sonst `akzeptierteCommits`; leerer Bereich ist nie GO |
+| G3 | jeder `CENTRIC_`-Name im Server-Code des Kandidaten und in den Vorlagen ist in [RELEASE-SCHALTER.json](RELEASE-SCHALTER.json) klassifiziert; kein Schalter und keine unfertige Funktion in `.env.example`, `deploy/compose.yml`, `Dockerfile` (ENV und ARG), Staging-Vorlagen aktiv (auch nicht als `${X:-w}`/`${X:+w}`, YAML-Flow, Vergleich mit trim/Kleinschreibung); freigabepflichtige Schalter nur mit `freigegebeneSchalter`; `NODE_ENV` nur `production`, in `deploy/compose.yml` und `Dockerfile` Pflicht |
 | G4 | Digest vollständig; Bildangaben aktuell; Label und Provenienz = Kandidat; Freigabeliste gültig, Zeile `aktiv` mit Kandidaten-Commit |
 | G5 | keine Startschreib-Quelle (W-1…W-9, `server.mjs`) geändert oder neu, oder Betreiberfreigabe deckt alle ab |
 | G6 | Sicherung (mit `snapshot_id`), Restore-Probe, Widerrufbuch-Probe (mit `art`, `ergebnis: ok`) aktuell |
 | G7 | Rückweg dokumentiert |
 | G8 | kein unfertiges P0/P1-Paket im Paket (außer akzeptiert) |
 | G9 | kein offener P0/P1-Befund (außer akzeptiert); REL-* sind der Release-Prozess selbst und zählen nicht |
-| G10 | Freigabedatei gültig, commitet, passend; HEAD enthält den Kandidaten und ändert seitdem nur Liste und Freigabedatei |
+| G10 | Freigabedatei gültig, commitet, passend; HEAD ist gepusht, enthält den Kandidaten und ändert seitdem nur Liste und Freigabedatei |
 
 Ein NO-GO wird nicht übersteuert. Die Konfiguration steht nur im Werkzeug (`--konfig-zeigen`); es gibt kein
 `--konfig`. Offline (Fixture) und `--jetzt` enden nie mit Exit 0, sondern mit Exit 3 (übersteuert).

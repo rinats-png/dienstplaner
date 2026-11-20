@@ -572,7 +572,9 @@ describe("Hilfen und Aufruf", () => {
     expect(nogo.status).toBe(1);
     expect(JSON.parse(nogo.stdout).nogo).toContain("G6");
     expect(lauf(["--offline"]).status).toBe(2);
-    expect(lauf(["--kandidat", "HEAD", "--basis", "HEAD", "--jetzt", JETZT]).status).toBe(2); // --jetzt online verboten
+    const jetztOnline = lauf(["--kandidat", "HEAD", "--basis", "HEAD~1", "--jetzt", JETZT]);
+    expect(jetztOnline.status).toBe(2); // --jetzt online verboten
+    expect(jetztOnline.stderr).toMatch(/--jetzt ist nur offline/);
     const ohneBasis = lauf(["--kandidat", "HEAD"]);
     expect(ohneBasis.status).toBe(2); // --basis ist Pflicht
     expect(ohneBasis.stderr).toMatch(/--basis .*fehlt \(Pflicht/);
@@ -655,7 +657,7 @@ describe("Delta-Review #427: Fälschung, Basis, Wertlücken, Kandidaten-Stand", 
     const b = reviewNachweiseLesen([{ datei: "REVIEW-NACHWEIS-a.md", text: [
       "| #5 | x | MERGEBAR |", "| #5 | y | NICHT MERGEBAR |", "| #6 | x | unerledigt |", "| #7 | x | UNMERGEBAR |",
       "| #8 | x | MERGEBAR erst nach Behebung B1 |", "| #9 | x | NO-GO, MERGEBAR? nein |", "| #10 | x | MERGEBAR MIT AUFLAGEN (A1 offen) |",
-      "| #11 | x | 2 Runden (MIT AUFLAGEN, MERGEBAR) |",
+      "| #11 | x | 2 Runden (MIT AUFLAGEN, MERGEBAR) |", "| #12 | x | MERGEBAR, dann MIT AUFLAGEN |",
     ].join("\n") }]);
     expect([...b.keys()]).toEqual([11]);
     const f = reviewNachweiseLesen([{ datei: "docs/acc45/REVIEW-NACHWEIS-2026-11-19.md", text: [
