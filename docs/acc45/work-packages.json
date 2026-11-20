@@ -6302,12 +6302,12 @@
       "agent": null,
       "modell": "opus",
       "konfliktzonen": [],
-      "pr": [],
+      "pr": ["#402"],
       "nachweis": "docs/acc45/V4-INTEGRATIONSSTAND-2026-11-20.md",
       "akzeptanz": "DESIGNSYSTEM.md, MIGRATION.md, Mockups von design/v4-glass-logo im Integrationsstand; design/README.md nennt V3 abgelöst; src/v4/tokens.js verweist auf vorhandene Datei",
       "tests": "Unit, E2E",
       "dateien": "docs/, design/",
-      "notiz": "Analyse 2026-11-20 (V4-Integrationsstand); PT sind Schätzung der Analyse, nicht belegt."
+      "notiz": "Analyse 2026-11-20 (V4-Integrationsstand); PT sind Schätzung der Analyse, nicht belegt. Umsetzung als PR gegen integration/release-v4 (Branch docs/v4-0-spezifikation); Status setzt der Koordinator nach dem Merge. Zuordnung #88/#91/#92 siehe Nachtrag in der Analyse; Schließen von #91/#92 entscheidet der Betreiber."
     },
     {
       "id": "V4-1",

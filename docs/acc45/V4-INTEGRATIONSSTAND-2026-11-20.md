@@ -93,3 +93,10 @@ Wirkung auf die Prognose: Mit diesen Paketen steigt der offene SSOT-Aufwand um 1
 
 Gesamtanteil **nicht belegbar**: Es fehlt das Inventar (Nenner). Belegbar sind nur Teilaussagen: Tokens, Themawahl, Einstieg, Logo/Icons umgesetzt und geprüft;
 0 von 4 V4-Basiskomponenten in Ansichten verwendet; Website 0 (lokale Quelle ohne V4-Token); Produktion 0 (main alt).
+
+## Nachtrag V4-0 (Paket Spezifikation übernehmen)
+
+- Übernommen aus `origin/design/v4-glass-logo` (nur `design/v4-glass/`, 10 Dateien, zusammen unter 100 KB): `DESIGNSYSTEM.md`, `MIGRATION.md`, `README.md`, `index.html`, `assets/*.svg` (3), `mockups/*.svg` (3). Geprüft: keine externen Ressourcen (nur der SVG-Namensraum `w3.org`), ein Inline-Skript in `index.html` (Oberflächenlogik der Vorschau, kein Tracker, kein `fetch`), keine Geheimnisse, keine Binärdateien.
+- `MIGRATION.md` Schritt 1 („V4 niemals in laufende Releases“) ist überholt (V4 Phase 1/2 seit Merge `42a8c1a7`); als Anmerkung oberhalb des unveränderten Originaltexts vermerkt.
+- `design/README.md` kennzeichnet V3 (`design/app/stil.css`, V3-Canvas) als abgelöst (Referenz); nichts gelöscht. Der Verweis in `src/v4/tokens.js` auf `design/v4-glass/DESIGNSYSTEM.md` stimmt jetzt und blieb unverändert.
+- SSOT-Zuordnung: PR #88 (C-Bildmarke, gemergt 2026-11-04), #91 und #92 (Phase 1/2, Inhalt Vorfahr von release-v4, noch OPEN) gehören fachlich zu V4-0 bzw. dem V4-Strang. Hinweis: Ob #91/#92 geschlossen oder als ersetzt vermerkt werden, entscheidet der Betreiber; sie wurden nicht angefasst. Der Status von V4-0 setzt der Koordinator nach dem Merge.
