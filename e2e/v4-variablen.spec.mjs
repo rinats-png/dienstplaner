@@ -32,7 +32,8 @@ async function messen(page) {
       app: w.hasAttribute("data-v4-app"),
       v4Flaeche: cs.getPropertyValue("--v4-flaeche").trim(),
       seitenleiste: flaeche(".seitenleiste"),
-      karte: flaeche(".karte"),
+      /* Erste Karte ohne eigene Inline-Fläche (Hinweiskarten tragen ihre Warnfarbe inline). */
+      karte: flaeche(".karte:not([style*=\"background\"])"),
       primaer: flaeche(".btn-primary"),
     };
   });
@@ -53,7 +54,7 @@ function pruefen(m, thema, wo) {
 
 async function bereit(page) {
   await page.waitForSelector(".m-tabs, .kopfleiste", { timeout: 30000 });
-  await page.waitForSelector(".karte", { timeout: 30000 });
+  await page.waitForSelector(".karte:not([style*=\"background\"])", { timeout: 30000 });
   await page.waitForSelector(".btn-primary", { state: "attached", timeout: 30000 });
 }
 
@@ -85,6 +86,8 @@ test.describe("V4-2b: --v4-*-Variablen nach Neuladen mit Sitzung", () => {
       pruefen(await messen(page), "hell", `${breite.width} px hell`);
       await page.emulateMedia({ colorScheme: "dark" });
       await expect.poll(() => page.evaluate(() => document.documentElement.getAttribute("data-thema"))).toBe("dunkel");
+      /* Flächen mit Übergang (App.jsx: transition background .14–.18 s) erst nach dessen Ende messen. */
+      await page.waitForTimeout(500);
       pruefen(await messen(page), "dunkel", `${breite.width} px nach Wechsel auf dunkel`);
     }
   });

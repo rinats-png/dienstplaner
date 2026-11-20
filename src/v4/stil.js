@@ -51,6 +51,16 @@ export const v4Variablen = () => `
 :root[data-v4-thema="hell"]{${farbVariablen("hell")}color-scheme:light;}
 `;
 
+/* V4-2b: Variablen der Anwendung. Die App-Schicht (app-stil.js, html[data-v4-app]) liest nur var(--v4-…).
+   Der Einstiegsstil (<style id="v4-stil">) fehlt nach Neuladen mit Sitzung und folgt dem System bzw.
+   data-v4-thema. Darum bringt der App-Stil die Variablen selbst mit, gebunden an data-thema der Anwendung.
+   Spezifität (0,3,0) liegt über allen Regeln des Einstiegsstils, auch wenn dieser noch eingehängt ist. */
+export const v4AppVariablen = () => `
+:root[data-v4-app]{${festeVariablen()}}
+:root[data-v4-app][data-thema="hell"]{${farbVariablen("hell")}}
+:root[data-v4-app][data-thema="dunkel"]{${farbVariablen("dunkel")}}
+`;
+
 export const v4Komponenten = () => `
 /* Fokus: überall sichtbar, nie nur Farbe — Ring mit Abstand */
 html[data-v4-aktiv] :focus-visible,

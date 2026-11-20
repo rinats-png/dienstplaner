@@ -16,6 +16,7 @@ import { addDays } from "./regelwerk.js";
 import { csvFeld, csvText } from "./csvfeld.js";
 import { v4ThemaMerken, v4ThemaGemerkt, v4SystemthemaBeobachten } from "./v4/thema.js";
 import { v4AppStil } from "./v4/app-stil.js";
+import { v4AppVariablen } from "./v4/stil.js";
 import { V4_SCHATTEN, V4_SEITENLEISTE } from "./v4/tokens.js";
 import { Wortmarke } from "./marke.jsx";
 
@@ -668,6 +669,7 @@ kbd.taste{display:inline-flex; align-items:center; justify-content:center; min-w
   .karte{border-color:#D1D5DB; box-shadow:none; break-inside:avoid;}
 }
 ${gestaltStil()}
+${v4AppVariablen()}
 ${v4AppStil()}
 ${geraeteStil()}
 `;
