@@ -60,7 +60,7 @@
    Strukturfehler · 3 alle Gates GO, aber übersteuert (offline/Fixture oder
    --jetzt) — nie freigabefähig. --konfig-zeigen: 0 (nur Anzeige).
    ========================================================================== */
-import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
+import { readFileSync, existsSync, readdirSync, lstatSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -554,7 +554,7 @@ export function vorlageAuswerten(text, art, ueberwacht = []) {
   const funde = [];
   const unlesbar = [];
   const argVorgaben = new Map();
-  const istUeberwacht = (n) => /^CENTRIC_/.test(n) || n === "NODE_ENV" || ueberwacht.includes(n);
+  const istUeberwacht = (n) => /^CENTRIC_/.test(n) || /^NODE_/.test(n) || ueberwacht.includes(n);
   const vorkommen = (z) => [...z.matchAll(/(?<!\$\{?)\b([A-Z][A-Z0-9_]*)\b/g)].map((m) => m[1]).filter(istUeberwacht);
   for (const { z, pruefText, unlesbarGrund } of logischeZeilen(text, art)) {
     if (unlesbarGrund || !dollarUndBackslashErlaubt(pruefText, art, istUeberwacht) || !formErlaubt(pruefText, art)) { unlesbar.push(z.trim()); continue; }
@@ -666,7 +666,7 @@ export function g3Schalter({ codeNamen, klassen, vorlagen, unfertig, quelltexte,
     if (!istObjekt(vorlagenStand) || !istObjekt(vorlagenStand.dateien) || !Array.isArray(vorlagenStand.unbekannt)) {
       binde("Vorlagen des Kandidaten nicht ermittelbar (fail-closed)");
     } else {
-      for (const f of vorlagenStand.unbekannt) binde(`${f}: Vorlage dieser Art ist nicht gelistet (gebundeneVorlagen) und nicht freigegeben`);
+      for (const f of vorlagenStand.unbekannt) binde(`${f}: Vorlage dieser Art nicht bindbar (gebundeneVorlagen, reguläre Datei) und nicht freigegeben`);
       const soll = freigabe?.vorlagenHashes;
       if (!istObjekt(soll)) binde("Freigabedatei ohne vorlagenHashes — die ausgelieferten Vorlagen sind nicht gebunden (--vorlagen-hashes)");
       else {
@@ -688,6 +688,7 @@ export function g3Schalter({ codeNamen, klassen, vorlagen, unfertig, quelltexte,
     for (const z of unlesbar) nogo(g, `${v.pfad}: Zeile nicht sicher lesbar (keine bekannte Form): ${z.slice(0, 120)}`);
     // Jeder Fund einzeln: ein aktiver Fund irgendwo ist NO-GO, ein späterer Aus-Wert hebt ihn nicht auf.
     for (const [name, roh] of funde) {
+      if (/^NODE_/.test(name) && name !== "NODE_ENV") nogo(g, `${v.pfad}: ${name} ist in Vorlagen verboten (z. B. NODE_OPTIONS kann Code laden und Schalter setzen)`);
       if (name === "NODE_ENV" && abweichend(roh, ["production"])) nogo(g, `${v.pfad}: NODE_ENV=${roh} (nur production; Faktorpflicht und Epochenbindung hängen daran)`);
       const e = kl[name];
       if (!istObjekt(e)) {
@@ -1075,18 +1076,30 @@ function quelle(wurzel, rev) {
     const dateien = (rel, aus = []) => {
       const p = join(wurzel, rel);
       if (!existsSync(p)) return aus;
-      if (statSync(p).isFile()) { aus.push(rel); return aus; }
+      const s = lstatSync(p);
+      if (!s.isDirectory()) { aus.push(rel); return aus; }
       for (const f of readdirSync(p)) dateien(`${rel}/${f}`, aus);
       return aus;
     };
-    const wurzelDateien = () => { try { return readdirSync(wurzel, { withFileTypes: true }).filter((d) => d.isFile()).map((d) => d.name); } catch { return []; } };
-    return { lesen, dateien: (wurzeln) => wurzeln.flatMap((r) => dateien(r)), gibt: (rel) => existsSync(join(wurzel, rel)), wurzelDateien };
+    const wurzelDateien = () => { try { return readdirSync(wurzel, { withFileTypes: true }).filter((d) => d.isFile() || d.isSymbolicLink()).map((d) => d.name); } catch { return []; } };
+    const lesenRoh = (rel) => { try { return readFileSync(join(wurzel, rel)); } catch { return null; } };
+    // Arbeitsstand: Symlink = 120000, reguläre Datei = 100644 (das Ausführbar-Bit ist offline nicht verlässlich)
+    const modus = (rel) => { try { const s = lstatSync(join(wurzel, rel)); return s.isSymbolicLink() ? "120000" : s.isFile() ? "100644" : "000000"; } catch { return null; } };
+    return { lesen, lesenRoh, modus, dateien: (wurzeln) => wurzeln.flatMap((r) => dateien(r)), gibt: (rel) => existsSync(join(wurzel, rel)), wurzelDateien };
   }
   const lesen = (rel) => { try { return ausfuehren.exec("git", ["show", `${rev}:${rel}`], ausfuehrOptionen(wurzel, { stdio: ["ignore", "pipe", "ignore"] })); } catch { return null; } };
   const dateien = (wurzeln) => { try { return git(wurzel, ["ls-tree", "-r", "--name-only", rev, "--", ...wurzeln]).split("\n").filter(Boolean); } catch { return []; } };
   const gibt = (rel) => { try { git(wurzel, ["cat-file", "-e", `${rev}:${rel}`]); return true; } catch { return false; } };
   const wurzelDateien = () => { try { return git(wurzel, ["ls-tree", "--name-only", rev]).split("\n").filter(Boolean); } catch { return []; } };
-  return { lesen, dateien, gibt, wurzelDateien };
+  // Rohe Bytes des Blobs (kein Dekodieren) und Mode aus dem Baum (100644, 100755, 120000 Symlink, 160000 Submodul …)
+  const lesenRoh = (rel) => { try { return ausfuehren.exec("git", ["show", `${rev}:${rel}`], ausfuehrOptionen(wurzel, { stdio: ["ignore", "pipe", "ignore"], encoding: "buffer" })); } catch { return null; } };
+  const modus = (rel) => {
+    try {
+      const z = git(wurzel, ["ls-tree", rev, "--", rel]).split("\n").find((x) => x.endsWith(`\t${rel}`));
+      return z ? z.split(" ")[0] : null;
+    } catch { return null; }
+  };
+  return { lesen, lesenRoh, modus, dateien, gibt, wurzelDateien };
 }
 
 function nachweiseAusQuelle(q, verz) {
@@ -1121,10 +1134,13 @@ export function vorlagenStandErmitteln(kq, konfig = KONFIG_STANDARD) {
   const dateien = {};
   const unbekannt = [];
   for (const f of kandidaten) {
-    if (!konfig.gebundeneVorlagen.includes(f)) { unbekannt.push(f); continue; }
-    const text = kq.lesen(f);
-    if (text == null) { unbekannt.push(f); continue; }
-    dateien[f] = createHash("sha256").update(Buffer.from(text, "utf8")).digest("hex");
+    if (!konfig.gebundeneVorlagen.includes(f)) { unbekannt.push(`${f} (nicht gelistet)`); continue; }
+    const modus = kq.modus(f);
+    if (modus !== "100644" && modus !== "100755") { unbekannt.push(`${f} (Mode ${modus ?? "unbekannt"}, keine reguläre Datei)`); continue; }
+    const roh = kq.lesenRoh(f);
+    if (roh == null) { unbekannt.push(`${f} (nicht lesbar)`); continue; }
+    // gebunden: Mode und rohe Bytes, ohne Dekodieren
+    dateien[f] = createHash("sha256").update(Buffer.concat([Buffer.from(`${modus}\0`), Buffer.from(roh)])).digest("hex");
   }
   return { dateien, unbekannt };
 }
@@ -1323,7 +1339,16 @@ function main(argv) {
       if (!rev) { console.error("Aufruf: --vorlagen-hashes braucht --kandidat <commit> (oder --offline)"); return 2; }
     }
     const stand = vorlagenStandErmitteln(quelle(w, rev));
-    console.log(JSON.stringify(stand.dateien, null, 2));
+    const ausgabe = { vorlagenHashes: stand.dateien };
+    if (o.basis) {
+      // Nur Anzeige: was hat sich gegenüber dem vorigen Release geändert (der Betreiber sieht, was er quittiert).
+      const bRev = o.offline ? null : revisionAufloesen(w, o.basis);
+      if (!bRev) { console.error("Aufruf: --basis ist kein Commit (Vergleich nur online)"); return 2; }
+      const alt = vorlagenStandErmitteln(quelle(w, bRev)).dateien;
+      ausgabe.vergleichMitBasis = Object.fromEntries(Object.entries(stand.dateien).map(([f, h]) => [f, {
+        basis: alt[f] ?? null, kandidat: h, status: alt[f] == null ? "neu" : alt[f] === h ? "unverändert" : "geändert" }]));
+    }
+    console.log(JSON.stringify(ausgabe, null, 2));
     for (const f of stand.unbekannt) console.error(`nicht gelistete Vorlage: ${f}`);
     return stand.unbekannt.length ? 1 : 0;
   }

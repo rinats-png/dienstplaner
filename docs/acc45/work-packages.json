@@ -6795,7 +6795,7 @@
       "status": "REVIEW",
       "stufen": {
         "implementiert": {"wert":true,"beleg":"Branch acc45/release/rel-1-gates: werkzeug/release-pruefung.mjs (G1–G10), docs/acc45/RELEASE-UNFERTIG.json, RELEASE-PROZESS.md, RELEASE-LUECKENANALYSE-2026-11-20.md"},
-        "lokalGetestet": {"wert":true,"beleg":"pruefungen/release-pruefung.test.js 129/129 grün (Vitest 5, --maxWorkers=1), flacher Klon geprüft; sieben Reviewrunden #427, Tests jeweils zuerst rot (e441aa1c 30/58, 3411d69b 13/72, c2742512 6/79, f0aee20c 9/91, 2332efb4 8/101, 2ac49819 13/114, 990a8662 11/129); Vorlagenbindung per SHA-256 (vorlagenHashes) als tragende Sperre; Eigenschaftstests je Vorlagenformat; Mutationsläufe je Runde (Bilanz im PR)"},
+        "lokalGetestet": {"wert":true,"beleg":"pruefungen/release-pruefung.test.js 136/136 grün (Vitest 5, --maxWorkers=1), flacher Klon geprüft; acht Reviewrunden #427, Tests jeweils zuerst rot (e441aa1c 30/58, 3411d69b 13/72, c2742512 6/79, f0aee20c 9/91, 2332efb4 8/101, 2ac49819 13/114, 990a8662 11/129, 9134421a 11/136); Vorlagenbindung per SHA-256 (vorlagenHashes) als tragende Sperre; Eigenschaftstests je Vorlagenformat; Mutationsläufe je Runde (Bilanz im PR)"},
         "reviewt": {"wert":false,"beleg":null},
         "integriert": {"wert":false,"beleg":null},
         "stagingGeprueft": {"wert":false,"beleg":null},
