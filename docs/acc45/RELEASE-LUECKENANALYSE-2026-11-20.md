@@ -146,14 +146,14 @@ Sicherungen auf dem VPS, eine Freigabe je Release und eine Prüfung vor dem Job 
 
 ## 3. Probelauf des Werkzeugs gegen den heutigen Stand
 
-Lauf am 2026-11-20 mit Werkzeug v2 (online: `git` lokal, `gh api` nur GET). Kandidat `origin/integration/release-v4`
-@ `5876ff48`, `--basis 274bfa0` (Zeile `aktiv`), Platzhalter-Digest, ohne Bildangaben, ohne Nachweise, ohne
+Lauf am 2026-11-20 mit Werkzeug v3 (online: `git` lokal, `gh api` nur GET). Kandidat `origin/integration/release-v4`
+@ `a279928d`, `--basis 274bfa0` (Zeile `aktiv`), Platzhalter-Digest, ohne Bildangaben, ohne Nachweise, ohne
 Freigabedatei. Ergebnis: **NO-GO, Exit 1** (erwartet).
 
 | Gate | Ergebnis | Grund |
 |---|---|---|
 | G1 | NO-GO | `pruefen` lief zum Zeitpunkt noch (`in_progress`) auf dem neuen Kopf. Auf `014c86ab` waren alle 11 Pflicht-Checks `success` (Lauf v1) |
-| G2 | NO-GO | 374 PRs im Paket (aus Betreffs und GitHub-Zuordnung). 210 ohne Review-Beleg. **149 Commits ohne PR**: direkt auf `integration/release-v4` geschrieben (meist Status-, Backlog- und Doku-Commits, z. B. `77cfb42a`, `9e041af2`); Squash-Commits mit „(PR #N)“ und rebase-gemergte Commits zählen als abgedeckt |
+| G2 | NO-GO | 376 PRs im Paket (Betreffs, von GitHub bestätigt, plus GitHub-Zuordnung). 208 ohne Review-Beleg. **149 Commits ohne PR**: direkt auf `integration/release-v4` geschrieben (meist Status-, Backlog- und Doku-Commits, z. B. `77cfb42a`, `9e041af2`); Squash-Commits mit „(PR #N)“ und rebase-gemergte Commits zählen als abgedeckt |
 | G3 | NO-GO | `RELEASE-SCHALTER.json` gibt es im Kandidaten noch nicht (kommt mit diesem PR). Gegen den Stand dieses PRs: GO |
 | G4 | NO-GO | keine Bildangaben, Digest nicht in der Liste (erwartet: kein Bild aus `main`) |
 | G5 | NO-GO | W-1…W-9 und Startblock seit `274bfa0` geändert → Migrationsfreigabe nötig |
@@ -161,7 +161,7 @@ Freigabedatei. Ergebnis: **NO-GO, Exit 1** (erwartet).
 | G7 | NO-GO | keine Freigabedatei |
 | G8 | NO-GO | 13 P0/P1-Pakete nicht fertig, aber mit PR im Paket (u. a. WP-16, WP-16c, WP-48, WP-19, WP-21, WP-14c) |
 | G9 | NO-GO | offene P1-Befunde WP-14c, WP-07b, ABN-A2, ABN-S2, V4-2b. REL-* zählen nicht (Release-Prozess selbst) |
-| G10 | NO-GO | keine Freigabedatei; HEAD (dieser Branch) ändert seit dem Kandidaten mehr als Liste und Freigabedatei |
+| G10 | NO-GO | keine Freigabedatei; HEAD (dieser Branch) enthält den neuen Integrationskopf nicht |
 
 **Befund G2 (Review):** Für ältere PRs (vor etwa #377) gibt es keinen maschinenlesbaren Review-Beleg. Zwei Wege: (a)
 der Betreiber bestätigt die Liste in `reviewBestaetigt`; (b) Claude legt einen Nachtrag `REVIEW-NACHWEIS-NACHTRAG.md`
@@ -173,8 +173,8 @@ Werkzeug-PR). Ab Branch-Schutz (B-12/Branch-Schutz `main` und `integration/*`) e
 **Befund G2 (Betreff-Umgehung, Delta-Review #427 N-B1, behoben):** Werkzeug v2 wertete einen Betreff „Merge pull
 request #N …“ oder „… (#N)“ als Beleg, samt Zweigseite. Ein lokal erzeugter Merge mit gefälschtem Betreff hätte so jeden
 Commit „abgedeckt“. Seit v3 zählt ein Betreff nur, wenn GitHub den PR bestätigt (gemergt, `merge_commit_sha` = dieser
-Commit, Zweigcommits laut `pulls/{n}/commits`, kein Sammel-PR). Die Zahlen in der Tabelle oben stammen aus v2; der
-Probelauf v3 steht in der PR-Beschreibung bzw. im Review-Kommentar.
+Commit, Zweigcommits laut `pulls/{n}/commits`, kein Sammel-PR). Die Tabelle oben ist der Lauf mit v3; die Zahl der
+Commits ohne PR blieb gleich (149), es gab also keine gefälschten Betreffs im Bereich.
 **Befund G8:** Das Paket enthält Code unfertiger P0/P1-Pakete. Ein Release braucht für jedes davon eine Annahme mit
 Grund in `akzeptiertePakete` (z. B. „hinter Schalter AUS“) oder den Abschluss des Pakets.
 
