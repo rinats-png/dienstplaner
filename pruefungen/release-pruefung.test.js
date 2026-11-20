@@ -738,6 +738,10 @@ describe("Delta-Review 3 #427: Urteile, Basisbindung, Online-Pfad mit realistisc
       "MERGEBAR — widerrufen", "MERGEBAR nur für Teil A", "MERGEBAR unter Auflage", "MERGEBAR (Auflagen A1–A3)",
       "Freigabe zurückgezogen, MERGEBAR war Stand R1", "MERGEBAR? nein", "NO-GO, MERGEBAR", "kein MERGEBAR", "MERGEBAR bedingt",
       "MERGEBAR unter Vorbehalt", "MERGEBAR erst nach Behebung", "UNMERGEBAR", "unerledigt", "MERGE-MIT-AUFLAGEN",
+      // je Verneinungsmuster eine Schlussaussage, die für sich exakt positiv wäre
+      "kein Einwand, MERGEBAR", "CI?, MERGEBAR", "nein, MERGEBAR", "Vorbehalt B1, MERGEBAR", "bedingt, MERGEBAR",
+      "erst nach Fix, MERGEBAR", "nicht final, MERGEBAR", "B1 offen, MERGEBAR", "ausstehend, MERGEBAR", "abgelehnt, MERGEBAR",
+      "verweigert, MERGEBAR", "Beleg fehlt, MERGEBAR", "unerledigt, MERGEBAR",
     ];
     negativ.forEach((u, i) => {
       const b = reviewNachweiseLesen([{ datei: "x.md", text: `| #${i + 1} | x | ${u} |` }]);

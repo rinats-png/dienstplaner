@@ -234,19 +234,21 @@ export function g1Ci(checkRuns, kandidat, konfig) {
 
 // Verneinung, Vorbehalt, Zweifel: im Zweifel kein Beleg.
 const NEGATIV = /nicht|\bkein|unerledigt|unmergebar|ausstehend|abgelehnt|verweigert|\boffen\b|fehlt|erst nach|vorbehalt|bedingt|no-go|nicht\s+mergen|\?|\bnein\b/i;
-const POSITIV = /(?<![A-Za-zÄÖÜäöü-])(MERGEBAR|MERGE-OK|erledigt)(?![A-Za-zÄÖÜäöü-])/gi;
+// Positivliste: Die Schlussaussage muss genau MERGEBAR, MERGE-OK oder erledigt sein (optional „Delta“ davor, Punkt dahinter).
+const SCHLUSS = /^(?:Delta\s+)?(?:MERGEBAR|MERGE-OK|erledigt)[.!]?$/i;
 
-/** Bewertet ein Urteil: zählt nur die letzte Aussage (nach dem letzten „;“ oder „→“); positiv nur ohne Vorbehalt. */
+/**
+ * Bewertet ein Urteil. Die letzte Aussage ist der Text nach dem letzten „;“ oder „→“. Sie darf keine Verneinung
+ * und keinen Vorbehalt enthalten, und ihr letzter Teil (nach dem letzten „,“, „(“, „—“, „–“; schließende Klammern
+ * entfernt) muss exakt auf der Positivliste stehen. Alles andere ist kein Beleg (im Zweifel nein).
+ */
 export function urteilPositiv(urteil) {
-  const teile = String(urteil).split(/;|→/);
-  const letzte = teile[teile.length - 1].trim();
+  const aussagen = String(urteil).split(/;|→/);
+  const letzte = aussagen[aussagen.length - 1].trim();
   if (!letzte || NEGATIV.test(letzte)) return false;
-  const pos = [...letzte.matchAll(POSITIV)];
-  if (!pos.length) return false;
-  // Ein späteres „MIT AUFLAGEN“ hebt ein früheres positives Wort auf.
-  const auflage = [...letzte.matchAll(/MIT[ -]AUFLAGEN/gi)];
-  const letztePos = pos[pos.length - 1].index;
-  return !auflage.some((a) => a.index > letztePos);
+  const teile = letzte.split(/[,(—–]/);
+  const schluss = teile[teile.length - 1].replace(/[)\s]+$/, "").trim();
+  return SCHLUSS.test(schluss);
 }
 
 /**
@@ -374,10 +376,10 @@ export function g2Review({ prs, commitsOhnePr: ohne, anzahlCommits, prAngaben = 
     if (bestaetigt.has(nr)) { g.belege.push(`#${nr}: vom Betreiber in der Freigabedatei bestätigt`); continue; }
     g.manuell.push(`#${nr}`);
   }
-  const akzeptiert = (freigabe?.akzeptierteCommits || []).filter((a) => a?.grund && /^[0-9a-f]{7,40}$/.test(a.sha || ""));
+  const akzeptiert = (freigabe?.akzeptierteCommits || []).filter((a) => a?.grund && /^[0-9a-f]{40}$/.test(a.sha || ""));
   const offeneCommits = [];
   for (const c of ohne) {
-    const a = akzeptiert.find((x) => c.sha.startsWith(x.sha));
+    const a = akzeptiert.find((x) => c.sha === x.sha);
     if (a) g.belege.push(`Commit ${c.sha.slice(0, 10)} ohne PR, akzeptiert: ${a.grund}`);
     else { offeneCommits.push(c); g.manuell.push(`Commit ${c.sha.slice(0, 10)} ${c.betreff.slice(0, 60)}`); }
   }
@@ -415,6 +417,15 @@ export function vorlageLesen(text, art) {
       if (m) werte.set(m[1], ohneKommentar(m[2]));
     } else if (art === "compose") {
       // YAML-Flow: environment: { A: "x", B: y }
+      // YAML-Flow als Liste: environment: ["A=x", 'B=y']
+      const flowListe = /^\s*[A-Za-z_-]+\s*:\s*\[(.*)\]\s*$/.exec(z);
+      if (flowListe) {
+        for (const teil of flowListe[1].split(",")) {
+          const p = /^\s*["']?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)["']?\s*$/.exec(teil);
+          if (p && /^[A-Z]/.test(p[1])) werte.set(p[1], p[2]);
+        }
+        continue;
+      }
       const flow = /^\s*[A-Za-z_-]+\s*:\s*\{(.*)\}\s*$/.exec(z);
       if (flow) {
         for (const teil of flow[1].split(",")) {
@@ -619,8 +630,8 @@ export function g5Migration(bericht, freigabe, liste = null) {
     return nogo(g, `Änderungen gegen den vorigen Release nicht ermittelbar${bericht?.fehler ? ": " + bericht.fehler : ""} (fail-closed)`);
   }
   // Die Basis muss ein Release laut Freigabeliste sein (aktiv, vorherig oder gesperrt), sonst ist der Vergleich wertlos.
-  if (liste && !liste.zeilen.some((z) => z.commit === bericht.basis)) {
-    nogo(g, `Basis ${bericht.basis} steht in keiner Zeile der Freigabeliste (FREIGEGEBENE-IMAGES.md)`);
+  if (liste && !liste.zeilen.some((z) => z.commit === bericht.basis && (z.status === "aktiv" || z.status === "vorherig"))) {
+    nogo(g, `Basis ${bericht.basis} steht in keiner Zeile aktiv oder vorherig der Freigabeliste (FREIGEGEBENE-IMAGES.md); gesperrte Zeilen sind keine Basis`);
   }
   const zuPruefen = [...bericht.betroffen];
   if (bericht.startblockGeaendert) zuPruefen.push("STARTBLOCK");
@@ -753,7 +764,7 @@ export function freigabeSchema(f) {
   reihe("akzeptiertePakete", mitGrund);
   reihe("akzeptierteBefunde", mitGrund);
   reihe("freigegebeneSchalter", (x) => istObjekt(x) && typeof x.name === "string" && typeof x.grund === "string" && x.grund.trim() !== "");
-  reihe("akzeptierteCommits", (x) => istObjekt(x) && /^[0-9a-f]{7,40}$/.test(x.sha || "") && typeof x.grund === "string" && x.grund.trim() !== "");
+  reihe("akzeptierteCommits", (x) => istObjekt(x) && /^[0-9a-f]{40}$/.test(x.sha || "") && typeof x.grund === "string" && x.grund.trim() !== "");
   if (f.rueckweg !== undefined && !istObjekt(f.rueckweg)) fe.push("rueckweg: kein Objekt");
   if (f.migration !== undefined) {
     if (!istObjekt(f.migration)) fe.push("migration: kein Objekt");
@@ -762,7 +773,7 @@ export function freigabeSchema(f) {
   return fe;
 }
 
-export function g10Freigabe({ releaseId, freigabe, freigabeFehler, commitet, kandidat, digest, stand }, konfig = KONFIG_STANDARD) {
+export function g10Freigabe({ releaseId, freigabe, freigabeFehler, commitet, kandidat, digest, basis, stand }, konfig = KONFIG_STANDARD) {
   const g = gate("G10", "Betreiberfreigabe für diesen Release");
   if (!istObjekt(stand) || stand.kandidatIstVorfahr !== true) nogo(g, "HEAD enthält den Kandidaten nicht (oder nicht ermittelbar)");
   if (!istObjekt(stand) || stand.headGepusht !== true) nogo(g, "HEAD ist nicht auf origin (gepusht) — lokale Stände gelten nicht");
@@ -779,6 +790,8 @@ export function g10Freigabe({ releaseId, freigabe, freigabeFehler, commitet, kan
   if (freigabe.releaseId !== releaseId) nogo(g, `Freigabedatei: releaseId ${freigabe.releaseId} ≠ ${releaseId}`);
   if (freigabe.kandidatCommit !== kandidat) nogo(g, `Freigabedatei: kandidatCommit ${freigabe.kandidatCommit} ≠ ${kandidat}`);
   if (freigabe.digest !== digest) nogo(g, `Freigabedatei: digest ${freigabe.digest} ≠ ${digest}`);
+  if (!HEX40.test(String(freigabe.basisCommit || ""))) nogo(g, "Freigabedatei: basisCommit fehlt (der Betreiber bindet die Basis)");
+  else if (freigabe.basisCommit !== basis) nogo(g, `Freigabedatei: basisCommit ${freigabe.basisCommit} ≠ --basis ${basis}`);
   if (freigabe.umgebung !== "produktion") nogo(g, "Freigabedatei: umgebung ist nicht produktion");
   if (!String(freigabe.freigegebenDurch || "").trim()) nogo(g, "Freigabedatei: freigegebenDurch fehlt");
   if (!DATUM.test(String(freigabe.datum || ""))) nogo(g, "Freigabedatei: datum fehlt oder nicht JJJJ-MM-TT");
@@ -818,7 +831,7 @@ export function auswerten(e, konfig = KONFIG_STANDARD) {
     g7Rueckweg({ liste, kandidat: e.kandidat, digest: e.digest }, freigabe, konfig),
     g8Blocker(e.ssot, prs, freigabe, konfig),
     g9Befunde(e.ssot, freigabe, konfig),
-    g10Freigabe({ releaseId: e.releaseId, freigabe: roheFreigabe, freigabeFehler: e.freigabeFehler, commitet: e.freigabeCommitet, kandidat: e.kandidat, digest: e.digest, stand: e.stand }, konfig),
+    g10Freigabe({ releaseId: e.releaseId, freigabe: roheFreigabe, freigabeFehler: e.freigabeFehler, commitet: e.freigabeCommitet, kandidat: e.kandidat, digest: e.digest, basis: e.basis, stand: e.stand }, konfig),
   ];
   const gesamt = gates.every((g) => g.ergebnis === "GO") ? "GO" : "NO-GO";
   const modus = e.modus || "offline-fixture";
@@ -842,12 +855,14 @@ export function auswerten(e, konfig = KONFIG_STANDARD) {
 
 /* ------------------------------------------------- Sammeln (Ein-/Ausgabe) */
 
+const ZEITGRENZE_MS = 60_000;
+
 function git(wurzel, args) {
-  return execFileSync("git", args, { cwd: wurzel, encoding: "utf8", maxBuffer: 512 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] }).replace(/\s+$/, "");
+  return execFileSync("git", args, { cwd: wurzel, encoding: "utf8", maxBuffer: 512 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"], timeout: ZEITGRENZE_MS }).replace(/\s+$/, "");
 }
 
 function ghApi(wurzel, pfad, extra = []) {
-  return JSON.parse(execFileSync("gh", ["api", ...extra, pfad], { cwd: wurzel, encoding: "utf8", maxBuffer: 256 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] }));
+  return JSON.parse(execFileSync("gh", ["api", ...extra, pfad], { cwd: wurzel, encoding: "utf8", maxBuffer: 256 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"], timeout: ZEITGRENZE_MS }));
 }
 
 /** Löst eine Revision sicher auf (keine Option als Revision). Fehler: null. */
@@ -872,7 +887,7 @@ function quelle(wurzel, rev) {
     };
     return { lesen, dateien: (wurzeln) => wurzeln.flatMap((r) => dateien(r)), gibt: (rel) => existsSync(join(wurzel, rel)) };
   }
-  const lesen = (rel) => { try { return execFileSync("git", ["show", `${rev}:${rel}`], { cwd: wurzel, encoding: "utf8", maxBuffer: 64 * 1024 * 1024, stdio: ["ignore", "pipe", "ignore"] }); } catch { return null; } };
+  const lesen = (rel) => { try { return execFileSync("git", ["show", `${rev}:${rel}`], { cwd: wurzel, encoding: "utf8", maxBuffer: 64 * 1024 * 1024, stdio: ["ignore", "pipe", "ignore"], timeout: ZEITGRENZE_MS }); } catch { return null; } };
   const dateien = (wurzeln) => { try { return git(wurzel, ["ls-tree", "-r", "--name-only", rev, "--", ...wurzeln]).split("\n").filter(Boolean); } catch { return []; } };
   const gibt = (rel) => { try { git(wurzel, ["cat-file", "-e", `${rev}:${rel}`]); return true; } catch { return false; } };
   return { lesen, dateien, gibt };
@@ -895,8 +910,10 @@ export function basisPruefen(wurzel, basis, kandidat, konfig = KONFIG_STANDARD) 
   try { anzahl = Number(git(wurzel, ["rev-list", "--count", `${basis}..${kandidat}`])); } catch { return "Bereich nicht ermittelbar"; }
   if (!(anzahl > 0)) return "leerer Commit-Bereich";
   let liste = null;
-  try { liste = execFileSync("git", ["show", `HEAD:${konfig.freigabeListe}`], { cwd: wurzel, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }); } catch { liste = null; }
-  if (!freigabelisteLesen(liste).zeilen.some((z) => z.commit === basis)) return `Basis steht in keiner Zeile von ${konfig.freigabeListe} (HEAD)`;
+  try { liste = execFileSync("git", ["show", `HEAD:${konfig.freigabeListe}`], { cwd: wurzel, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: ZEITGRENZE_MS }); } catch { liste = null; }
+  const zeilen = freigabelisteLesen(liste).zeilen.filter((z) => z.commit === basis);
+  if (!zeilen.length) return `Basis steht in keiner Zeile von ${konfig.freigabeListe} (HEAD)`;
+  if (!zeilen.some((z) => z.status === "aktiv" || z.status === "vorherig")) return `Basis steht in ${konfig.freigabeListe} nicht als aktiv oder vorherig (gesperrt ist keine Basis)`;
   return null;
 }
 
@@ -987,7 +1004,11 @@ export function sammeln(opt, konfig = KONFIG_STANDARD) {
     let vorfahr = true;
     try { git(w, ["merge-base", "--is-ancestor", e.kandidat, "HEAD"]); } catch { vorfahr = false; }
     let gepusht = false;
-    try { gepusht = git(w, ["branch", "-r", "--contains", "HEAD"]).trim() !== ""; } catch { gepusht = false; }
+    // Gepusht heißt: ein Zweig auf origin zeigt genau auf HEAD (git ls-remote, nur lesend).
+    try {
+      const kopf = git(w, ["rev-parse", "HEAD"]);
+      gepusht = git(w, ["ls-remote", "--heads", "origin"]).split("\n").some((z) => z.split("\t")[0] === kopf);
+    } catch { gepusht = false; }
     e.stand = { kandidatIstVorfahr: vorfahr, headGepusht: gepusht, geaendertSeitKandidat: vorfahr ? git(w, ["diff", "--name-only", e.kandidat, "HEAD"]).split("\n").filter(Boolean) : null };
   } catch { e.stand = null; }
   try {
