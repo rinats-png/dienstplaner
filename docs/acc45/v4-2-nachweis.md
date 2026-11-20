@@ -124,3 +124,60 @@ vor F5:
 (Die Reviewzahl 1,85:1 für Hover ist rechnerisch; gemessen sind Hover und aktiv gleich, weil beide `var(--v4-glas)`
 tragen.) WCAG 1.4.3 im hellen Thema verfehlt. → **Paket V4-2c, MITTEL-HOCH** (SSOT, Datei `src/v4/app-stil.js`).
 Nach F5 ist der Wert nicht messbar (Seitenleiste transparent, siehe oben).
+
+## 7. V4-2b — `--v4-*` in der Anwendung immer gesetzt und an `data-thema` gebunden
+
+Basis `origin/integration/release-v4` 014c86ab (Merge #425), Branch `acc45/v4/v4-2b-variablen`.
+
+**Ursache (Code).** Die App-Schicht `src/v4/app-stil.js` (Scope `html[data-v4-app]`) liest nur `var(--v4-…)`. Die
+Variablen standen nur in `v4Variablen()` (`src/v4/stil.js`), eingehängt als `<style id="v4-stil">` allein durch
+`v4EinstiegAnwenden()` (`src/v4/thema.js`). `src/main.jsx` ruft das nur ohne Sitzung (`if (!SP.angemeldet())`, Modulebene)
+und im `Einstieg`-Effekt nur bei `!an`. Neuladen mit Sitzung: kein `#v4-stil`, alle `--v4-*` leer, die Flächen fallen auf
+`transparent`. Ohne Neuladen bleibt `#v4-stil` stehen, aber `v4EinstiegVerlassen()` entfernt `data-v4-thema`; dann
+wählt `@media (prefers-color-scheme: dark)` die Werte, nicht `data-thema` der Anwendung (`themaSetzen`, `App.jsx`).
+
+**Test zuerst** (Commit 63132c7e, rot auf 014c86ab):
+
+| Test | rot (alt) | grün (neu) |
+|---|---|---|
+| `pruefungen/v4-2b-variablen.test.js` (in `pruefung:v4-tokens`): gerenderter App-Stil, Kaskade am Wurzelelement; App hell/dunkel × System hell/dunkel × Start (F5 ohne `#v4-stil`, Anmeldung mit `#v4-stil`, veraltetes `data-v4-thema`) | 11/14 rot | 14/14 |
+| `e2e/v4-variablen.spec.mjs`: Anmeldung → F5 → `data-thema`, `--v4-flaeche`, computed background `.seitenleiste`/`.karte`/`.btn-primary` = Token des App-Themas; 390 und 1280 px; App ≠ System; Themenwechsel ohne Neuladen | 5/5 rot (`--v4-flaeche` leer) | 5/5 |
+
+Der E2E-Test läuft nur im Projekt 390x844 und stellt beide Breiten selbst ein (1280 px ist kein Projekt der
+Gerätematrix). App-Thema über die gemerkte Wahl dieses Geräts (`centric.thema`), System über `emulateMedia`; nichts
+wird auf dem Server geschrieben außer dem bestehenden `tourZu` in `anmelden()`. Vor Grün zwei Anpassungen am neuen
+Test (kein bestehender Test geändert): `.karte` ohne eigene Inline-Fläche messen (Hinweiskarte trägt Warnfarbe inline),
+nach dem Themenwechsel auf die Flächen warten (`expect.poll` auf die drei Hintergründe, 10 s). Ursache: Mit
+`reducedMotion: "reduce"` startet der Übergang erst mit dem nächsten Bild; direkt nach dem Attributwechsel liefert
+`getComputedStyle` noch den alten Wert (nicht die Dauer 0,14–0,18 s). Review #426: feste Pause durch Bedingung ersetzt,
+`test.setTimeout(150 s)` (lokal 43–49 s je Fall), Bremsen-Bilanz im Kopf der Spec (5 Leitungsanmeldungen je Lauf,
+nur 390x844; Code je Test aus dem Zugangspool, #423).
+
+**Fix (minimal, nur bestehende Tokens).** `src/v4/stil.js`: neue Ausgabe `v4AppVariablen()` aus denselben
+`festeVariablen()`/`farbVariablen()` wie der Einstieg, gebunden an `:root[data-v4-app][data-thema="hell"|"dunkel"]`
+(Spezifität 0,3,0 über allen Regeln des Einstiegsstils). `src/App.jsx`: Import und eine Zeile in `bauStyles()` vor
+`v4AppStil()`. Damit trägt jeder App-Stilblock (alle Zweige, auch Fehler- und Ladeseite) die Variablen selbst. Keine
+Änderung an `main.jsx`, `thema.js`, Klassennamen oder Locators. Nach Abmelden verschwindet der App-Stil mit der App; der
+Einstieg gilt wieder allein.
+
+**Bildbeleg** (lokal, 127.0.0.1, Wegwerfdaten, `pruefungen/browser/v4-abnahme.mjs` als Kopie mit F5-Schritt im
+Scratchpad, Rolle Leitung; Bilder nur im Scratchpad):
+
+| nach F5 | `#v4-stil` | `data-thema` | `--v4-flaeche` | `.seitenleiste` | `.karte` | `.btn-primary` |
+|---|---|---|---|---|---|---|
+| 390 hell | nein | hell | `#fffefa` | rgb(14,48,52) | rgb(255,254,250) | rgb(11,96,88) |
+| 390 dunkel | nein | dunkel | `#0e3034` | rgb(7,30,34) | rgb(14,48,52) | rgb(185,239,220) |
+| 1280 hell | nein | hell | `#fffefa` | rgb(14,48,52) | rgb(255,254,250) | rgb(11,96,88) |
+| 1280 dunkel | nein | dunkel | `#0e3034` | rgb(7,30,34) | rgb(14,48,52) | rgb(185,239,220) |
+
+Gleiche Werte wie vor F5 in Abschnitt 6. Die Schublade (390 px, hell, nach F5) ist opak dunkel, die Navigationsschrift
+lesbar. Sichtbar bleibt der helle Glaszustand von `.slink.on` mit weißer Schrift: das ist V4-2c (WCAG 1.4.3), hier
+nicht berührt.
+
+**Lokale Läufe** (2026-11-20, je Datei `--maxWorkers=1`): v4-2b-variablen 14/14, v4-tokens 32/32, v4-app-stil 16/16,
+v4-markenrest 20/20, gestalt 19/19, kontrast 207/207, wcag-wp40 35/35, oberflaeche-render 40/40, wp39-app-aufbau 4/4,
+endgeraete-speicher 6/6, prozess-wachen 15/15, doku 5/5, verdrahtung 8/8, ci-abdeckung 8/8, acc45-status 17/17;
+eslint 0 Fehler (nur bestehende Warnungen), tsc 0. E2E (`E2E_PORT` frei gewählt): v4-variablen 5/5, barrierefreiheit
+14/14 (Projekte 390x844 und 1024x768).
+
+**Offen.** V4-2c (Kontrast `.slink.on`/`:hover` hell) bleibt eigenes Paket. Vollregression nur in CI.
