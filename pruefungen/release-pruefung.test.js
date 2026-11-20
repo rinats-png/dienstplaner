@@ -12,7 +12,7 @@ import {
   KONFIG_STANDARD, auswerten, sammeln, freigabelisteLesen, g1Ci, g2Review, g3Schalter, g4Bild, g5Migration,
   g6Sicherung, g7Rueckweg, g8Blocker, g9Befunde, g10Freigabe, migrationsbericht, reviewNachweiseLesen,
   codeNamenFinden, vorlageLesen, wertAufloesen, abweichend, bildAngabenLesen, prsAusCommits, commitsOhnePr,
-  argumenteLesen, ssotReviewBelege, freigabeSchema,
+  argumenteLesen, ssotReviewBelege, freigabeSchema, basisPruefen,
 } from "../werkzeug/release-pruefung.mjs";
 
 const WURZEL = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -47,7 +47,7 @@ const checks = (ueber = {}) => PFLICHT.map((name, i) => ({
 
 const FREIGABE = {
   schema: 1, releaseId: "v4-r1", kandidatCommit: K, digest: D, umgebung: "produktion",
-  freigegebenDurch: "Betreiber", datum: "2026-11-20",
+  freigegebenDurch: "Betreiber", datum: "2026-11-20", basisCommit: B,
   rueckweg: { strategie: "r0", entscheidungO1: "a", entscheidungO2: "a" },
   reviewBestaetigt: [],
   migration: { freigegeben: true, basisCommit: B, abgedeckt: ["W-4", "STARTBLOCK"], bericht: "docs/acc45/releases/v4-r1.migration.md" },
@@ -265,11 +265,11 @@ describe("G2 Review und Commits ohne PR", () => {
     fx.commitPrZuordnung = { ["4".repeat(40)]: [10], ["5".repeat(40)]: [] };
     expect(pruefe(fx).paket.commitsOhnePr.map((x) => x.sha)).toEqual(["5".repeat(40)]);
   });
-  it("Commits ohne PR → NO-GO, außer akzeptiert mit Grund (Präfix ab 7 Zeichen)", () => {
+  it("Commits ohne PR → NO-GO, außer akzeptiert mit Grund (volle 40 Zeichen)", () => {
     const ohne = [{ sha: "5".repeat(40), betreff: "Direkt" }];
     expect(g2Review({ prs: [], commitsOhnePr: ohne }).ergebnis).toBe("NO-GO");
-    expect(g2Review({ prs: [], commitsOhnePr: ohne, freigabe: { akzeptierteCommits: [{ sha: "5555555", grund: "Hotfix, Review #9" }] } }).ergebnis).toBe("GO");
-    expect(g2Review({ prs: [], commitsOhnePr: ohne, freigabe: { akzeptierteCommits: [{ sha: "5555555" }] } }).ergebnis).toBe("NO-GO");
+    expect(g2Review({ prs: [], commitsOhnePr: ohne, freigabe: { akzeptierteCommits: [{ sha: "5".repeat(40), grund: "Hotfix, Review #9" }] } }).ergebnis).toBe("GO");
+    expect(g2Review({ prs: [], commitsOhnePr: ohne, freigabe: { akzeptierteCommits: [{ sha: "5".repeat(40) }] } }).ergebnis).toBe("NO-GO");
     expect(g2Review({ prs: [], commitsOhnePr: undefined }).ergebnis).toBe("NO-GO");
   });
   it("Gesamtlauf: ein Commit ohne PR macht G2 NO-GO; offene PRs stehen unter manuelleBestaetigungen", () => {
@@ -514,7 +514,7 @@ describe("G8, G9 SSOT", () => {
 
 describe("G10 Freigabe und Stand", () => {
   const STAND = { kandidatIstVorfahr: true, headGepusht: true, geaendertSeitKandidat: ["deploy/FREIGEGEBENE-IMAGES.md", "docs/acc45/releases/v4-r1.freigabe.json"] };
-  const fall = (f, x = {}) => g10Freigabe({ releaseId: "v4-r1", freigabe: f, commitet: true, kandidat: K, digest: D, stand: STAND, ...x }, KONFIG_STANDARD);
+  const fall = (f, x = {}) => g10Freigabe({ releaseId: "v4-r1", freigabe: f, commitet: true, kandidat: K, digest: D, basis: B, stand: STAND, ...x }, KONFIG_STANDARD);
   it("passende, commitete Freigabe → GO", () => expect(fall(FREIGABE).ergebnis).toBe("GO"));
   it("abweichender Digest, Commit, Umgebung, fehlende Person, nicht commitet, ungültige ID → NO-GO", () => {
     expect(fall({ ...FREIGABE, digest: D_ALT }).ergebnis).toBe("NO-GO");
@@ -628,16 +628,6 @@ describe("Delta-Review #427: Fälschung, Basis, Wertlücken, Kandidaten-Stand", 
     expect(g5.ergebnis).toBe("NO-GO");
     expect(g5.gruende.join()).toMatch(/Freigabeliste/);
   });
-  it("N-B2 CLI: Basis = Kandidat, Basis kein Vorfahr, Basis nicht in der Liste → Exit 2 (vor jedem Netzaufruf)", () => {
-    const lauf = (args) => spawnSync(process.execPath, [WERKZEUG, ...args], { encoding: "utf8", cwd: WURZEL });
-    const gleich = lauf(["--kandidat", "HEAD", "--basis", "HEAD", "--release-id", "x1y", "--digest", D]);
-    expect(gleich.status).toBe(2);
-    expect(gleich.stderr).toMatch(/Basis/);
-    expect(lauf(["--kandidat", "HEAD~1", "--basis", "HEAD", "--release-id", "x1y", "--digest", D]).status).toBe(2);
-    const nichtGelistet = lauf(["--kandidat", "HEAD", "--basis", "HEAD~1", "--release-id", "x1y", "--digest", D]);
-    expect(nichtGelistet.status).toBe(2);
-    expect(nichtGelistet.stderr).toMatch(/FREIGEGEBENE-IMAGES/);
-  }, 60_000);
   it("Auflage 2: unbekannte CENTRIC_-Variable in einer Vorlage → NO-GO", () => {
     const g = g3Schalter({ codeNamen: ["CENTRIC_DEMO"], klassen: KL, unfertig: UNFERTIG, quelltexte: { "src/lib/import-schnittstelle.js": "export const IMPORT_DATEI_AKTIV = false;" },
       vorlagen: [{ pfad: "v", art: "compose", pflicht: true, text: "    environment:\n      CENTRIC_NEU_FUNKTION: \"true\"\n" }] }, KONFIG_STANDARD);
@@ -739,4 +729,129 @@ describe("Auflage 5: Online-Pfad liest den Kandidaten-Stand (temporäres Git-Rep
     expect(pfade.some((p) => /check-runs\?.*filter=all/.test(p))).toBe(true);
     expect(r.modus).toBe("online");
   }, 60_000);
+});
+
+describe("Delta-Review 3 #427: Urteile, Basisbindung, Online-Pfad mit realistischem gh-Ersatz", () => {
+  it("A2: nur die letzte Aussage exakt MERGEBAR / MERGE-OK / erledigt zählt", () => {
+    const negativ = [
+      "MERGEBAR, aber B1 ungelöst", "MERGEBAR nach Fix von B1", "MERGEBAR sobald CI grün", "MERGEBAR (Blocker B1 bleibt)",
+      "MERGEBAR — widerrufen", "MERGEBAR nur für Teil A", "MERGEBAR unter Auflage", "MERGEBAR (Auflagen A1–A3)",
+      "Freigabe zurückgezogen, MERGEBAR war Stand R1", "MERGEBAR? nein", "NO-GO, MERGEBAR", "kein MERGEBAR", "MERGEBAR bedingt",
+      "MERGEBAR unter Vorbehalt", "MERGEBAR erst nach Behebung", "UNMERGEBAR", "unerledigt", "MERGE-MIT-AUFLAGEN",
+    ];
+    negativ.forEach((u, i) => {
+      const b = reviewNachweiseLesen([{ datei: "x.md", text: `| #${i + 1} | x | ${u} |` }]);
+      expect(b.size, u).toBe(0);
+    });
+    const positiv = ["MERGEBAR", "MERGEBAR.", "2 Runden (MIT AUFLAGEN, MERGEBAR)", "MIT AUFLAGEN → erledigt", "MERGE-MIT-AUFLAGEN; Delta MERGE-OK", "2 Runden → MERGEBAR"];
+    positiv.forEach((u, i) => {
+      const b = reviewNachweiseLesen([{ datei: "x.md", text: `| #${i + 1} | x | ${u} |` }]);
+      expect(b.size, u).toBe(1);
+    });
+  });
+  it("A1: Basis nur über eine Zeile aktiv oder vorherig; gesperrte Zeile reicht nicht (G5)", () => {
+    const l = freigabelisteLesen(liste([zeileListe(D, K, "aktiv"), zeileListe("sha256:deadbeef", B, "gesperrt", "vorsorglich")]));
+    const bericht = migrationsbericht({ basis: B, kandidat: K, geaenderteDateien: [], neueDateien: [] }, KONFIG_STANDARD);
+    expect(g5Migration(bericht, null, l).ergebnis).toBe("NO-GO");
+    const l2 = freigabelisteLesen(liste([zeileListe(D, K, "aktiv"), zeileListe(D_ALT, B, "vorherig")]));
+    expect(g5Migration(bericht, null, l2).ergebnis).toBe("GO");
+  });
+  it("A1: die Freigabedatei bindet die Basis (basisCommit); fehlt oder abweichend → G10 NO-GO", () => {
+    const fx = fixtureGo();
+    expect(gateVon(pruefe(fx), "G10").ergebnis).toBe("GO");
+    datei("docs/acc45/releases/v4-r1.freigabe.json", { ...FREIGABE, basisCommit: undefined });
+    expect(gateVon(pruefe(fx), "G10").gruende.join()).toMatch(/basisCommit/);
+    datei("docs/acc45/releases/v4-r1.freigabe.json", { ...FREIGABE, basisCommit: K });
+    expect(gateVon(pruefe(fx), "G10").ergebnis).toBe("NO-GO");
+  });
+  it("A4: YAML-Flow als Liste environment: [\"X=w\"] → NO-GO", () => {
+    const g = g3Schalter({ codeNamen: ["CENTRIC_DEMO"], klassen: KL, unfertig: UNFERTIG, quelltexte: { "src/lib/import-schnittstelle.js": "export const IMPORT_DATEI_AKTIV = false;" },
+      vorlagen: [{ pfad: "v", art: "compose", pflicht: true, text: "    environment: [\"CENTRIC_DEMO=true\", 'PORT=3000']\n" }] }, KONFIG_STANDARD);
+    expect(g.ergebnis).toBe("NO-GO");
+  });
+  it("H4: akzeptierteCommits verlangt volle 40 Zeichen", () => {
+    expect(freigabeSchema({ ...FREIGABE, akzeptierteCommits: [{ sha: "5555555", grund: "g" }] }).join()).toMatch(/akzeptierteCommits/);
+    const ohne = [{ sha: "5".repeat(40), betreff: "x" }];
+    expect(g2Review({ prs: [], commitsOhnePr: ohne, freigabe: { akzeptierteCommits: [{ sha: "5555555", grund: "g" }] } }).ergebnis).toBe("NO-GO");
+  });
+});
+
+describe("Delta-Review 3 #427: temporäres Git-Repo (unabhängig von Historie und Checkout-Tiefe)", () => {
+  let repo;
+  const g = (...args) => {
+    const r = spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false", "-c", "init.defaultBranch=main", ...args], { cwd: repo, encoding: "utf8" });
+    if (r.status !== 0) throw new Error(args.join(" ") + ": " + r.stderr);
+    return r.stdout.trim();
+  };
+  const schreib = (rel, inhalt) => { mkdirSync(join(repo, rel, ".."), { recursive: true }); writeFileSync(join(repo, rel), typeof inhalt === "string" ? inhalt : JSON.stringify(inhalt)); };
+  const commit = (rel, inhalt, msg) => { schreib(rel, inhalt); g("add", "-A"); g("commit", "-q", "-m", msg); return g("rev-parse", "HEAD"); };
+  const merge = (zweig, msg) => { g("merge", "-q", "--no-ff", zweig, "-m", msg); return g("rev-parse", "HEAD"); };
+  let basis, nebenzweig, m1, f1, m2, m3, kandidat;
+  beforeEach(() => {
+    repo = mkdtempSync(join(tmpdir(), "rel1-r3-"));
+    g("init", "-q");
+    basis = commit("server.mjs", 'process.env.CENTRIC_DEMO === "true";\n', "Basis");
+    g("checkout", "-q", "-b", "fremd"); nebenzweig = commit("fremd.txt", "x", "abgezweigt"); g("checkout", "-q", "main");
+    g("checkout", "-q", "-b", "f1"); f1 = commit("a.txt", "1", "Paket 1"); g("checkout", "-q", "main");
+    m1 = merge("f1", "Merge pull request #1 from x/acc45/f1");
+    g("checkout", "-q", "-b", "f2"); commit("b.txt", "2", "Paket 2"); g("checkout", "-q", "main");
+    m2 = merge("f2", "Merge pull request #2 from x/acc45/f2");
+    g("checkout", "-q", "-b", "f3"); commit("c.txt", "3", "Paket 3"); g("checkout", "-q", "main");
+    m3 = merge("f3", "Merge pull request #3 from x/acc45/f3");
+    kandidat = m3;
+    commit("deploy/FREIGEGEBENE-IMAGES.md", liste([zeileListe(D, kandidat, "aktiv"), zeileListe(D_ALT, basis, "vorherig"),
+      zeileListe("sha256:deadbeef", nebenzweig, "gesperrt", "vorsorglich")]), "Liste");
+  });
+  afterEach(() => rmSync(repo, { recursive: true, force: true }));
+
+  it("N-B2/B1: Basis = Kandidat, kein Vorfahr, nicht gelistet, nur gesperrt gelistet → Exit 2 mit Grund (CLI)", () => {
+    const lauf = (b, k = kandidat) => spawnSync(process.execPath, [WERKZEUG, "--wurzel", repo, "--kandidat", k, "--basis", b, "--release-id", "x1y", "--digest", D], { encoding: "utf8" });
+    const gleich = lauf(kandidat);
+    expect([gleich.status, gleich.stderr]).toEqual([2, expect.stringMatching(/Basis = Kandidat/)]);
+    const fremd = lauf(nebenzweig);
+    expect([fremd.status, fremd.stderr]).toEqual([2, expect.stringMatching(/kein Vorfahr/)]);
+    const ungelistet = lauf(m1);
+    expect([ungelistet.status, ungelistet.stderr]).toEqual([2, expect.stringMatching(/FREIGEGEBENE-IMAGES/)]);
+    expect(basisPruefen(repo, nebenzweig, kandidat)).toMatch(/kein Vorfahr/);
+    expect(basisPruefen(repo, basis, kandidat)).toBe(null);
+  }, 90_000);
+  it("A1: gesperrte Zeile macht keinen Commit zur Basis (basisPruefen)", () => {
+    commit("deploy/FREIGEGEBENE-IMAGES.md", liste([zeileListe(D, kandidat, "aktiv"), zeileListe("sha256:deadbeef", m1, "gesperrt", "vorsorglich")]), "Angriff");
+    expect(basisPruefen(repo, m1, kandidat)).toMatch(/aktiv oder vorherig/);
+  });
+  it("A3: realistischer gh-Ersatz — gemergt, nicht gemergt, falscher merge_commit_sha, Reviews nur paginiert", () => {
+    const pr = {
+      1: { merged_at: "2026-11-20T00:00:00Z", merge_commit_sha: m1, head: { ref: "acc45/f1" }, user: { login: "a" } },
+      2: { merged_at: null, merge_commit_sha: m2, head: { ref: "acc45/f2" }, user: { login: "a" } },
+      3: { merged_at: "2026-11-20T00:00:00Z", merge_commit_sha: "9".repeat(40), head: { ref: "acc45/f3" }, user: { login: "a" } },
+    };
+    const gh = (pfad, extra = []) => {
+      const paginiert = extra.includes("--paginate") && extra.includes("--slurp");
+      let m;
+      if ((m = /pulls\/(\d+)\/commits/.exec(pfad))) {
+        if (!paginiert) return { fehler: "nicht paginiert" };
+        return [[{ sha: m[1] === "1" ? f1 : "0".repeat(40) }]];
+      }
+      if ((m = /pulls\/(\d+)\/reviews/.exec(pfad))) {
+        if (!paginiert) return { fehler: "nicht paginiert" };
+        return [[{ state: "APPROVED", user: { login: "b" } }]];
+      }
+      if ((m = /pulls\/(\d+)$/.exec(pfad))) return pr[m[1]];
+      if (/commits\/[0-9a-f]+\/pulls/.test(pfad)) return [];
+      if (/check-runs/.test(pfad)) return [{ check_runs: [] }];
+      throw new Error("unbekannt: " + pfad);
+    };
+    const e = sammeln({ wurzel: repo, offline: false, kandidatSha: kandidat, basisSha: basis, releaseId: "x1y", digest: D, jetztMs: JETZT_MS, gh });
+    expect(e.prBestaetigung[1]).toEqual({ gemergt: true, mergeCommit: m1, zweig: "acc45/f1", commits: [f1] });
+    expect(e.prBestaetigung[2].gemergt).toBe(false);
+    const r = auswerten(e);
+    const ohne = r.paket.commitsOhnePr.map((x) => x.sha);
+    expect(ohne).not.toContain(m1);
+    expect(ohne).not.toContain(f1);
+    expect(ohne).toContain(m2); // nicht gemergt
+    expect(ohne).toContain(m3); // falscher merge_commit_sha
+    expect(gateVon(r, "G2").belege.join()).toMatch(/#1: GitHub-Review APPROVED von b/);
+    expect(r.gates.find((x) => x.id === "G10").gruende.join()).toMatch(/nicht auf origin|gepusht/);
+    expect(e.stand.headGepusht).toBe(false); // kein origin im temporären Repo
+  }, 90_000);
 });
