@@ -252,3 +252,24 @@ E3 verlangt, dass nur `src/ansichten/schichtmodelle.jsx` und `src/app/aktionen/p
 - **Offen (Vorbedingung vor dem Einschalten):** Sicht der Beschäftigten/Schichtverantwortung/Betriebsrat auf fremde Pläne
   (vom Server gerechneter Dienst); P2-26, P2-27 (und P2-24 (b), P2-25, P2-28) beim Betreiber; `RELEASE-UNFERTIG.json`-Eintrag
   nach dem Merge von #427.
+
+## Nachtrag 2026-11-20 (i): Nachträge aus dem Opus-Review zu #431 (Branch `acc45/imp6/nachtraege-431`)
+
+- **Schalter:** `CENTRIC_SCHICHTMODELL_WIRKUNG` bleibt AUS; nichts aktiviert. Keine Entscheidung zu P2-24 (b), P2-25 bis P2-28.
+- **Befund 1, Schreibweg der Teilrollen:** in `IMP-6-MEHRFACHMODELLE.md` („Bewusst nicht gebaut“ 1 und „Vorbedingungen vor AN“)
+  aufgenommen. Szenario: Die Schichtverantwortung setzt bei einer Person mit eigenem Modell den Dienst der Betriebsfolge; ihr
+  Client (ohne Merker, `daten.mjs` ~Z. 1419) hält ihn für den Plan und löscht die Abweichung (`plan.js` ~Z. 52); der Server
+  rechnet nach dem Modell — still gilt der Modelldienst. Datenintegrität beim Schreiben, nicht nur Anzeige. Vorbedingung vor AN:
+  vom Server gerechneter Dienst für die Teilrollen mit Sicht und Schreibweg.
+- **Befund 3, Mutant M3 (Zwischenspeicher):** neu `imp6-verdrahtung` K4. Folge an Ort und Stelle leer (`tage = []`,
+  `tage.length = 0`) oder ungültig (keine Liste) → neu rechnen, Modell unbekannt, nie ein NaN-Dienst; danach wieder gefüllt →
+  richtiger Dienst. K2 allein tötete M3 nicht (die Karte zeigt auf den Eintrag selbst, nur die geleerte Folge fällt auf).
+  **Rot gegen die Mutation** (in `abbildGleich` den Vergleich von Folge und Länge entfernt, `server/lib/schichtmodell-kern.mjs`
+  Z. 56): K4 rot mit `Number.isNaN(index)` = true für eine Zuordnung ohne Versatz (mit Versatz 0: `grund: "versatz"` statt
+  „modell-unbekannt“); K1–K3 grün. Ohne Mutation 33/33 grün. Der Kern selbst hat keine Lücke; Code unverändert.
+- **Befunde 4 und 5:** als Punkte 4 und 5 auf die Liste „Vorbedingungen vor AN“ (`IMP-6-MEHRFACHMODELLE.md`):
+  `teilzeitProfil` (`src/lib/fachlogik.js` ~Z. 1743, aus `m.zyklus` ohne `einheitDienst(`, vom Wächter S nicht erfasst; zu P2-28);
+  `src/speicher.js` ~Z. 381 übernimmt den Merker auch aus der gemerkten Antwort (Offline-Client rechnet nach dem Abschalten
+  weiter mit den Modellen bis zum nächsten Online-Lesen).
+- **Befund 2:** `ENTSCHEIDUNGSLISTE.md` P2-28 und Nachtrag korrigiert (Urlaubskonto nach Modell: gebaut als Vorschlag hinter AN,
+  Entscheidung P2-28 offen, Kategorie C).

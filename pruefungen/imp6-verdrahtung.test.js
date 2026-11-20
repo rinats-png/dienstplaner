@@ -426,6 +426,40 @@ describe("K. Zwischenspeicher des Modellverzeichnisses (Review #429 Hinweis 2)",
     m.schichtmodelle = [];
     expect(lage().art).toBe("ungueltig");
   });
+  /* Nachtrag Review #431 (Mutant M3): Ohne den Vergleich von Folge (Referenz) und Länge im Abbild lieferte der
+     Zwischenspeicher nach einer an Ort und Stelle geleerten Folge den alten Eintrag; modellLage rechnete dann
+     mod(n, 0) = NaN und die Lage meldete still „Dienst“ ohne Dienst. Erwartet: neu rechnen, Modell unbekannt. */
+  it("K4 Folge an Ort und Stelle leer oder ungültig: neu rechnen, nie ein NaN-Dienst", () => {
+    const m = standard();
+    const p = person("x", [zu("z", "frueh1", "2027-11-01", null, 0)]);
+    const p2 = person("y", [zu("z", "frueh1", "2027-11-01")]);              // ohne Versatz: hier entstand der NaN-Dienst
+    const lage = () => FP.schichtmodellLageAm(m, p, "2027-11-05");
+    const pruefe = () => {
+      const l2 = FP.schichtmodellLageAm(m, p2, "2027-11-05");
+      expect(Number.isNaN(l2.index)).toBe(false);
+      expect(l2).toMatchObject({ art: "ungueltig", grund: "modell-unbekannt" });
+      expect(lage()).toMatchObject({ art: "ungueltig", grund: "modell-unbekannt" });
+      expect(KERN.modellVerzeichnisGemerkt(m).has("frueh1")).toBe(false);
+    };
+    expect(lage().dienstId).toBe("F");
+    m.schichtmodelle[0].tage = [];                                            // neue, leere Folge
+    pruefe();
+    m.schichtmodelle[0].tage = ["F"];
+    expect(lage().dienstId).toBe("F");
+    m.schichtmodelle[0].tage.length = 0;                                      // dieselbe Folge, an Ort und Stelle geleert
+    pruefe();
+    m.schichtmodelle[0].tage.push("S");                                       // dieselbe Folge wieder gefüllt
+    expect(lage()).toMatchObject({ art: "dienst", dienstId: "S", index: 0, laenge: 1 });
+    m.schichtmodelle[0].tage = "F";                                           // ungültig: keine Liste
+    pruefe();
+    m.schichtmodelle[0].tage = ["F", "-"];
+    for (const d of tageVon("2027-11-01", "2027-11-08")) {
+      const l = FP.schichtmodellLageAm(m, p, d);
+      expect(l.art).toBe("dienst");
+      expect(Number.isInteger(l.index)).toBe(true);
+      expect(l.laenge).toBe(2);
+    }
+  });
   it("K3 Gleichheit mit dem ungespeicherten Weg: 2000 Zufallsabfragen", () => {
     const m = standard();
     let s = 7; const z = () => (s = (s * 48271) % 2147483647) / 2147483647;
