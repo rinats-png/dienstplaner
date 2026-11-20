@@ -89,3 +89,90 @@ Umsetzung: `server/lib/import/schichtcache.mjs`, Aufruf über `schichtVorschauMi
   etwa 1,5 s synchron); die Vorschau nennt nur Zuordnungs- und Formkonflikte.
 - Oberfläche: Die Import-Ansicht kennt die Art `schichtzyklus` nicht (nur Personal); keine Anzeige der Modellvorschau, die Oberfläche bleibt aus (`IMPORT_DATEI_AKTIV`).
 - Vor jedem Einschalten ist die Prüfung nach § 13 (IMP-9) nötig.
+
+## Nachtrag 2026-11-20: Oberfläche (Pflege mehrerer Modelle je Person)
+
+Branch `acc45/imp/imp-6-ui` (PR gegen `integration/release-v4`, nicht gemergt). Beschreibung: `IMP-6-MEHRFACHMODELLE.md`, Abschnitt
+„Oberfläche“. Keine Planwirkung, kein Schalter, keine Workflow-Änderung, keine Serveränderung.
+
+| Akzeptanz | Nachweis |
+|---|---|
+| Mehrere Modelle je Person anzeigen und bearbeiten | `imp6-oberflaeche` D2–D5; E2E S1–S3 |
+| Unterschiedliche Zykluslängen (keine feste Länge) | `imp6-oberflaeche` A3 (1 … 1000), D2; E2E S1 (9 und 14 Tage) |
+| Bestehende Validierungen (Server) in der Oberfläche | `imp6-oberflaeche` B (15 Fälle: Befund der Oberfläche = Befund der Serverkette), E2E S3/S4 |
+| Verständliche Meldung bei 422 | `imp6-oberflaeche` C2/C5; E2E S4 (echter Server 422, Anzeige im Browser) |
+| Inhaltliche 403 nicht als Rollenproblem | `imp6-oberflaeche` C1/C3/C4 (Erkennung gegen die echten Texte, Differenz) |
+| Rechte wie der Server | `imp6-oberflaeche` D1 |
+| WP-40 zugängliche Namen, nur Bausteine/Tokens | `imp6-oberflaeche` D6/D7; E2E S5 (axe, ein Befund label-content-name-mismatch an den Anhängeknöpfen behoben) |
+
+Angepasste bestehende Prüfungen (begründet):
+- `pruefungen/p212-client-kalendertag.test.js` („Differenz: die übrigen Lagen zeigen weder Bereichszeile noch Verwerfen-Knopf“):
+  nimmt die neue Lage „schichtmodell“ aus; sie hat bewusst denselben Verwerfen-Weg wie „kalendertag“ (ein zweiter Versuch
+  schickte denselben Stand) und ist in `imp6-oberflaeche` C5 geprüft. Für alle übrigen Lagen gilt die Prüfung unverändert.
+- `pruefungen/imp6-zyklen-grenzfaelle.test.js` D2 (Wächter): `src/lib/schichtmodelle-pflege.js` in die Liste aufgenommen — bewusste
+  Erweiterung ohne Planwirkung; Ansicht und Aktionen nennen die Felder nicht selbst, und `imp6-oberflaeche` E3 sichert, dass nur
+  Ansicht und Aktionen die Pflegehilfe nutzen und `fachlogik.js` sie nicht kennt.
+
+Offen: P2-24 (b) Versionierung laufender Modelle (Kategorie C, Betreiberentscheidung; gebaut gilt A, nichts gebaut) — P2-24 (a) ist am 2026-11-20 entschieden (B) und umgesetzt, siehe Nachtrag (b); P2-19 (d), P2-4 Punkte 6 bis 8.
+
+## Nachtrag 2026-11-20 (b): P2-24 B (Schalter), stabile 403-Codes, Review-Auflagen #423
+
+| Punkt | Umsetzung | Nachweis |
+|---|---|---|
+| P2-24 B Schalter `CENTRIC_SCHICHTMODELL_PFLEGE` (Vorgabe aus) | `server/lib/schalter.mjs`, `GET /api/bestand` `schichtmodellPflege`, `src/lib/schichtmodell-schalter.js`, `src/speicher.js` (lies), Ansicht | `imp6-oberflaeche` S1–S4, E0; `imp6-mehrfachmodelle` 9 (Schalter); E2E S6 |
+| Kein Datenverlust bei AUS | Daten bleiben im Zustand und gehen unverändert mit | `imp6-oberflaeche` S3/S4; `imp6-mehrfachmodelle` 9 (byte-gleich, Kopie ohne Felder); E2E S6 |
+| Server-Schreibweg bei AUS | bewusst unverändert, Begründung `IMP-6-MEHRFACHMODELLE.md` „Schalter“ | `imp6-mehrfachmodelle` 9 „Schreibweg unverändert“ |
+| Folgepunkt 1: stabile 403-Codes | `SCHICHTMODELL_<Prüfcode>` (`schichtmodellAbsageCode`), `rechte.mjs` 1 Zeile, `daten.mjs` reicht `code` durch; Client nur am Code, ohne Code fail-safe „keinRecht“ | `imp6-mehrfachmodelle` 9 (5 Codes Voll-PUT, Teilweg, Differenz); `imp6-oberflaeche` C1, C3, C3b |
+| A1 Rechte der Anzeige = feste Matrix des Servers | `darfSchichtmodelle` mit `MATRIX_STD`, Kundenzugang, nie Betriebsmatrix | `imp6-oberflaeche` D1b |
+| A2 echter Server-403 → Lage „schichtmodell“ | — | E2E S4b (PUT unterwegs um Überschneidung ergänzt, echter Server antwortet 403 `SCHICHTMODELL_UEBERSCHNEIDUNG`), `imp6-mehrfachmodelle` 9 |
+| H1 geleertes „Gültig ab“ | nur die beim Hinzufügen angelegte Fortsetzung gilt als begonnen | `imp6-oberflaeche` D1c |
+| H3 Texte ohne Pflegerecht | Dienstart-Löschmeldung nennt den Weg nur mit Schalter und Recht; Leiste ohne Annahme über Rechte | `imp6-oberflaeche` E2 (Quelltext) |
+| H4 Personenauswahl | `wirksamePerson`; Entwurf gehört genau einer Person | `imp6-oberflaeche` D1d |
+| H5 Stand-Satz ENTSCHEIDUNGSLISTE | Komma/„und“ berichtigt, P2-24 entschieden | — |
+
+### Angepasste Bestandsprüfungen: was sie weiterhin absichern
+
+**`pruefungen/p212-client-kalendertag.test.js`, Test „Differenz: die übrigen Lagen zeigen weder Bereichszeile noch Verwerfen-Knopf“.**
+Anforderung (P2-12 Folgepunkt 1, Review #354): Nur Lagen, bei denen „Noch einmal senden“ denselben abgewiesenen Stand
+schickte, bieten den Verwerfen-Weg und eine Bereichszeile an; jede andere Lage (Netz, Server, Rolle, Konflikt, Sitzung …)
+bleibt wie vor P2-12 — ohne Bereichszeile, ohne Verwerfen, die Textzeile genau einmal. Die Anpassung nimmt nur die neue Lage
+„schichtmodell“ aus, die genau in diese Klasse gehört (422/403 auf Inhalt: derselbe Stand scheitert wieder). Für alle
+übrigen Lagen gilt die Prüfung unverändert, auch für künftig hinzukommende (die Liste wird aus `SPEICHERLAGE` gebildet).
+Die neue Lage selbst prüft `imp6-oberflaeche` C5 mit denselben Aussagen (Bereichszeile, Verwerfen, Sichern, kein „Noch einmal
+senden“, keine Rollenmeldung). Nichts ist abgeschwächt: die ausgenommene Lage hat mehr Prüfungen als vorher (vorher gab es sie nicht).
+
+**`pruefungen/imp6-zyklen-grenzfaelle.test.js`, Abschnitt D2 (Wächter).** Anforderung (P2-4 Punkt 6, Vorbedingungen 8 und
+Differenz D): Kein Modul bringt die Zuordnungen oder Modelldefinitionen in die Planrechnung, ohne dass diese Liste bewusst
+erweitert und die Differenzprüfung D (Planrechnung bit-gleich mit und ohne Zuordnungen) umgestellt wird. Aufgenommen ist
+genau eine Datei, `src/lib/schichtmodelle-pflege.js` (Pflege: Entwurf mit der Serverbibliothek prüfen, Feld setzen, Lage
+anzeigen); sie rechnet keinen Dienst. Weiterhin abgesichert: (1) jede andere neue Fundstelle in `server/` oder `src/` macht
+D2 rot; (2) Ansicht und Aktionen nennen die Felder nicht selbst (sonst stünden sie in der Trefferliste); (3) `imp6-oberflaeche`
+E3 verlangt, dass nur `src/ansichten/schichtmodelle.jsx` und `src/app/aktionen/plan.js` die Pflegehilfe nutzen und weder
+`fachlogik.js` noch die Hilfe selbst `dienstAm`/`modellDienstAm` nennen; (4) Differenz D läuft unverändert bit-gleich.
+
+## Nachtrag 2026-11-20 (c): Delta-Review #423 (Auflagen nur Doku, Hinweise)
+
+- A-1/A-2: P2-24 geteilt nachgeführt — (a) entschieden B und umgesetzt; (b) Versionierung laufender Modelle **offen** (Kategorie C, Betreiberentscheidung; gebaut gilt A, nichts gebaut). „Folge bei Nichtentscheidung“ berichtigt (Pflege bei AUS nicht sichtbar).
+- H-a: `darfSchichtmodelle` rechnet mit der Rolle der Sitzung (`sitz.zugangRolle` = `sitzung.rolle` des Servers), nur ohne Angabe mit der Rolle der Person; Gleichlauf je Zugangsrolle mit `rechte.mjs` `darf` (`imp6-oberflaeche` D1b).
+- H-b: `anzuwendendesModell` steht in der Oberfläche nur in `lageAm` (eine Stelle), `lageAm` nur in der Ansicht und nur mit `.text`/`.ton` (reine Anzeige); kein anderes `src/`-Modul nennt `anzuwendendesModell`/`modellDienstAm` (`imp6-oberflaeche` E3).
+- H-c: Teilweg bei Schalter AUS mit anderer Änderung: Modelle und Zuordnungen byte-gleich (`imp6-mehrfachmodelle` 9).
+- H-e: Betriebshandbuch, Schaltertabelle: Hinweis vor dem Pilot — bei AUS ist „Dienstart löschen“ an einem gespeicherten Modell in der Oberfläche nicht auflösbar.
+- Branch auf den aktuellen Stand von `origin/integration/release-v4` zusammengeführt.
+
+## Nachtrag 2026-11-20 (d): CI-Befund #423 — L2 der lokalen Abnahme über 90 s (Ursache in der Testhilfe)
+
+- **Befund:** CI-Läufe 44709493893 und 44709485577 (Kopf 0dbadf3d): `e2e/lokale-abnahme-luecken.spec.mjs` L2 bei 1024x768 nach 90 s abgebrochen (`seiteZu`, `page.goto`); L1 dauerte 47 s, im Basislauf 44706934201 (6b3933c8) 2 s. Im Basislauf zeigen L4c/L4d/L5 dasselbe Muster (63/49/47 s).
+- **Ursache (belegt):** `e2e/hilfen.mjs` bildete die Herkunft je Test mit `(h >> 8) % 240` — mit Vorzeichen; für rund die Hälfte der Tests entstand eine ungültige Adresse (z. B. `10.33.-164.113`). `herkunftBestimmen` verwirft eine ungültige Kette und zählt die Gegenstelle `127.0.0.1`: Alle diese Tests teilten EINEN Bremszähler. Die Demo-Bremse auf `GET /api/demos` (Anmeldeseite, 20 je 5 Minuten) lief voll; die Anmeldeseite bekam 429.
+  Lokaler Beleg (Probe mit Chromium gegen den laufenden E2E-Server nach rund 45 Tests): ohne eigene Herkunft `GET /api/demos` → 429, Antwort nach 285 ms, aber kein `requestfinished` → `networkidle` erst nach der Zeitgrenze (20 s); mit gültiger eigener Herkunft 200, `networkidle` nach 0,6 s. Im lokalen Volllauf 1024x768 vor der Korrektur: Z4 1,1 min, S0 33,7 s, S1 52,1 s, S3 49 s, S5 1,1 min (einzeln je 2 bis 10 s).
+- **Warum mit #423:** Die neue Spec `imp6-schichtmodelle` läuft unmittelbar vor `lokale-abnahme-luecken` und lädt die Anmeldeseite neunmal; das verschob die Erschöpfung des gemeinsamen Zählers in L0 bis L2. Kein Produktcode von #423 ist beteiligt.
+- **Behebung:** `e2e/herkunft.mjs` (`herkunftFuerTest`, vorzeichenlos `>>>`), von `e2e/hilfen.mjs` genutzt. Jeder Test hat wieder eine gültige, eigene Herkunft. Keine Prüfung abgeschwächt, keine Zeitgrenze erhöht. Prüfung: `pruefungen/e2e-flaechen.test.js` (2000 Kennungen × 2 Wiederholungen gültig und vom Server als eigene Herkunft gelesen; Gegenprobe: die alte Formel ergibt über 1000 ungültige Adressen und fällt auf 127.0.0.1 zurück).
+- **Nach der Korrektur, lokaler Volllauf 1024x768 (14,0 min, 58 bestanden, 7 übersprungen):** Z4 5,1 s, S0 3,6 s; lokale Abnahme L0 8,0 s, L1 4,4 s, L2 10,2 s, L3 12,3 s, L4a–L4d 4,1–6,6 s (vorher im Basislauf 63/49 s), L5 5,9 s, L6 5,6 s. Rot nur `oeffnen-parallel` (P2 Schichtverantwortung: Plan nach 90 s nicht geöffnet) — die Spec nutzt eigene Browserkontexte mit eigener Herkunft (10.48.200.x), nicht die geänderte Testhilfe; einzeln wiederholt grün (1 bestanden, 1,5 min). Lastbedingt auf dem Entwicklungsrechner (sechs Sitzungen gleichzeitig), in beiden CI-Läufen von #423 grün.
+- **Offen (nicht Teil dieses Pakets):** Warum Chromium eine 429 von `/api/demos` nicht als beendet meldet, ist nicht untersucht; Folge war nur das Warten der Testhilfe.
+
+## Nachtrag 2026-11-20 (e): CI-Befund #423 nach der Herkunftskorrektur — Planer-Tests 429 (Lastbremse je Code)
+
+- **Befund:** CI-Läufe 44720136042 und 44720127143 (Kopf 5b39bb26): 12 rot, alle mit der Rolle Planung — `plan-planer`, `teilkonflikt`, `lagebild-planer`, `antraege-planer/tauschboerse-planer` (Anmeldung im Browser kommt nicht zustande, `waitForSelector` 30 s) und `heute-stempeluhr(-ausstempeln)` (`API-Anmeldung planer gescheitert (Status 429)` nach rund 110 ms).
+- **Ursache (belegt):** Lastbremse `anmelden-code` des Servers (`server/lib/schutz.mjs`: 20 gelungene Anmeldungen je Code in 300 s, Sperre 300 s; `daten.mjs` vor dem Lesen des Bestands). Die Suite meldet die Planung je Viewport rund siebenmal mit demselben Code an. Nach der Herkunftskorrektur (Nachtrag d) fielen die 15-s-Wartezeiten weg, die Viewports 360x740, 390x844 und 430x932 liefen in 3 min 23 s (10:33:24–10:36:47) — der 21. Planer-Login (430x932 `plan-planer`, 10:36:47) bekam 429. Rot sind genau die Planer-Tests von 10:36:47 bis 10:41:40; ab 10:42:33 (gut 300 s nach der ersten Absage) sind sie wieder grün, alle übrigen Rollen durchgehend. Der Code der Planung ist der einzige, der so oft genutzt wird. Kein Produktcode von #423 ist beteiligt.
+- **Behebung (nur Testaufbau, Serverregel unverändert):** `global-setup.mjs` legt je Rolle drei weitere Codes für dieselbe Person an (`ZUGANG_POOL = 4`, eigener Aufruf wegen höchstens 20 Einträgen je Aufruf); Browser- (`hilfen.mjs zugangscode`) und API-Anmeldung (Abnahme B) wählen je Test stabil einen Code (`herkunft.mjs codeSchluessel`) — wie mehrere Geräte einer Person. Prüfung in `pruefungen/e2e-flaechen.test.js` (stabil, nur Pool-Schlüssel, gleichmäßig verteilt, Rückfall auf den Rollenzugang; Verdrahtung in Testhilfe, Abnahme B und Aufbau).
+- **Branch** mit `origin/integration/release-v4` (#424 Vitest 5, #425 V4-2) zusammengeführt, ohne Konflikte.
+- **Lokal (nach Merge):** Planer-Specs (barrierefreiheit, teilkonflikt, abnahme-b-ablaeufe, barrierefreiheit-flaechen) sowie lokale-abnahme-luecken und imp6-schichtmodelle bei 430x932 und 1024x768: 51 bestanden, 29 übersprungen (Projektbindung), 0 rot, 14,5 min. Grenze dieses Belegs: Der Entwicklungsrechner ist langsamer als CI und erreicht 20 Planer-Anmeldungen in 5 Minuten ohnehin kaum; maßgeblich für die Lastbremse ist der nächste CI-Lauf. e2e-flaechen, prozess-wachen, imp6-oberflaeche 76/76; doku 5/5, verdrahtung 8/8, ci-abdeckung 8/8; eslint ohne Fehler.

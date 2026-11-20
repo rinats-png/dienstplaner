@@ -15,6 +15,7 @@ import { useState } from "react";
 import { darf } from "../lib/berechtigung.js";
 import { dauer } from "../regelwerk.js";
 import { rasterBefunde } from "../lib/rasterpruefung.js";
+import { Schichtmodelle } from "./schichtmodelle.jsx";
 
 /* ============================== SCHICHTFOLGE ============================= */
 export function Schichtfolge({ sitz, akt }) {
@@ -137,5 +138,7 @@ export function Schichtfolge({ sitz, akt }) {
           </div>
         </Card>
       </div>
+      {/* IMP-6: mehrere Schichtmodelle je Person (nur Planung, Leitung, Kundenrolle; ohne Planwirkung). */}
+      <Schichtmodelle sitz={sitz} akt={akt} />
     </div>);
 }

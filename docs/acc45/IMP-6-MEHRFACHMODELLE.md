@@ -45,8 +45,8 @@ kein neuer Weg, keine Oberfläche, keine Wirkung auf die Planrechnung.
    Altfehler blockiert also kein unabhängiges Speichern. Voll- und Teilweg gleich (nach der Rechteprüfung, in
    `daten.mjs` neben den übrigen 422-Absagen; Bibliothek `modellKuerzungFehler`/`modellKuerzungFehlerBestand`).
    Statuscode 422 statt 403 wie `MODELL_VERWENDET`: es ist eine inhaltliche Absage, kein Rechtefall (Code im Rumpf).
-   Die Oberfläche kennt den Code noch nicht (es gibt keine Modellpflege in der Oberfläche; `src/speicher.js` zeigt eine
-   unbekannte 422 als allgemeinen Fehler) — Anzeige des Servertexts zusammen mit der Oberfläche (P2-19 (d)).
+   Die Oberfläche kennt den Code seit der Pflegeoberfläche (Branch `acc45/imp/imp-6-ui`): `src/speicher.js` zeigt ihn als Lage
+   „schichtmodell“ mit dem Text des Servers (siehe unten „Oberfläche“).
    Nicht erfasst: das Betriebsmodell (`m.zyklus`, Versatz der Einheit), das wie bisher modulo rechnet.
    Prüfung: `imp6-mehrfachmodelle` Abschnitte 4 und 4b.
 3. **Historischer Schutz.** Verglichen wird je Abschnitt zwischen allen Grenzen (alt und neu), was vorher und nachher gilt
@@ -87,7 +87,7 @@ Ausgabe nur als Anzahlen und Zeilennummern. Der Zwischenspeicher bezieht Tag, Mo
 ## Nicht in diesem Paket (Folgeschritte)
 
 - Wirkung auf die Planrechnung (`dienstAm`, Oberfläche, Fachprüfung): Einschalten ist eine eigene Entscheidung.
-- Oberfläche (Abschnitt Einstellungen/Person): bewusst nicht gebaut; braucht Gestaltung der Klärungsanzeige.
+- Oberfläche für Beschäftigte („Mein Schichtmodell“): nicht gebaut (P2-19 (d)). Die Pflege für Planung/Leitung ist gebaut, siehe unten.
 - Übernahme der Importzuordnungen in den Bestand (IMP-6 Übernahme) und IMP-7 (historische Pläne) bauen auf dieser Bibliothek auf.
 
 ## Bekannte Grenze: Wiederherstellen
@@ -152,3 +152,53 @@ eigene Entsprechung (sie steht in der SSOT-Notiz zu IMP-7 als Punkt (e)).
 | 6 | Wirkung auf die Planrechnung einschalten (`dienstAm`/Oberfläche): ja, und wann? | **offen**, nicht entschieden |
 | 7 | Art. 15 DSGVO: Auskunft/`LUECKEN_SELBST` für `schichtmodellZuordnungen` (rechtliche Einschätzung, gehört zu Frage 4) | **offen**, rechtliche Einschätzung nötig |
 | 8 | `/api/wiederherstellen` umgeht den historischen Schutz; hingenommen nur, solange die Zuordnungen keine Planwirkung haben | **offen**, Voraussetzung vor Frage 6 |
+
+## Oberfläche: Pflege für Planung, Leitung, Kundenrolle (Branch `acc45/imp/imp-6-ui`, 2026-11-20)
+
+Abschnitt „Schichtmodelle je Person“ in der Ansicht „Schichtfolge“ (`src/ansichten/schichtmodelle.jsx`), sichtbar nur bei
+(org.edit oder pattern.edit) und staff.edit — wie der Schreibweg des Servers. Hinweis oben: „Noch ohne Wirkung auf den Dienstplan“.
+
+- **Modelle:** anlegen, bearbeiten, entfernen; Name und Folge der Zyklustage (Kürzel der Dienstarten, „-“/„frei“), jede Zykluslänge
+  von 1 bis 1000 Tagen (Anzeige „9 Tage“, „14 Tage (2 Wochen)“), Kürzel per Knopf anhängbar. Unbekanntes Kürzel sperrt „Übernehmen“.
+  Entfernen nur, solange niemand zugeordnet ist.
+- **Zuordnungen je Person:** Modell (auch „Schichtfolge des Betriebs“), Gültig ab, Gültig bis (leer = offen), Startpunkt im Zyklus;
+  Anzeige „Heute“ und „Ab morgen“ (Modell und Zyklustag, „kein Schichtmodell“, Klärungsfälle). Begonnene Zuordnungen: nur „Gültig bis“
+  änderbar, nicht entfernbar. Die erste eigene Zuordnung legt die Fortsetzung der Schichtfolge des Betriebs bis heute sichtbar in den
+  Entwurf (sonst wären die Tage davor „kein Schichtmodell“ und damit rückwirkend geändert).
+- **Vorprüfung = Server:** `entwurfPruefen` (`src/lib/schichtmodelle-pflege.js`) ruft dieselbe Kette wie der Server
+  (`schichtzuordnungZusammen`, danach `modellKuerzungFehler`) und zeigt deren Text; erst ohne Befund schreibt die Aktion.
+- **Absage des Servers:** 422 `MODELL_VERKUERZT_VERSATZ` und die inhaltlichen 403 (stabiler Code `SCHICHTMODELL_<Prüfcode>`) werden unter „Nicht gespeichert“ zur Lage
+  „schichtmodell“ (Bereich „Schichtmodelle“, Text des Servers, Verwerfen-Weg, kein „Noch einmal senden“, keine Rollenmeldung).
+- **Nicht gebaut:** Planwirkung (P2-4 Punkt 6), Anzeige für Beschäftigte (P2-19 (d)), Versionierung laufender Modelle (P2-24 (b)).
+- **Prüfungen:** `pruefungen/imp6-oberflaeche.test.js` (in `pruefung:imp6-mehrfachmodelle`), `e2e/imp6-schichtmodelle.spec.mjs`
+  (Browser, axe WCAG 2.2 AA); Wächter D2 in `imp6-zyklen-grenzfaelle` um die Pflegehilfe erweitert (einzige Stelle der Oberfläche,
+  die die Felder nennt).
+
+## Schalter `CENTRIC_SCHICHTMODELL_PFLEGE` (P2-24 B, Betreiberentscheidung 2026-11-20)
+
+- **Wirkung:** nur die Anzeige. Ist der Schalter an (genau `true`), meldet `GET /api/bestand` `schichtmodellPflege: true`;
+  `src/speicher.js` setzt daraus den Merker (`src/lib/schichtmodell-schalter.js`), und die Ansicht zeigt den Abschnitt (zusätzlich
+  zum Pflegerecht). Fehlt die Angabe, bleibt der Abschnitt verborgen (fail-closed). Vorgabe: aus; `.env.example` auskommentiert.
+- **Kein Datenverlust bei AUS:** Die Modelle und Zuordnungen stehen weiter im gelesenen Bestand und gehen beim Speichern
+  unverändert mit; der Server behält Unverändertes byte-gleich (Regel 5). Eine Kopie ohne die Felder (älterer Client) behält
+  den gespeicherten Stand. Geprüft: `imp6-oberflaeche` S1–S4, `imp6-mehrfachmodelle` Abschnitt 9, E2E S6.
+- **Server-Schreibweg bei AUS: unverändert (geprüft und so entschieden).** Begründung:
+  1. P2-24 (a) betrifft die Verwechslungsgefahr in der Oberfläche, nicht die Unversehrtheit der Daten; die Modelle wirken nicht
+     auf den Plan (P2-4 Punkt 6 offen).
+  2. Alle Schutzregeln des Schreibwegs gelten unabhängig vom Schalter (Rechte nur Planung/Leitung/Kundenrolle, Form,
+     Überschneidung, historischer Schutz, Modell verkürzt 422, Protokoll). Ein Schreiben bei AUS ist also nie ungeprüft.
+  3. Ein Abweisen bei AUS änderte bestehende, integrierte Serverregeln (#263, #369, #372) und deren Prüfungen und könnte
+     Speichervorgänge blockieren, die gespeicherte Modelle nur mitführen — genau das soll ohne Datenverlust weiterlaufen.
+  4. Die Bremse „Dienstart löschen, solange ein Modell sie nennt“ (403) schützt auch bei AUS gespeicherte Daten; sie bliebe
+     bei einer Sperre des Schreibwegs nur dann richtig, wenn die Sperre fein unterschiede — mehr Code in der Konfliktzone
+     `rechte.mjs` ohne Schutzgewinn.
+  Festgeschrieben: `imp6-mehrfachmodelle` 9 „Schalter aus: der Schreibweg des Servers ist unverändert“.
+- **Entwicklung und isolierte Prüfungen:** `CENTRIC_SCHICHTMODELL_PFLEGE=true` setzen; die Komponentenprüfungen setzen den
+  Merker direkt, die E2E-Spec ergänzt die GET-Antwort des echten Servers für ihre Seite (andere Specs sehen nichts).
+
+## Rechte der Anzeige (Review #423 A1)
+
+Die Anzeige rechnet wie der Server mit der **festen** Rollenmatrix (`MATRIX_STD`/`rechte.mjs` `MATRIX`), nicht mit der
+Betriebsmatrix `m.matrix`: Eine Rolle, der nur die Betriebsmatrix `staff.edit` und `pattern.edit` gibt, sähe sonst die Pflege,
+und der Server verwürfe ihre Änderung still (Felder ohne Recht wirkungslos). `darfSchichtmodelle` in
+`src/lib/schichtmodelle-pflege.js`; Gleichlauf je Rolle mit `rechte.mjs` `darf` in `imp6-oberflaeche` D1b. Serververhalten unverändert.
