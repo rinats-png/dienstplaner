@@ -11,8 +11,8 @@
    Lesende Prüfungen an allen acht Viewports (B6/B14): Mein Plan ohne waagrechtes Scrollen, Bedienflächen ≥ 24 px,
    axe WCAG 2.2 AA auf Heute (Stempeluhr), Krankmeldungsblatt, Lagebild (offene Krankmeldungen) und Stempelbefunde
    (Monatsabschluss); Tastaturbedienung des Krankmeldungsblatts. Zugangscodes werden nie ausgegeben. */
-import { test, expect, anmelden, geheZu, axePruefen, schreibvorgaengeVerfolgen } from "./hilfen.mjs";
-import { BASIS, ZUGAENGE_VAR } from "./umgebung.mjs";
+import { test, expect, anmelden, geheZu, axePruefen, schreibvorgaengeVerfolgen, zugangscode } from "./hilfen.mjs";
+import { BASIS } from "./umgebung.mjs";
 import { ABNAHME_B_FLAECHEN as FL } from "./abnahme-b-flaechen.mjs";
 import { abnahmeHeute, jetzt, tagPlus, uhrVersetzen, versatzMs } from "./zeitbasis.mjs";
 import { sucheDiensttag, sucheMitTagwechsel, betriebstagAusKopf } from "./dienstsuche.mjs";
@@ -35,8 +35,8 @@ async function api(pfad, { methode = "GET", rumpf, token } = {}) {
   return { s: a.status, d, text };
 }
 async function apiAnmelden(rolle) {
-  const code = JSON.parse(process.env[ZUGAENGE_VAR] || "{}")[rolle];
-  if (!code) throw new Error(`Kein Testzugang für ${rolle}`);
+  /* Befund CI #423: derselbe Code-Pool wie die Browseranmeldung (Lastbremse je Code). */
+  const code = zugangscode(rolle);
   const r = await api("anmelden", { methode: "POST", rumpf: { zugangscode: code } });
   if (!r.d.token) throw new Error(`API-Anmeldung ${rolle} gescheitert (Status ${r.s})`);
   return r.d;

@@ -82,3 +82,18 @@ export const hilfeModus = () => {
   const w = process.env.CENTRIC_HILFE_ASSISTENT;
   return w === "suche" || w === "an" ? w : "aus";
 };
+
+/* --------------------------------------------------------------------------
+   PFLEGE DER SCHICHTMODELLE JE PERSON (IMP-6 Oberfläche, P2-24 B, Betreiberentscheidung 2026-11-20) — Vorgabe AUS
+
+   CENTRIC_SCHICHTMODELL_PFLEGE  Nur die Anzeige: Ist er an, meldet GET /api/bestand
+                 `schichtmodellPflege: true`, und die Oberfläche zeigt unter „Schichtfolge“
+                 den Abschnitt „Schichtmodelle je Person“. Aus: kein Abschnitt; gespeicherte
+                 Modelle und Zuordnungen bleiben im Bestand und gehen beim Speichern unverändert
+                 mit. Der Schreibweg des Servers (Rechte, Prüfungen, historischer Schutz,
+                 Protokoll) ist unabhängig vom Schalter und bleibt unverändert (Begründung:
+                 docs/acc45/IMP-6-MEHRFACHMODELLE.md, Abschnitt „Schalter“). Kein neuer Weg,
+                 kein neues Recht. Einschalten erst mit Betreiberfreigabe.
+   Nur genau `true` schaltet ein.
+   -------------------------------------------------------------------------- */
+export const schichtmodellPflegeAn = () => process.env.CENTRIC_SCHICHTMODELL_PFLEGE === "true";
