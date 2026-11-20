@@ -6498,7 +6498,7 @@
       "agent": null,
       "modell": "opus",
       "konfliktzonen": ["App.jsx"],
-      "pr": [],
+      "pr": ["#435"],
       "nachweis": "docs/acc45/V4-IST-STAND-2026-11-20.md",
       "akzeptanz": "Feste Radien/Schatten der Querschnittsklassen in src/App.jsx und src/gestalt/stil.js aus --v4-Tokens; Klassennamen und E2E-Locators unverändert; Bildnachweis hell/dunkel der betroffenen Ansichten (pruefungen/browser/v4-abnahme.mjs)",
       "tests": "Unit, E2E",
