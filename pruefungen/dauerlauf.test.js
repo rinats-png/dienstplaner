@@ -8,7 +8,7 @@ import {
   STANDARD, leererZustand, planeSchritt, verbucheErgebnis, zyklus, leaseEffekte, kandidatenAus, claudeBefehl, auftragsSchluessel, sperreNehmen,
   fortschritt, prsFuerPaket, messeFortschritt, nutzungAm, zaehleStart, startGrenze, limitsAusArgs, LIMIT_MAX, pruefeClaudePfad, ghPfad,
 } from "../werkzeug/dauerlauf.mjs";
-import { loeseBefehl, startPlan, optionenPruefen, istDerselbe } from "../werkzeug/dauerlauf-prozess.mjs";
+import { loeseBefehl, startPlan, optionenPruefen, istDerselbe, gitPfad, loeseAbsolut } from "../werkzeug/dauerlauf-prozess.mjs";
 
 /* Feste Uhr: jede Zeit kommt aus T0 plus Minuten (kein Wanduhr-Bezug). */
 const T0 = Date.parse("2026-11-19T06:00:00Z");
@@ -462,7 +462,7 @@ describe("Nicht beendbarer Worker und fester claude-Pfad", () => {
     expect(a.z.laufend).toBeNull();
   });
 
-  it("Laufzeit- und Wallclock-Limit mit scheiterndem Beenden: Eskalation je Grund nur einmal je Auftrag", () => {
+  it("Laufzeit- und Wallclock-Limit mit scheiterndem Beenden: je Limit-Eskalation nur einmal je Auftrag", () => {
     const mitLimits = (o) => ({ ...STANDARD, limits: { ...STANDARD.limits, ...o } });
     for (const [o, re] of [[{ laufzeitMin: 30 }, /Laufzeitlimit 30/], [{ wallMinTag: 30, laufzeitMin: 90 }, /Wallclock-Limit 30/]]) {
       const sp = speicherImSpeicher(); const uhr = { t: T0 };
@@ -486,6 +486,21 @@ describe("Nicht beendbarer Worker und fester claude-Pfad", () => {
     expect(ghPfad({ plattform: "win32", pfad: "C:\\a", existiert: (f) => f === "C:\\a\\gh.cmd" })).toBeNull();
     expect(ghPfad({ plattform: "linux", pfad: "/usr/bin", existiert: (f) => f === "/usr/bin/gh" })).toBe("/usr/bin/gh");
     expect(ghPfad({ plattform: "linux", pfad: "", existiert: () => false })).toBeNull();
+    /* relativer PATH-Eintrag (Arbeitsverzeichnis) liefert einen relativen Treffer: verworfen */
+    expect(ghPfad({ plattform: "win32", pfad: ".;bin", existiert: () => true })).toBeNull();
+    expect(ghPfad({ plattform: "linux", pfad: ".:bin", existiert: () => true })).toBeNull();
+  });
+
+  it("gitPfad/loeseAbsolut: nur absolute Treffer, ohne Fund Fehler statt Rückfall auf den bloßen Namen git", () => {
+    expect(gitPfad({ plattform: "win32", pfad: "C:\\Git\\cmd", existiert: (f) => f === "C:\\Git\\cmd\\git.exe" })).toBe("C:\\Git\\cmd\\git.exe");
+    /* relativer Eintrag vorn (untergeschobenes bin/git im Arbeitsverzeichnis): übersprungen, absoluter Treffer gewinnt */
+    const beide = (f) => f === "bin/git" || f === "/usr/bin/git";
+    expect(loeseBefehl("git", { plattform: "linux", pfad: "bin:/usr/bin", existiert: beide }).datei).toBe("bin/git"); // ohne Filter
+    expect(gitPfad({ plattform: "linux", pfad: "bin:/usr/bin", existiert: beide })).toBe("/usr/bin/git");
+    expect(loeseAbsolut("git", { plattform: "win32", pfad: ".;\"C:\\Git\\cmd\"", existiert: (f) => f === ".\\git.exe" || f === "C:\\Git\\cmd\\git.exe" }).datei).toBe("C:\\Git\\cmd\\git.exe");
+    /* ohne absoluten Fund: Fehler, kein Rückfall auf "git" */
+    expect(() => gitPfad({ plattform: "linux", pfad: ".:bin", existiert: () => true })).toThrow(/absolutem Pfad/);
+    expect(() => gitPfad({ plattform: "win32", pfad: "", existiert: () => false })).toThrow(/absolutem Pfad/);
   });
 
   it("pruefeClaudePfad: Pflicht, absolut, vorhanden, keine PATH-Suche", () => {

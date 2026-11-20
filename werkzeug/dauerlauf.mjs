@@ -45,7 +45,7 @@ import { fileURLToPath } from "node:url";
 import { entscheide, lesen, schreiben } from "./koordination.mjs";
 import { naechste } from "./naechstes-paket.mjs";
 import { paketeAus } from "./acc45-backlog.mjs";
-import { prozessAdapter, loeseBefehl, startPlan, optionenPruefen, gitPfad } from "./dauerlauf-prozess.mjs";
+import { prozessAdapter, loeseBefehl, startPlan, optionenPruefen, gitPfad, loeseAbsolut } from "./dauerlauf-prozess.mjs";
 import { pruefeWorkerKopie, richteWorkerKopieEin, workerUmgebung } from "./dauerlauf-schutz.mjs";
 
 const MIN = 60000;
@@ -422,10 +422,11 @@ function ssotAmKopf(zweig = "integration/release-v4") {
   } catch { return null; } finally { try { git(["update-ref", "-d", tmp]); } catch { /* egal */ } }
 }
 
-/** Absoluter Pfad zu gh aus dem PATH des Supervisors (wie gitPfad). Nur direkt startbare Dateien (.exe bzw. ohne
-    Endung unter POSIX); eine .cmd/.ps1 ginge nur über eine Shell und wird nicht benutzt. null = gh nicht verfügbar. */
+/** Absoluter Pfad zu gh aus dem PATH des Supervisors (wie gitPfad; relative Treffer werden verworfen). Nur direkt
+    startbare Dateien (.exe bzw. ohne Endung unter POSIX); eine .cmd/.ps1 ginge nur über eine Shell und wird nicht
+    benutzt. null = gh nicht verfügbar. */
 export function ghPfad(opt) {
-  const a = loeseBefehl("gh", opt);
+  const a = loeseAbsolut("gh", opt);
   return a && (a.art === "exe" || a.art === "bin") ? a.datei : null;
 }
 

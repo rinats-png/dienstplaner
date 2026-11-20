@@ -31,9 +31,27 @@ export const WIN_PROGRAMME = Object.freeze({
   cmd: path.win32.join(SYSTEM32, "cmd.exe"),
 });
 let gitAbsolut = null;
-/** Absoluter Pfad zu git aus dem PATH des Supervisors (nie aus einem Arbeitsverzeichnis); Rückfall "git". */
-export function gitPfad() {
-  if (gitAbsolut === null) gitAbsolut = loeseBefehl("git")?.datei ?? "git";
+/** Absolute Auflösung eines Befehls über den PATH: relative PATH-Einträge (".", "bin", leer) werden übersprungen, weil
+    sie im Arbeitsverzeichnis suchen; das Ergebnis wird zusätzlich auf path.isAbsolute geprüft. { datei, art } oder null. */
+export function loeseAbsolut(name, opt = {}) {
+  const plattform = opt.plattform ?? process.platform;
+  const pp = plattform === "win32" ? path.win32 : path.posix;
+  const trenner = plattform === "win32" ? ";" : ":";
+  const roh = opt.pfad ?? process.env.PATH ?? process.env.Path ?? "";
+  const pfad = String(roh).split(trenner).map((d) => d.replace(/^"|"$/g, "")).filter((d) => d && pp.isAbsolute(d)).join(trenner);
+  if (!pp.isAbsolute(name) && !pfad) return null;
+  const a = loeseBefehl(name, { ...opt, plattform, pfad });
+  return a && pp.isAbsolute(a.datei) ? a : null;
+}
+/** Absoluter Pfad zu git aus dem PATH des Supervisors (nie aus einem Arbeitsverzeichnis). Ohne absoluten Fund kein
+    Rückfall auf den bloßen Namen "git" (der würde wieder über PATH/Arbeitsverzeichnis gesucht): Fehler (fail-closed). */
+export function gitPfad(opt) {
+  if (opt) {
+    const a = loeseAbsolut("git", opt);
+    if (!a) throw new Error("git nicht mit absolutem Pfad im PATH gefunden");
+    return a.datei;
+  }
+  if (gitAbsolut === null) gitAbsolut = gitPfad({});
   return gitAbsolut;
 }
 const art = (datei) => {
