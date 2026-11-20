@@ -45,7 +45,7 @@ Ein Agent F prüft jede Korrektur selbst nach (Test auf altem Stand rot, auf neu
 4. Keine Produktion, kein VPS ohne Freigabe, keine Secrets, keine Abschwächung von Tests, keine erfundenen Ergebnisse.
 5. Bericht: Branch, Commits, Dateien, Tests vorher/nachher mit Zahlen, CI-Run, offene Punkte.
 
-## Kommunikationsstandard (Orientierung 80/20, seit 2026-11-21)
+## Kommunikationsstandard (Orientierung 80/20, seit 2026-11-20)
 
 Berichte und Agentenmeldungen folgen etwa zu 80 % den Grundprinzipien von ASD-STE100 (Simplified Technical English), auf Deutsch. Etwa 20 % bleiben frei für natürliche Sprache und fachliche Tiefe. Das ist eine Orientierung, keine Wort- oder Satzquote.
 
@@ -53,7 +53,7 @@ Berichte und Agentenmeldungen folgen etwa zu 80 % den Grundprinzipien von ASD-ST
 - Kurze, vollständige Sätze. Eindeutige Aussagen. Gleiche Fachbegriffe für gleiche Dinge.
 - Fakten, Bewertungen und Annahmen getrennt benennen.
 - Technische Ergebnisse mit Nachweis belegen (Test, Review, Commit, Lauf).
-- Vier Stufen nie vermischen: GETESTET (Tests grün), INTEGRIERT (im Integrationszweig), RELEASEFÄHIG (Release-Kandidat, volle CI auf dem Kopf, alle Auflagen erfüllt), PRODUKTIV (auf dem Produktionssystem nachgewiesen).
+- Vier Stufen nie vermischen: GETESTET (Tests grün, CI-Lauf oder lokaler Lauf genannt), INTEGRIERT (gemergt in `integration/release-v4`; bei Teilumfang ausdrücklich „teilweise“), RELEASEFÄHIG (Release-Kandidat laut Gates R1/R2/R3, volle CI auf genau diesem Kopf, alle Auflagen erfüllt), PRODUKTIV (auf dem Produktionssystem belegt, mit Digest und Lauf). Diese Wörter ersetzen die Statusstufen in `STATUS.md` und die Gates nicht; sie dienen nur der Berichtssprache.
 - Keine Wiederholungen und keine Statusmeldung ohne neue Information. Probleme und Restrisiken ausdrücklich nennen.
 
 **Ausnahmen (20 %)**: Sicherheitsanalysen, Architekturentscheidungen, komplexe Fehlerursachen, datenschutzrechtliche oder wirtschaftliche Abwägungen, fachliche Erläuterungen und Begründungen mit erheblichen Folgen. Wichtige Information wird nie gekürzt, nur um kurze Sätze einzuhalten.
@@ -65,6 +65,8 @@ Berichte und Agentenmeldungen folgen etwa zu 80 % den Grundprinzipien von ASD-ST
     PRODUKTIONSSTAND: Was ist tatsächlich veröffentlicht?
     RISIKEN / BLOCKADEN: Was ist noch offen?
     NÄCHSTE AKTION: Was wird als Nächstes ausgeführt?
+
+Punkt 5 des Arbeitsvertrags legt den Inhalt der Implementierungsberichte fest. Der Statusbericht gibt die Gliederung für Meldungen an den Betreiber vor.
 
 Dieser Abschnitt ändert keine Regel zu Autonomie, Modellrouting, Parallelisierung, Reviews, CI, Sicherheit oder Freigabegrenzen.
 
