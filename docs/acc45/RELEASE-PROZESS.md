@@ -78,6 +78,16 @@ schließt nur der Branch-Schutz: `docs/acc45/releases/` und `deploy/FREIGEGEBENE
 `CODEOWNERS` (Inhaber) und Pflicht-Review auf `main` geschützt sein ([BETREIBER-BRANCHSCHUTZ.md](BETREIBER-BRANCHSCHUTZ.md)).
 Eine Datei mit falscher Struktur gilt für alle Gates als nicht vorhanden.
 
+**Vorlagenbindung (tragende Sperre, G3).** Die ausgelieferten Vorlagen (alle Dateien der Art `Dockerfile*`,
+`compose*.yml`/`docker-compose*.yml`, `*.env*`/`.env.example`, `env.*`, `*env*.beispiel` im Wurzelverzeichnis und
+unter `deploy/`) stehen als feste Liste im Werkzeug (`gebundeneVorlagen`). Ihr SHA-256 (Inhalt im Kandidaten-Commit)
+steht in `vorlagenHashes` der Freigabedatei. Weicht ein Hash ab, fehlt ein Eintrag, steht ein Eintrag zu viel oder
+gibt es eine nicht gelistete Datei dieser Art, ist G3 NO-GO. Die Hashes liefert
+`node werkzeug/release-pruefung.mjs --vorlagen-hashes --kandidat <commit>`. **Regel:** Eine geänderte Vorlage oder eine
+neue Vorlagenform wird durch neue Freigabe der Hashes zugelassen (Betreiber, nach Review des Commits; G2), nicht durch
+Erweitern des Scanners. Der Grammatik-Scanner bleibt die zweite Schicht gegen versehentliche Aktivierung. In der
+Vorprüfung (Phase 0) zählt die Bindung noch nicht (`vorpruefungOk`), in der Endprüfung schon.
+
 Grenzen, die das Werkzeug nicht schließt (bewusst dokumentiert):
 
 - **Selbstbeleg im Kandidaten:** `REVIEW-NACHWEIS*.md` und die SSOT-Stufe „reviewt“ liest das Werkzeug aus dem
@@ -103,6 +113,7 @@ Grenzen, die das Werkzeug nicht schließt (bewusst dokumentiert):
   "freigegebenDurch": "<Name>",
   "datum": "JJJJ-MM-TT",
   "basisCommit": "<40 hex, Commit des vorigen Releases>",
+  "vorlagenHashes": { ".env.example": "<sha256>", "Dockerfile": "<sha256>", "deploy/compose.yml": "<sha256>", "…": "…" },
   "rueckweg": { "strategie": "r0", "entscheidungO1": "a", "entscheidungO2": "a" },
   "migration": { "freigegeben": true, "basisCommit": "<40 hex>", "abgedeckt": ["W-4", "W-5", "STARTBLOCK"], "bericht": "<Pfad zum Probebericht>" },
   "reviewBestaetigt": [412],
@@ -382,7 +393,7 @@ Einzelheiten und Konfiguration: Kopf von `werkzeug/release-pruefung.mjs`, Ausgab
 |---|---|
 | G1 | alle Pflicht-Check-Runs auf dem Kandidaten-SHA abgeschlossen und `success`; abgefragt mit `filter=all`, jeder Lauf zählt (ein roter Lauf bleibt rot); Läufe ohne `head_sha` sind NO-GO; eigene Gate-Jobs zählen nicht |
 | G2 | jeder PR im Paket hat einen Review-Beleg: GitHub-Review eines anderen Kontos mit Rolle OWNER/MEMBER/COLLABORATOR auf dem aktuellen PR-Kopf, ohne spätere Änderungsforderung; oder in `REVIEW-NACHWEIS*.md` (nur Tabellen mit Kopfzeile `PR … Urteil`, `\|` ist ein Strich im Zelltext) ein Urteil in echter Positivform (`[N Runden] [MIT AUFLAGEN, …] MERGEBAR`, `MIT AUFLAGEN → erledigt` — `erledigt` nur direkt nach einer Auflage, `…; Delta MERGE-OK`; jedes andere Wort = kein Beleg); oder SSOT-Stufe reviewt; oder bestätigt. Jeder Commit gehört zu einem von GitHub bestätigten PR (gemergt, `merge_commit_sha`, Commits des PR; der Betreff allein belegt nichts), sonst `akzeptierteCommits`; leerer Bereich ist nie GO |
-| G3 | jeder `CENTRIC_`-Name im Server-Code des Kandidaten und in den Vorlagen ist in [RELEASE-SCHALTER.json](RELEASE-SCHALTER.json) klassifiziert. Die Vorlagen (`.env.example`, `deploy/compose.yml`, `Dockerfile`, Staging) liest das Werkzeug nach einer festen Allowlist-Grammatik (env: `NAME=wert`; compose: `NAME: skalar`, `- NAME=wert`, einzeilige Flow-Abbildung/-Liste; Dockerfile: `ENV`/`ARG NAME=wert`). Jede Zeile mit einem überwachten Namen (`CENTRIC_*`, `NODE_ENV`, Variablen unfertiger Funktionen), die keiner dieser Formen entspricht, ist NO-GO; ebenso `env_file` außer `.env`, `extends`, `include`.  ist NO-GO. Jede von Compose geladene Datei (`deploy/**/compose*.yml`, `compose.override.yml` u. a.) muss eine geprüfte Vorlage sein. Kein Schalter und keine unfertige Funktion aktiv (Vergleich trim/klein, `${X:-w}`/`${X:+w}` mit Vorgabewert); freigabepflichtige Schalter nur mit `freigegebeneSchalter`; `NODE_ENV` nur `production`, in `deploy/compose.yml` und `Dockerfile` Pflicht |
+| G3 | jeder `CENTRIC_`-Name im Server-Code des Kandidaten und in den Vorlagen ist in [RELEASE-SCHALTER.json](RELEASE-SCHALTER.json) klassifiziert. Die Vorlagen (`.env.example`, `deploy/compose.yml`, `Dockerfile`, Staging) liest das Werkzeug nach einer festen Allowlist-Grammatik (env: `NAME=wert`; compose: `NAME: skalar`, `- NAME=wert`, einzeilige Flow-Abbildung/-Liste; Dockerfile: `ENV`/`ARG NAME=wert`). Jede Zeile mit einem überwachten Namen (`CENTRIC_*`, `NODE_ENV`, Variablen unfertiger Funktionen), die keiner dieser Formen entspricht, ist NO-GO; ebenso `env_file` außer `.env`, `extends`, `include`.  ist NO-GO. Dockerfile: nur die Parser-Direktive `# syntax=docker/dockerfile:1` in Zeile 1, Fortsetzung ohne Leerzeichen wie Docker, nur bekannte Anweisungen, `CMD` nur `["node", "server.mjs"]`; compose: kein `!` außerhalb von Anführungszeichen, kein `command`/`entrypoint`; env: kein `COMPOSE_*`. Dazu die Vorlagenbindung per SHA-256 (§5). Jede von Compose geladene Datei (`deploy/**/compose*.yml`, `compose.override.yml` u. a.) muss eine geprüfte Vorlage sein. Kein Schalter und keine unfertige Funktion aktiv (Vergleich trim/klein, `${X:-w}`/`${X:+w}` mit Vorgabewert); freigabepflichtige Schalter nur mit `freigegebeneSchalter`; `NODE_ENV` nur `production`, in `deploy/compose.yml` und `Dockerfile` Pflicht |
 | G4 | Digest vollständig; Bildangaben aktuell; Label und Provenienz = Kandidat; Freigabeliste gültig, Zeile `aktiv` mit Kandidaten-Commit |
 | G5 | keine Startschreib-Quelle (W-1…W-9, `server.mjs`) geändert oder neu, oder Betreiberfreigabe deckt alle ab |
 | G6 | Sicherung (mit `snapshot_id`), Restore-Probe, Widerrufbuch-Probe (mit `art`, `ergebnis: ok`) aktuell |

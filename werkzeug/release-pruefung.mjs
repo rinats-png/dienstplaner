@@ -63,6 +63,7 @@
 import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 export const VERSION = 2;
@@ -131,6 +132,13 @@ export const KONFIG_STANDARD = Object.freeze({
   // Compose lädt diese Dateien selbst (auch override); jede gefundene muss eine geprüfte Vorlage sein (G3).
   composeMuster: "(^|/)(docker-)?compose[^/]*\\.ya?ml$",
   composeSuche: ["deploy"],
+  // Vorlagenbindung (G3): jede Datei dieser Art im Wurzelverzeichnis und unter deploy/ muss hier stehen; ihr
+  // SHA-256 (Inhalt im Kandidaten) muss in der Freigabedatei unter vorlagenHashes stehen.
+  gebundeneVorlagen: [".env.example", "Dockerfile", "deploy/compose.yml", "deploy/sicherung/env.beispiel",
+    "deploy/sicherung/widerrufbuch.env.beispiel", "deploy/staging-o2/compose.yml", "deploy/staging-o2/env.staging.beispiel",
+    "deploy/staging-o2/sicherung.env.beispiel", "deploy/staging-o2/widerrufbuch.env.beispiel"],
+  vorlagenArt: "^(Dockerfile.*|(docker-)?compose.*\\.ya?ml|.*\\.env.*|\\.env.*|env\\..*|.*env.*\\.beispiel)$",
+  vorlagenSuche: ["deploy"],
   composeWurzel: ["compose.yml", "compose.yaml", "docker-compose.yml", "docker-compose.yaml",
     "compose.override.yml", "compose.override.yaml", "docker-compose.override.yml", "docker-compose.override.yaml"],
 });
@@ -450,20 +458,59 @@ const ERLAUBTES_ENV_FILE = /^\s+env_file:\s*(["']?)\.env\1\s*$/;
  * Liefert [{ z, pruefText, unlesbarGrund }].
  */
 function logischeZeilen(text, art) {
-  const physisch = String(text ?? "").split(/\r?\n/).filter((z) => z.trim() && !/^\s*#/.test(z));
-  if (art !== "dockerfile") return physisch.map((roh) => ({ z: kommentarWeg(roh), pruefText: roh, unlesbarGrund: null }));
+  const alle = String(text ?? "").split(/\r?\n/);
   const aus = [];
+  if (art === "dockerfile") {
+    // Parser-Direktiven (# syntax=, # escape=, # check=) ändern, wie Docker die Datei liest. Erlaubt ist nur
+    // genau „# syntax=docker/dockerfile:1“ als erste Zeile; jede andere Direktive ist unlesbar.
+    alle.forEach((z, i) => {
+      if (/^\s*#\s*(syntax|escape|check)\s*=/i.test(z) && !(i === 0 && z.trimEnd() === "# syntax=docker/dockerfile:1")) {
+        aus.push({ z: z.trim(), pruefText: z, unlesbarGrund: "Parser-Direktive" });
+      }
+    });
+  }
+  const physisch = alle.filter((z) => z.trim() && !/^\s*#/.test(z));
+  if (art !== "dockerfile") return [...aus, ...physisch.map((roh) => ({ z: kommentarWeg(roh), pruefText: roh, unlesbarGrund: null }))];
   let puffer = null;
   let grund = null;
   for (const z of physisch) {
-    const fort = /\\\s*$/.test(z);
+    const fort = /\\[ \t]*$/.test(z);
     if (fort && z.includes("#")) grund = "Fortsetzung mit #";
-    const teil = fort ? z.replace(/\\\s*$/, " ") : z;
+    // Docker verbindet ohne Leerzeichen: nur das „\“ (und Leerraum dahinter) fällt weg.
+    const teil = fort ? z.replace(/\\[ \t]*$/, "") : z;
     puffer = puffer == null ? teil : puffer + teil;
     if (!fort) { aus.push({ z: puffer, pruefText: puffer, unlesbarGrund: grund }); puffer = null; grund = null; }
   }
   if (puffer != null) aus.push({ z: puffer, pruefText: puffer, unlesbarGrund: "offene Fortsetzung am Dateiende" });
   return aus;
+}
+
+// Dockerfile: nur diese Anweisungen; CMD nur in der bekannten Form; kein ENTRYPOINT, SHELL, ONBUILD, ADD, STOPSIGNAL.
+const DOCKER_ANWEISUNGEN = ["FROM", "ARG", "ENV", "WORKDIR", "COPY", "RUN", "USER", "EXPOSE", "HEALTHCHECK", "LABEL", "VOLUME", "CMD"];
+const DOCKER_CMD = ['CMD ["node", "server.mjs"]'];
+
+/**
+ * Anweisungs- und Formregeln je Format (ohne Parsing): compose ohne „!“ außerhalb von Anführungszeichen (YAML-Tags)
+ * und ohne command/entrypoint; Dockerfile nur bekannte Anweisungen, CMD nur in bekannter Form; env ohne COMPOSE_*.
+ */
+function formErlaubt(z, art) {
+  if (art === "compose") {
+    let q = null;
+    for (const c of z) {
+      if (q) { if (c === q) q = null; continue; }
+      if (c === '"' || c === "'") { q = c; continue; }
+      if (c === "!") return false;
+    }
+    return !/(?:^|[\s{,])["']?(command|entrypoint)["']?\s*:/.test(z);
+  }
+  if (art === "dockerfile") {
+    const wort = (/^\s*([A-Za-z]+)/.exec(z) || [])[1];
+    if (!wort || !DOCKER_ANWEISUNGEN.includes(wort.toUpperCase())) return false;
+    if (wort.toUpperCase() === "CMD") return DOCKER_CMD.includes(z.trim());
+    return true;
+  }
+  if (art === "env") return !/\bCOMPOSE_[A-Z0-9_]*/i.test(z);
+  return true;
 }
 
 /**
@@ -510,7 +557,7 @@ export function vorlageAuswerten(text, art, ueberwacht = []) {
   const istUeberwacht = (n) => /^CENTRIC_/.test(n) || n === "NODE_ENV" || ueberwacht.includes(n);
   const vorkommen = (z) => [...z.matchAll(/(?<!\$\{?)\b([A-Z][A-Z0-9_]*)\b/g)].map((m) => m[1]).filter(istUeberwacht);
   for (const { z, pruefText, unlesbarGrund } of logischeZeilen(text, art)) {
-    if (unlesbarGrund || !dollarUndBackslashErlaubt(pruefText, art, istUeberwacht)) { unlesbar.push(z.trim()); continue; }
+    if (unlesbarGrund || !dollarUndBackslashErlaubt(pruefText, art, istUeberwacht) || !formErlaubt(pruefText, art)) { unlesbar.push(z.trim()); continue; }
     const gelesen = [];
     let m;
     if (art === "env") {
@@ -593,7 +640,7 @@ export function abweichend(roh, erlaubt) {
   return !erlaubt.map((x) => String(x).toLowerCase()).includes(n);
 }
 
-export function g3Schalter({ codeNamen, klassen, vorlagen, unfertig, quelltexte, freigabe = null, composeDateien }, konfig) {
+export function g3Schalter({ codeNamen, klassen, vorlagen, unfertig, quelltexte, freigabe = null, composeDateien, vorlagenStand }, konfig) {
   const g = gate("G3", "Schalter Standard AUS, unfertige Funktionen nicht aktiv");
   if (!Array.isArray(codeNamen) || codeNamen.length === 0) nogo(g, "keine CENTRIC_-Namen im Server-Code gefunden (fail-closed)");
   if (!istObjekt(klassen?.variablen)) return nogo(g, `${konfig.schalterDatei} fehlt oder ist ungültig (fail-closed)`);
@@ -611,6 +658,24 @@ export function g3Schalter({ codeNamen, klassen, vorlagen, unfertig, quelltexte,
     else {
       const geprueft = new Set(konfig.vorlagen.filter((v) => v.art === "compose").map((v) => v.pfad));
       for (const f of composeDateien) if (!geprueft.has(f)) nogo(g, `${f}: wird von Compose geladen, ist aber keine geprüfte Vorlage`);
+    }
+  }
+  g.bindung = [];
+  if (vorlagenStand !== undefined) {
+    const binde = (grund) => { g.bindung.push(grund); nogo(g, grund); };
+    if (!istObjekt(vorlagenStand) || !istObjekt(vorlagenStand.dateien) || !Array.isArray(vorlagenStand.unbekannt)) {
+      binde("Vorlagen des Kandidaten nicht ermittelbar (fail-closed)");
+    } else {
+      for (const f of vorlagenStand.unbekannt) binde(`${f}: Vorlage dieser Art ist nicht gelistet (gebundeneVorlagen) und nicht freigegeben`);
+      const soll = freigabe?.vorlagenHashes;
+      if (!istObjekt(soll)) binde("Freigabedatei ohne vorlagenHashes — die ausgelieferten Vorlagen sind nicht gebunden (--vorlagen-hashes)");
+      else {
+        for (const [f, h] of Object.entries(vorlagenStand.dateien)) {
+          if (!Object.hasOwn(soll, f)) binde(`${f}: fehlt in vorlagenHashes`);
+          else if (soll[f] !== h) binde(`${f}: Hash weicht von der Freigabe ab (Vorlage geändert, neu freigeben)`);
+        }
+        for (const f of Object.keys(soll)) if (!Object.hasOwn(vorlagenStand.dateien, f)) binde(`${f}: in vorlagenHashes, aber nicht im Kandidaten`);
+      }
     }
   }
   const unfertigVariablen = unfertig.funktionen.filter(istObjekt).flatMap((f) => (Array.isArray(f.variablen) ? f.variablen : []));
@@ -880,6 +945,8 @@ export function freigabeSchema(f) {
   const mitGrund = (x) => istObjekt(x) && typeof x.id === "string" && typeof x.grund === "string" && x.grund.trim() !== "";
   reihe("akzeptiertePakete", mitGrund);
   reihe("akzeptierteBefunde", mitGrund);
+  if (f.vorlagenHashes !== undefined && (!istObjekt(f.vorlagenHashes) ||
+    !Object.entries(f.vorlagenHashes).every(([k, v]) => typeof k === "string" && /^[0-9a-f]{64}$/.test(String(v))))) fe.push("vorlagenHashes: falsche Struktur");
   reihe("freigegebeneSchalter", (x) => istObjekt(x) && typeof x.name === "string" && typeof x.grund === "string" && x.grund.trim() !== "");
   reihe("akzeptierteCommits", (x) => istObjekt(x) && /^[0-9a-f]{40}$/.test(x.sha || "") && typeof x.grund === "string" && x.grund.trim() !== "");
   if (f.rueckweg !== undefined && !istObjekt(f.rueckweg)) fe.push("rueckweg: kein Objekt");
@@ -941,7 +1008,7 @@ export function auswerten(e, konfig = KONFIG_STANDARD) {
   const gates = [
     g1Ci(e.checkRuns, e.kandidat, konfig),
     g2Review({ prs, commitsOhnePr: ohne, anzahlCommits: commitsOk ? e.commits.length : undefined, prAngaben: istObjekt(e.prAngaben) ? e.prAngaben : {}, dokBelege: reviewNachweiseLesen(e.reviewTexte || []), ssotBelege: ssotReviewBelege(e.ssot), freigabe }),
-    g3Schalter({ codeNamen: e.codeNamen, klassen: e.klassen, vorlagen: e.vorlagen || [], unfertig: e.unfertig, quelltexte: e.quelltexte, freigabe, composeDateien: e.composeDateien }, konfig),
+    g3Schalter({ codeNamen: e.codeNamen, klassen: e.klassen, vorlagen: e.vorlagen || [], unfertig: e.unfertig, quelltexte: e.quelltexte, freigabe, composeDateien: e.composeDateien, vorlagenStand: e.vorlagenStand ?? null }, konfig),
     g4Bild({ digest: e.digest, kandidat: e.kandidat, bild: bildAngabenLesen(e.bildRoh), liste, berichtVorhanden: e.berichtVorhanden, jetztMs: e.jetztMs }, konfig),
     g5Migration(bericht, freigabe, liste),
     g6Sicherung(e.nachweise, e.jetztMs, konfig),
@@ -961,7 +1028,9 @@ export function auswerten(e, konfig = KONFIG_STANDARD) {
     paket: { prs: prs ?? null, commitsOhnePr: ohne ?? null },
     gesamt,
     exitCode: gesamt !== "GO" ? 1 : uebersteuert ? 3 : 0,
-    vorpruefungOk: gates.filter((g) => !konfig.endpruefungGates.includes(g.id)).every((g) => g.ergebnis === "GO"),
+    // Vorprüfung: ohne die Endprüfungs-Gates; bei G3 zählt die Vorlagenbindung (braucht die Freigabedatei) erst dort.
+    vorpruefungOk: gates.filter((g) => !konfig.endpruefungGates.includes(g.id))
+      .every((g) => g.ergebnis === "GO" || (g.id === "G3" && g.gruende.every((x) => (g.bindung || []).includes(x)))),
     nogo: gates.filter((g) => g.ergebnis !== "GO").map((g) => g.id),
     manuelleBestaetigungen: gates.flatMap((g) => g.manuell.map((m) => `${g.id}: ${m}`)),
     migrationsbericht: bericht,
@@ -1010,12 +1079,14 @@ function quelle(wurzel, rev) {
       for (const f of readdirSync(p)) dateien(`${rel}/${f}`, aus);
       return aus;
     };
-    return { lesen, dateien: (wurzeln) => wurzeln.flatMap((r) => dateien(r)), gibt: (rel) => existsSync(join(wurzel, rel)) };
+    const wurzelDateien = () => { try { return readdirSync(wurzel, { withFileTypes: true }).filter((d) => d.isFile()).map((d) => d.name); } catch { return []; } };
+    return { lesen, dateien: (wurzeln) => wurzeln.flatMap((r) => dateien(r)), gibt: (rel) => existsSync(join(wurzel, rel)), wurzelDateien };
   }
   const lesen = (rel) => { try { return ausfuehren.exec("git", ["show", `${rev}:${rel}`], ausfuehrOptionen(wurzel, { stdio: ["ignore", "pipe", "ignore"] })); } catch { return null; } };
   const dateien = (wurzeln) => { try { return git(wurzel, ["ls-tree", "-r", "--name-only", rev, "--", ...wurzeln]).split("\n").filter(Boolean); } catch { return []; } };
   const gibt = (rel) => { try { git(wurzel, ["cat-file", "-e", `${rev}:${rel}`]); return true; } catch { return false; } };
-  return { lesen, dateien, gibt };
+  const wurzelDateien = () => { try { return git(wurzel, ["ls-tree", "--name-only", rev]).split("\n").filter(Boolean); } catch { return []; } };
+  return { lesen, dateien, gibt, wurzelDateien };
 }
 
 function nachweiseAusQuelle(q, verz) {
@@ -1040,6 +1111,22 @@ export function basisPruefen(wurzel, basis, kandidat, konfig = KONFIG_STANDARD) 
   if (!zeilen.length) return `Basis steht in keiner Zeile von ${konfig.freigabeListe} (HEAD)`;
   if (!zeilen.some((z) => z.status === "aktiv" || z.status === "vorherig")) return `Basis steht in ${konfig.freigabeListe} nicht als aktiv oder vorherig (gesperrt ist keine Basis)`;
   return null;
+}
+
+/** SHA-256 je Vorlage dieser Art im Kandidaten; nicht gelistete Dateien dieser Art als „unbekannt“. */
+export function vorlagenStandErmitteln(kq, konfig = KONFIG_STANDARD) {
+  const art = new RegExp(konfig.vorlagenArt, "i");
+  const kandidaten = [...new Set([...kq.wurzelDateien(), ...kq.dateien(konfig.vorlagenSuche)])]
+    .filter((f) => art.test(f.split("/").pop())).sort();
+  const dateien = {};
+  const unbekannt = [];
+  for (const f of kandidaten) {
+    if (!konfig.gebundeneVorlagen.includes(f)) { unbekannt.push(f); continue; }
+    const text = kq.lesen(f);
+    if (text == null) { unbekannt.push(f); continue; }
+    dateien[f] = createHash("sha256").update(Buffer.from(text, "utf8")).digest("hex");
+  }
+  return { dateien, unbekannt };
 }
 
 function nachweiseLesen(verz) {
@@ -1067,6 +1154,7 @@ export function sammeln(opt, konfig = KONFIG_STANDARD) {
   e.klassen = jsonLesen(kq.lesen(konfig.schalterDatei)).wert;
   e.vorlagen = konfig.vorlagen.map((v) => ({ ...v, text: kq.lesen(v.pfad) }));
   const composeMuster = new RegExp(konfig.composeMuster, "i");
+  e.vorlagenStand = vorlagenStandErmitteln(kq, konfig);
   e.composeDateien = [...kq.dateien(konfig.composeSuche).filter((f) => composeMuster.test(f)),
     ...konfig.composeWurzel.filter((f) => kq.gibt(f))];
   e.unfertig = jsonLesen(kq.lesen(konfig.unfertigDatei)).wert;
@@ -1207,6 +1295,7 @@ export function argumenteLesen(argv) {
     } else if (a === "--offline") o.offline = true;
     else if (a === "--kurz") o.kurz = true;
     else if (a === "--konfig-zeigen") o.konfigZeigen = true;
+    else if (a === "--vorlagen-hashes") o.vorlagenHashes = true;
     else throw new Error(`unbekannte Option: ${a}`);
   }
   return o;
@@ -1225,6 +1314,19 @@ export function kurzfassung(r) {
 function main(argv) {
   let o;
   try { o = argumenteLesen(argv); } catch (err) { console.error("Aufruf: " + err.message); return 2; }
+  if (o.vorlagenHashes) {
+    // Hilfe für die Freigabedatei: SHA-256 der Vorlagen des Kandidaten (offline: Arbeitsstand unter --wurzel).
+    const w = resolve(o.wurzel || fileURLToPath(new URL("..", import.meta.url)));
+    let rev = null;
+    if (!o.offline) {
+      rev = revisionAufloesen(w, o.kandidat);
+      if (!rev) { console.error("Aufruf: --vorlagen-hashes braucht --kandidat <commit> (oder --offline)"); return 2; }
+    }
+    const stand = vorlagenStandErmitteln(quelle(w, rev));
+    console.log(JSON.stringify(stand.dateien, null, 2));
+    for (const f of stand.unbekannt) console.error(`nicht gelistete Vorlage: ${f}`);
+    return stand.unbekannt.length ? 1 : 0;
+  }
   if (o.konfigZeigen) {
     if (argv.length !== 1) { console.error("Aufruf: --konfig-zeigen steht allein"); return 2; }
     console.log(JSON.stringify(KONFIG_STANDARD, null, 2));
