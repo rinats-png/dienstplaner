@@ -4,8 +4,8 @@
    Die axe-Specs (barrierefreiheit*.spec.mjs) messen ohne geöffnete Schublade; diese Spec öffnet sie per Tastatur
    (Menütaste, Enter; Fokus auf dem aktiven Eintrag, vgl. ui/geraete.js seitenleisteFokus) und misst im Browser:
    aktiver Eintrag mit Fokusring, ein anderer Eintrag im Hover, Text >= 4,5:1 auf der gemischten Fläche, Fokusring
-   >= 3:1 gegen die angrenzenden Farben (bei outline-offset > 0 die Seitenleiste); danach axe (WCAG 2.2 AA) mit offener
-   Schublade.
+   >= 3:1 gegen die Seitenleiste und gegen die Füllung des aktiven Eintrags (Review #430 A2); danach axe (WCAG 2.2 AA)
+   mit offener Schublade.
    Übergänge der Einträge sind für die Messung abgeschaltet (zusätzliches Stilelement nur im Test): Ein Zwischenbild
    der Überblendung hätte eine zu helle Fläche und damit falsch hohe Werte.
    Bremsen-Bilanz: 2 Anmeldungen als Leitung je Lauf (nur Projekt 390x844). Code und Herkunft je Test aus dem Zugangspool
@@ -72,8 +72,7 @@ test.describe("V4-2c: Seitenleisten-Einträge in der Schublade (390 px)", () => 
       expect(an.ring, "Fokusring vorhanden").not.toBeNull();
       expect(an.ring.breite).toBeGreaterThanOrEqual(2);
       expect(an.ring.gegenLeiste, "Fokusring gegen Seitenleiste").toBeGreaterThanOrEqual(3);
-      /* Mit Abstand (outline-offset) liegt zwischen Ring und Eintrag ein Spalt in der Farbe der Seitenleiste. */
-      if (an.ring.abstand <= 0) expect(an.ring.gegenEintrag, "Fokusring gegen Eintrag").toBeGreaterThanOrEqual(3);
+      expect(an.ring.gegenEintrag, "Fokusring gegen Füllung des aktiven Eintrags").toBeGreaterThanOrEqual(3);
 
       /* Hover auf einem anderen Eintrag. */
       const anderer = page.locator(".seitenleiste .slink:not(.on)").first();
