@@ -47,6 +47,20 @@ describe("WP-21: Seitenleiste auf Telefon und Tablet", () => {
     expect(ausserhalb).not.toMatch(/\.seitenleiste/);
     expect(ausserhalb).toMatch(/@media \(min-width: 1025px\)\{ \.seiten-abdunkelung\{display:none !important;\} \}/);
   });
+  it("V4-2d: offen sofort sichtbar (visibility ohne Übergang, auch bei reduzierter Bewegung), zu erst nach dem Hinausschieben", () => {
+    /* Befund CI #430 / V4-2d: Die globale Regel bei prefers-reduced-motion (transition-duration:.01ms !important) machte
+       aus „visibility 0s“ einen Übergang; beim focus() war die Leiste noch hidden. Die offene Leiste darf visibility daher
+       nicht in ihrer Übergangsliste führen (weder als Eigenschaft noch über „all“). */
+    const offen = schmalBlock[1].match(/\.seitenleiste\.offen\{([^}]*)\}/);
+    expect(offen).not.toBeNull();
+    const uebergang = offen[1].match(/transition(?:-property)?:([^;]*);/);
+    expect(uebergang, "offene Leiste setzt ihre Übergangsliste selbst").not.toBeNull();
+    expect(uebergang[1]).not.toMatch(/visibility|\ball\b/);
+    expect(uebergang[1]).toMatch(/transform/);
+    expect(app).toMatch(/@media \(prefers-reduced-motion: reduce\)\{\n  \*\{[^}]*transition-duration:\.01ms !important;\}/);
+    /* Zuklappen unverändert: unsichtbar erst nach 0,24 s (Ende des Hinausschiebens). */
+    expect(schmalBlock[1]).toMatch(/\.seitenleiste\{visibility:hidden; transition:transform \.24s cubic-bezier\(\.4,0,\.2,1\), visibility 0s linear \.24s;\}/);
+  });
   it("die Abdunkelung deckt den Bildschirm hinter der Leiste ab und liegt darunter", () => {
     expect(schmalBlock[1]).toMatch(/\.seiten-abdunkelung\{position:fixed; inset:0; z-index:39;/);
     expect(app).toMatch(/\.seitenleiste\{\n[\s\S]{0,300}?z-index:40;/);
