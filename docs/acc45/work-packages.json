@@ -4,10 +4,10 @@
   "anzahl": 225,
   "statusZaehlung": {
     "BLOCKED": 85,
-    "READY": 17,
+    "READY": 16,
     "IN_PROGRESS": 17,
     "REVIEW": 7,
-    "INTEGRATED": 96,
+    "INTEGRATED": 97,
     "DONE": 3
   },
   "jeStrang": {
@@ -37,10 +37,10 @@
     },
     "folge": {
       "pakete": 17,
-      "offen": 13,
+      "offen": 12,
       "restPT": {
-        "min": 21.6,
-        "max": 38.1
+        "min": 21.1,
+        "max": 37.1
       }
     },
     "extern": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 328.4,
-    "max": 563.35
+    "min": 327.9,
+    "max": 562.35
   },
   "kritischerPfad": {
     "summe": 70,
@@ -6288,12 +6288,12 @@
       "prio": "P2",
       "aufwandPT": {"min":0.5,"max":1},
       "abhaengigkeiten": [],
-      "status": "READY",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #402 in integration/release-v4"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #402 in integration/release-v4"},
+        "reviewt": {"wert":true,"beleg":"docs/acc45/REVIEW-NACHWEIS-2026-11-20.md, PR #402: Sonnet MERGEBAR (Selbstauskunft)"},
+        "integriert": {"wert":true,"beleg":"PR #402 in integration/release-v4"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -6307,7 +6307,7 @@
       "akzeptanz": "DESIGNSYSTEM.md, MIGRATION.md, Mockups von design/v4-glass-logo im Integrationsstand; design/README.md nennt V3 abgelöst; src/v4/tokens.js verweist auf vorhandene Datei",
       "tests": "Unit, E2E",
       "dateien": "docs/, design/",
-      "notiz": "Analyse 2026-11-20 (V4-Integrationsstand); PT sind Schätzung der Analyse, nicht belegt. Umsetzung als PR gegen integration/release-v4 (Branch docs/v4-0-spezifikation); Status setzt der Koordinator nach dem Merge. Zuordnung #88/#91/#92 siehe Nachtrag in der Analyse; Schließen von #91/#92 entscheidet der Betreiber."
+      "notiz": "Analyse 2026-11-20 (V4-Integrationsstand); PT sind Schätzung der Analyse, nicht belegt. Umsetzung als PR gegen integration/release-v4 (Branch docs/v4-0-spezifikation); Status setzt der Koordinator nach dem Merge. Zuordnung #88/#91/#92 siehe Nachtrag in der Analyse; Schließen von #91/#92 entscheidet der Betreiber. Stand (automatisch): INTEGRATED nach #402."
     },
     {
       "id": "V4-1",
