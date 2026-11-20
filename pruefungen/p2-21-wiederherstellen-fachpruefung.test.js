@@ -73,7 +73,7 @@ const betrieb = (abweichungen = {}) => ({
 /** Sicherung ablegen (wie /api/sicherung), Marke zurück. */
 async function sicherungAblegen(m) {
   markeNr += 1;
-  const marke = `2026-10-0${markeNr}-08-00-00`;
+  const marke = `2026-10-${String(markeNr).padStart(2, "0")}-08-00-00`;         // gültige Marke bis 28 Sicherungen
   await laden().setJSON(`sicherung:${RAUM}:${marke}`, { centric: "sicherung", fassung: 2, umfang: "betrieb", mandantId: "m-a",
     erzeugt: "2026-10-01T08:00:00.000Z", mandant: m }, { metadata: { zeit: "2026-10-01T08:00:00.000Z", durch: "Test" } });
   return marke;
@@ -236,10 +236,13 @@ describe("P2-21: Zeitgrenzen und Obergrenze (Delta-Review #419)", () => {
     let gestartet = 0;
     const zwei = new Promise((ok) => { steuer.start = () => { if (++gestartet === 2) ok(); }; });
     steuer.modus = "halten";
+    /** @type {Promise<any>[]} */
+    const laufend = [];
     try {
       const r = await anfrage("/api/bestand", { methode: "GET", token: T.l1 });
       const a = anfrage("/api/wiederherstellen", { token: T.l1, rumpf: { marke, etag: r.etag } });
       const b = anfrage("/api/wiederherstellen", { token: T.l1, rumpf: { marke, etag: r.etag } });
+      laufend.push(a, b);
       await zwei;
       const dritte = await anfrage("/api/wiederherstellen", { token: T.l1, rumpf: { marke, etag: r.etag } });
       expect(dritte.status, dritte.roh).toBe(503);
@@ -247,7 +250,35 @@ describe("P2-21: Zeitgrenzen und Obergrenze (Delta-Review #419)", () => {
       freigeben();
       const st = [(await a).status, (await b).status].sort();
       expect(st).toEqual([200, 409]);                                          // die zweite trifft den neuen Stand
-    } finally { steuer.modus = null; freigeben(); }
+    } finally { steuer.modus = null; freigeben(); await Promise.allSettled(laufend); }
+  });
+
+  it("Sicherung wechselt während der Prüfung (Abdruck): 409, Stand unverändert, keine Sicherung „vor Wiederherstellung“", async () => {
+    const marke = await sicherungAblegen(betrieb({ [`a1|${tag(60)}`]: "F" }));
+    const vorher = await gespeichert();
+    const anzahl = await sicherungen();
+    let freigeben = () => {};
+    steuer.halt = new Promise((ok) => { freigeben = ok; });
+    steuer.gestartet = new Promise((ok) => { steuer.start = ok; });
+    steuer.modus = "halten";
+    /** @type {Promise<any>[]} */
+    const laufend = [];
+    try {
+      const r = await anfrage("/api/bestand", { methode: "GET", token: T.l1 });
+      const w = anfrage("/api/wiederherstellen", { token: T.l1, rumpf: { marke, etag: r.etag } });
+      laufend.push(w);
+      await steuer.gestartet;
+      /* Dieselbe Marke, anderer Inhalt — geprüft wurde die alte Fassung. */
+      await laden().setJSON(`sicherung:${RAUM}:${marke}`, { centric: "sicherung", fassung: 2, umfang: "betrieb", mandantId: "m-a",
+        erzeugt: "2026-10-01T08:00:00.000Z", mandant: betrieb({ [`a1|${tag(60)}`]: "S", [`a1|${tag(61)}`]: "F" }) },
+        { metadata: { zeit: "2026-10-01T08:00:00.000Z", durch: "Test" } });
+      freigeben();
+      const e = await w;
+      expect(e.status, e.roh).toBe(409);
+      expect(e.text).toMatch(/Sicherung hat sich während der Prüfung geändert/);
+    } finally { steuer.modus = null; freigeben(); await Promise.allSettled(laufend); }
+    expect(await gespeichert()).toEqual(vorher);
+    expect(await sicherungen()).toBe(anzahl);
   });
 });
 

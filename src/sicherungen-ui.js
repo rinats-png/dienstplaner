@@ -155,8 +155,27 @@ export function ergebnisMeldung({ status, daten } = { status: 0 }) {
   if (status === 503)
     return { ok: false, titel: "Gerade nicht möglich",
       text: `Der Server ist gerade ausgelastet oder wird neu gestartet. ${nichts} Bitte in einer Minute noch einmal versuchen.` };
+  /* Delta-Review 2 #419: 401 — der Server hat die Anfrage gar nicht angenommen, also sicher nichts geändert. */
+  if (status === 401)
+    return { ok: false, neuAnmelden: true, titel: "Bitte neu anmelden",
+      text: `Die Anmeldung ist abgelaufen. ${nichts} Bitte neu anmelden und erneut versuchen.` };
+  /* Netzwerkfehler NACH dem Senden (fehlerNachSenden): Ob der Server geschrieben hat, ist offen. */
+  if (status === 0 && d.unklar)
+    return { ok: false, neuLaden: true, titel: "Ergebnis unklar", text: UNKLAR_TEXT };
+  /* Status 0 ohne `unklar`: Die Anfrage ging nicht hinaus (speicher.js prüft vor dem Senden) — nichts geändert. */
   if (status === 0)
     return { ok: false, titel: "Nicht zurückgespielt", text: d.fehler || "Keine Verbindung zum Server." };
-  return { ok: false, titel: d.fehler || "Nicht zurückgespielt",
-    text: d.text || nichts };
+  /* Alles Übrige (etwa 500): Der Server kann schon geschrieben haben — keine Behauptung „nichts geändert“. */
+  return { ok: false, neuLaden: true, titel: "Ergebnis unklar", text: UNKLAR_TEXT };
+}
+
+/**
+ * Ein Fehler, den der Aufruf NACH dem Senden wirft (speicher.js `ruf`): 401 wirft „nicht-angemeldet“ — dann hat der
+ * Server nichts angenommen; alles andere (Netz weg, Verbindung abgebrochen) lässt das Ergebnis offen. Nie roher Text.
+ * @param {any} e
+ * @returns {{ status: number, daten: any }}
+ */
+export function fehlerNachSenden(e) {
+  if (e && e.message === "nicht-angemeldet") return { status: 401, daten: {} };
+  return { status: 0, daten: { unklar: true } };
 }

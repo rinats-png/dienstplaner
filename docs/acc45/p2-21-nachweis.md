@@ -18,10 +18,20 @@ Stand 2026-11-20, Branch `fix/p2-21-p2-22-server-rechte` (PR #419), Review #419 
   Dazu zählt auch die Wartezeit auf die Raumsperre (höchstens 15 s, `server/lib/raumsperre.mjs`).
   - Die Prüfung hat höchstens **30 s** (`budgetMs`).
   - Sind seit Beginn der Anfrage mehr als **45 s** vergangen (`gesamtMs`), bricht der Server unter der Sperre **vor dem
-    Schreiben** ab: 503 `WIEDERHERSTELLEN_ZEIT`, sicher nichts geschrieben. Für Sicherung „vor Wiederherstellung“ und
-    Tausch bleiben 15 s.
-  - Höchstens **2** Wiederherstellungs-Prüfungen laufen gleichzeitig im Prozess (`gleichzeitig`). Darüber gibt es 503
-    `WIEDERHERSTELLEN_BELEGT` vor der Bremse, der Versuch zählt dann nicht.
+    Schreiben** ab: 503 `WIEDERHERSTELLEN_ZEIT`, sicher nichts geschrieben.
+  - Die verbleibenden rund 15 s sind eine **Schätzung, keine Garantie**. Nach der Prüfstelle folgen noch:
+    - die Sicherung „vor Wiederherstellung“ schreiben,
+    - die Sicherungen ausdünnen,
+    - der Tausch,
+    - die Protokolle,
+    - der Sicherungsschlüssel-Abgleich nach dem Schreiben.
+
+    Keiner dieser Schritte hat eine eigene Zeitgrenze. Ein 502/504 bleibt in seltenen Fällen möglich; die Oberfläche
+    sagt dann „Ergebnis unklar“.
+  - Höchstens **2** Wiederherstellungs-Prüfungen laufen gleichzeitig (`gleichzeitig`). Darüber gibt es 503
+    `WIEDERHERSTELLEN_BELEGT` vor der Bremse, der Versuch zählt dann nicht. **Bekannte Grenze:** Der Zähler gilt
+    prozessweit über alle Betriebe, nicht je Betrieb. Zwei große Wiederherstellungen in zwei Betrieben belegen ihn für
+    alle anderen.
 - Die Oberfläche (`src/sicherungen-ui.js`) zeigt bei diesen 503 den Servertext ohne „in einer Minute noch einmal“. Bei
   502/504 (Proxy-Zeitgrenze) zeigt sie „Ergebnis unklar“ mit dem Hinweis, die Sicherungsliste zu prüfen, nicht mehr
   „nichts geändert“.
@@ -51,17 +61,18 @@ Rechner: Windows-Entwicklungsrechner (Node 24), ohne parallele Last:
 Die Dauern wurden mit einem Budget von 40 s bzw. ohne Budget gemessen (Fassung vor dem Delta-Review). Die Spalte „im
 30-s-Budget“ ist aus der Dauer ohne Budget abgeleitet.
 
-| Personen | vergangene Tage abweichend | Abweichungen je Stand | Prüfung (geprüfte Einteilungen) | Dauer ohne Budget | im 30-s-Budget | längster Block |
+| Personen | vergangene Tage abweichend | Abweichungen je Stand | Prüfung (geprüfte Einteilungen) | Dauer ohne Budget | im 30-s-Budget (abgeleitet) | längster Block |
 |---|---|---|---|---|---|---|
 | 1 000 | – (nur Schichtfolge) | 0 | 103 700 | 9,8 s | passt | 38–47 ms |
 | 2 000 | – (nur Schichtfolge) | 0 | 207 400 | 19,4 s | passt | 54–62 ms |
 | 500 | 30 | 75 500 | 75 500 | 12,2 s | passt | 44–47 ms |
-| 1 000 | 0 (121 künftige Tage) | 121 000 | 121 000 | 17,8–19,8 s | passt | 82–120 ms |
+| 1 000 | 0 (121 künftige Tage) | 121 000 | 121 000 | 17,8 s (mit 40-s-Budget gemessen: 19,8 s) | passt | 82–120 ms |
 | 2 000 | 0 (121 künftige Tage) | 242 000 | 242 000 | 36,2 s | **Abbruch** | 201–217 ms |
 | 2 000 | 180 | 602 000 | 602 000 | **154,4 s** | **Abbruch** | 555 ms |
 
 Unter paralleler Last (gleichzeitig laufende Prüfdateien) lagen die Werte etwa doppelt so hoch. Ergebnisse:
-- 1 000 Personen × 121 Tage brachen dann schon am 40-s-Budget ab.
+- 1 000 Personen × 121 Tage brachen dann schon am 40-s-Budget ab; unter Last fällt dieser Fall also auch aus dem
+  30-s-Budget.
 - 2 000 Personen × 121 Tage dauerten ohne Budget 66 s.
 - 2 000 Personen × 180 vergangene Tage dauerten ohne Budget 94 s, mit einem längsten Block bis 1,2 s.
 
