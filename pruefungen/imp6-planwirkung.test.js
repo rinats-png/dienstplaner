@@ -206,6 +206,10 @@ describe("L. Lücke, Überschneidung, ungültige Zuordnung: nie still ein Modell
     const m = betrieb([person("a1", [zu("a", "len7", "2027-11-01", "2027-11-03", 0)]), person("a2", null)]);
     expect(FP.schichtmodellKlaerungen(m, "2027-10-01", "2027-12-31")).toEqual({ faelle: [], begrenzt: false });
   });
+  it("Klärungsliste mit unbegrenztem Zeitraum rechnet nicht endlos (Tagesgrenze je Person)", () => {
+    const m = betrieb([person("a1", [zu("a", "len7", "2027-11-01", null, 0)])]);
+    expect(FP.schichtmodellKlaerungen(m, "2000-01-01", "2099-12-31")).toEqual({ faelle: [], begrenzt: true });
+  });
   it("Springer und Personen außerhalb des Schichtdiensts: keine Folge, auch mit Zuordnung", () => {
     for (const extra of [{ springer: true }, { imSchichtdienst: false }]) {
       const p = person("a1", [zu("a", "frueh1", "2027-11-01", null, 0)], extra);

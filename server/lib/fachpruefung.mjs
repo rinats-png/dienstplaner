@@ -260,6 +260,8 @@ export function planDienst(m, p, d, eid = einheitAm(p, d)) {
   return teilzeitModell(m, p, d, l.dienstId, { nummer: l.nummer, index: l.index, tage: modellVerzeichnis(m).get(l.modellId).tage });
 }
 
+/** Höchstzahl der Tage je Person in schichtmodellKlaerungen (technische Grenze, etwa zehn Jahre). */
+const KLAERUNG_TAGE_MAX = 3700;
 /**
  * Klärungsfälle der Modellzuordnung in einem Zeitraum (unabhängig vom Schalter): Tage, an denen für eine Person im
  * Schichtdienst kein Modell eindeutig gilt („uneindeutig“) oder die gespeicherte Zuordnung fehlerhaft ist („ungueltig“).
@@ -270,7 +272,9 @@ export function schichtmodellKlaerungen(m, von, bis, grenze = 500) {
   const faelle = [];
   for (const p of liste(m && m.personen)) {
     if (!Array.isArray(p[ZUORDNUNG_FELD]) || !p[ZUORDNUNG_FELD].length) continue;      // implizit: nie Klärung
+    let n = 0;
     for (let d = von; d <= bis; d = addDays(d, 1)) {
+      if (++n > KLAERUNG_TAGE_MAX) return { faelle, begrenzt: true };       // Zeitraum ohne Grenze: nie endlos rechnen
       if (!imDienst(p, d)) continue;
       const l = schichtmodellLageAm(m, p, d);
       if (l.art !== "uneindeutig" && l.art !== "ungueltig") continue;

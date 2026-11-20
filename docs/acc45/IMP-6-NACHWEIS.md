@@ -197,3 +197,10 @@ E3 verlangt, dass nur `src/ansichten/schichtmodelle.jsx` und `src/app/aktionen/p
   `fachpruefung.mjs` erweitert (Kern ausgelagert; `fachpruefung.mjs` ist die eine Stelle der Planrechnung, die ihn liest),
   Suchausdruck zusätzlich um Importe des Kerns verschärft. Differenz D selbst unverändert.
 - **Entscheidungsvorlagen:** P2-25 (Frage 7), P2-26 (Frage 8), P2-27 (Stichtag beim Einschalten), P2-28 (Teilzeit/Urlaubskonto).
+- **Rot vorher:** Commit `2111ed66` (nur Prüfungen) gegen den Code der Basis: 17 von 17 ausgewählten Fällen (L, T, M, V, S, Q7)
+  rot (`schichtmodellWirkungSetzen is not a function` u. a.).
+- **Grün lokal (einzeln, `--maxWorkers=1`):** imp6-planwirkung 81/81 (710 s auf dem Entwicklungsrechner, D3 und A sind die
+  langen Teile); imp6-mehrfachmodelle 119, imp6-zyklen-grenzfaelle 57, imp6-eigenes-modell 22, imp6-oberflaeche 51,
+  fachpruefung-server 63, p212-kalendertag 59, p212-client-kalendertag 12, prozess-wachen 15, doku 5, verdrahtung 8,
+  ci-abdeckung 8, acc45-status 17, endgeraete-speicher 6, wp39-app-aufbau 4; eslint ohne Befund; tsc ohne Befund;
+  `acc45-backlog pruefen` OK; `vorpruefung --paket IMP-6` ohne harte Verstöße.
