@@ -84,7 +84,7 @@ export const gestaltStil = () => `
 .fokus .bereiche, .fokus .unterleiste{display:none;}
 
 .kopf-marke{display:flex; align-items:center; gap:9px; flex:0 1 auto; min-width:0;}
-.kopf-marke .wort{font-size:16px; font-weight:700; letter-spacing:.14em; color:${C.text};}
+.kopf-marke .wort{display:flex; font-size:16px; font-weight:700; letter-spacing:.14em; color:${C.text};}
 .kopf-marke .trenner{width:1px; height:22px; background:${C.line}; flex-shrink:0; margin:0 3px;}
 .kopf-marke .betrieb{font-size:12.5px; color:${C.dim}; max-width:190px; flex:0 1 auto; min-width:0; overflow:hidden;
   text-overflow:ellipsis; white-space:nowrap;}
@@ -386,7 +386,7 @@ button.kachel{cursor:pointer; display:block; width:100%;}
 .m-kopf{position:sticky; top:0; z-index:40; padding:10px 18px; display:flex; align-items:center; gap:12px;
   background:var(--c-kopf-grund); backdrop-filter:saturate(160%) blur(12px);
   -webkit-backdrop-filter:saturate(160%) blur(12px); border-bottom:1px solid ${C.line};}
-.m-wort{flex:1; font-size:15.5px; font-weight:700; letter-spacing:.14em; color:${C.text};}
+.m-wort{flex:1; display:flex; align-items:center; font-size:15.5px; font-weight:700; letter-spacing:.14em; color:${C.text};}
 .m-postknopf{position:relative; width:46px; height:46px; border:1px solid ${C.line}; border-radius:50%;
   background:${C.flaeche}; color:${C.dim}; cursor:pointer; display:flex; align-items:center; justify-content:center;}
 .m-zahl{position:absolute; top:-4px; right:-4px; min-width:19px; height:19px; padding:0 4px; border-radius:10px;
@@ -411,4 +411,18 @@ html:has(.m-tabs){scroll-padding-top:76px; scroll-padding-bottom:calc(92px + env
 .m-griff{width:42px; height:4.5px; border-radius:3px; background:${C.lineStark}; margin:6px auto 16px;}
 .m-blatttitel{font-size:20px; font-weight:650; letter-spacing:-.02em; margin-bottom:18px;}
 @media print{ .m-tabs{display:none !important;} .m-schale::before{display:none;} }
+
+/* ------------------- Glas-Rückfall (DESIGNSYSTEM Gate 4) -------------------
+   V4-2. Ohne Weichzeichner (Browser ohne backdrop-filter) oder bei reduzierter
+   Transparenz tragen die Leisten die opake Fläche (Tokens: V4_GLAS.grund =
+   flaeche) statt des durchscheinenden Kopfgrunds. Der Rücken hinter dem Blatt
+   verliert nur den Weichzeichner; die Abdunklung bleibt. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))){
+  .kopfblock, .tabbar, .m-kopf, .m-tabs{background:var(--c-flaeche);}
+}
+@media (prefers-reduced-transparency: reduce){
+  .kopfblock, .tabbar, .m-kopf, .m-tabs{background:var(--c-flaeche);
+    backdrop-filter:none; -webkit-backdrop-filter:none;}
+  .m-blattrahmen{backdrop-filter:none; -webkit-backdrop-filter:none;}
+}
 `;

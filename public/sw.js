@@ -63,6 +63,9 @@ const GERUEST = [
   "/icon-v4-192.png",
   "/favicon-32.png",
 ];
+/* V4-2: Die Wortmarke ist ein Bild (DESIGNSYSTEM: SVG, kein Text) — offline sonst nur Alternativtext. */
+const WORTMARKEN = ["/centric-wortmarke.svg", "/centric-wortmarke-hell.svg"];
+GERUEST.push(...WORTMARKEN);
 
 /**
  * Welche Bauteile lädt die Seite? Steht in der Startseite.
@@ -168,6 +171,20 @@ self.addEventListener("fetch", (e) => {
      Der Dateiname trägt einen Hashwert des Inhalts. Ändert sich der
      Inhalt, ändert sich der Name — eine gespeicherte Datei kann deshalb
      nie veraltet sein. */
+  /* --- Wortmarke (V4-2): Netz zuerst, sonst die beim Einrichten geholte Datei.
+     Ohne diesen Zweig zeigte die Kopfzeile offline nur den Alternativtext. */
+  if (WORTMARKEN.includes(url.pathname)) {
+    e.respondWith((async () => {
+      try { return await fetch(req); }
+      catch (fehler) {
+        const da = await (await caches.open(SCHALE)).match(url.pathname);
+        if (da) return da;
+        throw fehler;
+      }
+    })());
+    return;
+  }
+
   if (istBauteil(url)) {
     e.respondWith((async () => {
       const c = await caches.open(SCHALE);

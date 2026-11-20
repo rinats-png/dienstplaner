@@ -40,6 +40,25 @@ export function Marke({ size = 38, id = "m", style, ...rest }) {
     </svg>);
 }
 
+/* Die Wortmarke (V4-2). DESIGNSYSTEM: „Wortmarke immer als bereitgestelltes
+   SVG, nicht als HTML-Text nachgebaut“. Die Dateien liegen unverändert in
+   public/ (Blob gleich neues-logo/*); der Dienstarbeiter hält beide vor.
+   `hell` = helle Schrift für dunkle Flächen (centric-wortmarke-hell.svg). */
+const WORTMARKE = { dunkel: "/centric-wortmarke.svg", hell: "/centric-wortmarke-hell.svg", b: 268.8, h: 43 };
+
+/**
+ * Die Wortmarke als Bild. `hoehe` in CSS-Pixeln, die Breite folgt dem
+ * Seitenverhältnis der Datei. Der Alternativtext trägt den Namen, wie vorher
+ * der Text.
+ */
+export function Wortmarke({ hell = false, hoehe = 13, className = "", style }) {
+  const breite = Math.round((hoehe * WORTMARKE.b) / WORTMARKE.h * 10) / 10;
+  return (
+    <img src={hell ? WORTMARKE.hell : WORTMARKE.dunkel} alt="CENTRIC" width={breite} height={hoehe}
+      className={`wortmarke${className ? ` ${className}` : ""}`} draggable={false}
+      style={{ display: "block", flexShrink: 0, ...style }} />);
+}
+
 /** Abgerundetes Rechteck, auch für Browser ohne `roundRect`. */
 function rr(c, x, y, w, h, r) {
   c.beginPath();
