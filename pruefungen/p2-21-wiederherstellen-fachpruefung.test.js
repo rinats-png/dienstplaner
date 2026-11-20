@@ -23,13 +23,18 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 /* Steuerung für den Fail-closed-Teil: die Prüfung bricht ab (Zeitbudget) oder wirft. */
-const steuer = vi.hoisted(() => ({ modus: /** @type {null | "zeitbudget" | "fehler"} */ (null) }));
+const steuer = vi.hoisted(() => {
+  /** @type {{ modus: null | "zeitbudget" | "fehler" | "halten", halt: Promise<any>, gestartet: Promise<any>, start: () => void }} */
+  const s = { modus: null, halt: Promise.resolve(), gestartet: Promise.resolve(), start: () => {} };
+  return s;
+});
 vi.mock("../server/lib/schutzdurchsetzung.mjs", async (importOriginal) => {
   /** @type {any} */
   const o = await importOriginal();
   return { ...o, wiederherstellungsPruefung: async (...a) => {
     if (steuer.modus === "zeitbudget") return { zeitbudget: true };
     if (steuer.modus === "fehler") throw new Error("Prüfung kaputt");
+    if (steuer.modus === "halten") { steuer.start(); await steuer.halt; }
     return o.wiederherstellungsPruefung(...a);
   } };
 });
@@ -169,13 +174,45 @@ describe("P2-21: fail-closed — ohne abgeschlossene Prüfung wird nichts zurüc
         const w = await wiederherstellen(marke);
         expect(w.status, w.roh).toBe(503);
         expect(w.code).toBe("FACHPRUEFUNG_OFFEN");
+        /* Review #419 (Auflage 1c): kein „gleich noch einmal“ — der Versuch zählt zur Bremse, Notweg über den Betreiber. */
+        expect(w.text).toMatch(/fünf Wiederherstellungen je Stunde/);
+        expect(w.text).toMatch(/Betreiber/);
+        expect(w.text).not.toMatch(/in einigen Sekunden/);
+        expect(w.roh).not.toMatch(/Prüfung kaputt/);                     // H3: kein Fehlertext nach außen
       } finally { steuer.modus = null; }
       expect(await gespeichert()).toEqual(vorher);
       expect(await sicherungen()).toBe(anzahl);                         // auch keine Sicherung „vor Wiederherstellung"
       const spur = await S.spurLesen(1);
       expect(spur.some((z) => z.ausgang === "abgewiesen" && String(z.zusatz).includes(`${marke}: Fachprüfung nicht abgeschlossen`))).toBe(true);
+      /* H3: auch im Protokoll fester Text statt der Ausnahmemeldung. */
+      expect(spur.some((z) => String(z.zusatz || "").includes("Prüfung kaputt"))).toBe(false);
     });
   }
+});
+
+describe("P2-21: Die Prüfung hält die Raumsperre nicht (Review #419, Auflage 1)", () => {
+  it("während die Prüfung rechnet, speichert ein anderer Schreiber; danach 409, nichts zurückgespielt", async () => {
+    const marke = await sicherungAblegen(betrieb({ [`a1|${tag(30)}`]: "S", [`a1|${tag(31)}`]: "F" }));
+    let freigeben = () => {};
+    steuer.halt = new Promise((ok) => { freigeben = ok; });
+    steuer.gestartet = new Promise((ok) => { steuer.start = ok; });
+    steuer.modus = "halten";
+    try {
+      const r = await anfrage("/api/bestand", { methode: "GET", token: T.l1 });
+      const laeuft = anfrage("/api/wiederherstellen", { token: T.l1, rumpf: { marke, etag: r.etag } });
+      await steuer.gestartet;
+      /* Ein Speichern desselben Raums kommt durch, obwohl die Prüfung noch rechnet (keine Raumsperre). */
+      const b = JSON.parse(JSON.stringify(r.bestand));
+      b.mandanten[0].abweichungen[`a2|${tag(40)}`] = "F";
+      const put = await anfrage("/api/bestand", { methode: "PUT", token: T.l1, rumpf: { bestand: b, etag: r.etag, durch: "Test" } });
+      expect(put.status, put.roh).toBe(200);
+      freigeben();
+      const w = await laeuft;
+      expect(w.status, w.roh).toBe(409);
+      expect((await gespeichert()).abweichungen[`a2|${tag(40)}`]).toBe("F");
+      expect((await gespeichert()).abweichungen[`a1|${tag(30)}`]).toBeUndefined();
+    } finally { steuer.modus = null; freigeben(); }
+  });
 });
 
 describe("wiederherstellungsPruefung (rein, fester Tag)", () => {
@@ -188,6 +225,19 @@ describe("wiederherstellungsPruefung (rein, fester Tag)", () => {
       dienstartUnbekannt: 0, begrenzt: false, konflikte: 0 });
     expect(SD.wiederherstellungsBerichtZeile("bericht" in r ? r.bericht : null)).toBe(
       "Fachprüfung: 2 Einteilungen mit neuem Befund (sperrend 2, vor heute 0) · ruhezeitGesetz 2 · nicht gesperrt (P2-21, Empfehlung B)");
+  });
+  it("H2: Regeln mit Schutzbezug (keine Nacht u. a.) erscheinen nur zusammengefasst als „schutz“", async () => {
+    const mitNacht = (abw) => {
+      const b = m(abw);
+      b.dienstarten = [...b.dienstarten, { id: "N", name: "Nacht", start: "22:00", ende: "06:00", pause: 30 }];
+      b.personen = b.personen.map((p) => (p.id === "a1" ? { ...p, einschraenkungen: { keineNacht: true } } : p));
+      return b;
+    };
+    const r = await SD.wiederherstellungsPruefung(mitNacht({}), mitNacht({ "a1|2026-11-20": "N" }), H);
+    const b = "bericht" in r ? r.bericht : null;
+    expect(b && b.befunde.schutz).toBe(1);
+    expect(Object.keys((b && b.befunde) || {}).filter((k) => /keineNacht|keinAlleindienst|maxDiensteWoche/.test(k))).toEqual([]);
+    expect(SD.wiederherstellungsBerichtZeile(b)).not.toMatch(/keineNacht/);
   });
   it("eine unbekannte Dienstart wird gezählt statt abzusagen", async () => {
     const r = await SD.wiederherstellungsPruefung(m({}), m({ "a1|2026-11-20": "X" }), H);

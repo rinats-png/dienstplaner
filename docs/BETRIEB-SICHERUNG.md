@@ -366,6 +366,16 @@ dem Wiederherstellen unvollständig. Deshalb bleibt es bei 503, und der Rückweg
 `journal-pruefen.mjs` (nur Journale) wird genauso aufgerufen: `W "$BILD" node /app/werkzeug/journal-pruefen.mjs
 [--beiseitelegen] [raum]`. `ablage-pruefen.mjs` deckt Journale mit ab.
 
+## 4b. Wiederherstellen in der App bricht an der Fachprüfung ab (P2-21)
+
+**Woran man es erkennt:** Die Leitung meldet beim Wiederherstellen einer App-Sicherung die Antwort „Die Fachprüfung dieser Wiederherstellung ist nicht fertig geworden“ (503, Code `FACHPRUEFUNG_OFFEN`). Im Serverprotokoll steht `wiederherstellen <Marke>: Fachprüfung nicht abgeschlossen`. Zurückgespielt wurde nichts, auch keine Sicherung „vor Wiederherstellung“ angelegt.
+
+**Warum:** Seit P2-21 prüft der Server jede Wiederherstellung wie ein Speichern (Ruhezeit, Schutzregeln, Qualifikation, Mindestbesetzung) und berichtet die Befunde. Die Prüfung hat ein eigenes Zeitbudget (`WIEDERHERSTELLEN_BUDGET_MS`, 40 s, unter der Antwortgrenze des Proxys von 60 s). Weicht die Sicherung sehr stark vom jetzigen Stand ab — etwa eine andere Schichtfolge und durchweg andere Einteilungen, auch an vergangenen Tagen, in einem Betrieb mit rund 2 000 Personen; unter Last schon ab etwa 1 000 Personen (Messwerte in `docs/acc45/p2-21-nachweis.md`) —, reicht das Budget nicht. Ein erneuter Versuch mit derselben Sicherung bricht dann wieder ab, und jeder Versuch zählt zur Bremse (fünf Wiederherstellungen je Stunde).
+
+**Was die Leitung selbst tun kann:** eine jüngere Sicherung wählen, die weniger vom jetzigen Stand abweicht (oft genügt die Sicherung „automatisch vor …“ der letzten größeren Änderung).
+
+**Notweg Betreiber (ohne Server-Fachprüfung):** Es gibt keinen Weg, einen einzelnen Betrieb ohne Prüfung zurückzuspielen. Der einzige Weg ohne Fachprüfung ist die vollständige Wiederherstellung der Ablage aus der Sicherung außer Haus (§4). Sie setzt **alle Räume** des Servers auf den Stand des gewählten Snapshots zurück und kommt deshalb nur in Betracht, wenn ohnehin ein Ernstfall vorliegt oder alle betroffenen Kunden zugestimmt haben. Vorher: Snapshot wählen, der zeitlich zur gewünschten App-Sicherung passt; die Befunde zeigt danach die Planprüfung (der Bericht der App fehlt auf diesem Weg). Einen Betreiber-Schalter für die App (Prüfung aussetzen oder Teilbericht statt Abbruch) gibt es nicht; das ist Entscheidungsliste P2-21, Optionen D′/E′.
+
 ## 5. Grenzen (ehrlich)
 
 - **Löschschutz:** Der VPS hat Schreibzugriff auf das Repository (für `forget --prune`). Ein Angreifer mit `admin`-Rechten könnte die Sicherungen löschen. Abhilfe (deine Entscheidung): Storage Box mit Snapshots/Unterkonto ohne Löschrecht, S3 mit Object Lock, oder `rest-server --append-only` und Prune von einem zweiten Rechner.

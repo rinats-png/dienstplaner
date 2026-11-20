@@ -148,17 +148,21 @@ export const TEXTIMPORT_PROTOKOLLTEXT = "Personal importiert";
 const ORG_FELDER = Object.freeze(["einheiten", "qualifikationen", "standorte"]);
 
 /**
- * P2-22 (B-I1): Server-Durchsetzung von org.edit für den TEXTIMPORT auf dem allgemeinen Bestandsweg (PUT /api/bestand,
- * Teilweg). Der Textimport speichert keinen eigenen Endpunkt, sondern den ganzen Betrieb; erkannt wird er am neuen
+ * P2-22 (B-I1): Server-Durchsetzung von org.edit für den TEXTIMPORT auf dem allgemeinen Bestandsweg (Voll-PUT
+ * /api/bestand). Der Textimport speichert keinen eigenen Endpunkt, sondern den ganzen Betrieb; erkannt wird er am neuen
  * Protokolleintrag „Personal importiert" in derselben Übermittlung (so kennzeichnet ihn jede ausgelieferte Fassung,
- * auch die vor B-I1, deren Haken für jede Rolle vorab gesetzt war). Legt eine solche Übermittlung ohne org.edit eine
+ * auch die vor B-I1, deren Haken für jede Rolle vorab gesetzt war). Das Kennzeichen kommt nur über den Voll-PUT:
+ * `protokoll` steht in NUR_SERVER (server/lib/teilweg.mjs) — der Teilweg weist es als Kernfeld ab (422), und die
+ * Oberfläche fällt für eine Änderung an `protokoll` von selbst auf den Voll-PUT zurück (src/app/teilkonflikt.js,
+ * deltaBilden: keine Basisversion `kern:protokoll` → `voll`). Über den Teilweg (virtueller Bestand aus dem
+ * gespeicherten Stand) gibt es daher nie einen neuen Eintrag, die Prüfung greift dort nicht — und muss es nicht. Legt eine solche Übermittlung ohne org.edit eine
  * Einheit, Qualifikation oder einen Standort an (Kennung, die der gespeicherte Betrieb nicht kennt, oder ein Eintrag
  * ohne Form — fail-closed), weist der Server ab: dieselbe Regel wie im Dateiimport (IMP-5, orgAnlegenPruefen).
  *
  * Reichweite (ehrlich): Das schließt die Lücke für den Textimport der ausgelieferten Oberfläche, nicht für einen
  * manipulierten Client — der lässt den Protokolleintrag weg und legt über das allgemeine Speichern an, wie es die
  * Planung (pattern.edit) heute für Einheiten im Einrichtungsassistenten darf. Den allgemeinen Weg auf org.edit zu
- * begrenzen, änderte das Verhalten der Planung: Entscheidungsliste P2-22 (Option B bzw. B').
+ * begrenzen, änderte das Verhalten der Planung: Entscheidungsliste P2-22 (Optionen A, B, B2, C).
  * @param {any} gespeichert gespeicherter Betrieb
  * @param {any} geschickt übermittelter Betrieb (vor dem Zusammenführen)
  * @param {boolean} orgEdit hat die Sitzung org.edit?

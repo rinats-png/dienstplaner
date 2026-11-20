@@ -336,6 +336,12 @@ export async function fachpruefungUebermittlungAsync(altM, neuM, heute = heuteBe
  *   sammel?: Record<string, { anzahl: number, von: string, bis: string }>, konflikte?: { personId: any, datum: string, dienstId: any }[] }} Fachergebnis
  */
 
+/** P2-21 (Review #419, Auflage 1): eigenes Zeitbudget der Wiederherstellung. Sie ist selten (Bremse 5 je Stunde, nur
+    Leitung) und rechnet AUSSERHALB der Raumsperre (daten.mjs) in Häppchen — andere Betriebe und andere Schreiber
+    desselben Raums warten nicht. 40 s bleiben unter der Antwortzeitgrenze des Proxys (60 s, Caddyfile).
+    Messwerte und Notweg: docs/acc45/p2-21-nachweis.md. */
+export const WIEDERHERSTELLEN_BUDGET_MS = 40000;
+
 /**
  * P2-21: Fachprüfung einer Wiederherstellung als Bericht (Empfehlung B — warnen
  * und protokollieren, nicht sperren). Dieselbe Rechnung wie beim Speichern
@@ -353,7 +359,7 @@ export async function fachpruefungUebermittlungAsync(altM, neuM, heute = heuteBe
  * @returns {Promise<{ zeitbudget: true } | { bericht: Wiederherstellungsbericht }>}
  */
 export async function wiederherstellungsPruefung(altM, neuM, heute = heuteBerlin(), opt = {}) {
-  const r = await fachpruefungUebermittlungAsync(altM, neuM, heute, { budgetMs: opt.budgetMs, bericht: true });
+  const r = await fachpruefungUebermittlungAsync(altM, neuM, heute, { budgetMs: opt.budgetMs || WIEDERHERSTELLEN_BUDGET_MS, bericht: true });
   if (r && r.zeitbudget) return { zeitbudget: true };
   const b = (r && r.bericht) || leererBericht();
   return { bericht: { ...b, konflikte: r && Array.isArray(r.konflikte) ? r.konflikte.length : 0 } };
@@ -395,7 +401,11 @@ function berichtAus(funde, heute) {
   const befunde = {};
   let sperrend = 0, vergangen = 0;
   for (const f of funde.values()) {
-    for (const b of f.befunde) befunde[b.regel] = (befunde[b.regel] || 0) + 1;
+    /* Review #419 (H2): Regeln mit Schutzbezug (Katalogspalte `schutz`: Schutzvorschrift, keine Nacht, kein
+       Alleindienst, Höchstzahl je Woche) nur zusammengefasst als „schutz" — der Schlüssel verriete sonst eine
+       Einschränkung der Person. Je Einteilung höchstens einmal. */
+    for (const k of new Set(f.befunde.map((b) => (BEFUND_KATALOG[b.regel] && BEFUND_KATALOG[b.regel].schutz ? "schutz" : b.regel))))
+      befunde[k] = (befunde[k] || 0) + 1;
     if (f.befunde.some((b) => sperrtBefund(b.regel))) sperrend++;
     if (f.datum < heute) vergangen++;
   }

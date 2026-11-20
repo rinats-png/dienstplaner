@@ -505,7 +505,8 @@ describe("B-H5: gelöschte Abweichung — der Dienst aus der Schichtfolge wird g
 /* P2-22 (B-I1): org.edit beim Textimport auch im Server. Der Textimport speichert über den allgemeinen Bestandsweg und
    kennzeichnet sich mit dem neuen Protokolleintrag „Personal importiert"; legt er ohne org.edit Einheiten,
    Qualifikationen oder Standorte an, weist der Server ab (Regel wie im Dateiimport IMP-5). Der allgemeine Speicherweg
-   bleibt unverändert (Reichweite: ENTSCHEIDUNGSLISTE P2-22, Option B'). */
+   bleibt unverändert (Reichweite und Ausweitung: ENTSCHEIDUNGSLISTE P2-22, Optionen A, B, B2, C). Das Kennzeichen
+   kommt nur über den Voll-PUT: `protokoll` steht in NUR_SERVER des Teilwegs (Review #419, Auflage 2). */
 describe("P2-22: Textimport legt Einheiten/Qualifikationen nur mit org.edit an (Server)", () => {
   let lfd = 0;
   const textimport = (m) => { m.protokoll = [{ id: `l-ti-${++lfd}`, zeit: "egal", text: "Personal importiert" }, ...(m.protokoll || [])]; };
@@ -543,5 +544,34 @@ describe("P2-22: Textimport legt Einheiten/Qualifikationen nur mit org.edit an (
   it("ein schon gespeicherter Eintrag „Personal importiert“ macht ein späteres Speichern nicht zum Textimport", () => {
     const gg = g({ protokoll: [{ id: "l-alt", zeit: "egal", text: "Personal importiert" }] });
     angenommen(schreiben(gg, "PL", (m) => { neueEinheit(m); }));
+  });
+});
+
+/* Review #419, Auflage 2: Das Kennzeichen des Textimports (neuer Eintrag in `protokoll`) kommt nie über den Teilweg.
+   Die Oberfläche fällt für eine Änderung an `protokoll` auf den Voll-PUT zurück (dort greift P2-22), und der Server
+   weist `protokoll` als Kernfeld des Teilwegs ab. Damit landet jeder Textimport auf dem geprüften Weg. */
+describe("P2-22 × Teilweg: Textimport landet auf dem Voll-PUT", () => {
+  const V = "0123456789abcdef0123456789abcdef";
+  it("Oberfläche: Textimport (neuer Protokolleintrag + neue Einheit) ergibt `voll` (feld:protokoll), keinen Teilweg", async () => {
+    const { teilwegStart, deltaBilden } = await import("../src/app/teilkonflikt.js");
+    const basis = kopie(g().mandanten[0]);
+    basis.protokoll = [];
+    const z = teilwegStart({ bestand: { mandanten: [basis] }, teile: { format: 1, epoche: "abcdef12",
+      versionen: { "kern:einheiten": V, "kern:personen": V, "kern:qualifikationen": V } } }, "m1");
+    expect(z).toBeTruthy();
+    const lokal = { ...kopie(basis), protokoll: [{ id: "l-ti", zeit: "egal", text: "Personal importiert" }],
+      einheiten: [...basis.einheiten, { id: "e-neu", name: "Station Neu" }] };
+    expect(deltaBilden(z, lokal)).toEqual({ voll: "feld:protokoll" });
+    /* Gegenprobe: ohne Protokolleintrag ginge die neue Einheit über den Teilweg (allgemeiner Weg, P2-22 Option A). */
+    const ohne = deltaBilden(z, { ...kopie(basis), einheiten: lokal.einheiten });
+    expect("delta" in ohne && Object.keys(ohne.delta.kern)).toEqual(["einheiten"]);
+  });
+  it("Server: `protokoll` als Kernfeld des Teilwegs wird abgewiesen (422 TEILE_UNGUELTIG)", async () => {
+    const { teileFormFehler } = await import("../server/lib/teilweg.mjs");
+    const r = teileFormFehler({ format: 1, epoche: "abcdef12", kern: {
+      protokoll: { basis: V, wert: [{ id: "l-ti", text: "Personal importiert" }] },
+      einheiten: { basis: V, wert: [{ id: "e1" }, { id: "e-neu" }] } } }, SITZ.PL);
+    expect(r).toMatchObject({ status: 422, code: "TEILE_UNGUELTIG" });
+    expect(r && r.grund).toMatch(/protokoll/);
   });
 });
