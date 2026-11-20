@@ -1,12 +1,12 @@
 {
   "schema": 2,
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
-  "anzahl": 232,
+  "anzahl": 234,
   "statusZaehlung": {
-    "BLOCKED": 89,
-    "READY": 17,
+    "BLOCKED": 90,
+    "READY": 16,
     "IN_PROGRESS": 18,
-    "REVIEW": 8,
+    "REVIEW": 10,
     "INTEGRATED": 97,
     "DONE": 3
   },
@@ -36,11 +36,11 @@
       }
     },
     "folge": {
-      "pakete": 24,
-      "offen": 19,
+      "pakete": 26,
+      "offen": 21,
       "restPT": {
-        "min": 26.200000000000003,
-        "max": 46.300000000000004
+        "min": 25.750000000000004,
+        "max": 45.400000000000006
       }
     },
     "extern": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 333,
-    "max": 571.5500000000001
+    "min": 332.55,
+    "max": 570.6500000000001
   },
   "kritischerPfad": {
     "summe": 70,
@@ -6344,6 +6344,34 @@
       "prio": "P2",
       "aufwandPT": {"min":1,"max":2},
       "abhaengigkeiten": ["V4-1","WP-40"],
+      "status": "REVIEW",
+      "stufen": {
+        "implementiert": {"wert":true,"beleg":"acc45/v4/v4-2-markenrest: Test ddf3ad8c (15/19 rot auf 6e19564b), Umsetzung 71de0454; docs/acc45/v4-2-nachweis.md"},
+        "lokalGetestet": {"wert":true,"beleg":"Lauf 2026-11-20 lokal, je Datei --maxWorkers=1: v4-markenrest 19/19, v4-tokens 32/32, kontrast 207/207, pwa 29/29, v4-app-stil 16/16, gestalt 19/19, wcag-wp40 35/35, oberflaeche-render 40/40 u. a. (v4-2-nachweis.md Abschnitt 4); CI-Schritt pruefung:v4-tokens"},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": "acc45/v4/v4-2-markenrest",
+      "agent": null,
+      "modell": "opus",
+      "konfliktzonen": ["App.jsx"],
+      "pr": ["#425"],
+      "nachweis": "docs/acc45/v4-2-nachweis.md",
+      "akzeptanz": "manifest.webmanifest/index.html auf V4-Farben; Wortmarke als SVG; Avatar-Paare aus Tokens (src/farben.js); Glas-Rückfall für reduzierte Transparenz in src/gestalt/stil.js und App.jsx; rgba-Reste in App.jsx auf Tokens; vorschau.png/Marketing-Bilder gegen das C-Logo geprüft",
+      "tests": "Unit, E2E",
+      "dateien": "src/, public/",
+      "notiz": "Analyse 2026-11-20 (V4-Integrationsstand); PT sind Schätzung der Analyse, nicht belegt. Stand 2026-11-20: umgesetzt auf Branch acc45/v4/v4-2-markenrest (PR gegen integration/release-v4, nicht gemergt); Abhängigkeiten V4-1/WP-40 laut SSOT offen, Umsetzung auf Auftrag. Rest: Glas ohne Rückfall in 6 Ansichtsdateien (Inline, V4-3a/b); Marketingreihe marketing/posts in V3-Palette ohne C-Logo (Designentscheidung, nur gemeldet)."
+    },
+    {
+      "id": "V4-2b",
+      "titel": "V4: --v4-*-Variablen in der Anwendung immer gesetzt und an data-thema gebunden (Neuladen mit Sitzung)",
+      "strang": "folge",
+      "prio": "P1",
+      "aufwandPT": {"min":0.5,"max":1},
+      "abhaengigkeiten": ["V4-2"],
       "status": "BLOCKED",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
@@ -6359,11 +6387,39 @@
       "modell": "opus",
       "konfliktzonen": ["App.jsx"],
       "pr": [],
-      "nachweis": "docs/acc45/V4-INTEGRATIONSSTAND-2026-11-20.md",
-      "akzeptanz": "manifest.webmanifest/index.html auf V4-Farben; Wortmarke als SVG; Avatar-Paare aus Tokens (src/farben.js); Glas-Rückfall für reduzierte Transparenz in src/gestalt/stil.js und App.jsx; rgba-Reste in App.jsx auf Tokens; vorschau.png/Marketing-Bilder gegen das C-Logo geprüft",
+      "nachweis": "docs/acc45/v4-2-nachweis.md",
+      "akzeptanz": "Nach Anmeldung und Neuladen (F5) mit Sitzung sind --v4-* gesetzt; .seitenleiste/.karte/.btn-primary haben opake Flächen; --v4-* folgen data-thema der Anwendung (nicht nur dem System); Browserbeleg hell/dunkel",
       "tests": "Unit, E2E",
-      "dateien": "src/, public/",
-      "notiz": "Analyse 2026-11-20 (V4-Integrationsstand); PT sind Schätzung der Analyse, nicht belegt."
+      "dateien": "src/v4/, src/main.jsx, src/App.jsx",
+      "notiz": "Befund Review #425 (H2), Browserbeleg 2026-11-20 in docs/acc45/v4-2-nachweis.md Abschnitt 6: nach Neuladen fehlt #v4-stil, computed background von .seitenleiste/.karte/.btn-primary ist rgba(0,0,0,0) (hell und dunkel); Schublade mit weißer Schrift auf hellem Grund unlesbar. Ursache: v4Stil() nur über v4EinstiegAnwenden (src/v4/thema.js), main.jsx:84 ruft es nur ohne Sitzung. P1 vor Release."
+    },
+    {
+      "id": "V4-2c",
+      "titel": "V4: Kontrast aktiver/gehoverter Eintrag der Seitenleiste im hellen Thema (WCAG 1.4.3)",
+      "strang": "folge",
+      "prio": "P2",
+      "aufwandPT": {"min":0.25,"max":0.5},
+      "abhaengigkeiten": ["V4-2"],
+      "status": "BLOCKED",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": null,
+      "modell": "opus",
+      "konfliktzonen": [],
+      "pr": [],
+      "nachweis": "docs/acc45/v4-2-nachweis.md",
+      "akzeptanz": ".slink.on und .slink:hover auf der Seitenleiste in beiden Themen >= 4,5:1 (gemessen auf der gerenderten Fläche); Test und Browserbeleg hell/dunkel",
+      "tests": "Unit, E2E",
+      "dateien": "src/v4/app-stil.js",
+      "notiz": "Befund Review #425, Schwere MITTEL-HOCH. Browserbeleg 2026-11-20 (v4-2-nachweis.md Abschnitt 6): hell .slink.on/.slink:hover Hintergrund var(--v4-glas) rgba(255,255,252,.72) unter weißer Schrift = 1,76:1; dunkel 13,4:1. Nur Schublade < 1025 px."
     },
     {
       "id": "V4-3",
@@ -6596,25 +6652,25 @@
       "prio": "P3",
       "aufwandPT": {"min":0.5,"max":1},
       "abhaengigkeiten": [],
-      "status": "READY",
+      "status": "REVIEW",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #424, Commits 2c058c49 (Bump, rot) und a7a2aaa1 (Fix: 12x describe.sequential ersetzt, clearMocks:false) auf acc45/dep/dep-2-vitest-5"},
+        "lokalGetestet": {"wert":true,"beleg":"docs/acc45/DEP-2-NACHWEIS.md 4: querschnitt 273, fachpruefung-server 53, imp6 186, erstleitung-abbruch/-betreiber-put 15, konto-parallel/erstleitung-entscheidungen 14, oberflaeche-render+verdrahtung 48 (2x), ci-abdeckung 8, prozess-wachen 15, acc45-status 17, Mocks/Timer 179 grün unter 5.1.0; rot vorher: konto-parallel Sammelfehler; 5-s-Gegenprobe: 4.1.12 ebenso rot auf dem Laptop"},
         "reviewt": {"wert":false,"beleg":null},
         "integriert": {"wert":false,"beleg":null},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
       },
-      "branch": null,
+      "branch": "acc45/dep/dep-2-vitest-5",
       "agent": null,
       "modell": "opus",
       "konfliktzonen": [],
-      "pr": ["#405"],
-      "nachweis": "docs/acc45/ENTSCHEIDUNGSLISTE.md (P3-9), Bewertung Dependabot 2026-11-20",
+      "pr": ["#405","#424"],
+      "nachweis": "docs/acc45/DEP-2-NACHWEIS.md; docs/acc45/ENTSCHEIDUNGSLISTE.md (P3-9), Bewertung Dependabot 2026-11-20",
       "akzeptanz": "describe.sequential und it.sequential in den 6 betroffenen Testdateien ersetzt (12 Stellen), volle Suite grün, Titel bei .each/.for geprüft; Opus-Review",
       "tests": "Unit",
-      "dateien": "pruefungen/, package.json",
+      "dateien": "pruefungen/, package.json, package-lock.json, vite.config.js, docs/acc45/",
       "notiz": "Quelle: Bewertung offener Dependabot-PRs #400 bis #407 vom 2026-11-20 (nur lesend erhoben, Basis integration/release-v4 @ 105f6c83); Aufwand ist eine SCHÄTZUNG der Bewertung, nicht belegt. Der Dependabot-PR wird nicht geschlossen; Schließen entscheidet der Betreiber. Vitest 5 entfernt die sequential-Optionen (zugunsten von concurrent); der Lauf von PR #405 scheitert mit describe.sequential is not a function in abnahme-a-ablauf.test.js:115, die rund 190 Folgeschritte wurden übersprungen (der Lauf belegt nichts über den Rest der Suite). Betroffen: 12 Stellen in 6 Dateien (abnahme-a-ablauf, erstleitung-abbruch, erstleitung-betreiber-put, erstleitung-entscheidungen, erstleitung, konto-parallel). Node 22 und Vite 6.4.5 passen. Aufwand SCHÄTZUNG 0,5 bis 1 PT. Opus-Review Pflicht (Prüfwerkzeug, kritischer Pfad). Dependabot-PR #405, nicht mergen."
     },
     {

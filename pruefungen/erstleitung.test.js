@@ -121,7 +121,7 @@ afterAll(async () => {
   await rm(daten, { recursive: true, force: true }).catch(() => {});
 });
 
-describe.sequential("Teil 1: echter Server", () => {
+describe("Teil 1: echter Server", { concurrent: false }, () => {
   it("Ausstellen: nur der Leitungscode ohne Person für den leeren Betrieb ist ein Erstanmeldecode", async () => {
     for (const r of ["erstl-a", "erstl-b", "erstl-d", "erstl-e"]) await betriebAnlegen(r);
     const z = await anfrage("/api/zugaenge", { methode: "POST", token: betreiber, rumpf: { bestand: "erstl-a",
@@ -379,7 +379,7 @@ describe.sequential("Teil 1: echter Server", () => {
      c) ein gewöhnlicher Leitungscode ohne Person im frischen Betrieb bekam eine volle Leitungssitzung (200).
    „Bestand oder neu“ entscheidet allein die Regime-Marke, die nur der Server schreibt.
    -------------------------------------------------------------------------- */
-describe.sequential("Teil 1b: streng ab der Anlage (neue Betriebe), Bestandsbetriebe unverändert", () => {
+describe("Teil 1b: streng ab der Anlage (neue Betriebe), Bestandsbetriebe unverändert", { concurrent: false }, () => {
   const leitungsperson = (id) => ({ id, vorname: "", nachname: "X", rolle: "leitung", bereich: "ALLE", status: "aktiv",
     eintritt: "2026-01-01", austritt: null, qualifikationen: [], zugehoerigkeit: [] });
   let NEU1;
@@ -502,7 +502,7 @@ describe.sequential("Teil 1b: streng ab der Anlage (neue Betriebe), Bestandsbetr
   });
 });
 
-describe.sequential("Teil 2: Schreibfehler mitten im Vorgang (in-process, echte Ablage)", () => {
+describe("Teil 2: Schreibfehler mitten im Vorgang (in-process, echte Ablage)", { concurrent: false }, () => {
   /** Eine Ablage, die beim n-ten passenden Schreibvorgang wirft. */
   const kaputt = (basis, passt) => new Proxy(basis, { get(z, k) {
     const f = z[k];

@@ -16,6 +16,8 @@ import { addDays } from "./regelwerk.js";
 import { csvFeld, csvText } from "./csvfeld.js";
 import { v4ThemaMerken, v4ThemaGemerkt, v4SystemthemaBeobachten } from "./v4/thema.js";
 import { v4AppStil } from "./v4/app-stil.js";
+import { V4_SCHATTEN, V4_SEITENLEISTE } from "./v4/tokens.js";
+import { Wortmarke } from "./marke.jsx";
 
 /* ==========================================================================
    FEHLERAUFFANG
@@ -307,6 +309,17 @@ function themaVomSystem() {
   catch { return false; }
 }
 
+/* Ebenen aus den V4-Tokens (V4-2): E2 Karte, E3 Karte im Hover, E5 Blatt und Menü,
+   E6 Toast, dazu Schalterknopf und Schublade. Auf Dunkel trägt der Rand die Karte. */
+const schattenVariablen = (thema) => {
+  const s = V4_SCHATTEN[thema];
+  return `--schatten:${s.karte}; --schatten-hoch:${s.hoch}; --schatten-blatt:${s.blatt};`
+    + ` --schatten-toast:${s.toast}; --schatten-regler:${s.regler}; --schatten-schublade:${s.schublade};`;
+};
+/* Seitenleiste (in beiden Themes dunkel): Schrift- und Flächentöne aus den Tokens als --sl-… */
+const seitenleisteVariablen = () => Object.entries(V4_SEITENLEISTE)
+  .map(([k, w]) => `--sl-${k.replace(/[A-Z]/g, (x) => `-${x.toLowerCase()}`)}:${w};`).join(" ");
+
 /** Globale Gestaltung. Hover- und Glaseffekte brauchen echtes CSS. */
 const bauStyles = () => `
 :root{
@@ -315,19 +328,13 @@ const bauStyles = () => `
   --zeile: 48px; --pad-y: 14px; --pad-x: 20px; --luft: 32px; --schrift: 14.5px;
   --block: 48px;                 /* Abstand zwischen Abschnitten — bewusst großzügig */
   --r: 12px; --r-gross: 18px; --r-pille: 999px;
-  /* Ebenen: E2 Karte, E3 Karte im Hover, E5 Blatt und Menü, E6 Toast */
-  --schatten: 0 1px 2px rgba(7,19,23,.04), 0 8px 22px rgba(7,19,23,.05);
-  --schatten-hoch: 0 4px 12px -2px rgba(7,19,23,.10), 0 16px 32px -12px rgba(7,19,23,.14);
-  --schatten-blatt: 0 20px 48px rgba(7,19,23,.18);
-  --schatten-toast: 0 12px 32px rgba(7,19,23,.28);
+  ${schattenVariablen("hell")}
+  ${seitenleisteVariablen()}
   --sidebar-breite: 252px;
   --kopf-hoehe: 64px; --unter-hoehe: 48px;
 }
-/* Die dunkle Palette als eigener Satz. Das Attribut setzt themaSetzen.
-   Auf Dunkel trägt der Rand die Karte, nicht der Schatten. */
-:root[data-thema="dunkel"]{ ${alsVariablen(C_DUNKEL)}
-  --schatten: 0 1px 2px rgba(0,0,0,.30); --schatten-hoch: 0 1px 2px rgba(0,0,0,.30);
-  --schatten-blatt: 0 20px 48px rgba(0,0,0,.5); --schatten-toast: 0 12px 32px rgba(0,0,0,.5); }
+/* Die dunkle Palette als eigener Satz. Das Attribut setzt themaSetzen. */
+:root[data-thema="dunkel"]{ ${alsVariablen(C_DUNKEL)} ${schattenVariablen("dunkel")} }
 .dicht{ --zeile: 36px; --pad-y: 8px; --pad-x: 14px; --luft: 20px; --block: 26px; --schrift: 13.5px; }
 
 *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
@@ -350,7 +357,7 @@ body{margin:0;}
 /* ------------------------------- Gerüst -------------------------------- */
 .huelle{display:flex; min-height:100vh;}
 .seitenleiste{
-  width:var(--sidebar-breite); flex-shrink:0; background:${C.sidebar}; color:#fff;
+  width:var(--sidebar-breite); flex-shrink:0; background:${C.sidebar}; color:var(--sl-schrift);
   display:flex; flex-direction:column; position:fixed; left:0; top:0; bottom:0; z-index:40;
   transition:transform .24s cubic-bezier(.4,0,.2,1);
 }
@@ -358,30 +365,30 @@ body{margin:0;}
 .fokus .seitenleiste{transform:translateX(-100%);}
 
 .marke{padding:22px 20px 18px; display:flex; align-items:center; gap:11px;
-  border-bottom:1px solid rgba(255,255,255,.08);}
-.marke b{font-size:16px; font-weight:700; letter-spacing:-.02em;}
+  border-bottom:1px solid var(--sl-trenner);}
+.marke .wortmarke{margin-bottom:2px;}
 
 .snav{flex:1; overflow-y:auto; padding:14px 12px 20px;}
 .snav::-webkit-scrollbar{width:5px;}
-.snav::-webkit-scrollbar-thumb{background:rgba(255,255,255,.16); border-radius:3px;}
+.snav::-webkit-scrollbar-thumb{background:var(--sl-griff); border-radius:3px;}
 .sgruppe{font-size:10.5px; font-weight:700; letter-spacing:.11em; text-transform:uppercase;
-  color:rgba(255,255,255,.40); padding:20px 14px 8px;}
+  color:var(--sl-schrift-gruppe); padding:20px 14px 8px;}
 .slink{
   display:flex; align-items:center; gap:12px; width:100%; border:none; background:transparent;
-  color:rgba(255,255,255,.74); font-family:inherit; font-size:14px; font-weight:500;
+  color:var(--sl-schrift-leise); font-family:inherit; font-size:14px; font-weight:500;
   padding:11px 14px; border-radius:10px; cursor:pointer; text-align:left;
   transition:background .14s, color .14s; margin-bottom:1px; position:relative;
 }
-.slink:hover{background:rgba(255,255,255,.07); color:#fff;}
+.slink:hover{background:var(--sl-hover); color:var(--sl-schrift);}
 /* Aktiv über helle Fläche statt Akzentfarbe — Teal auf Anthrazit erreicht nur 2,7:1 */
-.slink.on{background:rgba(255,255,255,.13); color:#fff; font-weight:600;}
+.slink.on{background:var(--sl-an); color:var(--sl-schrift); font-weight:600;}
 .slink.on::before{content:""; position:absolute; left:0; top:9px; bottom:9px; width:3px;
   border-radius:0 3px 3px 0; background:${C.accentOrig};}
 .slink .zahl{margin-left:auto; font-size:11px; font-weight:700; padding:2px 7px; border-radius:999px;
-  background:rgba(255,255,255,.14); ${'' /* Zähler */}}
-.slink .zahl.warn{background:${C.danger}; color:${istDunkel() ? C.bg : "#fff"};}
-.sfuss{padding:14px 16px; border-top:1px solid rgba(255,255,255,.08); font-size:12px;
-  color:rgba(255,255,255,.55);}
+  background:var(--sl-zahl); ${'' /* Zähler */}}
+.slink .zahl.warn{background:${C.danger}; color:${istDunkel() ? C.bg : "var(--sl-schrift)"};}
+.sfuss{padding:14px 16px; border-top:1px solid var(--sl-trenner); font-size:12px;
+  color:var(--sl-schrift-fuss);}
 
 /* Die Kopfzeile sitzt im klebenden .kopfblock (gestalt/stil.js), zusammen mit der Unterleiste. */
 .kopfleiste{
@@ -519,7 +526,7 @@ table.raster tbody tr[data-gewaehlt="1"] td{background:${C.accentLight};}
   position:relative; transition:background .18s; flex-shrink:0; background:${C.steuer};}
 .schalter.on{background:${C.accent};}
 .schalter i{position:absolute; top:2.5px; left:2.5px; width:18px; height:18px; border-radius:50%;
-  background:${C.aufAkzent}; box-shadow:0 1px 2px rgba(0,0,0,.2); transition:transform .18s;}
+  background:${C.aufAkzent}; box-shadow:var(--schatten-regler); transition:transform .18s;}
 .schalter.on i{transform:translateX(17px);}
 
 /* Tastaturkürzel als Marke im Text */
@@ -548,6 +555,8 @@ kbd.taste{display:inline-flex; align-items:center; justify-content:center; min-w
   padding:24px; overflow-y:auto; overscroll-behavior:contain;
   animation:blattauf .16s cubic-bezier(.4,0,.2,1);}
 .sheet-back > .blatt{width:100%; margin:auto; outline:none;}
+/* V4-2 (DESIGNSYSTEM Gate 4): bei reduzierter Transparenz ohne Weichzeichner; die Abdunklung bleibt. */
+@media (prefers-reduced-transparency: reduce){ .sheet-back{backdrop-filter:none; -webkit-backdrop-filter:none;} }
 @keyframes blattauf{from{opacity:0;} to{opacity:1;}}
 .zeile-hover:hover{background:${C.bg};}
 
@@ -595,7 +604,7 @@ kbd.taste{display:inline-flex; align-items:center; justify-content:center; min-w
 .feldmodus table.raster td{border-bottom-color:${C.line};}
 
 @media (max-width: 1024px){
-  .seitenleiste{transform:translateX(-100%); box-shadow:0 0 40px rgba(0,0,0,.3);}
+  .seitenleiste{transform:translateX(-100%); box-shadow:var(--schatten-schublade);}
   .seitenleiste.offen{transform:translateX(0);}
   .inhalt{margin-left:0;}
   main.bereich{padding:16px 14px 96px;}
@@ -1800,8 +1809,8 @@ function AppInnen() {
           <div className="marke">
             <Logo size={26} hell />
             <div style={{ minWidth: 0 }}>
-              <b>CENTRIC</b>
-              <div style={{ fontSize: 11.5, color: "rgba(255,255,255,.55)", marginTop: 2,
+              <Wortmarke hell hoehe={13} alt="" />
+              <div style={{ fontSize: 11.5, color: "var(--sl-schrift-fuss)", marginTop: 2,
                 whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                 {istBetreiber ? "Betreiberkonsole" : sitz.mandant.name}</div>
             </div>
@@ -1832,15 +1841,15 @@ function AppInnen() {
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <span style={{ width: 30, height: 30, borderRadius: 9, flexShrink: 0, display: "flex",
                 alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700,
-                background: "rgba(255,255,255,.12)", color: "#fff" }}>{r.kurz}</span>
+                background: "var(--sl-kuerzel)", color: "var(--sl-schrift)" }}>{r.kurz}</span>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 12.5, color: "#fff", whiteSpace: "nowrap",
+                <div style={{ fontSize: 12.5, color: "var(--sl-schrift)", whiteSpace: "nowrap",
                   overflow: "hidden", textOverflow: "ellipsis" }}>
                   {istBetreiber ? "Betreiber" : `${sitz.person.vorname} ${sitz.person.nachname}`}</div>
-                <div style={{ fontSize: 11, color: "rgba(255,255,255,.5)" }}>{r.label}</div>
+                <div style={{ fontSize: 11, color: "var(--sl-schrift-klein)" }}>{r.label}</div>
               </div>
               <button onClick={akt.abmelden} title="Abmelden" aria-label="Abmelden"
-                style={{ border: "none", background: "transparent", color: "rgba(255,255,255,.55)",
+                style={{ border: "none", background: "transparent", color: "var(--sl-schrift-fuss)",
                   cursor: "pointer", padding: 11, margin: -7, display: "flex" }}><Icon n="abmelden" size={18} /></button>
             </div>
           </div>
