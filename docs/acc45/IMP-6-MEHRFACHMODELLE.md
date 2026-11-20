@@ -87,7 +87,7 @@ Ausgabe nur als Anzahlen und Zeilennummern. Der Zwischenspeicher bezieht Tag, Mo
 ## Nicht in diesem Paket (Folgeschritte)
 
 - Wirkung auf die Planrechnung (`dienstAm`, Oberfläche, Fachprüfung): Einschalten ist eine eigene Entscheidung. Rechenkern
-  seit 2026-11-20 hinter `CENTRIC_SCHICHTMODELL_WIRKUNG` gebaut (aus, nicht verbunden), siehe unten „Planwirkung“.
+  seit 2026-11-20 hinter `CENTRIC_SCHICHTMODELL_WIRKUNG` gebaut und (PR 2) verbunden, Vorgabe aus, siehe unten „Planwirkung“.
 - Oberfläche für Beschäftigte („Mein Schichtmodell“): nicht gebaut (P2-19 (d)). Die Pflege für Planung/Leitung ist gebaut, siehe unten.
 - Übernahme der Importzuordnungen in den Bestand (IMP-6 Übernahme) und IMP-7 (historische Pläne) bauen auf dieser Bibliothek auf.
 
@@ -244,3 +244,37 @@ die anderen brauchen den gerechneten Dienst vom Server, nie deren Modelle), Expo
 AUS ändert nichts). Die Zuordnungen selbst sind gegen Rückwirkung geschützt (Regel 3). **Offen:** Zuordnungen, die vor dem
 Einschalten schon gelten, rechneten bei AN vergangene offene Tage, freigegebene Pläne und die Plananzeige abgeschlossener Monate
 neu — Vorprüfung `wirkungsVorpruefung` gebaut, Entscheidung P2-27 (Empfehlung Stichtag). Frage 7 → P2-25, Frage 8 → P2-26.
+
+## Planwirkung — PR 2: Verdrahtung (Branch `acc45/imp6/teil2-verdrahtung`, 2026-11-20)
+
+Der Schalter bleibt **AUS** (Vorgabe, `.env.example` auskommentiert, kein Workflow setzt ihn). AUS rechnet jede Stelle wörtlich
+wie vorher (Prüfungen: `imp6-verdrahtung` je Stelle, `imp6-planwirkung` D3 unverändert).
+
+| Weg | Verdrahtung | AUS |
+|---|---|---|
+| Server-Einstieg | `server/lib/schichtmodell-wirkung.mjs` setzt die Quelle (`schichtmodellWirkungAn`, je Aufruf gelesen); eingebunden in `server.mjs` und `server/funktionen/daten.mjs` | Quelle liest „aus“ |
+| Oberfläche | `GET /api/bestand` meldet `schichtmodellWirkung: true` **nur** Rollen mit vollständiger Sicht (Vollschreibrecht, org.edit oder pattern.edit, staff.edit: Planung, Leitung, Kundenrolle); `src/speicher.js` setzt den Merker allein daraus | keine Angabe, Merker aus |
+| Auslöser der Schutzrechnung | `planStrukturSchritte` nimmt mit AN `schichtmodelle` (Betrieb) und `schichtmodellZuordnungen` (Person) hinzu (`schichtmodellPlanfelder`, eine Stelle) | wie bisher keine |
+| Aktionen | `setzeAbweichung` (`plan.js`), `mehrfachDienst` (`begleitung.js`): Plan = Modell der Person (`schichtfolgeAm`) | bisheriger Ausdruck |
+| Auswertungen | `urlaubskonto` (Urlaubstag = Tag mit Dienst nach dem Modell; Lücke kein Urlaubstag), `planVergleich` (Änderungen gegenüber der Freigabe gegen das Modell) | bisheriger Ausdruck |
+| Ersatzvorschlag | Lücke/Überschneidung/ungültig: weder „hätte regulär frei“ noch „in der Dienstphase“, keine Punkte, Grund „kein Schichtmodell an diesem Tag“ bzw. „Schichtmodell unklar (Klärung)“ | bisheriger Ausdruck |
+| Anzeige je Einheit | Aushang, Monatsplan (Zeile je Einheit), Lagebild („im Regeldienst“, Schichtfolge zwei Wochen) zeigen weiter die Folge der Einheit = Betriebsmodell; bei AN nennt ein Hinweis die **Zahl** der Personen mit eigenem Modell (keine Namen; `abweichendVomBetriebsmodell`) | kein Hinweis, Markup byte-gleich |
+| Zwischenspeicher | `modellVerzeichnisGemerkt` (Kern): je Liste der Modelle gemerkt, jede Änderung (auch an Ort und Stelle) rechnet neu; `modellVerzeichnis` liefert weiter eine frische Karte | — |
+
+**`schichtfolgeAm(m, p, d, alt)`** (`fachpruefung.mjs`): AUS → `alt()`; AN mit Betriebsmodell (auch implizit), Springer, nicht im
+Schichtdienst → `alt()` (AN = AUS ohne eigenes Modell); eigenes Modell → Zyklustag; „keine“/uneindeutig/ungültig → kein Dienst.
+Wächter `imp6-planwirkung` S: Gesamtsuche `einheitDienst(` in `server/` und `src/` mit Positivliste und Grund je Datei; die
+personenbezogenen Stellen der Oberfläche stehen nur als alter Ausdruck in `schichtfolgeAm`. Quelle der Wirkung genau an drei
+Stellen (Definition, Server-Einstieg, `speicher.js`) plus die Meldung in `daten.mjs`.
+
+**Bewusst nicht gebaut (fail-safe, Vorbedingung vor dem Einschalten):**
+1. **Sicht der Beschäftigten, der Schichtverantwortung und des Betriebsrats auf fremde Pläne.** Diese Rollen sehen höchstens die
+   eigene Zuordnung (Q4). Mit unvollständigen Daten rechnete die Oberfläche für andere still das Betriebsmodell (gegen Q5); sie
+   bekommen deshalb keine Angabe und bleiben beim bisherigen Stand. Lösung: der Server liefert den gerechneten Dienst, nie die
+   Modelle anderer (keine neuen Leserechte). Bis dahin sähen sie bei AN auch die eigene Folge nach dem Betriebsmodell.
+2. **P2-26** (Wiederherstellen), **P2-27** (Stichtag), **P2-25** (Art. 15), **P2-24 (b)** (Versionierung), **P2-28** (Teilzeit-Quote):
+   nicht entschieden, nichts daran geändert. Urlaubskonto bei AN nach dem Modell: Q5 („nie still das Betriebsmodell“) lässt für
+   eine Person mit eigenem Modell keine andere Zählung zu; die Teilzeitfrage von P2-28 berührt das nicht (gezählt wird wie bisher
+   die rohe Folge ohne Quote). Vergangene Urlaubstage offener Jahre rechneten bei AN neu — das ist Teil von P2-27.
+3. **`RELEASE-UNFERTIG.json`** (#427): Eintrag `CENTRIC_SCHICHTMODELL_WIRKUNG` (unfertig, Vorgabe aus) erst nach dem Merge von #427.
+4. Release-Gate-Warnung bei gesetztem, aber nicht genau `true` (REL-1, Hinweis 4 aus #429): nicht Teil dieses PR.

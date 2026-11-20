@@ -226,3 +226,29 @@ E3 verlangt, dass nur `src/ansichten/schichtmodelle.jsx` und `src/app/aktionen/p
   2. `modellVerzeichnis` wird je Person und Tag bis zu dreimal neu gebaut → Zwischenspeicher je Bestand (nur bei AN).
   3. Ersatzvorschlag: bei Lücke oder „uneindeutig“ gilt heute „in der Dienstphase +8“ — bewusst entscheiden.
   4. Release-Gate-Warnung, wenn `CENTRIC_SCHICHTMODELL_WIRKUNG` gesetzt, aber nicht genau `true` ist (REL-1).
+
+## Nachtrag 2026-11-20 (h): Planwirkung PR 2 — Verdrahtung (Branch `acc45/imp6/teil2-verdrahtung`)
+
+- **Umfang:** Schalter `CENTRIC_SCHICHTMODELL_WIRKUNG` verbunden; **Vorgabe AUS, nicht aktiviert** (weder Standard noch CI).
+  Beschreibung: `IMP-6-MEHRFACHMODELLE.md`, „Planwirkung — PR 2“. Server-Einstieg `server/lib/schichtmodell-wirkung.mjs`
+  (in `server.mjs` und `daten.mjs`), `GET /api/bestand` `schichtmodellWirkung` nur an Planung/Leitung/Kundenrolle, Merker in
+  `src/speicher.js`; Auslöser der Schutzrechnung (`schichtmodellPlanfelder`); `schichtfolgeAm` in `setzeAbweichung`,
+  `mehrfachDienst`, `urlaubskonto`, `planVergleich`, Ersatzvorschlag; Hinweis je Einheit in Aushang, Monatsplan, Lagebild
+  (`abweichendVomBetriebsmodell`, `schichtmodellHinweis`); Zwischenspeicher `modellVerzeichnisGemerkt`.
+- **Review #429 Hinweise:** 1 Wächter S als Gesamtsuche `einheitDienst(` mit Positivliste (umgesetzt); 2 Zwischenspeicher
+  (umgesetzt, nur bei Änderung neu); 3 Ersatzvorschlag bei Lücke/Klärung neutral (umgesetzt, Kategorie B); 4 Release-Gate-Warnung
+  (REL-1, nicht Teil dieses PR).
+- **Prüfung:** neu `pruefungen/imp6-verdrahtung.test.js` (32 Fälle: W, C, F, A, U/P, E, S, H, K; in `pruefung:imp6-mehrfachmodelle`),
+  `imp6-mehrfachmodelle` 10 (GET-Angabe je Rolle, Schalter-Werte, Server-Quelle), `imp6-planwirkung` S bewusst umgestellt
+  (PR 1: „kein Weg setzt die Quelle“ → PR 2: genau drei Stellen plus die Meldung in `daten.mjs`; Gesamtsuche statt fester
+  fünf Dateien). D3 (AUS byte-gleich, AN ohne eigene Modelle byte-gleich) unverändert.
+- **Rot vorher:** Commit `bcc51209` (nur Prüfungen) gegen den Code von #429: `imp6-verdrahtung` 22 von 32 rot
+  (`schichtfolgeAm`/`abweichendVomBetriebsmodell`/`modellVerzeichnisGemerkt is not a function`, Auslöser `false`, kein Hinweis).
+- **Grün lokal (einzeln, `--maxWorkers=1`):** imp6-verdrahtung 32/32; imp6-planwirkung 82/82 (186 s); imp6-mehrfachmodelle 121/121;
+  imp6-zyklen-grenzfaelle + imp6-eigenes-modell + imp6-oberflaeche 130/130; document-write-review, engine-einsatz,
+  schutzregeln-ersatzsuche, oberflaeche-render, wcag-wp40, v4-inventar, istdaten 176/176; geraete-wp21, fachpruefung-server,
+  p212-kalendertag, p212-client-kalendertag, wp39-app-aufbau, endgeraete-speicher 164/164; prozess-wachen 15/15; doku,
+  verdrahtung, ci-abdeckung, acc45-status 38/38; tsc ohne Befund; eslint ohne Fehler; `acc45-backlog pruefen` OK.
+- **Offen (Vorbedingung vor dem Einschalten):** Sicht der Beschäftigten/Schichtverantwortung/Betriebsrat auf fremde Pläne
+  (vom Server gerechneter Dienst); P2-26, P2-27 (und P2-24 (b), P2-25, P2-28) beim Betreiber; `RELEASE-UNFERTIG.json`-Eintrag
+  nach dem Merge von #427.

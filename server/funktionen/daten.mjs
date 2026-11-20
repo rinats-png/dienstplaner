@@ -22,7 +22,9 @@ import { raumLage, ersteinrichtungVermerken, neueZugaengeErlaubt, KUNDENRAUM_TEX
 import { herkunftsloseFeedsWiderrufen } from "../lib/feedwiderruf.mjs";
 import { kontoLesen, kontoLesenStreng, kontoSchreiben, kontoAendern, alleKonten, kontoVereinzeln, raumUebersicht }
   from "../lib/konten.mjs";
-import { demoAn, teilwegAn, abschlussSegmentweiseAn, abschlussOhneSperreAn, schichtmodellPflegeAn } from "../lib/schalter.mjs";
+import { demoAn, teilwegAn, abschlussSegmentweiseAn, abschlussOhneSperreAn, schichtmodellPflegeAn, schichtmodellWirkungAn } from "../lib/schalter.mjs";
+/* IMP-6 Planwirkung: Quelle der Planrechnung = CENTRIC_SCHICHTMODELL_WIRKUNG (Vorgabe aus; auch ohne server.mjs). */
+import "../lib/schichtmodell-wirkung.mjs";
 import { ABSCHLUSS_SEGMENT_AKTIONEN, ABSCHLUSS_VERSUCHE, abschlussAuswahl, abschlussTeile } from "../lib/abschluss-segmentweise.mjs";
 import { loeschlaufRecht, loeschlaufFormFehler, loeschlaufVorbereiten, ohneWirkung } from "../lib/loeschlauf.mjs";
 import { TEILWEG_FORMAT, teileFormFehler, teileAnwenden, teileVersionen, beruehrteVersionen, rumpfAbdruck, anfragePruefen, anfrageMerken, anfragenAufraeumen } from "../lib/teilweg.mjs";
@@ -1410,6 +1412,12 @@ async function behandeln(req, context, ctx) {
         merkenErlaubt: merkenErlaubt([s0.rolle, s.rolle], s0.zweifaktor === true), erstleitungStreng: strengG,
         /* IMP-6/P2-24 B: Anzeige der Schichtmodell-Pflege nur mit Schalter (Vorgabe aus); fehlt die Angabe, bleibt sie aus. */
         ...(schichtmodellPflegeAn() ? { schichtmodellPflege: true } : {}),
+        /* IMP-6 Planwirkung (Vorgabe aus): Die Oberfläche rechnet nur mit den Modellen, wenn sie ALLE Zuordnungen sieht —
+           Rollen, die sie pflegen und vollständig lesen (Vollschreibrecht, org.edit oder pattern.edit, staff.edit; wie
+           rechte.mjs). Teilsichten (Beschäftigte, Schichtverantwortung, Betriebsrat) rechneten sonst für andere still das
+           Betriebsmodell (Q4/Q5); sie bleiben bis zur „Sicht der Beschäftigten“ beim bisherigen Stand (fail-safe). */
+        ...(schichtmodellWirkungAn() && schreibumfang(s.rolle) === SCHREIBEN_VOLL && (darf(s.rolle, "org.edit") || darf(s.rolle, "pattern.edit"))
+          && darf(s.rolle, "staff.edit") ? { schichtmodellWirkung: true } : {}),
         geaendert: mit.zeit, durch: mit.durch });
     }
 

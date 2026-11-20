@@ -107,11 +107,15 @@ export const schichtmodellPflegeAn = () => process.env.CENTRIC_SCHICHTMODELL_PFL
                  Versatz, Lücke = kein Dienst aus einem Modell (Q5), Überschneidung =
                  „uneindeutig“ (nie still gewählt). Aus: die Planrechnung bleibt
                  byte-gleich zum Stand ohne Modelle (pruefungen/imp6-planwirkung.test.js).
-                 STAND PR 1 (Rechenkern): Der Schalter ist definiert, aber noch mit
-                 KEINEM Weg verbunden — auch genau `true` ändert nichts. Die Verbindung
-                 (Server-Einstieg, Oberfläche, Schutzrechnung, Anzeige, Sicht der
-                 Beschäftigten) folgt in PR 2. Einschalten erst nach PR 2, der Klärung
-                 von P2-4 Punkt 8 (Wiederherstellen) und mit Betreiberfreigabe.
+                 STAND PR 2 (Verdrahtung): verbunden über server/lib/schichtmodell-
+                 wirkung.mjs (Planrechnung des Servers, Auslöser der Schutzrechnung,
+                 Ersatzvorschlag) und GET /api/bestand `schichtmodellWirkung: true` —
+                 nur an Rollen mit vollständiger Sicht (Planung, Leitung, Kundenrolle);
+                 die Oberfläche rechnet dann Plan, Aktionen, Urlaubskonto und Änderungen
+                 gegenüber der Freigabe nach den Modellen. NICHT gebaut: Sicht der
+                 Beschäftigten auf die Pläne anderer (vom Server gerechneter Dienst).
+                 Einschalten erst nach diesem Teil, den Entscheidungen P2-26 (Wieder-
+                 herstellen) und P2-27 (Stichtag) und mit Betreiberfreigabe.
    Nur genau `true` schaltet ein.
    -------------------------------------------------------------------------- */
 export const schichtmodellWirkungAn = () => process.env.CENTRIC_SCHICHTMODELL_WIRKUNG === "true";

@@ -29,7 +29,7 @@ import { schutzEinsatz, nachtFenster, nachtschwelle, nachtAnteil } from "./schut
 import { pad, pISO, addDays, dow, dauer, between, montag, fenster, verbindlichkeit, fehlendeKompetenzen,
   HOECHST_TAG } from "./regelwerk.mjs";
 import { BEFUND_KATALOG } from "./bestaetigungen.mjs";
-import { anzuwendendesModell, modellLage, modellVerzeichnis, BETRIEB_MODELL, ZUORDNUNG_FELD } from "./schichtmodell-kern.mjs";
+import { anzuwendendesModell, modellLage, modellVerzeichnisGemerkt, BETRIEB_MODELL, ZUORDNUNG_FELD, WIRKUNG_FELDER } from "./schichtmodell-kern.mjs";
 import { branchenBefunde } from "./branchenbefunde.mjs";
 
 const liste = (w) => (Array.isArray(w) ? w : []).filter((x) => x && typeof x === "object");
@@ -185,8 +185,10 @@ export function teilzeitDienst(m, p, datum, plan) {
    Quelle des Schalters: CENTRIC_SCHICHTMODELL_WIRKUNG (server/lib/schalter.mjs,
    schichtmodellWirkungAn). Diese Datei liest keine Umgebung (sie erreicht auch die
    Oberfläche); wer die Wirkung einschaltet, setzt die Quelle mit
-   schichtmodellWirkungSetzen. Stand PR 1 (Rechenkern): KEIN Weg setzt sie — die
-   Verdrahtung (Server-Einstieg, Oberfläche, Schutzrechnung, Anzeige) folgt in PR 2.
+   schichtmodellWirkungSetzen. Stand PR 2 (Verdrahtung): genau zwei Wege setzen sie —
+   der Server (server/lib/schichtmodell-wirkung.mjs, aus der Umgebung) und die
+   Oberfläche (src/speicher.js, allein aus `schichtmodellWirkung: true` der Antwort
+   von GET /api/bestand; nur Rollen mit vollständiger Sicht bekommen die Angabe).
    ------------------------------------------------------------------------ */
 let wirkungQuelle = () => false;
 /** Quelle der Planwirkung setzen: eine Funktion (bei jedem Aufruf gelesen) oder ein Wert (nur genau true schaltet ein). */
@@ -257,7 +259,61 @@ export function planDienst(m, p, d, eid = einheitAm(p, d)) {
   const l = schichtmodellLageAm(m, p, d);
   if (l.art !== "dienst" || !l.dienstId) return null;
   if (l.quelle === "betrieb") return teilzeitDienst(m, p, d, l.dienstId);
-  return teilzeitModell(m, p, d, l.dienstId, { nummer: l.nummer, index: l.index, tage: modellVerzeichnis(m).get(l.modellId).tage });
+  return teilzeitModell(m, p, d, l.dienstId, { nummer: l.nummer, index: l.index, tage: modellVerzeichnisGemerkt(m).get(l.modellId).tage });
+}
+
+/**
+ * Die rohe Schichtfolge einer Person an einem Tag (vor Teilzeit, Abweichung, Abwesenheit) für Aktionen und Auswertungen
+ * der Oberfläche, die bisher die Folge der Einheit selbst rechneten (setzeAbweichung, mehrfachDienst, urlaubskonto,
+ * planVergleich, Ersatzvorschlag). `alt` ist genau der bisherige Ausdruck des Aufrufers.
+ * - Planwirkung AUS: alt() — wörtlich wie bisher.
+ * - AN, Betriebsmodell (auch implizit), Springer, nicht im Schichtdienst: alt() — AN = AUS ohne eigenes Modell.
+ * - AN, eigenes Modell: der Zyklustag des Modells (null = frei).
+ * - AN, „keine“ (Lücke, Q5), uneindeutig, ungültig: null — nie still das Betriebsmodell.
+ * @param {any} m Betrieb
+ * @param {any} p Person
+ * @param {string} d JJJJ-MM-TT
+ * @param {() => any} alt bisheriger Ausdruck
+ */
+export function schichtfolgeAm(m, p, d, alt) {
+  if (!schichtmodellWirkungAktiv()) return alt();
+  const l = schichtmodellLageAm(m, p, d);
+  if (l.art === "ohne" || (l.art === "dienst" && l.quelle === "betrieb")) return alt();
+  return l.art === "dienst" ? l.dienstId : null;
+}
+
+/**
+ * Welche Felder ändern bei Planwirkung die Planrechnung mittelbar (Auslöser der Schutzrechnung, schutzdurchsetzung.mjs)?
+ * AUS: keine — die Modelle wirken nicht, die Nachrechnung bleibt wie bisher. AN: die Modelldefinitionen am Betrieb und
+ * die Zuordnungen an der Person. Eine Stelle, damit der Auslöser die Felder nicht selbst nennt.
+ * @returns {{ betrieb: string[], person: string[] }}
+ */
+export function schichtmodellPlanfelder() {
+  return schichtmodellWirkungAktiv() ? { betrieb: [...WIRKUNG_FELDER.betrieb], person: [...WIRKUNG_FELDER.person] } : { betrieb: [], person: [] };
+}
+
+/**
+ * Anzeigen je Einheit (Aushang, Monatsplan, Lagebild) zeigen die Folge der Einheit — das Betriebsmodell. Wie viele
+ * Personen dieser Einheit folgen an mindestens einem der Tage nicht dem Betriebsmodell (eigenes Modell, Lücke nach Q5,
+ * Klärung)? Planwirkung AUS: 0 ohne jede Rechnung (Anzeige wörtlich wie bisher). Nur eine Zahl, keine Namen.
+ * @param {any} m Betrieb
+ * @param {any} eid Einheit
+ * @param {string[]} tage JJJJ-MM-TT
+ */
+export function abweichendVomBetriebsmodell(m, eid, tage) {
+  if (!schichtmodellWirkungAktiv() || !m || !Array.isArray(tage)) return 0;
+  let n = 0;
+  for (const p of liste(m.personen)) {
+    if (!Array.isArray(p[ZUORDNUNG_FELD]) || !p[ZUORDNUNG_FELD].length) continue;            // implizit: Betriebsmodell
+    for (const d of tage) {
+      if (!imDienst(p, d) || einheitAm(p, d) !== eid) continue;
+      const l = schichtmodellLageAm(m, p, d);
+      if (l.art === "ohne" || (l.art === "dienst" && l.quelle === "betrieb")) continue;
+      n++;
+      break;
+    }
+  }
+  return n;
 }
 
 /** Höchstzahl der Tage je Person in schichtmodellKlaerungen (technische Grenze, etwa zehn Jahre). */

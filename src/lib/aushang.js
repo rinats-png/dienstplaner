@@ -4,7 +4,8 @@
 import { dim_, dow, pad } from "../regelwerk.js";
 import { MON, DOW } from "./datum.js";
 import { feiertag } from "../../server/lib/feiertage.mjs";
-import { landFuerEinheit, einheitDienst } from "../../server/lib/fachpruefung.mjs";
+import { landFuerEinheit, einheitDienst, abweichendVomBetriebsmodell } from "../../server/lib/fachpruefung.mjs";
+import { schichtmodellHinweis } from "./schichtmodell-schalter.js";
 
 /** Meta-CSP der Druckseite: nur eingebettete Styles, keine Skripte, keine Verbindungen. */
 export const DRUCK_CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src data:";
@@ -25,6 +26,10 @@ export function aushangHtml({ m, e, ym2, einheitId, fg }) {
   for (let i = 1; i <= n; i++) zellen.push(`${ym2}-${pad(i)}`);
   const woch = [];
   for (let i = 0; i < zellen.length; i += 7) woch.push(zellen.slice(i, i + 7));
+  /* IMP-6 Planwirkung (Vorgabe aus): Der Aushang zeigt die Folge der Einheit, also das Betriebsmodell. Folgen Personen
+     der Einheit in diesem Monat einem eigenen Modell (oder keinem, Q5), sagt das ein Hinweis — nur die Zahl, keine
+     Namen; nie still das Betriebsmodell für alle. AUS: kein Hinweis, das HTML bleibt byte-gleich. */
+  const hinweis = schichtmodellHinweis(abweichendVomBetriebsmodell(m, einheitId, zellen.filter(Boolean)));
   /* Daten aus dem Bestand nur maskiert ins HTML (SI-03): Betriebs-,
      Einheiten- und Dienstartnamen sind Freitext anderer Rollen. */
   const html = `<!doctype html><html lang="de"><head><meta charset="utf-8">
@@ -49,7 +54,7 @@ td{border:1px solid #E3E1DD;height:74px;vertical-align:top;padding:5px 6px}
 <h1>${e ? h(e.name) : ""} — <b>${MON[mo - 1]} ${y}</b></h1></div>
 <div style="text-align:right"><div class="rub">${fg ? `Freigegeben · Stand ${h(fg.stand)}` : "Entwurf"}</div>
 <div style="font-size:8pt;color:#5A6670;margin-top:3px">${fg ? h(fg.zeit) : `erstellt ${new Date().toLocaleString("de-DE")}`}</div></div></div>
-<table><thead><tr>${DOW.map((d) => `<th>${d}</th>`).join("")}</tr></thead><tbody>
+${hinweis ? `<div class="hinweis" style="font-size:9pt;color:#5A6670;margin:-6px 0 10px">${h(hinweis)}</div>\n` : ""}<table><thead><tr>${DOW.map((d) => `<th>${d}</th>`).join("")}</tr></thead><tbody>
 ${woch.map((w) => `<tr>${w.map((d) => {
   if (!d) return '<td style="border:none"></td>';
   const fei = feiertag(d, landFuerEinheit(m, einheitId));

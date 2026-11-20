@@ -1,6 +1,7 @@
 /* WP-39: aus src/App.jsx herausgeloest (Text unveraendert). */
 import { useState, useMemo } from "react";
-import { einheitAm, einheitDienst } from "../../server/lib/fachpruefung.mjs";
+import { einheitAm, einheitDienst, abweichendVomBetriebsmodell } from "../../server/lib/fachpruefung.mjs";
+import { schichtmodellHinweis } from "../lib/schichtmodell-schalter.js";
 import { pad, pISO, dow, dim_, dauer } from "../regelwerk.js";
 import { C } from "../farben.js";
 import { Card, Lab, Schalter, Filterleiste, Planzelle, Btn, Sel, H1 } from "../ui/bausteine.jsx";
@@ -142,7 +143,11 @@ export function Monatsplan({ sitz, ym, setYm, oeffneTag, akt, schmal,
                     <span style={{ width: 8, height: 8, borderRadius: 4, background: lesbar(e.farbe, 3), flexShrink: 0 }} />
                     <div><div style={{ fontSize: 14, fontWeight: 500 }}>{e.name}</div>
                       <div style={{ fontSize: 11.5, color: C.dimmer, ...NUM }}>
-                        {aktive(m, tage[0]).filter((p) => einheitAm(p, tage[0]) === e.id).length} Pers. · Versatz {e.versatz}</div></div>
+                        {aktive(m, tage[0]).filter((p) => einheitAm(p, tage[0]) === e.id).length} Pers. · Versatz {e.versatz}</div>
+                      {/* IMP-6 Planwirkung (Vorgabe aus): die Zeile ist die Folge der Einheit (Betriebsmodell); bei AN nennt ein
+                          Hinweis die Zahl der Personen mit eigenem Modell. AUS: nichts (Markup wie bisher). */}
+                      {(() => { const t = schichtmodellHinweis(abweichendVomBetriebsmodell(m, e.id, tage));
+                        return t && <div style={{ fontSize: 11.5, color: C.warn, maxWidth: 240, whiteSpace: "normal" }}>{t}</div>; })()}</div>
                   </div></td>
                 {tage.map((d) => {
                   const da = map[einheitDienst(m, e.id, d)];
