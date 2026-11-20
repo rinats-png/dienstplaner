@@ -6386,7 +6386,7 @@
       "agent": null,
       "modell": "opus",
       "konfliktzonen": ["App.jsx"],
-      "pr": [],
+      "pr": ["#426"],
       "nachweis": "docs/acc45/v4-2-nachweis.md",
       "akzeptanz": "Nach Anmeldung und Neuladen (F5) mit Sitzung sind --v4-* gesetzt; .seitenleiste/.karte/.btn-primary haben opake Flächen; --v4-* folgen data-thema der Anwendung (nicht nur dem System); Browserbeleg hell/dunkel",
       "tests": "Unit, E2E",
