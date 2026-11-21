@@ -29,7 +29,7 @@ export const KI_ROLLEN = Object.freeze(["leitung", "planer", "mitarbeiter"]);
 export const rolleSieht = (rolle, funktion) => rolle === "leitung" || rolle === "planer" || (rolle === "mitarbeiter" && funktion === "F9");
 const PLATZHALTER = /\{\{(person|einheit|objekt|dienst):([A-Za-z0-9_.:-]{1,64})\}\}/g;
 
-const kasten = { border: "1px solid currentColor", borderRadius: 8, padding: 12, overflowWrap: "anywhere", maxWidth: "100%" };
+const kasten = { border: "1px solid currentColor", borderRadius: "var(--v4-r-klein)", padding: 12, overflowWrap: "anywhere", maxWidth: "100%" };
 
 /** Text in Stücke: Klartext und aufgelöste Platzhalter (O3). */
 export function textTeile(text, aufloesen) {

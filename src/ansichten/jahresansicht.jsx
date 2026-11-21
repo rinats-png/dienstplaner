@@ -103,7 +103,7 @@ export function Jahresansicht({ sitz, ym, oeffnePerson }) {
                         + (soll > 0 ? ` (${prozent} %, ${sgn(Math.round(ist - soll))} h)` : " (kein Soll)"))
                         + (abwTage ? ` · ${abwTage} Tage abwesend${urlaubTage ? `, davon ${urlaubTage} Urlaub` : ""}` : "")}
                         style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, cursor: "default" }}>
-                        <div style={{ width: 40, height: 36, background: C.flaecheStill, borderRadius: 6,
+                        <div style={{ width: 40, height: 36, background: C.flaecheStill, borderRadius: "var(--v4-r-klein)",
                           position: "relative", overflow: "hidden" }}>
                           {/* Die Nulllinie: hundert Prozent des Monatssolls */}
                           <span style={{ position: "absolute", left: 0, right: 0, top: 18, height: 1,

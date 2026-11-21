@@ -85,13 +85,13 @@ export function Betriebsmittel({ sitz, akt, liste: register = BRANCHENMODULE }) 
         </div>
         <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
           <Ablage id="mittel:bestand" nimmt={(l) => l.art === "mittel"}
-            ablegen={(l) => akt.setzeMittel(l.mittelId, "personId", null)} style={{ borderRadius: 14 }}>
+            ablegen={(l) => akt.setzeMittel(l.mittelId, "personId", null)} style={{ borderRadius: "var(--v4-r-mittel)" }}>
             <div className="karte" style={{ padding: "12px 16px", fontSize: 13.5, color: C.dim }}>
               Zurück in den Bestand</div>
           </Ablage>
           {m.personen.filter((p) => imDienst(p, heute())).slice(0, 24).map((p) => (
             <Ablage key={p.id} id={`mittel:p:${p.id}`} nimmt={(l) => l.art === "mittel"}
-              ablegen={(l) => akt.setzeMittel(l.mittelId, "personId", p.id)} style={{ borderRadius: 14 }}>
+              ablegen={(l) => akt.setzeMittel(l.mittelId, "personId", p.id)} style={{ borderRadius: "var(--v4-r-mittel)" }}>
               <div className="karte" style={{ padding: "12px 16px", fontSize: 13.5 }}>
                 {p.nachname}, {p.vorname.slice(0, 1)}.
                 <span style={{ color: C.dimmer, marginLeft: 7, ...NUM }}>

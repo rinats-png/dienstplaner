@@ -13,7 +13,7 @@ import { NUM } from "../ui/thema.js";
 export function TeamAuslastungLeiste({ ta }) {
   if (!ta.personen) return null;
   if (ta.nichtVerfuegbar) return (
-    <div className="noprint" style={{ padding: "13px 16px", background: C.flaecheStill, borderRadius: 6,
+    <div className="noprint" style={{ padding: "13px 16px", background: C.flaecheStill, borderRadius: "var(--v4-r-klein)",
       marginBottom: 12, fontSize: 13.5, color: C.dim }}>Team-Auslastung: {ISTDATEN_TEXT}</div>);
   const teile = [`Team-Auslastung ${ta.pct} %`];
   if (ta.ueber) teile.push(`${ta.ueber} überplant`);
