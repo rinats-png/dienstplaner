@@ -15,7 +15,7 @@
    diese Datei selbst keinen Fund erzeugt.
    ========================================================================== */
 import { describe, it, expect } from "vitest";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import fs from "node:fs";
@@ -309,14 +309,29 @@ describe("Geheimnis-Werkzeug: A2 – Merge-Commits und Commit-Text", () => {
     expect(r.doppelt).toBe(1);
   });
 
-  it("Merge-Kopie der freigegebenen b8e67edd-Zeile erscheint nicht als neuer Fund; eine ANDERE PEM-Zeile im Merge bleibt offen", async () => {
+  it("T7 (Review #453, Auflage 2): Merge bringt dieselbe Zeile wie b8e67edd ein → die Commit-Bindung gilt NICHT für den Merge, Fund OFFEN mit Merge-SHA", async () => {
     const zeile = `["privater Schlüssel", "${PEM_ZEILE}\\n"],`;
     const r = await fundeSammeln([
       ...roh(MERGE, [...kopf(DATEI, 1), "+" + zeile], ELTERN),
       ...roh(SHA, [...kopf(DATEI, 1), "+" + zeile]),
     ]);
-    expect(r.offen).toEqual([]);
+    expect(r.offen.map((f) => [f.commit, f.datei, f.regel])).toEqual([[MERGE, DATEI, PEM]]);
     expect(r.frei.map((f) => f.commit)).toEqual([SHA]);
+    expect(r.doppelt).toBe(0);
+  });
+
+  it("Merge-Kopie einer Zeile, deren Original OHNE commit frei ist, wird zusammengefasst (keine Doppelmeldung)", async () => {
+    const r = await fundeSammeln([
+      ...roh(MERGE, [...kopf(SONDE_PFAD, 1), "+" + PEM_ZEILE], ELTERN),
+      ...roh(ANDERER_SHA, [...kopf(SONDE_PFAD, 1), "+" + PEM_ZEILE]),
+    ]);
+    expect(r.offen).toEqual([]);
+    expect(r.frei.map((f) => f.commit)).toEqual([ANDERER_SHA]);
+    expect(r.doppelt).toBe(1);
+  });
+
+  it("eine ANDERE PEM-Zeile im Merge bleibt offen", async () => {
+    const zeile = `["privater Schlüssel", "${PEM_ZEILE}\\n"],`;
     const r2 = await fundeSammeln([
       ...roh(MERGE, [...kopf(DATEI, 1), "+x " + PEM_ZEILE], ELTERN),
       ...roh(SHA, [...kopf(DATEI, 1), "+" + zeile]),
@@ -346,6 +361,106 @@ describe("Geheimnis-Werkzeug: A2 – Merge-Commits und Commit-Text", () => {
     const r = G.commitTexteSammeln(`kaputt ohne SHA k=${API_WERT}`);
     expect(r.offen.map((f) => f.commit)).toEqual(["-"]);
   });
+
+  it("M14: Freigabe für (Commit-Text) OHNE commit greift nicht; MIT passendem commit greift sie", () => {
+    const sha = "d".repeat(40);
+    const t = `${sha}\x1fA <a@b>\x1fC <c@d>\x1fk=${API_WERT}\n`;
+    const regel = "Anthropic/OpenAI-Schlüssel";
+    const ohne = G.commitTexteSammeln(t, { freigaben: [{ datei: G.COMMIT_TEXT, regel, grund: "t" }] });
+    expect(ohne.offen.map((f) => f.commit)).toEqual([sha]);
+    expect(ohne.frei).toEqual([]);
+    const mit = G.commitTexteSammeln(t, { freigaben: [{ commit: sha, datei: G.COMMIT_TEXT, regel, grund: "t" }] });
+    expect(mit.offen).toEqual([]);
+    expect(mit.frei.map((f) => f.commit)).toEqual([sha]);
+  });
+
+  it("T8 (Review #453, Auflage 1): Octopus-Merge (>2 Eltern) ohne nachgereichten Diff → fail-closed OFFEN", async () => {
+    const octo = "8".repeat(40);
+    const r = await fundeSammeln(roh(octo, [], `${"a".repeat(40)} ${"b".repeat(40)} ${"c".repeat(40)}`));
+    expect(r.offen.map((f) => [f.commit, f.datei, f.regel])).toEqual([[octo, G.DATEI_UNBEKANNT, G.OCTOPUS_UNGEPRUEFT]]);
+  });
+
+  it("T8: Octopus-Merge mit nachgereichtem First-Parent-Diff (@@OCTOPUS) → Fund mit Octopus-SHA, kein Ungeprüft-Fund", async () => {
+    const octo = "8".repeat(40);
+    const eltern = `${"a".repeat(40)} ${"b".repeat(40)} ${"c".repeat(40)}`;
+    const r = await fundeSammeln([
+      ...roh(octo, [], eltern),
+      `@@OCTOPUS ${octo} ${eltern}`, "", ...kopf("octo.js", 1), "+" + PEM_ZEILE,
+    ]);
+    expect(r.offen.map((f) => [f.commit, f.datei, f.regel])).toEqual([[octo, "octo.js", PEM]]);
+  });
+
+  it("T8: eine `+@@OCTOPUS`-Inhaltszeile im Hunk gilt nicht als Nachprüfung", async () => {
+    const octo = "8".repeat(40);
+    const eltern = `${"a".repeat(40)} ${"b".repeat(40)} ${"c".repeat(40)}`;
+    const r = await fundeSammeln([
+      ...roh(ANDERER_SHA, [...kopf("x.js", 1), `+@@OCTOPUS ${octo} ${eltern}`]),
+      ...roh(octo, [], eltern),
+    ]);
+    expect(r.offen.map((f) => f.regel)).toEqual([G.OCTOPUS_UNGEPRUEFT]);
+  });
+});
+
+/* ==========================================================================
+   Review #453: Octopus (T8), Wurzel-Commit und Benutzer-Konfiguration (T10),
+   git-Fehler (M13) – echte git-Läufe im Wegwerf-Repo.
+   ========================================================================== */
+function wegwerfRepo() {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "geheimnis-scan-"));
+  const g = (...a) => execFileSync("git", ["-c", "user.name=Pruefung", "-c", "user.email=pruefung@beispiel.invalid", "-c", "core.autocrlf=false",
+    "-c", "commit.gpgsign=false", "-c", `core.hooksPath=${path.join(d, ".keine-hooks")}`, ...a], { cwd: d, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  const w = (f, t) => { fs.mkdirSync(path.dirname(path.join(d, f)), { recursive: true }); fs.writeFileSync(path.join(d, f), t); };
+  g("init", "-q", "-b", "main");
+  return { d, g, w, weg: () => fs.rmSync(d, { recursive: true, force: true }) };
+}
+
+describe("Geheimnis-Werkzeug: Review #453 – Octopus, Wurzel-Commit, git-Fehler", () => {
+  it("T8: Octopus-Merge bringt eine Datei mit PEM-Kopfzeile ein → Fund mit Octopus-SHA", async () => {
+    const { d, g, w, weg } = wegwerfRepo();
+    try {
+      w("basis.txt", "b\n"); g("add", "-A"); g("commit", "-qm", "basis");
+      g("checkout", "-qb", "z1"); w("z1.txt", "1\n"); g("add", "-A"); g("commit", "-qm", "z1");
+      g("checkout", "-q", "main"); g("checkout", "-qb", "z2"); w("z2.txt", "2\n"); g("add", "-A"); g("commit", "-qm", "z2");
+      g("checkout", "-q", "main"); w("haupt.txt", "h\n"); g("add", "-A"); g("commit", "-qm", "haupt");
+      g("merge", "-q", "--no-commit", "z1", "z2");
+      w("octo.js", `${PEM_ZEILE}\n`); g("add", "octo.js"); g("commit", "-qm", "octopus");
+      const octo = g("rev-parse", "HEAD").trim();
+      expect(g("rev-list", "--min-parents=3", "--count", "HEAD").trim()).toBe("1");
+      const r = await G.historieScannen({ cwd: d, refs: ["--all"] });
+      expect(r.offen.map((f) => [f.commit, f.datei, f.regel])).toEqual([[octo, "octo.js", PEM]]);
+    } finally { weg(); }
+  }, 60000);
+
+  it("T10: Wurzel-Commit wird geprüft, auch wenn Benutzer-Konfiguration log.showRoot=false, diff.noprefix, core.quotePath=false setzt", async () => {
+    expect(G.GIT_LOG_ARGS).toEqual(expect.arrayContaining(["log.showRoot=true"]));
+    const { d, g, w, weg } = wegwerfRepo();
+    const env = { GIT_CONFIG_COUNT: "4", GIT_CONFIG_KEY_0: "log.showRoot", GIT_CONFIG_VALUE_0: "false", GIT_CONFIG_KEY_1: "diff.noprefix", GIT_CONFIG_VALUE_1: "true",
+      GIT_CONFIG_KEY_2: "core.quotePath", GIT_CONFIG_VALUE_2: "false", GIT_CONFIG_KEY_3: "diff.mnemonicPrefix", GIT_CONFIG_VALUE_3: "true" };
+    const alt = {};
+    try {
+      w("ä wurzel.txt", `k = "${"sk-" + "Qz5".repeat(12)}"\n`); g("add", "-A"); g("commit", "-qm", "wurzel");
+      w("x.txt", "x\n"); g("add", "-A"); g("commit", "-qm", "zwei");
+      for (const [k, v] of Object.entries(env)) { alt[k] = process.env[k]; process.env[k] = v; }
+      const r = await G.historieScannen({ cwd: d, refs: ["--all"] });
+      expect(r.offen.map((f) => [f.datei, f.regel])).toEqual([["ä wurzel.txt", "Anthropic/OpenAI-Schlüssel"]]);
+    } finally {
+      for (const k of Object.keys(env)) { if (alt[k] === undefined) delete process.env[k]; else process.env[k] = alt[k]; }
+      weg();
+    }
+  }, 60000);
+
+  it("M13: git-Fehler → historieScannen lehnt ab; CLI endet mit Rückgabe 2 ohne Fundliste", async () => {
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), "geheimnis-kein-repo-"));
+    try {
+      await expect(G.historieScannen({ cwd: d, refs: ["--all"] })).rejects.toThrow(/git log -p endete mit/);
+      const r = spawnSync(process.execPath, [path.join(WURZEL, "werkzeug/sicherheit/geheimnisse.mjs")], {
+        cwd: d, encoding: "utf8", env: { ...process.env, GIT_DIR: path.join(d, "gibt-es-nicht") },
+      });
+      expect(r.status).toBe(2);
+      expect(r.stderr).toMatch(/FEHLER: Verlauf nicht vollständig lesbar/);
+      expect(r.stdout).not.toMatch(/FUND|ERGEBNIS/);
+    } finally { fs.rmSync(d, { recursive: true, force: true }); }
+  }, 60000);
 });
 
 /* ==========================================================================
