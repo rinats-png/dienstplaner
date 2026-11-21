@@ -285,9 +285,25 @@ describe("A11Y-2: Nachtbalken der Personalakte", () => {
     for (const t of monate) expect(label, t).toContain(t);
     const pos = monate.map((t) => label.indexOf(t));
     expect([...pos].sort((x, y) => x - y), "Reihenfolge Januar … Dezember").toEqual(pos);
-    expect(label).toMatch(/markiert: November/);
+    /* Review #454: Wortlaut „Monat der Ansicht“ statt „markiert“ (eindeutig für Vorlesesoftware), am Ende des Namens. */
+    expect(label).toMatch(/; Monat der Ansicht: November$/);
+    expect(label).not.toMatch(/markiert/);
     /* mindestens ein Monat mit Nachtstunden, sonst prüfte der Test nur Nullen */
     expect(monate.some((t) => !/ 0 Stunden$/.test(t) && !/keine Angabe$/.test(t)), monate.join("; ")).toBe(true);
+  }, 60000);
+
+  it("Monat ohne Wert (abgeschlossen ohne eingefrorenes Ist, abschlussLuecke): im Namen „keine Angabe“, nicht 0 Stunden", () => {
+    /* Review #454: Juni 2026 ist abgeschlossen, das eingefrorene Ist der Person fehlt (N3) → istStunden(…).nacht null.
+       Echte Daten, kein Stub der Fachlogik; die übrigen Monate behalten ihre Zahl. */
+    const { m, leitung, ziel } = aufbau();
+    m.monatsabschluss = { ...(m.monatsabschluss || {}), "2026-06": { abgeschlossen: true } };
+    expect(istStunden(m, ziel, "2026-06").nacht, "Vorbedingung: Juni ohne Wert").toBeNull();
+    const a = abschnitt(rendern(m, leitung, ziel, "2026-11"));
+    const label = entitaeten((a.match(/<div[^>]*role="img"[^>]*aria-label="([^"]*)"/) || [])[1] || "");
+    expect(label).toContain("Juni keine Angabe,");
+    expect(label).not.toMatch(/Juni \d/);
+    expect(label.match(/keine Angabe/g), "nur der Juni ohne Wert").toHaveLength(1);
+    for (const t of erwartet(m, ziel, 2026)) expect(label, t).toContain(t);
   }, 60000);
 
   it("keine doppelte Ansage: die zwölf Spalten (Balken und Buchstabe) sind aria-hidden", () => {

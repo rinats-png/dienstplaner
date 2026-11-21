@@ -1844,6 +1844,28 @@ describe("OF-13 (O-2 b): G7 — erste Auslieferung vom unbeschrifteten Bild 274b
     expect(g7(erst, { strategie: "r0", entscheidungO2: "b" }, C274).ergebnis).toBe("NO-GO");
   });
 
+  /* Review #441 Befund 1: Die zwei Teilbedingungen der ziel-Berechnung (!unbeschriftet(vorherig), !basisOhneLabel)
+     sind je für sich festgehalten. Bei r0 ohne O-1/O-2 entscheidet allein ziel: entfiele eine Teilbedingung
+     (Mutanten M-B, M-C), gälte die Zeile vorherig als Rücksprungziel und G7 würde GO ohne dokumentierte O-1/O-2. */
+  it("M-B: r0 ohne O-1/O-2, beschriftete Basis (oder offline ohne Basis), Zeile vorherig 274bfa0 → NO-GO", () => {
+    const mitBasis = g7(erst, { strategie: "r0" }, B);
+    expect(mitBasis.ergebnis).toBe("NO-GO");
+    expect(mitBasis.gruende.join(" ")).toMatch(/kein Rücksprungziel und Entscheidung O-1/);
+    expect(mitBasis.gruende.join(" ")).toMatch(/kein Rücksprungziel und Entscheidung O-2/);
+    expect(g7(erst, { strategie: "r0" }, undefined).ergebnis).toBe("NO-GO");
+    // Gegenprobe: dieselbe Basis mit beschrifteter Zeile vorherig ist ein Ziel → r0 ohne O-1/O-2 GO
+    expect(g7(normal, { strategie: "r0" }, B).ergebnis).toBe("GO");
+  });
+
+  it("M-C: r0 ohne O-1/O-2, Basis 274bfa0, beschriftete Zeile vorherig → NO-GO", () => {
+    const g = g7(normal, { strategie: "r0" }, C274);
+    expect(g.ergebnis).toBe("NO-GO");
+    expect(g.gruende.join(" ")).toMatch(/kein Rücksprungziel und Entscheidung O-1/);
+    expect(g7(normal, { strategie: "r0" }, undefined, { basisCommit: C274 }).ergebnis).toBe("NO-GO");
+    // mit dokumentierten O-1/O-2 bleibt r0 zulässig
+    expect(g7(normal, R0_B, C274).ergebnis).toBe("GO");
+  });
+
   it("Basis nur über basisCommit der Freigabedatei bekannt → ruecksprung NO-GO", () => {
     expect(g7(erst, { strategie: "ruecksprung" }, undefined, { basisCommit: C274 }).ergebnis).toBe("NO-GO");
     // auch wenn --basis etwas anderes sagt: eine der beiden Angaben auf 274bfa0 genügt (G10 meldet den Widerspruch)
