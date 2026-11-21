@@ -104,6 +104,10 @@ Alle Befehle laufen im Repo-Wurzelverzeichnis. Die neuen Werkzeuge liegen unter 
   - die PEM-Kopfzeile als Prüfmuster eines Leck-Tests,
   - feste CI-Prüfwerte in zwei Workflows und einem Prüfskript.
 - Die Ausgabe nennt nie Werte. Zusätzlich läuft gitleaks in `sicherheit.yml`.
+- Härtung 2026-11-21 (Review #450):
+  - A1: Die Datei eines Treffers kommt nur noch aus dem Diff-Kopf (`+++ b/…` direkt nach `--- …`, vor dem ersten `@@`). Hunk-Zeilen werden nach `@@ -a,b +c,d @@` gezählt. Eine hinzugefügte Inhaltszeile `++ b/<Pfad>` kann deshalb keine freigegebene Datei mehr vortäuschen. Quoting (`core.quotePath`), Leerzeichen, Umbenennung und Binärdateien sind abgedeckt. Ist die Datei nicht sicher bestimmbar, bleibt der Fund offen (`(Datei unbekannt)`).
+  - A2: Merge-Commits werden mit `--remerge-diff` geprüft: nur was der Merge selbst einbringt, etwa eine Konfliktauflösung. Ein Merge-Fund, der zeilengleich schon in einem normalen Commit vorkommt (Datei × Regel × Zeile), wird nicht doppelt gemeldet. Commit-Nachricht und Autor-/Committer-Felder werden ebenfalls geprüft (Pseudo-Datei `(Commit-Text)`, Freigabe nur mit `commit`).
+  - Laufzeit auf dem Repo-Stand vom 2026-11-21 (2 765 Commits, davon 703 Merges, nur `origin`-Zweige, Windows-Rechner): rund 50 s statt rund 21 s; der Remerge-Diff kostet den Unterschied.
 
 ### 4. Authentifizierung und Autorisierung
 
@@ -277,6 +281,8 @@ WP-30 (Mail und Push in Produktion) hatte die Push-SSRF-Abwehr unabhängig ein z
 | S3 | niedrig | `csvText` setzte Text mit Komma oder Tabulator nicht in Anführungszeichen. | `src/csvfeld.js`: auch bei `,` und Tabulator umschlossen. | SI-02 „S3“, `br-auswertung.test.js` |
 | S4 | mittel | `routen-inventar.test.js` war umgehbar: nur `pfad === "x"` erkannt; `'x'`, `"x" === pfad`, `switch (pfad) { case "x": }` blieben grün, Kommentare zählten als Sonde, `/gesund` fehlte. | Kommentare werden vor der Suche entfernt (Code und Sonden), alle Vergleichsformen erkannt, `server.mjs` (`/gesund`) einbezogen, Laufzeitprüfung (unbekannter Unterweg → 404 mit Sitzung, 401/404 ohne). Dabei aufgefallen: `/zustellung/status` (WP-30) fehlte im Inventar; drei Sonden nannten ihren Weg nur im Kommentar und sind ersetzt. | `routen-inventar.test.js` |
 | S5 | niedrig | `werkzeug/sicherheit/geheimnisse.mjs`: ein Platzhalter irgendwo in der Zeile unterdrückte jeden Treffer der Zeile. | Unterdrückung nur für den Treffer selbst; alle Treffer einer Regel einzeln geprüft; erkennbare Prüfwerte (`nur-zum-pruefen` …) gelten als Platzhalter. | `sicherheit-intern.test.js` „Geheimnis-Werkzeug“ |
+| S5a | mittel | `geheimnisse.mjs` (Review #450, A1): jede Diff-Zeile mit `+++ ` setzte den Dateinamen, auch eine hinzugefügte Inhaltszeile `++ b/<Pfad>`. Ein Fund in beliebiger Datei ließ sich so einer freigegebenen Datei zurechnen. | Datei nur aus dem Diff-Kopf, Hunk-Zählung, fail-closed. | `geheimnisse-freigabe.test.js` „A1“ |
+| S5b | niedrig | `geheimnisse.mjs` (Review #450, A2): Merge-Commits ohne Diff, Commit-Text ungeprüft. | `--remerge-diff`, keine Doppelmeldung; Commit-Text geprüft. | `geheimnisse-freigabe.test.js` „A2“, echter git-Lauf |
 | S6 | niedrig | `sw.js`: offenes Fenster per `url.includes(origin)` gesucht. | `url.startsWith(origin + "/")`. | SI-04 |
 
 Nicht gebaut, sondern als Pakete geführt (`docs/acc45/work-packages.json`): SI-P1 (Sicherungsschlüssel), SI-P2 (Code-Sitzung nach Entfernen), SI-P3 (Mailversand aus Testräumen), SI-P4 (2FA für Leitung/Planung/Kunde), SI-P5 (Matrix-/Sondenlücken), **SI-P6 (Betreiber-Leitungscodes ohne frische Anmeldung, hoch)**, SI-P7 (Herkunftssperre/IPv6), SI-P8 (Actions per SHA).
