@@ -37,7 +37,8 @@
      G6  Sicherung, Restore-Probe, Widerrufbuch-Probe: vollständig und aktuell
      G7  Rückweg: Zeile `vorherig` oder dokumentierte Entscheidung O-1/O-2
      G8  SSOT: kein P0/P1-Paket im Status REVIEW/BLOCKED/IN_PROGRESS/READY,
-         dessen PR im Paket steckt (außer akzeptiertePakete mit Grund)
+         dessen PR im Paket steckt (außer akzeptiertePakete mit Grund); jede
+         Paket-ID in ssotPakete von RELEASE-UNFERTIG.json steht in der SSOT
      G9  keine offenen P0/P1-Befunde (Strang folge, ABN-*, V4-*; REL-* sind der
          Release-Prozess selbst und zählen nicht; akzeptierteBefunde mit Grund)
      G10 Freigabedatei docs/acc45/releases/<id>.freigabe.json gültig, commitet,
@@ -147,6 +148,8 @@ const HEX40 = /^[0-9a-f]{40}$/;
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
 const DATUM = /^\d{4}-\d{2}-\d{2}$/;
 const RELEASE_ID = /^[a-z0-9][a-z0-9._-]{2,63}$/;
+// eslint-disable-next-line no-control-regex -- gewollt: Steuerzeichen in Pfaden erkennen (N1)
+const STEUERZEICHEN = /[\u0000-\u001f\u007f]/;
 
 const gate = (id, name) => ({ id, name, ergebnis: "GO", gruende: [], belege: [], manuell: [] });
 const nogo = (g, grund) => { g.ergebnis = "NO-GO"; g.gruende.push(grund); return g; };
@@ -899,7 +902,7 @@ export function g7Rueckweg({ liste, kandidat, digest }, freigabe, konfig) {
 
 const annahmen = (liste) => new Map((Array.isArray(liste) ? liste : []).filter((a) => istObjekt(a) && a.id && String(a.grund || "").trim()).map((a) => [a.id, a.grund]));
 
-export function g8Blocker(ssot, prsImKandidaten, freigabe, konfig) {
+export function g8Blocker(ssot, prsImKandidaten, freigabe, konfig, unfertig = null) {
   const g = gate("G8", "Keine offenen P0/P1-Pakete im Kandidaten");
   if (!istObjekt(ssot) || !Array.isArray(ssot.pakete)) return nogo(g, `${konfig.ssot} fehlt oder ist ungültig (fail-closed)`);
   if (!Array.isArray(prsImKandidaten)) return nogo(g, "PR-Liste des Kandidaten nicht ermittelbar (fail-closed)");
@@ -911,6 +914,22 @@ export function g8Blocker(ssot, prsImKandidaten, freigabe, konfig) {
     if (!prs.length) continue;
     if (akzeptiert.has(p.id)) { g.belege.push(`${p.id} (${p.prio}, ${p.status}) vom Betreiber akzeptiert: ${akzeptiert.get(p.id)}`); continue; }
     nogo(g, `${p.id} (${p.prio}, ${p.status}) steckt im Kandidaten über ${prs.map((x) => "#" + x).join(", ")}`);
+  }
+  // Unfertige Funktionen (RELEASE-UNFERTIG.json, Feld ssotPakete): Jede genannte Paket-ID muss in der SSOT stehen
+  // (sonst ist die Liste veraltet, fail-closed). Steckt das Paket im Kandidaten, belegt G8, dass sein Code nur hinter
+  // dem Schalter AUS ausgeliefert wird; die Sperre selbst prüft G3. Eine ungültige Liste meldet G3.
+  if (istObjekt(unfertig) && Array.isArray(unfertig.funktionen)) {
+    const pakete = new Map(ssot.pakete.filter(istObjekt).map((p) => [p.id, p]));
+    for (const f of unfertig.funktionen) {
+      if (!istObjekt(f) || f.ssotPakete === undefined) continue;
+      if (!Array.isArray(f.ssotPakete)) { nogo(g, `${konfig.unfertigDatei}: ${f.id}: ssotPakete ist keine Liste`); continue; }
+      for (const id of f.ssotPakete) {
+        const p = pakete.get(id);
+        if (!p) { nogo(g, `${konfig.unfertigDatei}: ${f.id} nennt ${id}, das nicht in der SSOT steht (Liste veraltet)`); continue; }
+        const prs = (Array.isArray(p.pr) ? p.pr : []).map(prNummer).filter((x) => imKandidat.has(x));
+        if (prs.length) g.belege.push(`${id} im Kandidaten (${prs.map((x) => "#" + x).join(", ")}): „${f.name}“ nur hinter Schalter AUS (G3: ${(f.variablen || []).join(", ")})`);
+      }
+    }
   }
   return g;
 }
@@ -1014,7 +1033,7 @@ export function auswerten(e, konfig = KONFIG_STANDARD) {
     g5Migration(bericht, freigabe, liste),
     g6Sicherung(e.nachweise, e.jetztMs, konfig),
     g7Rueckweg({ liste, kandidat: e.kandidat, digest: e.digest }, freigabe, konfig),
-    g8Blocker(e.ssot, prs, freigabe, konfig),
+    g8Blocker(e.ssot, prs, freigabe, konfig, e.unfertig),
     g9Befunde(e.ssot, freigabe, konfig),
     g10Freigabe({ releaseId: e.releaseId, freigabe: roheFreigabe, freigabeFehler: e.freigabeFehler, commitet: e.freigabeCommitet, kandidat: e.kandidat, digest: e.digest, basis: e.basis, stand: e.stand }, konfig),
   ];
@@ -1150,10 +1169,17 @@ export function basisPruefen(wurzel, basis, kandidat, konfig = KONFIG_STANDARD) 
 /** SHA-256 je Vorlage dieser Art im Kandidaten; nicht gelistete Dateien dieser Art als „unbekannt“. */
 export function vorlagenStandErmitteln(kq, konfig = KONFIG_STANDARD) {
   const art = new RegExp(konfig.vorlagenArt, "i");
-  const kandidaten = [...new Set([...kq.wurzelDateien(), ...kq.dateien(konfig.vorlagenSuche)])]
-    .filter((f) => art.test(f.split("/").pop())).sort();
-  const dateien = {};
+  const alle = kq.eintraege(konfig.vorlagenSuche);
+  const dateiPfade = [...new Set([...kq.wurzelDateien(), ...kq.dateien(konfig.vorlagenSuche)])];
   const unbekannt = [];
+  // N1 (Delta-Check #427): Ein Pfad mit Steuerzeichen (\n, \r, \t, NUL …) im Wurzelverzeichnis oder unter deploy/
+  // ist immer NO-GO (Dateien, Verzeichnisse, Links). Das Muster vorlagenArt („.“ ohne s-Flag) erkennt etwa
+  // „Dockerfile\nx“ sonst nicht als Vorlage. Ausgabe maskiert (JSON-Schreibweise), nie roh.
+  for (const f of new Set([...dateiPfade, ...(Array.isArray(alle) ? alle.map((x) => x.pfad) : [])])) {
+    if (STEUERZEICHEN.test(f)) unbekannt.push(`${JSON.stringify(f).slice(1, -1)} (Steuerzeichen im Pfad, nicht zulässig)`);
+  }
+  const kandidaten = dateiPfade.filter((f) => !STEUERZEICHEN.test(f) && art.test(f.split("/").pop())).sort();
+  const dateien = {};
   for (const f of kandidaten) {
     if (!konfig.gebundeneVorlagen.includes(f)) { unbekannt.push(`${f} (nicht gelistet)`); continue; }
     const modus = kq.modus(f);
@@ -1165,7 +1191,6 @@ export function vorlagenStandErmitteln(kq, konfig = KONFIG_STANDARD) {
   }
   // Jeder Symlink (120000) und jedes Submodul (160000) im Wurzelverzeichnis und unter deploy/ ist unzulässig —
   // auch ein Verzeichnis-Symlink, der gebundene Vorlagen still verschwinden ließe.
-  const alle = kq.eintraege(konfig.vorlagenSuche);
   if (!Array.isArray(alle)) unbekannt.push("(Baum des Kandidaten nicht lesbar)");
   else {
     for (const { pfad, modus } of alle) {

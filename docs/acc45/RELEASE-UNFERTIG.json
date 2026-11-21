@@ -1,16 +1,41 @@
 {
   "schema": 1,
-  "hinweis": "Liste unfertiger oder nicht freigegebener Funktionen (REL-1, Gate G3 in werkzeug/release-pruefung.mjs). Keine dieser Variablen darf in einer Release-Vorlage (.env.example, deploy/compose.yml, Dockerfile, deploy/staging-o2/*) aktiv gesetzt sein. Aktiv heißt: Zeile nicht auskommentiert, Wert (auch der Vorgabewert in ${X:-wert}) nicht leer, kein Platzhalter <…> und nach trim/Kleinschreibung nicht aus/false/0/nein/off und nicht in sicherWerte. Ein Eintrag wird erst entfernt, wenn die Funktion fertig und vom Betreiber freigegeben ist.",
+  "hinweis": "Liste unfertiger oder nicht freigegebener Funktionen (REL-1, Gate G3 in werkzeug/release-pruefung.mjs). Keine dieser Variablen darf in einer Release-Vorlage (.env.example, deploy/compose.yml, Dockerfile, deploy/staging-o2/*) aktiv gesetzt sein. Aktiv heißt: Zeile nicht auskommentiert, Wert (auch der Vorgabewert in ${X:-wert}) nicht leer, kein Platzhalter <…> und nach trim/Kleinschreibung nicht aus/false/0/nein/off und nicht in sicherWerte. Ein Eintrag wird erst entfernt, wenn die Funktion fertig und vom Betreiber freigegeben ist. Optional: gruende und vorbedingungen (Text, vor AN zu erledigen); ssotPakete (Paket-IDs aus work-packages.json, G8 prüft, dass sie dort stehen).",
   "funktionen": [
     {
       "id": "schichtmodell-pflege",
-      "name": "Schichtmodell-Pflege und Planwirkung (IMP-6)",
+      "name": "Schichtmodell-Pflege (IMP-6, P2-24 a)",
       "variablen": [
-        "CENTRIC_SCHICHTMODELL_PFLEGE",
+        "CENTRIC_SCHICHTMODELL_PFLEGE"
+      ],
+      "stand": "im Code (server/lib/schalter.mjs, #423), Vorgabe AUS, nur genau true schaltet ein",
+      "quelle": "server/lib/schalter.mjs; PR #423",
+      "ssotPakete": [
+        "IMP-6"
+      ]
+    },
+    {
+      "id": "schichtmodell-wirkung",
+      "name": "Schichtmodell-Planwirkung (IMP-6)",
+      "variablen": [
         "CENTRIC_SCHICHTMODELL_WIRKUNG"
       ],
-      "stand": "beide im Code (server/lib/schalter.mjs: PFLEGE #423, WIRKUNG #429), Vorgabe AUS, nur genau true schaltet ein",
-      "quelle": "server/lib/schalter.mjs; PR #423, #429"
+      "stand": "im Code (server/lib/schalter.mjs, schichtmodellWirkungAn; #429, #431, #436), Vorgabe AUS, nur genau true schaltet ein; nirgends gesetzt, auch nicht in CI. Bleibt AUS, bis alle Vorbedingungen erledigt oder entschieden sind",
+      "gruende": [
+        "Bei AN rechnen Plan, Ist offener Monate, Urlaubskonto und Änderungsliste nach den Modellen der Personen; mehrere Folgen davon sind fachlich nicht entschieden (Kategorie C, ENTSCHEIDUNGSLISTE P2-24 b, P2-25 bis P2-31).",
+        "Zwei bekannte Lücken im Code (Review #431, Befund 4 und 5) sind vor AN nicht behoben."
+      ],
+      "vorbedingungen": [
+        "Offline-Merker (Befund 5, Review #431): src/speicher.js (lies, ~Z. 381) übernimmt schichtmodellWirkung und schichtfolgeServer auch aus einer gemerkten Antwort des Dienstarbeiters; nach dem Abschalten rechnet ein Offline-Client weiter mit den Modellen. Vor AN: gemerkte Antwort nicht als Quelle nehmen oder den Speicher beim Abschalten verwerfen.",
+        "Teilzeitprofil (Befund 4, Review #431): teilzeitProfil (src/lib/fachlogik.js, ~Z. 1743) rechnet aus m.zyklus (Betriebsmodell), auch bei AN; gehört zu P2-28.",
+        "Entscheidungen beim Betreiber: P2-24 (b) Versionierung laufender Modelle, P2-25 Auskunft Art. 15, P2-26 Wiederherstellen (Vorbedingung), P2-27 Stichtag, P2-28 Teilzeit und Urlaubskonto im eigenen Modell.",
+        "Entscheidungen aus Review #436 (Teilrollen): P2-29 Mitteilung „eigene Zuordnung“ (mit Datenschutzbeauftragten, einschließlich Ruhezeit-Nebenkanal), P2-30 Ersatzvorschlag, P2-31 Entwurfstage.",
+        "Deploy-Hinweis beim Einschalten: „Clients neu laden“ (veraltete Clients schicken den Kopf x-centric-schichtfolge nicht; IMP-6-MEHRFACHMODELLE.md, Teilrollen, Grenze 1; wie P2-19 e)."
+      ],
+      "quelle": "server/lib/schalter.mjs; docs/acc45/IMP-6-MEHRFACHMODELLE.md (Vorbedingungen vor AN, Teilrollen/Grenzen); docs/acc45/ENTSCHEIDUNGSLISTE.md P2-24 bis P2-31; PR #429, #431, #436",
+      "ssotPakete": [
+        "IMP-6"
+      ]
     },
     {
       "id": "import-dateiweg",

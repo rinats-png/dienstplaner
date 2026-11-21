@@ -297,7 +297,10 @@ entschieden sind:
    Server gerechneter Dienst“); vor AN offen bleibt dort „Grenzen“ (Deploy-Hinweis „Clients neu laden“, Fenster, Punkt 5) sowie die
    Entscheidungen P2-29 bis P2-31 (Review #436).
 2. Entscheidungen P2-26, P2-27; dazu P2-24 (b), P2-25, P2-28 und P2-29 bis P2-31 (Teilrollen, Review #436) beim Betreiber.
-3. `RELEASE-UNFERTIG.json`-Eintrag nach dem Merge von #427; Release-Gate-Warnung (REL-1).
+3. `RELEASE-UNFERTIG.json`-Eintrag nach dem Merge von #427: **erledigt** (Branch `acc45/release/rel-1-nachzug`, Eintrag
+   `schichtmodell-wirkung` mit Gründen und dieser Vorbedingungsliste; G3 sperrt jeden aktiven Wert, G8 prüft den Verweis auf
+   IMP-6). Release-Gate-Warnung (REL-1) bei gesetztem, aber nicht genau `true`: G3 behandelt jeden Wert außer den Aus-Werten
+   als aktiv und damit NO-GO; eine eigene Warnung ist dadurch nicht nötig.
 4. **Teilzeitprofil (Befund 4, Review #431):** `teilzeitProfil` (`src/lib/fachlogik.js`, ~Z. 1743) rechnet aus `m.zyklus` ohne
    `einheitDienst(` — der Wächter `imp6-planwirkung` S erfasst die Stelle deshalb nicht. Bei AN zeigte es für eine Person mit
    eigenem Modell die Dienste je Zyklus des Betriebsmodells. Gehört zu P2-28 (Teilzeit im eigenen Modell).

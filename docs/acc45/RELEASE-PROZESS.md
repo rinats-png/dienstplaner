@@ -82,7 +82,8 @@ Eine Datei mit falscher Struktur gilt für alle Gates als nicht vorhanden.
 `compose*.yml`/`docker-compose*.yml`, `*.env*`/`.env.example`, `env.*`, `*env*.beispiel` im Wurzelverzeichnis und
 unter `deploy/`) stehen als feste Liste im Werkzeug (`gebundeneVorlagen`). Ihr SHA-256 über Mode und rohe Bytes im Kandidaten-Commit
 (`sha256("100644\0" + Inhalt)`; nur reguläre Dateien 100644/100755; jeder Symlink 120000 und jedes Submodul 160000
-im Wurzelverzeichnis und unter `deploy/`, auch ein Verzeichnis-Symlink, ist NO-GO; Pfade werden mit `ls-tree -z` gelesen)
+im Wurzelverzeichnis und unter `deploy/`, auch ein Verzeichnis-Symlink, ist NO-GO; ebenso jeder Pfad dort mit einem
+Steuerzeichen wie `\n`, `\r`, `\t` oder NUL, ob Vorlage oder nicht (N1, Delta-Check #427); Pfade werden mit `ls-tree -z` gelesen)
 steht in `vorlagenHashes` der Freigabedatei. Weicht ein Hash ab, fehlt ein Eintrag, steht ein Eintrag zu viel oder
 gibt es eine nicht gelistete Datei dieser Art, ist G3 NO-GO. Die Hashes liefert
 `node werkzeug/release-pruefung.mjs --vorlagen-hashes --kandidat <commit> --basis <voriger-release-commit>` — nur so
@@ -414,7 +415,7 @@ Einzelheiten und Konfiguration: Kopf von `werkzeug/release-pruefung.mjs`, Ausgab
 | G5 | keine Startschreib-Quelle (W-1…W-9, `server.mjs`) geändert oder neu, oder Betreiberfreigabe deckt alle ab |
 | G6 | Sicherung (mit `snapshot_id`), Restore-Probe, Widerrufbuch-Probe (mit `art`, `ergebnis: ok`) aktuell |
 | G7 | Rückweg dokumentiert |
-| G8 | kein unfertiges P0/P1-Paket im Paket (außer akzeptiert) |
+| G8 | kein unfertiges P0/P1-Paket im Paket (außer akzeptiert); jede Paket-ID in `ssotPakete` von [RELEASE-UNFERTIG.json](RELEASE-UNFERTIG.json) steht in der SSOT (sonst NO-GO); steckt ein solches Paket im Kandidaten, belegt G8 „nur hinter Schalter AUS“ (die Sperre prüft G3). Ein P2-Paket wie IMP-6 blockiert G8 nicht; die Planwirkung hält allein G3 zurück |
 | G9 | kein offener P0/P1-Befund (außer akzeptiert); REL-* sind der Release-Prozess selbst und zählen nicht |
 | G10 | Freigabedatei gültig, commitet, passend; HEAD ist auf GitHub (`origin` = `rinats-png/dienstplaner`, Zweig `main` zeigt auf HEAD), enthält den Kandidaten und ändert seitdem nur Liste und Freigabedatei (Vergleich ohne Umbenennungserkennung, `--no-renames`) |
 
