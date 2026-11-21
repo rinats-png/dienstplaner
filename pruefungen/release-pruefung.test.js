@@ -1415,3 +1415,10 @@ describe("Delta-Review 8 #427: Bindung an Mode und rohe Bytes (temporäres Git-R
     expect(j.vergleichMitBasis.Dockerfile.basis).not.toBe(j.vergleichMitBasis.Dockerfile.kandidat);
   }, 60_000);
 });
+
+describe("Delta-Review 8 #427: Nachschärfung NODE_*", () => {
+  it("NODE_* außerhalb einer Schlüsselposition macht die Zeile unlesbar", () => {
+    expect(vorlageUnlesbar("    environment:\n      X: \"NODE_OPTIONS=--require=./x.js\"\n", "compose")).not.toEqual([]);
+    expect(vorlageUnlesbar("ENV X=\"NODE_PATH=/tmp\"\n", "dockerfile")).not.toEqual([]);
+  });
+});
