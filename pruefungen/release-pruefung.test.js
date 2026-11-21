@@ -1753,4 +1753,46 @@ describe("Delta-Check #437: keine rohen Steuer- oder Formatzeichen in der Ausgab
       }
     } finally { rmSync(repo, { recursive: true, force: true }); }
   }, 120_000);
+  it("CLI-Fehler auf stderr (ausgabeFehler/sicher): Aufrufwerte mit ESC, RLO, U+2028 erscheinen nur als Escape", () => {
+    // Gegenprobe (lokal, 2026-11-21): ausgabeFehler = (s) => console.error(s) macht diesen Test rot.
+    const lauf = (...args) => spawnSync(process.execPath, [WERKZEUG, ...args], { encoding: "utf8" });
+    const faelle = [
+      [["--unbekannt" + ESC + "[2J"], /unbekannte Option: --unbekannt\\u001b\[2J/],
+      [["--kandidat", "x" + ESC + "[31m", "--basis", "HEAD"], /--kandidat x\\u001b\[31m ist kein Commit/],
+      [["--kandidat", "x" + RLO + "y", "--basis", "HEAD"], /--kandidat x\\u202ey ist kein Commit/],
+      [["--kandidat", "x" + LS + "y", "--basis", "HEAD"], /--kandidat x\\u2028y ist kein Commit/],
+    ];
+    for (const [args, muster] of faelle) {
+      const r = lauf(...args);
+      const name = JSON.stringify(args);
+      expect(r.status, name + " " + r.stderr).toBe(2);
+      expect(r.stderr, name).toMatch(muster);
+      expect(unsicher(r.stderr), name).toBe(null);
+      expect(unsicher(r.stdout), name).toBe(null);
+    }
+  }, 60_000);
+});
+
+describe("RELEASE-PROZESS.md: Struktur (Ersetzungsfehler 8ac80cfa, REL-1 Nachzug 2)", () => {
+  const text = readFileSync(join(WURZEL, "docs/acc45/RELEASE-PROZESS.md"), "utf8").replace(/\r\n/g, "\n");
+  const zeilen = text.split("\n");
+  it("jede Überschrift und der Titel stehen genau einmal", () => {
+    const ueberschriften = zeilen.filter((z) => /^#{1,6} /.test(z));
+    const doppelt = ueberschriften.filter((z, i) => ueberschriften.indexOf(z) !== i);
+    expect(doppelt).toEqual([]);
+    for (const u of ["# Release-Prozess (REL-1, Stand 2026-11-20)", "## 1. Begriffe", "## 2. Gruppierung: was in ein Release-Paket darf",
+      "## 3. Rollen", "## 4. Ablauf", "## 5. Freigabedatei", "## 6. Gates (Kurzfassung)"]) {
+      expect(zeilen.filter((z) => z === u), u).toHaveLength(1);
+    }
+    // der Titel darf auch nicht mitten in einer Zeile stehen (Ersetzungsmuster $` fügt den Dateianfang ein)
+    expect(text.split("Release-Prozess (REL-1").length - 1).toBe(1);
+  });
+  it("G1 bis G10 stehen je genau einmal in der Gate-Tabelle, G3 vollständig", () => {
+    for (let n = 1; n <= 10; n++) expect(zeilen.filter((z) => z.startsWith(`| G${n} |`)), `G${n}`).toHaveLength(1);
+    const g3 = zeilen.find((z) => z.startsWith("| G3 |"));
+    expect(g3).toContain("`\\` und `$` sind nur in benannten Formen erlaubt");
+    expect(g3).toContain("jede andere Zeile mit `\\` oder `$` ist NO-GO");
+    expect(g3).toContain("Dazu die Vorlagenbindung per SHA-256 (§5)");
+    expect(g3.endsWith("Pflicht |")).toBe(true);
+  });
 });
