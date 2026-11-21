@@ -477,7 +477,8 @@ describe("G6 Sicherung und Restore", () => {
 describe("G7 Rückweg", () => {
   const l = freigabelisteLesen(LISTE_OK);
   const ohneVorherig = freigabelisteLesen(liste([zeileListe(D, K, "aktiv")]));
-  const fall = (liste_, r) => g7Rueckweg({ liste: liste_, kandidat: K, digest: D }, r === undefined ? null : { rueckweg: r }, KONFIG_STANDARD).ergebnis;
+  // OF-13: G7 kennt die Basis (ohne sie ist ruecksprung fail-closed NO-GO); B ist ein beschrifteter voriger Release.
+  const fall = (liste_, r) => g7Rueckweg({ liste: liste_, kandidat: K, digest: D, basis: B }, r === undefined ? null : { rueckweg: r }, KONFIG_STANDARD).ergebnis;
   it("ruecksprung braucht vorherig", () => {
     expect(fall(l, { strategie: "ruecksprung" })).toBe("GO");
     expect(fall(ohneVorherig, { strategie: "ruecksprung" })).toBe("NO-GO");
@@ -1794,5 +1795,108 @@ describe("RELEASE-PROZESS.md: Struktur (Ersetzungsfehler 8ac80cfa, REL-1 Nachzug
     expect(g3).toContain("jede andere Zeile mit `\\` oder `$` ist NO-GO");
     expect(g3).toContain("Dazu die Vorlagenbindung per SHA-256 (§5)");
     expect(g3.endsWith("Pflicht |")).toBe(true);
+  });
+});
+
+describe("OF-13 (O-2 b): G7 — erste Auslieferung vom unbeschrifteten Bild 274bfa0 hat kein Rücksprungziel", () => {
+  // Produktionsweg §1.1 Befund 3 und §3.3: 274bfa0 trägt kein Revisionslabel; der Forced Command lässt --ohne-label nicht
+  // zu (deploy/deploy.sh:93); das Integrationsbild schreibt beim ersten Start in data/ (W-1…W-9). Für den ersten
+  // Wechsel gilt bildseitig nur R0 und Vorwärts-Reparatur.
+  const C274 = "274bfa0baca5681f383eea334aab69875f31d5c1";
+  const D274 = "sha256:0b1929273a79d6c010c9a0303b0d624a8e61e3555df77c08773bd573dd3e452f";
+  const erst = freigabelisteLesen(liste([zeileListe(D, K, "aktiv"), zeileListe(D274, C274, "vorherig", "bis T0+24 h")]));
+  const normal = freigabelisteLesen(LISTE_OK);
+  const g7 = (l, r, basis, extra = {}) => g7Rueckweg({ liste: l, kandidat: K, digest: D, basis },
+    r === undefined ? null : { rueckweg: r, ...extra }, KONFIG_STANDARD);
+  const R0_B = { strategie: "r0", entscheidungO1: "b", entscheidungO2: "b" };
+
+  it("Konfiguration: 274bfa0 steht mit Commit und Digest als Bild ohne Revisionslabel; der Digest passt zur echten Liste", () => {
+    const e = KONFIG_STANDARD.ohneRevisionslabel;
+    expect(Array.isArray(e)).toBe(true);
+    const z = e.find((x) => x.commit === C274);
+    expect(z?.digest).toBe(D274);
+    const echt = freigabelisteLesen(readFileSync(join(WURZEL, "deploy/FREIGEGEBENE-IMAGES.md"), "utf8"));
+    expect(echt.zeilen.find((x) => x.commit === C274)?.digest).toBe(D274);
+  });
+
+  it("Basis 274bfa0, Zeile vorherig 274bfa0, strategie ruecksprung → NO-GO mit klarem Grund", () => {
+    const g = g7(erst, { strategie: "ruecksprung" }, C274);
+    expect(g.ergebnis).toBe("NO-GO");
+    expect(g.gruende.join(" ")).toMatch(/274bfa0/);
+    expect(g.gruende.join(" ")).toMatch(/Revisionslabel/);
+    expect(g.gruende.join(" ")).toMatch(/nur r0/);
+  });
+
+  it("dasselbe mit ruecksprung und dokumentierten O-1/O-2 bleibt NO-GO", () => {
+    expect(g7(erst, { strategie: "ruecksprung", entscheidungO1: "a", entscheidungO2: "a" }, C274).ergebnis).toBe("NO-GO");
+  });
+
+  it("kein Fehlalarm: Basis 274bfa0 mit r0 und O-1 b / O-2 b → GO, Beleg R0", () => {
+    const g = g7(erst, R0_B, C274);
+    expect(g.gruende).toEqual([]);
+    expect(g.ergebnis).toBe("GO");
+    expect(g.belege.join(" ")).toMatch(/R0 als Fehlerstrategie, O-1 b, O-2 b/);
+  });
+
+  it("r0 bei Basis 274bfa0: die Zeile vorherig 274bfa0 ersetzt O-1/O-2 nicht", () => {
+    expect(g7(erst, { strategie: "r0" }, C274).ergebnis).toBe("NO-GO");
+    expect(g7(erst, { strategie: "r0", entscheidungO1: "b" }, C274).ergebnis).toBe("NO-GO");
+    expect(g7(erst, { strategie: "r0", entscheidungO2: "b" }, C274).ergebnis).toBe("NO-GO");
+  });
+
+  it("Basis nur über basisCommit der Freigabedatei bekannt → ruecksprung NO-GO", () => {
+    expect(g7(erst, { strategie: "ruecksprung" }, undefined, { basisCommit: C274 }).ergebnis).toBe("NO-GO");
+    // auch wenn --basis etwas anderes sagt: eine der beiden Angaben auf 274bfa0 genügt (G10 meldet den Widerspruch)
+    expect(g7(normal, { strategie: "ruecksprung" }, B, { basisCommit: C274 }).ergebnis).toBe("NO-GO");
+  });
+
+  it("vorherig = 274bfa0 (Commit oder Digest) ist nie zulässiges Rücksprungziel, auch bei anderer Basis", () => {
+    expect(g7(erst, { strategie: "ruecksprung" }, B).ergebnis).toBe("NO-GO");
+    const nurDigest = freigabelisteLesen(liste([zeileListe(D, K, "aktiv"), zeileListe(D274, "e".repeat(40), "vorherig")]));
+    expect(g7(nurDigest, { strategie: "ruecksprung" }, B).ergebnis).toBe("NO-GO");
+    const nurCommit = freigabelisteLesen(liste([zeileListe(D, K, "aktiv"), zeileListe(D_ALT, C274, "vorherig")]));
+    expect(g7(nurCommit, { strategie: "ruecksprung" }, B).ergebnis).toBe("NO-GO");
+  });
+
+  it("fail-closed: Basis unbekannt → ruecksprung NO-GO (Revisionslabel der Basis nicht zuordenbar)", () => {
+    const g = g7(normal, { strategie: "ruecksprung" }, undefined);
+    expect(g.ergebnis).toBe("NO-GO");
+    expect(g.gruende.join(" ")).toMatch(/Basis/);
+    expect(g7(normal, { strategie: "ruecksprung" }, "kein-commit").ergebnis).toBe("NO-GO");
+  });
+
+  it("Gegenprobe: beschriftete Basis mit zulässiger Zeile vorherig → ruecksprung bleibt GO", () => {
+    const g = g7(normal, { strategie: "ruecksprung" }, B);
+    expect(g.ergebnis).toBe("GO");
+    expect(g.belege.join(" ")).toMatch(/Rücksprungziel vorherig/);
+    expect(g7(normal, { strategie: "ruecksprung" }, undefined, { basisCommit: B }).ergebnis).toBe("GO");
+  });
+
+  it("Gesamtprüfung offline: Basis 274bfa0 → G7 NO-GO bei ruecksprung, GO bei r0 mit O-1 b / O-2 b", () => {
+    datei("deploy/FREIGEGEBENE-IMAGES.md", liste([zeileListe(D, K, "aktiv"), zeileListe(D274, C274, "vorherig")]));
+    const fx = fixtureGo();
+    fx.basisCommit = C274;
+    const mitRueckweg = (rueckweg) => {
+      datei("docs/acc45/releases/v4-r1.freigabe.json", { ...FREIGABE, basisCommit: C274, rueckweg,
+        migration: { ...FREIGABE.migration, basisCommit: C274 },
+        vorlagenHashes: hashesIn(w, [".env.example", "deploy/compose.yml", "Dockerfile"]) });
+      return gateVon(pruefe(fx), "G7");
+    };
+    const nein = mitRueckweg({ strategie: "ruecksprung", entscheidungO1: "b", entscheidungO2: "b" });
+    expect(nein.ergebnis).toBe("NO-GO");
+    expect(nein.gruende.join(" ")).toMatch(/274bfa0/);
+    const ja = mitRueckweg(R0_B);
+    expect(ja.gruende).toEqual([]);
+    expect(ja.ergebnis).toBe("GO");
+  });
+
+  it("Doku: Anleitung 11 verlangt keine Selbstprüfung mehr, OF-13 ist behoben; RELEASE-PROZESS G7 nennt die Regel", () => {
+    const anl = readFileSync(join(WURZEL, "docs/acc45/BETREIBER-ANLEITUNG-ERSTRELEASE.md"), "utf8");
+    expect(anl).not.toMatch(/Prüfen Sie den Wert selbst/);
+    expect(anl).toMatch(/\| OF-13 \|[^\n]*behoben/);
+    expect(anl).toMatch(/pgrep -af 'deploy\.sh\|abschalten\.sh\|ruecksprung\.sh'/);
+    const rp = readFileSync(join(WURZEL, "docs/acc45/RELEASE-PROZESS.md"), "utf8").split(/\r?\n/).find((z) => z.startsWith("| G7 |"));
+    expect(rp).toMatch(/274bfa0/);
+    expect(rp).toMatch(/ruecksprung/);
   });
 });
