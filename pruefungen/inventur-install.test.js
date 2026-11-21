@@ -291,6 +291,13 @@ awk -F'|' -v q="$q" -v z="$z" 'BEGIN { OFS = "|" } $1 == z { next } $1 == q { $1
 `,
 };
 
+/* awk-Stub (A-1, Review #458): scheitert nur beim awk-Programm der sshd-Dateiprüfung (erkennbar an „function inc(“),
+   ohne Endmarke E; alle anderen awk-Aufrufe (Installer und Stubs) laufen mit dem echten awk. */
+const AWK_STUB_SCHEITERT = `#!/bin/bash
+for a in "$@"; do case "$a" in *"function inc("*) echo "awk: Fehler" >&2; exit 2 ;; esac; done
+exec /usr/bin/awk "$@"
+`;
+
 /* ---------------------------------------------------------- Testwurzel */
 let tmp, w, stub, meta, passwd, sshdT, proto, inst;
 
@@ -610,6 +617,46 @@ describe.skipIf(!BASH)("deploy/inventur-install.sh — Vorabprüfungen (Abbruch 
       }, grund);
     });
   }
+  /* Review #458 B-1: sshd (load_server_config) übernimmt jede gelesene Zeile nur bis zum ersten NUL-Byte; der Rest und
+     der Zeilenumbruch fallen weg, die nächste Zeile hängt sich direkt an (führender Leerraum wird abgeschnitten).
+     „Ma\0\ntch User admin“ liest sshd als „Match User admin“ (mit OpenSSH 9.5p2 nachgewiesen). Jede Datei mit
+     NUL-Byte wird deshalb fail-closed abgewiesen, auch in Kommentaren und am Dateiende. */
+  const B1_FAELLE_NUL = [
+    ["Ma\\0\\ntch in sshd_config.d", () => schreiben(path.join(w, "etc/ssh/sshd_config.d/60-x.conf"), "Ma\0\ntch User admin\n  AcceptEnv *\n")],
+    ["Inc\\0\\nlude in sshd_config", () => {
+      schreiben(path.join(w, "etc/ssh/extra/a.conf"), "Match User admin\n  AcceptEnv *\n");
+      writeFileSync(path.join(w, "etc/ssh/sshd_config"), readFileSync(path.join(w, "etc/ssh/sshd_config"), "utf8") + "Inc\0\nlude /etc/ssh/extra/a.conf\n");
+    }],
+    ["NUL im Include-Ziel", () => {
+      schreiben(path.join(w, "etc/ssh/extra/a.conf"), "Ma\0\n\ttch User admin\n  AcceptEnv *\n");
+      writeFileSync(path.join(w, "etc/ssh/sshd_config"), readFileSync(path.join(w, "etc/ssh/sshd_config"), "utf8") + "Include extra/*.conf\n");
+    }],
+    ["NUL in einer Kommentarzeile", () => schreiben(path.join(w, "etc/ssh/sshd_config.d/60-x.conf"), "# Hinweis\0 alt\nPasswordAuthentication no\n")],
+    ["NUL nur am Dateiende", () => schreiben(path.join(w, "etc/ssh/sshd_config.d/60-x.conf"), "PasswordAuthentication no\n\0")],
+  ];
+  for (const [name, vorbereiten] of B1_FAELLE_NUL) {
+    it(`B-1: ${name} → Abbruch „enthält NUL-Byte“ ohne Änderung`, () => {
+      negativ(vorbereiten, /sshd-Konfigurationsdatei \/etc\/ssh\/\S+ enthält NUL-Byte; fail-closed/);
+    });
+  }
+  /* Review #458 A-2: sshd schneidet führendes \r (wie Leerraum) ab; der Installer ersetzt \r vor dem Normalisieren. */
+  const A2_FAELLE_CR = [
+    ["\\rMatch User admin", "\rMatch User admin\n  AcceptEnv *\n", /Match/],
+    [" \\r=Match User x", " \r=Match User x\n", /Match/],
+    ["\\rInclude /etc/ssh/x.conf", "\rInclude /etc/ssh/x.conf\n", /Include/],
+  ];
+  for (const [name, text, grund] of A2_FAELLE_CR) {
+    it(`A-2: ${name} → Abbruch ohne Änderung`, () => {
+      negativ(() => {
+        schreiben(path.join(w, "etc/ssh/x.conf"), "Match User admin\n");
+        schreiben(path.join(w, "etc/ssh/sshd_config.d/60-x.conf"), text);
+      }, grund);
+    });
+  }
+  /* Review #458 A-1: scheitert awk (ohne Endmarke E), bricht der Installer ab („nicht auswertbar“). */
+  it("A-1: awk scheitert bei der sshd-Auswertung (exit 2, ohne Endmarke) → Abbruch „nicht auswertbar“", () => {
+    negativ(() => schreiben(path.join(stub, "awk"), AWK_STUB_SCHEITERT, true), /sshd-Konfigurationsdatei \/etc\/ssh\/sshd_config nicht auswertbar/);
+  });
   it("N-1/N-2: kein Fehlalarm gegen die Standard-sshd_config von Ubuntu 24.04 (#Match-Kommentar, Include); „Matchx“ wie bisher", () => {
     schreiben(path.join(w, "etc/ssh/sshd_config"), UBUNTU_2404_SSHD_CONFIG);
     schreiben(path.join(w, "etc/ssh/sshd_config.d/60-x.conf"), "Matchx yes\n");
@@ -880,6 +927,24 @@ describe.skipIf(!BASH)("Mutationsnachweis: ohne die Prüfung wird der Negativfal
       },
     },
     {
+      name: "B-1 NUL-Byte in sshd-Datei (Ma\\0\\ntch, Review #458)",
+      anker: `if [[ "$(LC_ALL=C tr -cd '\\000' <"$f" | wc -c | tr -d ' ')" != 0 ]]; then`,
+      ersatz: "if false; then",
+      vorbereiten: () => schreiben(path.join(w, "etc/ssh/sshd_config.d/60-x.conf"), "Ma\0\ntch User admin\n  PermitUserEnvironment yes\n"),
+    },
+    {
+      name: "A-1 Endmarke E fehlt (awk scheitert, Review #458)",
+      anker: '    if [[ "$ende" != ja ]]; then fehl "sshd-Konfigurationsdatei ${f#"$W"} nicht auswertbar"; fi',
+      ersatz: "    :",
+      vorbereiten: () => schreiben(path.join(stub, "awk"), AWK_STUB_SCHEITERT, true),
+    },
+    {
+      name: "A-2 führendes \\r ersetzen (\\rMatch, Review #458)",
+      anker: 'gsub(/\\r/, " ", n); ',
+      ersatz: "",
+      vorbereiten: () => schreiben(path.join(w, "etc/ssh/sshd_config.d/60-x.conf"), "\rMatch User admin\n  PermitUserEnvironment yes\n"),
+    },
+    {
       name: "sshd -T -C mit Verbindungsdaten (B-2)",
       anker: 'for ctx in "" "user=$KONTO,host=localhost,addr=127.0.0.1" "user=$KONTO,host=localhost,addr=192.0.2.1"; do',
       ersatz: 'for ctx in ""; do',
@@ -982,6 +1047,11 @@ describe("Quelltext-Wächter deploy/inventur-install.sh", () => {
     /* N-1/N-2: Normalisierung und Include-Abbruch in der Prüftabelle beschrieben */
     expect(abschnitt).toMatch(/nicht eindeutig verfolgbar/);
     expect(abschnitt).toMatch(/M"atch"/);
+    /* Review #458 B-1/A-3: NUL-Byte abgewiesen (Prüftabelle und Meldungstabelle), Grenzen der Lesebefehle benannt */
+    expect(abschnitt).toMatch(/NUL-Byte[^\n]*abgewiesen/);
+    expect(abschnitt).toMatch(/`… enthält NUL-Byte; fail-closed`/);
+    expect(abschnitt).toMatch(/Binary file matches/);
+    expect(abschnitt).toContain("grep -anE 'm.?a.?t.?c.?h'");
     const anleitung = readFileSync(path.join(WURZEL, "docs", "acc45", "BETREIBER-ANLEITUNG-ERSTRELEASE.md"), "utf8");
     const a41 = anleitung.slice(anleitung.indexOf("### 4.1"), anleitung.indexOf("### 4.2"));
     expect(a41).toMatch(/vorbereitet, nicht aktiviert/);

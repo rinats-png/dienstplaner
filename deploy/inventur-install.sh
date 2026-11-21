@@ -706,13 +706,23 @@ pruefe_match() {
     [[ "$gesehen" == *" $f "* ]] && continue
     gesehen+="$f "
     if [[ ! -f "$f" || ! -r "$f" ]]; then fehl "sshd-Konfigurationsdatei ${f#"$W"} nicht lesbar"; continue; fi
+    # B-1 (Review #458): sshd (load_server_config) übernimmt jede Zeile nur bis
+    # zum ersten NUL-Byte; Rest und Zeilenumbruch fallen weg, die nächste Zeile
+    # hängt sich an („Ma\0\ntch User admin“ wirkt als „Match User admin“). awk
+    # liest das anders. Deshalb fail-closed: jedes NUL-Byte (auch in Kommentaren,
+    # auch am Dateiende) → Abbruch. Liefert tr/wc nichts, gilt das als Fund.
+    if [[ "$(LC_ALL=C tr -cd '\000' <"$f" | wc -c | tr -d ' ')" != 0 ]]; then
+      fehl "sshd-Konfigurationsdatei ${f#"$W"} enthält NUL-Byte; fail-closed"
+      continue
+    fi
     SSHD_DATEIEN+=("${f#"$W"}")
     # Ein awk-Durchlauf je Datei (N-1/N-2, Delta-Review #447). sshd liest das
     # Schlüsselwort mit strdelim(): Anführungszeichen fallen auch mitten im Wort
     # weg („M"atch"“), ein leeres erstes Token wird übersprungen („=Match“,
     # „""Match“), Leerraum am Zeilenende (auch \r aus CRLF, \f) zählt nicht.
     # Deshalb wird jede Zeile so normalisiert: Zeilenende abschneiden, alle "
-    # entfernen, führende Leerzeichen/Tabs/= abschneiden; danach ^match bzw.
+    # entfernen, \r durch Leerzeichen ersetzen (sshd schneidet führendes \r ab,
+    # A-2 Review #458), führende Leerzeichen/Tabs/= abschneiden; danach ^match bzw.
     # ^include (Groß/Klein egal). Fail-closed: steht ein " in der Zeile, genügt
     # das Präfix („"Match"x“ ist für sshd Match mit Argument x).
     # Include-Argumente liest sshd mit argv_split() (' " \ #); alles, was ein
