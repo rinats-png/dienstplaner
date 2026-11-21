@@ -6526,7 +6526,7 @@
       "agent": null,
       "modell": "sonnet",
       "konfliktzonen": ["src/ansichten"],
-      "pr": ["#440","#442","#443","#444"],
+      "pr": ["#440","#442","#443","#444","#446"],
       "nachweis": "docs/acc45/V4-IST-STAND-2026-11-20.md",
       "akzeptanz": "Inline borderRadius/boxShadow-Literale je Hauptansicht durch Tokens oder Bausteinklassen ersetzt (Zählstand 215 in 75 Dateien sinkt messbar); keine Änderung an Fachlogik, Rollen, Accessible Names oder Klassennamen; Bildnachweis hell/dunkel je Ansicht",
       "tests": "Unit, E2E",
@@ -6643,7 +6643,7 @@
       "akzeptanz": "src/ansichten/personalakte.jsx (Nachtbalken „Nachtarbeit im Jahresverlauf“, etwa Zeile 76–77): (1) der aktuelle Monat ist ohne Farbe erkennbar, z. B. Monatsbuchstabe fett oder unterstrichen oder ein zusätzlicher Marker (1.4.1; die Farbe C.accent gegen C.steuer bleibt zulässig, ist aber nicht mehr das einzige Merkmal); (2) die zwölf Monatswerte sind für Vorlesesoftware erreichbar, nicht nur über title: entweder Gruppe mit role=\"img\" und aria-label mit allen Monatswerten und dem aktuellen Monat, oder eine nur für Vorlesesoftware sichtbare Liste/Tabelle (Monat, Stunden), die Balken selbst aria-hidden (1.3.1, 4.1.2); (3) keine Änderung an Fachlogik (Monatswerte nm, Maximum maxN), Klassennamen, übrigen Accessible Names und am Übergang transition: \"height .4s\" (kein neuer Übergang, V4-2d); Nachtbalken-Kontrast aus A11Y-1 (C.steuer >= 3:1 gegen die Fläche) bleibt; Tests zuerst rot: Render-Test der echten Personalakte (react-dom/server: Merkmal des aktuellen Monats ohne Farbe, zugänglicher Text mit allen zwölf Werten) und E2E (390 und 1024 px, Accessible Name bzw. Tabelle per getByRole, axe ohne serious/critical).",
       "tests": "Unit, E2E",
       "dateien": "src/ansichten/personalakte.jsx, pruefungen/v4-3b-personal.test.js",
-      "notiz": "Angelegt 2026-11-21 mit V4-3b Schnitt 5 (Lage) aus Review #445 (Befund, nur Eintrag, nicht behoben). Stand nach A11Y-1: aktueller Monat nur über Farbe markiert; C.accent gegen den Balken C.steuer 1,78:1 hell, 2,50:1 dunkel (vor A11Y-1 gegen C.lineStark 3,26:1 hell, 5,34:1 dunkel); Monatswerte stehen nur im title der Balken (für Tastatur, Touch und Vorlesesoftware nicht erreichbar). Status BLOCKED statt READY nur aus Formgründen: A11Y-1 ist gemergt (PR #445, bf253963), steht im SSOT aber noch auf REVIEW; die Prüfung erlaubt READY erst bei integrierter Abhängigkeit. Sobald Agent 0 A11Y-1 auf INTEGRATED setzt, ist A11Y-2 READY. PT sind Schätzung."
+      "notiz": "Angelegt 2026-11-21 mit V4-3b Schnitt 5 (Lage, PR #446) aus Review #445 (Befund, nur Eintrag, nicht behoben). Stand nach A11Y-1: aktueller Monat nur über Farbe markiert; C.accent gegen den Balken C.steuer 1,78:1 hell, 2,50:1 dunkel (vor A11Y-1 gegen C.lineStark 3,26:1 hell, 5,34:1 dunkel); Monatswerte stehen nur im title der Balken (für Tastatur, Touch und Vorlesesoftware nicht erreichbar). Status BLOCKED statt READY nur aus Formgründen: A11Y-1 ist gemergt (PR #445, bf253963), steht im SSOT aber noch auf REVIEW; die Prüfung erlaubt READY erst bei integrierter Abhängigkeit. Sobald Agent 0 A11Y-1 auf INTEGRATED setzt, ist A11Y-2 READY. PT sind Schätzung."
     },
     {
       "id": "V4-4",
