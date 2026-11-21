@@ -55,7 +55,7 @@ export function Aenderungsuebersicht({ rolle, uebersicht }) {
     );
   })();
   return (
-    <section aria-label={AENDERUNG_TEXTE.titel} style={{ border: "1px solid currentColor", borderRadius: 8, padding: 12, maxWidth: "100%", overflowWrap: "anywhere" }}>
+    <section aria-label={AENDERUNG_TEXTE.titel} style={{ border: "1px solid currentColor", borderRadius: "var(--v4-r-klein)", padding: 12, maxWidth: "100%", overflowWrap: "anywhere" }}>
       <h3 style={{ marginTop: 0 }}>{AENDERUNG_TEXTE.titel}</h3>
       {rumpf}
       {u && u.zusammenfassung && u.zusammenfassung.verfuegbar === false && typeof u.zusammenfassung.text === "string"

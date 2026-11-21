@@ -32,7 +32,7 @@ export function Tagesdetail({ sitz, datum, onClose, akt }) {
 
   return (
     <Sheet open onClose={onClose} titel={fLang(datum)} width={840}>
-      {fei && <div style={{ padding: "11px 15px", marginBottom: 20, borderRadius: 12, background: "rgba(179,38,30,.085)",
+      {fei && <div style={{ padding: "11px 15px", marginBottom: 20, borderRadius: "var(--v4-r-mittel)", background: C.dangerLight,
         color: C.danger, fontSize: 13.5, fontWeight: 500 }}>Gesetzlicher Feiertag: {fei}</div>}
       <div className="reiterreihe">
         {m.dienstarten.map((d) => { const b = bes[d.id], on = aktiv === d.id;
@@ -40,7 +40,7 @@ export function Tagesdetail({ sitz, datum, onClose, akt }) {
             <Ablage key={d.id} id={`dienst:${d.id}`}
               nimmt={(l) => l.art === "person" && l.dienstId !== d.id}
               ablegen={(l) => akt.setzeAbweichung(l.personId, datum, d.id)}
-              style={{ borderRadius: 999 }}>
+              style={{ borderRadius: "var(--v4-r-pille)" }}>
               <button onClick={() => setTab(d.id)} className="btn"
                 style={{ background: on ? `${d.farbe}1E` : C.bg, color: on ? d.farbe : C.dim,
                   fontWeight: on ? 650 : 500, display: "flex", alignItems: "center", gap: 8 }}>
@@ -91,7 +91,7 @@ export function Tagesdetail({ sitz, datum, onClose, akt }) {
           <Ablage key={titel} id={`spalte:${drin ? "drin" : "frei"}`}
             nimmt={(l) => l.art === "person" && (drin ? l.dienstId !== aktiv : !!l.dienstId)}
             ablegen={(l) => akt.setzeAbweichung(l.personId, datum, drin ? aktiv : "-")}
-            style={{ borderRadius: 16, padding: 4 }}>
+            style={{ borderRadius: "var(--v4-r-gross)", padding: 4 }}>
             <Lab style={{ marginBottom: 11 }}>{titel} · {liste.length}</Lab>
             <div style={{ maxHeight: 300, overflowY: "auto" }}>
               {liste.length === 0 && <div style={{ fontSize: 13, color: C.dimmer, padding: "8px 0" }}>
