@@ -1,0 +1,104 @@
+{
+  "schema": 1,
+  "hinweis": "Liste unfertiger oder nicht freigegebener Funktionen (REL-1, Gate G3 in werkzeug/release-pruefung.mjs). Keine dieser Variablen darf in einer Release-Vorlage (.env.example, deploy/compose.yml, Dockerfile, deploy/staging-o2/*) aktiv gesetzt sein. Aktiv heißt: Zeile nicht auskommentiert, Wert (auch der Vorgabewert in ${X:-wert}) nicht leer, kein Platzhalter <…> und nach trim/Kleinschreibung nicht aus/false/0/nein/off und nicht in sicherWerte. Ein Eintrag wird erst entfernt, wenn die Funktion fertig und vom Betreiber freigegeben ist.",
+  "funktionen": [
+    {
+      "id": "schichtmodell-pflege",
+      "name": "Schichtmodell-Pflege und Planwirkung (IMP-6)",
+      "variablen": [
+        "CENTRIC_SCHICHTMODELL_PFLEGE",
+        "CENTRIC_SCHICHTMODELL_WIRKUNG"
+      ],
+      "stand": "beide im Code (server/lib/schalter.mjs: PFLEGE #423, WIRKUNG #429), Vorgabe AUS, nur genau true schaltet ein",
+      "quelle": "server/lib/schalter.mjs; PR #423, #429"
+    },
+    {
+      "id": "import-dateiweg",
+      "name": "Personalimport (Dateiweg /api/import/*)",
+      "variablen": [
+        "CENTRIC_IMPORT_AKTIV"
+      ],
+      "quelltextKonstanten": [
+        {
+          "datei": "src/lib/import-schnittstelle.js",
+          "name": "IMPORT_DATEI_AKTIV",
+          "sollWert": "false"
+        }
+      ],
+      "stand": "aus bis Prüfung IMP-9 §13 und Betreiberfreigabe",
+      "quelle": "server/lib/schalter.mjs; docs/acc45/IMPORT-VERTRAG.md"
+    },
+    {
+      "id": "push",
+      "name": "Push-Mitteilungen (WP-30, E-9)",
+      "variablen": [
+        "VAPID_PUBLIC",
+        "VAPID_PRIVATE"
+      ],
+      "stand": "Einrichtung E-9 offen",
+      "quelle": "docs/acc45/work-packages.json E-9"
+    },
+    {
+      "id": "mail",
+      "name": "E-Mail-Versand (WP-30, E-9)",
+      "variablen": [
+        "RESEND_API_KEY",
+        "CENTRIC_MAIL_WEG",
+        "CENTRIC_SMTP_HOST",
+        "CENTRIC_SMTP_PASSWORT"
+      ],
+      "stand": "Einrichtung E-9 offen",
+      "quelle": "docs/acc45/work-packages.json E-9"
+    },
+    {
+      "id": "dauerlauf",
+      "name": "Dauerlauf (Entwicklungswerkzeug, nie im Betrieb)",
+      "variablen": [
+        "CENTRIC_DAUERLAUF_TESTWORKER",
+        "CENTRIC_DAUERLAUF_UHRDATEI"
+      ],
+      "stand": "nur Entwicklung",
+      "quelle": "werkzeug/dauerlauf.mjs"
+    },
+    {
+      "id": "teilspeicherung",
+      "name": "Teilspeicherung je Segment und Löschlauf-Weg (WP-48.3/48.4)",
+      "variablen": [
+        "CENTRIC_TEILSPEICHERUNG"
+      ],
+      "stand": "aus bis Oberfläche WP-48.5 und Betreiberfreigabe",
+      "quelle": "server/lib/schalter.mjs; docs/acc45/WP48-TEILSPEICHERUNG.md"
+    },
+    {
+      "id": "abschluss-segmentweise",
+      "name": "Monatsabschluss segmentweise / ohne Sperre (WP-48.7)",
+      "variablen": [
+        "CENTRIC_ABSCHLUSS_SEGMENTWEISE",
+        "CENTRIC_ABSCHLUSS_OHNE_SPERRE"
+      ],
+      "stand": "aus bis Messung auf Staging (WP-48.9) und Betreiberfreigabe",
+      "quelle": "server/lib/schalter.mjs"
+    },
+    {
+      "id": "hilfe-assistent",
+      "name": "Hilfe-Assistent (WP-I23)",
+      "variablen": [
+        "CENTRIC_HILFE_ASSISTENT"
+      ],
+      "stand": "aus bis Betreiberfreigabe",
+      "quelle": "server/lib/schalter.mjs"
+    },
+    {
+      "id": "datenschutzlauf-loeschen",
+      "name": "Datenschutzlauf mit Löschen",
+      "variablen": [
+        "CENTRIC_DATENSCHUTZLAUF"
+      ],
+      "stand": "Betreiberentscheidung offen (W-8, Produktionsweg 3.2)",
+      "quelle": "docs/acc45/PRODUKTIONSWEG-VORBEREITUNG-2026-11-20.md",
+      "sicherWerte": [
+        "vorschau"
+      ]
+    }
+  ]
+}

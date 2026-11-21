@@ -1,0 +1,271 @@
+{
+  "schema": 1,
+  "hinweis": "Klassen ALLER CENTRIC_*-Namen im Server-Code (REL-1, Gate G3). werkzeug/release-pruefung.mjs sucht jeden Namen CENTRIC_… in server/ und server.mjs des Kandidaten; ein Name ohne Eintrag hier ist NO-GO, bis er klassifiziert ist (fail-closed). Klassen: schalter-aus = Funktion mit Vorgabe AUS, in keiner Release-Vorlage aktiv (erlaubt sind nur Aus-Werte und sicherWerte); standard-an = läuft ohne Eintrag, nur sicherWerte zulässig (Abschalten ist Wartung, nicht Auslieferung); sicher-aktiv = schärft Sicherheit, darf an sein; freigabepflichtig = darf nur an sein, wenn die Freigabedatei ihn in freigegebeneSchalter mit Grund nennt; konfiguration = Wert, Grenze oder Geheimnis, kein Schalter. Werte werden wie im Server getrimmt und klein geschrieben verglichen.",
+  "variablen": {
+    "CENTRIC_DEMO": {
+      "klasse": "schalter-aus",
+      "quelle": "server/lib/schalter.mjs"
+    },
+    "CENTRIC_SELBSTSTART": {
+      "klasse": "schalter-aus",
+      "quelle": "docs/SELBSTSTART-SCHALTER.md"
+    },
+    "CENTRIC_PUBLIC_REGISTRATION": {
+      "klasse": "schalter-aus",
+      "quelle": "BEREITSTELLUNG.md 5.8"
+    },
+    "CENTRIC_TEILSPEICHERUNG": {
+      "klasse": "schalter-aus",
+      "quelle": "server/lib/schalter.mjs"
+    },
+    "CENTRIC_ABSCHLUSS_SEGMENTWEISE": {
+      "klasse": "schalter-aus",
+      "quelle": "server/lib/schalter.mjs"
+    },
+    "CENTRIC_ABSCHLUSS_OHNE_SPERRE": {
+      "klasse": "schalter-aus",
+      "quelle": "server/lib/schalter.mjs"
+    },
+    "CENTRIC_IMPORT_AKTIV": {
+      "klasse": "schalter-aus",
+      "quelle": "server/lib/schalter.mjs"
+    },
+    "CENTRIC_HILFE_ASSISTENT": {
+      "klasse": "schalter-aus",
+      "quelle": "server/lib/schalter.mjs (aus | suche | an)"
+    },
+    "CENTRIC_SCHICHTMODELL_PFLEGE": {
+      "klasse": "schalter-aus",
+      "quelle": "server/lib/schalter.mjs (IMP-6, #423)"
+    },
+    "CENTRIC_SCHICHTMODELL_WIRKUNG": {
+      "klasse": "schalter-aus",
+      "quelle": "server/lib/schalter.mjs (IMP-6-Planwirkung, #429; nur genau true)"
+    },
+    "CENTRIC_PRUEFLINK": {
+      "klasse": "schalter-aus",
+      "quelle": "server/lib/post.mjs (ja)"
+    },
+    "CENTRIC_KETTE_AUS": {
+      "klasse": "schalter-aus",
+      "quelle": "server/lib/kette.mjs (1 = Notfall-Rückfall)"
+    },
+    "CENTRIC_TESTRAUM_MAIL": {
+      "klasse": "schalter-aus",
+      "quelle": "server/lib/testraum.mjs (ja)"
+    },
+    "CENTRIC_ZUSTELL_SPERREN_AUFHEBEN": {
+      "klasse": "schalter-aus",
+      "quelle": "server.mjs (ja, einmalig)"
+    },
+    "CENTRIC_MAILBESTAETIGUNG": {
+      "klasse": "schalter-aus",
+      "quelle": "server/lib/mailbestaetigung.mjs (angebot | pflicht)"
+    },
+    "CENTRIC_DATENSCHUTZLAUF": {
+      "klasse": "schalter-aus",
+      "sicherWerte": [
+        "vorschau"
+      ],
+      "quelle": "server/lib/aufbewahrung.mjs (Vorgabe vorschau; an löscht)"
+    },
+    "CENTRIC_KONTOWIEDERHERSTELLUNG": {
+      "klasse": "schalter-aus",
+      "quelle": "server/lib/kontowiederherstellung-zugang.mjs (1; WR-4…WR-9 offen)"
+    },
+    "CENTRIC_AUFRAEUMEN": {
+      "klasse": "standard-an",
+      "sicherWerte": [
+        "an"
+      ],
+      "quelle": "server.mjs (aus = Wartung)"
+    },
+    "CENTRIC_UEBERWACHUNG": {
+      "klasse": "standard-an",
+      "sicherWerte": [
+        "an"
+      ],
+      "quelle": "server.mjs (aus = Wartung)"
+    },
+    "CENTRIC_ZUSTELL_TAKT": {
+      "klasse": "standard-an",
+      "sicherWerte": [
+        "an"
+      ],
+      "quelle": "server.mjs (aus = Wartung)"
+    },
+    "CENTRIC_ERSTLEITUNG_STRENG": {
+      "klasse": "freigabepflichtig",
+      "quelle": "server/lib/erstleitung.mjs (nur nach Bestandsanalyse und Betreiberfreigabe; Betreibervorgabe 2026-11-13)"
+    },
+    "CENTRIC_ZWEIFAKTOR_PFLICHT": {
+      "klasse": "sicher-aktiv",
+      "quelle": "server/funktionen/einrichten.mjs"
+    },
+    "CENTRIC_ROLLEN_ZWEIFAKTOR_PFLICHT": {
+      "klasse": "sicher-aktiv",
+      "quelle": "SI-P4"
+    },
+    "CENTRIC_BETREIBER_ZWEIFAKTOR_PFLICHT": {
+      "klasse": "sicher-aktiv",
+      "quelle": "WP-32d"
+    },
+    "CENTRIC_ABDRUCK_SPEICHER_MAX": {
+      "klasse": "konfiguration"
+    },
+    "CENTRIC_ABLAGE": {
+      "klasse": "konfiguration"
+    },
+    "CENTRIC_ABSENDER": {
+      "klasse": "konfiguration"
+    },
+    "CENTRIC_ADMIN": {
+      "klasse": "konfiguration"
+    },
+    "CENTRIC_ALARM_ENTPRELLUNG_S": {
+      "klasse": "konfiguration"
+    },
+    "CENTRIC_ALARM_WEBHOOK": {
+      "klasse": "konfiguration"
+    },
+    "CENTRIC_ALARM_WIEDERHOLUNG_S": {
+      "klasse": "konfiguration"
+    },
+    "CENTRIC_BASIS": {
+      "klasse": "konfiguration"
+    },
+    "CENTRIC_DATEN": {
+      "klasse": "konfiguration"
+    },
+    "CENTRIC_GESUND_429_WARNUNG": {
+      "klasse": "konfiguration"
+    },
+    "CENTRIC_GESUND_5XX_WARNUNG": {
+      "klasse": "konfiguration"
+    },
+    "CENTRIC_GESUND_CACHE_MS": {
+      "klasse": "konfiguration"
+    },
+    "CENTRIC_GESUND_LOESCHLAUF_WARNUNG_STUNDEN": {
+      "klasse": "konfiguration"
+    },
+    "CENTRIC_GESUND_PLATZ_KRITISCH_MB": {
+      "klasse": "konfiguration"
+    },
+    "CENTRIC_GESUND_PLATZ_KRITISCH_PROZENT": {
+      "klasse": "konfiguration"
+    },
+    "CENTRIC_GESUND_PLATZ_WARNUNG_PROZENT": {
+      "klasse": "konfiguration"
+    },
+    "CENTRIC_GESUND_SICHERUNG_WARNUNG_STUNDEN": {
+      "klasse": "konfiguration"
+    },
+    "CENTRIC_GESUND_TAKT_S": {
+      "klasse": "konfiguration"
+    },
+    "CENTRIC_GESUND_ZEITGRENZE_MS": {
+      "klasse": "konfiguration"
+    },
+    "CENTRIC_GESUND_ZUSTELLUNG_WARNUNG": {
+      "klasse": "konfiguration"
+    },
+    "CENTRIC_IMPORT_ADRESSRAUM_KB": {
+      "klasse": "konfiguration"
+    },
+    "CENTRIC_MAIL_WEG": {
+      "klasse": "konfiguration",
+      "quelle": "Mail-Weg; Aktivierung über RELEASE-UNFERTIG.json (mail)"
+    },
+    "CENTRIC_NOTRUF_JE_STUNDE": {
+      "klasse": "konfiguration"
+    },
+    "CENTRIC_PFEFFER": {
+      "klasse": "konfiguration"
+    },
+    "CENTRIC_PUSH_HOSTS": {
+      "klasse": "konfiguration"
+    },
+    "CENTRIC_PUSH_JE_BETRIEB_MAX": {
+      "klasse": "konfiguration"
+    },
+    "CENTRIC_SCHREIBHALT_MAX_MS": {
+      "klasse": "konfiguration"
+    },
+    "CENTRIC_SICHERUNG_STATUS": {
+      "klasse": "konfiguration"
+    },
+    "CENTRIC_SMTP_ABSENDER": {
+      "klasse": "konfiguration"
+    },
+    "CENTRIC_SMTP_BENUTZER": {
+      "klasse": "konfiguration"
+    },
+    "CENTRIC_SMTP_HOST": {
+      "klasse": "konfiguration"
+    },
+    "CENTRIC_SMTP_PASSWORT": {
+      "klasse": "konfiguration"
+    },
+    "CENTRIC_SMTP_PORT": {
+      "klasse": "konfiguration"
+    },
+    "CENTRIC_SMTP_SICHER": {
+      "klasse": "konfiguration"
+    },
+    "CENTRIC_STATIK": {
+      "klasse": "konfiguration"
+    },
+    "CENTRIC_TESTRAUM_MAIL_GESAMT_MAX": {
+      "klasse": "konfiguration"
+    },
+    "CENTRIC_TESTRAUM_MAIL_TAG_MAX": {
+      "klasse": "konfiguration"
+    },
+    "CENTRIC_VERTRAUTE_PROXYS": {
+      "klasse": "konfiguration"
+    },
+    "CENTRIC_WIDERRUFBUCH_SICHERUNG_STATUS": {
+      "klasse": "konfiguration"
+    },
+    "CENTRIC_ZUSTAND": {
+      "klasse": "konfiguration"
+    },
+    "CENTRIC_ZUSTELLPROTOKOLL_TAGE": {
+      "klasse": "konfiguration"
+    },
+    "CENTRIC_ZUSTELL_BACKOFF": {
+      "klasse": "konfiguration"
+    },
+    "CENTRIC_ZUSTELL_BETRIEB_MAIL": {
+      "klasse": "konfiguration"
+    },
+    "CENTRIC_ZUSTELL_BETRIEB_PUSH": {
+      "klasse": "konfiguration"
+    },
+    "CENTRIC_ZUSTELL_DRINGEND_PAAR_MAIL": {
+      "klasse": "konfiguration"
+    },
+    "CENTRIC_ZUSTELL_DRINGEND_PAAR_PUSH": {
+      "klasse": "konfiguration"
+    },
+    "CENTRIC_ZUSTELL_DRINGEND_QUELLE_MAIL": {
+      "klasse": "konfiguration"
+    },
+    "CENTRIC_ZUSTELL_DRINGEND_QUELLE_PUSH": {
+      "klasse": "konfiguration"
+    },
+    "CENTRIC_ZUSTELL_PERSON_MAIL": {
+      "klasse": "konfiguration"
+    },
+    "CENTRIC_ZUSTELL_PERSON_PUSH": {
+      "klasse": "konfiguration"
+    },
+    "CENTRIC_ZUSTELL_RESERVE_MAIL": {
+      "klasse": "konfiguration"
+    },
+    "CENTRIC_ZUSTELL_RESERVE_PUSH": {
+      "klasse": "konfiguration"
+    }
+  }
+}

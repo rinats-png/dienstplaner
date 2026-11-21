@@ -4,7 +4,7 @@ Erzeugt von `werkzeug/acc45-backlog.mjs` aus `docs/acc45/work-packages.json` (ni
 
 **Kritischer Pfad gemeinsam** (offener Entwicklungsaufwand, ohne extern): WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **50–90 PT**
 **Ohne Intelligence:** WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 → WP-42a → WP-42 = **22,5–35 PT**
-**Offener Entwicklungsaufwand:** 330,8–567,55 PT in 96 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
+**Offener Entwicklungsaufwand:** 334–573,35 PT in 100 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
 
 WP-09 ist nur Livegang-Reihenfolge und zählt im Pfad nicht als Abhängigkeit. Der Graph zeigt nur offene Pakete.
 
@@ -113,6 +113,10 @@ flowchart LR
     DEP_2["DEP-2<br/>REVIEW"]
     DEP_3["DEP-3<br/>BLOCKED"]
     DEP_4["DEP-4<br/>BLOCKED"]
+    REL_1["REL-1<br/>REVIEW"]
+    REL_2["REL-2<br/>BLOCKED"]
+    REL_3["REL-3<br/>BLOCKED"]
+    REL_4["REL-4<br/>BLOCKED"]
   end
   subgraph extern[Extern/Entscheidungen]
     E_1["E-1<br/>BLOCKED"]
@@ -320,6 +324,11 @@ flowchart LR
   V4_3a --> V4_6
   V4_3b --> V4_6
   V4_3c --> V4_6
+  REL_1 --> REL_2
+  REL_1 --> REL_3
+  REL_3 --> REL_4
+  E_7 --> REL_4
+  E_8 --> REL_4
 ```
 
 | Paket | Strang | Prio | PT | Rest-PT | hängt ab von | Konfliktzonen | Modell | Status |
@@ -560,3 +569,7 @@ flowchart LR
 | DEP-3 | folge | P3 | 3–5 | 3–5 | – | – | opus | BLOCKED |
 | DEP-4 | folge | P3 | 0,5–1 | 0,5–1 | – | – | opus | BLOCKED |
 | REL-0 | acc45 | P1 | 0,5–1 | 0 | – | package.json | opus | INTEGRATED |
+| REL-1 | folge | P1 | 1–1,5 | 0,2–0,3 | – | – | opus | REVIEW |
+| REL-2 | folge | P1 | 1–2 | 1–2 | REL-1 | – | opus | BLOCKED |
+| REL-3 | folge | P1 | 1–2 | 1–2 | REL-1, WP-09 | – | opus | BLOCKED |
+| REL-4 | folge | P1 | 1–1,5 | 1–1,5 | REL-3, E-7, E-8 | – | sonnet | BLOCKED |
