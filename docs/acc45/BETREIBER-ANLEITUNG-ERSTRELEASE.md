@@ -117,16 +117,23 @@ Claude startet nie einen Deploy-Workflow und greift nie auf den VPS zu ([RELEASE
 
 - **Ziel / Gate:** F-8. Risiko R-GH-2: Wer den Schlüssel auf dem Server hat, kann auf `main` pushen.
 - **Handlung:** GitHub → Repository → **Settings** → **Deploy keys**. Den Schlüssel mit Schreibrecht ansehen.
-  - Zeigt die Inventur (4.2, V-7/V-8) keinen Git-Bedarf auf dem VPS: **Delete**.
-  - Wird er gebraucht: zuerst den alten Eintrag **Delete**, danach **Add deploy key** mit demselben öffentlichen Teil,
-    **ohne** „Allow write access“. Umgekehrt geht es nicht: GitHub lehnt einen Schlüssel ab, der schon eingetragen ist
-    („Key is already in use“). Zwischen Löschen und Neuanlegen hat der VPS keinen Git-Zugang. Der Auslieferungsweg ist
-    davon nicht betroffen: Der VPS holt Bilder aus GHCR, nicht aus Git (Produktionsweg §1.5). Unterbrochen wird nur,
-    was V-7/V-8 als Git-Nutzung zeigen.
+  - Die Inventur zeigt keine Git-Nutzung: V-7 sind die Sicherungen, V-8 nur die Optionen in `authorized_keys`. Ob der
+    VPS Git braucht, prüfen Sie selbst in der Remotekonsole (nur lesen), zum Beispiel:
+    `crontab -l | grep -i git`, `grep -ril git /etc/cron* 2>/dev/null`, `ls -a ~` (Arbeitsverzeichnis mit `.git`?).
+  - **Vor jedem Delete:** den öffentlichen Teil sichern. GitHub zeigt nach dem Anlegen nur den Fingerabdruck, nicht den
+    Schlüssel. Auf dem VPS die Datei `~/.ssh/*.pub` kopieren oder, falls sie fehlt, aus dem privaten Schlüssel ableiten:
+    `ssh-keygen -y -f ~/.ssh/<privater-schlüssel> > deploy-key.pub`. Danach `ssh-keygen -lf deploy-key.pub` und den
+    SHA256-Fingerabdruck mit dem Wert in **Deploy keys** vergleichen. Nur bei Gleichheit weiter.
+  - Kein Git-Bedarf: **Delete**.
+  - Wird er gebraucht: zuerst den alten Eintrag **Delete**, danach **Add deploy key** mit dem gesicherten öffentlichen
+    Teil, **ohne** „Allow write access“. Umgekehrt geht es nicht: GitHub lehnt einen Schlüssel ab, der schon
+    eingetragen ist („Key is already in use“). Zwischen Löschen und Neuanlegen hat der VPS keinen Git-Zugang. Der
+    Auslieferungsweg ist davon nicht betroffen: Der VPS holt Bilder aus GHCR, nicht aus Git (Produktionsweg §1.5).
+    Unterbrochen wird nur die Git-Nutzung, die Ihre Prüfung oben gefunden hat.
 - **Erwartet:** Kein Deploy-Key mit Schreibrecht. Lesende Prüfung durch Claude:
   `gh api repos/rinats-png/dienstplaner/keys --jq '.[] | [.id, .read_only]'` zeigt keine Zeile mit `false`.
 - **Weiter nur wenn:** keine Zeile mit `false`.
-- **Rückweg:** Schlüssel mit dem öffentlichen Teil vom VPS neu anlegen, nur lesend.
+- **Rückweg:** Schlüssel mit dem gesicherten öffentlichen Teil (`deploy-key.pub`) neu anlegen, nur lesend.
 - **Danach Claude:** führt die Abfrage aus und vermerkt das Ergebnis.
 
 ### 5.2 Branch-Schutz `main` (P3-3)
@@ -585,11 +592,15 @@ hier keinen eigenen Schritt:
 
 - **Ziel / Gate:** Produktionsweg §3.7 Schritt 2. Stand des Tages.
 - **Handlung:** Inventur wie 4.2 (VPS-ZUGANG §4b), Ergebnis protokollieren.
-- **Erwartet:** wie 4.2; laufendes Bild = `274bfa0`; `.env` mit `IMAGE_DIGEST`, ohne `IMAGE_TAG`; `zustand/` uid 1000,
-  Modus 700; Platz für 2 × Daten.
-- **Weiter nur wenn:** keine Abweichung zu 4.2 und 12. Sonst STOPP.
+- **Erwartet:** laufendes Bild = `274bfa0`; `.env` mit `IMAGE_DIGEST`, ohne `IMAGE_TAG`; `zustand/` uid 1000,
+  Modus 700; Platz für 2 × Daten. Vergleichsmaßstab ist der Stand nach Abschnitt 12, nicht 4.2: V-4 (Betriebsdateien
+  und Prüfsummen, neu aus 12.1) und V-6 (Schlüsselnamen der `.env`, ergänzt in 12.2) weichen von 4.2 erwartungsgemäß
+  ab; ebenso V-3 nach einer `.env`-Migration (12.1 Vorbedingung), V-5 (`zustand/` aus 12.2) und V-8 (Forced Command
+  aus 12.3).
+- **Weiter nur wenn:** keine Abweichung gegen den Stand nach Abschnitt 12: V-1/V-2 wie in 4.2 (`274bfa0`), V-3 bis
+  V-6 und V-8 wie nach 12.1 bis 12.3 (V-4: Prüfsummen gleich den Werten aus 12.1). Sonst STOPP.
 - **Rückweg:** keiner nötig (nur lesen).
-- **Danach Claude:** vergleicht mit 4.2 und meldet Abweichungen.
+- **Danach Claude:** vergleicht gegen den Stand nach Abschnitt 12 (V-1/V-2 gegen 4.2) und meldet Abweichungen.
 
 ### 14.1 Trockenlauf über den Workflow
 
@@ -631,8 +642,10 @@ hier keinen eigenen Schritt:
   | 5 | Bild nicht zu beschaffen; abgebrochen, nichts verändert, `274bfa0` läuft weiter | **nicht abschalten**; GHCR prüfen |
   | 7 | Docker antwortet nicht; abgebrochen, nichts verändert | **nicht abschalten**; Zustand mit `docker compose ps` prüfen |
   | 8 | fehlgeschlagen **und** R0 nicht sicher erreicht | sofort in der Remotekonsole `./abschalten.sh` (Produktionsweg §3.4 S-1) |
+  | SSH-Exit 255 oder anderer Verbindungsabbruch im Schritt „deploy.sh auf dem VPS“ | Zustand unbekannt: `deploy.sh` kann gelaufen sein, ganz oder teilweise | Remotekonsole: `pgrep -af deploy.sh` (läuft er noch: Ende abwarten), `docker compose ps`, Ende von `betrieb-protokoll.log` lesen; **nicht blind abschalten**. Letzte Zeile `erfolgreich …` → 15; `abgebrochen …` → wie Rückgabe 2–5; `…, R0 erreicht` → 16.1; `R0 NICHT sicher erreicht` → wie Rückgabe 8; nur `start …` ohne Abschluss → Zustand mit Claude bestimmen (Produktionsweg §3.4) |
 
-  Scheitert schon der Schritt „Eingaben prüfen“ oder „SSH-Zugang“ im Job `vps`, lief auf dem VPS nichts.
+  Scheitert schon der Schritt „Eingaben prüfen“ oder „SSH-Zugang“ im Job `vps` (also vor dem Schritt „deploy.sh auf
+  dem VPS“), lief auf dem VPS nichts. Für einen Abbruch im Schritt „deploy.sh auf dem VPS“ selbst gilt das nicht.
 - **Rückweg:** Produktionsweg §3.4 und §3.6; Kurzfassung in 16.1.
 - **Danach Claude:** liest den Lauf, prüft lesend den Digest in GHCR und meldet PRODUKTIV erst nach 15.
 
@@ -675,7 +688,8 @@ hier keinen eigenen Schritt:
   - G-f: Bild-ID = Ziel-Digest (erste zwei Befehle oben); Revisionslabel = `<kandidat>`:
     `docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' ghcr.io/rinats-png/dienstplaner@<digest>`.
 - **Erwartet:** `healthy`, gleiche Bild-ID, `{"status":"ok"}`, `200`, alle G-a…G-f ja.
-- **Weiter nur wenn:** alle ja → Go, Nutzer informieren, Uhrzeit notieren.
+- **Weiter nur wenn:** alle ja → Go, Nutzer informieren, Uhrzeit notieren. **Direkt nach dem Go:** Listen-PR
+  `274bfa0` → `gesperrt` (16.3; Claude öffnet ihn sofort, Sie mergen mit Kopf-Pin und kopieren die Liste wie 12.1).
 - **Rückweg:** Entscheidungsbaum Produktionsweg §3.6 Phase 2: Datenschutz-/Sicherheitsbefund → sofort R0 (S-3);
   sonst R0 (S-1). Warnung zu `zustand/` in 15 min behebbar → beheben, neu prüfen.
 - **Danach Claude:** setzt Status PRODUKTIV nur mit Digest, Lauf und Ihrem Go-Vermerk; legt den Abnahmevermerk unter
@@ -719,7 +733,9 @@ hier keinen eigenen Schritt:
 ### 16.3 Abschluss nach T0+24 h
 
 - **Handlung:** Kein Rollback-Trigger in Phase 3 (Produktionsweg §3.6). Listen-PR (Claude): `274bfa0` →
-  `gesperrt` („überholt, ohne zweiten Faktor“; O-1 b). Er darf schon nach dem Go (15) kommen, spätestens jetzt. Merge mit Kopf-Pin, Datei wie 12.1 auf den VPS kopieren.
+  `gesperrt` („überholt, ohne zweiten Faktor“; O-1 b). **Schritt direkt nach dem Go (15):** Claude öffnet den PR
+  sofort nach Ihrem Go-Vermerk; ein Rücksprung auf `274bfa0` ist ohnehin verboten (16.1). Spätestens hier muss er
+  gemergt sein. Merge mit Kopf-Pin, Datei wie 12.1 auf den VPS kopieren.
 - **Erwartet:** Liste ohne Zeile `vorherig` auf `274bfa0`.
 - **Weiter nur wenn:** Sicherung außer Haus läuft (sonst kein Go für den nächsten Wechsel, §3.6).
 - **Danach Claude:** zieht `main` per PR nach `integration/release-v4` nach, setzt REL-3/REL-4 im SSOT mit Belegen.
@@ -738,11 +754,11 @@ hier keinen eigenen Schritt:
 | OF-6 | `CODEOWNERS` für `docs/acc45/releases/` und die Liste fehlt | Ihre Entscheidung (5.2) |
 | OF-7 | Mit O-2 b: Fehler nach dem Anhalten (Schritt 4/5) = Ausfall (kein Neustart von `274bfa0`); Abbrüche in 1–3b lassen `274bfa0` laufen | Ihre Annahme (5.4) |
 | OF-8 | `BEREITSTELLUNG.md` §3.1 „Daten von Bildwechsel nie betroffen“ ist für diesen Wechsel falsch | O-7, eigener Doku-PR |
-| OF-9 | `RELEASE-PROZESS.md` (auf `integration/release-v4`) enthält §1–§6 dreifach, vermutlich durch ein JS-`replace` mit dem Ersatzmuster `` $` ``. Durchlauf 1 hat den neuesten Stand von §1–§5 (mit `vorlagenHashes`), aber die G3-Zeile in §6 bricht ab, und G4–G10 fehlen dort. Rest der G3-Zeile, G4–G10 und der Schlusssatz stehen nur in Durchlauf 3 (etwa Zeilen 412–423). Den vollständigen G3-Satz gibt es nirgends unzerstückelt | eigener Doku-PR (Claude) **nach** Merge von #437, weil #437 die Datei noch ändert |
+| OF-9 | erledigt (REL-1 Nachzug 2, Branch `acc45/release/rel-1-nachzug-2`): `RELEASE-PROZESS.md` enthielt §1–§6 dreifach (JS-`replace` mit dem Ersatzmuster `` $` `` in 8ac80cfa). Jetzt jede Überschrift einmal, G3-Zeile zusammenhängend, G1–G10 je einmal; Test in `pruefungen/release-pruefung.test.js` | — |
 | OF-10 | F-4 Staging-Abnahme per Digest: keine Staging-VM bis Phase D | Ihre Entscheidung (14) |
 | OF-11 | F-11 Zweiter Faktor des Betreibers vorbereitet (Voraussetzung G-d) | Ihre Handlung (14) |
 | OF-12 | Kein Befehl, der `deploy-sicherungen/<name>` außer Haus kopiert (Produktionsweg §3.7 Schritt 6) | Befehlsvorschlag Claude, Ihre Freigabe (14.3) |
-| OF-13 | Werkzeuglücke: G7 akzeptiert `274bfa0` als `vorherig` auch bei `strategie: ruecksprung`; nur diese Anleitung verlangt `r0` | eigener Werkzeug-PR (außerhalb dieses PR) |
+| OF-13 | Werkzeuglücke: G7 akzeptiert `274bfa0` als `vorherig` auch bei `strategie: ruecksprung`; nur diese Anleitung verlangt `r0`. **Weiterhin offen** (Stand REL-1 Nachzug 2): nicht Teil des Doku-Nachzugs | Ihre Entscheidung, danach eigener Werkzeug-PR |
 
 ## 18. Quellen
 
@@ -756,4 +772,4 @@ hier keinen eigenen Schritt:
 [`BEREITSTELLUNG.md`](../../BEREITSTELLUNG.md) Schritt 3,
 [`deploy/FREIGEGEBENE-IMAGES.md`](../../deploy/FREIGEGEBENE-IMAGES.md), [`deploy/deploy.sh`](../../deploy/deploy.sh),
 [`.github/workflows/deploy.yml`](../../.github/workflows/deploy.yml), `werkzeug/release-pruefung.mjs`,
-`RELEASE-PROBELAUF-2026-11-21.md` (Branch `acc45/release/rel-1-nachzug`, noch nicht gemergt).
+[RELEASE-PROBELAUF-2026-11-21.md](RELEASE-PROBELAUF-2026-11-21.md) (mit #437 gemergt).
