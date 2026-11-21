@@ -122,6 +122,17 @@ const AUSNAHMEN = [
     grund: "kein Farbliteral: zur Laufzeit abgetastete Pixelfarbe der Bildmarke (Canvas)" },
 ];
 
+/** Feld- und ARIA-Attribute in Quelltextreihenfolge (Name=Wert). */
+const RE_ATTRIBUT = /\b(id|htmlFor|type|name|autoComplete|autoFocus|autoCapitalize|inputMode|role|aria-[a-z]+|placeholder|disabled|required|pattern|maxLength|minLength|tabIndex|onSubmit|onKeyDown)=(\{[^}]*\}|"[^"]*")/g;
+const attributeIn = (text) => [...text.matchAll(RE_ATTRIBUT)].map((m) => `${m[1]}=${m[2]}`);
+/** Basis b9ab081a (git show, LF): Anzahl und SHA-256 der Attributliste je sicherheitsrelevanter Datei. */
+const ATTRIBUTE_BASIS = {
+  [MAIN]: [39, "35dafb58599dca7109602bc23e780c0f3c7b0bde5fb2f5443fbda1117fb9c24e"],
+  [ZF]: [9, "160120425a451d265dcf1d316e5daf5414327b96a66652497e35313923a16802"],
+  [VERLUST]: [50, "0379880bc936563cb43690c2ee6b442e41466e717630268878ebf7b3d8db0931"],
+  [ANMELDUNG]: [1, "1bef8392e6dae3a3727c6548c17c852965d385dd2a019294291344e070c54cb2"],
+};
+
 /** Basis b9ab081a: Anzahl „transition“ je Datei (ohne Kommentare). */
 const UEBERGAENGE = { [MAIN]: 2, [ANMELDUNG]: 1 };
 
@@ -227,16 +238,14 @@ describe("V4-3b Einstieg: Messung", () => {
     for (const f of FARB_ZUORDNUNG) expect(lies(f.datei).split(f.nachher), f.wo).toHaveLength(2);
   });
 
-  it("geänderte Zeilen enthalten nur Radiusstufen oder die Farbstellen (Anmeldung und Registrierung: nur Gestaltung)", () => {
-    for (const d of HAUPTANSICHT_DATEIEN.Einstieg) {
-      const jetzt = lies(d).split("\n");
-      const vorher = rueckgerechnet(d).text.split("\n");
-      expect(jetzt.length, d).toBe(vorher.length);
-      jetzt.forEach((z, i) => {
-        if (z === vorher[i]) return;
-        const erlaubt = /var\(--v4-r-[a-z]+\)/.test(z) || FARB_ZUORDNUNG.some((f) => f.datei === d && z.includes(f.nachher));
-        expect(erlaubt, `${d}:${i + 1} ${z.trim().slice(0, 80)}`).toBe(true);
-      });
+  it("Anmeldung, Registrierung, zweiter Faktor, Verlustweg: Feld- und ARIA-Attribute in Reihenfolge wie auf der Basis", () => {
+    /* Unabhängig von der Rückrechnung: Prüfsumme der Attributliste (id, htmlFor, type, name, autoComplete, autoFocus,
+       autoCapitalize, inputMode, role, aria-*, placeholder, disabled, required, pattern, maxLength, minLength,
+       tabIndex, onSubmit, onKeyDown), auf der Basis b9ab081a mit git show gemessen und hier fest eingetragen. */
+    for (const [d, [n, summe]] of Object.entries(ATTRIBUTE_BASIS)) {
+      const a = attributeIn(lies(d));
+      expect(a, d).toHaveLength(n);
+      expect(sha256(JSON.stringify(a)), `${d}: Attribute gleich der Basis`).toBe(summe);
     }
   });
 
