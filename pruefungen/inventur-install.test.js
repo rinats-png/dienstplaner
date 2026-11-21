@@ -43,8 +43,12 @@ const BAUER = path.join(WURZEL, "werkzeug", "inventur-install-bauen.mjs");
 const BASH = bashFinden();
 const FESTER_PFAD = "/usr/sbin:/usr/bin:/sbin:/bin";
 /* Ein Installerlauf startet unter Git Bash einige hundert Prozesse (10–25 s); Fälle mit bis zu drei Läufen (Idempotenz,
-   Rückbau) brauchen deshalb mehr als 60 s. Jeder Lauf hat zusätzlich seine eigene Grenze (spawnSync, 90 s). */
-vi.setConfig({ testTimeout: 180000 });
+   Rückbau) brauchen deshalb mehr als 60 s. Jeder Lauf hat zusätzlich seine eigene Grenze (spawnSync, LAUF_GRENZE_MS);
+   H-2 (Review #458): sie liegt nahe an der Vitest-Grenze (180 s), damit ein langsamer Lauf unter Windows-Last nicht
+   vorzeitig beendet wird. Ein Abbruch (Zeitgrenze, Signal, Startfehler) wird ausdrücklich gemeldet, nie als code null. */
+const TEST_GRENZE_MS = 180000;
+const LAUF_GRENZE_MS = 150000;
+vi.setConfig({ testTimeout: TEST_GRENZE_MS });
 
 const sha = (b) => createHash("sha256").update(b).digest("hex");
 const INVENTUR_TEXT = readFileSync(INVENTUR, "utf8");
@@ -298,6 +302,13 @@ for a in "$@"; do case "$a" in *"function inc("*) echo "awk: Fehler" >&2; exit 2
 exec /usr/bin/awk "$@"
 `;
 
+/* tr-Stub (A-1 Delta-Review #458): scheitert nur bei der NUL-Zählung (tr -cd '\000'), ohne Ausgabe; wc zählt dann 0.
+   Alle anderen tr-Aufrufe laufen mit dem echten tr. */
+const TR_STUB_NUL_SCHEITERT = `#!/bin/bash
+if [[ "\${1:-}" == -cd && "\${2:-}" == '\\000' ]]; then echo "tr: Lesefehler" >&2; exit 1; fi
+exec /usr/bin/tr "$@"
+`;
+
 /* ---------------------------------------------------------- Testwurzel */
 let tmp, w, stub, meta, passwd, sshdT, proto, inst;
 
@@ -353,7 +364,7 @@ function gebaut({ schluessel = PUB, ersetze = [] } = {}) {
   return t;
 }
 
-function lauf(args = [], env = {}, datei = inst) {
+function lauf(args = [], env = {}, datei = inst, grenzeMs = LAUF_GRENZE_MS) {
   const umgebung = {
     ...process.env,
     INVENTUR_INSTALL_PRUEFPFAD: `${posixPfad(stub)}:${FESTER_PFAD}`,
@@ -365,8 +376,12 @@ function lauf(args = [], env = {}, datei = inst) {
     ...env,
   };
   for (const n of ["SSH_CONNECTION", "BASH_ENV", "ENV"]) if (!(n in env)) delete umgebung[n];
-  const r = spawnSync(BASH, [p(datei), ...args], { encoding: "utf8", env: umgebung, timeout: 90000 });
+  const r = spawnSync(BASH, [p(datei), ...args], { encoding: "utf8", env: umgebung, timeout: grenzeMs });
   const out = r.stdout ?? "";
+  if (r.error || r.signal || r.status === null) {
+    const grund = r.error?.code === "ETIMEDOUT" ? `Zeitgrenze ${grenzeMs} ms überschritten` : r.error ? `Startfehler ${r.error.code ?? r.error.message}` : "ohne Rückgabewert";
+    throw new Error(`Installerlauf abgebrochen (${grund}, Signal ${r.signal ?? "keins"}); letzte Ausgabe:\n${(out + (r.stderr ?? "")).slice(-2000)}`);
+  }
   const zeilen = out.trimEnd().split("\n");
   return { code: r.status, out, err: r.stderr ?? "", letzte: zeilen[zeilen.length - 1], alles: out + (r.stderr ?? "") };
 }
@@ -657,6 +672,22 @@ describe.skipIf(!BASH)("deploy/inventur-install.sh — Vorabprüfungen (Abbruch 
   it("A-1: awk scheitert bei der sshd-Auswertung (exit 2, ohne Endmarke) → Abbruch „nicht auswertbar“", () => {
     negativ(() => schreiben(path.join(stub, "awk"), AWK_STUB_SCHEITERT, true), /sshd-Konfigurationsdatei \/etc\/ssh\/sshd_config nicht auswertbar/);
   });
+  /* Delta-Review #458 A-1: scheitert die NUL-Zählung (tr bricht ab, Datei unlesbar), zählt wc trotzdem 0. Der Installer
+     wertet den Rückgabewert der Pipeline aus und bricht ab („nicht auf NUL-Byte prüfbar“). */
+  it("A-1 (Delta): tr scheitert bei der NUL-Zählung (exit 1, keine Ausgabe) → Abbruch „nicht auf NUL-Byte prüfbar“", () => {
+    negativ(() => schreiben(path.join(stub, "tr"), TR_STUB_NUL_SCHEITERT, true), /sshd-Konfigurationsdatei \/etc\/ssh\/sshd_config nicht auf NUL-Byte prüfbar; fail-closed/);
+  });
+  it("A-1 (Delta) Mutation: ohne „|| n=x“ endet der Lauf nicht mit der geordneten Abbruchzeile", () => {
+    schreiben(path.join(stub, "tr"), TR_STUB_NUL_SCHEITERT, true);
+    writeFileSync(inst, gebaut({ ersetze: [["|| n=x", ""]] }));
+    const r = lauf(["--trocken"]);
+    expect(r.letzte).not.toMatch(/nicht auf NUL-Byte prüfbar/);
+  });
+  it("H-2: lauf() meldet einen Abbruch durch die Zeitgrenze ausdrücklich (kein stilles code null)", () => {
+    const f = path.join(tmp, "langsam.sh");
+    schreiben(f, "#!/bin/bash\nsleep 8\n", true);
+    expect(() => lauf([], {}, f, 1500)).toThrow(/Installerlauf abgebrochen \(Zeitgrenze 1500 ms überschritten, Signal SIGTERM\)/);
+  });
   it("N-1/N-2: kein Fehlalarm gegen die Standard-sshd_config von Ubuntu 24.04 (#Match-Kommentar, Include); „Matchx“ wie bisher", () => {
     schreiben(path.join(w, "etc/ssh/sshd_config"), UBUNTU_2404_SSHD_CONFIG);
     schreiben(path.join(w, "etc/ssh/sshd_config.d/60-x.conf"), "Matchx yes\n");
@@ -928,9 +959,15 @@ describe.skipIf(!BASH)("Mutationsnachweis: ohne die Prüfung wird der Negativfal
     },
     {
       name: "B-1 NUL-Byte in sshd-Datei (Ma\\0\\ntch, Review #458)",
-      anker: `if [[ "$(LC_ALL=C tr -cd '\\000' <"$f" | wc -c | tr -d ' ')" != 0 ]]; then`,
-      ersatz: "if false; then",
+      anker: `    if [[ "$n" != 0 ]]; then`,
+      ersatz: "    if false; then",
       vorbereiten: () => schreiben(path.join(w, "etc/ssh/sshd_config.d/60-x.conf"), "Ma\0\ntch User admin\n  PermitUserEnvironment yes\n"),
+    },
+    {
+      name: "A-1 (Delta-Review #458) Rückgabewert der NUL-Zählung ausgewertet (tr scheitert)",
+      anker: "|| n=x",
+      ersatz: "|| true",
+      vorbereiten: () => schreiben(path.join(stub, "tr"), TR_STUB_NUL_SCHEITERT, true),
     },
     {
       name: "A-1 Endmarke E fehlt (awk scheitert, Review #458)",
@@ -1051,12 +1088,39 @@ describe("Quelltext-Wächter deploy/inventur-install.sh", () => {
     expect(abschnitt).toMatch(/NUL-Byte[^\n]*abgewiesen/);
     expect(abschnitt).toMatch(/`… enthält NUL-Byte; fail-closed`/);
     expect(abschnitt).toMatch(/Binary file matches/);
-    expect(abschnitt).toContain("grep -anE 'm.?a.?t.?c.?h'");
+    /* Delta-Review #458 B-1 (Doku): Lesebefehle mit -i (Groß/Klein), sonst passt das Muster nicht auf „Match“ */
+    expect(abschnitt).toContain("grep -ainE 'm.?a.?t.?c.?h'");
+    expect(abschnitt).toContain("grep -ainE 'i.?n.?c.?l.?u.?d.?e'");
+    expect(abschnitt).toMatch(/`… nicht auf NUL-Byte prüfbar; fail-closed`/);
+    /* H-1 (Delta-Review #458): Grenze der Prüfung (Zeitpunkt) benannt */
+    expect(abschnitt).toMatch(/Prüfung gilt für ihren Zeitpunkt/);
     const anleitung = readFileSync(path.join(WURZEL, "docs", "acc45", "BETREIBER-ANLEITUNG-ERSTRELEASE.md"), "utf8");
     const a41 = anleitung.slice(anleitung.indexOf("### 4.1"), anleitung.indexOf("### 4.2"));
     expect(a41).toMatch(/vorbereitet, nicht aktiviert/);
     expect(a41).toContain("INVENTUR-KONSOLE.md");
     expect(a41).toMatch(/Arbeitsrechner/);
+  });
+
+  /* Delta-Review #458 B-1 (Doku): die Lesebefehle der Meldungstabelle werden aus dem Doku-Text gelesen und gegen eine
+     Wegwerfdatei ausgeführt. Sie müssen „Match User admin“ und „Include /x.conf“ finden (rc 0). Gegenprobe: ohne -i
+     findet derselbe Befehl nichts (rc 1) – so fällt ein fehlendes -i sofort auf. */
+  it("Meldungstabelle: Lesebefehle für Match/Include finden „Match User admin“ und „Include /x.conf“ (Verhalten)", () => {
+    const doku = readFileSync(path.join(WURZEL, "docs", "acc45", "VPS-ZUGANG-EINRICHTUNG.md"), "utf8");
+    const abschnitt = doku.slice(doku.indexOf("### Abbruch- und Fehlermeldungen"), doku.indexOf("### Rückweg"));
+    const befehle = new Map();
+    for (const m of abschnitt.matchAll(/`(grep -[A-Za-z]+ '([^']+)') \/etc\/ssh\/sshd_config \/etc\/ssh\/sshd_config\.d\/\*\.conf`/g)) befehle.set(m[2], m[1]);
+    const probe = path.join(tmp, "sshd-probe.conf");
+    writeFileSync(probe, "PasswordAuthentication no\nMatch User admin\n  AcceptEnv *\nInclude /x.conf\n");
+    for (const [muster, erwartet] of [["m.?a.?t.?c.?h", "2:Match User admin"], ["i.?n.?c.?l.?u.?d.?e", "4:Include /x.conf"]]) {
+      const cmd = befehle.get(muster);
+      expect(cmd, `Lesebefehl für ${muster} fehlt in der Meldungstabelle`).toBeTruthy();
+      const r = spawnSync(BASH, ["-c", `${cmd} "$1"`, "probe", p(probe)], { encoding: "utf8" });
+      expect(r.status, `${cmd}: ${r.stderr}`).toBe(0);
+      expect(r.stdout).toContain(erwartet);
+      /* Gegenprobe: -i entfernt → kein Treffer */
+      const ohneI = cmd.replace(/^grep -([A-Za-z]+)/, (_, f) => `grep -${f.replace("i", "")}`);
+      expect(spawnSync(BASH, ["-c", `${ohneI} "$1"`, "probe", p(probe)], { encoding: "utf8" }).status).toBe(1);
+    }
   });
 
   it("keine öffentliche Schlüsseldatei mit erfundenem Inhalt im Repository", () => {
