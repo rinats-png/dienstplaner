@@ -254,8 +254,12 @@ function teilzeitModell(m, p, datum, plan, l) {
  * @param {any} [eid] Einheit der Person an diesem Tag (Vorgabe einheitAm)
  */
 export function planDienst(m, p, d, eid = einheitAm(p, d)) {
-  if (!schichtmodellWirkungAktiv())
+  if (!schichtmodellWirkungAktiv()) {
+    /* Teilrollen (Vorbedingung 1 vor AN): Dienst des Servers, nur wenn speicher.js ihn aus der Antwort gesetzt hat. */
+    const s = serverFolgeAm(p, d);
+    if (s) return s.plan;
     return eid && !p.springer && p.imSchichtdienst !== false ? teilzeitDienst(m, p, d, einheitDienst(m, eid, d)) : null;
+  }
   const l = schichtmodellLageAm(m, p, d);
   if (l.art !== "dienst" || !l.dienstId) return null;
   if (l.quelle === "betrieb") return teilzeitDienst(m, p, d, l.dienstId);
@@ -276,10 +280,81 @@ export function planDienst(m, p, d, eid = einheitAm(p, d)) {
  * @param {() => any} alt bisheriger Ausdruck
  */
 export function schichtfolgeAm(m, p, d, alt) {
-  if (!schichtmodellWirkungAktiv()) return alt();
+  if (!schichtmodellWirkungAktiv()) {
+    const s = serverFolgeAm(p, d);                                            // Teilrollen: Dienst des Servers (sonst nie gesetzt)
+    return s ? s.roh : alt();
+  }
   const l = schichtmodellLageAm(m, p, d);
   if (l.art === "ohne" || (l.art === "dienst" && l.quelle === "betrieb")) return alt();
   return l.art === "dienst" ? l.dienstId : null;
+}
+
+/* ------------------------------------------------------------------------
+   TEILROLLEN: DER VOM SERVER GERECHNETE DIENST (IMP-6, Vorbedingung 1 vor AN)
+
+   Beschäftigte, Schichtverantwortung und Betriebsrat sehen höchstens die eigene
+   Zuordnung (Q4) und rechnen deshalb nie selbst nach den Modellen. Bei AN liefert
+   GET /api/bestand ihnen `schichtfolgeServer` (server/lib/schichtfolge-teilrollen.mjs):
+     { von, bis, personen: { [personId]: Wert je Tag von … bis } }
+   Wert: null = Betriebsmodell an diesem Tag (bisheriger Ausdruck), "F"/"-" = Dienst
+   (roh = Plan), ["F", "-"] = [roh, Plan mit Teilzeit]. Nur Personen mit eigener
+   Zuordnung stehen darin; außerhalb des Fensters ist ihr Dienst „offen“: kein Dienst,
+   nie still das Betriebsmodell (Q5).
+   Gesetzt wird die Angabe allein von src/speicher.js aus der Antwort des Servers
+   (Wächter imp6-teilrollen S1). Ohne Angabe — immer bei AUS — rechnen planDienst
+   und schichtfolgeAm wörtlich wie bisher. Bei eingeschalteter eigener Rechnung
+   (volle Rollen) wirkt sie nicht.
+   ------------------------------------------------------------------------ */
+const FOLGE_TAG = /^\d{4}-\d{2}-\d{2}$/;
+const folgeWert = (v) => v === null || typeof v === "string"
+  || (Array.isArray(v) && v.length === 2 && typeof v[0] === "string" && typeof v[1] === "string");
+/** @type {null | { von: string, bis: string, personen: Map<string, any[]> }} */
+let serverFolge = null;
+/** Angabe des Servers prüfen und übernehmen; jede ungültige Form gilt als keine Angabe (fail-closed). */
+export function schichtfolgeServerSetzen(x) {
+  serverFolge = null;
+  if (!x || typeof x !== "object" || Array.isArray(x)) return;
+  const { von, bis, personen } = x;
+  if (typeof von !== "string" || typeof bis !== "string" || !FOLGE_TAG.test(von) || !FOLGE_TAG.test(bis) || von > bis) return;
+  if (!personen || typeof personen !== "object" || Array.isArray(personen)) return;
+  const n = between(von, bis) + 1;
+  const karte = new Map();
+  for (const [pid, reihe] of Object.entries(personen)) {
+    if (!Array.isArray(reihe) || reihe.length !== n || !reihe.every(folgeWert)) return;
+    karte.set(pid, reihe);
+  }
+  serverFolge = { von, bis, personen: karte };
+}
+/** Hat die Oberfläche den Dienst des Servers (und schickt deshalb beim Schreiben das Kennzeichen „server“)? */
+export function schichtfolgeServerAktiv() {
+  return serverFolge !== null && !schichtmodellWirkungAktiv();
+}
+const OFFEN = Object.freeze({ roh: null, plan: null, offen: true });
+const ohneStrich = (v) => (v === "-" ? null : v);
+/** Dienst des Servers für Person und Tag: undefined = keine Angabe (bisheriger Ausdruck). */
+function serverFolgeAm(p, d) {
+  if (serverFolge === null || !p) return undefined;
+  const reihe = serverFolge.personen.get(String(p.id));
+  if (!reihe) return undefined;
+  if (typeof d !== "string" || d < serverFolge.von || d > serverFolge.bis) return OFFEN;
+  const v = reihe[between(serverFolge.von, d)];
+  if (v === null || v === undefined) return undefined;
+  return typeof v === "string" ? { roh: ohneStrich(v), plan: ohneStrich(v), offen: false } : { roh: ohneStrich(v[0]), plan: ohneStrich(v[1]), offen: false };
+}
+/** Ist der Dienst dieser Person an diesem Tag für die Oberfläche unbekannt (außerhalb des Fensters, eigenes Modell)?
+ *  Dann löscht eine Aktion keine Abweichung als „Plan“, sondern speichert ausdrücklich; der Server entscheidet. */
+export function schichtfolgeOffen(p, d) {
+  if (schichtmodellWirkungAktiv()) return false;
+  const s = serverFolgeAm(p, d);
+  return !!(s && s.offen);
+}
+/** Folgt die Person nach ihren Zuordnungen immer dem Betriebsmodell (kein Feld, leer oder genau eine unbefristete
+ *  Zuordnung „betrieb“)? Dann rechnet jede Oberfläche ihren Dienst selbst richtig. */
+export function folgtNurBetriebsmodell(p) {
+  const z = p ? p[ZUORDNUNG_FELD] : undefined;
+  if (!Array.isArray(z) || !z.length) return true;
+  return z.length === 1 && !!z[0] && typeof z[0] === "object" && z[0].modellId === BETRIEB_MODELL
+    && (z[0].gueltigAb === null || z[0].gueltigAb === undefined) && (z[0].gueltigBis === null || z[0].gueltigBis === undefined);
 }
 
 /**
@@ -301,7 +376,17 @@ export function schichtmodellPlanfelder() {
  * @param {string[]} tage JJJJ-MM-TT
  */
 export function abweichendVomBetriebsmodell(m, eid, tage) {
-  if (!schichtmodellWirkungAktiv() || !m || !Array.isArray(tage)) return 0;
+  if (!m || !Array.isArray(tage)) return 0;
+  if (!schichtmodellWirkungAktiv()) {
+    if (serverFolge === null) return 0;                                       // AUS: ohne jede Rechnung
+    /* Teilrollen: nach dem Dienst des Servers (eine Angabe oder „offen“ = nicht das Betriebsmodell). */
+    let t = 0;
+    for (const p of liste(m.personen)) {
+      if (!serverFolge.personen.has(String(p.id))) continue;
+      if (tage.some((d) => imDienst(p, d) && einheitAm(p, d) === eid && serverFolgeAm(p, d))) t++;
+    }
+    return t;
+  }
   let n = 0;
   for (const p of liste(m.personen)) {
     if (!Array.isArray(p[ZUORDNUNG_FELD]) || !p[ZUORDNUNG_FELD].length) continue;            // implizit: Betriebsmodell

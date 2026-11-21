@@ -650,6 +650,7 @@ describe("S. Schalter CENTRIC_SCHICHTMODELL_WIRKUNG (Vorgabe AUS; PR 2: verbunde
       "server/lib/isteinfrieren.mjs": 1,                // AUS-Zweig Postenbesetzung
       "server/lib/schutzdurchsetzung.mjs": 1,           // AUS-Zweig folgeAm (Zwischenspeicher je Einheit)
       "server/lib/schichtzuordnung.mjs": 2,             // modellDienstAm (Betriebsmodell), wirkungsVorpruefung (bisherige Folge)
+      "server/lib/schichtfolge-teilrollen.mjs": 1,      // Schreibweg der Teilrollen: Plan, den ein Client ohne Server-Dienst sah (nur bei AN, nur Tage mit eigenem Modell)
       "src/app/aktionen/plan.js": 1,                    // setzeAbweichung: alter Ausdruck in schichtfolgeAm
       "src/app/aktionen/begleitung.js": 1,              // mehrfachDienst: alter Ausdruck in schichtfolgeAm
       "src/lib/fachlogik.js": 2,                        // urlaubskonto, planVergleich: alter Ausdruck in schichtfolgeAm
