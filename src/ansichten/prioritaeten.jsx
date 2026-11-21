@@ -284,7 +284,7 @@ export function Prioritaeten({ sitz, akt, gehZu, oeffneTag }) {
                   style={{ display: "flex", alignItems: "center", gap: 16, padding: "16px 22px",
                     cursor: a.ziel ? "pointer" : "default",
                     borderBottom: i < rest.length - 1 ? `1px solid ${C.lineSoft}` : "none" }}>
-                  <span style={{ width: 34, height: 34, borderRadius: 11, flexShrink: 0, display: "flex",
+                  <span style={{ width: 34, height: 34, borderRadius: "var(--v4-r-mittel)", flexShrink: 0, display: "flex",
                     alignItems: "center", justifyContent: "center", fontSize: 14,
                     background: a.dringend ? C.dangerLight : C.bg,
                     color: a.dringend ? C.danger : C.dim }}><AufgabeSymbol art={a.art} /></span>
