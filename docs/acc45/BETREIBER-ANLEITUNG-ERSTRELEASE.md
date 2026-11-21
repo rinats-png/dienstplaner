@@ -189,7 +189,9 @@ Claude startet nie einen Deploy-Workflow und greift nie auf den VPS zu ([RELEASE
       gilt auch, wenn `274bfa0` `vorherig` bleibt.
     - Fehler ab Schritt 6: R0 (S-1). S-5 (Notbetrieb auf `274bfa0`) ist praktisch ausgeschlossen.
   - Unter O-2 b ist deshalb nur **O-1 b** stimmig: `274bfa0` ist kein Neustart- und kein Rücksprungziel. O-1 a und c
-    setzen einen Wechsel von Hand mit `--ohne-label` voraus (O-2 a). Abweichung vom Wortlaut von O-1 b („sofort
+    setzen einen Wechsel von Hand mit `--ohne-label` voraus (O-2 a). In jedem Fall ist `274bfa0` kein Rücksprungziel
+    nach dem Wechsel; G7 meldet `strategie: ruecksprung` bei Basis `274bfa0` NO-GO (OF-13 behoben, Abschnitt 11).
+    Abweichung vom Wortlaut von O-1 b („sofort
     gesperrt“): Die Zeile `274bfa0` bleibt bis nach dem Wechsel `vorherig`, weil die Basis der Endprüfung eine Zeile
     `aktiv` oder `vorherig` sein muss (RELEASE-PROZESS §4). `gesperrt` folgt in einem eigenen Listen-PR nach dem Go
     (16.3).
@@ -463,10 +465,11 @@ Widerrufbuch-Probe jünger als 35 Tage, `ergebnis: ok`, `abweichend` und `fehlen
 - **Ziel / Gate:** G7.
 - **Handlung (Betreiber):** In der Freigabedatei `rueckweg: { "strategie": "r0", "entscheidungO1": "b",
   "entscheidungO2": "b" }` (5.4). Entscheidungsbaum Produktionsweg §3.6 bestätigen (F-13).
-- **Erwartet:** Endprüfung G7 GO mit Beleg „R0 als Fehlerstrategie“.
+- **Erwartet:** Endprüfung G7 GO mit Beleg „R0 als Fehlerstrategie, O-1 b, O-2 b“.
 - **Weiter nur wenn:** `strategie` = `r0`. `ruecksprung` hat beim ersten Wechsel kein zulässiges Ziel (Produktionsweg §3.3).
-  Achtung: Das Werkzeug prüft das nicht. G7 ist mit `274bfa0` als `vorherig` auch bei `strategie: ruecksprung` GO
-  (OF-13). Prüfen Sie den Wert selbst.
+  Das Werkzeug prüft das (OF-13 behoben): Ist die Basis `274bfa0` oder steht `274bfa0` als `vorherig`, ist G7 bei
+  `strategie: ruecksprung` NO-GO („Bild ohne Revisionslabel … nur r0“). Bei `r0` verlangt G7 dann O-1 und O-2; die
+  Zeile `vorherig` auf `274bfa0` ersetzt sie nicht.
 - **Rückweg:** Datei per PR ändern.
 - **Danach Claude:** keine weitere Handlung.
 
@@ -643,7 +646,7 @@ hier keinen eigenen Schritt:
   | 5 | Bild nicht zu beschaffen; abgebrochen, nichts verändert, `274bfa0` läuft weiter | **nicht abschalten**; GHCR prüfen |
   | 7 | Docker antwortet nicht; abgebrochen, nichts verändert | **nicht abschalten**; Zustand mit `docker compose ps` prüfen |
   | 8 | fehlgeschlagen **und** R0 nicht sicher erreicht | sofort in der Remotekonsole `./abschalten.sh` (Produktionsweg §3.4 S-1) |
-  | SSH-Exit 255 oder anderer Verbindungsabbruch im Schritt „deploy.sh auf dem VPS“ | Zustand unbekannt: `deploy.sh` kann gelaufen sein, ganz oder teilweise | Remotekonsole: `pgrep -af deploy.sh` (läuft er noch: Ende abwarten), `docker compose ps`, `tail -n 20 betrieb-protokoll.log`; **nicht blind abschalten, nichts neu starten**; Zuordnung nach der letzten Protokollzeile, Regeln unter der Tabelle |
+  | SSH-Exit 255 oder anderer Verbindungsabbruch im Schritt „deploy.sh auf dem VPS“ | Zustand unbekannt: `deploy.sh` kann gelaufen sein, ganz oder teilweise | Remotekonsole: `pgrep -af 'deploy.sh\|abschalten.sh\|ruecksprung.sh'` (läuft eines davon noch: Ende abwarten; `deploy.sh` ruft bei R0 `abschalten.sh` auf), `docker compose ps`, `tail -n 20 betrieb-protokoll.log`; **nicht blind abschalten, nichts neu starten**; Zuordnung nach der letzten Protokollzeile, Regeln unter der Tabelle |
 
   **Zuordnung bei Verbindungsabbruch.** Jede Zeile hat die Form `<UTC-Zeit> <Skript> <Text>`
   (`deploy/freigabe-lib.sh`, `protokoll()`). Es zählt nur die letzte Zeile mit Zeit ab T0. Die Regeln in dieser
@@ -779,7 +782,7 @@ hier keinen eigenen Schritt:
 | OF-10 | F-4 Staging-Abnahme per Digest: keine Staging-VM bis Phase D | Ihre Entscheidung (14) |
 | OF-11 | F-11 Zweiter Faktor des Betreibers vorbereitet (Voraussetzung G-d) | Ihre Handlung (14) |
 | OF-12 | Kein Befehl, der `deploy-sicherungen/<name>` außer Haus kopiert (Produktionsweg §3.7 Schritt 6) | Befehlsvorschlag Claude, Ihre Freigabe (14.3) |
-| OF-13 | Werkzeuglücke: G7 akzeptiert `274bfa0` als `vorherig` auch bei `strategie: ruecksprung`; nur diese Anleitung verlangt `r0`. **Weiterhin offen** (Stand REL-1 Nachzug 2): nicht Teil des Doku-Nachzugs | Ihre Entscheidung, danach eigener Werkzeug-PR |
+| OF-13 | **behoben** (Werkzeug-PR `acc45/release/rel-1-g7`): G7 meldet `strategie: ruecksprung` NO-GO, wenn die Basis oder die Zeile `vorherig` ein Bild ohne Revisionslabel ist (`ohneRevisionslabel` in `werkzeug/release-pruefung.mjs`, heute `274bfa0`) oder die Basis fehlt; `r0` bleibt GO, mit O-1/O-2. Offen bleibt nur: Das Werkzeug kann das Label eines anderen `vorherig`-Bilds nicht selbst lesen; das prüft `digest-pruefen.sh` auf dem VPS | erledigt |
 
 ## 18. Quellen
 

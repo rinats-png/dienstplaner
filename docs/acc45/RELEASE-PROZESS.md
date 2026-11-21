@@ -60,7 +60,7 @@ weil die Zeile des Kandidaten sie nach dem Listen-PR überdeckt und ein gesperrt
 | 1 Sicherung und Restore-Probe | Sicherung außer Haus jünger als 26 h; Restore-Probe und Widerrufbuch-Probe jünger als 35 Tage; vor dem ersten Wechsel zusätzlich Probe K0–K11; die drei Statusdateien unter `docs/acc45/releases/<id>/nachweise/` ablegen (ohne Personendaten) | Betreiber | `letzte-erfolgreiche.json`, `probe-status.json`, `widerrufbuch-probe-status.json` (G6) | [BETRIEB-SICHERUNG.md](../BETRIEB-SICHERUNG.md), [PRODUKTIONSWEG](PRODUKTIONSWEG-VORBEREITUNG-2026-11-20.md) §4 |
 | 2 Bild-Digest, Liste, Freigabe | Bild aus `main` (schon vor Phase 0 gebaut); Listen-PR (Kandidat `aktiv`, voriges Bild `vorherig` oder `gesperrt`); Freigabedatei. Danach ändert HEAD seit dem Kandidaten nur diese Pfade | Claude: Listen-PR; Betreiber: Merge und Freigabedatei | G4, G7, G10 | [FREIGEGEBENE-IMAGES.md](../../deploy/FREIGEGEBENE-IMAGES.md), Produktionsweg §3.3a, §3.7 |
 | 2b Endprüfung | derselbe Aufruf mit `--nachweise docs/acc45/releases/<id>/nachweise`; **Exit 0** Pflicht (online, echte Uhr) | Claude, Betreiber | JSON im Release-PR | Abschnitt 6 |
-| 3 Deploy-Skript | erst `--trocken`, dann echt; Fehlerstrategie aus der Freigabedatei (`r0` oder `ruecksprung`) | Betreiber | `betrieb-protokoll.log` | [BEREITSTELLUNG.md](../../BEREITSTELLUNG.md) Schritt 3, `deploy/deploy.sh` |
+| 3 Deploy-Skript | erst `--trocken`, dann echt; Fehlerstrategie aus der Freigabedatei (`r0` oder `ruecksprung`; erste Auslieferung von `274bfa0`: nur `r0`, G7) | Betreiber | `betrieb-protokoll.log` | [BEREITSTELLUNG.md](../../BEREITSTELLUNG.md) Schritt 3, `deploy/deploy.sh` |
 | 4 Smoke | automatisch in `deploy.sh` (healthy, `deploy-smoke.mjs`, Log, Manifestabgleich); danach ein Abruf von außen über die Domain | `deploy.sh`, Betreiber | Ausgabe `SMOKE OK` | `deploy/deploy-smoke.mjs` |
 | 5 Live-Abnahme | Go-Kriterien G-a bis G-f innerhalb 60 min | Betreiber | Vermerk mit Uhrzeit | Produktionsweg §3.6 Phase 2 |
 | 6 Beobachtung und Rückweg | 24 h Beobachtung (`/gesund`, Alarm); Rückweg nach Entscheidungsbaum: R0, Vorwärts-Reparatur, Datenrücksprung nur bei Datenschaden | Betreiber | Protokoll, ggf. Listenzeile `gesperrt` | Produktionsweg §3.4–3.6 |
@@ -143,7 +143,9 @@ Grenzen, die das Werkzeug nicht schließt (bewusst dokumentiert):
 }
 ```
 
-- `rueckweg`: `strategie` ist Pflicht. Ohne Zeile `vorherig` sind O-1 und O-2 Pflicht (Produktionsweg §6).
+- `rueckweg`: `strategie` ist Pflicht. Ohne zulässige Zeile `vorherig` sind O-1 und O-2 Pflicht (Produktionsweg §6).
+  Eine Zeile `vorherig` auf einem Bild ohne Revisionslabel (`274bfa0`) ist kein zulässiges Ziel. Ist die Basis ein
+  solches Bild (erste Auslieferung), ist nur `strategie: "r0"` GO (G7, OF-13).
 - `migration`: nur nötig, wenn G5 betroffene Startschreibvorgänge meldet. `abgedeckt` nennt alle gemeldeten Einträge.
 - `reviewBestaetigt`: PRs, die G2 als „manuelle Bestätigung“ meldet.
 - `akzeptiertePakete`, `akzeptierteBefunde`, `akzeptierteCommits`, `freigegebeneSchalter`: nur mit Grund; jeder Eintrag einzeln.
@@ -160,7 +162,7 @@ Einzelheiten und Konfiguration: Kopf von `werkzeug/release-pruefung.mjs`, Ausgab
 | G4 | Digest vollständig; Bildangaben aktuell; Label und Provenienz = Kandidat; Freigabeliste gültig, Zeile `aktiv` mit Kandidaten-Commit |
 | G5 | keine Startschreib-Quelle (W-1…W-9, `server.mjs`) geändert oder neu, oder Betreiberfreigabe deckt alle ab |
 | G6 | Sicherung (mit `snapshot_id`), Restore-Probe, Widerrufbuch-Probe (mit `art`, `ergebnis: ok`) aktuell |
-| G7 | Rückweg dokumentiert |
+| G7 | Rückweg dokumentiert: `rueckweg.strategie` ist `r0` oder `ruecksprung`. `ruecksprung` nur mit zulässiger Zeile `vorherig` (nicht gesperrt, nicht der Kandidat) und bekannter Basis (`--basis` oder `basisCommit`). `ruecksprung` ist NO-GO, wenn die Basis oder die Zeile `vorherig` ein Bild ohne Revisionslabel ist (Konfiguration `ohneRevisionslabel`, heute `274bfa0`): Der Forced Command lässt `--ohne-label` nicht zu, und das neue Bild schreibt beim ersten Start in `data/` (OF-13, Produktionsweg §3.3). Für die erste Auslieferung von `274bfa0` ist damit nur `r0` GO, und nur mit O-1 und O-2; eine Zeile `vorherig` auf `274bfa0` ersetzt sie nicht |
 | G8 | kein unfertiges P0/P1-Paket im Paket (außer akzeptiert); jede Paket-ID in `ssotPakete` von [RELEASE-UNFERTIG.json](RELEASE-UNFERTIG.json) steht in der SSOT (sonst NO-GO); steckt ein solches Paket im Kandidaten, belegt G8 „nur hinter Schalter AUS“ (die Sperre prüft G3). Ein P2-Paket wie IMP-6 blockiert G8 nicht; die Planwirkung hält allein G3 zurück |
 | G9 | kein offener P0/P1-Befund (außer akzeptiert); REL-* sind der Release-Prozess selbst und zählen nicht |
 | G10 | Freigabedatei gültig, commitet, passend; HEAD ist auf GitHub (`origin` = `rinats-png/dienstplaner`, Zweig `main` zeigt auf HEAD), enthält den Kandidaten und ändert seitdem nur Liste und Freigabedatei (Vergleich ohne Umbenennungserkennung, `--no-renames`) |
