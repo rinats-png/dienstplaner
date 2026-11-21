@@ -42,7 +42,7 @@ export function Personalakte({ sitz, personId, ym, onClose, akt }) {
   /* A11Y-2 (Review #445): Monat der Ansicht; die Monatswerte als Text für Vorlesesoftware (nicht nur im title). */
   const mAkt = Number(ym.slice(5)) - 1;
   const nachtText = `Nachtstunden je Monat ${jahr}: ${nm.map((v, i) =>
-    `${MON[i]} ${v === null || v === undefined ? "keine Angabe" : `${n1(v)} Stunden`}`).join(", ")}; markiert: ${MON[mAkt]}`;
+    `${MON[i]} ${v === null || v === undefined ? "keine Angabe" : `${n1(v)} Stunden`}`).join(", ")}; Monat der Ansicht: ${MON[mAkt]}`;
 
   const eintragen = () => {
     setFehler(null);
