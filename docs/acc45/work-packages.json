@@ -6610,7 +6610,7 @@
       "agent": "Agent E – Business Modules & Frontend",
       "modell": "sonnet",
       "konfliktzonen": ["src/ansichten"],
-      "pr": [],
+      "pr": ["#445"],
       "nachweis": "docs/acc45/V4-IST-STAND-2026-11-20.md",
       "akzeptanz": "src/ansichten/personalakte.jsx (Arbeitstage, etwa Zeile 190–194): jeder Arbeitstag-Knopf trägt aria-pressed mit dem Zustand gewählt/frei (4.1.2); gewählt und frei sind nicht nur über die Fläche unterscheidbar, sondern über ein zusätzliches Merkmal (z. B. Haken-Icon wie bei Qualifikationen) oder über Kontrast >= 3:1 gegen frei, hell und dunkel (1.4.11; heute 1,25:1 hell, 1,47:1 dunkel); Nachtbalken: Kontrast >= 3:1 gegen die Fläche hell und dunkel oder die Monatswerte als für Tastatur, Touch und Vorlesesoftware erreichbarer Text (title allein genügt nicht; heute 2,07–2,25:1); Accessible Names der Knöpfe (Wochentag) und Fachlogik (toggleWochentag) unverändert; kein neuer Übergang (V4-2d); Tests zuerst rot: Render-/Unit-Test (aria-pressed je Zustand, Kontrast aus v4AlsAltePalette) und E2E (Klick wechselt aria-pressed, 390 und 1024 px)",
       "tests": "Unit, E2E",
