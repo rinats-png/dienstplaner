@@ -85,14 +85,22 @@ export const COMMIT_TEXT = "(Commit-Text)";
    - `%P`: Eltern im Marker, damit Merge-Funde erkannt und gegen Funde normaler
      Commits abgeglichen werden (keine Doppelmeldung).
    - Feste Präfixe und Quoting, damit Benutzer-Konfiguration (diff.noprefix,
-     diff.mnemonicPrefix, core.quotePath) das Format nicht verschiebt. */
-export const GIT_LOG_ARGS = [
+     diff.mnemonicPrefix, core.quotePath, log.showRoot) das Format oder den
+     Umfang nicht verschiebt.
+   - Octopus-Merges (mehr als zwei Eltern) liefert `--remerge-diff` ohne Diff.
+     Sie werden in einem zweiten Lauf (GIT_OCTOPUS_ARGS, First-Parent-Diff)
+     mit Marker `@@OCTOPUS` nachgereicht; fehlt das, bleibt je Octopus ein
+     offener Fund OCTOPUS_UNGEPRUEFT (fail-closed). */
+const GIT_BASIS_ARGS = [
   "-c", "core.quotePath=true", "-c", "diff.noprefix=false", "-c", "diff.mnemonicPrefix=false",
-  "-c", "log.showSignature=false", "-c", "diff.suppressBlankEmpty=false",
+  "-c", "log.showSignature=false", "-c", "diff.suppressBlankEmpty=false", "-c", "log.showRoot=true",
   "log", "-p", "--no-color", "--no-ext-diff", "--no-textconv", "-M",
-  "--src-prefix=a/", "--dst-prefix=b/", "--remerge-diff",
-  "--format=@@COMMIT %H %P", "-U0",
+  "--src-prefix=a/", "--dst-prefix=b/", "-U0",
 ];
+export const GIT_LOG_ARGS = [...GIT_BASIS_ARGS, "--remerge-diff", "--format=@@COMMIT %H %P"];
+export const GIT_OCTOPUS_ARGS = [...GIT_BASIS_ARGS, "--diff-merges=first-parent", "--no-walk=unsorted", "--stdin", "--format=@@OCTOPUS %H %P"];
+/** Regel-Name für einen Octopus-Merge, dessen Inhalt nicht geprüft wurde. */
+export const OCTOPUS_UNGEPRUEFT = "Octopus-Merge ungeprüft";
 
 /* Entschlüsselt einen Pfad aus `+++ b/<Pfad>` nach git-Quoting (quote_c_style):
    "…" mit \\ \" \a \b \t \n \v \f \r und Oktal-Bytes \ooo (UTF-8). Git hängt an
@@ -136,9 +144,15 @@ const HUNK = /^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@/;
 
    A2: Merge-Commits (mehr als ein Elternteil im Marker) liefern Funde aus dem
    Remerge-Diff. Ist dieselbe Zeile (Datei × Regel × Zeileninhalt, nur als
-   Hash gehalten) schon in einem Nicht-Merge-Commit gefunden, gilt der
-   Merge-Fund als Kopie und wird nicht doppelt gemeldet; dessen Einstufung
-   (offen oder frei) gilt bereits über den Ursprungs-Commit.
+   Hash gehalten) schon in einem Nicht-Merge-Commit gefunden UND ist das
+   Original dort offen oder ohne Commit-Bindung frei, gilt der Merge-Fund als
+   Kopie und wird nicht doppelt gemeldet. Ist das Original nur über eine
+   Freigabe MIT `commit` frei (z. B. b8e67edd), gilt diese Bindung nicht für
+   den Merge: der Merge-Fund wird mit dem Merge-SHA eingestuft (Review #453).
+
+   Octopus-Merges: siehe GIT_OCTOPUS_ARGS. Ein Octopus, der im Hauptlauf
+   (`@@COMMIT`, mehr als zwei Eltern) auftaucht, aber nie mit `@@OCTOPUS`
+   nachgereicht wird, ergibt einen offenen Fund OCTOPUS_UNGEPRUEFT.
 
    Freigaben werden JE TREFFER geprüft, bevor nach Datei × Regel
    zusammengefasst wird – so verdeckt ein freigegebener Treffer nie einen
@@ -147,13 +161,16 @@ export async function fundeSammeln(zeilen, { freigaben = FREIGABEN } = {}) {
   let commit = "-", istMerge = false, datei = null, zustand = "aussen", letzteKopf = "";
   let restAlt = 0, restNeu = 0, anzahl = 0, commits = 0, merges = 0, doppelt = 0;
   const offen = new Map(), frei = new Map();
-  const ohneMergeKennung = new Set(), mergeFunde = [];
+  /* Kennung → true, wenn ein Original offen oder ohne commit frei ist */
+  const originale = new Map(), mergeFunde = [];
+  const octopusGesehen = new Set(), octopusGeprueft = new Set();
 
   const einstufen = (t) => {
     const g = freigabeFuer(t, freigaben);
     const k = `${g?.commit ?? ""}|${t.datei}|${t.regel}`;
     const ziel = g ? frei : offen;
     if (!ziel.has(k)) ziel.set(k, g ? { ...t, grund: g.grund } : t);
+    return g;
   };
   const pruefen = (inhalt, d) => {
     if (d !== null && /package-lock\.json$/.test(d)) return;   // nur Integritätsprüfsummen
@@ -161,8 +178,8 @@ export async function fundeSammeln(zeilen, { freigaben = FREIGABEN } = {}) {
       const t = { commit, datei: d ?? DATEI_UNBEKANNT, ...f };
       const kennung = createHash("sha256").update(`${t.datei}\0${f.regel}\0${inhalt}`).digest("hex");
       if (istMerge) { mergeFunde.push({ t, kennung }); continue; }
-      ohneMergeKennung.add(kennung);
-      einstufen(t);
+      const g = einstufen(t);
+      originale.set(kennung, originale.get(kennung) === true || !g || g.commit === undefined);
     }
   };
 
@@ -182,6 +199,14 @@ export async function fundeSammeln(zeilen, { freigaben = FREIGABEN } = {}) {
       const teile = z.slice(9).trim().split(/\s+/);
       commit = teile[0] || "-"; istMerge = teile.length > 2;
       commits++; if (istMerge) merges++;
+      if (teile.length > 3) octopusGesehen.add(commit);
+      zustand = "aussen"; datei = null; letzteKopf = "";
+      continue;
+    }
+    if (z.startsWith("@@OCTOPUS ")) {
+      const teile = z.slice(10).trim().split(/\s+/);
+      commit = teile[0] || "-"; istMerge = true;
+      octopusGeprueft.add(commit);
       zustand = "aussen"; datei = null; letzteKopf = "";
       continue;
     }
@@ -210,10 +235,13 @@ export async function fundeSammeln(zeilen, { freigaben = FREIGABEN } = {}) {
   }
 
   for (const { t, kennung } of mergeFunde) {
-    if (ohneMergeKennung.has(kennung)) { doppelt++; continue; }
+    if (originale.get(kennung) === true) { doppelt++; continue; }
     einstufen(t);
   }
-  return { offen: [...offen.values()], frei: [...frei.values()], zeilen: anzahl, commits, merges, doppelt };
+  for (const o of octopusGesehen) {
+    if (!octopusGeprueft.has(o)) einstufen({ commit: o, datei: DATEI_UNBEKANNT, regel: OCTOPUS_UNGEPRUEFT, laenge: 0 });
+  }
+  return { offen: [...offen.values()], frei: [...frei.values()], zeilen: anzahl, commits, merges, doppelt, octopus: octopusGesehen.size };
 }
 
 /* Commit-Nachricht und Autor-/Committer-Felder. Eingabe: Text von
@@ -272,10 +300,27 @@ function gitFehler(kind, name) {
 
 /** Ganzer Verlauf: Diffs (inkl. Merge-Remerge-Diff) und Commit-Texte. `refs` z. B. ["--all"]. */
 export async function historieScannen({ cwd = WURZEL, refs = ["--all"], freigaben = FREIGABEN } = {}) {
-  const kind = spawn("git", [...GIT_LOG_ARGS, ...refs], { cwd });
-  const ende = gitFehler(kind, "git log -p");
-  const r = await fundeSammeln(zeilenAus(kind.stdout), { freigaben });
-  await ende;                                                  // fail-closed: git-Fehler bricht ab
+  /* Octopus-Merges vorab bestimmen (fail-closed: Fehler bricht ab) */
+  const ok = spawn("git", ["rev-list", "--min-parents=3", ...refs], { cwd });
+  const okEnde = gitFehler(ok, "git rev-list (Octopus)");
+  const okTeile = [];
+  for await (const s of ok.stdout) okTeile.push(s);
+  await okEnde;
+  const octopusShas = Buffer.concat(okTeile).toString("utf8").split("\n").map((s) => s.trim()).filter(Boolean);
+
+  async function* alleZeilen() {
+    const kind = spawn("git", [...GIT_LOG_ARGS, ...refs], { cwd });
+    const ende = gitFehler(kind, "git log -p");
+    yield* zeilenAus(kind.stdout);
+    await ende;                                                // fail-closed: git-Fehler bricht ab
+    if (octopusShas.length === 0) return;
+    const ko = spawn("git", GIT_OCTOPUS_ARGS, { cwd });
+    const koEnde = gitFehler(ko, "git log -p (Octopus)");
+    ko.stdin.end(octopusShas.join("\n") + "\n");
+    yield* zeilenAus(ko.stdout);
+    await koEnde;
+  }
+  const r = await fundeSammeln(alleZeilen(), { freigaben });
   const tk = spawn("git", [...GIT_TEXT_ARGS, ...refs], { cwd });
   const tEnde = gitFehler(tk, "git log (Commit-Text)");
   const teile = [];

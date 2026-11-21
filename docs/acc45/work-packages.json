@@ -1,10 +1,10 @@
 {
   "schema": 2,
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
-  "anzahl": 243,
+  "anzahl": 244,
   "statusZaehlung": {
     "BLOCKED": 90,
-    "READY": 17,
+    "READY": 18,
     "IN_PROGRESS": 19,
     "REVIEW": 11,
     "INTEGRATED": 103,
@@ -12,11 +12,11 @@
   },
   "jeStrang": {
     "acc45": {
-      "pakete": 119,
-      "offen": 38,
+      "pakete": 120,
+      "offen": 39,
       "restPT": {
-        "min": 61.3,
-        "max": 104.75
+        "min": 61.8,
+        "max": 106.25
       }
     },
     "wp19": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 334.25,
-    "max": 575.35
+    "min": 334.75,
+    "max": 576.85
   },
   "kritischerPfad": {
     "summe": 70,
@@ -4572,6 +4572,34 @@
       "tests": "pruefungen/workflow-haertung.test.js (Regel mit roten und grünen Proben, Stand im Repository)",
       "dateien": ".github/workflows/sicherheit.yml, .github/workflows/pruefung.yml, .github/workflows/betrieb-sicherung.yml, pruefungen/workflow-haertung.test.js, package.json",
       "notiz": "Restbefund 3 (gitleaks-Binary ohne Version) und 4 (buildx ohne version) und 5 (apt shellcheck ohne Version) bleiben offen; Deploy-Pipeline nach Betreiberfreigabe. Stand 2026-11-09: INTEGRATED nach #114."
+    },
+    {
+      "id": "SI-P10",
+      "titel": "Geheimnis-Scan: Dateien mit Binär-Diff (.gitattributes `-diff`) werden nicht inhaltlich geprüft (Review #453, H1, vorbestehend, mittel)",
+      "strang": "acc45",
+      "prio": "P2",
+      "aufwandPT": {"min":0.5,"max":1.5},
+      "abhaengigkeiten": [],
+      "status": "READY",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": "Agent Sicherheit",
+      "modell": "opus",
+      "konfliktzonen": [],
+      "pr": [],
+      "nachweis": "Opus-Sicherheitsreview #453 (Befund H1): `.gitattributes` mit `* -diff` bzw. Binärerkennung lässt Dateien als `Binary files … differ` erscheinen; werkzeug/sicherheit/geheimnisse.mjs prüft deren Inhalt nicht (ca. 560 Binär-Diffs im Verlauf).",
+      "akzeptanz": "Inhalt solcher Dateien wird geprüft: `--text` bzw. `-c diff.*`/Attribut-Übersteuerung erzwingen ODER `Binary files`-Einträge als offenen Fund `(Datei unbekannt)` melden ODER Inhalt per `git show`/`git cat-file` scannen; echte Binärdateien ohne Fehlalarm-Flut; Laufzeit gemessen; Verhalten von gitleaks (Job `geheimnisse`) für dieselben Fälle geprüft und dokumentiert; Test zuerst mit Mutationsnachweis.",
+      "tests": "pruefungen/geheimnisse-freigabe.test.js (neu: Binär-Diff-Fälle)",
+      "dateien": "werkzeug/sicherheit/geheimnisse.mjs, pruefungen/geheimnisse-freigabe.test.js, docs/acc45/SICHERHEIT-INTERN-2026-11.md",
+      "notiz": "Nur Eintrag (Koordinator 2026-11-21); nicht Teil von PR #453. Keine Änderung an .github/workflows vorgesehen."
     },
     {
       "id": "SI-P6b",

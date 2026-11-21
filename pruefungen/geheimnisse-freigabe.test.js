@@ -452,7 +452,8 @@ describe("Geheimnis-Werkzeug: Review #453 – Octopus, Wurzel-Commit, git-Fehler
   it("M13: git-Fehler → historieScannen lehnt ab; CLI endet mit Rückgabe 2 ohne Fundliste", async () => {
     const d = fs.mkdtempSync(path.join(os.tmpdir(), "geheimnis-kein-repo-"));
     try {
-      await expect(G.historieScannen({ cwd: d, refs: ["--all"] })).rejects.toThrow(/git log -p endete mit/);
+      await expect(G.historieScannen({ cwd: d, refs: ["--all"] })).rejects.toThrow(/^git .* endete mit 128/);
+      await expect(G.historieScannen({ cwd: WURZEL, refs: ["refs/heads/gibt-es-nicht-xyz"] })).rejects.toThrow(/endete mit/);
       const r = spawnSync(process.execPath, [path.join(WURZEL, "werkzeug/sicherheit/geheimnisse.mjs")], {
         cwd: d, encoding: "utf8", env: { ...process.env, GIT_DIR: path.join(d, "gibt-es-nicht") },
       });
@@ -460,6 +461,20 @@ describe("Geheimnis-Werkzeug: Review #453 – Octopus, Wurzel-Commit, git-Fehler
       expect(r.stderr).toMatch(/FEHLER: Verlauf nicht vollständig lesbar/);
       expect(r.stdout).not.toMatch(/FUND|ERGEBNIS/);
     } finally { fs.rmSync(d, { recursive: true, force: true }); }
+  }, 60000);
+
+  it("M13: nur `git log -p` scheitert (rev-list gelingt) → historieScannen lehnt trotzdem ab", async () => {
+    const { d, g, w, weg } = wegwerfRepo();
+    const env = { GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "log.date", GIT_CONFIG_VALUE_0: "kein-datumsformat" };
+    const alt = {};
+    try {
+      w("a.txt", "a\n"); g("add", "-A"); g("commit", "-qm", "a");
+      for (const [k, v] of Object.entries(env)) { alt[k] = process.env[k]; process.env[k] = v; }
+      await expect(G.historieScannen({ cwd: d, refs: ["--all"] })).rejects.toThrow(/git log -p endete mit 128/);
+    } finally {
+      for (const k of Object.keys(env)) { if (alt[k] === undefined) delete process.env[k]; else process.env[k] = alt[k]; }
+      weg();
+    }
   }, 60000);
 });
 
