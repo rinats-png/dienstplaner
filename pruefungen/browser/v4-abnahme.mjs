@@ -124,7 +124,8 @@ if (braucheApp) {
   const z = await j("/api/zugaenge", { bestand: RAUM, eintraege: [
     { rolle: "leitung", personId: "l", name: "Lena" }, { rolle: "planer", personId: "p", name: "Paul" }, { rolle: "mitarbeiter", personId: "m1", name: "Mia" }] }, bt);
   if (!z.d.zugaenge) { console.error("ABBRUCH: Zugänge konnten nicht angelegt werden."); await ende(3); }
-  codes = { leitung: z.d.zugaenge[0].code, planer: z.d.zugaenge[1].code, mitarbeiter: z.d.zugaenge[2].code };
+  /* betreiber: Betreiberkonsole (V4-3b); lokal ohne zweiten Faktor (NODE_ENV=development, Faktor nicht eingerichtet). */
+  codes = { leitung: z.d.zugaenge[0].code, planer: z.d.zugaenge[1].code, mitarbeiter: z.d.zugaenge[2].code, betreiber: e.d.zugangscode };
 }
 
 const browser = await chromium.launch();
