@@ -148,8 +148,14 @@ const HEX40 = /^[0-9a-f]{40}$/;
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
 const DATUM = /^\d{4}-\d{2}-\d{2}$/;
 const RELEASE_ID = /^[a-z0-9][a-z0-9._-]{2,63}$/;
-// eslint-disable-next-line no-control-regex -- gewollt: Steuerzeichen in Pfaden erkennen (N1)
-const STEUERZEICHEN = /[\u0000-\u001f\u007f]/;
+// Steuerzeichen in Pfaden (N1, Review #437): C0, DEL, C1 (U+0080–U+009F) und die Zeilentrenner U+2028/U+2029.
+// Die Zeilentrenner werden zur Laufzeit gebildet, damit kein rohes Zeichen im Quelltext steht.
+const ZEILENTRENNER = String.fromCharCode(0x2028, 0x2029);
+const STEUERZEICHEN = new RegExp(`[\\u0000-\\u001f\\u007f-\\u009f${ZEILENTRENNER}]`);
+const MASKIEREN = new RegExp(`[\\\\\\u0000-\\u001f\\u007f-\\u009f${ZEILENTRENNER}]`, "g");
+const KURZ = { "\n": "\\n", "\r": "\\r", "\t": "\\t", "\\": "\\\\" };
+/** Pfad für die Ausgabe: Steuerzeichen und „\“ als Escape, nie roh. */
+const maskiert = (f) => f.replace(MASKIEREN, (c) => KURZ[c] ?? "\\u" + c.charCodeAt(0).toString(16).padStart(4, "0"));
 
 const gate = (id, name) => ({ id, name, ergebnis: "GO", gruende: [], belege: [], manuell: [] });
 const nogo = (g, grund) => { g.ergebnis = "NO-GO"; g.gruende.push(grund); return g; };
@@ -923,11 +929,16 @@ export function g8Blocker(ssot, prsImKandidaten, freigabe, konfig, unfertig = nu
     for (const f of unfertig.funktionen) {
       if (!istObjekt(f) || f.ssotPakete === undefined) continue;
       if (!Array.isArray(f.ssotPakete)) { nogo(g, `${konfig.unfertigDatei}: ${f.id}: ssotPakete ist keine Liste`); continue; }
+      // Review #437 (3): ohne Variablen gibt es keinen Schalter, hinter dem der Code ruhen könnte → kein Beleg, NO-GO
+      const variablen = Array.isArray(f.variablen) ? f.variablen.filter((v) => typeof v === "string" && v) : [];
+      if (!variablen.length) { nogo(g, `${konfig.unfertigDatei}: ${f.id} nennt ssotPakete, aber keine variablen (kein Schalter)`); continue; }
       for (const id of f.ssotPakete) {
         const p = pakete.get(id);
         if (!p) { nogo(g, `${konfig.unfertigDatei}: ${f.id} nennt ${id}, das nicht in der SSOT steht (Liste veraltet)`); continue; }
         const prs = (Array.isArray(p.pr) ? p.pr : []).map(prNummer).filter((x) => imKandidat.has(x));
-        if (prs.length) g.belege.push(`${id} im Kandidaten (${prs.map((x) => "#" + x).join(", ")}): „${f.name}“ nur hinter Schalter AUS (G3: ${(f.variablen || []).join(", ")})`);
+        // Ein offenes P0/P1-Paket ist oben schon NO-GO (außer akzeptiert); dafür kein entlastender Beleg.
+        const offenBlocker = konfig.blocker.prios.includes(p.prio) && konfig.blocker.status.includes(p.status) && !akzeptiert.has(p.id);
+        if (prs.length && !offenBlocker) g.belege.push(`${id} im Kandidaten (${prs.map((x) => "#" + x).join(", ")}): „${f.name}“ nur hinter Schalter AUS (G3: ${variablen.join(", ")})`);
       }
     }
   }
@@ -1168,7 +1179,8 @@ export function basisPruefen(wurzel, basis, kandidat, konfig = KONFIG_STANDARD) 
 
 /** SHA-256 je Vorlage dieser Art im Kandidaten; nicht gelistete Dateien dieser Art als „unbekannt“. */
 export function vorlagenStandErmitteln(kq, konfig = KONFIG_STANDARD) {
-  const art = new RegExp(konfig.vorlagenArt, "i");
+  // s-Flag: „.“ trifft auch Zeilenumbrüche und -trenner (Review #437); Steuerzeichen sperrt ohnehin STEUERZEICHEN
+  const art = new RegExp(konfig.vorlagenArt, "is");
   const alle = kq.eintraege(konfig.vorlagenSuche);
   const dateiPfade = [...new Set([...kq.wurzelDateien(), ...kq.dateien(konfig.vorlagenSuche)])];
   const unbekannt = [];
@@ -1176,7 +1188,7 @@ export function vorlagenStandErmitteln(kq, konfig = KONFIG_STANDARD) {
   // ist immer NO-GO (Dateien, Verzeichnisse, Links). Das Muster vorlagenArt („.“ ohne s-Flag) erkennt etwa
   // „Dockerfile\nx“ sonst nicht als Vorlage. Ausgabe maskiert (JSON-Schreibweise), nie roh.
   for (const f of new Set([...dateiPfade, ...(Array.isArray(alle) ? alle.map((x) => x.pfad) : [])])) {
-    if (STEUERZEICHEN.test(f)) unbekannt.push(`${JSON.stringify(f).slice(1, -1)} (Steuerzeichen im Pfad, nicht zulässig)`);
+    if (STEUERZEICHEN.test(f)) unbekannt.push(`${maskiert(f)} (Steuerzeichen im Pfad, nicht zulässig)`);
   }
   const kandidaten = dateiPfade.filter((f) => !STEUERZEICHEN.test(f) && art.test(f.split("/").pop())).sort();
   const dateien = {};

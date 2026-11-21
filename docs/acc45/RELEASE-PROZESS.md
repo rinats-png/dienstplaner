@@ -83,7 +83,8 @@ Eine Datei mit falscher Struktur gilt für alle Gates als nicht vorhanden.
 unter `deploy/`) stehen als feste Liste im Werkzeug (`gebundeneVorlagen`). Ihr SHA-256 über Mode und rohe Bytes im Kandidaten-Commit
 (`sha256("100644\0" + Inhalt)`; nur reguläre Dateien 100644/100755; jeder Symlink 120000 und jedes Submodul 160000
 im Wurzelverzeichnis und unter `deploy/`, auch ein Verzeichnis-Symlink, ist NO-GO; ebenso jeder Pfad dort mit einem
-Steuerzeichen wie `\n`, `\r`, `\t` oder NUL, ob Vorlage oder nicht (N1, Delta-Check #427); Pfade werden mit `ls-tree -z` gelesen)
+Steuerzeichen wie `\n`, `\r`, `\t`, NUL, C1 (U+0080–U+009F) oder U+2028/U+2029, ob Vorlage oder nicht (N1, Delta-Check
+#427, Review #437; Ausgabe maskiert); Pfade werden mit `ls-tree -z` gelesen)
 steht in `vorlagenHashes` der Freigabedatei. Weicht ein Hash ab, fehlt ein Eintrag, steht ein Eintrag zu viel oder
 gibt es eine nicht gelistete Datei dieser Art, ist G3 NO-GO. Die Hashes liefert
 `node werkzeug/release-pruefung.mjs --vorlagen-hashes --kandidat <commit> --basis <voriger-release-commit>` — nur so

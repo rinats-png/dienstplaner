@@ -1535,6 +1535,30 @@ describe("REL-1 Nachzug: IMP-6 Planwirkung als eigene unfertige Funktion (G3, G8
     expect(g8Blocker(ssot, [436], null, KONFIG_STANDARD).ergebnis).toBe("GO");
     expect(g8Blocker(ssot, [436], null, KONFIG_STANDARD, { funktionen: [{ id: "x", variablen: [] }] }).ergebnis).toBe("GO");
   });
+  it("Review #437 (3): Beleg „hinter Schalter AUS“ nur mit Variablen; leere oder fehlende variablen → NO-GO, kein Beleg", () => {
+    const ssot = { pakete: [{ id: "IMP-6", prio: "P2", status: "IN_PROGRESS", strang: "acc45", pr: ["#436"] }] };
+    for (const variablen of [[], undefined, "X"]) {
+      const g = g8Blocker(ssot, [436], null, KONFIG_STANDARD, { funktionen: [{ id: "w", name: "Planwirkung", variablen, ssotPakete: ["IMP-6"] }] });
+      expect(g.ergebnis, JSON.stringify(variablen)).toBe("NO-GO");
+      expect(g.belege.join(), JSON.stringify(variablen)).not.toMatch(/hinter Schalter AUS/);
+    }
+  });
+  it("Review #437 (3, 4): ssotPakete mit offenem P0/P1-Paket im Kandidaten bleibt G8-NO-GO, ohne Beleg „hinter Schalter AUS“", () => {
+    const ssot = { pakete: [
+      { id: "WP-48", prio: "P0", status: "IN_PROGRESS", strang: "acc45", pr: ["#87"] },
+      { id: "WP-16c", prio: "P0", status: "REVIEW", strang: "acc45", pr: ["#223"] },
+    ] };
+    const unfertig = { funktionen: [{ id: "t", name: "Teilspeicherung", variablen: ["CENTRIC_TEILSPEICHERUNG"], ssotPakete: ["WP-48", "WP-16c"] }] };
+    const g = g8Blocker(ssot, [87, 223], null, KONFIG_STANDARD, unfertig);
+    expect(g.ergebnis).toBe("NO-GO");
+    expect(g.gruende.map((x) => x.split(" ")[0])).toEqual(["WP-48", "WP-16c"]);
+    expect(g.belege.join()).not.toMatch(/hinter Schalter AUS/);
+    // akzeptiert der Betreiber das Paket, ist es kein NO-GO mehr; dann gilt der Beleg
+    const f = { akzeptiertePakete: [{ id: "WP-48", grund: "hinter Schalter" }, { id: "WP-16c", grund: "x" }] };
+    const a = g8Blocker(ssot, [87, 223], f, KONFIG_STANDARD, unfertig);
+    expect(a.ergebnis).toBe("GO");
+    expect(a.belege.join()).toMatch(/WP-48 im Kandidaten .*hinter Schalter AUS/);
+  });
   it("G8 im Gesamtlauf liest RELEASE-UNFERTIG.json des Kandidaten", () => {
     datei("docs/acc45/RELEASE-UNFERTIG.json", { ...UNFERTIG, funktionen: [...UNFERTIG.funktionen, { id: "t", name: "T", variablen: ["X_T"], ssotPakete: ["GIBT-ES-NICHT"] }] });
     expect(gateVon(pruefe(), "G8").gruende.join()).toMatch(/GIBT-ES-NICHT/);
@@ -1591,6 +1615,46 @@ describe("REL-1 Nachzug N1 (Delta-Check #427): Pfade mit Steuerzeichen im Wurzel
       expect(u).toContain("deploy/x\\n.env");
       expect(u).toContain("deploy/t\\tab.yml");
       expect(s.unbekannt.filter((x) => /Steuerzeichen/.test(x))).toHaveLength(3);
+    } finally { rmSync(repo, { recursive: true, force: true }); }
+  }, 60_000);
+  it("Review #437 (1, 2): C1-Zeichen (U+0080–U+009F) und U+2028/U+2029 sind Steuerzeichen; Ausgabe maskiert, nie roh", () => {
+    // Zeichen zur Laufzeit gebildet (keine rohen Zeilentrenner im Quelltext)
+    const LS = String.fromCharCode(0x2028), PS = String.fromCharCode(0x2029), c = (n) => String.fromCharCode(n);
+    const roh = new RegExp("[" + c(0) + "-" + c(0x1f) + c(0x7f) + "-" + c(0x9f) + LS + PS + "]");
+    for (const p of ["Dockerfile" + LS + "x", "x" + PS + ".env", "a" + c(0x85) + "b", "a" + c(0x9b) + "b", "a" + c(0x80) + "b", "a" + c(0x9f) + "b"]) {
+      const u = vorlagenStandErmitteln(kqAus([p])).unbekannt.join();
+      expect(u, JSON.stringify(p)).toMatch(/Steuerzeichen/);
+      expect(roh.test(u), JSON.stringify(u)).toBe(false);
+    }
+    const bs = String.fromCharCode(0x5c);
+    expect(vorlagenStandErmitteln(kqAus(["Dockerfile" + LS + "x"])).unbekannt.join()).toContain("Dockerfile" + bs + "u2028x");
+    expect(vorlagenStandErmitteln(kqAus(["a" + c(0x9b) + "b"])).unbekannt.join()).toContain("a" + bs + "u009bb");
+    expect(vorlagenStandErmitteln(kqAus([], ["deploy/a" + c(0) + "b"])).unbekannt.join()).toContain("deploy/a" + bs + "u0000b");
+    expect(vorlagenStandErmitteln(kqAus(["Dockerfile" + c(10) + "x"])).unbekannt.join()).toContain("Dockerfile" + bs + "nx");
+    // vorlagenArt mit s-Flag: auch ohne Steuerzeichen-Sperre wäre Dockerfile<U+2028>x eine Vorlage dieser Art
+    expect(new RegExp(KONFIG_STANDARD.vorlagenArt, "is").test("Dockerfile" + LS + "x")).toBe(true);
+  });
+  it("Review #437 (1): echtes Git-Repo — Dockerfile<U+2028>x mit aktiver Planwirkung und deploy/compose<U+2028>.yml → unbekannt", () => {
+    const repo = mkdtempSync(join(tmpdir(), "rel1-n1b-"));
+    const g = (...args) => {
+      const r = spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false", "-c", "core.autocrlf=false", "-c", "core.protectNTFS=false", ...args], { cwd: repo, encoding: "utf8" });
+      if (r.status !== 0) throw new Error(args.join(" ") + ": " + r.stderr);
+      return r.stdout.trim();
+    };
+    try {
+      g("init", "-q");
+      writeFileSync(join(repo, ".env.example"), "NODE_ENV=production\n");
+      g("add", "-A"); g("commit", "-q", "-m", "Basis");
+      const basis = g("rev-parse", "HEAD");
+      const blob = spawnSync("git", ["hash-object", "-w", "--stdin"], { cwd: repo, input: "ENV CENTRIC_SCHICHTMODELL_WIRKUNG=true\n", encoding: "utf8" }).stdout.trim();
+      const LS = String.fromCharCode(0x2028);
+      g("update-index", "--add", "--cacheinfo", `100644,${blob},Dockerfile${LS}x`);
+      g("update-index", "--add", "--cacheinfo", `100644,${blob},deploy/compose${LS}.yml`);
+      g("commit", "-q", "-m", "Zeilentrenner");
+      const s = sammeln({ wurzel: repo, offline: false, kandidatSha: g("rev-parse", "HEAD"), basisSha: basis, releaseId: "x1y", digest: D, jetztMs: JETZT_MS, gh: () => { throw new Error("kein Netz"); } }).vorlagenStand;
+      const u = s.unbekannt.join("|");
+      expect(u).toContain("Dockerfile\\u2028x");
+      expect(u).toContain("deploy/compose\\u2028.yml");
     } finally { rmSync(repo, { recursive: true, force: true }); }
   }, 60_000);
   it("0 Fehlalarme: echte Vorlagen im Kopf-Commit des Repositorys (online, aus den Git-Objekten)", () => {
