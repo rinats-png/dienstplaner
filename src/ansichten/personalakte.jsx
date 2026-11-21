@@ -74,7 +74,7 @@ export function Personalakte({ sitz, personId, ym, onClose, akt }) {
           <div style={{ display: "flex", alignItems: "flex-end", gap: 6, height: 72 }}>
             {nm.map((v, i) => (<div key={i} style={{ flex: 1, textAlign: "center" }}>
               <div title={`${MON[i]}: ${n1Ist(v)} h`} style={{ height: Math.max(3, ((v || 0) / maxN) * 56),
-                background: i === Number(ym.slice(5)) - 1 ? C.accent : C.lineStark, borderRadius: "var(--v4-r-klein) var(--v4-r-klein) 0 0",
+                background: i === Number(ym.slice(5)) - 1 ? C.accent : C.steuer, borderRadius: "var(--v4-r-klein) var(--v4-r-klein) 0 0",
                 transition: "height .4s" }} />
               <div style={{ fontSize: 10, color: C.dimmer, marginTop: 5 }}>{MON[i].slice(0, 1)}</div></div>))}
           </div>
@@ -189,9 +189,13 @@ export function Personalakte({ sitz, personId, ym, onClose, akt }) {
                 <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
                   {DOW.map((wt, i) => {
                     const an = (p.teilzeit.wochentage || []).includes(i);
+                    /* A11Y-1: Zustand für Vorlesesoftware (aria-pressed, 4.1.2) und nicht nur über die Fläche:
+                       gewählt zeigt den Haken wie bei den Qualifikationen (1.4.1, 1.4.11). */
                     return <button key={i} onClick={() => akt.toggleWochentag(p.id, i)} className="btn btn-sm"
+                      aria-pressed={an}
                       style={{ background: an ? C.lineSoft : C.bg,
-                        color: an ? C.text : C.dimmer, fontWeight: 600, minWidth: 44 }}>{wt}</button>; })}
+                        color: an ? C.text : C.dimmer, fontWeight: 600, minWidth: 44 }}>
+                      {an && <Icon n="haken" size={13} strokeWidth={2.4} />}{wt}</button>; })}
                 </div>
               </div>)}
             {(() => { const prof = teilzeitProfil(m, p);
