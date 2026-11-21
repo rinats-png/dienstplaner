@@ -30,6 +30,7 @@ import { Aenderungsuebersicht, AENDERUNG_TEXTE } from "../src/ansichten/intellig
 import { KiEntwurf } from "../src/ansichten/intelligence/KiEntwurf.jsx";
 import { TeamAuslastungLeiste } from "../src/ansichten/teamauslastungleiste.jsx";
 import { ISTDATEN_TEXT } from "../src/istdaten.js";
+import { regelStufe, stufenIn } from "./v4-radiusstufen.mjs";
 
 const WURZEL = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (d) => readFileSync(path.join(WURZEL, d), "utf8").replace(/\r\n/g, "\n");
@@ -47,6 +48,34 @@ const GEAENDERT = [
   "src/ansichten/selbstplanung.jsx", "src/ansichten/standortespiegel.jsx", "src/ansichten/tagesdetail.jsx",
   "src/ansichten/wochenliste.jsx",
 ];
+
+/** Feste Zuordnung je Stelle (Nachtrag V4-3b in docs/acc45/V4-IST-STAND-2026-11-20.md), Quelltextreihenfolge.
+ *  alt = Radius vor V4-3b (px); kante = kleinere Kante bei Punkten/Leisten (px), sonst ohne. */
+const PLAN_ZUORDNUNG = {
+  "src/ansichten/intelligence/Aenderungsuebersicht.jsx": [{ wo: "Rahmen", alt: 8, stufe: "klein" }],
+  "src/ansichten/intelligence/KiEntwurf.jsx": [{ wo: "Rahmen", alt: 8, stufe: "klein" }],
+  "src/ansichten/teamauslastungleiste.jsx": [{ wo: "Hinweis ohne Istdaten", alt: 6, stufe: "klein" }],
+  "src/ansichten/betriebsmittel.jsx": [{ wo: "Ablage frei", alt: 14, stufe: "mittel" },
+    { wo: "Ablage Person", alt: 14, stufe: "mittel" }],
+  "src/ansichten/einsatzplan.jsx": [{ wo: "Konfliktrahmen", alt: 6, stufe: "klein" },
+    { wo: "Punkt 7×7", alt: 4, kante: 7, stufe: "pille" }],
+  "src/ansichten/ersatzliste.jsx": [{ wo: "Rangmarke 26×26", alt: 9, kante: 26, stufe: "klein" },
+    { wo: "Hinweis", alt: 14, stufe: "mittel" }],
+  "src/ansichten/jahresansicht.jsx": [{ wo: "Monatsbalken-Kasten 40×36", alt: 6, kante: 36, stufe: "klein" }],
+  "src/ansichten/monatsplan.jsx": [{ wo: "Punkt 8×8", alt: 4, kante: 8, stufe: "pille" },
+    { wo: "Leiste Höhe 3", alt: 2, kante: 3, stufe: "pille" }, { wo: "Punkt 5×5", alt: 3, kante: 5, stufe: "pille" }],
+  "src/ansichten/offeneschichten.jsx": [{ wo: "Leiste Breite 4", alt: 2, kante: 4, stufe: "pille" },
+    { wo: "Leiste Breite 4", alt: 2, kante: 4, stufe: "pille" }, { wo: "Kasten", alt: 10, stufe: "mittel" }],
+  "src/ansichten/schichtfolge.jsx": [{ wo: "Punkt 8×8", alt: 4, kante: 8, stufe: "pille" }],
+  "src/ansichten/schnellbesetzung.jsx": [{ wo: "Hinweis", alt: 12, stufe: "mittel" },
+    { wo: "Rangmarke 25×25", alt: 9, kante: 25, stufe: "klein" }],
+  "src/ansichten/selbstplanung.jsx": [{ wo: "Bedarfszelle", alt: 8, stufe: "klein" }],
+  "src/ansichten/standortespiegel.jsx": [{ wo: "Kasten", alt: 10, stufe: "mittel" }],
+  "src/ansichten/tagesdetail.jsx": [{ wo: "Feiertagsband", alt: 12, stufe: "mittel" },
+    { wo: "Reiter-Ablage", alt: 999, stufe: "pille" }, { wo: "Spalten Eingeteilt/Verfügbar", alt: 16, stufe: "gross" }],
+  "src/ansichten/wochenliste.jsx": [{ wo: "Leiste Höhe 3", alt: 2, kante: 3, stufe: "pille" },
+    { wo: "Punkt 7×7", alt: 4, kante: 7, stufe: "pille" }],
+};
 
 describe("V4-3b Plan/Dienstplan: Messung", () => {
   it("keine Datei ohne V4-Form, keine Farbliterale, Form-Literale nur die begründeten Ausnahmen", async () => {
@@ -73,6 +102,25 @@ describe("V4-3b Plan/Dienstplan: Messung", () => {
     }
     expect(gesehen).toBeGreaterThanOrEqual(26);
   }, 60000);
+
+  /* Review #440 (Befund 1): „Stufe gültig“ allein ließe eine falsche Zuordnung durch (z. B. mittel → gross). Die
+     Tabelle legt je Datei die Stufe jeder Stelle in Quelltextreihenfolge fest, mit altem Wert und Kante; die
+     Zuordnungsregel prüft die Tabelle selbst. */
+  it("feste Tabelle: jede Stelle trägt genau die Stufe der Zuordnungsregel (Review #440)", () => {
+    for (const [datei, stellen] of Object.entries(PLAN_ZUORDNUNG)) {
+      for (const s of stellen) expect(regelStufe(s.alt, s.kante), `${datei}: ${s.wo} (${s.alt})`).toBe(s.stufe);
+      expect(stufenIn(lies(datei)), datei).toEqual(stellen.map((s) => s.stufe));
+    }
+    expect(Object.keys(PLAN_ZUORDNUNG).sort()).toEqual([...GEAENDERT].sort());
+    expect(Object.values(PLAN_ZUORDNUNG).flat()).toHaveLength(26);
+  });
+
+  it("die Zuordnungsregel selbst: gleicher Wert gleiche Stufe, sonst die nächste; Pille nur ab halber Kante", () => {
+    expect([8, 12, 18, 999].map((w) => regelStufe(w))).toEqual(["klein", "mittel", "gross", "pille"]);
+    expect([5, 6, 9, 10, 14, 16].map((w) => regelStufe(w))).toEqual(["klein", "klein", "klein", "mittel", "mittel", "gross"]);
+    expect(regelStufe(4, 8)).toBe("pille");
+    expect(regelStufe(3, 7)).toBe("klein");
+  });
 
   it("die geänderten Dateien führen keinen Übergang ein (V4-2d)", () => {
     for (const d of GEAENDERT) expect(ohneKommentare(lies(d)), d).not.toMatch(/transition/i);

@@ -44,7 +44,7 @@ export function NachweisPflege({ sitz, akt, personId, qualId, onClose }) {
   return (
     <Sheet open onClose={onClose} titel={`${q.name} · ${p.vorname} ${p.nachname}`} width={520}>
       {st && st.stand === "abgelaufen" && (
-        <div style={{ padding: 14, borderRadius: 12, background: C.dangerLight, color: C.danger,
+        <div style={{ padding: 14, borderRadius: "var(--v4-r-mittel)", background: C.dangerLight, color: C.danger,
           fontSize: 13.5, marginBottom: 20, lineHeight: 1.5 }}>
           Seit {fDatum(st.ablauf)} ungültig. Solange kein neuer Nachweis vorliegt, zählt diese Qualifikation
           nicht für die Mindestbesetzung.
