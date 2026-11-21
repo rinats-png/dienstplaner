@@ -1085,21 +1085,42 @@ function quelle(wurzel, rev) {
     const lesenRoh = (rel) => { try { return readFileSync(join(wurzel, rel)); } catch { return null; } };
     // Arbeitsstand: Symlink = 120000, reguläre Datei = 100644 (das Ausführbar-Bit ist offline nicht verlässlich)
     const modus = (rel) => { try { const s = lstatSync(join(wurzel, rel)); return s.isSymbolicLink() ? "120000" : s.isFile() ? "100644" : "000000"; } catch { return null; } };
-    return { lesen, lesenRoh, modus, dateien: (wurzeln) => wurzeln.flatMap((r) => dateien(r)), gibt: (rel) => existsSync(join(wurzel, rel)), wurzelDateien };
+    const eintraege = (wurzeln) => {
+      const aus = [];
+      const gehe = (rel) => {
+        let s;
+        try { s = lstatSync(join(wurzel, rel)); } catch { return; }
+        if (s.isSymbolicLink()) { aus.push({ pfad: rel, modus: "120000" }); return; }
+        if (s.isDirectory()) { for (const f of readdirSync(join(wurzel, rel))) gehe(rel ? `${rel}/${f}` : f); return; }
+        aus.push({ pfad: rel, modus: "100644" });
+      };
+      for (const w of wurzeln) gehe(w);
+      for (const f of wurzelDateien()) aus.push({ pfad: f, modus: modus(f) });
+      return aus;
+    };
+    return { lesen, lesenRoh, modus, eintraege, dateien: (wurzeln) => wurzeln.flatMap((r) => dateien(r)), gibt: (rel) => existsSync(join(wurzel, rel)), wurzelDateien };
   }
   const lesen = (rel) => { try { return ausfuehren.exec("git", ["show", `${rev}:${rel}`], ausfuehrOptionen(wurzel, { stdio: ["ignore", "pipe", "ignore"] })); } catch { return null; } };
-  const dateien = (wurzeln) => { try { return git(wurzel, ["ls-tree", "-r", "--name-only", rev, "--", ...wurzeln]).split("\n").filter(Boolean); } catch { return []; } };
+  // ls-tree immer mit -z: Pfade kommen ungequotet (auch mit Nicht-ASCII-Zeichen), getrennt an NUL
+  const baum = (args) => git(wurzel, ["ls-tree", "-z", ...args]).split("\0").filter(Boolean);
+  const dateien = (wurzeln) => { try { return baum(["-r", "--name-only", rev, "--", ...wurzeln]); } catch { return []; } };
   const gibt = (rel) => { try { git(wurzel, ["cat-file", "-e", `${rev}:${rel}`]); return true; } catch { return false; } };
-  const wurzelDateien = () => { try { return git(wurzel, ["ls-tree", "--name-only", rev]).split("\n").filter(Boolean); } catch { return []; } };
+  const wurzelDateien = () => { try { return baum(["--name-only", rev]); } catch { return []; } };
+  const eintragLesen = (z) => { const tab = z.indexOf("\t"); return { pfad: z.slice(tab + 1), modus: z.split(" ")[0] }; };
+  // Einträge mit Mode: Wurzelverzeichnis (ohne Rekursion) und die Suchwurzeln (rekursiv; Symlinks und Submodule
+  // erscheinen als eigener Eintrag, ihr Inhalt wird nicht verfolgt)
+  const eintraege = (wurzeln) => {
+    try { return [...baum([rev]).map(eintragLesen), ...baum(["-r", rev, "--", ...wurzeln]).map(eintragLesen)]; } catch { return null; }
+  };
   // Rohe Bytes des Blobs (kein Dekodieren) und Mode aus dem Baum (100644, 100755, 120000 Symlink, 160000 Submodul …)
   const lesenRoh = (rel) => { try { return ausfuehren.exec("git", ["show", `${rev}:${rel}`], ausfuehrOptionen(wurzel, { stdio: ["ignore", "pipe", "ignore"], encoding: "buffer" })); } catch { return null; } };
   const modus = (rel) => {
     try {
-      const z = git(wurzel, ["ls-tree", rev, "--", rel]).split("\n").find((x) => x.endsWith(`\t${rel}`));
+      const z = baum([rev, "--", rel]).find((x) => x.endsWith(`\t${rel}`));
       return z ? z.split(" ")[0] : null;
     } catch { return null; }
   };
-  return { lesen, lesenRoh, modus, dateien, gibt, wurzelDateien };
+  return { lesen, lesenRoh, modus, eintraege, dateien, gibt, wurzelDateien };
 }
 
 function nachweiseAusQuelle(q, verz) {
@@ -1142,7 +1163,18 @@ export function vorlagenStandErmitteln(kq, konfig = KONFIG_STANDARD) {
     // gebunden: Mode und rohe Bytes, ohne Dekodieren
     dateien[f] = createHash("sha256").update(Buffer.concat([Buffer.from(`${modus}\0`), Buffer.from(roh)])).digest("hex");
   }
-  return { dateien, unbekannt };
+  // Jeder Symlink (120000) und jedes Submodul (160000) im Wurzelverzeichnis und unter deploy/ ist unzulässig —
+  // auch ein Verzeichnis-Symlink, der gebundene Vorlagen still verschwinden ließe.
+  const alle = kq.eintraege(konfig.vorlagenSuche);
+  if (!Array.isArray(alle)) unbekannt.push("(Baum des Kandidaten nicht lesbar)");
+  else {
+    for (const { pfad, modus } of alle) {
+      if ((modus === "120000" || modus === "160000") && !unbekannt.some((u) => u.startsWith(`${pfad} (`))) {
+        unbekannt.push(`${pfad} (Mode ${modus}, Symlink/Submodul nicht zulässig)`);
+      }
+    }
+  }
+  return { dateien, unbekannt: [...new Set(unbekannt)].sort() };
 }
 
 function nachweiseLesen(verz) {
@@ -1347,6 +1379,9 @@ function main(argv) {
       const alt = vorlagenStandErmitteln(quelle(w, bRev)).dateien;
       ausgabe.vergleichMitBasis = Object.fromEntries(Object.entries(stand.dateien).map(([f, h]) => [f, {
         basis: alt[f] ?? null, kandidat: h, status: alt[f] == null ? "neu" : alt[f] === h ? "unverändert" : "geändert" }]));
+      for (const [f, h] of Object.entries(alt)) {
+        if (!Object.hasOwn(stand.dateien, f)) ausgabe.vergleichMitBasis[f] = { basis: h, kandidat: null, status: "entfernt" };
+      }
     }
     console.log(JSON.stringify(ausgabe, null, 2));
     for (const f of stand.unbekannt) console.error(`nicht gelistete Vorlage: ${f}`);

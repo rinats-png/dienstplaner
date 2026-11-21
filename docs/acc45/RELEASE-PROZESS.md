@@ -81,12 +81,13 @@ Eine Datei mit falscher Struktur gilt für alle Gates als nicht vorhanden.
 **Vorlagenbindung (tragende Sperre, G3).** Die ausgelieferten Vorlagen (alle Dateien der Art `Dockerfile*`,
 `compose*.yml`/`docker-compose*.yml`, `*.env*`/`.env.example`, `env.*`, `*env*.beispiel` im Wurzelverzeichnis und
 unter `deploy/`) stehen als feste Liste im Werkzeug (`gebundeneVorlagen`). Ihr SHA-256 über Mode und rohe Bytes im Kandidaten-Commit
-(`sha256("100644\0" + Inhalt)`; nur reguläre Dateien 100644/100755, Symlinks 120000 und Submodule 160000 sind NO-GO)
+(`sha256("100644\0" + Inhalt)`; nur reguläre Dateien 100644/100755; jeder Symlink 120000 und jedes Submodul 160000
+im Wurzelverzeichnis und unter `deploy/`, auch ein Verzeichnis-Symlink, ist NO-GO; Pfade werden mit `ls-tree -z` gelesen)
 steht in `vorlagenHashes` der Freigabedatei. Weicht ein Hash ab, fehlt ein Eintrag, steht ein Eintrag zu viel oder
 gibt es eine nicht gelistete Datei dieser Art, ist G3 NO-GO. Die Hashes liefert
 `node werkzeug/release-pruefung.mjs --vorlagen-hashes --kandidat <commit> --basis <voriger-release-commit>` — nur so
 (online, aus den Git-Objekten) gelten sie; mit `--basis` zeigt die Ausgabe je Vorlage `geändert`/`unverändert`/`neu`,
-damit der Betreiber sieht, was er quittiert. `--offline` liest die Arbeitskopie; unter Windows mit `core.autocrlf`
+damit der Betreiber sieht, was er quittiert; eine Vorlage, die nur in der Basis steht, erscheint als `entfernt`. `--offline` liest die Arbeitskopie; unter Windows mit `core.autocrlf`
 stehen dort CRLF-Zeilenenden, deren Hashes online nie passen (fail-closed). **Regel:** Eine geänderte Vorlage oder eine
 neue Vorlagenform wird durch neue Freigabe der Hashes zugelassen (Betreiber, nach Review des Commits; G2), nicht durch
 Erweitern des Scanners. Der Grammatik-Scanner bleibt die zweite Schicht gegen versehentliche Aktivierung. In der
@@ -106,8 +107,10 @@ Grenzen, die das Werkzeug nicht schließt (bewusst dokumentiert):
 - **Betreiberentscheidungen zu bekannten Restrisiken** (nicht gebaut, bewusst offen):
   - R2: `RUN`-Anweisungen im Dockerfile sind frei. Was dort zur Bauzeit geschieht, sichern nur das Review (G2) und die
     Hash-Neufreigabe der Vorlagen. Option: G4 liest zusätzlich `config.Env` aus `docker buildx imagetools inspect` und
-    prüft die tatsächlich gesetzten Umgebungsvariablen des Bilds gegen dieselben Regeln.
-  - R3: `deploy/*.sh`, Workflows und `.dockerignore` sind weder gebunden noch gescannt.
+    prüft die tatsächlich gesetzten Umgebungsvariablen des Bilds gegen dieselben Regeln. Dazu gehört die Klasse der
+    Lader-Variablen (`LD_PRELOAD`, `LD_LIBRARY_PATH` u. a.), die wie `NODE_OPTIONS` fremden Code laden können.
+  - R3: `deploy/*.sh`, Workflows, `.dockerignore` und `.gitattributes` (kann Zeilenenden und Filter beim Auschecken
+    ändern) sind weder gebunden noch gescannt.
   - R4: Die echte `.env` auf dem VPS liegt außerhalb des Repositorys; das Werkzeug sieht sie nicht (Schlüsselnamen
     nach V-6 wären ein möglicher Zusatz).
   - R5: Review-Belege im Kandidaten sind Selbstauskunft; ohne Branch-Schutz und CODEOWNERS kann sie jeder Schreibende

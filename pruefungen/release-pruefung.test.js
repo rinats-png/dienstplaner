@@ -1422,3 +1422,60 @@ describe("Delta-Review 8 #427: Nachschärfung NODE_*", () => {
     expect(vorlageUnlesbar("ENV X=\"NODE_PATH=/tmp\"\n", "dockerfile")).not.toEqual([]);
   });
 });
+
+describe("Delta-Review 9 #427: Verzeichnis-Symlinks, Nicht-ASCII-Pfade, entfernte Vorlagen", () => {
+  let repo;
+  const g = (...args) => {
+    const r = spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false", "-c", "core.autocrlf=false", ...args], { cwd: repo, encoding: "utf8" });
+    if (r.status !== 0) throw new Error(args.join(" ") + ": " + r.stderr);
+    return r.stdout.trim();
+  };
+  const blob = (inhalt) => spawnSync("git", ["hash-object", "-w", "--stdin"], { cwd: repo, input: inhalt, encoding: "utf8" }).stdout.trim();
+  const schreib = (rel, inhalt) => { mkdirSync(join(repo, rel, ".."), { recursive: true }); writeFileSync(join(repo, rel), inhalt); };
+  const stand = (k, b) => sammeln({ wurzel: repo, offline: false, kandidatSha: k, basisSha: b, releaseId: "x1y", digest: D, jetztMs: JETZT_MS, gh: () => { throw new Error("kein Netz"); } }).vorlagenStand;
+  let basis;
+  beforeEach(() => {
+    repo = mkdtempSync(join(tmpdir(), "rel1-r9-"));
+    g("init", "-q");
+    schreib(".env.example", "NODE_ENV=production\n");
+    schreib("deploy/staging-o2/compose.yml", "services: {}\n");
+    g("add", "-A"); g("commit", "-q", "-m", "Basis");
+    basis = g("rev-parse", "HEAD");
+  }, 60_000);
+  afterEach(() => rmSync(repo, { recursive: true, force: true }));
+
+  it("B1: Verzeichnis-Symlink unter deploy/ (gebundene Vorlage verschwindet) → NO-GO", () => {
+    g("rm", "-q", "-r", "--cached", "deploy/staging-o2");
+    g("update-index", "--add", "--cacheinfo", `120000,${blob("../ops")},deploy/staging-o2`);
+    g("commit", "-q", "-m", "Verzeichnis-Symlink");
+    const s = stand(g("rev-parse", "HEAD"), basis);
+    expect(s.unbekannt.join()).toMatch(/deploy\/staging-o2 .*120000/);
+  }, 60_000);
+  it("B1: Symlink oder Submodul beliebigen Namens im Wurzelverzeichnis oder tief unter deploy/ → NO-GO", () => {
+    g("update-index", "--add", "--cacheinfo", `120000,${blob("x")},.dockerignore`);
+    g("update-index", "--add", "--cacheinfo", `160000,${"2".repeat(40)},deploy/a/b/modul`);
+    g("commit", "-q", "-m", "Links");
+    const u = stand(g("rev-parse", "HEAD"), basis).unbekannt.join();
+    expect(u).toMatch(/\.dockerignore .*120000/);
+    expect(u).toMatch(/deploy\/a\/b\/modul .*160000/);
+  }, 60_000);
+  it("B3: Pfade mit Nicht-ASCII-Zeichen werden erkannt (ls-tree -z)", () => {
+    schreib("Dockerfile.ü", "FROM x\n");
+    schreib("deploy/compose.ü.yml", "services: {}\n");
+    g("add", "-A"); g("commit", "-q", "-m", "Umlaute");
+    const u = stand(g("rev-parse", "HEAD"), basis).unbekannt.join();
+    expect(u).toMatch(/Dockerfile\.ü/);
+    expect(u).toMatch(/deploy\/compose\.ü\.yml/);
+  }, 60_000);
+  it("B2: der Vergleich mit der Basis zeigt entfernte Vorlagen", () => {
+    g("rm", "-q", "deploy/staging-o2/compose.yml");
+    g("commit", "-q", "-m", "entfernt");
+    const k = g("rev-parse", "HEAD");
+    const r = spawnSync(process.execPath, [WERKZEUG, "--wurzel", repo, "--vorlagen-hashes", "--kandidat", k, "--basis", basis], { encoding: "utf8" });
+    expect(r.status, r.stderr).toBe(0);
+    const j = JSON.parse(r.stdout);
+    expect(j.vergleichMitBasis["deploy/staging-o2/compose.yml"].status).toBe("entfernt");
+    expect(j.vergleichMitBasis["deploy/staging-o2/compose.yml"].kandidat).toBe(null);
+    expect(j.vorlagenHashes["deploy/staging-o2/compose.yml"]).toBeUndefined();
+  }, 60_000);
+});
