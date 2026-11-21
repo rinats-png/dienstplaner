@@ -1,7 +1,7 @@
 /* A11Y-2 (Review #445): Nachtbalken der Personalakte im Browser
    (docs/acc45/work-packages.json, A11Y-2; Render- und Kontrastprüfung in pruefungen/v4-3b-personal.test.js).
    Geprüft bei 390 px und 1024 px:
-     - getByRole("img") mit Accessible Name: Jahr, alle zwölf Monate mit Stunden, markierter Monat (1.3.1, 4.1.2);
+     - getByRole("img") mit Accessible Name: Jahr, alle zwölf Monate mit Stunden, am Ende „Monat der Ansicht: …“ (1.3.1, 4.1.2);
      - genau eine solche Grafik; die zwölf Spalten sind für Vorlesesoftware ausgeblendet (keine doppelte Ansage);
      - der markierte Monat ist ohne Farbe erkennbar: sein Buchstabe ist fett (>= 700) und unterstrichen (computed
        style), die übrigen nicht (1.4.1);
@@ -37,7 +37,7 @@ test.describe("A11Y-2: Nachtbalken mit Text und Marker ohne Farbe", () => {
       await expect(grafik).toBeVisible();
       const name = await grafik.getAttribute("aria-label");
       for (const mo of MON) expect(name, `${breite.width} px: ${mo}`).toMatch(new RegExp(`${mo} (\\d+(,\\d)? Stunden|keine Angabe)`));
-      const markiert = (name.match(/markiert: (\S+?)\.?$/) || [])[1];
+      const markiert = (name.match(/; Monat der Ansicht: (\S+?)\.?$/) || [])[1];
       expect(MON, `${breite.width} px: markierter Monat im Namen`).toContain(markiert);
 
       /* Spalten ausgeblendet: in der Grafik keine weiteren benannten Elemente; zwölf Spalten aria-hidden. */
