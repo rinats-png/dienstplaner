@@ -450,6 +450,26 @@ describe.skipIf(!BASH)("deploy/inventur-install.sh — Vorabprüfungen (Abbruch 
     schreiben(path.join(w, "etc/ssh/extra/a.conf"), "\tMATCH Group docker\n");
     fall("etc/ssh/sshd_config", "Include extra/*.conf\n");
   }, 300000);
+  it("Match und Include in Schreibweisen, die sshd auch annimmt (Anführungszeichen, „=“) → Abbruch (Delta-Review A-1)", () => {
+    const fall = (rel, text) => {
+      const f = path.join(w, rel);
+      const alt = existsSync(f) ? readFileSync(f, "utf8") : null;
+      schreiben(f, (alt ?? "") + text);
+      const vorher = abbild();
+      erwarteAbbruch(lauf(), /Match|Include/);
+      expect(abbild()).toEqual(vorher);
+      if (alt == null) rmSync(f); else writeFileSync(f, alt);
+    };
+    fall("etc/ssh/sshd_config.d/60-x.conf", '"Match" User admin\n  AcceptEnv *\n');
+    fall("etc/ssh/sshd_config.d/60-x.conf", "Match=User admin\n");
+    fall("etc/ssh/sshd_config.d/60-x.conf", "  match = Address 10.0.0.0/8\n");
+    schreiben(path.join(w, "etc/ssh/extra/a.conf"), "Match User admin\n");
+    fall("etc/ssh/sshd_config", 'Include "/etc/ssh/extra/a.conf"\n');
+    fall("etc/ssh/sshd_config", "Include=/etc/ssh/extra/a.conf\n");
+    fall("etc/ssh/sshd_config", '"Include" extra/*.conf\n');
+    /* Pfad mit Leerzeichen in Anführungszeichen: nicht verfolgbar → fail-closed */
+    fall("etc/ssh/sshd_config", 'Include "/etc/ssh/mit leer/x.conf"\n');
+  }, 600000);
   it("sshd -T -C (Verbindungsdaten) weicht ab: permituserenvironment yes / acceptenv * → Abbruch (B-2)", () => {
     const c = path.join(tmp, "sshd-T-C.txt");
     negativ(() => schreiben(c, SSHD_T_STANDARD.replace("permituserenvironment no", "permituserenvironment yes") + "\n"), /permituserenvironment/, [], { PRUEF_SSHD_T_C: p(c) });
@@ -683,6 +703,21 @@ describe.skipIf(!BASH)("Mutationsnachweis: ohne die Prüfung wird der Negativfal
       vorbereiten: () => schreiben(path.join(w, "etc/ssh/sshd_config.d/60-x.conf"), "Match User admin\n  PermitUserEnvironment yes\n"),
     },
     {
+      name: "Match in Anführungszeichen (Delta A-1)",
+      anker: `grep -qiE '^[[:space:]]*"?match"?([[:space:]]|=|$)'`,
+      ersatz: `grep -qiE '^[[:space:]]*match([[:space:]]|$)'`,
+      vorbereiten: () => schreiben(path.join(w, "etc/ssh/sshd_config.d/60-x.conf"), '"Match" User admin\n  PermitUserEnvironment yes\n'),
+    },
+    {
+      name: "Include mit „=“ (Delta A-1)",
+      anker: 'match(l, /^"?[Ii][Nn][Cc][Ll][Uu][Dd][Ee]"?([ \\t]*=[ \\t]*|[ \\t]+)/)',
+      ersatz: 'match(l, /^[Ii][Nn][Cc][Ll][Uu][Dd][Ee][ \\t]+/)',
+      vorbereiten: () => {
+        schreiben(path.join(w, "etc/ssh/extra/a.conf"), "Match User admin\n");
+        writeFileSync(path.join(w, "etc/ssh/sshd_config"), readFileSync(path.join(w, "etc/ssh/sshd_config"), "utf8") + "Include=/etc/ssh/extra/a.conf\n");
+      },
+    },
+    {
       name: "sshd -T -C mit Verbindungsdaten (B-2)",
       anker: 'for ctx in "" "user=$KONTO,host=localhost,addr=127.0.0.1" "user=$KONTO,host=localhost,addr=192.0.2.1"; do',
       ersatz: 'for ctx in ""; do',
@@ -769,6 +804,17 @@ describe("Quelltext-Wächter deploy/inventur-install.sh", () => {
     expect(doku).toMatch(/E-a/);
     expect(doku).toMatch(/E-b/);
     expect(doku).toMatch(/Kurz-SHA/);
+    /* Delta-Review #447: A-2 (vorbereitet, nicht aktiviert, Vorrang Konsolen-Inventur), A-3 (Begründung zum einzelnen &) */
+    const abschnitt = doku.slice(doku.indexOf("## Einrichtung mit einem Befehl"), doku.indexOf("## 3. Installation Phase 1"));
+    expect(abschnitt).toMatch(/vorbereitet, nicht aktiviert/);
+    expect(abschnitt).toContain("INVENTUR-KONSOLE.md");
+    expect(abschnitt).not.toMatch(/Deshalb ist\s+Eingabe 1 immer `--trocken`/);
+    expect(abschnitt).toMatch(/Prüfen Sie vor `Enter`\s+jedes `&&`/);
+    const anleitung = readFileSync(path.join(WURZEL, "docs", "acc45", "BETREIBER-ANLEITUNG-ERSTRELEASE.md"), "utf8");
+    const a41 = anleitung.slice(anleitung.indexOf("### 4.1"), anleitung.indexOf("### 4.2"));
+    expect(a41).toMatch(/vorbereitet, nicht aktiviert/);
+    expect(a41).toContain("INVENTUR-KONSOLE.md");
+    expect(a41).toMatch(/Arbeitsrechner/);
   });
 
   it("keine öffentliche Schlüsseldatei mit erfundenem Inhalt im Repository", () => {

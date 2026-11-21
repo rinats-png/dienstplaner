@@ -85,6 +85,13 @@ Claude startet nie einen Deploy-Workflow und greift nie auf den VPS zu ([RELEASE
 
 ### 4.1 Lesenden Zugang einrichten
 
+> **Stand: vorbereitet, nicht aktiviert.** Der SSH-Zugang mit REL-0-Installer ist Vorrat (BE-3). Ohne eingetragenen
+> öffentlichen Schlüssel bricht der Installer immer ab. **Vorrang hat die Konsolen-Inventur** nach
+> [INVENTUR-KONSOLE.md](INVENTUR-KONSOLE.md) (#449, bereits gemergt; BE-1). Dieser Abschnitt setzt Abschnitt 0 von
+> VPS-ZUGANG voraus (Schlüssel an einem Arbeitsrechner); der Betreiber hat derzeit **keinen Arbeitsrechner**. Der
+> 12-stellige Commit-Präfix ist bewusst akzeptiert (BE-2). Ausführung auf dem VPS erst nach Schlüssel-Commit, neuem
+> Delta-Review, CI auf dem exakten Kopf und Sollwert über einen zweiten Kanal; dann `--trocken` zuerst.
+
 - **Ziel / Gate:** REL-0. Ein Zugang, der nur das Lese-Skript `deploy/inventur.sh` ausführt.
 - **Handlung:** [VPS-ZUGANG-EINRICHTUNG.md](VPS-ZUGANG-EINRICHTUNG.md) in dieser Reihenfolge:
   Abschnitt 0 (0a–0d, Arbeitsrechner; die Zeile aus 0d an Claude geben, Claude trägt sie als

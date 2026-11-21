@@ -706,15 +706,30 @@ pruefe_match() {
     gesehen+="$f "
     if [[ ! -f "$f" || ! -r "$f" ]]; then fehl "sshd-Konfigurationsdatei ${f#"$W"} nicht lesbar"; continue; fi
     SSHD_DATEIEN+=("${f#"$W"}")
-    if grep -qiE '^[[:space:]]*match([[:space:]]|$)' -- "$f"; then match+=" ${f#"$W"}"; fi
+    # sshd nimmt das Schlüsselwort auch in Anführungszeichen und mit „=“ an
+    # („"Match" User x“, „Match=User x“); beides wird erkannt.
+    if grep -qiE '^[[:space:]]*"?match"?([[:space:]]|=|$)' -- "$f"; then match+=" ${f#"$W"}"; fi
     while IFS= read -r pat; do
       [[ -n "$pat" ]] || continue
+      if [[ "$pat" == __LEERZEICHEN__ ]]; then
+        fehl "Include mit Leerzeichen im Pfad in ${f#"$W"}; nicht verfolgbar"
+        continue
+      fi
       [[ "$pat" == /* ]] || pat="/etc/ssh/$pat"
       # nur Pfadnamen-Erweiterung (kein eval); Muster stammen aus der root-eigenen sshd-Konfiguration
       # shellcheck disable=SC2206
       local -a treffer_glob=($W$pat)
       for g in "${treffer_glob[@]}"; do warteschlange+=("$g"); done
-    done < <(awk 'tolower($1) == "include" { for (n = 2; n <= NF; n++) print $n }' "$f")
+    done < <(awk '{
+      # Include auch als „"Include" …“ und „Include=…“; Argumente ohne Anführungszeichen.
+      # Ein Pfad mit Leerzeichen in Anführungszeichen ist nicht verfolgbar: Marke, fail-closed.
+      l = $0; sub(/^[ \t]+/, "", l)
+      if (!match(l, /^"?[Ii][Nn][Cc][Ll][Uu][Dd][Ee]"?([ \t]*=[ \t]*|[ \t]+)/)) next
+      r = substr(l, RLENGTH + 1)
+      if (r ~ /"[^"]*[ \t][^"]*"/) { print "__LEERZEICHEN__"; next }
+      n = split(r, t, /[ \t]+/)
+      for (i = 1; i <= n; i++) { a = t[i]; gsub(/"/, "", a); if (a != "") print a }
+    }' "$f")
   done
   shopt -u nullglob
   if ((i >= 100)); then fehl "zu viele sshd-Konfigurationsdateien (Include-Schleife?)"; return; fi
@@ -741,7 +756,7 @@ sshd_regeln() {
       *) treffer+=" ${w//[^A-Za-z0-9_*?!.-]/?}" ;;
     esac
   done < <(sshd_woerter acceptenv)
-  if [[ -z "$treffer" ]]; then ok "sshd acceptenv nur LANG/LC_* ($k)"; else fehl "sshd: acceptenv erlaubt mehr als LANG und LC_* ($treffer ) ($k)"; fi
+  if [[ -z "$treffer" ]]; then ok "sshd acceptenv nur LANG/LC_* und COLORTERM/NO_COLOR (E-a) ($k)"; else fehl "sshd: acceptenv erlaubt mehr als LANG, LC_*, COLORTERM, NO_COLOR ($treffer ) ($k)"; fi
   if [[ -n "$KONTO" ]]; then
     if [[ -n "$(sshd_wert allowusers)" ]]; then
       if grep -qxF -- "$KONTO" <<<"$(sshd_woerter allowusers)"; then ok "sshd allowusers schließt $KONTO ein"; else fehl "sshd: allowusers schließt $KONTO nicht ein"; fi
@@ -1005,8 +1020,12 @@ zuruecknehmen() {
         printf '  FEHLER  Kürzen von authorized_keys gescheitert oder Prüfsumme danach abweichend\n'
         erfolg=1
       fi
+    elif [[ ! -L "$AK" && "$(head -c "$VORHER_BYTES" -- "$AK" | sha_ein)" == "$VORHER_SHA" ]]; then
+      # Altzeilen unverändert, Anhang unvollständig oder fremd (z. B. Datenträger voll beim Schreiben)
+      printf '  FEHLER  Anhängen an authorized_keys unvollständig (Datenträger voll?); Altzeilen unverändert, Rest nicht automatisch entfernt\n'
+      erfolg=1
     else
-      printf '  FEHLER  authorized_keys wurde zwischenzeitlich verändert; Zeile nicht automatisch entfernt\n'
+      printf '  FEHLER  authorized_keys wurde zwischenzeitlich verändert (Link oder Altzeilen); Zeile nicht automatisch entfernt\n'
       erfolg=1
     fi
   fi
@@ -1029,6 +1048,7 @@ zuruecknehmen() {
         SKRIPT_ANGELEGT=nein
       fi
     else
+      printf '  FEHLER  %s weicht vom installierten Skript ab oder ist ein Link; nicht automatisch entfernt\n' "$ZIEL_LOGISCH"
       erfolg=1
     fi
   fi

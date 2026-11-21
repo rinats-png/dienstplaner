@@ -243,6 +243,14 @@ command="/usr/local/sbin/centric-inventur.sh",restrict,no-pty,no-port-forwarding
 
 ## Einrichtung mit einem Befehl (REL-0-Installer)
 
+> **Stand: vorbereitet, nicht aktiviert.** Der Installer bricht ohne eingetragenen öffentlichen Schlüssel immer ab
+> (fail-closed). **Vorrang hat die Konsolen-Inventur** nach [INVENTUR-KONSOLE.md](INVENTUR-KONSOLE.md) (#449, bereits
+> gemergt). Dieser Weg setzt Abschnitt 0 voraus (Schlüssel an einem Arbeitsrechner erzeugen); der Betreiber hat derzeit
+> keinen Arbeitsrechner. Entscheidungen des Koordinators: BE-1 Konsolenweg hat Vorrang; BE-2 12-stelliger
+> Commit-Präfix bewusst akzeptiert; BE-3 #447 wird als Vorrat gemergt (vorbereitet, nicht aktiviert). Eine Ausführung
+> auf dem VPS braucht: Schlüssel-Commit, neues Delta-Review, CI auf dem exakten Kopf, Sollwert über einen zweiten
+> Kanal, `--trocken` zuerst.
+
 Dieser Weg **ersetzt die Schritte 3a bis 3e**. Der Weg von Hand in Abschnitt 3 bleibt als Alternative. Abschnitt 0
 (Schlüssel am Arbeitsrechner), Abschnitt 1 (Bestandsaufnahme), Abschnitt 4 (Nachprüfung, Negativproben N-1 bis N-11)
 und Abschnitt 6 (Widerruf) gelten unverändert.
@@ -325,8 +333,10 @@ cd /root && [[ $(sha256sum rel0) == "<installer-sha256>  rel0" ]] && bash rel0
 - `rm -f rel0` am Anfang: Eine alte Datei aus einem früheren Versuch kann so nie ungeprüft weiterverwendet werden.
 - Die Zeilen haben keine Pipe, keine Umlenkung und kein Semikolon. Die meisten Tippfehler (in Adresse, Prüfsumme,
   `[[`, `$(`, `"`) führen zu einem Fehler. **Grenze:** Wird aus `&&` ein einzelnes `&`, läuft der Teil davor im
-  Hintergrund und `bash rel0 …` startet sofort, also **ohne** abgeschlossenen Prüfsummenvergleich. Deshalb ist
-  Eingabe 1 immer `--trocken` (ändert nichts), und die alte Datei wird vorher gelöscht. Prüfen Sie vor `Enter`
+  Hintergrund und `bash rel0 …` startet sofort, also **ohne** abgeschlossenen Prüfsummenvergleich. Eine Option wie
+  `--trocken` schützt dann nicht: Eine ungeprüfte Datei könnte jede Option ignorieren. Es schützen nur zwei Dinge:
+  `rm -f rel0` am Anfang (beim sofortigen Start fehlt die Datei meist noch, `bash` bricht ab) und die feste
+  Commit-Quelle (eine fertig geladene Datei stammt aus genau diesem Commit). Prüfen Sie vor `Enter`
   jedes `&&`.
 - Hex-Zeichen (`0-9`, `a-f`) sind auf deutscher und US-Tastaturbelegung gleich.
 - **Kurz-SHA (12 Zeichen) statt 40:** weniger Tippaufwand. Risiko: Ein Branch oder Tag mit genau diesem Namen könnte
@@ -336,7 +346,7 @@ cd /root && [[ $(sha256sum rel0) == "<installer-sha256>  rel0" ]] && bash rel0
 **Soll-Prüfsumme des Installers im aktuellen Stand** (die Prüfung `pruefungen/inventur-install.test.js` stellt sicher,
 dass sie zur Datei passt; sie ändert sich mit dem Schlüssel-Commit):
 
-- **SHA-256 von deploy/inventur-install.sh: `e7f9b270b84b231271b1ceacb0a866a52a8817a312d6f02e62d7beb670527310`**
+- **SHA-256 von deploy/inventur-install.sh: `11fcd584bfe603c754e07b017c1a622c5e517a2f186922e5f4d16587b8084410`**
   (noch ohne Schlüssel — dieser Stand bricht fail-closed ab)
 
 ### Erwartete Ausgabe
