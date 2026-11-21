@@ -70,7 +70,7 @@ export function Monatsabschluss({ sitz, ym, akt }) {
             : " Der Monat ist abgeschlossen — berichtigen nur über Wiederöffnen und erneuten Abschluss.")
           : ""}</div>}
       {trotz && zu && !exportiert && (
-        <div style={{ marginTop: 8, padding: "10px 12px", border: `1px solid ${C.warn}`, borderRadius: 6 }}>
+        <div style={{ marginTop: 8, padding: "10px 12px", border: `1px solid ${C.warn}`, borderRadius: "var(--v4-r-klein)" }}>
           <div style={{ fontSize: 12.5, color: C.warn, whiteSpace: "pre-line", lineHeight: 1.45 }}>{rueckfrage ? rueckfrage.text : ""}</div>
           <div style={{ fontSize: 12.5, color: C.dim, marginTop: 4 }}>Bestätigen nur ausdrücklich: Kategorie wählen und begründen (steht im Verlauf).</div>
           <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
