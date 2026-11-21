@@ -972,6 +972,31 @@
           "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
         }
       }
+    },
+    "Import": {
+      "basis": "5f1dc861166eba68a64848d36abea4f0376b83fe",
+      "dateien": {
+        "src/ansichten/import-datei.jsx": {
+          "sha256": "fecb7416f75d35e64cc86085f6905e8f99f55ae68142c6b9b21d4c5cc29447ec",
+          "literale": [
+            {
+              "wert": "8",
+              "kontext": "{{ padding: \"10px 14px\", borderRadius: 8, marginBottom: 14, fontSize: 13.5,\n    background: \"rgba(179,38,30,.10)\", color: C.danger }}"
+            }
+          ],
+          "literaleSha256": "c935d4f738d28812b49c33babe1c99defd982fa814d95d87f9e1abd4e0dc9770"
+        },
+        "src/ansichten/import.jsx": {
+          "sha256": "7b8a6e2f72f76aac6e0d7de0bc9a45cb35c773d760257866c90a1c681bb5d498",
+          "literale": [
+            {
+              "wert": "10",
+              "kontext": "{{ width: 20, height: 20, borderRadius: 10, display: \"flex\", alignItems: \"center\",\n                    justifyContent: \"center\", fontSize: 11, fontWeight: 700,\n                    background: z.ok ? \"rgba(46,107,79,.14)\" : \"rgba(179,38,30,.12)\",\n                    color: z.ok ? C.ok : C.danger }}"
+            }
+          ],
+          "literaleSha256": "6376999dc5bec7d85affdee9df59981598a80319cd8cddf894f98d6f3649c551"
+        }
+      }
     }
   }
 }

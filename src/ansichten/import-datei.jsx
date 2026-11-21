@@ -22,7 +22,7 @@ const zelle = { padding: "9px 14px", borderBottom: `1px solid ${C.lineSoft}`, fo
 
 function Meldung({ z }) {
   if (!z.fehler) return null;
-  return <div role="alert" style={{ padding: "10px 14px", borderRadius: 8, marginBottom: 14, fontSize: 13.5,
+  return <div role="alert" style={{ padding: "10px 14px", borderRadius: "var(--v4-r-klein)", marginBottom: 14, fontSize: 13.5,
     background: "rgba(179,38,30,.10)", color: C.danger }}>{z.fehler}</div>;
 }
 

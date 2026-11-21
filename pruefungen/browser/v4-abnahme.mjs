@@ -30,6 +30,8 @@
      BILDER_ALLE=1     von jeder Ansicht ein Bild
      ROLLEN=leitung,mitarbeiter   BREITEN_REFLOW=320   THEMEN=light,dark
      NUR=<Text>        nur Ansichten, deren Name den Text enthält (reflow, ziele)
+     IMPORT_BLATT=1    in der Ansicht Personal zusätzlich das Blatt „Personal importieren“
+                       (Eingabe, Vorschau; ohne Übernahme) messen (V4-3b Import)
    Browser: vorinstalliertes Playwright (playwright-core, playwright im Projekt
    oder global); chromium.launch() ohne Optionen. Es wird nichts installiert.
    Exit 0: keine Befunde · 1: Befunde · 2: Aufruf oder Umgebung · 3: Aufbau gescheitert
@@ -220,6 +222,67 @@ const MESSEN = () => {
   return { quer, taeter, ziele, breite: innerWidth, gesamt: dok.scrollWidth };
 };
 
+/* V4-3b Import (IMPORT_BLATT=1): Das Blatt „Personal importieren“ ist keine Ansicht der Navigation. In der Ansicht
+   Personal öffnet das Skript es über „Importieren“ und misst drei Zustände wie eine Ansicht (Reflow, Zielgröße, Bild):
+   Eingabe, Vorschau mit dem Beispiel, Vorschau mit „mit anlegen“ (nur ein Haken in der Vorschau; es wird nichts
+   übernommen). Dazu Fokus im Blatt per Tab (2.4.7/2.4.11). „Abbrechen“ schließt ohne Übernahme. */
+async function importBlatt(p, ansicht, k) {
+  const knopf = p.locator("main button:visible", { hasText: /^Importieren$/ }).first();
+  if (!(await knopf.count())) { hinweis("import-blatt", `${ansicht}: kein Knopf „Importieren“ (Rolle ohne staff.edit?)`); return; }
+  await knopf.click({ timeout: 4000 }).catch(() => melde("klick", `${ansicht}: Importieren scheitert`));
+  const blatt = p.locator('[role=dialog][aria-label="Personal importieren"]');
+  if (!(await blatt.waitFor({ state: "visible", timeout: 5000 }).then(() => true).catch(() => false))) { melde("import-blatt", `${ansicht}: Blatt öffnet nicht`); return; }
+  const messe = async (zustand) => {
+    const name = `${ansicht}/Import ${zustand}`;
+    await p.waitForTimeout(400);
+    geprueft++;
+    const m = await p.evaluate(MESSEN);
+    let schlecht = false;
+    if (k.reflow && !reflowOk(m.gesamt, m.breite)) { schlecht = true; melde("reflow", `${name}: Seite ${m.gesamt - m.breite}px breiter als ${m.breite}px — ${m.taeter}`); }
+    if (k.ziele) {
+      const z = zielgroessenBefunde(m.ziele, 24);
+      if (z.length) { schlecht = true; melde("zielgroesse", `${name}: ${z.length} Ziele unter 24 px ohne Abstandsausnahme (z. B. ${z.slice(0, 3).map((x) => `${x.id} ${Math.round(x.w)}x${Math.round(x.h)}`).join("; ")})`); }
+    }
+    const punkte = await p.evaluate(() => [...document.querySelectorAll("[role=dialog] td > span")].filter((e) => e.style.width === "20px").length);
+    if (!schlecht) beleg("import-blatt", `${name}: Reflow${k.ziele ? " und Zielgröße" : ""} ohne Befund${punkte ? `, ${punkte} Prüfpunkte` : ""}`);
+    /* Bild mit den Prüfpunkten im Fenster (sie stehen unter der Spaltenzuordnung). */
+    if (punkte) await p.evaluate(() => [...document.querySelectorAll("[role=dialog] td > span")].find((e) => e.style.width === "20px").scrollIntoView({ block: "center" }));
+    if (schlecht || process.env.BILDER_ALLE) await bild(p, name);
+  };
+  await messe("Eingabe");
+  await blatt.getByRole("button", { name: "Beispiel einfügen" }).click({ timeout: 4000 }).catch(() => melde("klick", `${ansicht}: Beispiel einfügen scheitert`));
+  await blatt.getByRole("button", { name: "Prüfen", exact: true }).click({ timeout: 4000 }).catch(() => melde("klick", `${ansicht}: Prüfen scheitert`));
+  await messe("Vorschau");
+  const haken = blatt.getByRole("checkbox", { name: /mit anlegen/ });
+  if (await haken.count()) { await haken.check({ timeout: 4000 }).catch(() => melde("klick", `${ansicht}: Haken mit anlegen scheitert`)); await messe("Vorschau mit anlegen"); }
+  /* Fokus im Blatt: Tab bleibt im Blatt, jeder Stopp sichtbar und nicht verdeckt. */
+  let n = 0, ohneRing = 0, verdeckt = 0, draussen = 0;
+  for (let i = 0; i < 12; i++) {
+    await p.keyboard.press("Tab");
+    await p.waitForTimeout(120);
+    const f = await p.evaluate(() => {
+      const e = document.activeElement;
+      if (!e || e === document.body) return null;
+      const cs = getComputedStyle(e), r = e.getBoundingClientRect();
+      const treffer = [[r.left + r.width / 2, r.top + r.height / 2], [r.left + 2, r.top + 2], [r.right - 2, r.bottom - 2]]
+        .filter(([x, y]) => x >= 0 && y >= 0 && x < innerWidth && y < innerHeight)
+        .map(([x, y]) => { const h = document.elementFromPoint(x, y); return { frei: !h || h === e || e.contains(h) || h.contains(e) }; });
+      return { imBlatt: !!e.closest("[role=dialog]"), stil: { outlineStyle: cs.outlineStyle, outlineWidth: cs.outlineWidth, outlineColor: cs.outlineColor, boxShadow: cs.boxShadow },
+        treffer, draussen: r.bottom < 0 || r.top > innerHeight || r.right < 0 || r.left > innerWidth };
+    });
+    if (!f) continue;
+    n++;
+    if (!f.imBlatt) { melde("fokus", `${ansicht}/Import: Tab verlässt das Blatt`); break; }
+    if (!fokusSichtbar(f.stil)) ohneRing++;
+    if (f.draussen) draussen++; else if (!fokusNichtVerdeckt(f.treffer)) verdeckt++;
+  }
+  geprueft++;
+  if (ohneRing || verdeckt) melde("fokus", `${ansicht}/Import: ${ohneRing} ohne Ring, ${verdeckt} verdeckt von ${n} Stopps`);
+  else beleg("fokus", `${ansicht}/Import: ${n} Tab-Stopps im Blatt, Fokus sichtbar, nichts verdeckt${draussen ? ` (${draussen} außerhalb des Fensters, rollt beim Weiter-Tabben)` : ""}`);
+  await blatt.getByRole("button", { name: "Abbrechen" }).click({ timeout: 4000 }).catch(() => melde("klick", `${ansicht}: Abbrechen scheitert`));
+  await blatt.waitFor({ state: "hidden", timeout: 5000 }).catch(() => melde("import-blatt", `${ansicht}: Blatt schließt nicht`));
+}
+
 /* ===================================================== 1 + 2  Reflow, Zielgröße */
 if (KRITERIEN.includes("reflow") || KRITERIEN.includes("ziele")) {
   const konfig = [];
@@ -242,6 +305,7 @@ if (KRITERIEN.includes("reflow") || KRITERIEN.includes("ziele")) {
         if (z.length) { schlecht = true; melde("zielgroesse", `${name}: ${z.length} Ziele unter 24 px ohne Abstandsausnahme (z. B. ${z.slice(0, 3).map((x) => `${x.id} ${Math.round(x.w)}x${Math.round(x.h)}`).join("; ")})`); }
       }
       if (schlecht || process.env.BILDER_ALLE) await bild(p, `${name}`);
+      if (process.env.IMPORT_BLATT && /Personal$/.test(name)) await importBlatt(p, name, k);
     });
     for (const f of fehler) melde("konsole", `${marke}: ${f}`);
     if (ansichten === 0) melde("keine-ansicht", `${marke}: keine Ansicht erreicht`);
