@@ -113,12 +113,12 @@ export function Ablaufdiagramm({ sitz, gehZu, kompakt }) {
                 `${st.titel} — ${st.ok ? "erledigt" : "offen"}`)}
                 aria-expanded={offen === st.id}
                 style={{ minWidth: kompakt ? 132 : 168, padding: kompakt ? "12px 13px" : "15px 16px",
-                  borderRadius: 16, cursor: "pointer", position: "relative",
+                  borderRadius: "var(--v4-r-gross)", cursor: "pointer", position: "relative",
                   background: st.ok ? C.okLight : aktuell ? `${f}12` : C.bg,
                   outline: offen === st.id ? `2px solid ${C.accent}` : aktuell ? `2px solid ${f}` : "none",
                   opacity: st.mein ? 1 : .62 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 7 }}>
-                  <span style={{ width: 20, height: 20, borderRadius: 10, flexShrink: 0, display: "flex",
+                  <span style={{ width: 20, height: 20, borderRadius: "var(--v4-r-pille)", flexShrink: 0, display: "flex",
                     alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, ...NUM,
                     background: st.ok ? C.ok : aktuell ? f : C.lineStark,
                     color: st.ok || aktuell ? C.aufAkzent : C.dimmer }}>{st.ok ? <Icon n="haken" size={12} strokeWidth={2.4} /> : i + 1}</span>
@@ -286,7 +286,7 @@ export function Einfuehrung({ sitz, akt, gehZu, onClose }) {
             <div key={k} aria-current={k === i ? "step" : undefined}
               {...klickbar(() => { setI(k); akt.einfuehrungSchritt(k); },
                 `Schritt ${k + 1} von ${schritte.length}: ${schritte[k].titel}`)}
-              style={{ flex: 1, height: 4, borderRadius: 2, cursor: "pointer",
+              style={{ flex: 1, height: 4, borderRadius: "var(--v4-r-pille)", cursor: "pointer",
                 background: k <= i ? C.accentDeep : C.line, transition: "background .25s" }} />))}
         </div>
 
@@ -347,7 +347,7 @@ export function Ablaufansicht({ sitz, akt, gehZu }) {
             borderBottom: i < stationen.length - 1 ? `1px solid ${C.lineSoft}` : "none",
             opacity: st.mein ? 1 : .68 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 13, flexWrap: "wrap", marginBottom: 9 }}>
-              <span style={{ width: 24, height: 24, borderRadius: 12, flexShrink: 0, display: "flex",
+              <span style={{ width: 24, height: 24, borderRadius: "var(--v4-r-pille)", flexShrink: 0, display: "flex",
                 alignItems: "center", justifyContent: "center", fontSize: 11.5, fontWeight: 700, ...NUM,
                 background: st.ok ? C.ok : C.line, color: st.ok ? C.aufAkzent : C.dimmer }}>
                 {st.ok ? <Icon n="haken" size={13} strokeWidth={2.4} /> : i + 1}</span>

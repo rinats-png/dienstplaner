@@ -45,8 +45,23 @@ Neue Ausnahmen gehören mit Grund in die JSON-Datei und in die Tabelle oben.
 ## Manuelle Skripte
 
 Skripte außerhalb der Sammelzeile `pruefung` prüft der Wächter nicht: Sie sind bewusst nur von Hand aufrufbar. Damit das
-nicht unbemerkt geschieht, stehen hier die Skripte, die eine CI-Lücke absichtlich offen lassen.
+nicht unbemerkt geschieht, stehen hier **alle** `pruefung:*`-Skripte aus `package.json`, die weder in der Sammelzeile
+stehen noch vom Prüf-Gate `.github/workflows/pruefung.yml` per `npm run` (direkt oder mittelbar) aufgerufen werden.
+Stand 2026-11-21 (Basis `integration/release-v4` bf253963): zwölf Skripte. Nachgerechnet mit `luecke()` aus
+`werkzeug/ci-abdeckung.mjs`: Skripte `pruefung:*` minus Sammelkette minus abgedeckte Menge des Workflows. Kommt ein
+Skript dazu, gehört es hier in die Tabelle (die Liste ist vollständig gemeint, kein Beispiel).
 
-| Skript | Aufruf | Warum nicht in der CI |
+| Skript | Aufruf | Warum nicht in der CI (Prüf-Gate) |
 |---|---|---|
+| `pruefung:verwalter` | `node pruefungen/verwalter.mjs` | braucht einen laufenden Server (`CENTRIC_BASIS`). Läuft im Prüf-Gate trotzdem, aber nicht über `npm run`: Schritt `node pruefungen/serverlauf.mjs verwalter` (frischer Server mit Wegwerfablage). Der Wächter sieht diesen Aufruf nicht. |
+| `pruefung:last-stempeln` | `node pruefungen/last-stempeln.mjs` | Lastprobe WP-02 (R7), etwa eine Minute; misst Zeiten, die auf einem geteilten Prüfrechner wenig aussagen (Kopf der Datei). |
+| `pruefung:pentest` | `node pruefungen/pentest.mjs` | Penetrationstest gegen einen laufenden Server (`CENTRIC_BASIS`, `CENTRIC_ADMIN`); von Hand vor Sicherheitsabnahmen. In keinem Workflow. |
+| `pruefung:sicherheit-intern` | `vitest run pruefungen/sicherheit-intern.test.js …` (sechs Dateien) | läuft in einem eigenen Workflow (`.github/workflows/sicherheit.yml`, `npm run pruefung:sicherheit-intern`), nicht im Prüf-Gate; der Wächter zählt nur `pruefung.yml`. |
+| `pruefung:vergleich` | `node pruefungen/vergleich.mjs` | Oberflächenvergleich gegen eine von Hand geschriebene Basis; braucht Dev-Server und Playwright (`NODE_PATH`). |
+| `pruefung:darstellung-browser` | `node pruefungen/browser/darstellung-wp35.mjs` | Browserprobe WP-35 (lokal, Wegwerfdaten, playwright-core); braucht einen fertigen Bau. Die Logik prüft `pruefung:darstellung` in der CI. |
+| `pruefung:geraete-browser` | `node pruefungen/browser/geraete-wp21.mjs` | Gerätematrix WP-21 (lokal, manuell, Browser); „Kein CI-Bestandteil“ (Kopf der Datei). Die Logik prüft `pruefung:geraete` in der CI. |
+| `pruefung:geraete-ablaeufe-browser` | `node pruefungen/browser/geraete-wp21-ablaeufe.mjs` | Bedienabläufe WP-21 Teil 2 (lokal, manuell, Browser); im Workflow als Hinweis genannt, die Logik prüft `pruefung:geraete-ablaeufe` ohne Browser. |
+| `pruefung:verlustweg-browser` | `node pruefungen/browser/verlustweg-wr6.mjs` | WR-6 am Telefon (lokal, manuell, Browser); im Workflow als Hinweis genannt, die Logik prüft `pruefung:verlustweg-oberflaeche`. |
+| `pruefung:schnell` | `node werkzeug/pruefung-schnell.mjs` | Entwicklungs-Abkürzung: Lint, Typen, CI-Abdeckung und nur die berührten Tests gegenüber der Basis; die CI führt alles vollständig aus. |
+| `pruefung:wcag-wp40-browser` | `node pruefungen/browser/wcag-wp40.mjs` | WCAG-2.2-Browserabnahme WP-40 (lokal, manuell, Wegwerfdaten); die Bewertung prüft `pruefung:wcag-wp40` ohne Browser in der CI. |
 | `pruefung:v4-radiusbasis` | `node werkzeug/v4-radiusstufen-basis.mjs --pruefen` | vergleicht die Fixture `pruefungen/fixtures/v4-radiusstufen-basis.json` mit den Basis-Commits der V4-3b-Schnitte (`git show`); der flache CI-Checkout hat diesen Verlauf nicht. In der CI läuft stattdessen der Fixture-Abgleich der Tests `v4-3b-*`. Restrisiko (Tabelle, Fixture und Prüfsumme gemeinsam geändert) in `V4-IST-STAND-2026-11-20.md`, Nachtrag V4-3b Einstellungen (Review #444). Aufruf vor jedem Review, der Tabelle oder Fixture ändert. |

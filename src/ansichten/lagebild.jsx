@@ -143,7 +143,7 @@ export function Lagebild({ sitz, oeffneTag, akt }) {
                   </th>))}</tr></thead>
                 <tbody>{m.einheiten.map((e) => (
                   <tr key={e.id}><td style={{ paddingRight: 18, whiteSpace: "nowrap", fontSize: 13.5 }}>
-                    <span style={{ width: 8, height: 8, borderRadius: 4, background: lesbar(e.farbe, 3), display: "inline-block", marginRight: 9 }} />{e.name}</td>
+                    <span style={{ width: 8, height: 8, borderRadius: "var(--v4-r-pille)", background: lesbar(e.farbe, 3), display: "inline-block", marginRight: 9 }} />{e.name}</td>
                     {woche.map((d) => <td key={d} style={{ padding: 3, textAlign: "center" }}>
                       <div style={{ display: "flex", justifyContent: "center" }}><Zelle da={map[einheitDienst(m, e.id, d)]} size={25} /></div></td>)}
                   </tr>))}</tbody>

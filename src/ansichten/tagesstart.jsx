@@ -62,7 +62,7 @@ export function Tagesstart({ sitz, akt, gehZu, oeffneTag }) {
                 <div style={{ fontSize: 11.5, color: C.dimmer }}>fertig</div>
               </div>
             </div>
-            <div style={{ height: 5, borderRadius: 3, background: C.line, overflow: "hidden",
+            <div style={{ height: 5, borderRadius: "var(--v4-r-pille)", background: C.line, overflow: "hidden",
               marginBottom: 18 }}>
               <div style={{ width: `${es.anteil}%`, height: "100%", background: C.ok, transition: "width .4s" }} />
             </div>
@@ -71,7 +71,7 @@ export function Tagesstart({ sitz, akt, gehZu, oeffneTag }) {
                 style={{ display: "flex", alignItems: "center", gap: 14, padding: "11px 0",
                   cursor: x.erledigt ? "default" : "pointer", opacity: x.erledigt ? .5 : 1,
                   borderBottom: `1px solid ${C.lineSoft}` }}>
-                <span style={{ width: 24, height: 24, borderRadius: 12, flexShrink: 0, display: "flex",
+                <span style={{ width: 24, height: 24, borderRadius: "var(--v4-r-pille)", flexShrink: 0, display: "flex",
                   alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700,
                   background: x.erledigt ? C.okLight : C.lineSoft,
                   color: x.erledigt ? C.ok : C.dimmer }}>{x.erledigt ? <Icon n="haken" size={14} strokeWidth={2.4} /> : "·"}</span>
@@ -103,7 +103,7 @@ export function Tagesstart({ sitz, akt, gehZu, oeffneTag }) {
                 {a.dringend && <span style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 4,
                   background: C.danger }} />}
                 <div style={{ display: "flex", alignItems: "flex-start", gap: 14 }}>
-                  <span style={{ width: 38, height: 38, borderRadius: 13, flexShrink: 0, display: "flex",
+                  <span style={{ width: 38, height: 38, borderRadius: "var(--v4-r-mittel)", flexShrink: 0, display: "flex",
                     alignItems: "center", justifyContent: "center", fontSize: 17, fontWeight: 700,
                     background: a.dringend ? C.dangerLight : C.bg,
                     color: a.dringend ? C.danger : C.dim }}><AufgabeSymbol art={a.art} /></span>
