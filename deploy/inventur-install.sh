@@ -690,7 +690,8 @@ sshd_woerter() { sshd_wert "$1" | tr ' ' '\n' | sed '/^$/d'; }
 # „Match User admin“ mit AcceptEnv * oder PermitUserEnvironment yes bliebe
 # unsichtbar. Deshalb fail-closed: Abbruch, sobald sshd_config, eine Datei in
 # sshd_config.d oder ein Include-Ziel eine Zeile „Match“ enthält (Groß/Klein,
-# führende Leerzeichen). Die Dateien werden nur gelesen.
+# führende Leerzeichen, Schreibweisen wie sshd sie liest: N-1/N-2 unten).
+# Die Dateien werden nur gelesen.
 SSHD_DATEIEN=()
 pruefe_match() {
   local cfg="$W/etc/ssh/sshd_config" f pat g match="" i=0 gesehen=" "
@@ -706,30 +707,69 @@ pruefe_match() {
     gesehen+="$f "
     if [[ ! -f "$f" || ! -r "$f" ]]; then fehl "sshd-Konfigurationsdatei ${f#"$W"} nicht lesbar"; continue; fi
     SSHD_DATEIEN+=("${f#"$W"}")
-    # sshd nimmt das Schlüsselwort auch in Anführungszeichen und mit „=“ an
-    # („"Match" User x“, „Match=User x“); beides wird erkannt.
-    if grep -qiE '^[[:space:]]*"?match"?([[:space:]]|=|$)' -- "$f"; then match+=" ${f#"$W"}"; fi
-    while IFS= read -r pat; do
-      [[ -n "$pat" ]] || continue
-      if [[ "$pat" == __LEERZEICHEN__ ]]; then
-        fehl "Include mit Leerzeichen im Pfad in ${f#"$W"}; nicht verfolgbar"
-        continue
-      fi
-      [[ "$pat" == /* ]] || pat="/etc/ssh/$pat"
-      # nur Pfadnamen-Erweiterung (kein eval); Muster stammen aus der root-eigenen sshd-Konfiguration
-      # shellcheck disable=SC2206
-      local -a treffer_glob=($W$pat)
-      for g in "${treffer_glob[@]}"; do warteschlange+=("$g"); done
-    done < <(awk '{
-      # Include auch als „"Include" …“ und „Include=…“; Argumente ohne Anführungszeichen.
-      # Ein Pfad mit Leerzeichen in Anführungszeichen ist nicht verfolgbar: Marke, fail-closed.
-      l = $0; sub(/^[ \t]+/, "", l)
-      if (!match(l, /^"?[Ii][Nn][Cc][Ll][Uu][Dd][Ee]"?([ \t]*=[ \t]*|[ \t]+)/)) next
-      r = substr(l, RLENGTH + 1)
-      if (r ~ /"[^"]*[ \t][^"]*"/) { print "__LEERZEICHEN__"; next }
-      n = split(r, t, /[ \t]+/)
-      for (i = 1; i <= n; i++) { a = t[i]; gsub(/"/, "", a); if (a != "") print a }
-    }' "$f")
+    # Ein awk-Durchlauf je Datei (N-1/N-2, Delta-Review #447). sshd liest das
+    # Schlüsselwort mit strdelim(): Anführungszeichen fallen auch mitten im Wort
+    # weg („M"atch"“), ein leeres erstes Token wird übersprungen („=Match“,
+    # „""Match“), Leerraum am Zeilenende (auch \r aus CRLF, \f) zählt nicht.
+    # Deshalb wird jede Zeile so normalisiert: Zeilenende abschneiden, alle "
+    # entfernen, führende Leerzeichen/Tabs/= abschneiden; danach ^match bzw.
+    # ^include (Groß/Klein egal). Fail-closed: steht ein " in der Zeile, genügt
+    # das Präfix („"Match"x“ ist für sshd Match mit Argument x).
+    # Include-Argumente liest sshd mit argv_split() (' " \ #); alles, was ein
+    # einfaches Aufteilen nicht eindeutig nachbildet, führt zum Abbruch.
+    # Ausgabe: M (Match), X <grund> (Include nicht verfolgbar), P <muster>,
+    # am Ende E (fehlt E, ist awk gescheitert → Abbruch).
+    local z ende=nein m_datei=nein
+    while IFS= read -r z; do
+      case "$z" in
+        E) ende=ja ;;
+        M) m_datei=ja ;;
+        X\ *) fehl "Include in ${f#"$W"} nicht eindeutig verfolgbar (${z#X }); fail-closed" ;;
+        P\ *)
+          pat="${z#P }"
+          [[ "$pat" == /* ]] || pat="/etc/ssh/$pat"
+          # nur Pfadnamen-Erweiterung (kein eval); Muster stammen aus der root-eigenen sshd-Konfiguration
+          # und enthalten nur [-A-Za-z0-9._/*?+@,:] (geprüft in awk)
+          # shellcheck disable=SC2206
+          local -a treffer_glob=($W$pat)
+          for g in "${treffer_glob[@]}"; do warteschlange+=("$g"); done
+          ;;
+        *) fehl "sshd-Konfigurationsdatei ${f#"$W"} nicht auswertbar" ;;
+      esac
+    done < <(awk '
+      function inc(l, n,   r, i, ch, inq, t, k) {
+        if (index(l, "\r")) { print "X Wagenrücklauf in der Zeile"; return }
+        if (index(l, "\047") || index(l, "\\")) { print "X Hochkomma oder Backslash"; return }
+        inq = 0
+        for (i = 1; i <= length(l); i++) {
+          ch = substr(l, i, 1)
+          if (ch == "\"") inq = !inq
+          else if (inq && (ch == " " || ch == "\t")) { print "X Leerzeichen im Pfad"; return }
+        }
+        if (inq) { print "X Anführungszeichen ohne Gegenstück"; return }
+        r = substr(n, 8)
+        if (!match(r, /^([ \t]*=[ \t]*|[ \t]+)/)) { print "X Trennzeichen nach Include"; return }
+        r = substr(r, RLENGTH + 1)
+        if (r == "") { print "X ohne Pfad"; return }
+        if (r ~ /[^-A-Za-z0-9._\/*?+@,: \t]/) { print "X Sonderzeichen im Pfad"; return }
+        k = split(r, t, /[ \t]+/)
+        for (i = 1; i <= k; i++) if (t[i] != "") print "P " t[i]
+      }
+      {
+        l = $0
+        sub(/[ \t\r\f]+$/, "", l)
+        q = index(l, "\"") > 0
+        n = l; gsub(/"/, "", n); gsub(/\r/, " ", n); sub(/^[ \t=]+/, "", n)
+        w = tolower(substr(n, 1, 7))
+        c = substr(n, 6, 1)
+        if (substr(w, 1, 5) == "match" && (q || c == "" || c !~ /[A-Za-z0-9_-]/)) print "M"
+        c = substr(n, 8, 1)
+        if (w == "include" && (q || c == "" || c !~ /[A-Za-z0-9_-]/)) inc(l, n)
+      }
+      END { print "E" }
+    ' "$f")
+    if [[ "$ende" != ja ]]; then fehl "sshd-Konfigurationsdatei ${f#"$W"} nicht auswertbar"; fi
+    if [[ "$m_datei" == ja ]]; then match+=" ${f#"$W"}"; fi
   done
   shopt -u nullglob
   if ((i >= 100)); then fehl "zu viele sshd-Konfigurationsdateien (Include-Schleife?)"; return; fi

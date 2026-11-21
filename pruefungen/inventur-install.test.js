@@ -853,18 +853,30 @@ describe.skipIf(!BASH)("Mutationsnachweis: ohne die Prüfung wird der Negativfal
       vorbereiten: () => schreiben(path.join(w, "etc/ssh/sshd_config.d/60-x.conf"), "Match User admin\n  PermitUserEnvironment yes\n"),
     },
     {
-      name: "Match in Anführungszeichen (Delta A-1)",
-      anker: `grep -qiE '^[[:space:]]*"?match"?([[:space:]]|=|$)'`,
-      ersatz: `grep -qiE '^[[:space:]]*match([[:space:]]|$)'`,
-      vorbereiten: () => schreiben(path.join(w, "etc/ssh/sshd_config.d/60-x.conf"), '"Match" User admin\n  PermitUserEnvironment yes\n'),
+      name: "N-1 Normalisierung: Anführungszeichen entfernen (M\"atch\", Delta A-1)",
+      anker: 'n = l; gsub(/"/, "", n);',
+      ersatz: "n = l;",
+      vorbereiten: () => schreiben(path.join(w, "etc/ssh/sshd_config.d/60-x.conf"), 'M"atch" User admin\n  PermitUserEnvironment yes\n'),
     },
     {
-      name: "Include mit „=“ (Delta A-1)",
-      anker: 'match(l, /^"?[Ii][Nn][Cc][Ll][Uu][Dd][Ee]"?([ \\t]*=[ \\t]*|[ \\t]+)/)',
-      ersatz: 'match(l, /^[Ii][Nn][Cc][Ll][Uu][Dd][Ee][ \\t]+/)',
+      name: "N-1 Normalisierung: führendes „=“ abschneiden (=Match)",
+      anker: 'sub(/^[ \\t=]+/, "", n)',
+      ersatz: 'sub(/^[ \\t]+/, "", n)',
+      vorbereiten: () => schreiben(path.join(w, "etc/ssh/sshd_config.d/60-x.conf"), "=Match User admin\n  PermitUserEnvironment yes\n"),
+    },
+    {
+      name: "N-1 fail-closed: Präfix genügt bei Anführungszeichen (\"Match\"x)",
+      anker: '(q || c == "" || c !~ /[A-Za-z0-9_-]/)) print "M"',
+      ersatz: '(c == "" || c !~ /[A-Za-z0-9_-]/)) print "M"',
+      vorbereiten: () => schreiben(path.join(w, "etc/ssh/sshd_config.d/60-x.conf"), '"Match"x User admin\n'),
+    },
+    {
+      name: "N-2 Include nicht eindeutig verfolgbar ('…') → Abbruch",
+      anker: 'X\\ *) fehl "Include in ${f#"$W"} nicht eindeutig verfolgbar (${z#X }); fail-closed" ;;',
+      ersatz: "X\\ *) ;;",
       vorbereiten: () => {
         schreiben(path.join(w, "etc/ssh/extra/a.conf"), "Match User admin\n");
-        writeFileSync(path.join(w, "etc/ssh/sshd_config"), readFileSync(path.join(w, "etc/ssh/sshd_config"), "utf8") + "Include=/etc/ssh/extra/a.conf\n");
+        writeFileSync(path.join(w, "etc/ssh/sshd_config"), readFileSync(path.join(w, "etc/ssh/sshd_config"), "utf8") + "Include '/etc/ssh/extra/a.conf'\n");
       },
     },
     {
