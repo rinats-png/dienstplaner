@@ -5,7 +5,7 @@ import { heute, fLang } from "../../lib/datum.js";
 import { uid, n1 } from "../../lib/format.js";
 import { waehltEinheit, eigeneEinheitVon, vorlauf, abwArt, personTag, briefingText, tagesaufgaben } from "../../lib/fachlogik.js";
 import { addDays, REGELSTAND, fenster, dauer, pISO } from "../../regelwerk.js";
-import { einheitAm, einheitDienst, schichtfolgeAm } from "../../../server/lib/fachpruefung.mjs";
+import { einheitAm, einheitDienst, schichtfolgeAm, schichtfolgeOffen } from "../../../server/lib/fachpruefung.mjs";
 import { lade } from "../../lib/download.js";
 
 export function aktionenBegleitung(k) {
@@ -85,7 +85,7 @@ export function aktionenBegleitung(k) {
             const plan = schichtfolgeAm(m, p, d, () => (eid && p.imSchichtdienst !== false ? einheitDienst(m, eid, d) : null));   // IMP-6: AUS wie bisher
             const k = `${pid}|${d}`;
             const vorher = ab[k] !== undefined ? ab[k] : plan;
-            if ((dienstId === "-" && !plan) || dienstId === plan) delete ab[k]; else ab[k] = dienstId;
+            if (!schichtfolgeOffen(p, d) && ((dienstId === "-" && !plan) || dienstId === plan)) delete ab[k]; else ab[k] = dienstId;   // offen: Server entscheidet
             const nachher = ab[k] !== undefined ? ab[k] : plan;
             if ((vorher || "-") !== (nachher || "-"))
               aend.push({ id: uid("c"), personId: pid, datum: d, von: vorher || "-", nach: nachher || "-",

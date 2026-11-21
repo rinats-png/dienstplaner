@@ -273,3 +273,64 @@ E3 verlangt, dass nur `src/ansichten/schichtmodelle.jsx` und `src/app/aktionen/p
   weiter mit den Modellen bis zum nächsten Online-Lesen).
 - **Befund 2:** `ENTSCHEIDUNGSLISTE.md` P2-28 und Nachtrag korrigiert (Urlaubskonto nach Modell: gebaut als Vorschlag hinter AN,
   Entscheidung P2-28 offen, Kategorie C).
+
+## Nachtrag 2026-11-20 (j): Teilrollen — vom Server gerechneter Dienst (Branch `acc45/imp6/teilrollen-serverdienst`)
+
+- **Umfang:** Vorbedingung 1 vor AN (Sicht und Schreibweg der Teilrollen). Beschreibung: `IMP-6-MEHRFACHMODELLE.md`, „Teilrollen:
+  vom Server gerechneter Dienst“. Schalter `CENTRIC_SCHICHTMODELL_WIRKUNG` bleibt AUS (nirgends gesetzt, auch nicht CI); keine
+  Entscheidung zu P2-24 (b), P2-25 bis P2-28. Offline-Merker (Punkt 5) und `teilzeitProfil` (Punkt 4) nicht in diesem Stand.
+- **Code:** neu `server/lib/schichtfolge-teilrollen.mjs` (`vollsichtSchichtmodelle`, `schichtfolgeFuerSicht`,
+  `abweichungenTeilrollen`); `server/funktionen/daten.mjs` (GET-Angabe `schichtfolgeServer`, Schreibentscheidung vor
+  `zusammenfuehren` für Voll-PUT und Teilweg; Rollenregel der Angabe `schichtmodellWirkung` jetzt über `vollsichtSchichtmodelle`,
+  gleiche Bedeutung); `server/lib/fachpruefung.mjs` (`schichtfolgeServerSetzen/Aktiv`, `schichtfolgeOffen`,
+  `folgtNurBetriebsmodell`; AUS-Zweig von `planDienst`/`schichtfolgeAm` liest den Dienst des Servers nur, wenn gesetzt;
+  `abweichendVomBetriebsmodell` zählt ihn); `src/speicher.js` (Übernahme aus der Antwort, Kopf `x-centric-schichtfolge` an PUT
+  und Teilweg); `src/app/aktionen/plan.js`, `begleitung.js` (offene Tage: ausdrücklich speichern).
+- **Prüfung:** neu `pruefungen/imp6-teilrollen.test.js` (in `pruefung:imp6-mehrfachmodelle`): G Sicht je Rolle (Fenster, Werte,
+  Teilzeit, Datenschutz ohne Modellname/Zuordnungskennungen, Umfang, AUS ohne Angabe und sonst gleiche Antwort), W Schreibweg
+  (ohne/mit Kennzeichen, Modelldienst entfällt, gleiche Folge, volle Rollen, AUS, Teilweg), C Client, L Bibliothek, S Wächter.
+  Wächter `imp6-planwirkung` S: Positivliste um `server/lib/schichtfolge-teilrollen.mjs` (1) erweitert.
+- **Rot vorher:** Commit `bf38a890` (nur Prüfungen) gegen den Code der Basis `d5cb1317`: 14 von 22 rot, darunter W1 (gelöschte
+  Abweichung der Schichtverantwortung gilt still als Modelldienst „F“ statt „-“).
+- **Mutationsnachweis** (je Mutante von Hand gesetzt, `imp6-teilrollen` einzeln gelaufen, zurückgenommen; Modul-Zwischenspeicher
+  von Vitest `node_modules/.vitest-cache` vor jedem Lauf geleert): 12 von 12 rot. Ohne Mutation vorher und nachher 25/25 grün.
+
+  | Mutante | Stelle | rot |
+  |---|---|---|
+  | R1 Rollenfilter Schreibweg (volle Rollen mit entschieden) | `abweichungenTeilrollen` | L2 |
+  | R2 Rollenfilter GET (Angabe an volle statt Teilrollen) | `daten.mjs` | G1, G3, S3 |
+  | V1 Schreibvergleich gegen Betriebsfolge statt Modelldienst | `abweichungenTeilrollen` | W3, L2 |
+  | V2 Löschung ohne Kennzeichen bleibt (alter Fehler) | `abweichungenTeilrollen` | W1, W7, L2 |
+  | V3 Kennzeichen ignoriert | `abweichungenTeilrollen` | W2, W7, L2 |
+  | S1 Schalterprüfung Schreibweg (Bibliothek) | `abweichungenTeilrollen` | L2 |
+  | S2 Schalterprüfung Sicht (Bibliothek) | `schichtfolgeFuerSicht` | L3 |
+  | S3 Schalterprüfung GET (`daten.mjs`) | `daten.mjs` | S3 |
+  | S4 Schalterprüfung Schreibweg (`daten.mjs`) | `daten.mjs` | S3 |
+  | P1 Personen außerhalb der Sicht | `schichtfolgeFuerSicht` | L3 |
+  | C1 offener Tag wird gelöscht | `plan.js` | C5 |
+  | C2 außerhalb des Fensters Betriebsmodell | `fachpruefung.mjs` | C2 |
+
+  Befund des ersten Laufs: R1, S1–S4 und P1 überlebten — Schalter und Rolle prüfen `daten.mjs` UND die Bibliothek (zwei Stufen,
+  fail-closed), alle Personen standen in jeder Sicht. Daraufhin L (Bibliothek allein) und S3 (beide Stufen in `daten.mjs` im
+  Quelltext) ergänzt. Hinweis: Nach dem Zurücknehmen einer Mutante war L3 zweimal ohne Mutation rot (Verhalten wie Mutante P1),
+  danach grün, ohne Codeänderung. Vermutete Ursache (nicht belegt): eine alte Fassung aus `fsModuleCache`. Deshalb wird der
+  Zwischenspeicher bei Mutationsläufen geleert; der gültige Lauf oben ist ohne Zwischenspeicher.
+
+## Nachtrag 2026-11-20 (k): Review #436 (Opus, nicht freigegeben wegen B1) — Branch `acc45/imp6/teilrollen-serverdienst`
+
+- **B1 (Abfrageorakel über den Schreibweg) behoben:** `abweichungenTeilrollen` entscheidet nur noch Schlüssel, die die
+  Schichtverantwortung sieht und schreiben darf — Person in ihrer Sicht, Tag im Sichtfenster, Einheit am Tag = eigener Bereich
+  (`eigeneEinheit`/`einheitAm` aus `rechte.mjs`). Alles andere geht unverändert an die Rechteprüfung. Vorher: Schichtverantwortung
+  schickt für eine Person eines fremden Bereichs (oder einen Tag außerhalb des Fensters) den Modelldienst → vor der Rechteprüfung
+  entfernt → 200; anderer Wert → 403. Jetzt beides 403 wie bei AUS. Nur die Schichtverantwortung wird entschieden (die einzige
+  Teilrolle, die Abweichungen schreibt).
+- **B5:** Schreibweg schließt den Betreiber aus (`daten.mjs`, wie die GET-Angabe).
+- **B6:** Prüfungen für W3 (Vergleich gegen die Sicht, `imp6-teilrollen` L5) und H3 (Kennzeichen genau „server“, W10). R2 gleichwertig (vermerkt).
+- **B2, B3, B4:** keine Entscheidung; als offene Entscheidungen vor AN eingetragen (`ENTSCHEIDUNGSLISTE.md` P2-29 Mitteilung
+  „eigene Zuordnung“ mit datensparsamer Alternative, P2-30 Ersatzvorschlag inkl. „offen“, P2-31 Entwurfstage). Aussage „erweitert
+  keine Rechte“ präzisiert (keine Schreibrechte, keine neue Leseauskunft).
+- **Rot vorher:** Commit `b3a02d03` (nur Prüfungen) gegen `6471c08b`: 5 von 31 rot (W8, W9, W11, L4, S3). W8: Status AN 200 statt 403.
+- **Mutationslauf 2** (Zwischenspeicher je Lauf geleert): B1a (Bereich) rot W8/W11; B1b (Fenster) rot W9/L4; B1c (Sicht) rot L4;
+  B1d (nur Schichtverantwortung) rot L4; B5 rot S3; H3 rot W10; W3 rot L2/L5; V1, V2, V3, S1 weiter rot. R1 (Rollenfilter der
+  Bibliothek) überlebt jetzt: gleichwertig, weil die neue Prüfung „nur Schichtverantwortung“ volle Rollen schon ausschließt (B1d rot).
+  S4 als Zeichenkette entfallen; die Stufe in `daten.mjs` sichert S3 (Quelltext, um den Betreiber erweitert). Ohne Mutation 31/31.

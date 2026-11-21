@@ -22,7 +22,7 @@ import * as PUF from "./stempelpuffer.js";
 import { mitEinmaligerAngabe } from "./module/ausnahmeweg.js";
 import { teilwegStart } from "./app/teilkonflikt.js";
 import { schichtmodellPflegeSetzen } from "./lib/schichtmodell-schalter.js";
-import { schichtmodellWirkungSetzen } from "../server/lib/fachpruefung.mjs";
+import { schichtmodellWirkungSetzen, schichtfolgeServerSetzen, schichtfolgeServerAktiv } from "../server/lib/fachpruefung.mjs";
 import { teilSpeichern, teilEntscheiden, sicherungInhalt, sitzungsAbdruck, ruhig as teilRuhig } from "./app/teilweg-steuerung.js";
 
 const SCHLUESSEL = "centric:token";
@@ -128,6 +128,9 @@ function sitzungEndet(gesendet) {
   if (!gesendet) return;
   for (const fn of [...sitzungsendeHoerer]) { try { fn(); } catch { /* ein Hörer hält die anderen nicht auf */ } }
 }
+
+/** Kennzeichen beim Schreiben: Die Oberfläche rechnet mit dem Dienst des Servers (Teilrollen, IMP-6). Ohne: keiner. */
+const schichtfolgeKopf = () => (schichtfolgeServerAktiv() ? { "x-centric-schichtfolge": "server" } : {});
 
 async function ruf(pfad, opt = {}) {
   const gesendet = token;
@@ -379,6 +382,8 @@ export async function lies() {
   /* IMP-6 Planwirkung (Vorgabe aus): Die Planrechnung der Oberfläche folgt den Schichtmodellen nur, wenn der Server es
      meldet — er meldet es nur Rollen, die alle Zuordnungen sehen. Fehlt die Angabe: aus (bisheriger Stand). */
   schichtmodellWirkungSetzen(daten.schichtmodellWirkung === true);
+  /* Teilrollen (Vorbedingung 1 vor AN): der vom Server gerechnete Dienst (fehlt die Angabe: keiner, bisheriger Stand). */
+  schichtfolgeServerSetzen(daten.schichtfolgeServer);
   /* Delta-Review #381 (9): frisch gelesen mit dem geprüften Merkmal — der Merker des Sitzungsendes ist erledigt. */
   if (!ausSpeicher && vorSitzungsende && gelesenFuer && token === gelesenFuer && vorSitzungsende.fuer === gelesenFuer)
     vorSitzungsende = null;
@@ -990,7 +995,7 @@ async function teilwegSchreiben(auftrag, beimSchliessen, vollGewuenscht, abbruch
         if (andereAnmeldung()) return { status: 401, daten: {} };
         try {
           const a = await ruf("bestand/teile", { method: "POST", ...(beimSchliessen ? { keepalive: true } : {}),
-            ...(abbruch ? { signal: abbruch.signal } : {}), body: JSON.stringify(rumpf) });
+            ...(abbruch ? { signal: abbruch.signal } : {}), headers: schichtfolgeKopf(), body: JSON.stringify(rumpf) });
           /* Für die jetzige Anmeldung ist der Ausgang unklar (gesendet wurde unter der vorherigen). */
           if (andereAnmeldung()) return { status: null, netz: true };
           return { status: a.status, daten: a.daten || {} };
@@ -1229,7 +1234,7 @@ async function schreibenAusfuehren(beimSchliessen) {
     auftrag.putGesendet = true;
     const antwort = await ruf("bestand", { method: "PUT",
       ...(beimSchliessen ? { keepalive: true } : {}),
-      ...(abbruch ? { signal: abbruch.signal } : {}),
+      ...(abbruch ? { signal: abbruch.signal } : {}), headers: schichtfolgeKopf(),
       body: JSON.stringify({ bestand: hinaus, etag, durch: auftrag.durch }) });
     status = antwort.status;
     /* Delta-Review #381 (7): Die Antwort gehört zur Anmeldung, mit der der PUT hinausging. Gilt inzwischen eine andere,
