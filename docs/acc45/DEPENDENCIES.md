@@ -4,7 +4,7 @@ Erzeugt von `werkzeug/acc45-backlog.mjs` aus `docs/acc45/work-packages.json` (ni
 
 **Kritischer Pfad gemeinsam** (offener Entwicklungsaufwand, ohne extern): WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **50–90 PT**
 **Ohne Intelligence:** WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 → WP-42a → WP-42 = **22,5–35 PT**
-**Offener Entwicklungsaufwand:** 334,05–574,95 PT in 102 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
+**Offener Entwicklungsaufwand:** 334,55–576,45 PT in 103 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
 
 WP-09 ist nur Livegang-Reihenfolge und zählt im Pfad nicht als Abhängigkeit. Der Graph zeigt nur offene Pakete.
 
@@ -25,6 +25,7 @@ flowchart LR
     WP_16c["WP-16c<br/>REVIEW"]
     WP_42a["WP-42a<br/>BLOCKED"]
     WP_48["WP-48<br/>IN_PROGRESS"]
+    SI_P10["SI-P10<br/>READY"]
     SI_P6b["SI-P6b<br/>BLOCKED"]
     WP_42R1["WP-42R1<br/>BLOCKED"]
     WP_42R2["WP-42R2<br/>BLOCKED"]
@@ -493,6 +494,7 @@ flowchart LR
 | SI-P7 | acc45 | P2 | 1,5–2,5 | 0 | – | daten.mjs | opus | INTEGRATED |
 | SI-P8 | acc45 | P2 | 0,5–1 | 0 | – | – | opus | INTEGRATED |
 | SI-P9 | acc45 | P2 | 0,5–1 | 0 | SI-P8 | – | opus | INTEGRATED |
+| SI-P10 | acc45 | P2 | 0,5–1,5 | 0,5–1,5 | – | – | opus | READY |
 | SI-P6b | acc45 | P1 | 1,5–3 | 1,5–3 | SI-P6 | daten.mjs | opus | BLOCKED |
 | WP-42R1 | acc45 | P1 | 0 | 0 | WP-16, WP-16c, WP-07b, WP-S1, WP-18, WP-33, WP-44, SI-P4 | – | opus | BLOCKED |
 | WP-42R2 | acc45 | P1 | 0 | 0 | WP-42R1, WP-19.R, WP-21, WP-15, WP-30, SI-P6b, SI-P5, WP-32d, WP-40, WP-14c, WP-16b, WP-24b, WP-27c, WP-47b | – | opus | BLOCKED |

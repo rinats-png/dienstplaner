@@ -18,17 +18,17 @@ oder `"teilweise"`, jeweils mit Beleg (PR, Commit, Nachweis). „Geplant“, „
 <!-- AUTO:BEGIN -->
 Erzeugt aus `docs/acc45/work-packages.json` (Schema 2) mit `node werkzeug/acc45-backlog.mjs status-schreiben` — nicht von Hand ändern.
 
-**Pakete gesamt:** 243 · BLOCKED 90 · READY 16 · IN_PROGRESS 19 · REVIEW 12 · INTEGRATED 103 · DONE 3
+**Pakete gesamt:** 244 · BLOCKED 90 · READY 17 · IN_PROGRESS 19 · REVIEW 12 · INTEGRATED 103 · DONE 3
 
 | Strang | Pakete | BLOCKED | READY | IN_PROGRESS | REVIEW | INTEGRATED | DONE | offener Aufwand PT |
 |---|---|---|---|---|---|---|---|---|
-| ACC45 | 119 | 27 | 0 | 7 | 4 | 79 | 2 | 61,3–104,75 |
+| ACC45 | 120 | 27 | 1 | 7 | 4 | 79 | 2 | 61,8–106,25 |
 | WP-19-Module | 15 | 13 | 0 | 1 | 0 | 1 | 0 | 64,5–100,5 |
 | Intelligence | 40 | 20 | 0 | 7 | 0 | 13 | 0 | 181–320 |
 | Folgepakete | 34 | 12 | 0 | 4 | 8 | 10 | 0 | 27,25–49,7 |
 | Extern/Entscheidungen | 35 | 18 | 16 | 0 | 0 | 0 | 1 | 20,35–46,1 |
 
-Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **334,05–574,95 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
+Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **334,55–576,45 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
 
 **Kritische Pfade** (offener Aufwand, Mitte der Spanne maßgeblich):
 
@@ -75,9 +75,9 @@ Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **334,05–574
 | DEP-2 Abhängigkeit: Vitest 5 Migration | REVIEW | `acc45/dep/dep-2-vitest-5` | Quelle: Bewertung offener Dependabot-PRs #400 bis #407 vom 2026-11-20 (nur lesend erhoben, Basis integration/release-v4 @ 105f6c83); Aufwand ist eine SCHÄTZUNG der Bewertung, nicht belegt. Der Dependabot-PR wird nicht geschlossen; Schließen entscheidet der Betreiber. Vitest 5 entfernt die sequential-Optionen (zugunsten von concurrent); der Lauf von PR #405 scheitert mit describe.sequential is not a function in abnahme-a-ablauf.test.js:115, die rund 190 Folgeschritte wurden übersprungen (der Lauf belegt nichts über den Rest der Suite). Betroffen: 12 Stellen in 6 Dateien (abnahme-a-ablauf, erstleitung-abbruch, erstleitung-betreiber-put, erstleitung-entscheidungen, erstleitung, konto-parallel). Node 22 und Vite 6.4.5 passen. Aufwand SCHÄTZUNG 0,5 bis 1 PT. Opus-Review Pflicht (Prüfwerkzeug, kritischer Pfad). Dependabot-PR #405, nicht mergen. |
 | REL-1 Release-Automatisierung Stufe 1: Release-Gates (Werkzeug), Lückenanalyse, Release-Richtlinie | REVIEW | `acc45/release/rel-1-gates` | Betreiberauftrag Release-Automatisierung 2026-11-20 (Zielablauf Entwicklung → Review → CI → Integration → Release-Prüfung → Deployment → Live-Abnahme). Kein VPS, kein Workflow-Start, keine Workflow-Änderung. Aufwand SCHÄTZUNG. |
 
-### Bereit zum Start (0)
+### Bereit zum Start (1)
 
-–
+SI-P10 (acc45, 0,5–1,5 PT)
 
 ### In Arbeit, fortsetzbar (14)
 
@@ -195,7 +195,7 @@ WP-40 (acc45, 1,5–2,25 PT offen) · WP-28b (folge, 0,5–1 PT offen) · WP-I4 
 
 ✓ belegt · T teilweise (z. B. nur Server-Teilumfang) · – nicht erreicht oder nicht belegt. „Staging“, „Freigabe“ und
 „prod.“ stehen nur mit Beleg auf ✓. Gezeigt sind alle Pakete mit mindestens einer erreichten Stufe; alle übrigen
-62 offenen Entwicklungspakete stehen auf allen Stufen auf „–“.
+63 offenen Entwicklungspakete stehen auf allen Stufen auf „–“.
 
 | Paket | Status | impl. | lokal | Review | integr. | Staging | Freigabe | prod. |
 |---|---|---|---|---|---|---|---|---|
