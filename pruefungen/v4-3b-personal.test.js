@@ -25,7 +25,7 @@ import { fileURLToPath } from "node:url";
 import { inventar, jeHauptansicht, hauptansicht, ohneKommentare } from "../werkzeug/v4-inventar.mjs";
 import { v4AlsAltePalette } from "../src/v4/tokens.js";
 import { kontrastVon } from "../src/gestalt/lesbar.js";
-import { regelStufe, stufenIn, basisText, abgleichMitBasis } from "./v4-radiusstufen.mjs";
+import { regelStufe, stufenIn, ladeBasisFixture, abgleichMitFixture, gitGegenprobe } from "./v4-radiusstufen.mjs";
 
 const WURZEL = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (d) => readFileSync(path.join(WURZEL, d), "utf8").replace(/\r\n/g, "\n");
@@ -98,11 +98,17 @@ describe("V4-3b Personal: Messung", () => {
     }
   });
 
-  const basisDa = basisText(WURZEL, BASIS, "src/ansichten/personalakte.jsx") !== null;
-  it.skipIf(!basisDa)("Tabellenwerte alt/kante stimmen mit dem Quelltext der Basis überein (Review #442, B2)", () => {
-    for (const [datei, stellen] of Object.entries(PERSONAL_ZUORDNUNG)) {
-      expect(abgleichMitBasis(basisText(WURZEL, BASIS, datei), lies(datei), stellen), datei).toEqual([]);
-    }
+  /* Review #443 (B1): immer gegen die eingecheckte Fixture (auch im flachen CI-Checkout); git show nur als Gegenprobe. */
+  it("Tabellenwerte alt/kante stimmen mit der Basis überein, ohne Git aus der Fixture (Review #442 B2, #443 B1)", () => {
+    const fx = ladeBasisFixture(WURZEL);
+    expect(fx.schnitte.Personal.basis.startsWith(BASIS)).toBe(true);
+    expect(abgleichMitFixture(fx, "Personal", PERSONAL_ZUORDNUNG, lies)).toEqual([]);
+  });
+
+  it("Gegenprobe: Fixture gleich dem Basis-Quelltext (git show); ohne Git-Verlauf sichtbar übersprungen", (ctx) => {
+    const g = gitGegenprobe(WURZEL, ladeBasisFixture(WURZEL), "Personal");
+    if (g === null) return ctx.skip("kein Git-Verlauf: der Fixture-Abgleich oben hat geprüft");
+    expect(g).toEqual([]);
   });
 });
 
