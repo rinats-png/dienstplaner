@@ -88,7 +88,7 @@ export function Anmeldung({ db, onLogin }) {
               man beim Ansehen hat, nicht die, die man danach noch hat. */}
           <div style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "14px 18px",
             marginBottom: 22, background: C.warnLight, borderLeft: `3px solid ${C.warn}`,
-            borderRadius: "0 8px 8px 0" }}>
+            borderTopRightRadius: "var(--v4-r-klein)", borderBottomRightRadius: "var(--v4-r-klein)" }}>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 14, fontWeight: 640, marginBottom: 4 }}>
                 Vorführfassung — du bist bereits angemeldet.</div>
@@ -103,7 +103,7 @@ export function Anmeldung({ db, onLogin }) {
           <Card hover style={{ padding: 26, marginBottom: 18, cursor: "pointer" }}
             {...klickbar(() => onLogin({ rolle: "betreiber" }), "Zur Betreiberkonsole")}>
             <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
-              <div style={{ width: 46, height: 46, borderRadius: 14, background: C.accent, color: C.aufAkzent,
+              <div style={{ width: 46, height: 46, borderRadius: "var(--v4-r-mittel)", background: C.accent, color: C.aufAkzent,
                 display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, fontWeight: 700, flexShrink: 0 }}>BE</div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 17, fontWeight: 600 }}>Zur Betreiberkonsole</div>
@@ -128,10 +128,10 @@ export function Anmeldung({ db, onLogin }) {
                   {...klickbar(() => onLogin({ rolle: "kunde", mandantId: m.id, personId: person.id }),
                     `Als ${r.label} anmelden: ${person.vorname} ${person.nachname}`)}
                   style={{ padding: 16, cursor: "pointer", transition: "transform .2s, box-shadow .2s" }}
-                  onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 10px 26px rgba(16,16,24,.12)"; }}
+                  onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "var(--schatten-hoch)"; }}
                   onMouseLeave={(e) => { e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = ""; }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-                    <span style={{ width: 30, height: 30, borderRadius: 10, background: `${r.farbe}1E`, color: lesbar(r.farbe),
+                    <span style={{ width: 30, height: 30, borderRadius: "var(--v4-r-mittel)", background: `${r.farbe}1E`, color: lesbar(r.farbe),
                       display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700 }}>{r.kurz}</span>
                     <div style={{ fontSize: 14, fontWeight: 600 }}>{r.label}</div>
                   </div>

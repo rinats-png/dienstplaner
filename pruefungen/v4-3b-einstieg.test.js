@@ -125,11 +125,18 @@ const AUSNAHMEN = [
 /** Basis b9ab081a: Anzahl „transition“ je Datei (ohne Kommentare). */
 const UEBERGAENGE = { [MAIN]: 2, [ANMELDUNG]: 1 };
 
-/** Heutiger Quelltext einer Datei mit den alten Werten der Tabellen zurückgesetzt. */
+/** Heutiger Quelltext einer Datei mit den alten Werten der Tabellen zurückgesetzt. Der Hinweis der Rollenwahl
+ *  (anmeldung.jsx, vorher "0 8px 8px 0") trägt die Stufe in den zwei Langformen der rechten Ecken: Die Kurzform
+ *  "0 var(…) var(…) 0" begänne nicht mit var( und zählte im Inventar weiter als Literal (RE_FORM_LITERAL). */
+const RE_STUFE = /borderTopRightRadius: "var\(--v4-r-([a-z]+)\)", borderBottomRightRadius: "var\(--v4-r-([a-z]+)\)"|borderRadius: "([^"]*var\(--v4-r-[a-z]+\)[^"]*)"/g;
 function rueckgerechnet(datei, tabelle = EINSTIEG_ZUORDNUNG, farben = FARB_ZUORDNUNG) {
   const stellen = tabelle[datei] || [];
   let i = 0;
-  let text = lies(datei).replace(/borderRadius: "([^"]*var\(--v4-r-[a-z]+\)[^"]*)"/g, (m, inhalt) => {
+  let text = lies(datei).replace(RE_STUFE, (m, oben, unten, inhalt) => {
+    if (oben) {
+      const a = stellen[i++], b = stellen[i++];
+      return a && b && a.stufe === oben && b.stufe === unten ? `borderRadius: "0 ${a.alt}px ${b.alt}px 0"` : m;
+    }
     const teile = inhalt.split(" ").map((t) => {
       const s = /^var\(--v4-r-([a-z]+)\)$/.exec(t);
       if (!s) return t;
@@ -321,7 +328,7 @@ describe("V4-3b Einstieg: Darstellung", () => {
     expect(q).toContain('const KARTE = { background: "var(--v4-flaeche)", border: "1px solid var(--v4-line)", borderRadius: "var(--v4-r-gross)",');
     expect(q).toContain('style={{ width: "100%", padding: "13px 15px", fontSize: 17, borderRadius: "var(--v4-r-mittel)",');
     const a = ohneKommentare(lies(ANMELDUNG));
-    expect(a).toContain('borderRadius: "0 var(--v4-r-klein) var(--v4-r-klein) 0" }}');
+    expect(a).toContain('borderLeft: `3px solid ${C.warn}`,\n            borderTopRightRadius: "var(--v4-r-klein)", borderBottomRightRadius: "var(--v4-r-klein)" }}');
     expect(a).toContain('{{ width: 46, height: 46, borderRadius: "var(--v4-r-mittel)", background: C.accent,');
     expect(a).toContain('{{ width: 30, height: 30, borderRadius: "var(--v4-r-mittel)", background: `${r.farbe}1E`,');
     expect(ohneKommentare(lies(VERLUST))).toContain('const TAST = { padding: "8px 14px", minHeight: 36, fontSize: 14, fontWeight: 600, borderRadius: "var(--v4-r-pille)",');

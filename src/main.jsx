@@ -52,7 +52,7 @@ const VERLAUF = { position: "absolute", left: 0, right: 0, top: 0, height: 440, 
   pointerEvents: "none",
   background: "radial-gradient(ellipse 46% 60% at 46% 0%, var(--v4-verlauf-a), var(--v4-verlauf-b) 48%, transparent 76%),"
     + " radial-gradient(ellipse 28% 44% at 82% 14%, var(--v4-verlauf-c), transparent 74%)" };
-const KARTE = { background: "var(--v4-flaeche)", border: "1px solid var(--v4-line)", borderRadius: 18,
+const KARTE = { background: "var(--v4-flaeche)", border: "1px solid var(--v4-line)", borderRadius: "var(--v4-r-gross)",
   boxShadow: "var(--v4-schatten)" };
 const Markenzeile = () => (
   <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 36 }}>
@@ -184,7 +184,7 @@ function Preise({ onZurueck, onStarten }) {
       </p>
 
       {/* ------------------------- Der Rechner ------------------------- */}
-      <div style={{ background: C.flaeche, border: `1px solid ${C.accent}`, borderRadius: 16,
+      <div style={{ background: C.flaeche, border: `1px solid ${C.accent}`, borderRadius: "var(--v4-r-gross)",
         padding: 26, marginBottom: 40 }}>
         <div style={{ fontSize: 12.5, fontWeight: 700, letterSpacing: ".09em",
           textTransform: "uppercase", color: C.accent, marginBottom: 20 }}>
@@ -226,7 +226,7 @@ function Preise({ onZurueck, onStarten }) {
                 <input type="number" min={0} value={n}
                   aria-label={`Personen an Standort ${i + 1}`}
                   onChange={(e) => aendereStandort(i, Number(e.target.value))}
-                  style={{ width: 76, padding: "8px 10px", borderRadius: 8,
+                  style={{ width: 76, padding: "8px 10px", borderRadius: "var(--v4-r-klein)",
                     border: `1px solid ${C.line}`, fontFamily: "inherit", fontSize: 14 }} />
                 <span style={{ fontSize: 13, color: C.dim }}>Personen</span>
                 <span style={{ flex: 1 }} />
@@ -237,7 +237,7 @@ function Preise({ onZurueck, onStarten }) {
               </div>))}
             {standorte.length < 30 && (
               <button onClick={() => setStandorte((s) => [...s, 15])}
-                style={{ alignSelf: "flex-start", padding: "8px 14px", borderRadius: 8,
+                style={{ alignSelf: "flex-start", padding: "8px 14px", borderRadius: "var(--v4-r-klein)",
                   border: `1px solid ${C.line}`, background: "transparent", color: C.text,
                   fontFamily: "inherit", fontSize: 13, cursor: "pointer" }}>
                 Standort hinzufügen</button>)}
@@ -258,7 +258,7 @@ function Preise({ onZurueck, onStarten }) {
               return (
                 <label key={p.id} style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline",
                   justifyContent: "space-between", gap: 10, padding: "12px 14px",
-                  borderRadius: 10, cursor: p.buchbar ? "pointer" : "default",
+                  borderRadius: "var(--v4-r-mittel)", cursor: p.buchbar ? "pointer" : "default",
                   opacity: p.buchbar ? 1 : 0.7,
                   border: `1px solid ${an ? C.accent : C.line}`,
                   background: an ? C.accentLight : "transparent" }}>
@@ -339,7 +339,7 @@ function Preise({ onZurueck, onStarten }) {
         {alle.map((a) => {
           const an = a.stufe.id === passend.stufe.id;
           return (
-            <div key={a.stufe.id} style={{ padding: 24, borderRadius: 16,
+            <div key={a.stufe.id} style={{ padding: 24, borderRadius: "var(--v4-r-gross)",
               border: `1px solid ${an ? C.accent : C.line}`,
               background: an ? C.accentLight : C.flaeche }}>
               <div style={{ fontSize: 12.5, fontWeight: 700, letterSpacing: ".09em",
@@ -363,7 +363,7 @@ function Preise({ onZurueck, onStarten }) {
       </div>
 
       {/* ------------------------- Der Zuschlag -------------------------- */}
-      <div style={{ background: C.flaeche, border: `1px solid ${C.line}`, borderRadius: 14,
+      <div style={{ background: C.flaeche, border: `1px solid ${C.line}`, borderRadius: "var(--v4-r-mittel)",
         padding: 24, marginBottom: 36 }}>
         <div style={{ fontSize: 16, fontWeight: 640, marginBottom: 8 }}>Standortzuschlag</div>
         <div style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.6, marginBottom: 18 }}>
@@ -374,7 +374,7 @@ function Preise({ onZurueck, onStarten }) {
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           {STANDORT_BAENDER.map((b, i) => (
-            <div key={i} style={{ flex: "1 1 130px", padding: "13px 15px", borderRadius: 11,
+            <div key={i} style={{ flex: "1 1 130px", padding: "13px 15px", borderRadius: "var(--v4-r-mittel)",
               border: `1px solid ${C.line}` }}>
               <div style={{ fontSize: 12.5, color: C.dim }}>{b.label}</div>
               <div style={{ fontSize: 19, fontWeight: 600, marginTop: 4,
@@ -406,7 +406,7 @@ function Preise({ onZurueck, onStarten }) {
       </div>
 
       <button onClick={onStarten}
-        style={{ width: "100%", padding: 15, fontSize: 15.5, fontWeight: 600, borderRadius: 999,
+        style={{ width: "100%", padding: 15, fontSize: 15.5, fontWeight: 600, borderRadius: "var(--v4-r-pille)",
           border: "none", background: C.accent, color: C.aufAkzent, fontFamily: "inherit",
           cursor: "pointer", marginBottom: 14 }}>
         Betrieb anlegen und testen</button>
@@ -457,7 +457,7 @@ function SelbstStarten({ onZurueck, onFertig }) {
 
   if (fertig) return (
     <div>
-      <div style={{ padding: "22px 24px", borderRadius: 14, background: C.okLight,
+      <div style={{ padding: "22px 24px", borderRadius: "var(--v4-r-mittel)", background: C.okLight,
         border: `1px solid ${C.line}`, marginBottom: 24 }}>
         <div style={{ fontSize: 19, fontWeight: 640, marginBottom: 7 }}>
           {name.trim()} steht bereit</div>
@@ -479,7 +479,7 @@ function SelbstStarten({ onZurueck, onFertig }) {
             <span style={{ flex: 1, fontSize: 14.5, fontWeight: 550 }}>
               {ROLLENNAMEN[z.rolle] || z.rolle}</span>
             <code style={{ fontSize: 15, fontWeight: 700, letterSpacing: ".07em",
-              padding: "8px 13px", borderRadius: 8, background: C.bg,
+              padding: "8px 13px", borderRadius: "var(--v4-r-klein)", background: C.bg,
               border: `1px solid ${C.line}`, fontVariantNumeric: "tabular-nums" }}>{z.code}</code>
           </div>))}
         <button onClick={() => {
@@ -492,7 +492,7 @@ function SelbstStarten({ onZurueck, onFertig }) {
           const a = document.createElement("a");
           a.href = u; a.download = `centric-zugaenge.txt`; a.click();
           setTimeout(() => URL.revokeObjectURL(u), 1000);
-        }} style={{ marginTop: 18, padding: "11px 18px", borderRadius: 999,
+        }} style={{ marginTop: 18, padding: "11px 18px", borderRadius: "var(--v4-r-pille)",
           border: `1px solid ${C.line}`, background: "transparent", color: C.text,
           fontFamily: "inherit", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
           Als Datei sichern</button>
@@ -504,7 +504,7 @@ function SelbstStarten({ onZurueck, onFertig }) {
       </div>
 
       <button onClick={() => onFertig(fertig.zugaenge[0].code)}
-        style={{ width: "100%", padding: 15, fontSize: 15.5, fontWeight: 600, borderRadius: 999,
+        style={{ width: "100%", padding: 15, fontSize: 15.5, fontWeight: 600, borderRadius: "var(--v4-r-pille)",
           border: "none", background: C.accent, color: C.aufAkzent, fontFamily: "inherit",
           cursor: "pointer" }}>
         Mit der Organisationsleitung anmelden</button>
@@ -539,7 +539,7 @@ function SelbstStarten({ onZurueck, onFertig }) {
             color: C.dim, marginBottom: 7 }}>Wie heißt dein Betrieb?</label>
           <input id="betrieb-name" value={name} autoFocus onChange={(e) => setName(e.target.value)}
             placeholder="z. B. Nordwacht Sicherheitsdienste"
-            style={{ width: "100%", padding: "13px 15px", fontSize: 16, borderRadius: 12,
+            style={{ width: "100%", padding: "13px 15px", fontSize: 16, borderRadius: "var(--v4-r-mittel)",
               border: `1px solid ${C.steuer}`, fontFamily: "inherit", boxSizing: "border-box",
               background: C.bg, color: C.text }} />
         </div>
@@ -552,7 +552,7 @@ function SelbstStarten({ onZurueck, onFertig }) {
             {BRANCHEN.map(([id, label, text]) => (
               <button key={id} type="button" aria-pressed={branche === id} onClick={() => setBranche(id)}
                 style={{ display: "block", width: "100%", textAlign: "left", cursor: "pointer",
-                  padding: "13px 16px", borderRadius: 11, fontFamily: "inherit",
+                  padding: "13px 16px", borderRadius: "var(--v4-r-mittel)", fontFamily: "inherit",
                   border: `1px solid ${branche === id ? C.accent : C.line}`,
                   background: branche === id ? C.accentLight : "transparent", color: C.text }}>
                 <span style={{ display: "block", fontSize: 14.5, fontWeight: 600 }}>{label}</span>
@@ -573,7 +573,7 @@ function SelbstStarten({ onZurueck, onFertig }) {
             {[["subplaner", "Schichtverantwortung"], ["mitarbeiter", "Beschäftigte"],
               ["betriebsrat", "Betriebsrat"]].map(([id, label]) => (
               <label key={id} style={{ display: "flex", alignItems: "center", gap: 11,
-                padding: "10px 14px", borderRadius: 10, cursor: "pointer",
+                padding: "10px 14px", borderRadius: "var(--v4-r-mittel)", cursor: "pointer",
                 border: `1px solid ${rollen.includes(id) ? C.accent : C.line}`,
                 background: rollen.includes(id) ? C.accentLight : "transparent" }}>
                 <input type="checkbox" checked={rollen.includes(id)}
@@ -590,18 +590,18 @@ function SelbstStarten({ onZurueck, onFertig }) {
             color: C.dim, marginBottom: 7 }}>E-Mail (freiwillig)</label>
           <input id="betrieb-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)}
             placeholder="damit wir dich erreichen können"
-            style={{ width: "100%", padding: "13px 15px", fontSize: 16, borderRadius: 12,
+            style={{ width: "100%", padding: "13px 15px", fontSize: 16, borderRadius: "var(--v4-r-mittel)",
               border: `1px solid ${C.steuer}`, fontFamily: "inherit", boxSizing: "border-box",
               background: C.bg, color: C.text }} />
         </div>
 
         {fehler && (
-          <div role="alert" style={{ padding: "13px 16px", borderRadius: 10,
+          <div role="alert" style={{ padding: "13px 16px", borderRadius: "var(--v4-r-mittel)",
             background: C.dangerLight, color: C.danger, fontSize: 13.5, lineHeight: 1.5 }}>
             {fehler}</div>)}
 
         <button onClick={starten} disabled={!name.trim() || !branche || laeuft}
-          style={{ width: "100%", padding: 15, fontSize: 15.5, fontWeight: 600, borderRadius: 999,
+          style={{ width: "100%", padding: 15, fontSize: 15.5, fontWeight: 600, borderRadius: "var(--v4-r-pille)",
             border: "none", fontFamily: "inherit",
             cursor: name.trim() && branche && !laeuft ? "pointer" : "default",
             background: name.trim() && branche && !laeuft ? C.accent : C.lineStark, color: C.aufAkzent }}>
@@ -756,7 +756,7 @@ function Einstieg() {
               </p>
               <button onClick={() => setSelbst(true)}
                 style={{ width: "100%", padding: 14, fontSize: 15.5, fontWeight: 600,
-                  borderRadius: 999, border: "none", background: C.accent, color: C.aufAkzent,
+                  borderRadius: "var(--v4-r-pille)", border: "none", background: C.accent, color: C.aufAkzent,
                   fontFamily: "inherit", cursor: "pointer" }}>
                 Selbst starten</button>
               <div style={{ fontSize: 12, color: C.dim, textAlign: "center", marginTop: 11 }}>
@@ -785,7 +785,7 @@ function Einstieg() {
                     <button key={d.id} disabled={laeuft}
                       onClick={() => oeffne(SP.demoOeffnen(d.id, merken))}
                       style={{ display: "flex", alignItems: "center", gap: 16, width: "100%",
-                        background: C.flaeche, border: `1px solid ${C.line}`, borderRadius: 18,
+                        background: C.flaeche, border: `1px solid ${C.line}`, borderRadius: "var(--v4-r-gross)",
                         padding: "16px 18px", cursor: laeuft ? "default" : "pointer",
                         fontFamily: "inherit", textAlign: "left", color: C.text,
                         opacity: laeuft ? .5 : 1, transition: "border-color .14s, background .14s" }}
@@ -795,7 +795,7 @@ function Einstieg() {
                       onMouseLeave={(e) => {
                         e.currentTarget.style.borderColor = C.line;
                         e.currentTarget.style.background = C.flaeche; }}>
-                      <span style={{ width: 40, height: 40, borderRadius: 12, flexShrink: 0,
+                      <span style={{ width: 40, height: 40, borderRadius: "var(--v4-r-mittel)", flexShrink: 0,
                         display: "flex", alignItems: "center", justifyContent: "center",
                         background: C.accentLight, color: C.accent, fontSize: 12.5, fontWeight: 700 }}>
                         {(ROLLENNAME[d.rolle] || "?").slice(0, 2).toUpperCase()}</span>
@@ -844,7 +844,7 @@ function Einstieg() {
                 onChange={(e) => setCode(e.target.value.toUpperCase())}
                 onKeyDown={(e) => e.key === "Enter" && senden()}
                 placeholder="XXXX-XXXX-XXXX"
-                style={{ width: "100%", padding: "13px 15px", fontSize: 17, borderRadius: 12,
+                style={{ width: "100%", padding: "13px 15px", fontSize: 17, borderRadius: "var(--v4-r-mittel)",
                   border: `1px solid ${fehler ? C.danger : C.line}`, fontFamily: "inherit",
                   letterSpacing: ".06em", fontVariantNumeric: "tabular-nums", boxSizing: "border-box",
                   background: C.bg, color: C.text }} />
@@ -861,7 +861,7 @@ function Einstieg() {
                   <span style={{ display: "flex", flexShrink: 0, marginTop: 1 }}><Icon n="warnung" size={16} /></span><span>{fehler}</span></div>)}
               <button onClick={senden} disabled={!code.trim() || laeuft}
                 style={{ width: "100%", marginTop: 22, padding: 14, fontSize: 15, fontWeight: 600,
-                  borderRadius: 999, border: "none", fontFamily: "inherit",
+                  borderRadius: "var(--v4-r-pille)", border: "none", fontFamily: "inherit",
                   cursor: code.trim() && !laeuft ? "pointer" : "default",
                   background: code.trim() && !laeuft ? C.accent : C.lineStark, color: C.aufAkzent }}>
                 {laeuft ? "Wird geprüft …" : "Anmelden"}</button>

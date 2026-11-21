@@ -35,8 +35,8 @@ import { halter, schliessenErlaubt, haltenderWeg } from "./lib/verlustweg-halter
 const MONO = { fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", wordBreak: "break-all", overflowWrap: "anywhere" };
 const ABSTAND = { display: "grid", gap: 13, minWidth: 0 };
 const TEXT = { fontSize: 13.5, lineHeight: 1.5, margin: 0 };
-const KASTEN = { padding: "12px 14px", borderRadius: 10, border: "1px solid currentColor", display: "grid", gap: 8, minWidth: 0 };
-const TAST = { padding: "8px 14px", minHeight: 36, fontSize: 14, fontWeight: 600, borderRadius: 999, fontFamily: "inherit",
+const KASTEN = { padding: "12px 14px", borderRadius: "var(--v4-r-mittel)", border: "1px solid currentColor", display: "grid", gap: 8, minWidth: 0 };
+const TAST = { padding: "8px 14px", minHeight: 36, fontSize: 14, fontWeight: 600, borderRadius: "var(--v4-r-pille)", fontFamily: "inherit",
   cursor: "pointer", border: "1px solid currentColor", background: "transparent", color: "inherit", textAlign: "left" };
 
 /** Felder, in die ein Einmalwert getippt wird: nichts merken, nichts vorschlagen, nichts korrigieren, kein Passwortverwalter. */
