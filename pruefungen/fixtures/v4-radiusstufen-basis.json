@@ -863,6 +863,115 @@
           "literaleSha256": "e75b656a6463db6ee057328aa9a5698638ea982b8ef8f769ea96e4bc8a17bf04"
         }
       }
+    },
+    "Betreiberkonsole": {
+      "basis": "7ca4064607b3bea8624683c6250bb00108b97642",
+      "dateien": {
+        "src/ansichten/adressaenderungen.jsx": {
+          "sha256": "268af7e047b115aa9ccda963ce9a8b7a8f1b2add085953977cbfacce2d01fcc0",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/betreiber-tarife.jsx": {
+          "sha256": "687503d0f43b3639706872606c85c3154a51ccc3605db7f0bed53654382199ac",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/betreiberdetail.jsx": {
+          "sha256": "7e1748e43577373838bcd3d1a4c3de7edcf92776737175198012dac04ebfe769",
+          "literale": [
+            {
+              "wert": "8",
+              "kontext": "{{ width: 24, height: 24, borderRadius: 8, background: C.accentLight,\n                color: C.accent, display: \"flex\", alignItems: \"center\", justifyContent: \"center\",\n                fontSize: 11, fontWeight: 700 }}"
+            },
+            {
+              "wert": "8",
+              "kontext": "{{ width: 24, height: 24, borderRadius: 8, background: C.bg,\n                  color: C.dim, display: \"flex\", alignItems: \"center\", justifyContent: \"center\",\n                  fontSize: 11, fontWeight: 700 }}"
+            },
+            {
+              "wert": "8",
+              "kontext": "{{ width: 24, height: 24, borderRadius: 8, background: C.bg,\n                  color: C.dim, display: \"flex\", alignItems: \"center\", justifyContent: \"center\",\n                  fontSize: 11, fontWeight: 700 }}"
+            },
+            {
+              "wert": "8",
+              "kontext": "{{ width: 24, height: 24, borderRadius: 8, background: C.bg,\n                  color: C.dim, display: \"flex\", alignItems: \"center\", justifyContent: \"center\",\n                  fontSize: 11, fontWeight: 700 }}"
+            }
+          ],
+          "literaleSha256": "f3922e7bc036e98093a9bea8df1c39b8c0139c6787dc60b355a3d9651c823b70"
+        },
+        "src/ansichten/betreibermandanten.jsx": {
+          "sha256": "77575f7f1c851fc7228f7c649b2cda8aac5224416f9f635f4b39fa4d2e8e377d",
+          "literale": [
+            {
+              "wert": "7",
+              "kontext": "{{ width: 21, height: 21, borderRadius: 7, background: `${r.farbe}1E`, color: lesbar(r.farbe),\n                          display: \"flex\", alignItems: \"center\", justifyContent: \"center\", fontSize: 10, fontWeight: 700 }}"
+            }
+          ],
+          "literaleSha256": "ad3a4591776127d2e79d0e1d4c6e2746009a0823f333367b104d7002521e22c2"
+        },
+        "src/ansichten/betreiberrechnungen.jsx": {
+          "sha256": "003c8ec507e71920e63fb238a06e39c27bffa9f3a0865da7bdf7975ac85192cf",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/demozugaenge.jsx": {
+          "sha256": "41ea36985913fccdafc87e189dfca2b79e754576d52510c3c21fef55cc9fb7b4",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/mandantanlegen.jsx": {
+          "sha256": "63fc816bc9c47a22729bb21bb76fe0fd529ac47af47dcfb6cb67a9fd96dd7ff0",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/mandantenrechner.jsx": {
+          "sha256": "350fd310a62aee0ed3bad1506ebb70fcff67444c70793dae93d91b958eaa8c83",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/mandantneuanlegen.jsx": {
+          "sha256": "80e0259463da68a3831b58541c565ab4344cf833620dfcf79a486eefbcacbdd3",
+          "literale": [
+            {
+              "wert": "12",
+              "kontext": "{{ padding: \"20px 22px\", borderRadius: 12, background: C.okLight,\n        border: `1px solid ${C.ok}33` }}"
+            },
+            {
+              "wert": "8",
+              "kontext": "{{ fontSize: 16, fontWeight: 700, letterSpacing: \".08em\",\n              padding: \"9px 14px\", borderRadius: 8, background: C.bg,\n              border: `1px solid ${C.line}`, ...NUM }}"
+            },
+            {
+              "wert": "10",
+              "kontext": "{{ display: \"flex\", alignItems: \"center\", gap: 11,\n              padding: \"11px 14px\", borderRadius: 10, cursor: fest ? \"default\" : \"pointer\",\n              border: `1px solid ${fest || extra.includes(id) ? C.accent : C.line}`,\n              background: fest || extra.includes(id) ? C.accentLight : \"transparent\" }}"
+            },
+            {
+              "wert": "10",
+              "kontext": "{{ padding: \"13px 16px\", borderRadius: 10,\n          background: C.dangerLight, color: C.danger, fontSize: 13.5, lineHeight: 1.5 }}"
+            }
+          ],
+          "literaleSha256": "b1366ab1a709e51f6e9c7af6e8f6e7cdba1bb4bfcf1dd1f69d6e6b023657ca61"
+        },
+        "src/ansichten/pakete.jsx": {
+          "sha256": "b98f1ea644734efad547f222071a23c98050dee9266f89d6afaedc2c3cef16c3",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/preisgestaltung.jsx": {
+          "sha256": "f8f7cd29baa3d1a3809c4dc20efc22dc3a7b2e7cd37ccba2c1883606c2ed2d89",
+          "literale": [
+            {
+              "wert": "10",
+              "kontext": "{{ display: \"flex\", alignItems: \"center\", gap: 10,\n                    background: C.bg, borderRadius: 10, padding: \"10px 12px\" }}"
+            }
+          ],
+          "literaleSha256": "55c6b1ba15cfadf8a5647b2f895627f72cca3e67a4a759b911b8964563b0f81e"
+        },
+        "src/ansichten/selbststarts.jsx": {
+          "sha256": "baa402144d3db9f31ec6ff62458c0365cd9edaa015f07438fd44df01769b6e7f",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        }
+      }
     }
   }
 }
