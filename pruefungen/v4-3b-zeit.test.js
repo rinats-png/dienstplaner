@@ -26,7 +26,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { inventar, jeHauptansicht, hauptansicht, ohneKommentare } from "../werkzeug/v4-inventar.mjs";
 import { V4_RADIEN } from "../src/v4/tokens.js";
 import { Kontoblatt } from "../src/ansichten/kontoblatt.jsx";
-import { regelStufe, stufenIn, basisText, abgleichMitBasis } from "./v4-radiusstufen.mjs";
+import { regelStufe, stufenIn, ladeBasisFixture, abgleichMitFixture, gitGegenprobe } from "./v4-radiusstufen.mjs";
 
 const WURZEL = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (d) => readFileSync(path.join(WURZEL, d), "utf8").replace(/\r\n/g, "\n");
@@ -100,11 +100,17 @@ describe("V4-3b Zeit/Abrechnung: Messung", () => {
     expect(Object.values(ZEIT_ZUORDNUNG).flat()).toHaveLength(13);
   }, 60000);
 
-  const basisDa = basisText(WURZEL, BASIS, "src/ansichten/kontoblatt.jsx") !== null;
-  it.skipIf(!basisDa)("Tabellenwerte alt/kante stimmen mit dem Quelltext der Basis überein (Review #442, B2)", () => {
-    for (const [datei, stellen] of Object.entries(ZEIT_ZUORDNUNG)) {
-      expect(abgleichMitBasis(basisText(WURZEL, BASIS, datei), lies(datei), stellen), datei).toEqual([]);
-    }
+  /* Review #443 (B1): immer gegen die eingecheckte Fixture (auch im flachen CI-Checkout); git show nur als Gegenprobe. */
+  it("Tabellenwerte alt/kante stimmen mit der Basis überein, ohne Git aus der Fixture (Review #442 B2, #443 B1)", () => {
+    const fx = ladeBasisFixture(WURZEL);
+    expect(fx.schnitte["Zeit/Abrechnung"].basis.startsWith(BASIS)).toBe(true);
+    expect(abgleichMitFixture(fx, "Zeit/Abrechnung", ZEIT_ZUORDNUNG, lies)).toEqual([]);
+  });
+
+  it("Gegenprobe: Fixture gleich dem Basis-Quelltext (git show); ohne Git-Verlauf sichtbar übersprungen", (ctx) => {
+    const g = gitGegenprobe(WURZEL, ladeBasisFixture(WURZEL), "Zeit/Abrechnung");
+    if (g === null) return ctx.skip("kein Git-Verlauf: der Fixture-Abgleich oben hat geprüft");
+    expect(g).toEqual([]);
   });
 
   it("Ausnahme bleibt begründet: Legendenfeld 26×16 mit kleinster Stufe wäre eine Kapsel", () => {
