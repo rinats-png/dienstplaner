@@ -125,7 +125,7 @@ export function Preisgestaltung({ m, p, akt }) {
               <div style={{ display: "grid", gap: 8, marginBottom: 14 }}>
                 {g.aussetzungen.map((a, i) => (
                   <div key={`${a.von}-${i}`} style={{ display: "flex", alignItems: "center", gap: 10,
-                    background: C.bg, borderRadius: 10, padding: "10px 12px" }}>
+                    background: C.bg, borderRadius: "var(--v4-r-mittel)", padding: "10px 12px" }}>
                     <span style={{ fontSize: 13, ...NUM }}>
                       {a.von}{a.bis !== a.von ? ` – ${a.bis}` : ""}</span>
                     <span style={{ fontSize: 12, color: C.dimmer }}>
