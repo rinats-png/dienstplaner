@@ -1890,6 +1890,27 @@ describe("OF-13 (O-2 b): G7 — erste Auslieferung vom unbeschrifteten Bild 274b
     expect(ja.ergebnis).toBe("GO");
   });
 
+  it("Grund nennt die Ursache: Basis (erste Auslieferung) oder Zeile vorherig", () => {
+    // Basis 274bfa0, aber eine beschriftete Zeile vorherig: der Grund ist die Basis, nicht das Ziel
+    const basisGrund = g7(normal, { strategie: "ruecksprung" }, C274).gruende.join(" ");
+    expect(basisGrund).toMatch(/Basis 274bfa0 ist ein Bild ohne Revisionslabel \(erste Auslieferung/);
+    // beschriftete Basis, Zeile vorherig 274bfa0: der Grund ist das Ziel
+    const zielGrund = g7(erst, { strategie: "ruecksprung" }, B).gruende.join(" ");
+    expect(zielGrund).toMatch(/Zeile vorherig 274bfa0 ist ein Bild ohne Revisionslabel/);
+    expect(zielGrund).not.toMatch(/erste Auslieferung/);
+  });
+
+  it("Gesamtprüfung offline: die Basis kommt auch ohne basisCommit aus --basis/Fixture in G7 an", () => {
+    // Zeile vorherig beschriftet (B), Basis nur über die Fixture 274bfa0, Freigabedatei ohne basisCommit (G10 meldet das)
+    const fx = fixtureGo();
+    fx.basisCommit = C274;
+    datei("docs/acc45/releases/v4-r1.freigabe.json", { ...FREIGABE, basisCommit: undefined, rueckweg: { strategie: "ruecksprung" },
+      vorlagenHashes: hashesIn(w, [".env.example", "deploy/compose.yml", "Dockerfile"]) });
+    const g = gateVon(pruefe(fx), "G7");
+    expect(g.ergebnis).toBe("NO-GO");
+    expect(g.gruende.join(" ")).toMatch(/Basis 274bfa0 .*erste Auslieferung/);
+  });
+
   it("Doku: Anleitung 11 verlangt keine Selbstprüfung mehr, OF-13 ist behoben; RELEASE-PROZESS G7 nennt die Regel", () => {
     const anl = readFileSync(join(WURZEL, "docs/acc45/BETREIBER-ANLEITUNG-ERSTRELEASE.md"), "utf8");
     expect(anl).not.toMatch(/Prüfen Sie den Wert selbst/);
