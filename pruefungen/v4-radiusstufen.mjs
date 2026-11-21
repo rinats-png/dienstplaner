@@ -1,6 +1,6 @@
 /* V4-3b: Zuordnungsregel der Inline-Radien auf die Radiusstufen V4_RADIEN (src/v4/tokens.js), gemeinsam für die
    Prüfungen je Hauptansicht (v4-3b-plan.test.js, v4-3b-personal.test.js, v4-3b-zeit.test.js,
-   v4-3b-einstellungen.test.js, v4-3b-lage.test.js, v4-3b-betreiber.test.js, v4-3b-import.test.js) und den Erzeuger der Basis-Fixture (werkzeug/v4-radiusstufen-basis.mjs). Nur für Tests;
+   v4-3b-einstellungen.test.js, v4-3b-lage.test.js, v4-3b-betreiber.test.js, v4-3b-import.test.js, v4-3b-telefonschale.test.js) und den Erzeuger der Basis-Fixture (werkzeug/v4-radiusstufen-basis.mjs). Nur für Tests;
    keine Laufzeitwirkung.
 
    Regel (wie V4-3a, Nachtrag V4-3b in docs/acc45/V4-IST-STAND-2026-11-20.md):
@@ -50,6 +50,7 @@ export const SCHNITTE = {
   "Lage/Dashboard": "bf25396375ef952d901790b66e6d7ca375bc41c2",
   Betreiberkonsole: "7ca4064607b3bea8624683c6250bb00108b97642",
   Import: "5f1dc861166eba68a64848d36abea4f0376b83fe",
+  Telefonschale: "55db4363dcbd367d59203cfd2e7096f6e2ff178a",
 };
 
 export const sha256 = (s) => createHash("sha256").update(String(s), "utf8").digest("hex");
