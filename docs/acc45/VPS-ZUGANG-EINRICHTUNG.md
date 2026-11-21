@@ -308,7 +308,7 @@ cd /root && curl -fsSLo rel0 https://github.com/rinats-png/dienstplaner/raw/<com
 **Soll-Prüfsumme des Installers im aktuellen Stand** (die Prüfung `pruefungen/inventur-install.test.js` stellt sicher,
 dass sie zur Datei passt; sie ändert sich mit dem Schlüssel-Commit):
 
-- **SHA-256 von deploy/inventur-install.sh: `bf179afe5a973d1f09c7702013a6b341912396f6b839d6d7deb5ddc9a6f5bb89`**
+- **SHA-256 von deploy/inventur-install.sh: `f8feae06a3a61012fc06199f73e1783de61136d17656e5b704439653878da1a8`**
   (noch ohne Schlüssel — dieser Stand bricht fail-closed ab)
 
 ### Erwartete Ausgabe

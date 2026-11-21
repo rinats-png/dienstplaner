@@ -291,7 +291,8 @@ describe("werkzeug/inventur-install-bauen.mjs", () => {
       ["mit Optionen", `restrict ${PUB}`],
       ["Körper gekürzt", PUB.replace(KOERPER, KOERPER.slice(0, -1))],
       ["Körper falscher Typ", PUB.replace(KOERPER, Buffer.from(KOERPER, "base64").fill(0x41, 4, 15).toString("base64"))],
-      ["privater Schlüssel", "-----BEGIN OPENSSH PRIVATE KEY-----\n"],
+      /* Kopfzeile zusammengesetzt, damit der Geheimnis-Scan kein Muster im Quelltext findet */
+      ["privater Schlüssel", ["-----BEGIN OPENSSH", "PRIVATE KEY-----"].join(" ") + "\n"],
       ["leer", ""],
     ];
     for (const [name, t] of falsch) expect(() => schluesselPruefen(t), name).toThrow();

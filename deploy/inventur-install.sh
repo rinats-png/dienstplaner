@@ -904,6 +904,8 @@ ANHANG=""
 manifest() { printf '%s=%s\n' "$1" "$2" >>"$SICH/manifest"; }
 
 # Nimmt die eigenen Änderungen zurück, nur bei Hash-Übereinstimmung.
+# Aufruf nur aus ende() (trap); shellcheck erkennt das nicht.
+# shellcheck disable=SC2329
 zuruecknehmen() {
   local erfolg=0 gesamt
   if [[ "$ANGEHAENGT" == ja ]]; then
@@ -1123,5 +1125,6 @@ main() {
   exit 0
 }
 
+# main endet immer mit exit; die Datei ist damit vollständig gelesen, bevor
+# etwas geändert wird (keine Teilausführung bei Änderung der Datei).
 main "$@"
-exit 1

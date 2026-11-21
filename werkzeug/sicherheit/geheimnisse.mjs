@@ -44,6 +44,7 @@ const PLATZHALTER = /beispiel|example|xxxx|changeme|dummy|platzhalter|nur[-_]zum
 /* Geprüfte Fehlalarme (2026-11-03), je mit Grund. Gilt nur für Datei × Regel. */
 export const FREIGABEN = [
   { datei: "pruefungen/intelligence-leck.test.js", regel: "privater Schlüssel (PEM)", grund: "nur die Kopfzeile als Prüfmuster eines Leck-Tests, kein Schlüsselmaterial" },
+  { datei: "pruefungen/inventur-install.test.js", regel: "privater Schlüssel (PEM)", grund: "nur die Kopfzeile als Negativfall der Schlüsselprüfung (Commit b8e67edd), kein Schlüsselmaterial; seit dem Folgecommit zusammengesetzt (Pruefung 2026-11-21)" },
   { datei: "pruefungen/werkzeuge-im-bild.sh", regel: "Zuweisung Geheimnis-Variable", grund: "fester CI-Prüfwert, kein Betriebsgeheimnis" },
   { datei: "pruefungen/ip-kuerzel.test.js", regel: "Zuweisung Geheimnis-Variable", grund: "feste Testwerte fuer CENTRIC_PFEFFER im Unit-Test, kein Betriebsgeheimnis (Pruefung 2026-11-07)" },
   { datei: ".github/workflows/deploy.yml", regel: "Zuweisung Geheimnis-Variable", grund: "fester CI-Prüfwert, kein Betriebsgeheimnis" },
