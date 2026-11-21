@@ -32,6 +32,8 @@
      NUR=<Text>        nur Ansichten, deren Name den Text enthält (reflow, ziele)
      IMPORT_BLATT=1    in der Ansicht Personal zusätzlich das Blatt „Personal importieren“
                        (Eingabe, Vorschau; ohne Übernahme) messen (V4-3b Import)
+     TELEFON_BLATT=1   in der Telefonschale (Reiter „Heute“) zusätzlich das Blatt „Mitteilungen“
+                       (Postknopf) messen: Reflow, Zielgröße, Radius, Fokus (V4-3b Telefonschale)
    Browser: vorinstalliertes Playwright (playwright-core, playwright im Projekt
    oder global); chromium.launch() ohne Optionen. Es wird nichts installiert.
    Exit 0: keine Befunde · 1: Befunde · 2: Aufruf oder Umgebung · 3: Aufbau gescheitert
@@ -283,6 +285,62 @@ async function importBlatt(p, ansicht, k) {
   await blatt.waitFor({ state: "hidden", timeout: 5000 }).catch(() => melde("import-blatt", `${ansicht}: Blatt schließt nicht`));
 }
 
+/* V4-3b Telefonschale (TELEFON_BLATT=1): Die Blätter der Telefonschale (MBlatt, .m-blatt mit .m-griff) sind keine
+   Ansicht der Navigation; alleAnsichten überspringt den Postknopf. Im Reiter „Heute“ öffnet das Skript das Blatt
+   „Mitteilungen“ über den Postknopf der Kopfzeile und misst es wie eine Ansicht (Reflow, Zielgröße, Bild), dazu den
+   berechneten Radius von Blatt und Griff und den Fokus per Tab im Blatt. Escape schließt; es wird nichts geändert
+   (beim Schließen setzt die Schale Mitteilungen auf gelesen, wie bei jeder Nutzung; Wegwerfdaten). */
+async function telefonBlatt(p, ansicht, k) {
+  const knopf = p.locator(".m-postknopf:visible").first();
+  if (!(await knopf.count())) { hinweis("telefon-blatt", `${ansicht}: kein Postknopf (keine Telefonschale?)`); return; }
+  await knopf.click({ timeout: 4000 }).catch(() => melde("klick", `${ansicht}: Postknopf scheitert`));
+  const blatt = p.locator('.m-blattrahmen[role=dialog][aria-label="Mitteilungen"]');
+  if (!(await blatt.waitFor({ state: "visible", timeout: 5000 }).then(() => true).catch(() => false))) { melde("telefon-blatt", `${ansicht}: Blatt öffnet nicht`); return; }
+  const name = `${ansicht}/Blatt Mitteilungen`;
+  await p.waitForTimeout(400);
+  geprueft++;
+  const m = await p.evaluate(MESSEN);
+  let schlecht = false;
+  if (k.reflow && !reflowOk(m.gesamt, m.breite)) { schlecht = true; melde("reflow", `${name}: Seite ${m.gesamt - m.breite}px breiter als ${m.breite}px — ${m.taeter}`); }
+  if (k.ziele) {
+    const z = zielgroessenBefunde(m.ziele, 24);
+    if (z.length) { schlecht = true; melde("zielgroesse", `${name}: ${z.length} Ziele unter 24 px ohne Abstandsausnahme (z. B. ${z.slice(0, 3).map((x) => `${x.id} ${Math.round(x.w)}x${Math.round(x.h)}`).join("; ")})`); }
+  }
+  const r = await p.evaluate(() => {
+    const rad = (s) => { const e = document.querySelector(s); return e ? `${getComputedStyle(e).borderTopLeftRadius}/${getComputedStyle(e).borderBottomLeftRadius}` : null; };
+    return { blatt: rad(".m-blatt"), griff: rad(".m-griff") };
+  });
+  if (!schlecht) beleg("telefon-blatt", `${name}: Reflow${k.ziele ? " und Zielgröße" : ""} ohne Befund; Radius Blatt ${r.blatt}, Griff ${r.griff}`);
+  if (schlecht || process.env.BILDER_ALLE) await bild(p, name);
+  let n = 0, ohneRing = 0, verdeckt = 0, draussen = 0;
+  for (let i = 0; i < 8; i++) {
+    await p.keyboard.press("Tab");
+    await p.waitForTimeout(120);
+    const f = await p.evaluate(() => {
+      const e = document.activeElement;
+      if (!e || e === document.body) return null;
+      const cs = getComputedStyle(e), rr = e.getBoundingClientRect();
+      const treffer = [[rr.left + rr.width / 2, rr.top + rr.height / 2], [rr.left + 2, rr.top + 2], [rr.right - 2, rr.bottom - 2]]
+        .filter(([x, y]) => x >= 0 && y >= 0 && x < innerWidth && y < innerHeight)
+        .map(([x, y]) => { const h = document.elementFromPoint(x, y); return { frei: !h || h === e || e.contains(h) || h.contains(e) }; });
+      return { imBlatt: !!e.closest("[role=dialog]"), stil: { outlineStyle: cs.outlineStyle, outlineWidth: cs.outlineWidth, outlineColor: cs.outlineColor, boxShadow: cs.boxShadow },
+        treffer, draussen: rr.bottom < 0 || rr.top > innerHeight || rr.right < 0 || rr.left > innerWidth, blattSelbst: e.classList.contains("m-blatt") };
+    });
+    if (!f) continue;
+    if (f.blattSelbst) continue;   // Startpunkt des Fokus (tabIndex -1), kein Ziel
+    n++;
+    if (!f.imBlatt) { melde("fokus", `${name}: Tab verlässt das Blatt`); break; }
+    if (!fokusSichtbar(f.stil)) ohneRing++;
+    if (f.draussen) draussen++; else if (!fokusNichtVerdeckt(f.treffer)) verdeckt++;
+  }
+  geprueft++;
+  if (ohneRing || verdeckt) melde("fokus", `${name}: ${ohneRing} ohne Ring, ${verdeckt} verdeckt von ${n} Stopps`);
+  else if (n === 0) hinweis("fokus", `${name}: kein Tab-Stopp im Blatt`);
+  else beleg("fokus", `${name}: ${n} Tab-Stopps im Blatt, Fokus sichtbar, nichts verdeckt${draussen ? ` (${draussen} außerhalb des Fensters)` : ""}`);
+  await p.keyboard.press("Escape");
+  await blatt.waitFor({ state: "hidden", timeout: 5000 }).catch(() => melde("telefon-blatt", `${name}: Blatt schließt nicht mit Escape`));
+}
+
 /* ===================================================== 1 + 2  Reflow, Zielgröße */
 if (KRITERIEN.includes("reflow") || KRITERIEN.includes("ziele")) {
   const konfig = [];
@@ -306,6 +364,7 @@ if (KRITERIEN.includes("reflow") || KRITERIEN.includes("ziele")) {
       }
       if (schlecht || process.env.BILDER_ALLE) await bild(p, `${name}`);
       if (process.env.IMPORT_BLATT && /Personal$/.test(name)) await importBlatt(p, name, k);
+      if (process.env.TELEFON_BLATT && /Heute$/.test(name)) await telefonBlatt(p, name, k);
     });
     for (const f of fehler) melde("konsole", `${marke}: ${f}`);
     if (ansichten === 0) melde("keine-ansicht", `${marke}: keine Ansicht erreicht`);
