@@ -41,3 +41,12 @@ Lauf neu. Er schlägt fehl, wenn
 Ein Eintrag mit `"vorlaeufig": true` meldet Veraltung nur als Warnung (gedacht für Skripte, deren Verdrahtung in einem
 anderen, noch offenen Pull Request liegt). Nur das Prüf-Gate `pruefung.yml` zählt; andere Workflows ersetzen es nicht.
 Neue Ausnahmen gehören mit Grund in die JSON-Datei und in die Tabelle oben.
+
+## Manuelle Skripte
+
+Skripte außerhalb der Sammelzeile `pruefung` prüft der Wächter nicht: Sie sind bewusst nur von Hand aufrufbar. Damit das
+nicht unbemerkt geschieht, stehen hier die Skripte, die eine CI-Lücke absichtlich offen lassen.
+
+| Skript | Aufruf | Warum nicht in der CI |
+|---|---|---|
+| `pruefung:v4-radiusbasis` | `node werkzeug/v4-radiusstufen-basis.mjs --pruefen` | vergleicht die Fixture `pruefungen/fixtures/v4-radiusstufen-basis.json` mit den Basis-Commits der V4-3b-Schnitte (`git show`); der flache CI-Checkout hat diesen Verlauf nicht. In der CI läuft stattdessen der Fixture-Abgleich der Tests `v4-3b-*`. Restrisiko (Tabelle, Fixture und Prüfsumme gemeinsam geändert) in `V4-IST-STAND-2026-11-20.md`, Nachtrag V4-3b Einstellungen (Review #444). Aufruf vor jedem Review, der Tabelle oder Fixture ändert. |
