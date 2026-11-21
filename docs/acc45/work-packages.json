@@ -4,9 +4,9 @@
   "anzahl": 242,
   "statusZaehlung": {
     "BLOCKED": 90,
-    "READY": 17,
+    "READY": 16,
     "IN_PROGRESS": 19,
-    "REVIEW": 11,
+    "REVIEW": 12,
     "INTEGRATED": 102,
     "DONE": 3
   },
@@ -39,8 +39,8 @@
       "pakete": 33,
       "offen": 24,
       "restPT": {
-        "min": 27.450000000000003,
-        "max": 50.1
+        "min": 27.250000000000004,
+        "max": 49.7
       }
     },
     "extern": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 334.25,
-    "max": 575.35
+    "min": 334.05,
+    "max": 574.95
   },
   "kritischerPfad": {
     "summe": 70,
@@ -6514,7 +6514,7 @@
       "abhaengigkeiten": ["V4-3a"],
       "status": "IN_PROGRESS",
       "stufen": {
-        "implementiert": {"wert":"teilweise","beleg":"Schnitt 1 Plan/Dienstplan, Branch acc45/v4/v4-3b-plan: Tests zuerst a7ecf1c8 (pruefungen/v4-3b-plan.test.js 6/7 rot auf b2a42a7f), Umsetzung: 26 Inline-Radien in 15 Plan-Dateien auf var(--v4-r-klein/mittel/gross/pille), Feiertagsband Tagesdetail rgba → C.dangerLight; docs/acc45/V4-IST-STAND-2026-11-20.md Nachtrag V4-3b. Schnitt 2 Personal, Branch acc45/v4/v4-3b-personal: Tests zuerst 53aeee13 (pruefungen/v4-3b-personal.test.js 3/7 rot auf 7d659b55; feste Stufentabelle je Stelle auch für die 15 Plan-Dateien, Review #440 Befund 1), Umsetzung cd25f1c1/66a5c3fa: 9 Inline-Radien in 6 Personal-Dateien auf var(--v4-r-klein/mittel/pille), Personalakte rgba → C.lineStark (Nachtbalken) und C.lineSoft (Arbeitstag); Nachtrag V4-3b Personal. Schnitt 3 Zeit/Abrechnung, Branch acc45/v4/v4-3b-zeit: Tests zuerst 42170ebb (pruefungen/v4-3b-zeit.test.js 5/7 rot auf c11a6a72; Testschärfungen Review #442: B1 Übergang wörtlich, B2 Basisabgleich alt/kante per git show für Plan/Personal/Zeit), Umsetzung 8bad54e8: 13 Inline-Radien in 6 Zeit-Dateien auf var(--v4-r-klein/mittel/gross/pille); Nachtrag V4-3b Zeit. Schnitt 4 Einstellungen/Verwaltung, Branch acc45/v4/v4-3b-einstellungen: Tests zuerst da2e2692 (pruefungen/v4-3b-einstellungen.test.js 6/10 rot auf 8f15631d; Nachzug Review #443 B1: Basis-Literale als Fixture pruefungen/fixtures/v4-radiusstufen-basis.json, Erzeuger werkzeug/v4-radiusstufen-basis.mjs, Abgleich alt/kante für Plan/Personal/Zeit/Einstellungen auch ohne Git-Verlauf, git show als Gegenprobe), Umsetzung: 13 Inline-Radien in 7 Einstellungs-Dateien auf var(--v4-r-klein/mittel/pille); Nachtrag V4-3b Einstellungen."},
+        "implementiert": {"wert":"teilweise","beleg":"Schnitt 1 Plan/Dienstplan, Branch acc45/v4/v4-3b-plan: Tests zuerst a7ecf1c8 (pruefungen/v4-3b-plan.test.js 6/7 rot auf b2a42a7f), Umsetzung: 26 Inline-Radien in 15 Plan-Dateien auf var(--v4-r-klein/mittel/gross/pille), Feiertagsband Tagesdetail rgba → C.dangerLight; docs/acc45/V4-IST-STAND-2026-11-20.md Nachtrag V4-3b. Schnitt 2 Personal, Branch acc45/v4/v4-3b-personal: Tests zuerst 53aeee13 (pruefungen/v4-3b-personal.test.js 3/7 rot auf 7d659b55; feste Stufentabelle je Stelle auch für die 15 Plan-Dateien, Review #440 Befund 1), Umsetzung cd25f1c1/66a5c3fa: 9 Inline-Radien in 6 Personal-Dateien auf var(--v4-r-klein/mittel/pille), Personalakte rgba → C.lineStark (Nachtbalken) und C.lineSoft (Arbeitstag); Nachtrag V4-3b Personal. Schnitt 3 Zeit/Abrechnung, Branch acc45/v4/v4-3b-zeit: Tests zuerst 42170ebb (pruefungen/v4-3b-zeit.test.js 5/7 rot auf c11a6a72; Testschärfungen Review #442: B1 Übergang wörtlich, B2 Basisabgleich alt/kante per git show für Plan/Personal/Zeit), Umsetzung 8bad54e8: 13 Inline-Radien in 6 Zeit-Dateien auf var(--v4-r-klein/mittel/gross/pille); Nachtrag V4-3b Zeit. Schnitt 4 Einstellungen/Verwaltung, Branch acc45/v4/v4-3b-einstellungen: Tests zuerst da2e2692 (pruefungen/v4-3b-einstellungen.test.js 6/10 rot auf 8f15631d; Nachzug Review #443 B1: Basis-Literale als Fixture pruefungen/fixtures/v4-radiusstufen-basis.json, Erzeuger werkzeug/v4-radiusstufen-basis.mjs, Abgleich alt/kante für Plan/Personal/Zeit/Einstellungen auch ohne Git-Verlauf, git show als Gegenprobe), Umsetzung f2048464: 13 Inline-Radien in 6 Dateien (7 inkl. pruefung.jsx mit Ausnahme) auf var(--v4-r-klein/mittel/pille); Nachtrag V4-3b Einstellungen."},
         "lokalGetestet": {"wert":"teilweise","beleg":"Schnitt 1 Plan, Lauf 2026-11-21 lokal je Datei --maxWorkers=1: v4-3b-plan 7/7, v4-ist-stand 16/16, v4-inventar 15/15, v4-3a-querschnitt 10/10, v4-app-stil 63/63, kontrast 207/207, wcag-wp40 35/35, wp40-zugaenglichkeit 28/28, intelligence-oberflaeche 29/29, intelligence-aenderungsuebersicht 22/22, istdaten 35/35, oberflaeche-render 40/40, gestalt 19/19, e2e-flaechen 10/10, imp6-oberflaeche 51/51, imp6-verdrahtung 33/33, imp6-planwirkung 82/82, geraete-wp21 21/21, geraete-wp21-ablaeufe-render 67/67, modul-altwege-oberflaeche 27/27, ki-schichtfolge-live 11/11, v4-tokens 32/32, prozess-wachen 15/15; E2E (E2E_PORT=3287, 390x844) v4-3b-plan-form, v4-querschnitt-form, v4-schublade-fokus 3/3; Bildnachweis v4-abnahme reflow,ziele,fokus (leitung, 390/1024 px, hell/dunkel) 182 Prüfungen, 0 Befunde. Schnitt 2 Personal, Lauf 2026-11-21 lokal je Datei --maxWorkers=1: v4-3b-personal 7/7, v4-3b-plan 9/9 (mit fester Stufentabelle), v4-ist-stand, v4-inventar, v4-3a-querschnitt (zusammen mit beiden 57/57), selbstauskunft-oberflaeche, person-eintritt, oberflaeche-render (zusammen 84/84); Mutationen je 1 Fall rot; E2E (E2E_PORT=3287, 390x844) v4-3b-personal-form, v4-3b-plan-form 2/2; Bildnachweis v4-abnahme reflow,ziele,fokus (leitung, 390/1024 px, hell/dunkel) 182 Prüfungen, 0 Befunde. Schnitt 3 Zeit, Lauf 2026-11-21 lokal je Aufruf --maxWorkers=1: v4-3b-zeit 7/7, v4-3b-personal 8/8, v4-3b-plan 10/10 (zusammen 25/25), v4-ist-stand/v4-inventar/v4-3a-querschnitt/v4-app-stil 104/104, geraete-wp21/p2-11a-antraege-nested/wp14c-nachbesserung/monatsabschluss-oberflaeche/wp39-app-aufbau/oberflaeche-render/kontrast/wcag-wp40 354/354, prozess-wachen 15/15, acc45-status/acc45-werkzeuge 61/61; Mutationen (B1 Übergang, B2 alt und kante) je 1 Fall rot; E2E (E2E_PORT=3287, 390x844) v4-3b-zeit-form 1/1; Bildnachweis v4-abnahme reflow,ziele,fokus (leitung und mitarbeiter, 390/1024 px, hell/dunkel) 200 Prüfungen, 0 Befunde. Schnitt 4 Einstellungen, Lauf 2026-11-21 lokal je Aufruf --maxWorkers=1: v4-3b-einstellungen 10/10, mit v4-3b-plan/-personal/-zeit zusammen 38/38 (Basisabgleich aus Fixture; mit V4_BASIS_OHNE_GIT=1 nur die Git-Gegenprobe sichtbar übersprungen), v4-ist-stand/v4-inventar/v4-3a-querschnitt/v4-app-stil/v4-tokens 136/136, einladungen-oberflaeche/intelligence-planungsreife-anzeige/intelligence-vorgaben-oberflaeche/einstellungen-wirkung/gestalt/sicherungen/wiederherstellen-ui/wp39-app-aufbau/oberflaeche-render/kontrast/wcag-wp40 411/411, prozess-wachen 15/15; Mutationen ohne Git-Verlauf (alt, kante, Stufe, Quelle, Fixture) je rot; E2E (E2E_PORT=3287, 390x844) v4-3b-einstellungen-form 1/1; Bildnachweis v4-abnahme reflow,ziele,fokus (leitung, 390/1024 px, hell/dunkel) 182 Prüfungen, 0 Befunde."},
         "reviewt": {"wert":false,"beleg":null},
         "integriert": {"wert":false,"beleg":null},
@@ -6596,21 +6596,21 @@
       "prio": "P2",
       "aufwandPT": {"min":0.25,"max":0.5},
       "abhaengigkeiten": [],
-      "status": "READY",
+      "status": "REVIEW",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"Branch acc45/a11y/a11y-1-arbeitstag: Tests zuerst 29d4972f (pruefungen/v4-3b-personal.test.js 4/13 rot auf 0ec90fa0), Umsetzung 724f9828: Arbeitstag-Knöpfe aria-pressed und Haken-Icon wie Qualifikationen; Nachtbalken C.steuer (4,14:1 hell, 4,41:1 dunkel gegen die Fläche, vorher 2,25/2,07); E2E e2e/a11y-1-arbeitstag.spec.mjs; Nachtrag A11Y-1 in V4-IST-STAND-2026-11-20.md"},
+        "lokalGetestet": {"wert":true,"beleg":"Lokal 2026-11-21 je Aufruf --maxWorkers=1: v4-3b-personal 13/13, kontrast/wcag-wp40 mit v4-3b-personal 255/255, oberflaeche-render/v4-3b-einstellungen/person-eintritt/v4-inventar/v4-ist-stand/v4-3a-querschnitt/v4-3b-plan/v4-3b-zeit/v4-app-stil 211/211, v4-ist-stand/ci-abdeckung/verdrahtung/prozess-wachen/e2e-flaechen 70/70; Mutationen (aria-pressed weg 3 rot, Haken weg 3 rot, lineStark zurück 1 rot); Bildnachweis v4-abnahme reflow,ziele,fokus (leitung, NUR=Personal, 390/1024 px, hell/dunkel) 10 Prüfungen, 0 Befunde. E2E lokal nicht gelaufen (@playwright/test fehlt lokal), nur CI"},
         "reviewt": {"wert":false,"beleg":null},
         "integriert": {"wert":false,"beleg":null},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
       },
-      "branch": null,
-      "agent": null,
+      "branch": "acc45/a11y/a11y-1-arbeitstag",
+      "agent": "Agent E – Business Modules & Frontend",
       "modell": "sonnet",
       "konfliktzonen": ["src/ansichten"],
-      "pr": [],
+      "pr": ["#445"],
       "nachweis": "docs/acc45/V4-IST-STAND-2026-11-20.md",
       "akzeptanz": "src/ansichten/personalakte.jsx (Arbeitstage, etwa Zeile 190–194): jeder Arbeitstag-Knopf trägt aria-pressed mit dem Zustand gewählt/frei (4.1.2); gewählt und frei sind nicht nur über die Fläche unterscheidbar, sondern über ein zusätzliches Merkmal (z. B. Haken-Icon wie bei Qualifikationen) oder über Kontrast >= 3:1 gegen frei, hell und dunkel (1.4.11; heute 1,25:1 hell, 1,47:1 dunkel); Nachtbalken: Kontrast >= 3:1 gegen die Fläche hell und dunkel oder die Monatswerte als für Tastatur, Touch und Vorlesesoftware erreichbarer Text (title allein genügt nicht; heute 2,07–2,25:1); Accessible Names der Knöpfe (Wochentag) und Fachlogik (toggleWochentag) unverändert; kein neuer Übergang (V4-2d); Tests zuerst rot: Render-/Unit-Test (aria-pressed je Zustand, Kontrast aus v4AlsAltePalette) und E2E (Klick wechselt aria-pressed, 390 und 1024 px)",
       "tests": "Unit, E2E",
