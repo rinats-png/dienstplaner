@@ -5,8 +5,8 @@
        jedes Element im Inhalt mit var(--v4-r-…) im Inline-Stil hat den Radius seiner Stufe aus V4_RADIEN;
      - Details eines Mandanten: Symbole der Abrechnung 24×24 (Stufe klein);
      - Neuer Mandant: Auswahl der Zugangsarten (Stufe mittel); das Feld des zweiten Faktors behält seinen Accessible Name.
-   Meldung „angelegt“, Fehlermeldung und Aussetzungszeile erscheinen nur nach einer Schreibaktion; sie sind über den
-   Render-Test und die Rückrechnung auf den Basis-Quelltext belegt (pruefungen/v4-3b-betreiber.test.js).
+   Meldung „angelegt“, Zugangscode, Fehlermeldung und Aussetzungszeile erscheinen nur nach einer Schreibaktion; sie
+   sind über die feste Tabelle und die Rückrechnung auf den Basis-Quelltext belegt (pruefungen/v4-3b-betreiber.test.js).
    Der Test liest nur (Ansichten öffnen, kein Anlegen, kein Speichern). Bremsen-Bilanz: 1 Anmeldung als Betreiber je
    Lauf (nur Projekt 390x844; Breitenwechsel ohne neue Anmeldung). Herkunft je Test über die Fixture in hilfen.mjs
    (e2e/herkunft.mjs). Zeitgrenze 150 s. */
