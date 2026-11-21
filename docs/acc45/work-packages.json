@@ -6526,7 +6526,7 @@
       "agent": null,
       "modell": "sonnet",
       "konfliktzonen": ["src/ansichten"],
-      "pr": ["#440","#442","#443"],
+      "pr": ["#440","#442","#443","#444"],
       "nachweis": "docs/acc45/V4-IST-STAND-2026-11-20.md",
       "akzeptanz": "Inline borderRadius/boxShadow-Literale je Hauptansicht durch Tokens oder Bausteinklassen ersetzt (Zählstand 215 in 75 Dateien sinkt messbar); keine Änderung an Fachlogik, Rollen, Accessible Names oder Klassennamen; Bildnachweis hell/dunkel je Ansicht",
       "tests": "Unit, E2E",
