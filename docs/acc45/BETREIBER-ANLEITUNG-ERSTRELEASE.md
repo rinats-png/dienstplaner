@@ -118,12 +118,15 @@ Claude startet nie einen Deploy-Workflow und greift nie auf den VPS zu ([RELEASE
 - **Ziel / Gate:** F-8. Risiko R-GH-2: Wer den Schlüssel auf dem Server hat, kann auf `main` pushen.
 - **Handlung:** GitHub → Repository → **Settings** → **Deploy keys**. Den Schlüssel mit Schreibrecht ansehen.
   - Zeigt die Inventur (4.2, V-7/V-8) keinen Git-Bedarf auf dem VPS: **Delete**.
-  - Wird er gebraucht: **Add deploy key** mit demselben öffentlichen Teil, **ohne** „Allow write access“; danach den
-    alten Eintrag löschen.
+  - Wird er gebraucht: zuerst den alten Eintrag **Delete**, danach **Add deploy key** mit demselben öffentlichen Teil,
+    **ohne** „Allow write access“. Umgekehrt geht es nicht: GitHub lehnt einen Schlüssel ab, der schon eingetragen ist
+    („Key is already in use“). Zwischen Löschen und Neuanlegen hat der VPS keinen Git-Zugang. Der Auslieferungsweg ist
+    davon nicht betroffen: Der VPS holt Bilder aus GHCR, nicht aus Git (Produktionsweg §1.5). Unterbrochen wird nur,
+    was V-7/V-8 als Git-Nutzung zeigen.
 - **Erwartet:** Kein Deploy-Key mit Schreibrecht. Lesende Prüfung durch Claude:
   `gh api repos/rinats-png/dienstplaner/keys --jq '.[] | [.id, .read_only]'` zeigt keine Zeile mit `false`.
 - **Weiter nur wenn:** keine Zeile mit `false`.
-- **Rückweg:** Schlüssel neu anlegen (öffentlicher Teil liegt weiter auf dem VPS), nur lesend.
+- **Rückweg:** Schlüssel mit dem öffentlichen Teil vom VPS neu anlegen, nur lesend.
 - **Danach Claude:** führt die Abfrage aus und vermerkt das Ergebnis.
 
 ### 5.2 Branch-Schutz `main` (P3-3)
@@ -133,9 +136,10 @@ Claude startet nie einen Deploy-Workflow und greift nie auf den VPS zu ([RELEASE
   für `main` nach [BETREIBER-BRANCHSCHUTZ.md](BETREIBER-BRANCHSCHUTZ.md) §5 (dazu §2 gemeinsame Regeln). Vorher den
   Wirkungstest auf Wegwerf-Branches nach §6.
 - **Erwartet:** `node werkzeug/branchschutz-pruefen.mjs` zeigt für `main` `GESCHUETZT` (BETREIBER-BRANCHSCHUTZ §6
-  Schritt 4). Für alle drei Branches: Exit 0.
-- **Weiter nur wenn:** `main` geschützt. Die Zeilen für `integration/release-v4` und `koordination/lease` dürfen später
-  folgen; sie blockieren das Erstrelease nicht.
+  Schritt 4).
+- **Weiter nur wenn:** Zeile `main` zeigt `GESCHUETZT`. Ein Exit ≠ 0 ist nur zulässig, wenn er allein von den Zeilen
+  `integration/release-v4` und `koordination/lease` kommt. Diese beiden dürfen später folgen; sie blockieren das
+  Erstrelease nicht.
 - **Rückweg:** Notausstieg BETREIBER-BRANCHSCHUTZ §7 (Ruleset auf `disabled`, ändert keine Daten).
 - **Danach Claude:** führt `branchschutz-pruefen` aus. **offen:** Es gibt noch keine `CODEOWNERS`-Datei für
   `docs/acc45/releases/` und `deploy/FREIGEGEBENE-IMAGES.md` (RELEASE-PROZESS §5). Claude legt sie per PR an, wenn
@@ -170,17 +174,25 @@ Claude startet nie einen Deploy-Workflow und greift nie auf den VPS zu ([RELEASE
     Workflows „Auslieferung“ mit Umgebung `produktion` (O-2 b).
   - **O-1: Rolle von `274bfa0`.** Folge von O-2 b **[belegt]**: Der Forced Command lässt `--ohne-label` nicht zu
     (`deploy/deploy.sh:93`). `274bfa0` hat kein Revisionslabel. `bisher_startbar` scheitert deshalb
-    (`deploy/deploy.sh:228-231`). Jeder Fehler **vor** dem Wechsel endet in R0 statt Weiterbetrieb auf `274bfa0`
-    (Szenario S-0). Das gilt auch, wenn `274bfa0` `vorherig` bleibt. S-5 (Notbetrieb auf `274bfa0`) ist praktisch
-    ausgeschlossen.
-  - Für die Endprüfung muss die Zeile von `274bfa0` bis dahin `vorherig` sein: Die Basis muss eine Zeile `aktiv` oder
-    `vorherig` sein (RELEASE-PROZESS §4). `gesperrt` folgt in einem eigenen Listen-PR nach dem Wechsel (16.3).
+    (`deploy/deploy.sh:228-231`). Folge je Phase (Produktionsweg §3.3a):
+    - Abbruch in den Schritten 1 bis 3b (Liste, Pull, Prüfung, Platz; `abbruch`, `deploy/deploy.sh:132-137`): nichts
+      verändert, `274bfa0` läuft weiter.
+    - Fehler nach dem Anhalten in Schritt 4 oder 5 (Sicherung, Platz, `.env`; `alt_wieder_starten`,
+      `deploy/deploy.sh:297-311`): `274bfa0` wird **nicht** wieder gestartet → R0, Ausfall bis zur Reparatur (S-0). Das
+      gilt auch, wenn `274bfa0` `vorherig` bleibt.
+    - Fehler ab Schritt 6: R0 (S-1). S-5 (Notbetrieb auf `274bfa0`) ist praktisch ausgeschlossen.
+  - Unter O-2 b ist deshalb nur **O-1 b** stimmig: `274bfa0` ist kein Neustart- und kein Rücksprungziel. O-1 a und c
+    setzen einen Wechsel von Hand mit `--ohne-label` voraus (O-2 a). Abweichung vom Wortlaut von O-1 b („sofort
+    gesperrt“): Die Zeile `274bfa0` bleibt bis nach dem Wechsel `vorherig`, weil die Basis der Endprüfung eine Zeile
+    `aktiv` oder `vorherig` sein muss (RELEASE-PROZESS §4). `gesperrt` folgt in einem eigenen Listen-PR nach dem Go
+    (16.3).
   - Alternative (nicht Weg dieser Anleitung): O-2 a, erster Wechsel von Hand mit
-    `./deploy.sh <digest> --ohne-label --bei-fehler=r0` (Produktionsweg §3.7 Schritte 7 und 8). Dann läuft `274bfa0`
-    bei einem Fehler vor dem Wechsel weiter.
+    `./deploy.sh <digest> --ohne-label --bei-fehler=r0` (Produktionsweg §3.7 Schritte 7 und 8), mit O-1 a. Dann
+    startet `deploy.sh` `274bfa0` auch bei einem Fehler in Schritt 4 oder 5 wieder.
   - **O-3:** Zeitgrenzen 15 min / 60 min / 24 h bestätigen (Produktionsweg §3.6).
-- **Erwartet:** Vermerk mit O-1 (a, b oder c), O-2 (b), O-3, Datum, Name.
-- **Weiter nur wenn:** Sie die Folge „Abbruch vor dem Wechsel = Ausfall bis zur Reparatur“ bewusst annehmen. Sonst O-2 a.
+- **Erwartet:** Vermerk mit O-1 (b), O-2 (b), O-3, Datum, Name.
+- **Weiter nur wenn:** Sie die Folge „Fehler nach dem Anhalten (Schritt 4/5) = Ausfall bis zur Reparatur“ bewusst
+  annehmen. Sonst O-2 a mit O-1 a.
 - **Rückweg:** Entscheidung vor 14 jederzeit änderbar.
 - **Danach Claude:** übernimmt O-1/O-2 in den Entwurf der Freigabedatei (`rueckweg`, 9.3) und in den Listen-PR (9.2).
 
@@ -232,6 +244,9 @@ Widerrufbuch-Probe jünger als 35 Tage, `ergebnis: ok`, `abweichend` und `fehlen
 - **Erwartet:** Exit 0; `status.json` mit `"ergebnis":"ok"` und `snapshot_id`. Fehlalarm-Probe (§2.8) kommt an.
 - **Weiter nur wenn:** `ergebnis` `ok`. **[angenommen]:** Das Werkzeug im Bild `274bfa0` sichert mit Ruhezeit (kein
   Schreibhalt-Kanal ohne `zustand/`). Der erste Handlauf belegt das.
+  **Widerspruch zu Produktionsweg §3.7 Schritt 6:** Dort soll die zusätzliche Sicherung vor dem Wechsel (B-8) **nicht**
+  unter laufendem `274bfa0` entstehen (kein Schreibhalt). Der tägliche Lauf hier sichert unter laufendem Dienst mit
+  Ruhezeit (BETRIEB-SICHERUNG §5 „Konsistenz“). Für G6 genügt er; die Sicherung für den Wechsel selbst kommt aus 14.3.
 - **Rückweg:** Cron-Zeilen auskommentieren (§2.9). Sicherungen bleiben im Bucket. Keine Löschung.
 - **Danach Claude:** keine Handlung auf dem VPS.
 
@@ -439,10 +454,12 @@ Widerrufbuch-Probe jünger als 35 Tage, `ergebnis: ok`, `abweichend` und `fehlen
 ## 11. Rückweg festlegen (G7)
 
 - **Ziel / Gate:** G7.
-- **Handlung (Betreiber):** In der Freigabedatei `rueckweg: { "strategie": "r0", "entscheidungO1": "<a|b|c>",
-  "entscheidungO2": "b" }` (Werte aus 5.4). Entscheidungsbaum Produktionsweg §3.6 bestätigen (F-13).
+- **Handlung (Betreiber):** In der Freigabedatei `rueckweg: { "strategie": "r0", "entscheidungO1": "b",
+  "entscheidungO2": "b" }` (5.4). Entscheidungsbaum Produktionsweg §3.6 bestätigen (F-13).
 - **Erwartet:** Endprüfung G7 GO mit Beleg „R0 als Fehlerstrategie“.
 - **Weiter nur wenn:** `strategie` = `r0`. `ruecksprung` hat beim ersten Wechsel kein zulässiges Ziel (Produktionsweg §3.3).
+  Achtung: Das Werkzeug prüft das nicht. G7 ist mit `274bfa0` als `vorherig` auch bei `strategie: ruecksprung` GO
+  (OF-13). Prüfen Sie den Wert selbst.
 - **Rückweg:** Datei per PR ändern.
 - **Danach Claude:** keine weitere Handlung.
 
@@ -473,7 +490,7 @@ Alle Befehle in `/opt/apps/centric-dienstplanung` als Besitzer des Verzeichnisse
 - **Dann** (Kopie der alten Dateien mit Zeitstempel daneben, Produktionsweg §3.7 Schritt 3):
 
   ```bash
-  S=$(date -u +%Y%m%dT%H%M%SZ)
+  S=$(date -u +%Y%m%dT%H%M%SZ); echo "Zeitstempel: $S"
   for f in compose.yml FREIGEGEBENE-IMAGES.md deploy.sh freigabe-lib.sh digest-pruefen.sh ruecksprung.sh abschalten.sh deploy-smoke.mjs deploy-abgleich.mjs; do
     [ -e "$f" ] && cp -p "$f" "$f.vor-$S"
     cp "neu-<id>/$f" "$f"
@@ -481,7 +498,9 @@ Alle Befehle in `/opt/apps/centric-dienstplanung` als Besitzer des Verzeichnisse
   chmod 750 deploy.sh freigabe-lib.sh digest-pruefen.sh ruecksprung.sh abschalten.sh
   ```
 
-- **Rückweg:** je Datei `cp -p "<datei>.vor-$S" "<datei>"`. Der laufende Container ist davon nicht betroffen.
+- **Rückweg:** je Datei `cp -p "<datei>.vor-<zeitstempel>" "<datei>"`. Den Zeitstempel notieren Sie aus der Ausgabe
+  `Zeitstempel: …`; `$S` geht beim Schließen der Konsole verloren. Ohne Notiz: `ls -l *.vor-*` zeigt die Kopien. Der
+  laufende Container ist davon nicht betroffen.
 - **Danach Claude:** nichts. Claude hat keinen Zugriff.
 
 ### 12.2 `.env` ergänzen und `zustand/` anlegen
@@ -509,6 +528,8 @@ Alle Befehle in `/opt/apps/centric-dienstplanung` als Besitzer des Verzeichnisse
   - §2.5 Eine Zeile an `~admin/.ssh/authorized_keys` **anhängen** (Sicherung und `>>` wie VPS-ZUGANG §3d/§3e):
     `command="/opt/apps/centric-dienstplanung/deploy.sh --ssh",restrict ssh-ed25519 AAAA… deploy@github-actions`.
   - §2.6 Host-Schlüssel: `ssh-keyscan -t ed25519 <host>`; Fingerabdruck gleich dem ED25519-Wert aus VPS-ZUGANG §1e.
+  - Nach dem Eintragen als Secret (12.4) die private Datei am Arbeitsrechner löschen: `rm deploy_ed25519`. Sie liegt
+    dann nur noch in der Umgebung `produktion`. Ersatz bei Verlust: neues Paar nach §2.4, Zeile tauschen.
 - **Erwartet:** Trockenlauf zeigt `TROCKENLAUF — es wird nichts verändert.` und den Plan. In der Zeile `Bisher:` steht
   bei O-2 b `R0 (nicht startbar)` — das ist die Folge aus 5.4 **[belegt im Code, `deploy/deploy.sh:269`]**.
 - **Weiter nur wenn:** Trockenlauf Exit 0; Fingerabdruck stimmt; alte Schlüsselzeilen unverändert.
@@ -552,7 +573,23 @@ Alle Befehle in `/opt/apps/centric-dienstplanung` als Besitzer des Verzeichnisse
 ## 14. Auslieferung (nur `workflow_dispatch` und Umgebung `produktion`)
 
 **Vorbedingung:** 13 mit Exit 0; Probe K0–K11 bestanden (F-5); Freigabe-Checkliste Produktionsweg §5 (F-1 bis F-14)
-vollständig; Wartungsfenster angekündigt; ausdrückliche Produktionsfreigabe (F-14).
+vollständig; Wartungsfenster angekündigt; ausdrückliche Produktionsfreigabe (F-14). Zwei Punkte der Checkliste haben
+hier keinen eigenen Schritt:
+
+- **F-4 Staging-Abnahme per Digest:** Eine Staging-VM gibt es bis Phase D nicht (Betreiberentscheidung 2026-11-17).
+  Sie entscheiden schriftlich, ob F-4 entfällt, durch K0–K11 ersetzt wird oder das Release bis Phase D wartet (OF-10).
+- **F-11 Zweiter Faktor des Betreibers:** Voraussetzung für G-d (15). Authenticator und Ablage der
+  Wiederherstellungscodes vorher bereitlegen (wp32d-nachweis.md). Ohne das kein Go (OF-11).
+
+### 14.0 Am Wechseltag: Inventur erneut
+
+- **Ziel / Gate:** Produktionsweg §3.7 Schritt 2. Stand des Tages.
+- **Handlung:** Inventur wie 4.2 (VPS-ZUGANG §4b), Ergebnis protokollieren.
+- **Erwartet:** wie 4.2; laufendes Bild = `274bfa0`; `.env` mit `IMAGE_DIGEST`, ohne `IMAGE_TAG`; `zustand/` uid 1000,
+  Modus 700; Platz für 2 × Daten.
+- **Weiter nur wenn:** keine Abweichung zu 4.2 und 12. Sonst STOPP.
+- **Rückweg:** keiner nötig (nur lesen).
+- **Danach Claude:** vergleicht mit 4.2 und meldet Abweichungen.
 
 ### 14.1 Trockenlauf über den Workflow
 
@@ -583,10 +620,34 @@ vollständig; Wartungsfenster angekündigt; ausdrückliche Produktionsfreigabe (
   Freigabe in der Umgebung wie 14.1. Uhrzeit des Starts als **T0** notieren.
 - **Erwartet:** `deploy.sh` Schritte 1 bis 11 (DEPLOY-AUTOMATISIERUNG §1). Letzte Zeilen:
   `Ausgeliefert: centric-dp-web läuft healthy auf <digest> (Commit <kandidat>).` Rückgabe 0.
-- **Weiter nur wenn:** Rückgabe 0. Bei Rückgabe 1 hat `deploy.sh` R0 erreicht → 16.1. Bei **Rückgabe 8**: R0 nicht
-  sicher erreicht → sofort in der Remotekonsole `./abschalten.sh` (Produktionsweg §3.4 S-1).
+- **Weiter nur wenn:** Rückgabe 0. Andere Rückgaben (`deploy/deploy.sh:63-66`):
+
+  | Rückgabe | Bedeutung | Handlung |
+  |---|---|---|
+  | 1 | fehlgeschlagen, R0 erreicht | 16.1 |
+  | 2 | Aufruf fehlerhaft; abgebrochen, nichts verändert, `274bfa0` läuft weiter | **nicht abschalten**; Eingaben prüfen |
+  | 3 | Digest gesperrt; abgebrochen, nichts verändert, `274bfa0` läuft weiter | **nicht abschalten**; Liste prüfen |
+  | 4 | nicht freigegeben, Konfiguration oder Vorprüfung; abgebrochen, nichts verändert, `274bfa0` läuft weiter | **nicht abschalten**; Meldung lesen (Liste, `.env`, Platz) |
+  | 5 | Bild nicht zu beschaffen; abgebrochen, nichts verändert, `274bfa0` läuft weiter | **nicht abschalten**; GHCR prüfen |
+  | 7 | Docker antwortet nicht; abgebrochen, nichts verändert | **nicht abschalten**; Zustand mit `docker compose ps` prüfen |
+  | 8 | fehlgeschlagen **und** R0 nicht sicher erreicht | sofort in der Remotekonsole `./abschalten.sh` (Produktionsweg §3.4 S-1) |
+
+  Scheitert schon der Schritt „Eingaben prüfen“ oder „SSH-Zugang“ im Job `vps`, lief auf dem VPS nichts.
 - **Rückweg:** Produktionsweg §3.4 und §3.6; Kurzfassung in 16.1.
 - **Danach Claude:** liest den Lauf, prüft lesend den Digest in GHCR und meldet PRODUKTIV erst nach 15.
+
+### 14.3 Sicherung des Wechsels außer Haus
+
+- **Ziel / Gate:** Produktionsweg §3.7 Schritt 6 (B-8). Die Sicherung, die `deploy.sh` in Schritt 4 bei angehaltenem
+  Dienst angelegt und geprüft hat (`deploy-sicherungen/centric-sicherung-<UTC>`, Name in der Ausgabe und in
+  `betrieb-protokoll.log`), liegt nur auf demselben Host.
+- **Handlung:** offen. Im Repository gibt es keinen Befehl, der diesen Ordner außer Haus kopiert
+  (`sicherung-ausser-haus.sh` sichert die laufende Ablage, nicht `deploy-sicherungen/`). Claude schlägt einen Befehl in
+  einem eigenen PR vor (OF-12). Bis dahin: Ordner nicht löschen; `deploy.sh` schützt ihn über
+  `deploy-sicherungen/.letzte-erfolgreiche`.
+- **Weiter nur wenn:** Ordner vollständig: `ls deploy-sicherungen/<name>/FERTIG` findet die Datei.
+- **Rückweg:** keiner nötig.
+- **Danach Claude:** liefert den Befehlsvorschlag zur Freigabe.
 
 ---
 
@@ -605,11 +666,14 @@ vollständig; Wartungsfenster angekündigt; ausdrückliche Produktionsfreigabe (
 
   Dann die Go-Kriterien G-a bis G-f (Produktionsweg §3.6):
   - G-a: Startprotokoll enthält `Widerrufbuch: …` und `Konto-Widerrufbuch: …` ohne `WARNUNG` (Texte aus `server.mjs`).
-  - G-b: keine Zeile „Passwörter … zurückgesetzt“ und keine „nach Rücksprung gesperrt“.
+  - G-b: In der Zeile `Konto-Widerrufbuch: …` steht vor „in der Ablage zurückgesetzt“ die Zahl 0 und vor „nach
+    Rücksprung gesperrt“ die Zahl 0. Es gibt keine Zeile `WARNUNG Konto-Widerrufbuch`. (Die Startzeile nennt beide
+    Zahlen immer, auch bei 0: `server.mjs:462-466`.)
   - G-c: `/gesund` ok (Sicherungsalter darf warnen, solange 6.4 offen ist).
   - G-d: Betreiber meldet sich mit zweitem Faktor an.
   - G-e: eine Test-Leitung je Pilotform meldet sich an und öffnet den Plan; nichts Echtes speichern.
-  - G-f: Bild-ID = Ziel-Digest; Revisionslabel = `<kandidat>`.
+  - G-f: Bild-ID = Ziel-Digest (erste zwei Befehle oben); Revisionslabel = `<kandidat>`:
+    `docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' ghcr.io/rinats-png/dienstplaner@<digest>`.
 - **Erwartet:** `healthy`, gleiche Bild-ID, `{"status":"ok"}`, `200`, alle G-a…G-f ja.
 - **Weiter nur wenn:** alle ja → Go, Nutzer informieren, Uhrzeit notieren.
 - **Rückweg:** Entscheidungsbaum Produktionsweg §3.6 Phase 2: Datenschutz-/Sicherheitsbefund → sofort R0 (S-3);
@@ -654,8 +718,8 @@ vollständig; Wartungsfenster angekündigt; ausdrückliche Produktionsfreigabe (
 
 ### 16.3 Abschluss nach T0+24 h
 
-- **Handlung:** Kein Rollback-Trigger in Phase 3 (Produktionsweg §3.6). Dann Listen-PR (Claude): `274bfa0` →
-  `gesperrt` („überholt, ohne zweiten Faktor“). Merge mit Kopf-Pin, Datei wie 12.1 auf den VPS kopieren.
+- **Handlung:** Kein Rollback-Trigger in Phase 3 (Produktionsweg §3.6). Listen-PR (Claude): `274bfa0` →
+  `gesperrt` („überholt, ohne zweiten Faktor“; O-1 b). Er darf schon nach dem Go (15) kommen, spätestens jetzt. Merge mit Kopf-Pin, Datei wie 12.1 auf den VPS kopieren.
 - **Erwartet:** Liste ohne Zeile `vorherig` auf `274bfa0`.
 - **Weiter nur wenn:** Sicherung außer Haus läuft (sonst kein Go für den nächsten Wechsel, §3.6).
 - **Danach Claude:** zieht `main` per PR nach `integration/release-v4` nach, setzt REL-3/REL-4 im SSOT mit Belegen.
@@ -672,9 +736,13 @@ vollständig; Wartungsfenster angekündigt; ausdrückliche Produktionsfreigabe (
 | OF-4 | K0–K11 ohne Skript; K4/K6 brauchen den Kandidaten-Digest | O-4, Ergebnis 8.2 |
 | OF-5 | Bildangaben-Datei braucht lokal Docker buildx; unsigniert | REL-2 (Gate-Job) |
 | OF-6 | `CODEOWNERS` für `docs/acc45/releases/` und die Liste fehlt | Ihre Entscheidung (5.2) |
-| OF-7 | Mit O-2 b: Abbruch vor dem Wechsel = Ausfall (kein Neustart von `274bfa0`) | Ihre Annahme (5.4) |
+| OF-7 | Mit O-2 b: Fehler nach dem Anhalten (Schritt 4/5) = Ausfall (kein Neustart von `274bfa0`); Abbrüche in 1–3b lassen `274bfa0` laufen | Ihre Annahme (5.4) |
 | OF-8 | `BEREITSTELLUNG.md` §3.1 „Daten von Bildwechsel nie betroffen“ ist für diesen Wechsel falsch | O-7, eigener Doku-PR |
-| OF-9 | `RELEASE-PROZESS.md` enthält die Abschnitte 1 bis 6 mehrfach (Ersetzungsfehler um Zeile 156 und 284); maßgeblich ist der erste Durchlauf mit `vorlagenHashes` | eigener Doku-PR (Claude) |
+| OF-9 | `RELEASE-PROZESS.md` (auf `integration/release-v4`) enthält §1–§6 dreifach, vermutlich durch ein JS-`replace` mit dem Ersatzmuster `` $` ``. Durchlauf 1 hat den neuesten Stand von §1–§5 (mit `vorlagenHashes`), aber die G3-Zeile in §6 bricht ab, und G4–G10 fehlen dort. Rest der G3-Zeile, G4–G10 und der Schlusssatz stehen nur in Durchlauf 3 (etwa Zeilen 412–423). Den vollständigen G3-Satz gibt es nirgends unzerstückelt | eigener Doku-PR (Claude) **nach** Merge von #437, weil #437 die Datei noch ändert |
+| OF-10 | F-4 Staging-Abnahme per Digest: keine Staging-VM bis Phase D | Ihre Entscheidung (14) |
+| OF-11 | F-11 Zweiter Faktor des Betreibers vorbereitet (Voraussetzung G-d) | Ihre Handlung (14) |
+| OF-12 | Kein Befehl, der `deploy-sicherungen/<name>` außer Haus kopiert (Produktionsweg §3.7 Schritt 6) | Befehlsvorschlag Claude, Ihre Freigabe (14.3) |
+| OF-13 | Werkzeuglücke: G7 akzeptiert `274bfa0` als `vorherig` auch bei `strategie: ruecksprung`; nur diese Anleitung verlangt `r0` | eigener Werkzeug-PR (außerhalb dieses PR) |
 
 ## 18. Quellen
 
