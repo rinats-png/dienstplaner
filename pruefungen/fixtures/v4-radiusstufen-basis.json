@@ -997,6 +997,133 @@
           "literaleSha256": "6376999dc5bec7d85affdee9df59981598a80319cd8cddf894f98d6f3649c551"
         }
       }
+    },
+    "Telefonschale": {
+      "basis": "55db4363dcbd367d59203cfd2e7096f6e2ff178a",
+      "dateien": {
+        "src/ansichten/mobil.jsx": {
+          "sha256": "6ee23d70b8232bcb139a61c7603bf8faa7a9ed8ffc2c93b9eae33bb5a23705ad",
+          "literale": [
+            {
+              "wert": "18",
+              "kontext": "{{ background: C.flaeche,\n    border: `1px solid ${ton === \"danger\" ? `${C.danger}66` : ton === \"warn\" ? `${C.warn}66` : C.line}`,\n    borderRadius: 18, padding: 16, marginBottom: 10, cursor: onClick ? \"pointer\" : \"default\",\n    boxShadow: \"var(--schatten)\", ...style }}"
+            },
+            {
+              "wert": "14",
+              "kontext": "{{ width: 40, height: 40, borderRadius: 14, flexShrink: 0, display: \"flex\",\n                alignItems: \"center\", justifyContent: \"center\", fontSize: 17, fontWeight: 700,\n                background: a.dringend ? C.dangerLight : C.bg,\n                color: a.dringend ? C.danger : C.dim }}"
+            },
+            {
+              "wert": "18",
+              "kontext": "{{ width: \"100%\", height: 56, fontSize: 16.5, fontWeight: 650, borderRadius: 18 }}"
+            },
+            {
+              "wert": "2",
+              "kontext": "{{ width: 3, alignSelf: \"stretch\", borderRadius: 2,\n                  background: da ? lesbar(da.farbe, 3) : t.abwesenheit ? lesbar(abwArt(t.abwesenheit.art).farbe, 3) : \"transparent\" }}"
+            },
+            {
+              "wert": "12",
+              "kontext": "{{ aspectRatio: \"1\", borderRadius: 12, display: \"flex\", flexDirection: \"column\",\n                    alignItems: \"center\", justifyContent: \"center\", cursor: \"pointer\", gap: 2,\n                    background: da ? `${da.farbe}1C` : t.abwesenheit ? `${abwArt(t.abwesenheit.art).farbe}1C` : C.bg,\n                    outline: d === heute() ? `2px solid ${C.accent}` : \"none\" }}"
+            },
+            {
+              "wert": "16",
+              "kontext": "{{ height: 50, borderRadius: 16, fontSize: 15.5 }}"
+            },
+            {
+              "wert": "16",
+              "kontext": "{{ height: 50, borderRadius: 16, fontSize: 15.5 }}"
+            },
+            {
+              "wert": "16",
+              "kontext": "{{ height: 50, borderRadius: 16, fontSize: 15.5 }}"
+            },
+            {
+              "wert": "16",
+              "kontext": "{{ width: \"100%\", height: 46, borderRadius: 16, fontSize: 14.5 }}"
+            },
+            {
+              "wert": "17",
+              "kontext": "{{ height: 52, borderRadius: 17, fontSize: 15 }}"
+            },
+            {
+              "wert": "17",
+              "kontext": "{{ height: 52, borderRadius: 17, fontSize: 15 }}"
+            },
+            {
+              "wert": "15",
+              "kontext": "{{ height: 46, borderRadius: 15 }}"
+            },
+            {
+              "wert": "15",
+              "kontext": "{{ height: 46, borderRadius: 15 }}"
+            },
+            {
+              "wert": "15",
+              "kontext": "{{ width: \"100%\", height: 46, marginTop: 13, borderRadius: 15 }}"
+            },
+            {
+              "wert": "15",
+              "kontext": "{{ width: \"100%\", height: 46, borderRadius: 15 }}"
+            },
+            {
+              "wert": "27",
+              "kontext": "{{ width: 54, height: 54, borderRadius: 27, flexShrink: 0,\n                display: \"flex\", alignItems: \"center\", justifyContent: \"center\",\n                background: st.vollstaendig ? C.okLight : C.flaecheStill,\n                color: st.vollstaendig ? C.ok : C.dim, fontSize: 16, fontWeight: 700, ...NUM }}"
+            },
+            {
+              "wert": "14",
+              "kontext": "{{ display: \"flex\", alignItems: \"flex-start\", gap: 14, width: \"100%\",\n                        padding: \"16px 18px\", marginBottom: 8, borderRadius: 14, minHeight: 56,\n                        border: `1px solid ${z.erledigt ? C.okLight : C.line}`,\n                        background: z.erledigt ? C.okLight : C.flaeche, textAlign: \"left\",\n                        fontFamily: \"inherit\", color: C.text,\n                        cursor: z.erledigt ? \"default\" : \"pointer\" }}"
+            },
+            {
+              "wert": "13",
+              "kontext": "{{ width: 26, height: 26, borderRadius: 13, flexShrink: 0,\n                        marginTop: 1, display: \"flex\", alignItems: \"center\", justifyContent: \"center\",\n                        border: `1.5px solid ${z.erledigt ? C.ok : C.lineStark}`,\n                        background: z.erledigt ? C.ok : \"transparent\", color: C.aufAkzent,\n                        fontSize: 14 }}"
+            },
+            {
+              "wert": "10",
+              "kontext": "{{ padding: \"9px 14px\", borderRadius: 10, minHeight: 44,\n                          border: `1px solid ${C.line}`, background: \"transparent\",\n                          color: C.dim, fontFamily: \"inherit\", fontSize: 13.5,\n                          fontWeight: 600, cursor: \"pointer\" }}"
+            },
+            {
+              "wert": "11",
+              "kontext": "{{ flex: \"1 1 auto\", minWidth: 100, minHeight: 48,\n                            padding: \"11px 14px\", borderRadius: 11, cursor: \"pointer\",\n                            border: `1px solid ${da.farbe}`, background: `${da.farbe}12`,\n                            color: C.text, fontFamily: \"inherit\", textAlign: \"left\" }}"
+            },
+            {
+              "wert": "14",
+              "kontext": "{{ display: \"block\", width: \"100%\", textAlign: \"left\", marginBottom: 11,\n              padding: \"18px 20px\", borderRadius: 14, cursor: \"pointer\", minHeight: 64,\n              border: `1px solid ${a.dringend ? C.danger : C.line}`,\n              background: a.dringend ? C.dangerLight : \"transparent\",\n              fontFamily: \"inherit\", color: C.text }}"
+            },
+            {
+              "wert": "12",
+              "kontext": "{{ marginTop: 12, padding: \"11px 18px\", borderRadius: 12,\n                        border: `1px solid ${C.line}`, background: \"transparent\", color: C.dim,\n                        fontFamily: \"inherit\", fontSize: 14, fontWeight: 600, cursor: \"pointer\",\n                        minHeight: 48 }}"
+            },
+            {
+              "wert": "12",
+              "kontext": "{{ marginTop: 14, width: \"100%\", padding: \"14px\", borderRadius: 12,\n                        border: \"none\", background: C.accent, color: C.aufAkzent, fontFamily: \"inherit\",\n                        fontSize: 15.5, fontWeight: 600, cursor: \"pointer\", minHeight: 48 }}"
+            },
+            {
+              "wert": "12",
+              "kontext": "{{ marginTop: 12, padding: \"11px 18px\", borderRadius: 12, border: \"none\",\n                    background: SP.pushErlaubt() ? C.flaecheStill : C.accent,\n                    color: SP.pushErlaubt() ? C.text : C.aufAkzent, fontFamily: \"inherit\",\n                    fontSize: 14.5, fontWeight: 600, cursor: \"pointer\", minHeight: 48 }}"
+            },
+            {
+              "wert": "12",
+              "kontext": "{{ width: \"100%\", padding: \"13px 15px\", fontSize: 16, borderRadius: 12,\n              border: `1px solid ${C.steuer}`, fontFamily: \"inherit\", boxSizing: \"border-box\",\n              background: C.bg, color: C.text, minHeight: 48 }}"
+            },
+            {
+              "wert": "10",
+              "kontext": "{{ flex: 1, padding: \"10px 12px\", borderRadius: 10, minHeight: 44,\n                      border: `1px solid ${an ? C.accent : C.line}`, cursor: \"pointer\",\n                      background: an ? C.accentLight : \"transparent\", color: an ? C.accent : C.dim,\n                      fontFamily: \"inherit\", fontSize: 13.5, fontWeight: 600 }}"
+            },
+            {
+              "wert": "15",
+              "kontext": "{{ width: \"100%\", height: 46, marginTop: 13, borderRadius: 15 }}"
+            },
+            {
+              "wert": "17",
+              "kontext": "{{ height: 52, borderRadius: 17, fontSize: 15.5 }}"
+            },
+            {
+              "wert": "12",
+              "kontext": "{{ aspectRatio: \"1\", borderRadius: 12, display: \"flex\", flexDirection: \"column\",\n              alignItems: \"center\", justifyContent: \"center\", gap: 1, opacity: vergangen ? .4 : 1,\n              background: w ? (w.art === \"moechte\" ? C.okLight : C.warnLight)\n                : C.bg }}"
+            }
+          ],
+          "literaleSha256": "ec31d2a0be3bde0157cb1af2c44df2dfb44fdc2c156ee488adec4a96ee112f7b"
+        }
+      }
     }
   }
 }
