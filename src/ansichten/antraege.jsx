@@ -50,7 +50,7 @@ export function Antraege({ sitz, akt }) {
             return (
               <div key={a.id} className="row" style={{ display: "flex", gap: 16, padding: "17px 22px",
                 borderBottom: i < gezeigt.length - 1 ? `1px solid ${C.lineSoft}` : "none", alignItems: "flex-start", flexWrap: "wrap" }}>
-                <span style={{ width: 4, alignSelf: "stretch", borderRadius: 2, flexShrink: 0,
+                <span style={{ width: 4, alignSelf: "stretch", borderRadius: "var(--v4-r-pille)", flexShrink: 0,
                   background: a.status === "offen" ? C.warn : a.status === "genehmigt" ? C.ok : C.danger }} />
                 <div style={{ flex: 1, minWidth: 220 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>

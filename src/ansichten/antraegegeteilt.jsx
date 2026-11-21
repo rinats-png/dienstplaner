@@ -176,13 +176,13 @@ export function AntraegeGeteilt({ sitz, akt }) {
                   const flaeche = w.stand === "kippt" ? C.dangerLight : w.stand === "eng" ? C.warnLight : C.okLight;
                   return (
                     <div key={w.kw} style={{ display: "flex", alignItems: "center", gap: 12,
-                      padding: "9px 11px", borderRadius: 9, marginBottom: 5,
+                      padding: "9px 11px", borderRadius: "var(--v4-r-klein)", marginBottom: 5,
                       background: hervor ? flaeche : "transparent",
                       outline: hervor ? `1.5px solid ${farbe}` : "none" }}>
                       <span style={{ fontSize: 12, color: C.dim, minWidth: 62, ...NUM }}>
                         ab {fKurz(w.von)}</span>
                       {/* Auslastungsbalken */}
-                      <div style={{ flex: 1, height: 22, borderRadius: 6, background: C.bg,
+                      <div style={{ flex: 1, height: 22, borderRadius: "var(--v4-r-klein)", background: C.bg,
                         position: "relative", overflow: "hidden" }}>
                         <div style={{ width: `${Math.min(100, w.quote)}%`, height: "100%",
                           background: `${farbe}2E`, borderRight: `2px solid ${farbe}`,
