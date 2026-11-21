@@ -1,7 +1,7 @@
 // Prüft werkzeug/ci-abdeckung.mjs mit Fixture-Wurzeln und, dass das Repo selbst besteht:
 // Jedes Skript der Sammelprüfung `pruefung` läuft in der CI oder ist begründet ausgenommen.
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { aufrufe, luecke, pruefen } from "../werkzeug/ci-abdeckung.mjs";
@@ -91,5 +91,20 @@ describe("CI-Abdeckung", () => {
   it("das Repo selbst besteht: alles in der CI oder begründet ausgenommen", () => {
     const r = pruefen(resolve(import.meta.dirname, ".."));
     expect(r.fehler).toEqual([]);
+  });
+
+  /* Review #445 (Doku-Nachzug): Der Abschnitt „Manuelle Skripte“ in docs/acc45/CI-ABDECKUNG.md nennt genau die
+     pruefung:*-Skripte außerhalb der Sammelkette, die das Prüf-Gate nicht per npm run aufruft. */
+  it("CI-ABDECKUNG.md, Abschnitt Manuelle Skripte: genau die pruefung:*-Skripte außerhalb von Kette und Prüf-Gate", () => {
+    const repo = resolve(import.meta.dirname, "..");
+    const { skripte, kette, abgedeckt } = luecke(repo);
+    const inKette = new Set(kette);
+    const erwartet = Object.keys(skripte)
+      .filter((n) => n.startsWith("pruefung:") && !inKette.has(n) && !abgedeckt.has(n)).sort();
+    const doku = readFileSync(join(repo, "docs/acc45/CI-ABDECKUNG.md"), "utf8").replace(/\r\n/g, "\n");
+    const abschnitt = doku.split("## Manuelle Skripte")[1] || "";
+    const gelistet = [...abschnitt.matchAll(/^\| `(pruefung:[\w:.-]+)` \|/gm)].map((m) => m[1]).sort();
+    expect(gelistet).toEqual(erwartet);
+    expect(erwartet.length).toBeGreaterThanOrEqual(12);
   });
 });

@@ -26,6 +26,12 @@ import { inventar, jeHauptansicht, hauptansicht, ohneKommentare } from "../werkz
 import { v4AlsAltePalette } from "../src/v4/tokens.js";
 import { kontrastVon } from "../src/gestalt/lesbar.js";
 import { regelStufe, stufenIn, ladeBasisFixture, abgleichMitFixture, gitGegenprobe } from "./v4-radiusstufen.mjs";
+import { createElement as h } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { Personalakte } from "../src/ansichten/personalakte.jsx";
+import { demobestand } from "../src/lib/fachlogik.js";
+import { aktionenStammdaten } from "../src/app/aktionen/stammdaten.js";
+import { DOW } from "../src/lib/datum.js";
 
 const WURZEL = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (d) => readFileSync(path.join(WURZEL, d), "utf8").replace(/\r\n/g, "\n");
@@ -120,9 +126,10 @@ describe("V4-3b Personal: Farbe der Personalakte", () => {
     return "#" + [43, 52, 64].map((c, i) => Math.round(c * a + g[i] * (1 - a)).toString(16).padStart(2, "0")).join("");
   };
 
-  it("keine rgba-Literale mehr; Nachtbalken C.lineStark, Arbeitstag C.lineSoft", () => {
+  /* A11Y-1: Der Nachtbalken trägt seit A11Y-1 C.steuer (Rand von Bedienelementen, >= 3:1) statt C.lineStark. */
+  it("keine rgba-Literale mehr; Nachtbalken C.steuer (A11Y-1), Arbeitstag C.lineSoft", () => {
     expect(q()).not.toMatch(/rgba?\(/);
-    expect(q()).toMatch(/\?\s*C\.accent\s*:\s*C\.lineStark/);
+    expect(q()).toMatch(/\?\s*C\.accent\s*:\s*C\.steuer/);
     expect(q()).toMatch(/background:\s*an\s*\?\s*C\.lineSoft\s*:\s*C\.bg/);
   });
 
@@ -130,8 +137,10 @@ describe("V4-3b Personal: Farbe der Personalakte", () => {
     for (const thema of ["hell", "dunkel"]) {
       const p = v4AlsAltePalette(thema);
       const vorher = kontrastVon(altMisch(0.24, p.flaeche), p.flaeche);
-      expect(kontrastVon(p.lineStark, p.flaeche), thema).toBeGreaterThan(vorher);
-      expect(kontrastVon(p.accent, p.lineStark), `${thema}: aktueller Monat unterscheidbar`).toBeGreaterThan(1.5);
+      expect(kontrastVon(p.steuer, p.flaeche), thema).toBeGreaterThan(vorher);
+      expect(kontrastVon(p.steuer, p.flaeche), `${thema}: nicht schlechter als V4-3b (lineStark)`)
+        .toBeGreaterThan(kontrastVon(p.lineStark, p.flaeche));
+      expect(kontrastVon(p.accent, p.steuer), `${thema}: aktueller Monat unterscheidbar`).toBeGreaterThan(1.5);
     }
   });
 
@@ -142,5 +151,85 @@ describe("V4-3b Personal: Farbe der Personalakte", () => {
       const vorher = kontrastVon(altMisch(0.12, p.flaeche), p.bg);
       expect(kontrastVon(p.lineSoft, p.bg), `${thema}: gewählt gegen frei`).toBeGreaterThanOrEqual(vorher);
     }
+  });
+});
+
+/* ==========================================================================
+   A11Y-1 (Review #442, Folgepunkt F1): Arbeitstag-Knöpfe und Nachtbalken der Personalakte
+
+   Akzeptanz (docs/acc45/work-packages.json, A11Y-1):
+     - jeder Arbeitstag-Knopf trägt aria-pressed mit dem Zustand gewählt/frei (WCAG 4.1.2);
+     - gewählt und frei unterscheiden sich nicht nur über die Fläche: gewählt zeigt das Haken-Icon wie bei den
+       Qualifikationen (1.4.1, 1.4.11); der Haken (currentColor = C.text) hat gegen die Fläche >= 3:1, hell und dunkel;
+     - Nachtbalken >= 3:1 gegen die Fläche, hell und dunkel (1.4.11);
+     - Accessible Name (Wochentag) und Fachlogik (akt.toggleWochentag) unverändert; kein neuer Übergang (oben).
+   Gerendert wird die echte Personalakte (react-dom/server); umgeschaltet wird mit der echten Aktion
+   (aktionenStammdaten.toggleWochentag), die der Knopf aufruft. Keine Uhr im Test, kein Netz.
+   ========================================================================== */
+describe("A11Y-1: Arbeitstage und Nachtbalken der Personalakte", () => {
+  const HAKEN = 'd="m4.6 12.4 4.8 4.8L19.4 6.6"';
+  const q = () => ohneKommentare(lies("src/ansichten/personalakte.jsx"));
+
+  /** Bestand mit Leitung (staff.edit) und einer Person in Teilzeit „feste Wochentage“. */
+  const aufbau = (wochentage) => {
+    const m = structuredClone(demobestand().mandanten[0]);
+    const leitung = m.personen.find((p) => p.rolle === "leitung");
+    const ziel = m.personen.find((p) => p.rolle === "mitarbeiter" && !p.springer);
+    ziel.teilzeit = { aktiv: true, modus: "wochentage", wochentage };
+    return { m, leitung, ziel };
+  };
+  const rendern = (m, leitung, ziel) => renderToStaticMarkup(h(Personalakte, {
+    sitz: { rolle: "kunde", mandant: m, person: leitung,
+      db: { mandanten: [m], session: { mandantId: m.id, personId: leitung.id, rolle: "leitung" } } },
+    personId: ziel.id, ym: "2026-11", onClose: () => {}, akt: new Proxy({}, { get: () => () => {} }) }));
+  /** Die sieben Knöpfe unter „Arbeitstage“: Name (Text ohne Tags), aria-pressed, Haken. */
+  const arbeitstage = (html) => {
+    const ab = html.indexOf(">Arbeitstage<");
+    expect(ab, "Abschnitt Arbeitstage gerendert").toBeGreaterThan(0);
+    return [...html.slice(ab).matchAll(/<button([^>]*)>([\s\S]*?)<\/button>/g)].slice(0, 7).map(([, attr, inhalt]) => ({
+      name: inhalt.replace(/<[^>]+>/g, "").trim(),
+      gedrueckt: (attr.match(/aria-pressed="(true|false)"/) || [])[1] ?? null,
+      haken: inhalt.includes(HAKEN),
+    }));
+  };
+
+  it("aria-pressed je Zustand, Name = Wochentag, Haken nur bei gewählt (4.1.2, 1.4.1)", () => {
+    const { m, leitung, ziel } = aufbau([0, 2, 4]);
+    const k = arbeitstage(rendern(m, leitung, ziel));
+    expect(k.map((x) => x.name)).toEqual([...DOW]);
+    expect(k.map((x) => x.gedrueckt)).toEqual(["true", "false", "true", "false", "true", "false", "false"]);
+    expect(k.map((x) => x.haken)).toEqual([true, false, true, false, true, false, false]);
+  }, 60000);
+
+  it("Umschalten mit der echten Aktion wechselt aria-pressed und Haken", () => {
+    const st = aufbau([0, 2, 4]);
+    const akt = aktionenStammdaten({ mUpd: (fn) => { st.m = fn(st.m); }, melde: () => {}, sitz: { person: st.leitung } });
+    akt.toggleWochentag(st.ziel.id, 1);
+    akt.toggleWochentag(st.ziel.id, 2);
+    const ziel = st.m.personen.find((p) => p.id === st.ziel.id);
+    const k = arbeitstage(rendern(st.m, st.leitung, ziel));
+    expect(k.map((x) => x.gedrueckt)).toEqual(["true", "true", "false", "false", "true", "false", "false"]);
+    expect(k.map((x) => x.haken)).toEqual([true, true, false, false, true, false, false]);
+  }, 60000);
+
+  it("Quelltext: Handler, Klasse und Mindestbreite unverändert; Haken wie bei Qualifikationen", () => {
+    const t = q();
+    expect(t).toMatch(/onClick=\{\(\) => akt\.toggleWochentag\(p\.id, i\)\} className="btn btn-sm"/);
+    expect(t).toMatch(/aria-pressed=\{an\}/);
+    expect(t).toMatch(/minWidth: 44/);
+    expect(t.match(/\{an && <Icon n="haken" size=\{13\} strokeWidth=\{2\.4\} \/>\}/g)).toHaveLength(2);
+  });
+
+  it("Kontrast hell und dunkel: Haken gegen gewählte Fläche >= 3:1, Nachtbalken gegen Fläche >= 3:1 (1.4.11)", () => {
+    const werte = {};
+    for (const thema of ["hell", "dunkel"]) {
+      const p = v4AlsAltePalette(thema);
+      const haken = kontrastVon(p.text, p.lineSoft), balken = kontrastVon(p.steuer, p.flaeche);
+      expect(haken, `${thema}: Haken`).toBeGreaterThanOrEqual(3);
+      expect(balken, `${thema}: Nachtbalken`).toBeGreaterThanOrEqual(3);
+      werte[thema] = { haken: Math.round(haken * 100) / 100, balken: Math.round(balken * 100) / 100 };
+    }
+    /* Festgeschrieben (Stand A11Y-1); vorher Nachtbalken 2,25 hell / 2,07 dunkel (C.lineStark). */
+    expect(werte).toEqual({ hell: { haken: 10.61, balken: 4.14 }, dunkel: { haken: 10.79, balken: 4.41 } });
   });
 });
