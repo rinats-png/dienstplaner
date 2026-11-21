@@ -254,10 +254,14 @@ und Abschnitt 6 (Widerruf) gelten unverändert.
    Manifest für den Rückbau.
 2. Das eingebettete `inventur.sh` (Prüfsumme geprüft) atomar nach `/usr/local/sbin/centric-inventur.sh`
    (`root:root 0755`, E-4).
-3. **Genau eine** Zeile an `authorized_keys` des Kontos anhängen (`>>`), wörtlich wie 3e (E-1, E-3: ohne `from=`).
+3. **Genau eine** Zeile an `authorized_keys` des Kontos anhängen, wörtlich wie 3e (E-1, E-3: ohne `from=`). Jeder
+   schreibende Zugriff auf `authorized_keys` (anlegen, anhängen, kürzen, Rechte, löschen) läuft mit den Rechten des
+   Kontos (`setpriv --reuid`), nie als root. Tauscht jemand die Datei gegen einen symbolischen Link, schreibt der
+   Installer damit höchstens mit den Rechten des Kontos (kein root-Schreiben über einen Link).
 4. Selbstprüfung: Skript (Besitz, Modus, Prüfsumme), Zeile genau einmal, Altzeilen unverändert (SHA-256 vorher =
-   nachher), `sshd -t`, Probelauf `centric-inventur.sh --hilfe` und Abweisung eines fremden SSH-Befehls (Rückgabe 2).
-   Scheitert sie, nimmt der Installer 2. und 3. zurück.
+   nachher), Rechte von `authorized_keys` unverändert, `sshd -t`, Probelauf `centric-inventur.sh --hilfe` und
+   Abweisung eines fremden SSH-Befehls (Rückgabe 2). Scheitert sie, nimmt der Installer 2. und 3. zurück und prüft
+   jeden Rücknahmeschritt nach.
 
 Der Installer ändert **nie** bestehende Zeilen, die sshd-Konfiguration, Dienste (kein Neustart, kein `reload`),
 Konten, Gruppen, sudoers oder Docker-Rechte. Er liest keine `.env`, nutzt kein Netz und gibt keinen Schlüsselkörper aus.
@@ -267,17 +271,25 @@ Konten, Gruppen, sudoers oder Docker-Rechte. Er liest keine `.env`, nutzt kein N
 | Prüfung | Bestanden, wenn |
 |---|---|
 | Nutzdaten | eingebettetes `inventur.sh` hat die Soll-Prüfsumme; öffentlicher Schlüssel ist eingetragen, `ssh-ed25519`, Kommentar `inventur-centric`, Prüfsumme und Fingerabdruck stimmen |
-| Rechte | läuft als root |
+| Rechte, Werkzeuge | läuft als root; `setpriv` (util-linux) vorhanden |
 | System | `/etc/os-release`: Ubuntu 24.04. Abbruch bei jeder anderen Version: Die Bestandsaufnahme (1a–1e) und der Sicherheitsnachweis (7.3, OpenSSH 9.6p1) gelten dann nicht mehr |
 | OpenSSH | `openssh-server` ≥ 7.2 (`restrict`) |
 | Konto | `/opt/apps/centric-dienstplanung` und `data/` gehören demselben Konto, und das ist `admin` (uid 1000); Konto in `getent passwd`; Login-Shell nicht `nologin`/`false`; Heimatverzeichnis vorhanden, nicht für andere beschreibbar |
-| sshd | `sshd -T`: `pubkeyauthentication yes`, `permituserenvironment no`, `strictmodes yes`; `acceptenv` nur `LANG`, `LC_*` (dazu zugelassen: `COLORTERM`, `NO_COLOR`, feste Namen der neueren Debian-Vorgabe, die weder bash noch das Skript lesen); `allowusers`/`allowgroups` fehlen oder schließen das Konto ein; `denyusers`/`denygroups` nennen es nicht; `authorizedkeysfile` im Heimatverzeichnis; `sshd -t` gültig |
-| Schlüsseldatei | `~/.ssh` gehört dem Konto, `700`; `authorized_keys` gehört dem Konto, `600` (fehlt sie, wird sie mit `600` angelegt); kein Link; kein anderer Eintrag mit diesem Schlüssel, Kommentar oder Skriptpfad |
+| sshd-Dateien | `/etc/ssh/sshd_config`, alle `/etc/ssh/sshd_config.d/*.conf` und alle `Include`-Ziele (auch außerhalb von `sshd_config.d`, relativ zu `/etc/ssh`) sind lesbar und enthalten **keine** Zeile `Match` (Groß/Klein, führende Leerzeichen). Grund: `sshd -T` ohne Verbindungsdaten wertet `Match`-Blöcke nicht aus; ein Block wie `Match User admin` mit `AcceptEnv *` bliebe sonst unsichtbar. Die Dateien werden nur gelesen |
+| sshd | `sshd -T` **und** `sshd -T -C user=admin,host=localhost,addr=127.0.0.1` **und** `… addr=192.0.2.1`: je `pubkeyauthentication yes`, `permituserenvironment no`, `strictmodes yes`; `acceptenv` nur `LANG`, `LC_*` und (E-a) `COLORTERM`, `NO_COLOR`; `allowusers`/`allowgroups` fehlen oder schließen das Konto ein; `denyusers`/`denygroups` nennen es nicht; `authorizedkeysfile` gleich in allen drei Ausgaben und im Heimatverzeichnis; `sshd -t` gültig |
+| Schlüsseldatei | `~/.ssh` gehört dem Konto, `700`; `authorized_keys` gehört dem Konto, Rechte `600`, `640` oder `644` (E-b; fehlt sie, wird sie mit `600` angelegt); kein Link; kein anderer Eintrag mit diesem Schlüssel, Kommentar oder Skriptpfad |
 | Ziel | `/`, `/usr`, `/usr/local`, `/usr/local/sbin` root-eigen, nicht für andere beschreibbar; `/usr/local/sbin/centric-inventur.sh` fehlt oder ist identisch (`root 0755`) |
 | Platz | mindestens 1 MiB frei unter `/root`, `/usr/local/sbin` und `~/.ssh` |
 
 Sind die Zeile und das Skript schon genau so vorhanden, meldet der Installer „bereits eingerichtet“, prüft nur und
 ändert nichts (Rückgabe 0).
+
+**Entscheidungen zum Installer** (2026-11-21, vom Koordinator getroffen und begründet; jederzeit änderbar):
+
+| Nr | Entscheidung | Grund |
+|---|---|---|
+| E-a | `acceptenv` darf zusätzlich genau `COLORTERM` und `NO_COLOR` enthalten | feste Namen der neueren Debian-Vorgabe; weder bash noch `inventur.sh` werten sie ausführbar aus; vermeidet einen Fehlalarm |
+| E-b | `authorized_keys` mit `600`, `640` oder `644` ist zulässig, wenn sie dem Konto gehört | nicht für Gruppe/andere beschreibbar, von `StrictModes` akzeptiert; der Installer ändert keine Rechte; alles andere führt zum Abbruch |
 
 ### Voraussetzungen
 
@@ -287,12 +299,22 @@ Sind die Zeile und das Skript schon genau so vorhanden, meldet der Installer „
   („öffentlicher Inventur-Schlüssel fehlt …“).
 - Abschnitt 1 erledigt, insbesondere 1e (Host-Schlüssel).
 - Der Sollwert (Commit und Prüfsumme des Installers) liegt aus einem **zweiten Kanal** vor (PR-Freigabe oder Chat,
-  wie Abschnitt 3). Claude erzeugt die Eingabe mit `node werkzeug/inventur-install-bauen.mjs --befehl <commit>`.
+  wie Abschnitt 3). Claude erzeugt die Eingaben mit `node werkzeug/inventur-install-bauen.mjs --befehl <commit>`.
 
-### Eingabe (Remotekonsole, als root, eine Zeile)
+### Eingaben (Remotekonsole, als root, je eine Zeile)
+
+**Eingabe 1 — Pflicht, zuerst: laden, prüfen, nur Vorabprüfungen** (ändert nichts; 255 Zeichen):
 
 ```bash
-cd /root && curl -fsSLo rel0 https://github.com/rinats-png/dienstplaner/raw/<commit>/deploy/inventur-install.sh && [[ $(sha256sum rel0) == "<installer-sha256>  rel0" ]] && bash rel0
+cd /root && rm -f rel0 && curl -fsSLo rel0 https://github.com/rinats-png/dienstplaner/raw/<commit>/deploy/inventur-install.sh && [[ $(sha256sum rel0) == "<installer-sha256>  rel0" ]] && bash rel0 --trocken
+```
+
+**Weiter nur wenn** die letzte Zeile `REL-0 TROCKEN OK: alle Vorabprüfungen bestanden. Es wurde nichts geändert.` ist.
+
+**Eingabe 2 — einrichten** (dieselbe Datei, Prüfsumme erneut verglichen; 124 Zeichen):
+
+```bash
+cd /root && [[ $(sha256sum rel0) == "<installer-sha256>  rel0" ]] && bash rel0
 ```
 
 - `<commit>`: die ersten 12 Zeichen des freigegebenen Commits. `<installer-sha256>`: 64 Zeichen. Zwischen Prüfsumme
@@ -300,15 +322,21 @@ cd /root && curl -fsSLo rel0 https://github.com/rinats-png/dienstplaner/raw/<com
 - Warum so: Der Download kommt aus einem festen Commit. Ausgeführt wird nur, wenn die Prüfsumme Zeichen für Zeichen
   stimmt. Die Prüfsumme deckt alles ab: Der Installer enthält `inventur.sh` und den öffentlichen Schlüssel samt
   deren Prüfsummen und prüft sie vor der Installation. Der Installer selbst nutzt kein Netz.
-- Die Zeile hat keine Pipe, keine Umlenkung und kein Semikolon. Ein Tippfehler in Adresse, Prüfsumme, `[[`, `$(`,
-  `"` oder `&&` führt zu einem Fehler, nie zu einer Ausführung ohne Prüfung. Hex-Zeichen (`0-9`, `a-f`) sind auf
-  deutscher und US-Tastaturbelegung gleich.
-- Vorher nur prüfen (ändert nichts): dieselbe Zeile mit `bash rel0 --trocken` am Ende.
+- `rm -f rel0` am Anfang: Eine alte Datei aus einem früheren Versuch kann so nie ungeprüft weiterverwendet werden.
+- Die Zeilen haben keine Pipe, keine Umlenkung und kein Semikolon. Die meisten Tippfehler (in Adresse, Prüfsumme,
+  `[[`, `$(`, `"`) führen zu einem Fehler. **Grenze:** Wird aus `&&` ein einzelnes `&`, läuft der Teil davor im
+  Hintergrund und `bash rel0 …` startet sofort, also **ohne** abgeschlossenen Prüfsummenvergleich. Deshalb ist
+  Eingabe 1 immer `--trocken` (ändert nichts), und die alte Datei wird vorher gelöscht. Prüfen Sie vor `Enter`
+  jedes `&&`.
+- Hex-Zeichen (`0-9`, `a-f`) sind auf deutscher und US-Tastaturbelegung gleich.
+- **Kurz-SHA (12 Zeichen) statt 40:** weniger Tippaufwand. Risiko: Ein Branch oder Tag mit genau diesem Namen könnte
+  die Adresse überdecken; anlegen können ihn nur Personen mit Schreibrecht auf das Repository. Die SHA-256-Prüfung
+  fängt jede abweichende Datei ab (dann keine Ausführung).
 
 **Soll-Prüfsumme des Installers im aktuellen Stand** (die Prüfung `pruefungen/inventur-install.test.js` stellt sicher,
 dass sie zur Datei passt; sie ändert sich mit dem Schlüssel-Commit):
 
-- **SHA-256 von deploy/inventur-install.sh: `f8feae06a3a61012fc06199f73e1783de61136d17656e5b704439653878da1a8`**
+- **SHA-256 von deploy/inventur-install.sh: `e7f9b270b84b231271b1ceacb0a866a52a8817a312d6f02e62d7beb670527310`**
   (noch ohne Schlüssel — dieser Stand bricht fail-closed ab)
 
 ### Erwartete Ausgabe
@@ -322,7 +350,7 @@ REL-0 OK: Inventurzugang eingerichtet. Fingerabdruck F-INV: SHA256:<43 Zeichen> 
 
 - **Weiter nur wenn:** die letzte Zeile beginnt mit `REL-0 OK:`, F-INV ist gleich dem Wert aus 0c, die Skript-
   Prüfsumme ist gleich dem Sollwert aus Abschnitt 3. Dann weiter mit Abschnitt 4 (Nachprüfung vom Arbeitsrechner).
-- Danach optional: `rm /root/rel0`.
+- `/root/rel0` darf liegen bleiben. Für den Rückbau wird die Datei ohnehin neu geladen und geprüft.
 
 ### Abbruch- und Fehlermeldungen
 
@@ -334,12 +362,15 @@ darüber als Zeilen `FEHLER …`. Ändern Sie in keinem Fall selbst etwas am Sys
 | `öffentlicher Inventur-Schlüssel fehlt` | Schlüssel-Commit fehlt | PUB-INV (0d) an Claude geben; neuer Commit, neue Eingabe |
 | `eingebettetes inventur.sh weicht …`, `eingebetteter Schlüssel weicht …`, `Fingerabdruck … weicht ab` | Installer beschädigt | STOPP; nicht erneut versuchen; melden |
 | `Der Installer muss als root laufen` | kein root | `sudo -i`, dann Eingabe wiederholen |
+| `setpriv fehlt` | util-linux unvollständig | STOPP; melden |
 | `Betriebssystem ist nicht Ubuntu 24.04` | Server verändert | STOPP; Bestandsaufnahme 1a–1e neu |
 | `OpenSSH … älter als 7.2` | `restrict` fehlt | STOPP; melden |
 | `… gehören verschiedenen Konten`, `… gehört root`, `… erwartet admin` | Besitz anders als 1a | STOPP; 1a erneut, melden |
 | `… keine Login-Shell`, `Konto … fehlt`, `Heimatverzeichnis …` | Konto nicht nutzbar | STOPP; melden (Entscheidung nötig) |
-| `sshd: …` (pubkeyauthentication, permituserenvironment, strictmodes, acceptenv, allowusers, allowgroups, denyusers, denygroups), `authorizedkeysfile …`, `sshd -t …` | sshd-Konfiguration passt nicht | STOPP. Eine sshd-Änderung ist eine eigene Entscheidung (1b) |
-| `… erwartet Besitzer admin und 700/600` | Rechte von `~/.ssh` oder `authorized_keys` | melden; Korrektur nur nach Entscheidung |
+| `sshd-Konfiguration enthält Match-Blöcke`, `/etc/ssh/sshd_config fehlt …`, `… nicht lesbar` | Prüfung ohne Verbindungsdaten wäre unvollständig | STOPP; nur lesend `grep -inE '^[[:space:]]*match' /etc/ssh/sshd_config /etc/ssh/sshd_config.d/*.conf` ausführen und melden; Entscheidung nötig |
+| `sshd -T fehlgeschlagen: /run/sshd fehlt (Socket-Aktivierung …)` | Ubuntu 24.04 mit `ssh.socket`: `ssh.service` läuft nur bei Verbindungen, `/run/sshd` fehlt, `sshd -T`/`-t` scheitern | **Nichts starten, nichts anlegen.** Nur lesend prüfen: `ls -ld /run/sshd`, `systemctl is-active ssh.socket ssh.service`; Ausgabe melden. Entscheidung nötig |
+| `sshd: …` (pubkeyauthentication, permituserenvironment, strictmodes, acceptenv, allowusers, allowgroups, denyusers, denygroups; je mit Kontext), `authorizedkeysfile …`, `sshd -T … fehlgeschlagen`, `sshd -t …` | sshd-Konfiguration passt nicht | STOPP. Eine sshd-Änderung ist eine eigene Entscheidung (1b) |
+| `… erwartet Besitzer admin und 700`, `… erwartet Besitzer admin und 600, 640 oder 644` | Rechte von `~/.ssh` oder `authorized_keys` | melden; Korrektur nur nach Entscheidung |
 | `… fehlt (wird nicht angelegt)` | `~/.ssh` fehlt | melden; Fall „Datei fehlt“ in 3d nach Entscheidung |
 | `… abweichenden oder doppelten Eintrag …` | ein alter Inventur-Eintrag ist da | Abschnitt 6a (Widerruf), dann erneut |
 | `… existiert und weicht vom eingebetteten inventur.sh ab`, `… nicht root 0755` | altes Skript | melden; nach Entscheidung 6b, dann erneut |
@@ -349,19 +380,23 @@ darüber als Zeilen `FEHLER …`. Ändern Sie in keinem Fall selbst etwas am Sys
 
 Fehler **nach** Beginn der Änderungen (selten):
 
-- `REL-0 FEHLER: Einrichtung gescheitert, Änderungen zurückgenommen. Sicherung: …` (Rückgabe 3): Zustand wie vorher.
-  Melden.
-- `REL-0 FEHLER: … Rücknahme unvollständig …` (Rückgabe 4): STOPP. Sicherung im genannten Verzeichnis. Abschnitt 6a
-  von Hand, melden.
+- `REL-0 FEHLER: Einrichtung gescheitert, Änderungen zurückgenommen. Sicherung: …` (Rückgabe 3): Jeder
+  Rücknahmeschritt wurde nachgeprüft; Zustand wie vorher. Melden.
+- `REL-0 FEHLER: … Rücknahme unvollständig …` oder `REL-0 FEHLER: Rückbau unterbrochen …` (Rückgabe 4): STOPP.
+  Sicherung im genannten Verzeichnis. Abschnitt 6a von Hand, melden.
 
 ### Rückweg
 
+Die Datei wird dafür **neu geladen und mit derselben Prüfsumme geprüft** (nicht die vielleicht veraltete oder
+gelöschte `/root/rel0` verwenden; 256 Zeichen):
+
 ```bash
-cd /root && bash rel0 --rueckbau
+cd /root && rm -f rel0 && curl -fsSLo rel0 https://github.com/rinats-png/dienstplaner/raw/<commit>/deploy/inventur-install.sh && [[ $(sha256sum rel0) == "<installer-sha256>  rel0" ]] && bash rel0 --rueckbau
 ```
 
 - Entfernt genau die eine Zeile und das Skript, aber nur wenn `authorized_keys` byte-gleich „Sicherung + diese eine
-  Zeile“ ist (SHA-256). Danach ist `authorized_keys` byte-gleich mit der Sicherung.
+  Zeile“ ist (SHA-256) und noch dem Konto gehört. Kürzen und Löschen laufen mit den Rechten des Kontos. Danach ist
+  `authorized_keys` byte-gleich mit der Sicherung (nachgeprüft).
 - **Erwartet:** letzte Zeile `REL-0 RUECKBAU OK: …`. Die Sicherung bleibt liegen.
 - Hat sich `authorized_keys` seit der Einrichtung verändert (zum Beispiel ein weiterer Schlüssel):
   `REL-0 ABBRUCH: … wurde seit der Einrichtung verändert …`. Dann Widerruf von Hand nach Abschnitt 6a.

@@ -17,7 +17,8 @@
 #       (root:root 0700, Dateien 0600) mit Manifest für den Rückbau
 #    2. eingebettetes inventur.sh (Hash geprüft) atomar (mktemp + mv) nach
 #       /usr/local/sbin/centric-inventur.sh, root:root 0755
-#    3. GENAU EINE Zeile an authorized_keys des Kontos anhängen (>>):
+#    3. GENAU EINE Zeile an authorized_keys des Kontos anhängen (tee -a mit
+#       den Rechten des Kontos über setpriv, nie als root):
 #       command="/usr/local/sbin/centric-inventur.sh",restrict,no-pty,no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-user-rc ssh-ed25519 AAAA… inventur-centric
 #    4. Selbstprüfung; scheitert sie, werden 2. und 3. zurückgenommen
 #
@@ -685,15 +686,54 @@ sshd_wert() { printf '%s\n' "$SSHD_T" | awk -v k="$1" 'tolower($1) == k { $1 = "
 # alle Werte eines Schlüssels als Wörter (eine Zeile je Wort)
 sshd_woerter() { sshd_wert "$1" | tr ' ' '\n' | sed '/^$/d'; }
 
-AKF=""
-pruefe_sshd() {
-  local w gruppen g treffer
-  SSHD_T="$(sshd -T 2>/dev/null)" || { fehl "sshd -T fehlgeschlagen"; return; }
-  if [[ "$(sshd_wert pubkeyauthentication)" == yes ]]; then ok "sshd pubkeyauthentication yes"; else fehl "sshd: pubkeyauthentication ist nicht yes"; fi
-  if [[ "$(sshd_wert permituserenvironment)" == no ]]; then ok "sshd permituserenvironment no"; else fehl "sshd: permituserenvironment ist nicht no"; fi
-  if [[ "$(sshd_wert strictmodes)" == yes ]]; then ok "sshd strictmodes yes"; else fehl "sshd: strictmodes ist nicht yes"; fi
-  # AcceptEnv: nur LANG und LC_* (Debian/Ubuntu-Vorgabe); COLORTERM und NO_COLOR
-  # (neuere Debian-Vorgabe) sind feste Namen, die weder bash noch inventur.sh lesen.
+# Match-Blöcke (B-2): `sshd -T` ohne -C wertet sie nicht aus. Ein Block wie
+# „Match User admin“ mit AcceptEnv * oder PermitUserEnvironment yes bliebe
+# unsichtbar. Deshalb fail-closed: Abbruch, sobald sshd_config, eine Datei in
+# sshd_config.d oder ein Include-Ziel eine Zeile „Match“ enthält (Groß/Klein,
+# führende Leerzeichen). Die Dateien werden nur gelesen.
+SSHD_DATEIEN=()
+pruefe_match() {
+  local cfg="$W/etc/ssh/sshd_config" f pat g match="" i=0 gesehen=" "
+  local -a warteschlange=()
+  if [[ -L "$cfg" || ! -f "$cfg" || ! -r "$cfg" ]]; then fehl "/etc/ssh/sshd_config fehlt oder ist nicht lesbar"; return; fi
+  warteschlange=("$cfg")
+  shopt -s nullglob
+  for g in "$W"/etc/ssh/sshd_config.d/*.conf; do warteschlange+=("$g"); done
+  while ((i < ${#warteschlange[@]} && i < 100)); do
+    f="${warteschlange[$i]}"
+    i=$((i + 1))
+    [[ "$gesehen" == *" $f "* ]] && continue
+    gesehen+="$f "
+    if [[ ! -f "$f" || ! -r "$f" ]]; then fehl "sshd-Konfigurationsdatei ${f#"$W"} nicht lesbar"; continue; fi
+    SSHD_DATEIEN+=("${f#"$W"}")
+    if grep -qiE '^[[:space:]]*match([[:space:]]|$)' -- "$f"; then match+=" ${f#"$W"}"; fi
+    while IFS= read -r pat; do
+      [[ -n "$pat" ]] || continue
+      [[ "$pat" == /* ]] || pat="/etc/ssh/$pat"
+      # nur Pfadnamen-Erweiterung (kein eval); Muster stammen aus der root-eigenen sshd-Konfiguration
+      # shellcheck disable=SC2206
+      local -a treffer_glob=($W$pat)
+      for g in "${treffer_glob[@]}"; do warteschlange+=("$g"); done
+    done < <(awk 'tolower($1) == "include" { for (n = 2; n <= NF; n++) print $n }' "$f")
+  done
+  shopt -u nullglob
+  if ((i >= 100)); then fehl "zu viele sshd-Konfigurationsdateien (Include-Schleife?)"; return; fi
+  if [[ -n "$match" ]]; then
+    fehl "sshd-Konfiguration enthält Match-Blöcke ($match ); ohne Verbindungsdaten nicht vollständig prüfbar"
+    return
+  fi
+  ok "sshd-Konfiguration ohne Match-Blöcke (${#SSHD_DATEIEN[@]} Dateien gelesen)"
+}
+
+# Regeln für eine Ausgabe von sshd -T (SSHD_T); $1 = Bezeichnung des Kontexts.
+sshd_regeln() {
+  local k="$1" w gruppen g treffer
+  if [[ "$(sshd_wert pubkeyauthentication)" == yes ]]; then ok "sshd pubkeyauthentication yes ($k)"; else fehl "sshd: pubkeyauthentication ist nicht yes ($k)"; fi
+  if [[ "$(sshd_wert permituserenvironment)" == no ]]; then ok "sshd permituserenvironment no ($k)"; else fehl "sshd: permituserenvironment ist nicht no ($k)"; fi
+  if [[ "$(sshd_wert strictmodes)" == yes ]]; then ok "sshd strictmodes yes ($k)"; else fehl "sshd: strictmodes ist nicht yes ($k)"; fi
+  # AcceptEnv: nur LANG und LC_* (Debian/Ubuntu-Vorgabe). Betreiberentscheidung
+  # E-a: zusätzlich genau COLORTERM und NO_COLOR (feste Namen, die weder bash
+  # noch inventur.sh ausführbar auswerten).
   treffer=""
   while IFS= read -r w; do
     case "$w" in
@@ -701,7 +741,7 @@ pruefe_sshd() {
       *) treffer+=" ${w//[^A-Za-z0-9_*?!.-]/?}" ;;
     esac
   done < <(sshd_woerter acceptenv)
-  if [[ -z "$treffer" ]]; then ok "sshd acceptenv nur LANG/LC_*"; else fehl "sshd: acceptenv erlaubt mehr als LANG und LC_* ($treffer )"; fi
+  if [[ -z "$treffer" ]]; then ok "sshd acceptenv nur LANG/LC_* ($k)"; else fehl "sshd: acceptenv erlaubt mehr als LANG und LC_* ($treffer ) ($k)"; fi
   if [[ -n "$KONTO" ]]; then
     if [[ -n "$(sshd_wert allowusers)" ]]; then
       if grep -qxF -- "$KONTO" <<<"$(sshd_woerter allowusers)"; then ok "sshd allowusers schließt $KONTO ein"; else fehl "sshd: allowusers schließt $KONTO nicht ein"; fi
@@ -719,8 +759,31 @@ pruefe_sshd() {
       if [[ -n "$g" ]] && grep -qxF -- "$g" <<<"$(sshd_woerter denygroups)"; then fehl "sshd: denygroups nennt eine Gruppe von $KONTO"; fi
     done <<<"$gruppen"
   fi
-  AKF="$(sshd_woerter authorizedkeysfile | head -n 1)"
-  [[ -n "$AKF" ]] || AKF=.ssh/authorized_keys
+}
+
+# sshd -T ohne und mit Verbindungsdaten (-C): Konto über localhost und über
+# eine fremde Dokumentationsadresse (192.0.2.1, RFC 5737). Jede Ausgabe muss
+# dieselben Regeln erfüllen und dieselbe authorizedkeysfile nennen.
+AKF=""
+pruefe_sshd() {
+  local ctx t a
+  for ctx in "" "user=$KONTO,host=localhost,addr=127.0.0.1" "user=$KONTO,host=localhost,addr=192.0.2.1"; do
+    if [[ -n "$ctx" && -z "$KONTO" ]]; then continue; fi
+    if [[ -z "$ctx" ]]; then t="$(sshd -T 2>/dev/null)" || t=""; else t="$(sshd -T -C "$ctx" 2>/dev/null)" || t=""; fi
+    if [[ -z "$t" ]]; then
+      if [[ ! -d "$W/run/sshd" ]]; then
+        fehl "sshd -T fehlgeschlagen: /run/sshd fehlt (Socket-Aktivierung, ssh.service läuft nicht dauerhaft); nichts starten, melden"
+      else
+        fehl "sshd -T ${ctx:+-C $ctx }fehlgeschlagen"
+      fi
+      return
+    fi
+    SSHD_T="$t"
+    sshd_regeln "${ctx:-ohne Verbindungsdaten}"
+    a="$(sshd_woerter authorizedkeysfile | head -n 1)"
+    [[ -n "$a" ]] || a=.ssh/authorized_keys
+    if [[ -z "$AKF" ]]; then AKF="$a"; elif [[ "$a" != "$AKF" ]]; then fehl "sshd: authorizedkeysfile hängt von Verbindungsdaten ab ($ctx)"; fi
+  done
   if sshd -t >/dev/null 2>&1; then ok "sshd -t (Konfiguration gültig, unverändert)"; else fehl "sshd -t meldet einen Fehler in der bestehenden Konfiguration"; fi
 }
 
@@ -776,6 +839,7 @@ pruefe_ziel() {
 }
 
 AK=""
+AK_MODUS=600
 AK_VORHANDEN=nein
 ZEILE_VORHANDEN=nein
 pruefe_ak() {
@@ -803,12 +867,15 @@ pruefe_ak() {
   if [[ -e "$AK" ]]; then
     if [[ ! -f "$AK" ]]; then fehl "${AK#"$W"} ist keine reguläre Datei"; return; fi
     read -r uid _ mode _ _ <<<"$(meta "$AK")"
-    if [[ "$uid" != "$KONTO_UID" || "$mode" != 600 ]]; then
-      fehl "${AK#"$W"}: erwartet Besitzer $KONTO und 600 (gefunden uid $uid, $mode)"
+    # Betreiberentscheidung E-b: 600, 640 oder 644 (nicht für Gruppe/andere
+    # beschreibbar), Besitz Konto; keine automatische Rechteänderung.
+    if [[ "$uid" != "$KONTO_UID" || ! "$mode" =~ ^(600|640|644)$ ]]; then
+      fehl "${AK#"$W"}: erwartet Besitzer $KONTO und 600, 640 oder 644 (gefunden uid $uid, $mode)"
       return
     fi
     AK_VORHANDEN=ja
-    ok "${AK#"$W"} gehört $KONTO, 600"
+    AK_MODUS="$mode"
+    ok "${AK#"$W"} gehört $KONTO, $mode"
     if [[ -n "$ZEILE" ]]; then
       n_ident="$(grep -cxF -- "$ZEILE" "$AK" || true)"
       n_bezug="$(grep -cF -e "$KOERPER" -e "centric-inventur.sh" -e " $KOMMENTAR" -- "$AK" || true)"
@@ -844,13 +911,19 @@ pruefe_rootheim() {
   ok "/root root-eigen"
 }
 
+pruefe_werkzeuge() {
+  if command -v setpriv >/dev/null 2>&1; then ok "setpriv vorhanden (Schreiben in authorized_keys als Konto)"; else fehl "setpriv fehlt (util-linux)"; fi
+}
+
 vorpruefungen() {
   pruefe_wurzel
+  pruefe_werkzeuge
   pruefe_nutzdaten
   pruefe_schluessel
   pruefe_os
   pruefe_version
   pruefe_konto
+  pruefe_match
   pruefe_sshd
   pruefe_ziel
   pruefe_ak
@@ -891,7 +964,11 @@ selbstpruefung() {
     fehl "bestehende Zeilen verändert"
   fi
   read -r uid _ mode _ _ <<<"$(meta "$AK")"
-  if [[ "$uid" == "$KONTO_UID" && "$mode" == 600 ]]; then ok "authorized_keys: Besitz $KONTO, 600"; else fehl "authorized_keys: Besitz/Rechte abweichend (uid $uid, $mode)"; fi
+  if [[ ! -L "$AK" && "$uid" == "$KONTO_UID" && "$mode" == "$AK_MODUS" ]]; then
+    ok "authorized_keys: Besitz $KONTO, $mode (unverändert)"
+  else
+    fehl "authorized_keys: Link, Besitz oder Rechte abweichend (uid $uid, $mode)"
+  fi
   if sshd -t >/dev/null 2>&1; then ok "sshd -t ok (kein Neustart, keine Konfigurationsänderung)"; else fehl "sshd -t meldet einen Fehler"; fi
   selbsttest_skript || true
   ((${#FEHLER[@]} == 0))
@@ -903,31 +980,54 @@ VORHER_BYTES=0
 ANHANG=""
 manifest() { printf '%s=%s\n' "$1" "$2" >>"$SICH/manifest"; }
 
-# Nimmt die eigenen Änderungen zurück, nur bei Hash-Übereinstimmung.
+# A-1: Jeder schreibende Zugriff auf authorized_keys (anlegen, anhängen,
+# kürzen, Rechte, löschen) läuft mit den Rechten des Kontos, nicht als root.
+# Die Datei und ihr Verzeichnis gehören dem Konto; tauscht es die Datei gegen
+# einen Link, wirkt der Zugriff nur mit seinen eigenen Rechten (kein
+# root-Schreiben über einen untergeschobenen Link). Einfacher als eine
+# Deskriptor-/Inode-Prüfung in bash und ohne Wettlauf. setpriv: util-linux.
+als_konto() { setpriv --reuid="$KONTO_UID" --regid="$KONTO_GID" --clear-groups -- "$@"; }
+
+# Nimmt die eigenen Änderungen zurück, nur bei Hash-Übereinstimmung. Jeder
+# Schritt wird nachgeprüft (A-2); läuft im if-Kontext ohne set -e.
 # Aufruf nur aus ende() (trap); shellcheck erkennt das nicht.
 # shellcheck disable=SC2329
 zuruecknehmen() {
   local erfolg=0 gesamt
   if [[ "$ANGEHAENGT" == ja ]]; then
-    gesamt="$(wc -c <"$AK")"
+    gesamt="$(wc -c <"$AK")" || gesamt=""
     if [[ ! -L "$AK" && "$(head -c "$VORHER_BYTES" -- "$AK" | sha_ein)" == "$VORHER_SHA" &&
       "$(tail -c +"$((VORHER_BYTES + 1))" -- "$AK" | sha_ein)" == "$(printf '%s' "$ANHANG" | sha_ein)" &&
       "$gesamt" == "$((VORHER_BYTES + ${#ANHANG}))" ]]; then
-      truncate -s "$VORHER_BYTES" -- "$AK"
-      ANGEHAENGT=nein
+      if als_konto truncate -s "$VORHER_BYTES" -- "$AK" && [[ ! -L "$AK" && "$(sha_datei "$AK")" == "$VORHER_SHA" ]]; then
+        ANGEHAENGT=nein
+      else
+        printf '  FEHLER  Kürzen von authorized_keys gescheitert oder Prüfsumme danach abweichend\n'
+        erfolg=1
+      fi
     else
       printf '  FEHLER  authorized_keys wurde zwischenzeitlich verändert; Zeile nicht automatisch entfernt\n'
       erfolg=1
     fi
   fi
-  if [[ "$AK_ANGELEGT" == ja && "$ANGEHAENGT" == nein && -f "$AK" && ! -s "$AK" ]]; then
-    rm -f -- "$AK"
-    AK_ANGELEGT=nein
+  if [[ "$AK_ANGELEGT" == ja && "$ANGEHAENGT" == nein && -f "$AK" && ! -L "$AK" && ! -s "$AK" ]]; then
+    als_konto rm -f -- "$AK" || true
+    if [[ -e "$AK" || -L "$AK" ]]; then
+      printf '  FEHLER  angelegte authorized_keys nicht entfernt\n'
+      erfolg=1
+    else
+      AK_ANGELEGT=nein
+    fi
   fi
   if [[ "$SKRIPT_ANGELEGT" == ja ]]; then
-    if [[ -f "$ZIEL" && "$(sha_datei "$ZIEL")" == "$SOLL_SKRIPT_SHA256" ]]; then
-      rm -f -- "$ZIEL"
-      SKRIPT_ANGELEGT=nein
+    if [[ ! -L "$ZIEL" && -f "$ZIEL" && "$(sha_datei "$ZIEL")" == "$SOLL_SKRIPT_SHA256" ]]; then
+      rm -f -- "$ZIEL" || true
+      if [[ -e "$ZIEL" || -L "$ZIEL" ]]; then
+        printf '  FEHLER  %s nicht entfernt\n' "$ZIEL_LOGISCH"
+        erfolg=1
+      else
+        SKRIPT_ANGELEGT=nein
+      fi
     else
       erfolg=1
     fi
@@ -943,12 +1043,14 @@ einrichten() {
   SICH="$W/root/centric-inventur-backup-$zeit"
   mkdir -m 0700 -- "$SICH" 2>/dev/null || abbruch "Sicherungsverzeichnis ${SICH#"$W"} konnte nicht angelegt werden (existiert bereits?)"
   PHASE=aendern
-  chown root:root "$SICH"
+  chown -h root:root "$SICH"
   chmod 0700 "$SICH"
   if [[ "$AK_VORHANDEN" == ja ]]; then
-    cp -- "$AK" "$SICH/authorized_keys.vorher"
+    # gelesen mit den Rechten des Kontos (A-1); geschrieben in die root-eigene Sicherung
+    : >"$SICH/authorized_keys.vorher"
     chmod 0600 "$SICH/authorized_keys.vorher"
-    chown root:root "$SICH/authorized_keys.vorher"
+    chown -h root:root "$SICH/authorized_keys.vorher"
+    als_konto cat -- "$AK" >"$SICH/authorized_keys.vorher"
     VORHER_SHA="$(sha_datei "$AK")"
     VORHER_BYTES="$(wc -c <"$AK")"
     [[ "$(sha_datei "$SICH/authorized_keys.vorher")" == "$VORHER_SHA" ]] || { printf '  FEHLER  Sicherung weicht ab\n'; exit 1; }
@@ -964,11 +1066,12 @@ einrichten() {
   fi
   : >"$SICH/manifest"
   chmod 0600 "$SICH/manifest"
-  chown root:root "$SICH/manifest"
+  chown -h root:root "$SICH/manifest"
   manifest version "$VERSION"
   manifest zeit "$zeit"
   manifest konto "$KONTO"
   manifest konto_uid "$KONTO_UID"
+  manifest konto_gid "$KONTO_GID"
   manifest ak_pfad "${AK#"$W"}"
   manifest ak_vorhanden "$AK_VORHANDEN"
   manifest vorher_sha "$VORHER_SHA"
@@ -987,7 +1090,7 @@ einrichten() {
     [[ "$(sha_datei "$TMP_SKRIPT")" == "$SOLL_SKRIPT_SHA256" ]] || { printf '  FEHLER  geschriebenes Skript weicht ab\n'; exit 1; }
     bash -n "$TMP_SKRIPT"
     chmod 0755 "$TMP_SKRIPT"
-    chown root:root "$TMP_SKRIPT"
+    chown -h root:root "$TMP_SKRIPT"
     [[ ! -e "$ZIEL" && ! -L "$ZIEL" ]] || { printf '  FEHLER  Ziel ist zwischenzeitlich entstanden\n'; exit 1; }
     SKRIPT_ANGELEGT=ja
     mv -f -- "$TMP_SKRIPT" "$ZIEL"
@@ -996,15 +1099,16 @@ einrichten() {
   fi
 
   if [[ "$AK_VORHANDEN" == nein ]]; then
-    (set -o noclobber; : >"$AK")
+    [[ ! -e "$AK" && ! -L "$AK" ]] || { printf '  FEHLER  authorized_keys ist zwischenzeitlich entstanden\n'; exit 1; }
+    # als Konto angelegt: Besitz stimmt ohne chown; umask 077 → 0600
     AK_ANGELEGT=ja
-    chmod 0600 "$AK"
-    chown "$KONTO_UID:$KONTO_GID" "$AK"
+    als_konto touch -- "$AK"
+    als_konto chmod 0600 "$AK"
   fi
   # unmittelbar vor dem Anhängen erneut: kein Link, Inhalt wie gesichert
   [[ ! -L "$AK" && "$(sha_datei "$AK")" == "$VORHER_SHA" ]] || { printf '  FEHLER  authorized_keys hat sich seit der Prüfung verändert\n'; exit 1; }
   ANGEHAENGT=ja
-  printf '%s' "$ANHANG" >>"$AK"
+  printf '%s' "$ANHANG" | als_konto tee -a -- "$AK" >/dev/null
   ok "eine Zeile an ${AK#"$W"} angehängt"
 
   if ! selbstpruefung; then
@@ -1020,7 +1124,7 @@ einrichten() {
 mf() { grep -E "^$1=" -- "$2" | tail -n 1 | cut -d= -f2-; }
 
 rueckbau() {
-  local d m="" letzt="" status ak_pfad vorher_sha vorher_bytes anhang_sha anhang_bytes skript_vorhanden ak_vorhanden gesamt
+  local d m="" letzt="" status ak_pfad vorher_sha vorher_bytes anhang_sha anhang_bytes skript_vorhanden ak_vorhanden gesamt uid
   for d in "$W"/root/centric-inventur-backup-*; do
     [[ -d "$d" && ! -L "$d" && -f "$d/manifest" ]] || continue
     [[ "$(mf status "$d/manifest")" == eingerichtet ]] && letzt="$d"
@@ -1035,6 +1139,12 @@ rueckbau() {
   anhang_bytes="$(mf anhang_bytes "$m")"
   ak_vorhanden="$(mf ak_vorhanden "$m")"
   skript_vorhanden="$(mf skript_vorhanden "$m")"
+  KONTO_UID="$(mf konto_uid "$m")"
+  KONTO_GID="$(mf konto_gid "$m")"
+  if [[ ! "$KONTO_UID" =~ ^[1-9][0-9]*$ || ! "$KONTO_GID" =~ ^[1-9][0-9]*$ ]]; then
+    abbruch "Manifest ${m#"$W"} ohne gültiges Konto (uid/gid)"
+  fi
+  command -v setpriv >/dev/null 2>&1 || abbruch "setpriv fehlt (util-linux)"
   if [[ "$status" != eingerichtet || ! "$vorher_sha" =~ ^[0-9a-f]{64}$ || ! "$anhang_sha" =~ ^[0-9a-f]{64}$ ||
     ! "$vorher_bytes" =~ ^[0-9]+$ || ! "$anhang_bytes" =~ ^[0-9]+$ || ! "$ak_pfad" =~ ^/[A-Za-z0-9._/-]+$ ||
     "$ak_pfad" == *..* || ! "$ak_vorhanden" =~ ^(ja|nein)$ || ! "$skript_vorhanden" =~ ^(ja|nein)$ ]]; then
@@ -1044,6 +1154,8 @@ rueckbau() {
   AK="$W$ak_pfad"
   ZIEL="$W$ZIEL_LOGISCH"
   if [[ -L "$AK" || ! -f "$AK" ]]; then abbruch "${ak_pfad} fehlt oder ist ein Link"; fi
+  read -r uid _ _ _ _ <<<"$(meta "$AK")"
+  [[ "$uid" == "$KONTO_UID" ]] || abbruch "$ak_pfad gehört nicht mehr dem Konto (uid $uid)"
   gesamt="$(wc -c <"$AK")"
   if [[ "$gesamt" != "$((vorher_bytes + anhang_bytes))" ||
     "$(head -c "$vorher_bytes" -- "$AK" | sha_ein)" != "$vorher_sha" ||
@@ -1064,14 +1176,20 @@ rueckbau() {
   SICH="$letzt"
   PHASE=rueckbau
 
-  truncate -s "$vorher_bytes" -- "$AK"
-  if [[ "$ak_vorhanden" == nein && ! -s "$AK" ]]; then rm -f -- "$AK"; fi
-  if [[ "$ak_vorhanden" == ja ]]; then
-    [[ "$(sha_datei "$AK")" == "$vorher_sha" ]] || { printf 'REL-0 FEHLER: authorized_keys nach dem Rückbau nicht wie gesichert. Sicherung: %s\n' "${letzt#"$W"}"; exit 4; }
+  # als Konto (A-1); jeder Schritt nachgeprüft (A-2)
+  als_konto truncate -s "$vorher_bytes" -- "$AK"
+  if [[ -L "$AK" || "$(sha_datei "$AK")" != "$vorher_sha" ]]; then
+    printf 'REL-0 FEHLER: authorized_keys nach dem Kürzen nicht wie gesichert. Sicherung: %s\n' "${letzt#"$W"}"
+    exit 4
+  fi
+  if [[ "$ak_vorhanden" == nein && ! -s "$AK" ]]; then
+    als_konto rm -f -- "$AK"
+    if [[ -e "$AK" || -L "$AK" ]]; then printf 'REL-0 FEHLER: angelegte authorized_keys nicht entfernt. Sicherung: %s\n' "${letzt#"$W"}"; exit 4; fi
   fi
   ok "Zeile entfernt; authorized_keys wie vor der Einrichtung"
   if [[ "$skript_vorhanden" == nein && -e "$ZIEL" ]]; then
     rm -f -- "$ZIEL"
+    if [[ -e "$ZIEL" || -L "$ZIEL" ]]; then printf 'REL-0 FEHLER: %s nicht entfernt. Sicherung: %s\n' "$ZIEL_LOGISCH" "${letzt#"$W"}"; exit 4; fi
     ok "Skript $ZIEL_LOGISCH entfernt"
   fi
   printf 'status=rueckgebaut\n' >>"$m"

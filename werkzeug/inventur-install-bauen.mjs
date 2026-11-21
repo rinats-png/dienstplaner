@@ -115,11 +115,19 @@ export function lesenStandard(o = {}) {
   };
 }
 
-/** Betreibereingabe für einen Commit (Kurz-SHA genügt; maßgeblich ist der SHA-256 des Installers). */
+/** Betreibereingaben für einen Commit (Kurz-SHA genügt; maßgeblich ist der SHA-256 des Installers).
+    trocken: alte Datei löschen, laden, Hash prüfen, nur prüfen (Pflicht-Ersteingabe);
+    einrichten: Hash erneut prüfen, einrichten; rueckbau: wie trocken, dann --rueckbau. */
 export function befehl(commit, installerText) {
   if (!/^[0-9a-f]{7,40}$/.test(commit)) throw new Error("Commit: 7 bis 40 Hex-Zeichen");
   const h = sha256(Buffer.from(installerText, "utf8"));
-  return `cd /root && curl -fsSLo rel0 ${REPO_ROH}/${commit}/deploy/inventur-install.sh && [[ $(sha256sum rel0) == "${h}  rel0" ]] && bash rel0`;
+  const pruefen = `[[ $(sha256sum rel0) == "${h}  rel0" ]]`;
+  const laden = `cd /root && rm -f rel0 && curl -fsSLo rel0 ${REPO_ROH}/${commit}/deploy/inventur-install.sh && ${pruefen}`;
+  return {
+    trocken: `${laden} && bash rel0 --trocken`,
+    einrichten: `cd /root && ${pruefen} && bash rel0`,
+    rueckbau: `${laden} && bash rel0 --rueckbau`,
+  };
 }
 
 function main(argv) {
@@ -158,8 +166,7 @@ function main(argv) {
     if (soll !== d.vorlage) { console.error("FEHLER: Installer nicht aktuell; zuerst neu erzeugen"); return 1; }
     try {
       const b = befehl(commit ?? "", d.vorlage);
-      console.log(b);
-      console.log(`Länge: ${b.length} Zeichen`);
+      for (const [name, z] of Object.entries(b)) console.log(`${name} (${z.length} Zeichen):\n${z}`);
     } catch (err) { console.error(`FEHLER: ${err.message}`); return 2; }
     return 0;
   }

@@ -42,7 +42,9 @@ const INVENTUR = path.join(WURZEL, "deploy", "inventur.sh");
 const BAUER = path.join(WURZEL, "werkzeug", "inventur-install-bauen.mjs");
 const BASH = bashFinden();
 const FESTER_PFAD = "/usr/sbin:/usr/bin:/sbin:/bin";
-vi.setConfig({ testTimeout: 60000 });
+/* Ein Installerlauf startet unter Git Bash einige hundert Prozesse (10–25 s); Fälle mit bis zu drei Läufen (Idempotenz,
+   Rückbau) brauchen deshalb mehr als 60 s. Jeder Lauf hat zusätzlich seine eigene Grenze (spawnSync, 90 s). */
+vi.setConfig({ testTimeout: 180000 });
 
 const sha = (b) => createHash("sha256").update(b).digest("hex");
 const INVENTUR_TEXT = readFileSync(INVENTUR, "utf8");
@@ -94,10 +96,11 @@ esac
 [[ "$1" == passwd && -n "$2" ]] || exit 2
 awk -F: -v k="$2" '$1 == k || $3 == k { print; f = 1 } END { exit f ? 0 : 2 }' "$PRUEF_PASSWD"
 `,
+  /* sshd -T -C …: eigene Ausgabe, falls PRUEF_SSHD_T_C existiert (Match-Block wirkt nur mit Verbindungsdaten) */
   sshd: `#!/bin/bash
 printf 'sshd %s\\n' "$*" >>"$PRUEF_PROTOKOLL"
 case "$1" in
-  -T) cat "$PRUEF_SSHD_T" ;;
+  -T) if [[ "\${2:-}" == -C && -f "\${PRUEF_SSHD_T_C:-}" ]]; then cat "$PRUEF_SSHD_T_C"; else cat "$PRUEF_SSHD_T"; fi ;;
   -t) exit "\${PRUEF_SSHD_t_RC:-0}" ;;
   *) exit 1 ;;
 esac
@@ -136,7 +139,36 @@ if [[ -n "$z" ]]; then IFS='|' read -r _ u g _ bn gn <<<"$z"; else u=0; g=0; bn=
 printf '%s|%s|%s|%s|%s|%s\\n' "$x" "$u" "$g" "$m" "$bn" "$gn" >>"$PRUEF_META"
 printf 'chmod %s %s\\n' "$m" "$x" >>"$PRUEF_PROTOKOLL"
 `,
+  /* setpriv --reuid=N --regid=N --clear-groups -- befehl …: führt den Befehl aus und bildet die Rechteprüfung
+     des Kerns nach: Schreibt der Befehl auf eine Datei (auch über einen Link), deren Ziel nicht N gehört,
+     wird er verweigert (wie bei einem echten Wechsel auf das Konto). Neue Dateien gehören N.
+     PRUEF_LINK_TAUSCH: vor dem ersten „tee -a“ wird authorized_keys durch einen Link auf diese Datei ersetzt.
+     PRUEF_KUERZEN_FEHLER: „truncate“ scheitert. */
+  setpriv: `#!/bin/bash
+n=""; while (($#)); do case "$1" in --reuid=*) n="\${1#--reuid=}"; shift ;; --) shift; break ;; -*) shift ;; *) break ;; esac; done
+printf 'setpriv %s %s\\n' "$n" "$*" >>"$PRUEF_PROTOKOLL"
+bef="$1"; ziel="\${!#}"
+if [[ "$bef" == tee && -n "\${PRUEF_LINK_TAUSCH:-}" && ! -e "$PRUEF_PROTOKOLL.getauscht" ]]; then
+  : >"$PRUEF_PROTOKOLL.getauscht"; rm -f -- "$ziel"; ln -s -- "$PRUEF_LINK_TAUSCH" "$ziel"
+fi
+if [[ "$bef" == truncate && -n "\${PRUEF_KUERZEN_FEHLER:-}" ]]; then echo "truncate: Fehler" >&2; exit 1; fi
+case "$bef" in
+  tee|truncate|chmod|touch|rm)
+    echt="$ziel"; [[ -L "$ziel" ]] && echt="$(readlink -- "$ziel")"
+    if [[ -e "$echt" ]]; then
+      z="$(awk -F'|' -v k="$echt" '$1 == k { z = $0 } END { print z }' "$PRUEF_META")"
+      u=0; [[ -n "$z" ]] && IFS='|' read -r _ u _ _ _ _ <<<"$z"
+      if [[ "$bef" != rm && "$u" != "$n" ]]; then echo "$bef: Keine Berechtigung" >&2; exit 1; fi
+    fi ;;
+esac
+neu=nein; [[ -e "$ziel" ]] || neu=ja
+"$@" || exit $?
+if [[ "$neu" == ja && -e "$ziel" ]]; then
+  printf '%s|%s|%s|%s|%s|%s\\n' "$ziel" "$n" "$n" "$(/usr/bin/stat -c '%a' -- "$ziel")" "admin" "admin" >>"$PRUEF_META"
+fi
+`,
   chown: `#!/bin/bash
+[[ "$1" == -h ]] && shift
 ug="$1"; x="$2"
 [[ -e "$x" ]] || exit 1
 name() { case "$1" in 0|root) echo "0 root" ;; 1000|admin) echo "1000 admin" ;; *) echo "$1 n$1" ;; esac; }
@@ -185,7 +217,9 @@ beforeEach(() => {
   schreiben(passwd, "root:x:0:0:root:/root:/bin/bash\nadmin:x:1000:1000:admin:/home/admin:/bin/bash\ndeploy:x:1001:1001::/home/deploy:/bin/bash\n");
   schreiben(sshdT, SSHD_T_STANDARD + "\n");
   schreiben(path.join(w, "etc", "os-release"), 'PRETTY_NAME="Ubuntu 24.04.5 LTS"\nNAME="Ubuntu"\nVERSION_ID="24.04"\nID=ubuntu\nID_LIKE=debian\n');
-  for (const d of ["usr/local/sbin", "root", "opt/apps/centric-dienstplanung/data", "home/admin/.ssh"]) mkdirSync(path.join(w, d), { recursive: true });
+  for (const d of ["usr/local/sbin", "root", "opt/apps/centric-dienstplanung/data", "home/admin/.ssh", "run/sshd"]) mkdirSync(path.join(w, d), { recursive: true });
+  schreiben(path.join(w, "etc/ssh/sshd_config"), "Include /etc/ssh/sshd_config.d/*.conf\nKbdInteractiveAuthentication no\nUsePAM yes\nAcceptEnv LANG LC_*\nSubsystem sftp /usr/lib/openssh/sftp-server\n");
+  schreiben(path.join(w, "etc/ssh/sshd_config.d/50-cloud-init.conf"), "PasswordAuthentication no\n");
   schreiben(path.join(w, "opt/apps/centric-dienstplanung/.env"), `CENTRIC_SMTP_PASSWORT=${ENV_GEHEIM}\n`);
   schreiben(path.join(w, AK_REL), ALT);
   metaSetzen("opt/apps/centric-dienstplanung", 1000, "755");
@@ -221,7 +255,7 @@ function lauf(args = [], env = {}, datei = inst) {
     ...env,
   };
   for (const n of ["SSH_CONNECTION", "BASH_ENV", "ENV"]) if (!(n in env)) delete umgebung[n];
-  const r = spawnSync(BASH, [p(datei), ...args], { encoding: "utf8", env: umgebung, timeout: 55000 });
+  const r = spawnSync(BASH, [p(datei), ...args], { encoding: "utf8", env: umgebung, timeout: 90000 });
   const out = r.stdout ?? "";
   const zeilen = out.trimEnd().split("\n");
   return { code: r.status, out, err: r.stderr ?? "", letzte: zeilen[zeilen.length - 1], alles: out + (r.stderr ?? "") };
@@ -325,12 +359,16 @@ describe("werkzeug/inventur-install-bauen.mjs", () => {
 
   it("Betreibereingabe: fester Commit, SHA-256-Vergleich vor der Ausführung, nur einfache Zeichen", () => {
     const t = readFileSync(INSTALLER, "utf8");
+    const h = sha(Buffer.from(t, "utf8"));
     const b = befehl("0ec90fa0f8f7", t);
-    expect(b).toBe(
-      `cd /root && curl -fsSLo rel0 https://github.com/rinats-png/dienstplaner/raw/0ec90fa0f8f7/deploy/inventur-install.sh && [[ $(sha256sum rel0) == "${sha(Buffer.from(t, "utf8"))}  rel0" ]] && bash rel0`,
-    );
-    /* keine Pipe, keine Umlenkung, kein Semikolon: ein Tippfehler darf die Prüfung nicht still entfernen */
-    expect(b).not.toMatch(/[|;<>`']/);
+    /* zuerst --trocken mit frischem Download (alte Datei vorher gelöscht), dann einrichten mit erneutem Hash-Vergleich,
+       Rückbau wieder mit frischem Download und Hash-Vergleich */
+    const laden = `cd /root && rm -f rel0 && curl -fsSLo rel0 https://github.com/rinats-png/dienstplaner/raw/0ec90fa0f8f7/deploy/inventur-install.sh && [[ $(sha256sum rel0) == "${h}  rel0" ]]`;
+    expect(b.trocken).toBe(`${laden} && bash rel0 --trocken`);
+    expect(b.einrichten).toBe(`cd /root && [[ $(sha256sum rel0) == "${h}  rel0" ]] && bash rel0`);
+    expect(b.rueckbau).toBe(`${laden} && bash rel0 --rueckbau`);
+    /* keine Pipe, keine Umlenkung, kein Semikolon */
+    for (const z of Object.values(b)) expect(z).not.toMatch(/[|;<>`']/);
     expect(() => befehl("main", t)).toThrow();
   });
 });
@@ -391,10 +429,37 @@ describe.skipIf(!BASH)("deploy/inventur-install.sh — Vorabprüfungen (Abbruch 
     negativ(() => {}, /sshd -t/, [], { PRUEF_SSHD_t_RC: "255" });
   });
   it("OpenSSH zu alt (7.1) → Abbruch", () => negativ(() => {}, /7\.2/, [], { PRUEF_OPENSSH: "1:7.1p2-2" }));
-  it("authorized_keys mit falschen Rechten (644) oder falschem Besitzer → Abbruch", () => {
-    negativ(() => metaSetzen(AK_REL, 1000, "644"), /600/);
-    negativ(() => metaSetzen(AK_REL, 0, "600"), /600/);
-  });
+  it("authorized_keys für Gruppe/andere beschreibbar (664, 666) oder falscher Besitzer → Abbruch (E-b)", () => {
+    negativ(() => metaSetzen(AK_REL, 1000, "664"), /600, 640 oder 644/);
+    negativ(() => metaSetzen(AK_REL, 1000, "666"), /600, 640 oder 644/);
+    negativ(() => metaSetzen(AK_REL, 0, "600"), /600, 640 oder 644/);
+  }, 180000);
+  it("Match-Block in sshd_config, sshd_config.d oder einem Include-Ziel → Abbruch (B-2)", () => {
+    const fall = (rel, text) => {
+      const f = path.join(w, rel);
+      const alt = existsSync(f) ? readFileSync(f, "utf8") : null;
+      schreiben(f, (alt ?? "") + text);
+      const vorher = abbild();
+      erwarteAbbruch(lauf(), /Match/);
+      expect(abbild()).toEqual(vorher);
+      if (alt == null) rmSync(f); else writeFileSync(f, alt);
+    };
+    fall("etc/ssh/sshd_config", "Match User admin\n  AcceptEnv *\n");
+    fall("etc/ssh/sshd_config.d/60-x.conf", "  match address 10.0.0.0/8\n    PermitUserEnvironment yes\n");
+    /* Include-Ziel außerhalb von sshd_config.d (relativ zu /etc/ssh, wie sshd) */
+    schreiben(path.join(w, "etc/ssh/extra/a.conf"), "\tMATCH Group docker\n");
+    fall("etc/ssh/sshd_config", "Include extra/*.conf\n");
+  }, 300000);
+  it("sshd -T -C (Verbindungsdaten) weicht ab: permituserenvironment yes / acceptenv * → Abbruch (B-2)", () => {
+    const c = path.join(tmp, "sshd-T-C.txt");
+    negativ(() => schreiben(c, SSHD_T_STANDARD.replace("permituserenvironment no", "permituserenvironment yes") + "\n"), /permituserenvironment/, [], { PRUEF_SSHD_T_C: p(c) });
+    negativ(() => schreiben(c, SSHD_T_STANDARD + "\nacceptenv *\n"), /acceptenv/, [], { PRUEF_SSHD_T_C: p(c) });
+  }, 180000);
+  it("sshd_config fehlt → Abbruch; /run/sshd fehlt und sshd -T scheitert → eigene Meldung (A-6)", () => {
+    negativ(() => rmSync(path.join(w, "etc/ssh/sshd_config")), /sshd_config/);
+    schreiben(path.join(w, "etc/ssh/sshd_config"), "Port 22\n");
+    negativ(() => { rmSync(sshdT); rmSync(path.join(w, "run/sshd"), { recursive: true }); }, /\/run\/sshd fehlt/);
+  }, 180000);
   it(".ssh mit falschen Rechten oder fehlend → Abbruch (wird nicht angelegt)", () => {
     negativ(() => metaSetzen("home/admin/.ssh", 1000, "755"), /700/);
     negativ(() => rmSync(path.join(w, "home/admin/.ssh"), { recursive: true }), /fehlt/);
@@ -460,9 +525,51 @@ describe.skipIf(!BASH)("deploy/inventur-install.sh — Einrichtung, Idempotenz, 
     expect(r.out).toMatch(/ok +sshd -t ok/);
     /* keine Temporärdateien im Zielverzeichnis, sshd nur -T/-t (kein reload/restart) */
     expect(readdirSync(path.join(w, "usr/local/sbin"))).toEqual(["centric-inventur.sh"]);
-    const sshdAufrufe = readFileSync(proto, "utf8").split("\n").filter((z) => z.startsWith("sshd "));
-    expect(new Set(sshdAufrufe)).toEqual(new Set(["sshd -T", "sshd -t"]));
+    const protokoll = readFileSync(proto, "utf8").split("\n");
+    const sshdAufrufe = protokoll.filter((z) => z.startsWith("sshd "));
+    expect(new Set(sshdAufrufe)).toEqual(new Set([
+      "sshd -T",
+      "sshd -T -C user=admin,host=localhost,addr=127.0.0.1",
+      "sshd -T -C user=admin,host=localhost,addr=192.0.2.1",
+      "sshd -t",
+    ]));
+    /* A-1: jeder schreibende Zugriff auf authorized_keys läuft als Konto (uid 1000), nie als root */
+    const akSchreiben = protokoll.filter((z) => z.includes(W(AK_REL)) && /^(setpriv|chmod|chown|mv) /.test(z));
+    expect(akSchreiben.length).toBeGreaterThan(0);
+    for (const z of akSchreiben) expect(z, z).toMatch(/^setpriv 1000 (tee -a|cat|truncate|touch|chmod|rm) /);
+    expect(protokoll.filter((z) => z.startsWith("chown ") && z.includes(W(AK_REL)))).toEqual([]);
     keineLecks(r);
+  });
+
+  it("authorized_keys mit 644 (E-b): eingerichtet, Rechte bleiben 644", () => {
+    metaSetzen(AK_REL, 1000, "644");
+    const r = lauf();
+    expect(r.code, r.alles).toBe(0);
+    const m = readFileSync(meta, "utf8").trim().split("\n").filter((z) => z.startsWith(W(AK_REL) + "|")).pop();
+    expect(m).toBe(`${W(AK_REL)}|1000|1000|644|admin|admin`);
+  });
+
+  it("Link-Tausch während des Anhängens (A-1): Ziel bleibt unverändert, kein Erfolg", () => {
+    const geheim = path.join(w, "etc", "shadow-probe");
+    schreiben(geheim, "root:geheim-probe\n");
+    const r = lauf([], { PRUEF_LINK_TAUSCH: W("etc/shadow-probe") });
+    expect([3, 4], r.alles).toContain(r.code);
+    expect(r.letzte).toMatch(/^REL-0 FEHLER: /);
+    expect(readFileSync(geheim, "utf8")).toBe("root:geheim-probe\n");
+  });
+
+  it("Rücknahme scheitert (truncate rot, A-2) → Rückgabe 4, kein falsches „zurückgenommen“", () => {
+    schreiben(path.join(stub, "sshd"), `#!/bin/bash
+case "$1" in
+  -T) cat "$PRUEF_SSHD_T" ;;
+  -t) z="$PRUEF_PROTOKOLL.t"; n=$(cat "$z" 2>/dev/null || echo 0); echo $((n + 1)) >"$z"; [[ $n == 0 ]] ;;
+  *) exit 1 ;;
+esac
+`, true);
+    const r = lauf([], { PRUEF_KUERZEN_FEHLER: "1" });
+    expect(r.code, r.alles).toBe(4);
+    expect(r.letzte).toMatch(/^REL-0 FEHLER: Einrichtung gescheitert, Rücknahme unvollständig/);
+    expect(r.alles).not.toMatch(/Änderungen zurückgenommen/);
   });
 
   it("Idempotenz: zweiter Lauf meldet „bereits eingerichtet“, ändert nichts", () => {
@@ -565,9 +672,22 @@ describe.skipIf(!BASH)("Mutationsnachweis: ohne die Prüfung wird der Negativfal
     },
     {
       name: "Rechte authorized_keys",
-      anker: '"$uid" != "$KONTO_UID" || "$mode" != 600',
+      anker: '"$uid" != "$KONTO_UID" || ! "$mode" =~ ^(600|640|644)$',
       ersatz: '"$uid" != "$KONTO_UID"',
-      vorbereiten: () => metaSetzen(AK_REL, 1000, "644"),
+      vorbereiten: () => metaSetzen(AK_REL, 1000, "666"),
+    },
+    {
+      name: "Match-Block (B-2)",
+      anker: 'if [[ -n "$match" ]]; then',
+      ersatz: "if false; then",
+      vorbereiten: () => schreiben(path.join(w, "etc/ssh/sshd_config.d/60-x.conf"), "Match User admin\n  PermitUserEnvironment yes\n"),
+    },
+    {
+      name: "sshd -T -C mit Verbindungsdaten (B-2)",
+      anker: 'for ctx in "" "user=$KONTO,host=localhost,addr=127.0.0.1" "user=$KONTO,host=localhost,addr=192.0.2.1"; do',
+      ersatz: 'for ctx in ""; do',
+      vorbereiten: () => schreiben(path.join(tmp, "sshd-T-C.txt"), SSHD_T_STANDARD.replace("permituserenvironment no", "permituserenvironment yes") + "\n"),
+      env: () => ({ PRUEF_SSHD_T_C: p(path.join(tmp, "sshd-T-C.txt")) }),
     },
     {
       name: "Besitz data/",
@@ -579,9 +699,10 @@ describe.skipIf(!BASH)("Mutationsnachweis: ohne die Prüfung wird der Negativfal
   for (const f of faelle) {
     it(f.name, () => {
       f.vorbereiten();
-      erwarteAbbruch(lauf());
+      const env = f.env ? f.env() : {};
+      erwarteAbbruch(lauf([], env));
       writeFileSync(inst, gebaut({ ersetze: [[f.anker, f.ersatz]] }));
-      const r = lauf(["--trocken"]);
+      const r = lauf(["--trocken"], env);
       expect(r.code, r.alles).toBe(0);
     });
   }
@@ -605,19 +726,27 @@ describe("Quelltext-Wächter deploy/inventur-install.sh", () => {
     expect(code).not.toMatch(/\b(curl|wget|nc|ncat|ssh-copy-id|scp|sftp|rsync|eval|source|sudo|su|useradd|usermod|userdel|groupadd|groupmod|gpasswd|adduser|passwd|visudo|systemctl|service|docker|crontab|apt|apt-get|dpkg)\b\s/);
     expect(code).not.toMatch(/(^|\s)\.\s+\S/m);
     const ohneKommentare = logik.split("\n").filter((z) => !/^\s*#/.test(z)).join("\n");
-    expect(ohneKommentare).not.toMatch(/sshd_config|sudoers|\/etc\/group|\/etc\/passwd/);
+    expect(ohneKommentare).not.toMatch(/sudoers|\/etc\/group|\/etc\/passwd/);
+    /* sshd-Konfiguration wird nur gelesen (Match-/Include-Suche, B-2), nie geschrieben */
+    const sshdZeilen = ohneKommentare.split("\n").filter((z) => /sshd_config|SSHD_DATEIEN|\$cfg\b/.test(z));
+    expect(sshdZeilen.length).toBeGreaterThan(0);
+    for (const z of sshdZeilen) expect(z, z).not.toMatch(/(^|[^2&])>(?!&2|\/dev\/null)|\b(sed\s+-i|cp|mv|rm|tee|install|truncate|chmod|chown)\b\s/);
     expect(code).not.toMatch(/\bsshd\s+(?!-T\b|-t\b)/);
     expect(code).not.toMatch(/\.env\b/);
   });
 
-  it("authorized_keys nur mit >> (anhängen) beschrieben, nie mit >", () => {
-    const umlenkungen = [...logik.matchAll(/[^>&0-9]>{1,2}\s*"?\$?\{?([A-Za-z_]+)/g)].map((m) => `${m[0].includes(">>") ? ">>" : ">"} ${m[1]}`);
-    expect(umlenkungen.filter((u) => u.endsWith(" AK")).sort()).toEqual(["> AK", ">> AK"]);
-    for (const u of umlenkungen) expect(u, u).toMatch(/^(>> AK|> TMP_SKRIPT|> SICH|>> SICH|> TMPD|>> m|> AK)$/);
-    /* „> AK“ nur in der Neuanlage mit noclobber (scheitert, wenn die Datei existiert); anhängen genau einmal */
-    expect(logik.match(/[^>]>"\$AK"/g)).toEqual([' >"$AK"']);
-    expect(logik).toContain('(set -o noclobber; : >"$AK")');
-    expect(logik.match(/>>"\$AK"/g)).toHaveLength(1);
+  it("authorized_keys: root schreibt nie selbst (A-1); Anhängen, Anlegen, Kürzen, Rechte, Löschen nur als Konto", () => {
+    const zeilen = logik.split("\n").filter((z) => !/^\s*#/.test(z));
+    /* keine Umlenkung auf "$AK" als root */
+    expect(zeilen.filter((z) => /[^2&]>>?\s*"\$AK"/.test(z))).toEqual([]);
+    /* jeder schreibende Befehl mit "$AK" läuft über als_konto */
+    for (const z of zeilen.filter((x) => /"\$AK"/.test(x) && /\b(tee|truncate|chmod|chown|touch|rm|mv|cp)\b/.test(x))) {
+      expect(z, z).toMatch(/als_konto (tee -a|truncate -s "[^"]+"|touch|chmod 06[04]{2}|rm -f) (-- )?"\$AK"/);
+    }
+    expect(text).toMatch(/^als_konto\(\) \{ setpriv --reuid="\$KONTO_UID" --regid="\$KONTO_GID" --clear-groups -- "\$@"; \}$/m);
+    expect(zeilen.filter((z) => /\btee -a\b/.test(z))).toHaveLength(1);
+    /* chown nur mit -h (folgt keinem Link) */
+    for (const z of zeilen.filter((x) => /(^|\s)chown\s/.test(x))) expect(z, z).toMatch(/chown -h /);
   });
 
   it("Datei im Repository mit Modus 100755 (CI-Wächter Skripte)", () => {
@@ -631,6 +760,15 @@ describe("Quelltext-Wächter deploy/inventur-install.sh", () => {
     expect(m, "Zeile „SHA-256 von deploy/inventur-install.sh“ fehlt").not.toBeNull();
     expect(m[1]).toBe(sha(readFileSync(INSTALLER)));
     expect(doku).toContain("Einrichtung mit einem Befehl (REL-0-Installer)");
+    /* Review #447: A-3 (kein absolutes Versprechen, --trocken zuerst, rm -f am Anfang), A-4, A-6, A-7, E-a, E-b */
+    expect(doku).not.toMatch(/nie zu einer Ausführung ohne Prüfung/);
+    expect(doku).toContain("cd /root && rm -f rel0 && curl -fsSLo rel0");
+    expect(doku).toContain("&& bash rel0 --trocken");
+    expect(doku).toContain("&& bash rel0 --rueckbau");
+    expect(doku).toMatch(/\/run\/sshd/);
+    expect(doku).toMatch(/E-a/);
+    expect(doku).toMatch(/E-b/);
+    expect(doku).toMatch(/Kurz-SHA/);
   });
 
   it("keine öffentliche Schlüsseldatei mit erfundenem Inhalt im Repository", () => {

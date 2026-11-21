@@ -89,9 +89,10 @@ Claude startet nie einen Deploy-Workflow und greift nie auf den VPS zu ([RELEASE
 - **Handlung:** [VPS-ZUGANG-EINRICHTUNG.md](VPS-ZUGANG-EINRICHTUNG.md) in dieser Reihenfolge:
   Abschnitt 0 (0a–0d, Arbeitsrechner; die Zeile aus 0d an Claude geben, Claude trägt sie als
   `deploy/inventur-schluessel.pub` ein), Abschnitt 1 (1a–1e, IONOS-Remotekonsole, nur lesen), danach die
-  **Einrichtung mit einem Befehl (REL-0-Installer)**: eine Zeile in der Remotekonsole als root
-  (`cd /root && curl -fsSLo rel0 …/<commit>/deploy/inventur-install.sh && [[ $(sha256sum rel0) == "<sha256>  rel0" ]] && bash rel0`;
-  genaue Zeile mit Commit und Prüfsumme kommt aus der Freigabe). Sie ersetzt 3a–3e; Abschnitt 3 bleibt als
+  **Einrichtung mit einem Befehl (REL-0-Installer)** in der Remotekonsole als root: zuerst Pflicht-Eingabe 1
+  (`cd /root && rm -f rel0 && curl -fsSLo rel0 …/<commit>/deploy/inventur-install.sh && [[ $(sha256sum rel0) == "<sha256>  rel0" ]] && bash rel0 --trocken`,
+  ändert nichts), danach Eingabe 2 (`cd /root && [[ $(sha256sum rel0) == "<sha256>  rel0" ]] && bash rel0`). Die
+  genauen Zeilen mit Commit und Prüfsumme kommen aus der Freigabe. Sie ersetzen 3a–3e; Abschnitt 3 bleibt als
   Alternative. Danach Abschnitt 4 (4a–4c, Nachprüfung und Negativproben). Befehle stehen dort.
 - **Erwartet:** wie dort je Unterschritt. In 1e: alle drei Host-Fingerabdrücke stimmen. Installer: letzte Zeile
   `REL-0 OK: Inventurzugang eingerichtet. Fingerabdruck F-INV: SHA256:… Skript sha256: d99207298c12…`, F-INV gleich
@@ -99,7 +100,8 @@ Claude startet nie einen Deploy-Workflow und greift nie auf den VPS zu ([RELEASE
 - **Weiter nur wenn:** jeder Unterschritt „Weiter nur wenn“ erfüllt. Commit und Prüfsumme des Installers zusätzlich
   aus einem zweiten Kanal bestätigt (Review-Kommentar oder Chat, VPS-ZUGANG §3). Bei `REL-0 ABBRUCH: …`: nichts
   wurde geändert; Ausgabe melden (Tabelle der Abbruchmeldungen in VPS-ZUGANG).
-- **Rückweg:** `cd /root && bash rel0 --rueckbau` (Zeile und Skript entfernen, nur bei Hash-Übereinstimmung), sonst
+- **Rückweg:** Rückbau-Zeile aus VPS-ZUGANG (Datei neu laden, Prüfsumme vergleichen, `bash rel0 --rueckbau`; entfernt
+  Zeile und Skript nur bei Hash-Übereinstimmung), sonst
   VPS-ZUGANG §6 (Zeile entfernen, Skript entfernen, Schlüssel löschen).
 - **Danach Claude:** nichts. Claude wartet auf 4.2.
 
