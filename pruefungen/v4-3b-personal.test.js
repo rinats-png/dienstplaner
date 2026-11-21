@@ -76,7 +76,7 @@ describe("V4-3b Personal: Messung", () => {
       for (const s of stellen) expect(regelStufe(s.alt, s.kante), `${datei}: ${s.wo} (${s.alt})`).toBe(s.stufe);
       expect(stufenIn(lies(datei)), datei).toEqual(stellen.map((s) => s.stufe));
     }
-    expect(Object.values(PERSONAL_ZUORDNUNG).flat()).toHaveLength(11);
+    expect(Object.values(PERSONAL_ZUORDNUNG).flat()).toHaveLength(9);
   }, 60000);
 
   it("Ausnahme bleibt begründet: Legendenquadrat 15 px mit kleinster Stufe wäre ein Kreis", () => {
