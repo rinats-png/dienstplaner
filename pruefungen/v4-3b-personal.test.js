@@ -29,9 +29,10 @@ import { regelStufe, stufenIn, ladeBasisFixture, abgleichMitFixture, gitGegenpro
 import { createElement as h } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { Personalakte } from "../src/ansichten/personalakte.jsx";
-import { demobestand } from "../src/lib/fachlogik.js";
+import { demobestand, istStunden } from "../src/lib/fachlogik.js";
 import { aktionenStammdaten } from "../src/app/aktionen/stammdaten.js";
-import { DOW } from "../src/lib/datum.js";
+import { DOW, MON } from "../src/lib/datum.js";
+import { n1 } from "../src/lib/format.js";
 
 const WURZEL = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (d) => readFileSync(path.join(WURZEL, d), "utf8").replace(/\r\n/g, "\n");
@@ -231,5 +232,108 @@ describe("A11Y-1: Arbeitstage und Nachtbalken der Personalakte", () => {
     }
     /* Festgeschrieben (Stand A11Y-1); vorher Nachtbalken 2,25 hell / 2,07 dunkel (C.lineStark). */
     expect(werte).toEqual({ hell: { haken: 10.61, balken: 4.14 }, dunkel: { haken: 10.79, balken: 4.41 } });
+  });
+});
+
+/* ==========================================================================
+   A11Y-2 (Review #445): Nachtbalken der Personalakte – aktueller Monat nicht nur über Farbe, Monatswerte als Text
+
+   Akzeptanz (docs/acc45/work-packages.json, A11Y-2):
+     - der aktuelle Monat (Monat der Ansicht, ym) ist ohne Farbe erkennbar: Monatsbuchstabe fett und unterstrichen
+       (1.4.1); C.accent gegen C.steuer bleibt zulässig, ist aber nicht mehr das einzige Merkmal;
+     - die zwölf Monatswerte sind für Vorlesesoftware erreichbar, nicht nur über title: Gruppe role="img" mit
+       aria-label (Jahr, alle zwölf Monate mit Stunden, markierter Monat); die zwölf Spalten (Balken und Buchstabe)
+       aria-hidden, damit nichts doppelt angesagt wird (1.3.1, 4.1.2);
+     - Fachlogik (nm, maxN), Klassennamen, Übergang unverändert (V4-2d, oben); Kontrast Balken und Marker >= 3:1
+       gegen die Fläche, hell und dunkel (1.4.11), festgeschrieben.
+   Gerendert wird die echte Personalakte (react-dom/server). Erwartete Werte rechnet der Test unabhängig vom Markup
+   über istStunden aus der Fachlogik. Keine Uhr im Test, kein Netz.
+   ========================================================================== */
+describe("A11Y-2: Nachtbalken der Personalakte", () => {
+  const q = () => ohneKommentare(lies("src/ansichten/personalakte.jsx"));
+  const aufbau = () => {
+    const m = structuredClone(demobestand().mandanten[0]);
+    const leitung = m.personen.find((p) => p.rolle === "leitung");
+    const ziel = m.personen.find((p) => p.rolle === "mitarbeiter" && !p.springer);
+    return { m, leitung, ziel };
+  };
+  const rendern = (m, leitung, ziel, ym) => renderToStaticMarkup(h(Personalakte, {
+    sitz: { rolle: "kunde", mandant: m, person: leitung,
+      db: { mandanten: [m], session: { mandantId: m.id, personId: leitung.id, rolle: "leitung" } } },
+    personId: ziel.id, ym, onClose: () => {}, akt: new Proxy({}, { get: () => () => {} }) }));
+  /** Abschnitt „Nachtarbeit im Jahresverlauf“ bis zur Überschrift „Qualifikationen“. */
+  const abschnitt = (html) => {
+    const ab = html.indexOf(">Nachtarbeit im Jahresverlauf<");
+    expect(ab, "Abschnitt Nachtbalken gerendert").toBeGreaterThan(0);
+    return html.slice(ab, html.indexOf(">Qualifikationen<", ab));
+  };
+  const entitaeten = (s) => s.replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&amp;/g, "&");
+  /** Erwarteter Text je Monat aus der Fachlogik (nicht aus dem Markup). */
+  const erwartet = (m, ziel, jahr) => MON.map((name, i) => {
+    const v = istStunden(m, ziel, `${jahr}-${String(i + 1).padStart(2, "0")}`).nacht;
+    return `${name} ${v === null || v === undefined ? "keine Angabe" : `${n1(v)} Stunden`}`;
+  });
+
+  it("Gruppe role=img mit aria-label: Jahr, alle zwölf Monatswerte, markierter Monat (1.3.1, 4.1.2)", () => {
+    const { m, leitung, ziel } = aufbau();
+    const a = abschnitt(rendern(m, leitung, ziel, "2026-11"));
+    const gruppen = [...a.matchAll(/<div[^>]*role="img"[^>]*>/g)];
+    expect(gruppen, "genau eine Grafik mit Namen").toHaveLength(1);
+    const label = entitaeten((gruppen[0][0].match(/aria-label="([^"]*)"/) || [])[1] || "");
+    expect(label).toContain("2026");
+    const monate = erwartet(m, ziel, 2026);
+    for (const t of monate) expect(label, t).toContain(t);
+    const pos = monate.map((t) => label.indexOf(t));
+    expect([...pos].sort((x, y) => x - y), "Reihenfolge Januar … Dezember").toEqual(pos);
+    expect(label).toMatch(/markiert: November/);
+    /* mindestens ein Monat mit Nachtstunden, sonst prüfte der Test nur Nullen */
+    expect(monate.some((t) => !/ 0 Stunden$/.test(t) && !/keine Angabe$/.test(t)), monate.join("; ")).toBe(true);
+  }, 60000);
+
+  it("keine doppelte Ansage: die zwölf Spalten (Balken und Buchstabe) sind aria-hidden", () => {
+    const { m, leitung, ziel } = aufbau();
+    const a = abschnitt(rendern(m, leitung, ziel, "2026-11"));
+    const innen = a.slice(a.search(/role="img"/));
+    expect([...innen.matchAll(/<div aria-hidden="true"/g)], "zwölf Spalten aria-hidden").toHaveLength(12);
+  }, 60000);
+
+  for (const [ym, idx] of [["2026-11", 10], ["2026-03", 2]]) {
+    it(`aktueller Monat ${ym} ohne Farbe erkennbar: Buchstabe fett und unterstrichen, nur dieser (1.4.1)`, () => {
+      const { m, leitung, ziel } = aufbau();
+      const a = abschnitt(rendern(m, leitung, ziel, ym));
+      const buchstaben = [...a.matchAll(/<div style="([^"]*font-size:10px[^"]*)">([^<]*)<\/div>/g)];
+      expect(buchstaben.map((b) => b[2])).toEqual(MON.map((x) => x.slice(0, 1)));
+      const merkmal = buchstaben.map((b) => /font-weight:700/.test(b[1]) && /text-decoration:underline/.test(b[1]));
+      expect(merkmal).toEqual(MON.map((_, i) => i === idx));
+    }, 60000);
+  }
+
+  it("Quelltext: Fachlogik nm/maxN und Balkenfarbe unverändert; Wert weiter im title (Maus)", () => {
+    const t = q();
+    expect(t).toMatch(/const nm = Array\.from\(\{ length: 12 \}, \(_, i\) => istStunden\(m, p, `\$\{jahr\}-\$\{pad\(i \+ 1\)\}`\)\.nacht\);/);
+    expect(t).toMatch(/const maxN = Math\.max\(1, \.\.\.nm\);/);
+    expect(t).toMatch(/\?\s*C\.accent\s*:\s*C\.steuer/);
+    expect(t).toMatch(/title=\{`\$\{MON\[i\]\}: \$\{n1Ist\(v\)\} h`\}/);
+  });
+
+  it("Kontrast hell und dunkel: Balken und Marker >= 3:1 gegen die Fläche (1.4.11), festgeschrieben", () => {
+    const werte = {};
+    const r = (a, b) => Math.round(kontrastVon(a, b) * 100) / 100;
+    for (const thema of ["hell", "dunkel"]) {
+      const p = v4AlsAltePalette(thema);
+      const w = { balken: r(p.steuer, p.flaeche), aktuell: r(p.accent, p.flaeche), marker: r(p.text, p.flaeche),
+        buchstabe: r(p.dimmer, p.flaeche), aktuellGegenBalken: r(p.accent, p.steuer) };
+      for (const k of ["balken", "aktuell", "marker", "buchstabe"]) expect(w[k], `${thema}: ${k}`).toBeGreaterThanOrEqual(3);
+      werte[thema] = w;
+    }
+    /* aktuellGegenBalken bleibt unter 3:1 (1,78/2,50); deshalb das Merkmal ohne Farbe (Buchstabe fett, unterstrichen). */
+    expect(werte).toEqual({
+      hell: { balken: 4.14, aktuell: 7.36, marker: 14.74, buchstabe: 7.55, aktuellGegenBalken: 1.78 },
+      dunkel: { balken: 4.41, aktuell: 11.03, marker: 12.98, buchstabe: 8.71, aktuellGegenBalken: 2.5 },
+    });
+  });
+
+  it("Quelltext: Marker des Buchstabens nutzt C.text (Kontrast oben), keine neue Farbe", () => {
+    expect(q()).toMatch(/color:\s*i === mAkt \? C\.text : C\.dimmer/);
   });
 });
