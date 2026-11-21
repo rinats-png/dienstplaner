@@ -35,7 +35,9 @@
      G5  Migration: Startschreibvorgänge W-1…W-9 und Startblock gegen die Basis
          (Migrationsbericht); geändert oder neu ⇒ NO-GO bis Betreiberfreigabe
      G6  Sicherung, Restore-Probe, Widerrufbuch-Probe: vollständig und aktuell
-     G7  Rückweg: Zeile `vorherig` oder dokumentierte Entscheidung O-1/O-2
+     G7  Rückweg: Zeile `vorherig` oder dokumentierte Entscheidung O-1/O-2;
+         `ruecksprung` NO-GO, wenn Basis oder Zeile `vorherig` ein Bild ohne
+         Revisionslabel ist (ohneRevisionslabel: 274bfa0) oder die Basis fehlt
      G8  SSOT: kein P0/P1-Paket im Status REVIEW/BLOCKED/IN_PROGRESS/READY,
          dessen PR im Paket steckt (außer akzeptiertePakete mit Grund); jede
          Paket-ID in ssotPakete von RELEASE-UNFERTIG.json steht in der SSOT
@@ -102,6 +104,13 @@ export const KONFIG_STANDARD = Object.freeze({
   gesperrtEingebaut: [
     { digest: "sha256:f03a8514db6f07db5617e6818edd6505f0607d52ffcf5f985c862cfefc9c5a79", commit: "64d08a4957c5374e1f04c17be2b75162c07573d2" },
     { digest: "sha256:0861adee", commit: "1a56988d3c406aff99281f96c2d7da1dc24d7af7" },
+  ],
+  // Bilder ohne Revisionslabel org.opencontainers.image.revision (vor WP-03; Produktionsweg §1.1 Befund 3). Sie sind
+  // nie Rücksprungziel (G7, OF-13): digest-pruefen.sh lässt sie nur mit --ohne-label zu, und der Forced Command lässt
+  // --ohne-label nicht zu (deploy/deploy.sh:93). Ist die Basis eines dieser Bilder (erste Auslieferung), gilt bildseitig
+  // nur R0 (Produktionsweg §3.3): das neue Bild schreibt beim ersten Start in data/ (W-1…W-9).
+  ohneRevisionslabel: [
+    { digest: "sha256:0b1929273a79d6c010c9a0303b0d624a8e61e3555df77c08773bd573dd3e452f", commit: "274bfa0baca5681f383eea334aab69875f31d5c1" },
   ],
   provenienzPflicht: true,
   bildInfoMaxTage: 7,
@@ -897,17 +906,33 @@ export function g6Sicherung(nachweise, jetztMs, konfig) {
 
 /* ---------------------------------------------------------- G7 — Rückweg */
 
-export function g7Rueckweg({ liste, kandidat, digest }, freigabe, konfig) {
+export function g7Rueckweg({ liste, kandidat, digest, basis }, freigabe, konfig) {
   const g = gate("G7", "Rückweg dokumentiert");
   if (liste.fehler.length) return nogo(g, "Freigabeliste ungültig — kein Rückweg prüfbar");
   const r = freigabe?.rueckweg;
   if (!istObjekt(r) || !["r0", "ruecksprung"].includes(r.strategie)) {
     return nogo(g, "rueckweg.strategie (r0 | ruecksprung) fehlt in der Freigabedatei");
   }
+  // OF-13: Bilder ohne Revisionslabel sind nie Rücksprungziel; ist die Basis eines davon (erste Auslieferung), gibt es
+  // bildseitig nur R0. Die Basis kommt aus --basis und aus basisCommit der Freigabedatei; eine Angabe genügt.
+  const ohneLabel = Array.isArray(konfig.ohneRevisionslabel) ? konfig.ohneRevisionslabel : [];
+  const unbeschriftet = (z) => ohneLabel.find((o) => (o.commit && z.commit === o.commit) || (o.digest && z.digest === o.digest));
+  const basen = [...new Set([basis, freigabe?.basisCommit].filter((b) => typeof b === "string" && HEX40.test(b)))];
+  const basisOhneLabel = basen.map((b) => unbeschriftet({ commit: b })).find(Boolean);
   const vorherig = liste.zeilen.find((z) => z.status === "vorherig");
   const ziel = vorherig && vorherig.digest !== digest && vorherig.commit !== kandidat &&
-    !gesperrt(vorherig.digest, liste.zeilen, konfig.gesperrtEingebaut) ? vorherig : null;
+    !gesperrt(vorherig.digest, liste.zeilen, konfig.gesperrtEingebaut) && !unbeschriftet(vorherig) && !basisOhneLabel ? vorherig : null;
   if (r.strategie === "ruecksprung") {
+    if (basen.length === 0) {
+      return nogo(g, "Strategie ruecksprung: Basis unbekannt (--basis oder basisCommit) — Revisionslabel nicht prüfbar, nur r0 (fail-closed)");
+    }
+    if (basisOhneLabel) {
+      return nogo(g, `Strategie ruecksprung unzulässig: Basis ${basisOhneLabel.commit.slice(0, 7)} ist ein Bild ohne Revisionslabel (erste Auslieferung, OF-13); das neue Bild schreibt beim ersten Start in data/ — nur r0 (R0 und Vorwärts-Reparatur, Produktionsweg §3.3)`);
+    }
+    const ohne = vorherig && unbeschriftet(vorherig);
+    if (ohne) {
+      return nogo(g, `Strategie ruecksprung unzulässig: Zeile vorherig ${ohne.commit.slice(0, 7)} ist ein Bild ohne Revisionslabel (OF-13, Forced Command ohne --ohne-label) — nur r0`);
+    }
     if (!ziel) return nogo(g, "Strategie ruecksprung ohne zulässige Zeile vorherig");
     g.belege.push(`Rücksprungziel vorherig ${ziel.digest.slice(0, 19)}… (Commit ${ziel.commit.slice(0, 7)})`);
     return g;
@@ -1062,7 +1087,7 @@ export function auswerten(e, konfig = KONFIG_STANDARD) {
     g4Bild({ digest: e.digest, kandidat: e.kandidat, bild: bildAngabenLesen(e.bildRoh), liste, berichtVorhanden: e.berichtVorhanden, jetztMs: e.jetztMs }, konfig),
     g5Migration(bericht, freigabe, liste),
     g6Sicherung(e.nachweise, e.jetztMs, konfig),
-    g7Rueckweg({ liste, kandidat: e.kandidat, digest: e.digest }, freigabe, konfig),
+    g7Rueckweg({ liste, kandidat: e.kandidat, digest: e.digest, basis: e.basis }, freigabe, konfig),
     g8Blocker(e.ssot, prs, freigabe, konfig, e.unfertig, e.klassen),
     g9Befunde(e.ssot, freigabe, konfig),
     g10Freigabe({ releaseId: e.releaseId, freigabe: roheFreigabe, freigabeFehler: e.freigabeFehler, commitet: e.freigabeCommitet, kandidat: e.kandidat, digest: e.digest, basis: e.basis, stand: e.stand }, konfig),

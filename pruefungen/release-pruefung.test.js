@@ -1894,7 +1894,9 @@ describe("OF-13 (O-2 b): G7 — erste Auslieferung vom unbeschrifteten Bild 274b
     const anl = readFileSync(join(WURZEL, "docs/acc45/BETREIBER-ANLEITUNG-ERSTRELEASE.md"), "utf8");
     expect(anl).not.toMatch(/Prüfen Sie den Wert selbst/);
     expect(anl).toMatch(/\| OF-13 \|[^\n]*behoben/);
-    expect(anl).toMatch(/pgrep -af 'deploy\.sh\|abschalten\.sh\|ruecksprung\.sh'/);
+    // 14.2 (Review #439): alle drei Skripte; in der Tabellenzelle ist „|“ als „\|“ geschrieben
+    expect(anl).toMatch(/pgrep -af 'deploy\.sh\\\|abschalten\.sh\\\|ruecksprung\.sh'/);
+    expect(anl).not.toMatch(/pgrep -af deploy\.sh[^\\|]/);
     const rp = readFileSync(join(WURZEL, "docs/acc45/RELEASE-PROZESS.md"), "utf8").split(/\r?\n/).find((z) => z.startsWith("| G7 |"));
     expect(rp).toMatch(/274bfa0/);
     expect(rp).toMatch(/ruecksprung/);
