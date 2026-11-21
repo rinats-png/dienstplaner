@@ -1,11 +1,11 @@
 {
   "schema": 2,
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
-  "anzahl": 240,
+  "anzahl": 241,
   "statusZaehlung": {
     "BLOCKED": 90,
     "READY": 16,
-    "IN_PROGRESS": 18,
+    "IN_PROGRESS": 19,
     "REVIEW": 11,
     "INTEGRATED": 102,
     "DONE": 3
@@ -36,11 +36,11 @@
       }
     },
     "folge": {
-      "pakete": 31,
-      "offen": 22,
+      "pakete": 32,
+      "offen": 23,
       "restPT": {
         "min": 27.200000000000003,
-        "max": 48.1
+        "max": 49.6
       }
     },
     "extern": {
@@ -54,7 +54,7 @@
   },
   "offenerAufwandPT": {
     "min": 334,
-    "max": 573.35
+    "max": 574.85
   },
   "kritischerPfad": {
     "summe": 70,
@@ -6512,17 +6512,17 @@
       "prio": "P2",
       "aufwandPT": {"min":4,"max":7},
       "abhaengigkeiten": ["V4-3a"],
-      "status": "BLOCKED",
+      "status": "IN_PROGRESS",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
+        "implementiert": {"wert":"teilweise","beleg":"Schnitt 1 Plan/Dienstplan, Branch acc45/v4/v4-3b-plan: Tests zuerst a7ecf1c8 (pruefungen/v4-3b-plan.test.js 6/7 rot auf b2a42a7f), Umsetzung: 26 Inline-Radien in 15 Plan-Dateien auf var(--v4-r-klein/mittel/gross/pille), Feiertagsband Tagesdetail rgba → C.dangerLight; docs/acc45/V4-IST-STAND-2026-11-20.md Nachtrag V4-3b"},
+        "lokalGetestet": {"wert":"teilweise","beleg":"Schnitt 1 Plan, Lauf 2026-11-21 lokal je Datei --maxWorkers=1: v4-3b-plan 7/7, v4-ist-stand 16/16, v4-inventar 15/15, v4-3a-querschnitt 10/10, v4-app-stil 63/63, kontrast 207/207, wcag-wp40 35/35, wp40-zugaenglichkeit 28/28, intelligence-oberflaeche 29/29, intelligence-aenderungsuebersicht 22/22, istdaten 35/35, oberflaeche-render 40/40, gestalt 19/19, e2e-flaechen 10/10, imp6-oberflaeche 51/51, imp6-verdrahtung 33/33, imp6-planwirkung 82/82, geraete-wp21 21/21, geraete-wp21-ablaeufe-render 67/67, modul-altwege-oberflaeche 27/27, ki-schichtfolge-live 11/11, v4-tokens 32/32, prozess-wachen 15/15; E2E (E2E_PORT=3287, 390x844) v4-3b-plan-form, v4-querschnitt-form, v4-schublade-fokus 3/3; Bildnachweis v4-abnahme reflow,ziele,fokus (leitung, 390/1024 px, hell/dunkel) 182 Prüfungen, 0 Befunde"},
         "reviewt": {"wert":false,"beleg":null},
         "integriert": {"wert":false,"beleg":null},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
       },
-      "branch": null,
+      "branch": "acc45/v4/v4-3b-plan",
       "agent": null,
       "modell": "sonnet",
       "konfliktzonen": ["src/ansichten"],
@@ -6531,7 +6531,7 @@
       "akzeptanz": "Inline borderRadius/boxShadow-Literale je Hauptansicht durch Tokens oder Bausteinklassen ersetzt (Zählstand 215 in 75 Dateien sinkt messbar); keine Änderung an Fachlogik, Rollen, Accessible Names oder Klassennamen; Bildnachweis hell/dunkel je Ansicht",
       "tests": "Unit, E2E",
       "dateien": "src/ansichten",
-      "notiz": "Übernommen (Review #418), V4-IST 2026-11-20; Reihenfolge Plan, Personal, Zeit/Abrechnung, Einstellungen, Lage, Betreiber, Import, Telefonschale, Einstieg; PT sind Schätzung. Ersetzt einen Teil des früheren V4-3. Rest aus V4-3a (globaler Stil, kein passender Token): Telefonschale .m-zahl 10px, .m-tabs button 16px, .m-blatt 26px, .m-griff 3px; .tabbar button 14px (Plan/Wochenliste) — im jeweiligen Ansichts-PR mitnehmen oder als V4-Ausnahme begründen."
+      "notiz": "Schnitt 1 (2026-11-21, Plan/Dienstplan, Messung --hauptansichten): Form erreicht 24/27 → 27/27, Farbliterale 1 → 0, Form-Literale 28 → 2, voll V4 12/27 → 25/27, Inline-Stile 532 unverändert; ohne V4-Form leer. Begründete Ausnahmen Plan: Diagrammbalken 2 px (monatsplan.jsx) und 1 px (jahresansicht.jsx), kein passender Token. Offen: Personal, Zeit/Abrechnung, Einstellungen, Lage, Betreiber, Import, Telefonschale, Einstieg (je ein PR); Inline-Layoutstile → V4-3d. Übernommen (Review #418), V4-IST 2026-11-20; Reihenfolge Plan, Personal, Zeit/Abrechnung, Einstellungen, Lage, Betreiber, Import, Telefonschale, Einstieg; PT sind Schätzung. Ersetzt einen Teil des früheren V4-3. Rest aus V4-3a (globaler Stil, kein passender Token): Telefonschale .m-zahl 10px, .m-tabs button 16px, .m-blatt 26px, .m-griff 3px; .tabbar button 14px (Plan/Wochenliste) — im jeweiligen Ansichts-PR mitnehmen oder als V4-Ausnahme begründen."
     },
     {
       "id": "V4-3c",
@@ -6560,6 +6560,34 @@
       "tests": "Unit, E2E",
       "dateien": "src/module, src/ansichten, src/*.jsx",
       "notiz": "Übernommen (Review #418), V4-IST 2026-11-20 (35 sichtbare Dateien ohne V4-Form); PT sind Schätzung. Ersetzt einen Teil des früheren V4-3."
+    },
+    {
+      "id": "V4-3d",
+      "titel": "V4: Inline-Layoutstile der Hauptansichten und Rest-Formwerte (Folge aus V4-3b)",
+      "strang": "folge",
+      "prio": "P3",
+      "aufwandPT": {"min":2,"max":5},
+      "abhaengigkeiten": ["V4-3b"],
+      "status": "BLOCKED",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": null,
+      "modell": "sonnet",
+      "konfliktzonen": ["src/ansichten"],
+      "pr": [],
+      "nachweis": "docs/acc45/V4-IST-STAND-2026-11-20.md",
+      "akzeptanz": "Entscheidung des Koordinators liegt vor, ob das V4-System Layoutklassen (Abstand, Flex/Grid) erhält; danach Inline-Stile je Hauptansicht messbar gesenkt (werkzeug/v4-inventar.mjs --hauptansichten, Spalte Inline-Stile); Diagrammbalken mit 1/2 px Radius (monatsplan.jsx, jahresansicht.jsx) über eine Token-Stufe oder als V4-Ausnahme begründet; keine Änderung an Fachlogik, Accessible Names oder Klassennamen",
+      "tests": "Unit, E2E",
+      "dateien": "src/ansichten, src/v4/app-stil.js",
+      "notiz": "Angelegt mit V4-3b Schnitt 1 (2026-11-21). Plan/Dienstplan hat 532 Inline-Stile, fast nur Abstände und Flex/Grid; Form- und Farbliterale sind dort bis auf die zwei Diagrammbalken erledigt. Weniger Inline-Stile verlangen neue Layoutklassen; die hat das V4-System nicht, daher Entscheidung nötig. PT sind Schätzung."
     },
     {
       "id": "V4-4",
