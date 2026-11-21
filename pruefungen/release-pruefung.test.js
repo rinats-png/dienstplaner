@@ -14,7 +14,7 @@ import {
   g6Sicherung, g7Rueckweg, g8Blocker, g9Befunde, g10Freigabe, migrationsbericht, reviewNachweiseLesen,
   codeNamenFinden, vorlageLesen, wertAufloesen, abweichend, bildAngabenLesen, prsAusCommits, commitsOhnePr,
   argumenteLesen, ssotReviewBelege, freigabeSchema, basisPruefen, ausfuehrOptionen, ausfuehren, vorlageUnlesbar,
-  vorlagenStandErmitteln,
+  vorlagenStandErmitteln, kurzfassung,
 } from "../werkzeug/release-pruefung.mjs";
 
 const WURZEL = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -1522,15 +1522,15 @@ describe("REL-1 Nachzug: IMP-6 Planwirkung als eigene unfertige Funktion (G3, G8
   it("G8: ssotPakete einer unfertigen Funktion müssen in der SSOT stehen (fail-closed); im Kandidaten → Beleg „hinter Schalter AUS“", () => {
     const ssot = { pakete: [{ id: "IMP-6", prio: "P2", status: "IN_PROGRESS", strang: "acc45", pr: ["#429", "#436"] }] };
     const unfertig = { funktionen: [{ id: "schichtmodell-wirkung", name: "Planwirkung", variablen: [W], ssotPakete: ["IMP-6"] }] };
-    const g = g8Blocker(ssot, [436], null, KONFIG_STANDARD, unfertig);
+    const g = g8Blocker(ssot, [436], null, KONFIG_STANDARD, unfertig, KL);
     expect(g.ergebnis).toBe("GO");
     expect(g.belege.join()).toMatch(/IMP-6.*#436.*Planwirkung.*hinter Schalter AUS \(G3: CENTRIC_SCHICHTMODELL_WIRKUNG\)/);
-    expect(g8Blocker(ssot, [1], null, KONFIG_STANDARD, unfertig).belege.join()).not.toMatch(/IMP-6/);
+    expect(g8Blocker(ssot, [1], null, KONFIG_STANDARD, unfertig, KL).belege.join()).not.toMatch(/IMP-6/);
     const falsch = { funktionen: [{ ...unfertig.funktionen[0], ssotPakete: ["IMP-99"] }] };
-    const n = g8Blocker(ssot, [436], null, KONFIG_STANDARD, falsch);
+    const n = g8Blocker(ssot, [436], null, KONFIG_STANDARD, falsch, KL);
     expect(n.ergebnis).toBe("NO-GO");
     expect(n.gruende.join()).toMatch(/IMP-99.*nicht in der SSOT/);
-    expect(g8Blocker(ssot, [436], null, KONFIG_STANDARD, { funktionen: [{ ...unfertig.funktionen[0], ssotPakete: "IMP-6" }] }).ergebnis).toBe("NO-GO");
+    expect(g8Blocker(ssot, [436], null, KONFIG_STANDARD, { funktionen: [{ ...unfertig.funktionen[0], ssotPakete: "IMP-6" }] }, KL).ergebnis).toBe("NO-GO");
     // ohne Liste (G3 meldet sie selbst) und ohne ssotPakete bleibt G8 wie bisher
     expect(g8Blocker(ssot, [436], null, KONFIG_STANDARD).ergebnis).toBe("GO");
     expect(g8Blocker(ssot, [436], null, KONFIG_STANDARD, { funktionen: [{ id: "x", variablen: [] }] }).ergebnis).toBe("GO");
@@ -1538,7 +1538,7 @@ describe("REL-1 Nachzug: IMP-6 Planwirkung als eigene unfertige Funktion (G3, G8
   it("Review #437 (3): Beleg „hinter Schalter AUS“ nur mit Variablen; leere oder fehlende variablen → NO-GO, kein Beleg", () => {
     const ssot = { pakete: [{ id: "IMP-6", prio: "P2", status: "IN_PROGRESS", strang: "acc45", pr: ["#436"] }] };
     for (const variablen of [[], undefined, "X"]) {
-      const g = g8Blocker(ssot, [436], null, KONFIG_STANDARD, { funktionen: [{ id: "w", name: "Planwirkung", variablen, ssotPakete: ["IMP-6"] }] });
+      const g = g8Blocker(ssot, [436], null, KONFIG_STANDARD, { funktionen: [{ id: "w", name: "Planwirkung", variablen, ssotPakete: ["IMP-6"] }] }, KL);
       expect(g.ergebnis, JSON.stringify(variablen)).toBe("NO-GO");
       expect(g.belege.join(), JSON.stringify(variablen)).not.toMatch(/hinter Schalter AUS/);
     }
@@ -1549,18 +1549,18 @@ describe("REL-1 Nachzug: IMP-6 Planwirkung als eigene unfertige Funktion (G3, G8
       { id: "WP-16c", prio: "P0", status: "REVIEW", strang: "acc45", pr: ["#223"] },
     ] };
     const unfertig = { funktionen: [{ id: "t", name: "Teilspeicherung", variablen: ["CENTRIC_TEILSPEICHERUNG"], ssotPakete: ["WP-48", "WP-16c"] }] };
-    const g = g8Blocker(ssot, [87, 223], null, KONFIG_STANDARD, unfertig);
+    const g = g8Blocker(ssot, [87, 223], null, KONFIG_STANDARD, unfertig, KL);
     expect(g.ergebnis).toBe("NO-GO");
     expect(g.gruende.map((x) => x.split(" ")[0])).toEqual(["WP-48", "WP-16c"]);
     expect(g.belege.join()).not.toMatch(/hinter Schalter AUS/);
     // akzeptiert der Betreiber das Paket, ist es kein NO-GO mehr; dann gilt der Beleg
     const f = { akzeptiertePakete: [{ id: "WP-48", grund: "hinter Schalter" }, { id: "WP-16c", grund: "x" }] };
-    const a = g8Blocker(ssot, [87, 223], f, KONFIG_STANDARD, unfertig);
+    const a = g8Blocker(ssot, [87, 223], f, KONFIG_STANDARD, unfertig, KL);
     expect(a.ergebnis).toBe("GO");
     expect(a.belege.join()).toMatch(/WP-48 im Kandidaten .*hinter Schalter AUS/);
   });
   it("G8 im Gesamtlauf liest RELEASE-UNFERTIG.json des Kandidaten", () => {
-    datei("docs/acc45/RELEASE-UNFERTIG.json", { ...UNFERTIG, funktionen: [...UNFERTIG.funktionen, { id: "t", name: "T", variablen: ["X_T"], ssotPakete: ["GIBT-ES-NICHT"] }] });
+    datei("docs/acc45/RELEASE-UNFERTIG.json", { ...UNFERTIG, funktionen: [...UNFERTIG.funktionen, { id: "t", name: "T", variablen: ["CENTRIC_SCHICHTMODELL_WIRKUNG"], ssotPakete: ["GIBT-ES-NICHT"] }] });
     expect(gateVon(pruefe(), "G8").gruende.join()).toMatch(/GIBT-ES-NICHT/);
   });
   it("Repository-Stand: jedes ssotPakete in RELEASE-UNFERTIG.json steht in work-packages.json", () => {
@@ -1663,4 +1663,94 @@ describe("REL-1 Nachzug N1 (Delta-Check #427): Pfade mit Steuerzeichen im Wurzel
     expect(r.stderr).not.toMatch(/Steuerzeichen|nicht gelistete Vorlage/);
     expect(Object.keys(JSON.parse(r.stdout).vorlagenHashes).sort()).toEqual([...KONFIG_STANDARD.gebundeneVorlagen].sort());
   }, 60_000);
+});
+
+describe("Delta-Check #437: keine rohen Steuer- oder Formatzeichen in der Ausgabe", () => {
+  // Alle Sonderzeichen zur Laufzeit gebildet (kein rohes Zeichen im Quelltext)
+  const c = (...n) => String.fromCharCode(...n);
+  const ESC = c(0x1b), CSI = c(0x9b), LS = c(0x2028), PS = c(0x2029), RLO = c(0x202e), LF = c(10);
+  // erlaubt: druckbare Zeichen, Leerzeichen und \n der eigenen Formatierung; verboten: \p{C} (Steuer-, Format-,
+  // private Zeichen), Zeilen-/Absatztrenner, besondere Leerzeichen
+  const unsicher = (s) => s.replace(/\n/g, "").match(/[\p{C}\p{Zl}\p{Zp}]|(?! )\p{Zs}/u);
+  const kqAus = (eintraege) => ({
+    wurzelDateien: () => eintraege.filter((e) => !e.pfad.includes("/")).map((e) => e.pfad),
+    dateien: () => eintraege.filter((e) => e.pfad.startsWith("deploy/") && e.modus.startsWith("100")).map((e) => e.pfad),
+    modus: (p) => (eintraege.find((e) => e.pfad === p) || {}).modus ?? null, lesenRoh: () => Buffer.from("x"),
+    eintraege: () => eintraege,
+  });
+
+  it("Symlink und Submodul mit bösartigem Namen: maskiert, genau eine Meldung je Pfad", () => {
+    const link = "deploy/link" + ESC + "[2J" + LS, wl = "wl" + CSI + "2J" + LF, mod = "deploy/mod" + ESC + "x";
+    const s = vorlagenStandErmitteln(kqAus([{ pfad: link, modus: "120000" }, { pfad: wl, modus: "120000" }, { pfad: mod, modus: "160000" }]));
+    for (const u of s.unbekannt) expect(unsicher(u), JSON.stringify(u)).toBe(null);
+    expect(s.unbekannt.filter((u) => u.startsWith("deploy/link"))).toHaveLength(1);
+    expect(s.unbekannt.filter((u) => u.startsWith("wl"))).toHaveLength(1);
+    expect(s.unbekannt.filter((u) => u.startsWith("deploy/mod"))).toHaveLength(1);
+    // auch ein Symlink ohne Steuerzeichen, aber mit Formatzeichen (Richtungsumkehr), ist maskiert und gemeldet
+    const r = vorlagenStandErmitteln(kqAus([{ pfad: "deploy/a" + RLO + "lmy.env", modus: "120000" }]));
+    expect(r.unbekannt).toHaveLength(1);
+    expect(unsicher(r.unbekannt[0])).toBe(null);
+  });
+  it("Formatzeichen (U+202E, U+200B, U+FEFF) im Pfad sind wie Steuerzeichen NO-GO", () => {
+    for (const p of ["Dockerfile" + RLO + "x", "a" + c(0x200b) + ".env", c(0xfeff) + "compose.yml"]) {
+      const u = vorlagenStandErmitteln(kqAus([{ pfad: p, modus: "100644" }])).unbekannt.join();
+      expect(u, JSON.stringify(p)).toMatch(/Steuerzeichen/);
+      expect(unsicher(u)).toBe(null);
+    }
+  });
+  it("G8: Beleg nur, wenn jede Variable als schalter-aus klassifiziert ist; sonst NO-GO", () => {
+    const ssot = { pakete: [{ id: "IMP-6", prio: "P2", status: "IN_PROGRESS", strang: "acc45", pr: ["#436"] }] };
+    const mit = (variablen) => ({ funktionen: [{ id: "w", name: "Planwirkung", variablen, ssotPakete: ["IMP-6"] }] });
+    expect(g8Blocker(ssot, [436], null, KONFIG_STANDARD, mit(["CENTRIC_SCHICHTMODELL_WIRKUNG"]), KL).belege.join()).toMatch(/hinter Schalter AUS/);
+    for (const [v, kl] of [[["VAPID_PRIVATE"], KL], [["CENTRIC_ERSTLEITUNG_STRENG"], KL], [["CENTRIC_SCHICHTMODELL_WIRKUNG"], null],
+      [["CENTRIC_SCHICHTMODELL_WIRKUNG", "CENTRIC_UNBEKANNT_X"], KL]]) {
+      const g = g8Blocker(ssot, [436], null, KONFIG_STANDARD, mit(v), kl);
+      expect(g.ergebnis, v.join()).toBe("NO-GO");
+      expect(g.belege.join(), v.join()).not.toMatch(/hinter Schalter AUS/);
+    }
+  });
+  it("Gesamtausgabe eines Laufs (JSON, Kurzfassung, CLI) mit bösartigen Namen und Werten enthält kein unsicheres Zeichen", () => {
+    const repo = mkdtempSync(join(tmpdir(), "rel1-aus-"));
+    const g = (...args) => {
+      const r = spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false", "-c", "core.autocrlf=false", "-c", "core.protectNTFS=false", ...args], { cwd: repo, encoding: "utf8" });
+      if (r.status !== 0) throw new Error(args.join(" ") + ": " + r.stderr);
+      return r.stdout.trim();
+    };
+    try {
+      g("init", "-q");
+      writeFileSync(join(repo, ".env.example"), "NODE_ENV=production\n");
+      writeFileSync(join(repo, "server.mjs"), 'process.env.CENTRIC_DEMO === "true";\n');
+      g("add", "-A"); g("commit", "-q", "-m", "Basis");
+      const basis = g("rev-parse", "HEAD");
+      // aktiver Wert und unlesbare Zeile mit ANSI-Folge, SSOT-Titel mit Richtungsumkehr
+      writeFileSync(join(repo, ".env.example"), "NODE_ENV=production\nCENTRIC_DEMO=" + ESC + "[2J" + CSI + "31m\nCENTRIC_X" + ESC + "=1\n");
+      mkdirSync(join(repo, "docs/acc45"), { recursive: true });
+      writeFileSync(join(repo, "docs/acc45/work-packages.json"), JSON.stringify({ pakete: [
+        { id: "V4-9", prio: "P1", status: "BLOCKED", strang: "folge", pr: [], titel: "Titel" + RLO + ESC + "[2J" + LS + "x" }] }));
+      g("add", "-A");
+      const blob = spawnSync("git", ["hash-object", "-w", "--stdin"], { cwd: repo, input: "x", encoding: "utf8" }).stdout.trim();
+      g("update-index", "--add", "--cacheinfo", `120000,${blob},deploy/link${ESC}[2J${LS}`);
+      g("update-index", "--add", "--cacheinfo", `120000,${blob},wl${CSI}2J${LF}`);
+      g("update-index", "--add", "--cacheinfo", `160000,${"2".repeat(40)},deploy/mod${ESC}x`);
+      g("update-index", "--add", "--cacheinfo", `100644,${blob},deploy/x${RLO}.env`);
+      g("update-index", "--add", "--cacheinfo", `100644,${blob},deploy/compose${PS}.yml`);
+      g("commit", "-q", "-m", "boese" + ESC + "[2J");
+      const k = g("rev-parse", "HEAD");
+      const r = auswerten(sammeln({ wurzel: repo, offline: false, kandidatSha: k, basisSha: basis, releaseId: "x1y", digest: D, jetztMs: JETZT_MS, gh: () => { throw new Error("kein Netz" + ESC); } }));
+      const json = JSON.stringify(r, null, 2);
+      expect(unsicher(json), "JSON").toBe(null);
+      expect(unsicher(kurzfassung(r)), "Kurzfassung").toBe(null);
+      expect(gateVon(r, "G3").ergebnis).toBe("NO-GO");
+      expect(gateVon(r, "G9").gruende.join()).toMatch(/V4-9/);
+      // je Pfad genau eine Meldung im Vorlagenstand
+      const u = sammeln({ wurzel: repo, offline: false, kandidatSha: k, basisSha: basis, releaseId: "x1y", digest: D, jetztMs: JETZT_MS, gh: () => { throw new Error("x"); } }).vorlagenStand.unbekannt;
+      for (const p of ["deploy/link", "wl", "deploy/mod", "deploy/x", "deploy/compose"]) expect(u.filter((x) => x.startsWith(p)), p).toHaveLength(1);
+      // CLI: --vorlagen-hashes (stderr), --kurz (stdout/stderr) und JSON-Lauf
+      for (const args of [["--vorlagen-hashes", "--kandidat", k, "--basis", basis], ["--kandidat", k, "--basis", basis, "--kurz"], ["--kandidat", k, "--basis", basis]]) {
+        const c2 = spawnSync(process.execPath, [WERKZEUG, "--wurzel", repo, ...args], { encoding: "utf8" });
+        expect(unsicher(c2.stdout), args.join(" ") + " stdout").toBe(null);
+        expect(unsicher(c2.stderr), args.join(" ") + " stderr").toBe(null);
+      }
+    } finally { rmSync(repo, { recursive: true, force: true }); }
+  }, 120_000);
 });
