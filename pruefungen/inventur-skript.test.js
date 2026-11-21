@@ -631,7 +631,7 @@ describe("Anleitung: Prüfsummen und Forced-Command-Zeile", () => {
 
   it("nennt die aktuelle Prüfsumme jedes Skripts (und keine andere)", () => {
     const ist = {};
-    for (const rel of ["deploy/inventur.sh", "deploy/inventur-sammler.sh", "deploy/inventur-lesen.sh"]) {
+    for (const rel of ["deploy/inventur.sh", "deploy/inventur-sammler.sh", "deploy/inventur-lesen.sh", "deploy/inventur-install.sh"]) {
       ist[rel] = summe(rel);
       const soll = doku.match(new RegExp(`SHA-256 von ${rel.replace(/[.]/g, "\\.")}: \`([0-9a-f]{64})\``));
       expect(soll, `Zeile „SHA-256 von ${rel}“ fehlt`).not.toBeNull();
