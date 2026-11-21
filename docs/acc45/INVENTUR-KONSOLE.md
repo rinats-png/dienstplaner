@@ -39,14 +39,17 @@ aktuellen Sollwert und ihrer Zeichenzahl stehen in Abschnitt 3.
 2. `printf %s "$s" | sha256sum | grep -q '^<32-Hex>' && bash -c "$s"` — **Tor**: Die Maschine vergleicht die ersten
    32 Hex-Zeichen (128 Bit) der Prüfsumme mit dem Sollwert. Nur bei Gleichheit startet `bash` das Skript. Ein
    Tippfehler im Sollwert oder ein anderer Inhalt führt dazu, dass **nichts** ausgeführt wird (keine Ausgabe).
-   Das gilt nur, wenn `&&` richtig steht (siehe Kasten).
+   Das gilt nur, wenn `&&` richtig steht und der Sollwert vollständig ist (siehe Kasten).
 3. `unset s` — entfernt die Variable.
 
 > **Vor `Enter` bei Befehl 2, V1, V2 (10 Sekunden):**
 > - `&&` sind zwei Zeichen. Ein `&` oder ein `;` statt `&&` startet das Skript **ohne** Prüfung.
 > - Erscheint `[1] …` (eine Zahl in Klammern) oder fehlt `&&`: **STOPP.** Befehl 3, Foto an Claude.
-> - Sollwert: genau 32 Zeichen tippen. Vor `Enter` zählen. Ein kürzerer Sollwert schwächt das Tor.
+> - Sollwert: genau 32 Zeichen tippen. Ein kürzerer Sollwert schwächt das Tor. Zählhilfe: 4 Blöcke zu 8 Zeichen,
+>   `dc707bf7 bc96a83d 90329b5f 0291d3a3` (ohne Leerzeichen tippen; Werte aus Abschnitt 3).
+> - Vor `Enter` zählen: Befehl 2 hat genau 88 Zeichen. V1 hat 110 Zeichen, V2 hat 124 Zeichen (Abschnitt 3).
 > - Empfohlen: zuerst **K1** tippen. K1 muss `1` zeigen. Zeigt K1 `0`: Befehl 2 nicht tippen.
+>   K1 erkennt einen verkürzten Sollwert nicht. Deshalb immer auch die Zeichen zählen.
 
 Optional, als zusätzliche sichtbare Kontrolle vor Befehl 2: **K1** zeigt `1` (Prüfsumme passt) oder `0`; **K2** zeigt
 Zeilen und Bytes. K1 vor Befehl 2 ist empfohlen (Kasten oben). Nur auf Bitte von Claude: **V1**/**V2** zeigen das
@@ -161,7 +164,7 @@ Bedeutung der Kurzformen:
 | `curl: (22) … 404` | `<ref>` falsch getippt | Befehl 1 neu tippen |
 | `bash: curl: command not found` | curl fehlt | Abschnitt 7 |
 | Befehl 2 zeigt nichts (K1 zeigt `0`; K2 andere Zahlen) | Prüfsumme passt nicht: falscher Inhalt oder Tippfehler im Sollwert | Befehl 2 neu tippen; bleibt es leer: STOPP, Befehl 3, Foto an Claude |
-| `[1] <Zahl>` nach Befehl 2, V1 oder V2 | `&` statt `&&` getippt: Skript lief ungeprüft | STOPP, Befehl 3, Foto an Claude |
+| `[1] <Zahl>` nach Befehl 2, V1 oder V2 (später `[1]+ Done` oder `[1]+ Exit 1`) | `&` statt `&&` getippt: Skript lief ungeprüft | STOPP, Befehl 3, Foto an Claude |
 | `ABBRUCH: nicht root` | nicht als root angemeldet | als root anmelden, erneut ab Befehl 1 |
 | `ABBRUCH: fremdes System …` | kein Ubuntu 24.04 | STOPP, Foto an Claude |
 | `ABBRUCH: Besitz verschieden …` / `Besitzer ist root …` / `… fehlt` | Betriebsverzeichnis anders als bestätigt | STOPP, Foto an Claude |
@@ -209,9 +212,12 @@ aus der Konsole ebenso. Hinweis: Die Shell von root merkt sich die getippten Bef
 - Der Vergleich prüft nur den Anfang (`grep -q '^…'`). Ein Tippfehler **im Sollwert** führt dazu, dass nichts
   läuft. Das gilt nur für den Sollwert und nur bei vollständigem Sollwert:
   - **`&` oder `;` statt `&&` (A-7):** Dann ist das Tor umgangen. Das Skript läuft ungeprüft, auch bei falschem
-    Inhalt. Bei `&` meldet die Shell `[1] <PID>`. `&&` sind zwei Zeichen; erscheint `[1] …` oder fehlt `&&`: STOPP.
+    Inhalt. Bei `&` meldet die Shell `[1] <PID>`; später folgt `[1]+ Done` oder `[1]+ Exit 1`. Bei `;` gibt es
+    nach Enter kein Erkennungszeichen; nur die Kontrolle vor Enter hilft. `&&` sind zwei Zeichen; erscheint
+    `[1] …` oder fehlt `&&`: STOPP.
   - **Verkürzter Sollwert (A-8):** Ein kürzerer Sollwert (z. B. `'^dc'`) ist ein kürzerer Präfixvergleich und
-    schwächt das Tor. Tippen Sie genau 32 Zeichen. Kontrolle: K1 muss `1` zeigen.
+    schwächt das Tor. Tippen Sie genau 32 Zeichen. Kontrolle: Befehl 2 hat genau 88 Zeichen (Abschnitt 3).
+    K1 erkennt einen verkürzten Sollwert nicht (wer `'^dc'` auch in K1 tippt, sieht ebenfalls `1`).
 - `<ref>` ist ein 12-stelliger Präfix eines Commits. Ein Commit (auch in einem Fork) mit gleichem Präfix und anderem
   Inhalt wird vom Tor abgefangen (andere Prüfsumme, nichts läuft).
 - V1 endet mit `| head -n 60`. Nach 60 Zeilen beendet `head` die Pipe; das Skript bricht per SIGPIPE ab. Das hat
