@@ -20,7 +20,7 @@
    ========================================================================== */
 
 import { spawn } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { createInterface } from "node:readline";
 import { StringDecoder } from "node:string_decoder";
 import path from "node:path";
@@ -90,15 +90,26 @@ export const COMMIT_TEXT = "(Commit-Text)";
    - Octopus-Merges (mehr als zwei Eltern) liefert `--remerge-diff` ohne Diff.
      Sie werden in einem zweiten Lauf (GIT_OCTOPUS_ARGS, First-Parent-Diff)
      mit Marker `@@OCTOPUS` nachgereicht; fehlt das, bleibt je Octopus ein
-     offener Fund OCTOPUS_UNGEPRUEFT (fail-closed). */
+     offener Fund OCTOPUS_UNGEPRUEFT (fail-closed).
+   - Zufallskennung im Marker (Delta-Review #453, H-a): Der Lauf nutzt
+     `@@COMMIT-<kennung>` bzw. `@@OCTOPUS-<kennung>` mit einer Kennung aus
+     crypto.randomBytes je Lauf. Ein fester Marker, den jemand über
+     Dateiname, Kopfzeile oder Inhalt einschleust, wird so nie als Marker
+     gelesen. Die Kennung erscheint in keiner Ausgabe. GIT_LOG_ARGS und
+     GIT_OCTOPUS_ARGS sind nur die Vorlage ohne Kennung (Doku/Tests). */
 const GIT_BASIS_ARGS = [
   "-c", "core.quotePath=true", "-c", "diff.noprefix=false", "-c", "diff.mnemonicPrefix=false",
   "-c", "log.showSignature=false", "-c", "diff.suppressBlankEmpty=false", "-c", "log.showRoot=true",
   "log", "-p", "--no-color", "--no-ext-diff", "--no-textconv", "-M",
   "--src-prefix=a/", "--dst-prefix=b/", "-U0",
 ];
-export const GIT_LOG_ARGS = [...GIT_BASIS_ARGS, "--remerge-diff", "--format=@@COMMIT %H %P"];
-export const GIT_OCTOPUS_ARGS = [...GIT_BASIS_ARGS, "--diff-merges=first-parent", "--no-walk=unsorted", "--stdin", "--format=@@OCTOPUS %H %P"];
+const mit = (nonce) => (nonce ? `-${nonce}` : "");
+/** Zufallskennung je Lauf (32 Hex-Zeichen aus crypto.randomBytes). */
+export function markeErzeugen() { return randomBytes(16).toString("hex"); }
+export function gitLogArgs(nonce) { return [...GIT_BASIS_ARGS, "--remerge-diff", `--format=@@COMMIT${mit(nonce)} %H %P`]; }
+export function gitOctopusArgs(nonce) { return [...GIT_BASIS_ARGS, "--diff-merges=first-parent", "--no-walk=unsorted", "--stdin", `--format=@@OCTOPUS${mit(nonce)} %H %P`]; }
+export const GIT_LOG_ARGS = gitLogArgs("");
+export const GIT_OCTOPUS_ARGS = gitOctopusArgs("");
 /** Regel-Name für einen Octopus-Merge, dessen Inhalt nicht geprüft wurde. */
 export const OCTOPUS_UNGEPRUEFT = "Octopus-Merge ungeprüft";
 
@@ -156,8 +167,13 @@ const HUNK = /^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@/;
 
    Freigaben werden JE TREFFER geprüft, bevor nach Datei × Regel
    zusammengefasst wird – so verdeckt ein freigegebener Treffer nie einen
-   offenen derselben Datei × Regel aus einem anderen Commit. */
-export async function fundeSammeln(zeilen, { freigaben = FREIGABEN } = {}) {
+   offenen derselben Datei × Regel aus einem anderen Commit.
+
+   `nonce`: Kennung der Marker dieses Laufs (H-a). Nur `@@COMMIT-<nonce> `
+   und `@@OCTOPUS-<nonce> ` gelten als Marker; ohne `nonce` (Tests, Vorlage)
+   die festen Texte. Andere Marker-Zeilen sind unerwartet (fail-closed). */
+export async function fundeSammeln(zeilen, { freigaben = FREIGABEN, nonce = "" } = {}) {
+  const M_COMMIT = `@@COMMIT${mit(nonce)} `, M_OCTOPUS = `@@OCTOPUS${mit(nonce)} `;
   let commit = "-", istMerge = false, datei = null, zustand = "aussen", letzteKopf = "";
   let restAlt = 0, restNeu = 0, anzahl = 0, commits = 0, merges = 0, doppelt = 0;
   const offen = new Map(), frei = new Map();
@@ -195,16 +211,16 @@ export async function fundeSammeln(zeilen, { freigaben = FREIGABEN } = {}) {
       if (restAlt <= 0 && restNeu <= 0) zustand = "nachHunk";
       continue;
     }
-    if (z.startsWith("@@COMMIT ")) {
-      const teile = z.slice(9).trim().split(/\s+/);
+    if (z.startsWith(M_COMMIT)) {
+      const teile = z.slice(M_COMMIT.length).trim().split(/\s+/);
       commit = teile[0] || "-"; istMerge = teile.length > 2;
       commits++; if (istMerge) merges++;
       if (teile.length > 3) octopusGesehen.add(commit);
       zustand = "aussen"; datei = null; letzteKopf = "";
       continue;
     }
-    if (z.startsWith("@@OCTOPUS ")) {
-      const teile = z.slice(10).trim().split(/\s+/);
+    if (z.startsWith(M_OCTOPUS)) {
+      const teile = z.slice(M_OCTOPUS.length).trim().split(/\s+/);
       commit = teile[0] || "-"; istMerge = true;
       octopusGeprueft.add(commit);
       zustand = "aussen"; datei = null; letzteKopf = "";
@@ -298,6 +314,22 @@ function gitFehler(kind, name) {
   });
 }
 
+/* Schreibt `text` nach stdin des Kindprozesses (Delta-Review #453, H-b).
+   Ohne `error`-Handler wäre ein EPIPE (git endet vor dem Lesen) ein
+   unbehandelter Fehler: Abbruch mit Rückgabe 1 statt 2. Liefert nie eine
+   Ablehnung, sondern den Fehler oder null – so bleibt auch ein später
+   eintreffender Fehler behandelt, wenn der Aufrufer schon abgebrochen hat. */
+export function eingabeSenden(kind, text) {
+  return new Promise((res) => {
+    let fertig = false;
+    const ende = (f) => { if (!fertig) { fertig = true; res(f); } };
+    kind.stdin.on("error", (e) => ende(e));
+    kind.stdin.on("close", () => ende(kind.stdin.writableFinished ? null : new Error("stdin vorzeitig geschlossen")));
+    kind.stdin.on("finish", () => ende(null));
+    kind.stdin.end(text);
+  });
+}
+
 /** Ganzer Verlauf: Diffs (inkl. Merge-Remerge-Diff) und Commit-Texte. `refs` z. B. ["--all"]. */
 export async function historieScannen({ cwd = WURZEL, refs = ["--all"], freigaben = FREIGABEN } = {}) {
   /* Octopus-Merges vorab bestimmen (fail-closed: Fehler bricht ab) */
@@ -308,19 +340,22 @@ export async function historieScannen({ cwd = WURZEL, refs = ["--all"], freigabe
   await okEnde;
   const octopusShas = Buffer.concat(okTeile).toString("utf8").split("\n").map((s) => s.trim()).filter(Boolean);
 
+  const nonce = markeErzeugen();                               // H-a: nie ausgeben
   async function* alleZeilen() {
-    const kind = spawn("git", [...GIT_LOG_ARGS, ...refs], { cwd });
+    const kind = spawn("git", [...gitLogArgs(nonce), ...refs], { cwd });
     const ende = gitFehler(kind, "git log -p");
     yield* zeilenAus(kind.stdout);
     await ende;                                                // fail-closed: git-Fehler bricht ab
     if (octopusShas.length === 0) return;
-    const ko = spawn("git", GIT_OCTOPUS_ARGS, { cwd });
+    const ko = spawn("git", gitOctopusArgs(nonce), { cwd });
     const koEnde = gitFehler(ko, "git log -p (Octopus)");
-    ko.stdin.end(octopusShas.join("\n") + "\n");
+    const eingabe = eingabeSenden(ko, octopusShas.join("\n") + "\n");
     yield* zeilenAus(ko.stdout);
-    await koEnde;
+    await koEnde;                                              // A-1: Nachlauf-Fehler bricht ab
+    const f = await eingabe;                                   // H-b: Liste nicht vollständig übergeben
+    if (f) throw new Error(`git log -p (Octopus): Eingabe nicht vollständig übergeben (${f.code ?? f.message})`);
   }
-  const r = await fundeSammeln(alleZeilen(), { freigaben });
+  const r = await fundeSammeln(alleZeilen(), { freigaben, nonce });
   const tk = spawn("git", [...GIT_TEXT_ARGS, ...refs], { cwd });
   const tEnde = gitFehler(tk, "git log (Commit-Text)");
   const teile = [];

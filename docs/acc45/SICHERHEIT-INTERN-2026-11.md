@@ -111,6 +111,11 @@ Alle Befehle laufen im Repo-Wurzelverzeichnis. Die neuen Werkzeuge liegen unter 
   - Octopus-Merges (mehr als zwei Eltern): `--remerge-diff` zeigt dafür keinen Diff. Sie werden in einem zweiten Lauf mit `--diff-merges=first-parent` geprüft (Inhalte der Zweige erscheinen dort erneut und werden über den Zeilenabgleich zusammengefasst). Fehlt dieser Nachlauf für einen Octopus, meldet das Werkzeug einen offenen Fund `Octopus-Merge ungeprüft` (fail-closed). Im Repo gibt es derzeit keinen Octopus-Merge.
   - Commit-Nachricht und Autor-/Committer-Felder werden ebenfalls geprüft (Pseudo-Datei `(Commit-Text)`, Freigabe nur mit `commit`).
   - Feste `-c`-Optionen (`core.quotePath`, `diff.noprefix`, `diff.mnemonicPrefix`, `log.showRoot`, `log.showSignature`) übersteuern abweichende Benutzer-Konfiguration; der Wurzel-Commit wird immer geprüft. Scheitert ein git-Aufruf, endet das Werkzeug mit Rückgabe 2.
+  - Nachzug Delta-Review #453 (2026-11-21):
+    - A-1: Scheitert der Octopus-Nachlauf (z. B. fehlendes Objekt), lehnt `historieScannen` ab; das Werkzeug endet mit Rückgabe 2. Test mit Wegwerf-Repo (gelöschter Loose-Blob, den nur der Octopus enthält); Mutation „Nachlauf-Fehler ignorieren“ ist rot.
+    - H-a: Die Marker tragen je Lauf eine Zufallskennung (`@@COMMIT-<kennung>`, `@@OCTOPUS-<kennung>`, 16 Bytes aus `crypto.randomBytes`). Ein fester Marker aus Dateiname, Kopfzeile, Inhalt oder Commit-Text wird nie als Marker gelesen. Die Kennung erscheint in keiner Ausgabe.
+    - H-b: Die Commit-Liste für den Octopus-Nachlauf geht über `eingabeSenden` an git; ein Schreibfehler (EPIPE) wird behandelt und führt zu Rückgabe 2 statt zu einem Absturz mit Rückgabe 1.
+    - Offen bleibt H1 (Inhalt von Binär-Diffs, Paket SI-P10).
   - Laufzeit auf dem Repo-Stand vom 2026-11-21 (rund 2 770 Commits, davon 703 Merges, nur `origin`-Zweige): Windows-Rechner rund 45–50 s statt rund 21 s; CI (`interne-pruefung`, Ubuntu) 7–9 s. Den Unterschied kostet der Remerge-Diff.
 
 ### 4. Authentifizierung und Autorisierung
