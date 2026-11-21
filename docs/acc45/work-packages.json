@@ -4599,7 +4599,7 @@
       "akzeptanz": "Inhalt solcher Dateien wird geprüft: `--text` bzw. `-c diff.*`/Attribut-Übersteuerung erzwingen ODER `Binary files`-Einträge als offenen Fund `(Datei unbekannt)` melden ODER Inhalt per `git show`/`git cat-file` scannen; echte Binärdateien ohne Fehlalarm-Flut; Laufzeit gemessen; Verhalten von gitleaks (Job `geheimnisse`) für dieselben Fälle geprüft und dokumentiert; Test zuerst mit Mutationsnachweis.",
       "tests": "pruefungen/geheimnisse-freigabe.test.js (neu: Binär-Diff-Fälle)",
       "dateien": "werkzeug/sicherheit/geheimnisse.mjs, pruefungen/geheimnisse-freigabe.test.js, docs/acc45/SICHERHEIT-INTERN-2026-11.md",
-      "notiz": "Nur Eintrag (Koordinator 2026-11-21); nicht Teil von PR #453. Keine Änderung an .github/workflows vorgesehen."
+      "notiz": "Nur Eintrag (Koordinator 2026-11-21); nicht Teil von PR #453. Keine Änderung an .github/workflows vorgesehen. Nachtrag 2026-11-21: Die Delta-Review-Punkte zu #453 A-1 (Test Octopus-Nachlauf scheitert → Rückgabe 2), H-a (Zufallskennung je Lauf in den Markern @@COMMIT/@@OCTOPUS) und H-b (stdin-Fehlerbehandlung des Octopus-Nachlaufs) sind im PR des Zweigs acc45/sicherheit/geheimnis-scan-nachzug erledigt. H1 (Binär-Diff-Inhalt, eigentlicher Gegenstand dieses Pakets) bleibt offen; Status unverändert."
     },
     {
       "id": "SI-P6b",

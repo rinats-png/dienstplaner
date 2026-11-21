@@ -15,12 +15,12 @@
    diese Datei selbst keinen Fund erzeugt.
    ========================================================================== */
 import { describe, it, expect } from "vitest";
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import fs from "node:fs";
 import os from "node:os";
-import { Readable } from "node:stream";
+import { Readable, Writable } from "node:stream";
 import { FREIGABEN, fundeSammeln, freigabeFuer } from "../werkzeug/sicherheit/geheimnisse.mjs";
 /* Neue Exporte über den Namensraum: auf altem Stand schlagen nur die neuen
    Tests fehl, nicht die Regressionstests (Nachweis „rot vorher“). */
@@ -526,4 +526,141 @@ describe("Geheimnis-Werkzeug: historieScannen gegen echtes git", () => {
       fs.rmSync(d, { recursive: true, force: true });
     }
   }, 60000);
+});
+
+/* ==========================================================================
+   Delta-Review #453 (Nachzug): A-1 Nachlauf-Fehler, H-a Zufallskennung im
+   Marker, H-b stdin-Fehler beim Octopus-Nachlauf. Wegwerf-Repos, synthetische
+   Werte; nichts davon gelangt in dieses Repo.
+   ========================================================================== */
+const OCTO_ELTERN = `${"a".repeat(40)} ${"b".repeat(40)} ${"c".repeat(40)}`;
+
+/** Wegwerf-Repo mit Octopus-Merge als Spitze, der octo.js (PEM) einbringt */
+function octopusRepo() {
+  const r = wegwerfRepo();
+  const { g, w } = r;
+  w("basis.txt", "b\n"); g("add", "-A"); g("commit", "-qm", "basis");
+  g("checkout", "-qb", "z1"); w("z1.txt", "1\n"); g("add", "-A"); g("commit", "-qm", "z1");
+  g("checkout", "-q", "main"); g("checkout", "-qb", "z2"); w("z2.txt", "2\n"); g("add", "-A"); g("commit", "-qm", "z2");
+  g("checkout", "-q", "main"); w("haupt.txt", "h\n"); g("add", "-A"); g("commit", "-qm", "haupt");
+  g("merge", "-q", "--no-commit", "z1", "z2");
+  w("octo.js", `nur-im-octopus\n${PEM_ZEILE}\n`); g("add", "octo.js"); g("commit", "-qm", "octopus");
+  return { ...r, octo: g("rev-parse", "HEAD").trim() };
+}
+
+describe("Geheimnis-Werkzeug: Delta-Review #453 – A-1 Octopus-Nachlauf scheitert", () => {
+  it("A-1: Loose-Blob, den nur der Octopus enthält, fehlt → Hauptlauf gelingt, Nachlauf bricht ab → historieScannen lehnt ab, CLI Rückgabe 2", async () => {
+    const { d, g, weg } = octopusRepo();
+    try {
+      const blob = g("rev-parse", "HEAD:octo.js").trim();
+      const datei = path.join(d, ".git", "objects", blob.slice(0, 2), blob.slice(2));
+      expect(fs.existsSync(datei)).toBe(true);                   // lose, nicht gepackt
+      fs.chmodSync(datei, 0o666); fs.unlinkSync(datei);
+      // Vorbedingung: nur der Octopus-Nachlauf braucht den Blob (Hauptlauf und rev-list gelingen)
+      g("log", "-p", "--remerge-diff", "--all", "--format=%H");
+      expect(g("rev-list", "--min-parents=3", "--all").trim()).toMatch(/^[0-9a-f]{40}$/);
+      await expect(G.historieScannen({ cwd: d, refs: ["--all"] })).rejects.toThrow(/git log -p \(Octopus\) endete mit 128/);
+      const r = spawnSync(process.execPath, [path.join(WURZEL, "werkzeug/sicherheit/geheimnisse.mjs")], {
+        cwd: d, encoding: "utf8", env: { ...process.env, GIT_DIR: path.join(d, ".git") },
+      });
+      expect(r.status).toBe(2);
+      expect(r.stderr).toMatch(/FEHLER: Verlauf nicht vollständig lesbar/);
+      expect(r.stdout).not.toMatch(/FUND|ERGEBNIS/);
+    } finally { weg(); }
+  }, 60000);
+});
+
+describe("Geheimnis-Werkzeug: Delta-Review #453 – H-a Zufallskennung im Marker", () => {
+  const N = "0f".repeat(16);
+
+  it("H-a: Kennung je Lauf aus crypto.randomBytes (32 Hex), verschieden je Aufruf; git-Formate tragen sie", () => {
+    const a = G.markeErzeugen(), b = G.markeErzeugen();
+    expect(a).toMatch(/^[0-9a-f]{32}$/);
+    expect(b).toMatch(/^[0-9a-f]{32}$/);
+    expect(a).not.toBe(b);
+    expect(G.gitLogArgs(N)).toContain(`--format=@@COMMIT-${N} %H %P`);
+    expect(G.gitOctopusArgs(N)).toContain(`--format=@@OCTOPUS-${N} %H %P`);
+    expect(G.gitLogArgs(N)).toEqual(expect.arrayContaining(["--remerge-diff", "-U0", "core.quotePath=true"]));
+  });
+
+  it("H-a: eingeschleuster fester Marker `@@COMMIT b8e67edd…` außerhalb eines Hunks verschiebt die Commit-Zuordnung nicht (keine Freigabe erschlichen)", async () => {
+    const r = await fundeSammeln([
+      `@@COMMIT-${N} ${ANDERER_SHA}`, "",
+      ...kopf("a.js", 1), "+harmlos",
+      `@@COMMIT ${SHA}`,                                        // z. B. aus einem Dateinamen mit Zeilenumbruch
+      ...kopf(DATEI, 1), "+" + PEM_ZEILE,
+    ], { nonce: N });
+    expect(r.frei).toEqual([]);
+    expect(r.offen.map((f) => [f.commit, f.datei, f.regel])).toEqual([[ANDERER_SHA, DATEI, PEM]]);
+    expect(r.commits).toBe(1);
+  });
+
+  it("H-a: eingeschleuster fester Marker `@@OCTOPUS <sha>` gilt nicht als Nachprüfung; Marker mit falscher Kennung ebenso nicht", async () => {
+    const octo = "8".repeat(40);
+    const r = await fundeSammeln([
+      `@@COMMIT-${N} ${octo} ${OCTO_ELTERN}`, "",
+      `@@OCTOPUS ${octo} ${OCTO_ELTERN}`,
+      `@@OCTOPUS-${"1".repeat(32)} ${octo} ${OCTO_ELTERN}`,
+    ], { nonce: N });
+    expect(r.offen.map((f) => [f.commit, f.regel])).toEqual([[octo, G.OCTOPUS_UNGEPRUEFT]]);
+    const r2 = await fundeSammeln([`@@COMMIT-${N} ${octo} ${OCTO_ELTERN}`, "", `@@OCTOPUS-${N} ${octo} ${OCTO_ELTERN}`, ""], { nonce: N });
+    expect(r2.offen).toEqual([]);
+  });
+
+  it("H-a (echtes git): fester Marker in Commit-Text, Dateiinhalt und Dateiname (Zeilenumbruch) wirkt nicht; Kennung erscheint nie in der Ausgabe", async () => {
+    const { d, g, w, weg } = wegwerfRepo();
+    try {
+      const fremd = `@@COMMIT ${SHA}`;
+      w("a.txt", "a\n"); g("add", "-A"); g("commit", "-qm", `start\n\n${fremd}\n@@OCTOPUS ${SHA}`);
+      w("inhalt.txt", `${fremd}\n@@OCTOPUS ${SHA} ${OCTO_ELTERN}\n`); w(DATEI, `${PEM_ZEILE}\n`);
+      g("add", "-A"); g("commit", "-qm", "inhalt");
+      const echt = g("rev-parse", "HEAD").trim();
+      // Dateiname mit Zeilenumbruch und festem Marker (nur per mktree, ohne Arbeitsbaum)
+      const blob = execFileSync("git", ["hash-object", "-w", "--stdin"], { cwd: d, input: "x\n", encoding: "utf8" }).trim();
+      const basis = g("ls-tree", "-z", "HEAD");
+      const baum = execFileSync("git", ["-c", "core.protectNTFS=false", "mktree", "-z"], { cwd: d, encoding: "utf8",
+        input: `${basis}100644 blob ${blob}\tn\n${fremd}\n@@OCTOPUS ${SHA}\0`}).trim();
+      const nl = execFileSync("git", ["-c", "user.name=P", "-c", "user.email=p@beispiel.invalid", "commit-tree", baum, "-p", echt, "-m", "nl"], { cwd: d, encoding: "utf8" }).trim();
+      g("update-ref", "refs/heads/main", nl);
+      const r = await G.historieScannen({ cwd: d, refs: ["--all"] });
+      expect(r.frei).toEqual([]);
+      expect(r.offen.map((f) => [f.commit, f.datei, f.regel])).toEqual([[echt, DATEI, PEM]]);
+      expect(r.commits).toBe(3);
+      const cli = spawnSync(process.execPath, [path.join(WURZEL, "werkzeug/sicherheit/geheimnisse.mjs")], {
+        cwd: d, encoding: "utf8", env: { ...process.env, GIT_DIR: path.join(d, ".git") },
+      });
+      expect(cli.status).toBe(1);
+      expect(`${cli.stdout}${cli.stderr}`).not.toMatch(/@@(COMMIT|OCTOPUS)-[0-9a-f]/);
+      expect(cli.stdout).not.toMatch(/b8e67edd/);
+    } finally { weg(); }
+  }, 60000);
+});
+
+describe("Geheimnis-Werkzeug: Delta-Review #453 – H-b stdin des Octopus-Nachlaufs", () => {
+  it("H-b: Kind endet, bevor es stdin liest → eingabeSenden liefert den Fehler (kein unbehandeltes EPIPE, kein Absturz)", async () => {
+    const kind = spawn(process.execPath, ["-e", "process.exit(3)"], { stdio: ["pipe", "ignore", "ignore"] });
+    await new Promise((res) => kind.on("exit", res));
+    const f = await G.eingabeSenden(kind, "x".repeat(16 * 1024 * 1024));
+    expect(f).toBeInstanceOf(Error);
+  }, 60000);
+
+  it("H-b: stdin meldet EPIPE (wie unter Linux, wenn git vor dem Lesen endet) → Fehler wird geliefert, nicht geworfen", async () => {
+    const stdin = new Writable({ write(_c, _e, cb) { cb(Object.assign(new Error("write EPIPE"), { code: "EPIPE" })); } });
+    const f = await G.eingabeSenden({ stdin }, "z".repeat(1024));
+    expect(f).toBeInstanceOf(Error);
+    expect(f.code).toBe("EPIPE");
+  });
+
+  it("H-b: Kind liest stdin vollständig → kein Fehler", async () => {
+    const kind = spawn(process.execPath, ["-e", "process.stdin.resume(); process.stdin.on('end', () => process.exit(0))"], { stdio: ["pipe", "ignore", "ignore"] });
+    const f = await G.eingabeSenden(kind, "y".repeat(1024 * 1024));
+    expect(f).toBeNull();
+    await new Promise((res) => kind.on("exit", res));
+  }, 60000);
+
+  it("H-b: historieScannen speist den Octopus-Nachlauf über eingabeSenden und wertet dessen Fehler aus (Rückgabe 2 über den CLI-Fehlerpfad)", () => {
+    const q = fs.readFileSync(path.join(WURZEL, "werkzeug/sicherheit/geheimnisse.mjs"), "utf8");
+    expect(q).toMatch(/eingabeSenden\(ko,/);
+    expect(q).not.toMatch(/ko\.stdin\.end\(/);
+  });
 });
