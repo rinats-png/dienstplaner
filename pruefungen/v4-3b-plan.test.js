@@ -30,7 +30,7 @@ import { Aenderungsuebersicht, AENDERUNG_TEXTE } from "../src/ansichten/intellig
 import { KiEntwurf } from "../src/ansichten/intelligence/KiEntwurf.jsx";
 import { TeamAuslastungLeiste } from "../src/ansichten/teamauslastungleiste.jsx";
 import { ISTDATEN_TEXT } from "../src/istdaten.js";
-import { regelStufe, stufenIn } from "./v4-radiusstufen.mjs";
+import { regelStufe, stufenIn, basisText, abgleichMitBasis } from "./v4-radiusstufen.mjs";
 
 const WURZEL = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (d) => readFileSync(path.join(WURZEL, d), "utf8").replace(/\r\n/g, "\n");
@@ -113,6 +113,14 @@ describe("V4-3b Plan/Dienstplan: Messung", () => {
     }
     expect(Object.keys(PLAN_ZUORDNUNG).sort()).toEqual([...GEAENDERT].sort());
     expect(Object.values(PLAN_ZUORDNUNG).flat()).toHaveLength(26);
+  });
+
+  /* Review #442 (B2): alt/kante der Tabelle gegen den Quelltext vor dem Plan-Schnitt (Basis b2a42a7f). */
+  const basisDa = basisText(WURZEL, "b2a42a7f", "src/ansichten/monatsplan.jsx") !== null;
+  it.skipIf(!basisDa)("Tabellenwerte alt/kante stimmen mit dem Quelltext der Basis überein (Review #442, B2)", () => {
+    for (const [datei, stellen] of Object.entries(PLAN_ZUORDNUNG)) {
+      expect(abgleichMitBasis(basisText(WURZEL, "b2a42a7f", datei), lies(datei), stellen), datei).toEqual([]);
+    }
   });
 
   it("die Zuordnungsregel selbst: gleicher Wert gleiche Stufe, sonst die nächste; Pille nur ab halber Kante", () => {

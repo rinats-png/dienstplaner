@@ -25,7 +25,7 @@ import { fileURLToPath } from "node:url";
 import { inventar, jeHauptansicht, hauptansicht, ohneKommentare } from "../werkzeug/v4-inventar.mjs";
 import { v4AlsAltePalette } from "../src/v4/tokens.js";
 import { kontrastVon } from "../src/gestalt/lesbar.js";
-import { regelStufe, stufenIn } from "./v4-radiusstufen.mjs";
+import { regelStufe, stufenIn, basisText, abgleichMitBasis } from "./v4-radiusstufen.mjs";
 
 const WURZEL = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (d) => readFileSync(path.join(WURZEL, d), "utf8").replace(/\r\n/g, "\n");
@@ -52,8 +52,11 @@ const PERSONAL_ZUORDNUNG = {
     { wo: "Hinweis inaktiv", alt: 12, stufe: "mittel" }],
 };
 
-/** Übergänge je Datei vor V4-3b (Personal); dürfen nicht mehr werden. */
-const UEBERGAENGE = { "src/ansichten/personalakte.jsx": 1 };
+/** Übergänge je Datei vor V4-3b (Personal), wörtlich; dürfen sich nicht ändern (Review #442, B1: auch der Wert). */
+const UEBERGAENGE = { "src/ansichten/personalakte.jsx": ['transition: "height .4s"'] };
+
+/** Basis des Schnitts Personal (Review #442, B2: alt/kante gegen diesen Quelltext). */
+const BASIS = "7d659b55";
 
 describe("V4-3b Personal: Messung", () => {
   it("keine Datei ohne V4-Form, keine Farbliterale, Form-Literale nur die begründete Ausnahme", async () => {
@@ -87,8 +90,18 @@ describe("V4-3b Personal: Messung", () => {
 
   it("kein neuer Übergang (V4-2d)", () => {
     for (const datei of Object.keys(PERSONAL_ZUORDNUNG)) {
-      const n = (ohneKommentare(lies(datei)).match(/transition/gi) || []).length;
-      expect(n, datei).toBe(UEBERGAENGE[datei] || 0);
+      const q = ohneKommentare(lies(datei));
+      const n = (q.match(/transition/gi) || []).length;
+      expect(n, datei).toBe((UEBERGAENGE[datei] || []).length);
+      /* B1: der Wert wörtlich; "height .4s, background .2s" wäre ein neuer Übergang bei gleicher Anzahl. */
+      expect(q.match(/transition:\s*("[^"]*"|'[^']*'|`[^`]*`)/g) || [], datei).toEqual(UEBERGAENGE[datei] || []);
+    }
+  });
+
+  const basisDa = basisText(WURZEL, BASIS, "src/ansichten/personalakte.jsx") !== null;
+  it.skipIf(!basisDa)("Tabellenwerte alt/kante stimmen mit dem Quelltext der Basis überein (Review #442, B2)", () => {
+    for (const [datei, stellen] of Object.entries(PERSONAL_ZUORDNUNG)) {
+      expect(abgleichMitBasis(basisText(WURZEL, BASIS, datei), lies(datei), stellen), datei).toEqual([]);
     }
   });
 });
