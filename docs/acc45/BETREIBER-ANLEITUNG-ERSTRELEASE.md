@@ -598,7 +598,8 @@ hier keinen eigenen Schritt:
   ab; ebenso V-3 nach einer `.env`-Migration (12.1 Vorbedingung), V-5 (`zustand/` aus 12.2) und V-8 (Forced Command
   aus 12.3).
 - **Weiter nur wenn:** keine Abweichung gegen den Stand nach Abschnitt 12: V-1/V-2 wie in 4.2 (`274bfa0`), V-3 bis
-  V-6 und V-8 wie nach 12.1 bis 12.3 (V-4: Prüfsummen gleich den Werten aus 12.1). Sonst STOPP.
+  V-6 und V-8 wie nach 12.1 bis 12.3 (V-4: Prüfsummen gleich den Werten aus 12.1); V-7 zeigt die Sicherung außer
+  Haus aus 6.2 (Abschnitt „letzte erfolgreiche Sicherung“: `zeit` jünger als 26 h, mit `snapshot_id`; G6); V-9 zeigt Platz für 2 × Daten und einen gesunden Dienst. Sonst STOPP.
 - **Rückweg:** keiner nötig (nur lesen).
 - **Danach Claude:** vergleicht gegen den Stand nach Abschnitt 12 (V-1/V-2 gegen 4.2) und meldet Abweichungen.
 
@@ -642,7 +643,27 @@ hier keinen eigenen Schritt:
   | 5 | Bild nicht zu beschaffen; abgebrochen, nichts verändert, `274bfa0` läuft weiter | **nicht abschalten**; GHCR prüfen |
   | 7 | Docker antwortet nicht; abgebrochen, nichts verändert | **nicht abschalten**; Zustand mit `docker compose ps` prüfen |
   | 8 | fehlgeschlagen **und** R0 nicht sicher erreicht | sofort in der Remotekonsole `./abschalten.sh` (Produktionsweg §3.4 S-1) |
-  | SSH-Exit 255 oder anderer Verbindungsabbruch im Schritt „deploy.sh auf dem VPS“ | Zustand unbekannt: `deploy.sh` kann gelaufen sein, ganz oder teilweise | Remotekonsole: `pgrep -af deploy.sh` (läuft er noch: Ende abwarten), `docker compose ps`, Ende von `betrieb-protokoll.log` lesen; **nicht blind abschalten**. Letzte Zeile `erfolgreich …` → 15; `abgebrochen …` → wie Rückgabe 2–5; `…, R0 erreicht` → 16.1; `R0 NICHT sicher erreicht` → wie Rückgabe 8; nur `start …` ohne Abschluss → Zustand mit Claude bestimmen (Produktionsweg §3.4) |
+  | SSH-Exit 255 oder anderer Verbindungsabbruch im Schritt „deploy.sh auf dem VPS“ | Zustand unbekannt: `deploy.sh` kann gelaufen sein, ganz oder teilweise | Remotekonsole: `pgrep -af deploy.sh` (läuft er noch: Ende abwarten), `docker compose ps`, `tail -n 20 betrieb-protokoll.log`; **nicht blind abschalten, nichts neu starten**; Zuordnung nach der letzten Protokollzeile, Regeln unter der Tabelle |
+
+  **Zuordnung bei Verbindungsabbruch.** Jede Zeile hat die Form `<UTC-Zeit> <Skript> <Text>`
+  (`deploy/freigabe-lib.sh`, `protokoll()`). Es zählt nur die letzte Zeile mit Zeit ab T0. Die Regeln in dieser
+  Reihenfolge prüfen; die erste passende gilt:
+
+  1. Die Zeile endet auf `R0 NICHT sicher erreicht` (`deploy.sh`, Funktion `r0()`; auch
+     `abgebrochen vor wechsel, …, R0 NICHT sicher erreicht`) **oder** sie lautet `abschalten.sh R0 FEHLGESCHLAGEN: …`
+     → wie Rückgabe 8: sofort `./abschalten.sh` in der Remotekonsole, Claude informieren, weiter nach 16.1.
+  2. Die Zeile stammt von `deploy.sh` und endet auf `, R0 erreicht` (`fehlgeschlagen, R0 erreicht` oder
+     `abgebrochen vor wechsel, …, R0 erreicht`) → wie Rückgabe 1: 16.1.
+  3. `deploy.sh geschuetzt sicherung=…` (im Normalfall die letzte Zeile eines erfolgreichen Laufs) oder
+     `deploy.sh erfolgreich digest=…` → weiter mit 15.
+  4. `deploy.sh abgebrochen digest=…` (Abbruch vor jedem Eingriff, Funktion `abbruch()`) → wie Rückgabe 2–5:
+     **nicht abschalten**; mit `docker compose ps` bestätigen, dass `274bfa0` läuft.
+  5. Jede andere letzte Zeile → Zustand mit Claude bestimmen (Produktionsweg §3.4); **nicht blind abschalten,
+     nichts neu starten**. Dazu gehören: von `deploy.sh` die Zwischenzeilen `start …`, `gesichert …`, `env …`,
+     `sicherung entfernt …`, `aufbewahrung uebersprungen …`, `abgleich warnung …`, außerdem
+     `abgebrochen vor wechsel digest=…` (der alte Stand wurde neu gestartet, oder der Lauf brach dort ab),
+     `fehlgeschlagen digest=…`, `ruecksprung verweigert …`, `fehlgeschlagen, ruecksprung erfolgreich …`; von
+     `abschalten.sh` `R0 start …` und `R0 erreicht: …`; jede Zeile von `ruecksprung.sh`; keine Zeile ab T0.
 
   Scheitert schon der Schritt „Eingaben prüfen“ oder „SSH-Zugang“ im Job `vps` (also vor dem Schritt „deploy.sh auf
   dem VPS“), lief auf dem VPS nichts. Für einen Abbruch im Schritt „deploy.sh auf dem VPS“ selbst gilt das nicht.
