@@ -4,7 +4,7 @@ Erzeugt von `werkzeug/acc45-backlog.mjs` aus `docs/acc45/work-packages.json` (ni
 
 **Kritischer Pfad gemeinsam** (offener Entwicklungsaufwand, ohne extern): WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **50–90 PT**
 **Ohne Intelligence:** WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 → WP-42a → WP-42 = **22,5–35 PT**
-**Offener Entwicklungsaufwand:** 334,75–576,85 PT in 103 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
+**Offener Entwicklungsaufwand:** 334,55–576,45 PT in 103 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
 
 WP-09 ist nur Livegang-Reihenfolge und zählt im Pfad nicht als Abhängigkeit. Der Graph zeigt nur offene Pakete.
 
@@ -108,7 +108,7 @@ flowchart LR
     V4_3b["V4-3b<br/>IN_PROGRESS"]
     V4_3c["V4-3c<br/>BLOCKED"]
     V4_3d["V4-3d<br/>BLOCKED"]
-    A11Y_2["A11Y-2<br/>READY"]
+    A11Y_2["A11Y-2<br/>REVIEW"]
     V4_4["V4-4<br/>BLOCKED"]
     V4_5["V4-5<br/>BLOCKED"]
     V4_6["V4-6<br/>BLOCKED"]
@@ -568,7 +568,7 @@ flowchart LR
 | V4-3c | folge | P2 | 2–3 | 2–3 | V4-3a, WP-40 | – | sonnet | BLOCKED |
 | V4-3d | folge | P3 | 2–5 | 2–5 | V4-3b | src/ansichten | sonnet | BLOCKED |
 | A11Y-1 | folge | P2 | 0,25–0,5 | 0 | – | src/ansichten | sonnet | INTEGRATED |
-| A11Y-2 | folge | P2 | 0,25–0,5 | 0,25–0,5 | A11Y-1 | src/ansichten | sonnet | READY |
+| A11Y-2 | folge | P2 | 0,25–0,5 | 0,05–0,1 | A11Y-1 | src/ansichten | sonnet | REVIEW |
 | V4-4 | folge | P2 | 2–3 | 2–3 | V4-1, WP-33 | – | opus | BLOCKED |
 | V4-5 | folge | P2 | 3–5 | 3–5 | V4-2 | – | opus | BLOCKED |
 | V4-6 | folge | P2 | 2–4 | 2–4 | V4-3, V4-4, V4-3a, V4-3b, V4-3c | – | opus | BLOCKED |

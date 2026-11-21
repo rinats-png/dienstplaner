@@ -4,9 +4,9 @@
   "anzahl": 244,
   "statusZaehlung": {
     "BLOCKED": 90,
-    "READY": 18,
+    "READY": 17,
     "IN_PROGRESS": 19,
-    "REVIEW": 11,
+    "REVIEW": 12,
     "INTEGRATED": 103,
     "DONE": 3
   },
@@ -39,8 +39,8 @@
       "pakete": 34,
       "offen": 24,
       "restPT": {
-        "min": 27.450000000000003,
-        "max": 50.1
+        "min": 27.250000000000004,
+        "max": 49.7
       }
     },
     "extern": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 334.75,
-    "max": 576.85
+    "min": 334.55,
+    "max": 576.45
   },
   "kritischerPfad": {
     "summe": 70,
@@ -6652,18 +6652,18 @@
       "prio": "P2",
       "aufwandPT": {"min":0.25,"max":0.5},
       "abhaengigkeiten": ["A11Y-1"],
-      "status": "READY",
+      "status": "REVIEW",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"Branch acc45/a11y/a11y-2-nachtbalken: Tests zuerst 3ff58258 (pruefungen/v4-3b-personal.test.js 5/20 rot auf 8de99df2; E2E e2e/a11y-2-nachtbalken.spec.mjs), Umsetzung 17700a5d: Grafik role=img mit aria-label (Jahr, zwölf Monatswerte in Stunden, markierter Monat), zwölf Spalten aria-hidden; Monatsbuchstabe des Monats der Ansicht fett, unterstrichen, C.text (14,74:1 hell / 12,98:1 dunkel gegen die Fläche); Balken C.steuer 4,14/4,41, aktueller Balken C.accent 7,36/11,03 gegen die Fläche; nm/maxN, title, Übergang, Radien unverändert; Nachtrag A11Y-2 in V4-IST-STAND-2026-11-20.md"},
+        "lokalGetestet": {"wert":true,"beleg":"Lokal 2026-11-21 --maxWorkers=1: v4-3b-personal 20/20; mit oberflaeche-render, person-eintritt, v4-3b-einstellungen, v4-inventar, v4-ist-stand, v4-3a-querschnitt, v4-3b-plan, v4-3b-zeit, v4-app-stil, kontrast, wcag-wp40, e2e-flaechen 483/483 (13 Dateien); Mutationen je rot: aria-hidden weg 1, role=img weg 2, Unterstreichung weg 2, fett weg 2, Einheit Stunden→h 1; v4-radiusstufen-basis --pruefen aktuell; eslint 0; Bildnachweis v4-abnahme reflow,ziele,fokus (leitung, NUR=Personal, 390/1024 px, hell/dunkel) 10 Prüfungen, 0 Befunde. E2E lokal nicht gelaufen (@playwright/test fehlt lokal), nur CI"},
         "reviewt": {"wert":false,"beleg":null},
         "integriert": {"wert":false,"beleg":null},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
       },
-      "branch": null,
-      "agent": null,
+      "branch": "acc45/a11y/a11y-2-nachtbalken",
+      "agent": "Agent E – Business Modules & Frontend",
       "modell": "sonnet",
       "konfliktzonen": ["src/ansichten"],
       "pr": [],
