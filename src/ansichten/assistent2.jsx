@@ -345,10 +345,10 @@ export function Assistent2({ sitz, akt, onClose }) {
                   <div key={i} style={{ textAlign: "center" }}>
                     <div style={{ fontSize: 9.5, color: C.dimmer, marginBottom: 3 }}>{DOW[i % 7]}</div>
                     <Ablage id={`zt:${i}`} nimmt={(l) => l.art === "dienstart"}
-                      ablegen={(l) => setzeTag(i, l.dienstId)} style={{ borderRadius: 12 }}>
+                      ablegen={(l) => setzeTag(i, l.dienstId)} style={{ borderRadius: "var(--v4-r-mittel)" }}>
                       <div {...klickbar(() => setzeTag(i, pinsel),
                         `Tag ${i + 1}: ${d ? d.name : "frei"} — mit dem gewählten Dienst belegen`)}
-                        style={{ width: 34, height: 34, borderRadius: 10, cursor: "pointer", fontSize: 12, fontWeight: 700, ...NUM,
+                        style={{ width: 34, height: 34, borderRadius: "var(--v4-r-mittel)", cursor: "pointer", fontSize: 12, fontWeight: 700, ...NUM,
                           display: "flex", alignItems: "center", justifyContent: "center",
                           background: d ? `${d.farbe}22` : C.bg, color: d ? d.farbe : C.dimmer }}>
                         {d ? d.kurz : "·"}</div>
@@ -397,7 +397,7 @@ export function Assistent2({ sitz, akt, onClose }) {
               return (
                 <Card key={g.id} style={{ padding: 16, marginBottom: 12 }}>
                   <div style={{ display: "flex", gap: 13, alignItems: "flex-end", flexWrap: "wrap" }}>
-                    <span style={{ width: 10, height: 10, borderRadius: 5, background: lesbar(g.farbe, 3), marginBottom: 12 }} />
+                    <span style={{ width: 10, height: 10, borderRadius: "var(--v4-r-pille)", background: lesbar(g.farbe, 3), marginBottom: 12 }} />
                     <Field label="Bezeichnung">
                       <Inp value={g.name} style={{ width: 190 }}
                         onChange={(e) => setGruppen(gruppen.map((x, k) => k === gi ? { ...x, name: e.target.value } : x))} /></Field>
