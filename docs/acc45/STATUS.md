@@ -18,17 +18,17 @@ oder `"teilweise"`, jeweils mit Beleg (PR, Commit, Nachweis). „Geplant“, „
 <!-- AUTO:BEGIN -->
 Erzeugt aus `docs/acc45/work-packages.json` (Schema 2) mit `node werkzeug/acc45-backlog.mjs status-schreiben` — nicht von Hand ändern.
 
-**Pakete gesamt:** 243 · BLOCKED 91 · READY 16 · IN_PROGRESS 19 · REVIEW 12 · INTEGRATED 102 · DONE 3
+**Pakete gesamt:** 243 · BLOCKED 90 · READY 17 · IN_PROGRESS 19 · REVIEW 11 · INTEGRATED 103 · DONE 3
 
 | Strang | Pakete | BLOCKED | READY | IN_PROGRESS | REVIEW | INTEGRATED | DONE | offener Aufwand PT |
 |---|---|---|---|---|---|---|---|---|
 | ACC45 | 119 | 27 | 0 | 7 | 4 | 79 | 2 | 61,3–104,75 |
 | WP-19-Module | 15 | 13 | 0 | 1 | 0 | 1 | 0 | 64,5–100,5 |
 | Intelligence | 40 | 20 | 0 | 7 | 0 | 13 | 0 | 181–320 |
-| Folgepakete | 34 | 13 | 0 | 4 | 8 | 9 | 0 | 27,5–50,2 |
+| Folgepakete | 34 | 12 | 1 | 4 | 7 | 10 | 0 | 27,45–50,1 |
 | Extern/Entscheidungen | 35 | 18 | 16 | 0 | 0 | 0 | 1 | 20,35–46,1 |
 
-Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **334,3–575,45 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
+Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **334,25–575,35 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
 
 **Kritische Pfade** (offener Aufwand, Mitte der Spanne maßgeblich):
 
@@ -70,20 +70,19 @@ Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **334,3–575,
 | V4-1 V4: Inventar und Screenshot-Baseline (MIGRATION Schritt 2) | IN_PROGRESS | `docs/v4-1-inventar` | Analyse 2026-11-20 (V4-Integrationsstand); PT sind Schätzung der Analyse, nicht belegt. Umsetzung 2026-11-20 (Branch docs/v4-1-inventar, PR gegen integration/release-v4): Inventar 172 Dateien (167 ohne src/v4) mit Zählwerkzeug und Test; Screenshot-Baseline nur als Plan (keine Binärdateien, nicht in CI). Status nach Merge setzt der Koordinator. |
 | V4-3a V4: Altstil der Querschnittsklassen auf Tokens (.pille/.bpille/.kachel/.planzelle/table.raster; Klassennamen unverändert) | REVIEW | `acc45/v4/v4-3a` | Übernommen (Review #418), V4-IST 2026-11-20 (Messung werkzeug/v4-inventar.mjs --hauptansichten); PT sind Schätzung. Ersetzt einen Teil des früheren V4-3. Umsetzung 2026-11-20 (docs/acc45/V4-IST-STAND-2026-11-20.md, Nachtrag V4-3a): ein PR, kein Schnitt nötig. Feste Radien im globalen Stil App.jsx 17→7, gestalt/stil.js 13→7 (Schatten 1/2 unverändert: Zustandsanzeigen); Form erreicht 124/159 und voll V4 71/159 unverändert (Zählung je Datei wertet den globalen Stil nicht). |
 | V4-3b V4: Form-Literale der Ansichten auf Tokens (ein PR je Hauptansicht) | IN_PROGRESS | `acc45/v4/v4-3b-lage` | Schnitt 1 (2026-11-21, Plan/Dienstplan, Messung --hauptansichten): Form erreicht 24/27 → 27/27, Farbliterale 1 → 0, Form-Literale 28 → 2, voll V4 12/27 → 25/27, Inline-Stile 532 unverändert; ohne V4-Form leer. Begründete Ausnahmen Plan: Diagrammbalken 2 px (monatsplan.jsx) und 1 px (jahresansicht.jsx), kein passender Token. Schnitt 2 (2026-11-21, Personal, Messung --hauptansichten): Form erreicht 10/10 unverändert, Farbliterale 2 → 0 (farbrein 9/10 → 10/10), Form-Literale 10 → 2, „voll V4“ (= Form und Farbe ohne Literale, ohne Inline-Stile) 4/10 → 9/10, Inline-Stile 242 unverändert; gesamt Form-Literale 189 (62 Dateien) → 181 (57), voll V4 84/159 → 89/159. Begründete Ausnahme Personal: Legendenquadrate 15 px mit Radius 5 (verfuegbarkeit.jsx), kleinste Stufe machte sie zu Kreisen. Schnitt 3 (2026-11-21, Zeit/Abrechnung, Messung --hauptansichten): Form erreicht 21/23 → 22/23 (Token direkt 0 → 1, Kontoblatt), Form-Literale 14 → 1, „voll V4“ (= Form und Farbe ohne Literale, ohne Inline-Stile) 16/23 → 21/23, Farbliterale 0 unverändert, Inline-Stile 423 unverändert; gesamt Form-Literale 181 (57) → 168 (52), voll V4 89/159 → 94/159, Form erreicht 127/159 → 128/159. Begründete Ausnahme Zeit: Legendenfeld 26×16 mit Radius 4 (belastbarkeit.jsx), kleinste Stufe machte es zur Kapsel. Ohne V4-Form bleibt ungeplanthinweis.jsx (Inhalt ohne eigene Fläche, Rahmen setzt der Aufrufer; Messgrenze). Schnitt 4 (2026-11-21, Einstellungen/Verwaltung, Messung --hauptansichten): Form erreicht 19/21 → 20/21 (Token direkt 0 → 1, Planungsreife), Form-Literale 14 → 1, „voll V4“ (= Form und Farbe ohne Literale, ohne Inline-Stile) 13/21 → 19/21, Farbliterale 0 unverändert, Inline-Stile 433 unverändert; gesamt Form-Literale 168 (52) → 155 (46), voll V4 94/159 → 100/159, Form erreicht 128/159 → 129/159. Begründete Ausnahme Einstellungen: Normmarke der Rechtsquelle in der Prüfung (pruefung.jsx, Höhe 16–18 px aus der Schrift, Radius 5), kleinste Stufe machte sie zur Kapsel. Ohne V4-Form bleibt einsatzregelliste.jsx (Inhalt ohne eigene Fläche, Rahmen setzt die Personalakte; Messgrenze). Schnitt 5 (2026-11-21, Lage/Dashboard, Messung --hauptansichten): Form erreicht 13/13 unverändert, Form-Literale 16 → 1, „voll V4“ (= Form und Farbe ohne Literale, ohne Inline-Stile) 7/13 → 12/13, Farbliterale 0 unverändert, Inline-Stile 280 unverändert (früheres Inventar nannte 278); gesamt Form-Literale 155 (46) → 140 (41), voll V4 100/159 → 105/159, Form erreicht 129/159 unverändert. Begründete Ausnahme Lage: Legendenquadrat je Dienstart unter der Zeitachse (zeitachse.jsx, 14×14, Radius 5), kleinste Stufe 8 px > halbe Kante 7 machte es zum Kreis. Offen: Betreiber, Import, Telefonschale, Einstieg (je ein PR); Inline-Layoutstile → V4-3d. Übernommen (Review #418), V4-IST 2026-11-20; Reihenfolge Plan, Personal, Zeit/Abrechnung, Einstellungen, Lage, Betreiber, Import, Telefonschale, Einstieg; PT sind Schätzung. Ersetzt einen Teil des früheren V4-3. Rest aus V4-3a (globaler Stil, kein passender Token): Telefonschale .m-zahl 10px, .m-tabs button 16px, .m-blatt 26px, .m-griff 3px; .tabbar button 14px (Plan/Wochenliste) — im jeweiligen Ansichts-PR mitnehmen oder als V4-Ausnahme begründen. |
-| A11Y-1 A11y-Folgepunkt F1 (Review #442): Arbeitstag-Knöpfe und Nachtbalken der Personalakte zugänglich (WCAG 4.1.2, 1.4.11) | REVIEW | `acc45/a11y/a11y-1-arbeitstag` | Angelegt 2026-11-21 mit V4-3b Schnitt 3 (Zeit) aus Review #442 (Folgepunkt F1, Altbestand, nicht durch V4-3b verursacht; V4-3b Personal hat die Werte nur verbessert: gewählt/frei 1,12 → 1,25 hell, Nachtbalken 1,57 → 2,25 hell). Vorbild: Raster in src/ansichten/verfuegbarkeit.jsx (aria-pressed) und Haken-Icon bei Qualifikationen. PT sind Schätzung. |
 | DEP-1 Abhängigkeit: web-push 4 Migration | REVIEW | `acc45/dep/dep-1-web-push-4` | Quelle: Bewertung offener Dependabot-PRs #400 bis #407 vom 2026-11-20 (nur lesend erhoben, Basis integration/release-v4 @ 105f6c83); Aufwand ist eine SCHÄTZUNG der Bewertung, nicht belegt. Der Dependabot-PR wird nicht geschlossen; Schließen entscheidet der Betreiber. Befund: web-push 4.0.0 hat nur benannte Exporte; server/lib/webpush.mjs:62-64 nutzt webpush.default.setVapidDetails, mit v4 ein TypeError, den das catch still zu {ok:false, klasse:temporaer, fehler:netz} macht (Push würde lautlos nie zugestellt). CI bleibt grün, weil pruefungen/mail-push-anbieter.test.js:23 web-push mit { default: {...} } mockt. pushziel.mjs (Review S1) begründet den Parser-Gleichlauf mit url.parse in 3.6.x; v4 nutzt new URL, Begründung und sicherheit-intern.test.js neu bewerten (SI-01). Neue transitive Abhängigkeit proxy-agent-negotiate 1.1.0 prüfen. Ohne VAPID-Schlüssel endet sendePush vor dem Import (trocken), daher aktuell kein sichtbarer Schaden. Aufwand SCHÄTZUNG 0,5 bis 1 PT plus Sicherheitsreview (Opus). Dependabot-PR #404, nicht mergen (funktionaler Defekt); Schließen entscheidet der Betreiber. |
 | DEP-2 Abhängigkeit: Vitest 5 Migration | REVIEW | `acc45/dep/dep-2-vitest-5` | Quelle: Bewertung offener Dependabot-PRs #400 bis #407 vom 2026-11-20 (nur lesend erhoben, Basis integration/release-v4 @ 105f6c83); Aufwand ist eine SCHÄTZUNG der Bewertung, nicht belegt. Der Dependabot-PR wird nicht geschlossen; Schließen entscheidet der Betreiber. Vitest 5 entfernt die sequential-Optionen (zugunsten von concurrent); der Lauf von PR #405 scheitert mit describe.sequential is not a function in abnahme-a-ablauf.test.js:115, die rund 190 Folgeschritte wurden übersprungen (der Lauf belegt nichts über den Rest der Suite). Betroffen: 12 Stellen in 6 Dateien (abnahme-a-ablauf, erstleitung-abbruch, erstleitung-betreiber-put, erstleitung-entscheidungen, erstleitung, konto-parallel). Node 22 und Vite 6.4.5 passen. Aufwand SCHÄTZUNG 0,5 bis 1 PT. Opus-Review Pflicht (Prüfwerkzeug, kritischer Pfad). Dependabot-PR #405, nicht mergen. |
 | REL-1 Release-Automatisierung Stufe 1: Release-Gates (Werkzeug), Lückenanalyse, Release-Richtlinie | REVIEW | `acc45/release/rel-1-gates` | Betreiberauftrag Release-Automatisierung 2026-11-20 (Zielablauf Entwicklung → Review → CI → Integration → Release-Prüfung → Deployment → Live-Abnahme). Kein VPS, kein Workflow-Start, keine Workflow-Änderung. Aufwand SCHÄTZUNG. |
 
-### Bereit zum Start (0)
+### Bereit zum Start (1)
 
-–
+A11Y-2 (folge, 0,25–0,5 PT)
 
 ### In Arbeit, fortsetzbar (14)
 
 WP-40 (acc45, 1,5–2,25 PT offen) · WP-28b (folge, 0,5–1 PT offen) · WP-I4 (intelligence, 4–7 PT offen) · WP-I19 (intelligence, 8–14 PT offen) · WP-I20 (intelligence, 8–14 PT offen) · WP-I24 (intelligence, 2,5–4,5 PT offen) · WP-I29 (intelligence, 9–15 PT offen) · WP-I30 (intelligence, 2–4 PT offen) · WP-I31 (intelligence, 4,5–7,5 PT offen) · IMP-6 (acc45, 1,5–2,5 PT offen) · IMP-8 (acc45, 1–1,5 PT offen) · WP-48-GB (acc45, 0,5–1,5 PT offen) · WP-ZEIT (acc45, 4,5–7,5 PT offen) · V4-1 (folge, 1–1,5 PT offen)
 
-### Integriert in `integration/centric-complete` (102)
+### Integriert in `integration/centric-complete` (103)
 
 | Paket | Beleg (PR, Merge-Commit) | Review |
 |---|---|---|
@@ -188,6 +187,7 @@ WP-40 (acc45, 1,5–2,25 PT offen) · WP-28b (folge, 0,5–1 PT offen) · WP-I4 
 | V4-2b V4: --v4-*-Variablen in der Anwendung immer gesetzt und an data-thema gebunden (Neuladen mit Sitzung) | #426 in integration/release-v4 (5876ff48), CI grün auf exaktem Kopf, Merge mit Kopf-Pin | Opus-Review #426 (FREIGABE) am 2026-11-20 |
 | V4-2c V4: Kontrast aktiver/gehoverter Eintrag der Seitenleiste im hellen Thema (WCAG 1.4.3) | #430 in integration/release-v4 (eeb529c6), CI grün auf exaktem Kopf, Merge mit Kopf-Pin | Opus-Review #430 (FREIGABE, A2 umgesetzt) am 2026-11-20 |
 | V4-2d V4: Fokus beim Öffnen der Seitenleisten-Schublade per Tastatur (WCAG 2.4.3) | #432 in integration/release-v4 (02988d05), CI grün auf exaktem Kopf, Merge mit Kopf-Pin | Opus-Review #432 (FREIGABE, 2 Hinweise NIEDRIG) am 2026-11-20 |
+| A11Y-1 A11y-Folgepunkt F1 (Review #442): Arbeitstag-Knöpfe und Nachtbalken der Personalakte zugänglich (WCAG 4.1.2, 1.4.11) | #445 in integration/release-v4 (bf253963), CI 23/23 auf exaktem Kopf, Merge mit Kopf-Pin | Opus-Review #445 (FREIGABE) am 2026-11-21 |
 | REL-0 VPS-Zugang und Inventur: Forced-Command-Zugang nur für die lesende Produktionsinventur V-1 bis V-9 (Phase 1), Konto ohne Docker-Rechte mit root-Sammler (Phase 2, Entwurf) | #428 in integration/release-v4 (092be6e2), CI grün auf exaktem Kopf, Merge mit Kopf-Pin | Opus-Review #428 (FREIGABE nach AUF-1..3, H-a..H-d) am 2026-11-20 |
 
 ### Statusstufen
@@ -337,8 +337,8 @@ WP-40 (acc45, 1,5–2,25 PT offen) · WP-28b (folge, 0,5–1 PT offen) · WP-I4 
 | V4-2c | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | V4-2d | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | V4-3a | REVIEW | ✓ | ✓ | – | – | – | – | – |
-| V4-3b | IN_PROGRESS | T | T | – | – | – | – | – |
-| A11Y-1 | REVIEW | ✓ | ✓ | – | – | – | – | – |
+| V4-3b | IN_PROGRESS | T | T | T | T | – | – | – |
+| A11Y-1 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | DEP-1 | REVIEW | ✓ | ✓ | – | – | – | – | – |
 | DEP-2 | REVIEW | ✓ | ✓ | – | – | – | – | – |
 | REL-0 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
