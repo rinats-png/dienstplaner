@@ -83,6 +83,109 @@ const SSHD_T_STANDARD = [
   "subsystem sftp /usr/lib/openssh/sftp-server",
 ].join("\n");
 
+/* Standard-/etc/ssh/sshd_config von Ubuntu 24.04 (openssh-server 1:9.6p1-3ubuntu13), wörtlich bis auf gekürzte
+   Kommentarblöcke; enthält das auskommentierte Beispiel „#Match User anoncvs“. */
+const UBUNTU_2404_SSHD_CONFIG = `
+# This is the sshd server system-wide configuration file.  See
+# sshd_config(5) for more information.
+
+# This sshd was compiled with PATH=/usr/local/bin:/usr/bin:/bin:/usr/games
+
+# The strategy used for options in the default sshd_config shipped with
+# OpenSSH is to specify options with their default value where
+# possible, but leave them commented.  Uncommented options override the
+# default value.
+
+Include /etc/ssh/sshd_config.d/*.conf
+
+# When systemd socket activation is used (the default), the socket
+# configuration must be re-generated after changing Port, AddressFamily, or
+# ListenAddress.
+#
+# For changes to take effect, run:
+#
+#   systemctl daemon-reload
+#   systemctl restart ssh.socket
+#
+#Port 22
+#AddressFamily any
+#ListenAddress 0.0.0.0
+#ListenAddress ::
+
+#HostKey /etc/ssh/ssh_host_rsa_key
+#HostKey /etc/ssh/ssh_host_ecdsa_key
+#HostKey /etc/ssh/ssh_host_ed25519_key
+
+# Logging
+#SyslogFacility AUTH
+#LogLevel INFO
+
+# Authentication:
+
+#LoginGraceTime 2m
+#PermitRootLogin prohibit-password
+#StrictModes yes
+#MaxAuthTries 6
+#MaxSessions 10
+
+#PubkeyAuthentication yes
+
+# Expect .ssh/authorized_keys2 to be disregarded by default in future.
+#AuthorizedKeysFile	.ssh/authorized_keys .ssh/authorized_keys2
+
+#AuthorizedPrincipalsFile none
+
+#AuthorizedKeysCommand none
+#AuthorizedKeysCommandUser nobody
+
+# To disable tunneled clear text passwords, change to no here!
+#PasswordAuthentication yes
+#PermitEmptyPasswords no
+
+# Change to yes to enable challenge-response passwords (beware issues with
+# some PAM modules and threads)
+KbdInteractiveAuthentication no
+
+UsePAM yes
+
+#AllowAgentForwarding yes
+#AllowTcpForwarding yes
+#GatewayPorts no
+X11Forwarding yes
+#X11DisplayOffset 10
+#X11UseLocalhost yes
+#PermitTTY yes
+PrintMotd no
+#PrintLastLog yes
+#TCPKeepAlive yes
+#PermitUserEnvironment no
+#Compression delayed
+#ClientAliveInterval 0
+#ClientAliveCountMax 3
+#UseDNS no
+#PidFile /run/sshd.pid
+#MaxStartups 10:30:100
+#PermitTunnel no
+#ChrootDirectory none
+#VersionAddendum none
+
+# no default banner path
+#Banner none
+
+# Allow client to pass locale and color environment variables
+AcceptEnv LANG LC_* COLORTERM NO_COLOR
+
+# override default of no subsystems
+Subsystem	sftp	/usr/lib/openssh/sftp-server
+
+# Example of overriding settings on a per-user basis
+#Match User anoncvs
+#	X11Forwarding no
+#	AllowTcpForwarding no
+#	PermitTTY no
+#	ForceCommand cvs server
+`;
+
 /* ---------------------------------------------------------------- Stubs */
 const STUBS = {
   id: `#!/bin/bash
@@ -470,6 +573,53 @@ describe.skipIf(!BASH)("deploy/inventur-install.sh — Vorabprüfungen (Abbruch 
     /* Pfad mit Leerzeichen in Anführungszeichen: nicht verfolgbar → fail-closed */
     fall("etc/ssh/sshd_config", 'Include "/etc/ssh/mit leer/x.conf"\n');
   }, 600000);
+  /* Delta-Review #447 N-1: sshd (strdelim) entfernt Anführungszeichen auch mitten im Wort und überspringt ein leeres
+     erstes Token (führendes „=“ oder „""“). Mit OpenSSH 9.5 bestätigt. */
+  const N_FAELLE_MATCH = [
+    ["M\"atch\"", 'M"atch" User admin\n  AcceptEnv *\n'],
+    ["\"\"Match", '""Match User admin\n  AcceptEnv *\n'],
+    ["=Match", "=Match User admin\n  AcceptEnv *\n"],
+    [" = Match", " = Match User admin\n  AcceptEnv *\n"],
+    ["\"Match\"x (sshd: Schlüsselwort Match, Argument x)", '"Match"x User admin\n'],
+    ["Match mit CRLF", "Match User admin\r\n  AcceptEnv *\r\n"],
+  ];
+  for (const [name, text] of N_FAELLE_MATCH) {
+    it(`N-1: Match-Schreibweise ${name} → Abbruch ohne Änderung`, () => {
+      negativ(() => schreiben(path.join(w, "etc/ssh/sshd_config.d/60-x.conf"), text), /Match/);
+    });
+  }
+  /* N-2: Include-Zeilen, die sshd (argv_split) anders liest als ein einfaches Aufteilen, werden fail-closed
+     abgewiesen; CRLF wird wie bei sshd am Zeilenende abgeschnitten und das Ziel verfolgt. Das Ziel enthält jeweils
+     einen Match-Block: Ein stilles Überspringen der Zeile ließe den Lauf grün werden. */
+  const N_FAELLE_INCLUDE = [
+    ["'…' (einfache Anführungszeichen)", "Include '/etc/ssh/extra/a.conf'\n", /Include/],
+    ["'…' mit Leerzeichen", "Include '/etc/ssh/mit leer.conf'\n", /Include/],
+    ["Backslash-Leerzeichen", "Include /etc/ssh/mit\\ leer.conf\n", /Include/],
+    ["Inc\"lude\"", 'Inc"lude" /etc/ssh/extra/a.conf\n', /Match|Include/],
+    ["=Include", "=Include /etc/ssh/extra/a.conf\n", /Match|Include/],
+    ["CRLF", "Include /etc/ssh/extra/a.conf\r\n", /Match|Include/],
+    ["Sonderzeichen ($, ~, [, #)", "Include /etc/ssh/extra/$X.conf ~/b.conf\n", /Include/],
+    ["Wagenrücklauf mitten in der Zeile", "Include /etc/ssh/extra/a.conf\r/etc/ssh/b.conf\n", /Include/],
+  ];
+  for (const [name, text, grund] of N_FAELLE_INCLUDE) {
+    it(`N-2: Include-Schreibweise ${name} → Abbruch ohne Änderung`, () => {
+      negativ(() => {
+        schreiben(path.join(w, "etc/ssh/extra/a.conf"), "Match User admin\n  AcceptEnv *\n");
+        schreiben(path.join(w, "etc/ssh/mit leer.conf"), "Match User admin\n");
+        writeFileSync(path.join(w, "etc/ssh/sshd_config"), readFileSync(path.join(w, "etc/ssh/sshd_config"), "utf8") + text);
+      }, grund);
+    });
+  }
+  it("N-1/N-2: kein Fehlalarm gegen die Standard-sshd_config von Ubuntu 24.04 (#Match-Kommentar, Include); „Matchx“ wie bisher", () => {
+    schreiben(path.join(w, "etc/ssh/sshd_config"), UBUNTU_2404_SSHD_CONFIG);
+    schreiben(path.join(w, "etc/ssh/sshd_config.d/60-x.conf"), "Matchx yes\n");
+    const vorher = abbild();
+    const r = lauf(["--trocken"]);
+    expect(r.code, r.alles).toBe(0);
+    expect(r.out).toMatch(/ok +sshd-Konfiguration ohne Match-Blöcke \(3 Dateien gelesen\)/);
+    expect(r.letzte).toMatch(/^REL-0 TROCKEN OK: /);
+    expect(abbild()).toEqual(vorher);
+  });
   it("sshd -T -C (Verbindungsdaten) weicht ab: permituserenvironment yes / acceptenv * → Abbruch (B-2)", () => {
     const c = path.join(tmp, "sshd-T-C.txt");
     negativ(() => schreiben(c, SSHD_T_STANDARD.replace("permituserenvironment no", "permituserenvironment yes") + "\n"), /permituserenvironment/, [], { PRUEF_SSHD_T_C: p(c) });
@@ -810,6 +960,16 @@ describe("Quelltext-Wächter deploy/inventur-install.sh", () => {
     expect(abschnitt).toContain("INVENTUR-KONSOLE.md");
     expect(abschnitt).not.toMatch(/Deshalb ist\s+Eingabe 1 immer `--trocken`/);
     expect(abschnitt).toMatch(/Prüfen Sie vor `Enter`\s+jedes `&&`/);
+    /* Delta-Review #447 N-4: rm -f nur in Eingabe 1 und Rückweg; Eingabe 2 bewusst ohne, Folge eines & benannt */
+    expect(abschnitt).toMatch(/`rm -f rel0` am Anfang steht \*\*nur in Eingabe 1 und im Rückweg\*\*/);
+    expect(abschnitt).toMatch(/Eingabe 2 hat bewusst kein `rm -f`/);
+    expect(abschnitt).toMatch(/Folge eines `&` in\s+Eingabe 2:/);
+    expect(abschnitt).not.toMatch(/^- `rm -f rel0` am Anfang: /m);
+    const eingabe2 = abschnitt.slice(abschnitt.indexOf("**Eingabe 2"), abschnitt.indexOf("- `<commit>`"));
+    expect(eingabe2).not.toContain("rm -f");
+    /* N-1/N-2: Normalisierung und Include-Abbruch in der Prüftabelle beschrieben */
+    expect(abschnitt).toMatch(/nicht eindeutig verfolgbar/);
+    expect(abschnitt).toMatch(/M"atch"/);
     const anleitung = readFileSync(path.join(WURZEL, "docs", "acc45", "BETREIBER-ANLEITUNG-ERSTRELEASE.md"), "utf8");
     const a41 = anleitung.slice(anleitung.indexOf("### 4.1"), anleitung.indexOf("### 4.2"));
     expect(a41).toMatch(/vorbereitet, nicht aktiviert/);
