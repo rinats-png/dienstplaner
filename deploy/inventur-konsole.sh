@@ -9,10 +9,11 @@
 #
 #  Ladeweg (root in der Remotekonsole, ohne Datei, siehe Anleitung):
 #    s=$(curl -fsSL https://raw.githubusercontent.com/rinats-png/dienstplaner/<ref>/deploy/inventur-konsole.sh)
-#    printf %s "$s" | sha256sum | cut -c1-16      Vergleich mit Sollwert
-#    printf %s "$s" | wc -l                       Vergleich Zeilenzahl
-#    bash -c "$s"                                 Kurzprotokoll + PRUEFCODE
-#    bash -c "$s" x --voll | more                 ausführlich, maskiert
+#    printf %s "$s" | sha256sum | grep -q '^<32 Hex>' && bash -c "$s"
+#        Tor: nur bei passender Prüfsumme läuft das Skript (Kurzprotokoll)
+#    … && bash -c "$s" x --voll | head -n 60       ausführlich, maskiert
+#    unset s
+#  Kein Pager (more/less: Shell-Escape „!“).
 #
 #  Wiederverwendung: INVENTUR_SH (unten, erzeugt) ist deploy/inventur.sh
 #  Byte für Byte. Vor der Nutzung vergleicht das Skript dessen SHA-256 mit
@@ -466,6 +467,28 @@ v6_abgleich() {
   done < <(printf '%s\n' "$ENV_IST")
 }
 
+# V-8 für --voll: ssh-keygen -lf zeigt „Bits Fingerabdruck Kommentar (Typ)“. Der Kommentar
+# (oft Name oder Rechnername) fällt weg: nur Bits, Fingerabdruck, Typ.
+v8_konsole() {
+  v8 | awk '$1 ~ /^[0-9]+$/ && $2 ~ /^SHA256:/ { print $1, $2, $NF; next } { print }'
+}
+
+voll_abschnitte() {
+  abschnitt "V-1 Container, Status, laufende Bild-ID" v1
+  abschnitt "V-2 Digest und Label des laufenden Bilds" v2
+  abschnitt "V-3 Bildreferenz in der Konfiguration" v3
+  abschnitt "V-4 Betriebsdateien und Pruefsummen" v4
+  abschnitt "V-5 Zustandsverzeichnis" v5
+  abschnitt "V-6 Schluesselnamen der .env" v6
+  abschnitt "V-6a Abgleich mit .env.example (nur Namen)" v6_abgleich
+  abschnitt "V-7 Sicherungen (crontab von root)" v7
+  abschnitt "V-7a crontab des Kontos (nur Skriptnamen)" cron_konto
+  abschnitt "V-8 authorized_keys (nur Optionen, Fingerabdruck ohne Kommentar)" v8_konsole
+  abschnitt "V-9 Platz und Gesundheit (kein docker exec)" v9_konsole
+  abschnitt "R-1 Ressourcen" r1
+  abschnitt "R-2 Mounts und Compose-Projektpfad" r2
+}
+
 kurzprotokoll() {
   local -a k=()
   local z code
@@ -515,19 +538,8 @@ haupt() {
   info "SUMME OK $Z_OK ABW $Z_ABW FEHLT $Z_FEHLT NICHT-PRUEFBAR $Z_NP"
 
   if [[ "$modus" == voll ]]; then
-    abschnitt "V-1 Container, Status, laufende Bild-ID" v1
-    abschnitt "V-2 Digest und Label des laufenden Bilds" v2
-    abschnitt "V-3 Bildreferenz in der Konfiguration" v3
-    abschnitt "V-4 Betriebsdateien und Prüfsummen" v4
-    abschnitt "V-5 Zustandsverzeichnis" v5
-    abschnitt "V-6 Schlüsselnamen der .env" v6
-    abschnitt "V-6a Abgleich mit .env.example (nur Namen)" v6_abgleich
-    abschnitt "V-7 Sicherungen (crontab von root)" v7
-    abschnitt "V-7a crontab des Kontos (nur Skriptnamen)" cron_konto
-    abschnitt "V-8 authorized_keys (nur Optionen)" v8
-    abschnitt "V-9 Platz und Gesundheit (kein docker exec)" v9_konsole
-    abschnitt "R-1 Ressourcen" r1
-    abschnitt "R-2 Mounts und Compose-Projektpfad" r2
+    # Nur druckbares ASCII, Tab und Zeilenumbruch: keine Steuerfolgen aus Dateinamen auf der Konsole.
+    voll_abschnitte | tr -cd '\11\12\40-\176'
     printf '\n=== KURZPROTOKOLL ===\n'
   fi
 

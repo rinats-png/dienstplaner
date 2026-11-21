@@ -105,7 +105,7 @@ export function ohneErzeugtenBlock(konsole) {
 export function werte(text) {
   const s = lf(text).replace(/\n+$/, "");
   const h = sha256(s);
-  return { kurz16: h.slice(0, 16), sha256: h, zeilen: (s.match(/\n/g) || []).length, bytes: Buffer.byteLength(s, "utf8") };
+  return { kurz16: h.slice(0, 16), kurz32: h.slice(0, 32), sha256: h, zeilen: (s.match(/\n/g) || []).length, bytes: Buffer.byteLength(s, "utf8") };
 }
 
 /* PRUEFCODE aus abgetippten Zeilen: CR und Leerzeichen am Zeilenende weg, Leerzeilen weg, Ende vor „PRUEFCODE“. */
@@ -382,7 +382,7 @@ function zerlege(text) {
    übernommenen aus inventur.sh kommen dazu; v9 und v_kopf sind ausgenommen. */
 const ERLAUBT = new Set([
   "printf", "awk", "grep", "head", "tail", "sort", "cut", "sha256sum", "read", "mapfile", "set", "unset", "return",
-  "exit", "shift", "true", "id", "stat", "uname", "date", "df", "du", "cd", "crontab", "eval", "[[", "umask", "continue",
+  "exit", "shift", "true", "id", "stat", "uname", "date", "df", "du", "cd", "crontab", "eval", "[[", "umask", "continue", "tr",
 ]);
 const AUS_INVENTUR = new Set(["hat", "docker_lesen", "compose_lesen", "env_namen", "maskieren", "abschnitt", "konto_home", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "r1", "r2"]);
 /* Ausdrücklich verboten (Schreiben, Installieren, Dienste, Rechte, Netz, Interpreter). Vorrang vor allem. */
@@ -494,7 +494,7 @@ export function pruefeInhalt({ konsole, inventur, vorlage, doku }) {
   const w = werte(k);
   if (w.bytes >= 100000) f.push(`Skript zu groß für bash -c (${w.bytes} Byte)`);
   const d = lf(doku ?? "");
-  for (const soll of [`\`${w.kurz16}\``, `\`${w.sha256}\``, `Zeilen: \`${w.zeilen}\``, `Bytes: \`${w.bytes}\``]) {
+  for (const soll of [`\`${w.kurz32}\``, `grep -q '^${w.kurz32}' && bash -c "$s"`, `\`${w.sha256}\``, `Zeilen: \`${w.zeilen}\``, `Bytes: \`${w.bytes}\``]) {
     if (!d.includes(soll)) f.push(`${DOKU}: Sollwert fehlt oder veraltet: ${soll} (node werkzeug/inventur-konsole-bauen.mjs --bauen)`);
   }
   return f;
@@ -505,33 +505,47 @@ export function pruefen(wurzel) {
   return pruefeInhalt({ konsole: lies(wurzel, KONSOLE), inventur: lies(wurzel, INVENTUR), vorlage: lies(wurzel, VORLAGE), doku: lies(wurzel, DOKU) });
 }
 
+const zelle = (t) => t.replace(/\|/g, "\\|");
+
 export function dokuWerte(w, inventurSha) {
+  const b = befehle("<ref>", w);
+  const beispielRef = "0123456789ab";
   return [
     DOKU_ANFANG,
     "",
     "| Wert | Soll |",
     "|---|---|",
-    `| 16-Hex (Befehl 2) | \`${w.kurz16}\` |`,
-    `| Zeilen: \`${w.zeilen}\` | Befehl 3, erste Zahl |`,
-    `| Bytes: \`${w.bytes}\` | Befehl 3, zweite Zahl |`,
+    `| 32-Hex im Tor (Befehl 2, Kontrolle K1) | \`${w.kurz32}\` |`,
+    `| Zeilen: \`${w.zeilen}\` | Kontrolle K2, erste Zahl |`,
+    `| Bytes: \`${w.bytes}\` | Kontrolle K2, zweite Zahl |`,
     `| SHA-256 (voll) | \`${w.sha256}\` |`,
     `| eingebettete inventur.sh | \`${inventurSha.slice(0, 12)}\` (Kopfzeile des Kurzprotokolls) |`,
+    "",
+    `Befehle (Zeichenzahl bei 12-stelligem \`<ref>\`; in der Tabelle steht \`\\|\` nur wegen der Tabellenschreibweise, tippen Sie \`|\`):`,
+    "",
+    "| Nr | Zeichen | Befehl | Wirkung |",
+    "|---|---|---|---|",
+    ...b.map((x) => `| ${x.nr} | ${befehle(beispielRef, w).find((y) => y.nr === x.nr).zeichen} | \`${zelle(x.befehl)}\` | ${x.zweck} |`),
     "",
     DOKU_ENDE,
   ].join("\n");
 }
 
-export function befehle(ref) {
+/* Betreibereingaben. Pflicht: laden, Tor (Maschinenvergleich 32 Hex = 128 Bit, nur bei Treffer startet bash),
+   aufräumen. Optional: sichtbare Kontrollen; --voll seitenweise ohne Pager (more/less haben Shell-Escape „!“). */
+export function befehle(ref, w) {
   const url = `${RAW}/${ref}/${KONSOLE}`;
-  return [
-    `s=$(curl -fsSL ${url})`,
-    'printf %s "$s" | sha256sum | cut -c1-16',
-    'printf %s "$s" | wc -lc',
-    'printf %s "$s" | more',
-    'bash -c "$s"',
-    'bash -c "$s" x --voll | more',
-    "unset s",
+  const pruef = `printf %s "$s" | sha256sum | grep -q '^${w.kurz32}' && `;
+  const liste = [
+    { nr: "1", art: "laden", pflicht: true, befehl: `s=$(curl -fsSL ${url})`, zweck: "lädt das Skript in die Variable `s` (keine Datei)" },
+    { nr: "K1", art: "kontrolle", pflicht: false, befehl: `printf %s "$s" | sha256sum | grep -c '^${w.kurz32}'`, zweck: "optional: zeigt `1` (Treffer) oder `0`" },
+    { nr: "K2", art: "kontrolle-zahlen", pflicht: false, befehl: 'printf %s "$s" | wc -lc', zweck: "optional: zeigt Zeilen und Bytes" },
+    { nr: "2", art: "tor", pflicht: true, befehl: `${pruef}bash -c "$s"`, zweck: "Tor + Ausführung: nur bei passender Prüfsumme läuft das Skript (Kurzprotokoll)" },
+    { nr: "V1", art: "voll", pflicht: false, befehl: `${pruef}bash -c "$s" x --voll | head -n 60`, zweck: "nur auf Bitte: ausführlich, Zeilen 1–60" },
+    { nr: "V2", art: "voll", pflicht: false, befehl: `${pruef}bash -c "$s" x --voll | tail -n +61 | head -n 60`, zweck: "nur auf Bitte: Zeilen 61–120 (weiter mit +121 usw.)" },
+    { nr: "3", art: "aufraeumen", pflicht: true, befehl: "unset s", zweck: "entfernt die Variable" },
   ];
+  return liste.map((x) => ({ ...x, zeichen: x.befehl.length }));
 }
 
 export function v4Summe(wurzel, ref, ohne = []) {
@@ -554,7 +568,8 @@ if (istHaupt) {
     const w = werte(k());
     const inv = sha256(lf(lies(wurzel, INVENTUR)));
     console.log("Sollwerte für den Ladeweg (printf %s \"$s\": abschließende Zeilenumbrüche entfernt)");
-    console.log(`  16-Hex:   ${w.kurz16}    printf %s "$s" | sha256sum | cut -c1-16`);
+    console.log(`  32-Hex:   ${w.kurz32}    (Tor: printf %s "$s" | sha256sum | grep -q '^…' && bash -c "$s")`);
+    console.log(`  16-Hex:   ${w.kurz16}`);
     console.log(`  SHA-256:  ${w.sha256}`);
     console.log(`  Zeilen:   ${w.zeilen}    printf %s "$s" | wc -l`);
     console.log(`  Bytes:    ${w.bytes}    printf %s "$s" | wc -c`);
@@ -564,7 +579,7 @@ if (istHaupt) {
       console.error("Aufruf: --befehle <ref>");
       process.exit(2);
     }
-    for (const b of befehle(arg)) console.log(`${String(b.length).padStart(3)} Zeichen  ${b}`);
+    for (const b of befehle(arg, werte(k()))) console.log(`${b.nr.padEnd(3)} ${String(b.zeichen).padStart(3)} Zeichen  ${b.befehl}${b.pflicht ? "" : "   (optional)"}`);
   } else if (befehl === "--pruefen") {
     const f = pruefen(wurzel);
     if (f.length) {

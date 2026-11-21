@@ -563,7 +563,38 @@ describe.skipIf(!BASH)("deploy/inventur-konsole.sh: nur lesen, keine Geheimnisse
        steht dann nur der Kommentar eines Schlüssels (ssh-keygen -lf, hier eine Mailadresse) — wie in
        inventur.sh fängt den erst Schicht 2 ab. */
     keineGeheimnisse(lauf([], { INVENTUR_MASKE: "aus" }).alles);
-    keineGeheimnisse(lauf(["--voll"], { INVENTUR_MASKE: "aus" }).alles, [MAIL]);
+    keineGeheimnisse(lauf(["--voll"], { INVENTUR_MASKE: "aus" }).alles);
+  });
+
+  it("A-2: Kommentare von SSH-Schlüsseln (Klarnamen, rinat@DESKTOP-X) erscheinen nirgends — auch ohne Maske; Fingerabdruck bleibt", () => {
+    datei(
+      "heim/.ssh/authorized_keys",
+      [
+        `command="/opt/apps/centric-dienstplanung/deploy.sh --ssh",restrict ssh-ed25519 ${KOERPER_DEPLOY} rinat@DESKTOP-X`,
+        `ssh-ed25519 ${KOERPER_ADMIN} ${MITARBEITER}`,
+        "",
+      ].join("\n"),
+    );
+    for (const env of [{}, { INVENTUR_MASKE: "aus" }]) {
+      for (const args of [[], ["--voll"]]) {
+        const r = lauf(args, env);
+        expect(r.code, r.alles).toBe(0);
+        for (const g of ["rinat@", "DESKTOP-X", MITARBEITER, "Mustermann", KOERPER_DEPLOY, KOERPER_ADMIN]) expect(r.alles, `${g} ${args}`).not.toContain(g);
+        if (args.length && spawnSync(BASH, ["-c", "command -v ssh-keygen"], { encoding: "utf8" }).status === 0) {
+          expect(r.out).toMatch(/\n256 SHA256:[A-Za-z0-9+/]{43} \(ED25519\)\n/);
+        }
+      }
+    }
+  });
+
+  it.skipIf(process.platform === "win32")("A-5: Steuerzeichen (ESC/CSI, BEL) aus Dateinamen erscheinen in --voll nicht", () => {
+    datei("app/\u001b[31mrot\u0007.sh", "# Probe\n");
+    datei("app/zustand/\u001b]0;titel\u0007x", "{}\n");
+    const r = lauf(["--voll"]);
+    expect(r.code, r.alles).toBe(0);
+    expect(r.out).toContain("=== V-4");
+    expect(r.out).not.toMatch(/[\u0000-\u0008\u000b-\u001f\u007f]/);
+    expect(r.out).toContain("[31mrot");
   });
 
   it("nur erlaubte Docker-Aufrufe, nie docker exec (Kurz und --voll)", () => {
@@ -609,6 +640,50 @@ describe.skipIf(!BASH)("Ladeweg: Hash-Semantik printf %s", () => {
     expect(w.zeilen).toBe(QUELLTEXT.split("\n").length - 2);
     expect(bau.werte("a\nb\n\n\n").zeilen).toBe(1);
     expect(bau.werte("a\r\nb\r\n").sha256).toBe(sha("a\nb"));
+  });
+
+  /* A-1: Tor-Befehl. Die Maschine vergleicht 32 Hex (128 Bit); bei falschem Sollwert startet bash nicht.
+     Ohne Stubs bricht das Skript sofort an der Selbstprüfung ab (nicht root bzw. kein Betriebsverzeichnis) —
+     die erste Zeile „Dieses Skript ändert nichts.“ beweist aber, dass bash gestartet wurde. */
+  const torLauf = (befehl) =>
+    spawnSync(BASH, ["-c", `s=$(cat "$1"); ${befehl}`, "x", p(SKRIPT)], {
+      encoding: "utf8",
+      env: { ...process.env, CENTRIC_VERZ: p(path.join(tmp, "gibt-es-nicht")) },
+      timeout: 400000,
+    });
+  const tor = () => bau.befehle("REF", bau.werte(QUELLTEXT)).find((b) => b.art === "tor").befehl;
+
+  it("A-1: Tor mit richtigem Sollwert startet das Skript, mit falschem nicht (Tippfehler → nichts ausgeführt)", () => {
+    const w = bau.werte(QUELLTEXT);
+    expect(w.kurz32).toBe(w.sha256.slice(0, 32));
+    expect(tor()).toBe(`printf %s "$s" | sha256sum | grep -q '^${w.kurz32}' && bash -c "$s"`);
+    expect(torLauf(tor()).stdout).toContain("Dieses Skript ändert nichts.");
+    const falsch = tor().replace(w.kurz32, (w.kurz32[0] === "0" ? "1" : "0") + w.kurz32.slice(1));
+    const r = torLauf(falsch);
+    expect(r.stdout).toBe("");
+    expect(r.status).not.toBe(0);
+  });
+
+  it("A-1 Mutation: „&&“ durch „;“ ersetzt → bash startet trotz falschem Sollwert (der Test oben wäre rot)", () => {
+    const w = bau.werte(QUELLTEXT);
+    const mutiert = tor().replace(w.kurz32, "f".repeat(32)).replace(" && ", " ; ");
+    expect(torLauf(mutiert).stdout).toContain("Dieses Skript ändert nichts.");
+  });
+
+  it("A-1/A-4: Befehlsfolge kurz, jeder Befehl mit Zeichenzahl, kein Pager (more/less), --voll seitenweise per head/tail", () => {
+    const w = bau.werte(QUELLTEXT);
+    const b = bau.befehle("6c0b0e0dc9ef", w);
+    expect(b.filter((x) => x.pflicht).map((x) => x.art)).toEqual(["laden", "tor", "aufraeumen"]);
+    for (const x of b) {
+      expect(x.zeichen).toBe(x.befehl.length);
+      expect(x.befehl).not.toMatch(/\b(more|less)\b/);
+    }
+    const voll = b.filter((x) => x.art === "voll").map((x) => x.befehl);
+    expect(voll).toEqual([
+      `printf %s "$s" | sha256sum | grep -q '^${w.kurz32}' && bash -c "$s" x --voll | head -n 60`,
+      `printf %s "$s" | sha256sum | grep -q '^${w.kurz32}' && bash -c "$s" x --voll | tail -n +61 | head -n 60`,
+    ]);
+    expect(b.find((x) => x.art === "kontrolle").befehl).toBe(`printf %s "$s" | sha256sum | grep -c '^${w.kurz32}'`);
   });
 
   it("das Skript ist klein genug für ein einzelnes Argument von bash -c (< 100 000 Byte)", () => {
@@ -782,12 +857,20 @@ describe("deploy/inventur-konsole.sh: Quelltext-Wächter", () => {
 /* ------------------------------------------------------------------ */
 describe("docs/acc45/INVENTUR-KONSOLE.md", () => {
   const doku = lf(readFileSync(path.join(WURZEL, "docs", "acc45", "INVENTUR-KONSOLE.md"), "utf8"));
-  it("nennt die aktuellen Vergleichswerte (16-Hex, SHA-256, Zeilen, Bytes) des Skripts", () => {
+  it("nennt die aktuellen Vergleichswerte (32-Hex im Tor, SHA-256, Zeilen, Bytes) und die Torbefehle des Skripts", () => {
     const w = bau.werte(QUELLTEXT);
-    expect(doku).toContain(`\`${w.kurz16}\``);
+    expect(doku).toContain(`\`${w.kurz32}\``);
     expect(doku).toContain(`\`${w.sha256}\``);
     expect(doku).toContain(`Zeilen: \`${w.zeilen}\``);
     expect(doku).toContain(`Bytes: \`${w.bytes}\``);
+    expect(doku).toContain(`grep -q '^${w.kurz32}' && bash -c "$s"`);
+  });
+  it("A-4: kein Pager mit Shell-Escape (more/less) in den Befehlen; --voll-Fotos vor dem Senden durchsehen", () => {
+    expect(doku).not.toMatch(/\|\s*(more|less)\b/);
+    expect(doku).toContain("head -n 60");
+    expect(doku).toMatch(/Shell-Escape/);
+    expect(doku).toMatch(/vor dem Senden/);
+    expect(doku).not.toMatch(/praktisch unmöglich/);
   });
   it("Beispiel-Kurzprotokoll ist als erfunden gekennzeichnet; Rückweg und Übermittlung beschrieben", () => {
     expect(doku).toMatch(/BEISPIEL/);
