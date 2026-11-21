@@ -46,7 +46,8 @@ const INVENTUR = path.join(WURZEL, "deploy", "inventur.sh");
 const lf = (t) => t.replace(/\r\n/g, "\n");
 const QUELLTEXT = lf(readFileSync(SKRIPT, "utf8"));
 const BASH = bashFinden();
-vi.setConfig({ testTimeout: 120000 });
+/* Unter Git Bash (Windows) dauert ein Lauf 30–60 s (viele Prozesse); unter Linux wenige Sekunden. */
+vi.setConfig({ testTimeout: 900000 });
 
 const sha = (t) => createHash("sha256").update(t).digest("hex");
 
@@ -226,7 +227,8 @@ function umgebung(env) {
     CENTRIC_HOME_WURZEL: p(path.join(tmp, "keine-weiteren-konten")),
     CENTRIC_ZEITGRENZE: "20",
     INVENTUR_OS_RELEASE: p(path.join(tmp, "os-release")),
-    HOME: p(heim),
+    /* root läuft mit eigenem HOME (/root, hier ohne authorized_keys); das Konto ist CENTRIC_KONTO_HOME */
+    HOME: p(path.join(tmp, "root-heim")),
     TMPDIR: p(tmpDir),
     ...env,
   };
@@ -236,14 +238,19 @@ function umgebung(env) {
 }
 
 function lauf(args = [], env = {}) {
-  const r = spawnSync(BASH, [p(SKRIPT), ...args], { encoding: "utf8", env: umgebung(env), timeout: 100000 });
+  const r = spawnSync(BASH, [p(SKRIPT), ...args], { encoding: "utf8", env: umgebung(env), timeout: 400000 });
   return { code: r.status, out: r.stdout, err: r.stderr, alles: r.stdout + r.stderr };
 }
 
-/* Wie der Betreiber: s=$(curl …) schneidet abschließende Zeilenumbrüche ab; dann bash -c "$s" x [--voll]. */
+/* Wie der Betreiber: s=$(curl …) schneidet abschließende Zeilenumbrüche ab; dann bash -c "$s" x [--voll].
+   Statt curl liest hier $(cat …) die Datei (gleiche Semantik). Der Umweg über eine äußere bash hält die
+   Befehlszeile kurz (Windows begrenzt sie auf 32 767 Zeichen; das Skript ist größer). */
 function laufWieKonsole(args = [], env = {}) {
-  const s = QUELLTEXT.replace(/\n+$/, "");
-  const r = spawnSync(BASH, ["-c", s, "inventur", ...args], { encoding: "utf8", env: umgebung(env), timeout: 100000 });
+  const r = spawnSync(BASH, ["-c", 's=$(cat "$1"); shift; bash -c "$s" inventur "$@"', "x", p(SKRIPT), ...args], {
+    encoding: "utf8",
+    env: { ...umgebung(env), PATH: process.env.PATH },
+    timeout: 400000,
+  });
   return { code: r.status, out: r.stdout, err: r.stderr, alles: r.stdout + r.stderr };
 }
 
@@ -466,6 +473,7 @@ describe.skipIf(!BASH)("deploy/inventur-konsole.sh: Abweichungen je V-n", () => 
     const r = lauf();
     expect(statusZeile(r.out, "V-6")).toMatch(/^V-6 ABW Namen \d+ Pflicht fehlt 2 /);
     expect(r.out).toContain("\n    fehlt Pflicht-Nr 2 5\n");
+    expect(r.out.split("\n").filter((z) => z.startsWith("    ")).length).toBe(2);
     expect(bau.envNamenZuNummern([2, 5], readFileSync(path.join(WURZEL, ".env.example"), "utf8"))).toEqual(weg);
     rmSync(path.join(app, ".env"));
     expect(statusZeile(lauf().out, "V-6")).toBe("V-6 FEHLT .env fehlt");
@@ -529,7 +537,7 @@ describe.skipIf(!BASH)("deploy/inventur-konsole.sh: Selbstprüfung (Abbruch vor 
     expect(i).toBeGreaterThan(0);
     const j = QUELLTEXT.indexOf("maskieren() {", i);
     writeFileSync(kaputt, QUELLTEXT.slice(0, j) + "maskieren() { cat; }\nmaskieren_alt() {" + QUELLTEXT.slice(j + "maskieren() {".length));
-    const r = spawnSync(BASH, [p(kaputt)], { encoding: "utf8", env: umgebung({}), timeout: 100000 });
+    const r = spawnSync(BASH, [p(kaputt)], { encoding: "utf8", env: umgebung({}), timeout: 400000 });
     expect(r.status, r.stdout + r.stderr).toBe(2);
     expect(r.stdout).toContain("ABBRUCH: eingebettete inventur.sh: Prüfsumme falsch");
     expect(aufrufe()).toEqual([]);
@@ -538,8 +546,8 @@ describe.skipIf(!BASH)("deploy/inventur-konsole.sh: Selbstprüfung (Abbruch vor 
 
 /* ------------------------------------------------------------------ */
 describe.skipIf(!BASH)("deploy/inventur-konsole.sh: nur lesen, keine Geheimnisse", () => {
-  it("schreibt keine Datei: Test-Baum (ohne Stub-Protokoll) vorher = nachher, TMPDIR leer — Kurz und --voll", () => {
-    const ohne = [path.join(stubDir, "aufrufe.log")];
+  it("schreibt keine Datei: Test-Baum (ohne Stub-Verzeichnis) vorher = nachher, TMPDIR leer — Kurz und --voll", () => {
+    const ohne = [stubDir]; /* Stub-Verzeichnis: Aufrufprotokoll der Stubs (Testwerkzeug) */
     const vorher = abbild(tmp, ohne);
     expect(lauf().code).toBe(0);
     expect(lauf(["--voll"]).code).toBe(0);
