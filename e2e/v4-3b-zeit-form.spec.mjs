@@ -49,7 +49,9 @@ test.describe("V4-3b: Zeit/Abrechnung mit Radiusstufen aus den Tokens", () => {
       expect(a.filter((r) => r.stufe === "klein").length, `${breite.width} px Anträge: Wochen`).toBeGreaterThanOrEqual(16);
 
       await geheZu(page, "Belastbarkeit");
-      await pruefeStufen(page, "main", 0, `${breite.width} px Belastbarkeit`);
+      const b = await pruefeStufen(page, "main", 1, `${breite.width} px Belastbarkeit`);
+      expect(new Set(b.map((r) => r.stufe)), `${breite.width} px Belastbarkeit: Wochenzeile und Dienstbalken`)
+        .toEqual(new Set(["mittel", "klein"]));
       const legende = await page.evaluate(() => [...document.querySelectorAll("main span")]
         .filter((e) => e.style.width === "26px" && e.style.height === "16px")
         .map((e) => getComputedStyle(e).borderTopLeftRadius));
