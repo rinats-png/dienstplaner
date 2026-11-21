@@ -692,6 +692,71 @@ describe.skipIf(!BASH)("Ladeweg: Hash-Semantik printf %s", () => {
 });
 
 /* ------------------------------------------------------------------ */
+/* Review #449, Auflagen A-7/A-8: Die Doku warnt vor `&`/`;` statt `&&` und vor einem verkürzten Sollwert. */
+describe("Doku INVENTUR-KONSOLE.md: Tor-Grenzen (A-7, A-8)", () => {
+  const doku = () => readFileSync(path.join(WURZEL, "docs", "acc45", "INVENTUR-KONSOLE.md"), "utf8").replace(/\r\n/g, "\n");
+  const abschnitt = (d, nr) => {
+    const a = d.indexOf(`\n## ${nr}. `);
+    const e = d.indexOf("\n## ", a + 1);
+    return d.slice(a, e < 0 ? undefined : e);
+  };
+
+  it("A-7: §2 und §9 nennen „&&“ als zwei Zeichen, den Hinweis „[1]“ und STOPP", () => {
+    const d = doku();
+    for (const nr of [2, 9]) {
+      const s = abschnitt(d, nr);
+      expect(s, `§${nr}`).toMatch(/`&&` sind zwei Zeichen/);
+      expect(s, `§${nr}`).toMatch(/`\[1\]/);
+      expect(s, `§${nr}`).toMatch(/STOPP/);
+    }
+  });
+
+  it("A-7: der Satz „nie dazu, dass ein anderer Inhalt läuft“ steht nicht mehr uneingeschränkt", () => {
+    const s = abschnitt(doku(), 9);
+    expect(s).not.toMatch(/nie dazu, dass ein anderer Inhalt läuft\.?\s*$/m);
+    expect(s).toMatch(/`&` oder `;` statt `&&`/);
+  });
+
+  it("A-8: genau 32 Zeichen tippen; Kontrolle ist die Zeichenzahl (Befehl 2 = 88), nicht K1", () => {
+    const d = doku();
+    const w = bau.werte(QUELLTEXT);
+    const zeichen = Object.fromEntries(bau.befehle("REF0123456ab", w).map((b) => [b.art, b.zeichen]));
+    expect(zeichen.tor).toBe(88);
+    for (const nr of [2, 9]) {
+      const s = abschnitt(d, nr);
+      expect(s, `§${nr}`).toMatch(/genau 32 Zeichen/);
+      expect(s, `§${nr}`).toMatch(/Befehl 2 hat genau 88 Zeichen/);
+      expect(s, `§${nr}`).toMatch(/K1 erkennt einen verkürzten Sollwert nicht/);
+    }
+    // §9 darf K1 nicht mehr als Kontrolle gegen einen verkürzten Sollwert nennen.
+    expect(abschnitt(d, 9)).not.toMatch(/Kontrolle: K1 muss `1` zeigen/);
+    const s2 = abschnitt(d, 2);
+    expect(s2).toMatch(/[Vv]or `Enter` zählen/);
+    // Zählhilfe: Sollwert in 4 Blöcken zu 8 Zeichen
+    expect(s2).toContain(w.kurz32.match(/.{8}/g).join(" "));
+    expect(s2).toMatch(/V1 hat 110[^\n]*V2 hat 124/);
+    expect(abschnitt(d, 2)).toMatch(/und der Sollwert vollständig ist/);
+  });
+
+  it("A-7: `;` hat kein Erkennungszeichen; bei `&` folgt später `[1]+ Done`/`Exit 1`", () => {
+    const d = doku();
+    const s9 = abschnitt(d, 9).replace(/\s+/g, " ");
+    expect(s9).toMatch(/Bei `;` gibt es nach `?Enter`? kein Erkennungszeichen; nur die Kontrolle vor `?Enter`? hilft\./);
+    for (const nr of [5, 9]) {
+      const s = abschnitt(d, nr);
+      expect(s, `§${nr}`).toMatch(/`\[1\]\+ Done`/);
+      expect(s, `§${nr}`).toMatch(/`\[1\]\+ Exit 1`/);
+    }
+  });
+
+  it("Restrisiken: 12-stelliger Präfix im <ref> und SIGPIPE bei `| head -n 60` sind genannt", () => {
+    const s = abschnitt(doku(), 9);
+    expect(s).toMatch(/12-stellige[rn]? Präfix/);
+    expect(s).toMatch(/SIGPIPE/);
+  });
+});
+
+/* ------------------------------------------------------------------ */
 describe("Werkzeug werkzeug/inventur-konsole-bauen.mjs", () => {
   it("--pruefen: eingebettete inventur.sh und Vorlage aktuell, keine verbotenen Befehle, Doku-Sollwerte stimmen", () => {
     expect(bau.pruefen(WURZEL)).toEqual([]);
