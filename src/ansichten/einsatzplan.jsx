@@ -116,13 +116,13 @@ export function Einsatzplan({ sitz, ym, setYm, akt, oeffnePerson }) {
                       /* Offener Schutzkonflikt (A2): bleibt markiert, bis umgeplant ist. */
                       <span title="Einteilung widerspricht einer Schutz- oder Einsatzregel der Person — bitte umplanen"
                         aria-label="Schutzkonflikt" style={{ position: "absolute", inset: -1, border: `2px solid ${C.danger}`,
-                          borderRadius: 6, pointerEvents: "none" }} />)}
+                          borderRadius: "var(--v4-r-klein)", pointerEvents: "none" }} />)}
                     {(() => { const b = bestaetigt.get(`${p.id}|${d}`);
                       if (!b) return null;
                       /* Bewusst bestätigte Abweichung: bleibt sichtbar, bis sie behoben ist. */
                       return <span title={`${(WARNSTUFEN[b.stufe] || WARNSTUFEN.hinweis).label} bestätigt: ${(b.befunde || []).map((x) => x.text || befundText(x.regel)).join(" · ")}`}
                         aria-label={`${(WARNSTUFEN[b.stufe] || WARNSTUFEN.hinweis).label} bestätigt`}
-                        style={{ position: "absolute", top: -2, right: 1, width: 7, height: 7, borderRadius: 4,
+                        style={{ position: "absolute", top: -2, right: 1, width: 7, height: 7, borderRadius: "var(--v4-r-pille)",
                           background: b.stufe === "recht" ? C.danger : C.warn, border: `1px solid ${C.flaeche}` }} />; })()}
                   </div></td>); })}
               <td style={{ padding: "8px 16px", borderBottom: `1px solid ${C.lineSoft}`, borderLeft: `1px solid ${C.lineSoft}`, whiteSpace: "nowrap" }}>

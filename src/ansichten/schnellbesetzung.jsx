@@ -52,7 +52,7 @@ export function Schnellbesetzung({ sitz, datum, dienstId, akt, onClose }) {
       {/* Weg 1: direkt eintragen */}
       <Lab style={{ marginBottom: 10 }}>Direkt eintragen · nach Eignung sortiert</Lab>
       {moeglich.length === 0 && (
-        <div style={{ padding: 14, borderRadius: 12, background: C.dangerLight, color: C.danger, fontSize: 13.5, marginBottom: 16 }}>
+        <div style={{ padding: 14, borderRadius: "var(--v4-r-mittel)", background: C.dangerLight, color: C.danger, fontSize: 13.5, marginBottom: 16 }}>
           Niemand einsetzbar, ohne Ruhezeit oder Einschränkungen zu verletzen. Nutze die Anfrage unten,
           die Eskalation im Tagesdetail oder wähle unten jemanden mit Abweichung.
         </div>)}
@@ -65,7 +65,7 @@ export function Schnellbesetzung({ sitz, datum, dienstId, akt, onClose }) {
                 `${x.person.nachname}, ${x.person.vorname} — Vorschlag ${i + 1}`)}
               className="karte" style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 13px",
                 marginBottom: 7, cursor: "pointer", outline: an ? `2px solid ${C.accent}` : "none" }}>
-              <span style={{ width: 25, height: 25, borderRadius: 9, flexShrink: 0, display: "flex",
+              <span style={{ width: 25, height: 25, borderRadius: "var(--v4-r-klein)", flexShrink: 0, display: "flex",
                 alignItems: "center", justifyContent: "center", fontSize: 11.5, fontWeight: 700, ...NUM,
                 background: i === 0 ? C.okLight : C.bg, color: i === 0 ? C.ok : C.dimmer }}>{i + 1}</span>
               <div style={{ flex: 1, minWidth: 0 }}>

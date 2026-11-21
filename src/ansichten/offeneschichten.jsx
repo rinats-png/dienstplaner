@@ -68,7 +68,7 @@ export function OffeneSchichten({ sitz, akt, gehZu }) {
                 <div key={i} style={{ display: "flex", alignItems: "center", gap: 14,
                   padding: "13px var(--pad-x)",
                   borderBottom: i < Math.min(5, luecken.length - 1) ? `1px solid ${C.lineSoft}` : "none" }}>
-                  <span style={{ width: 4, alignSelf: "stretch", borderRadius: 2,
+                  <span style={{ width: 4, alignSelf: "stretch", borderRadius: "var(--v4-r-pille)",
                     background: da ? da.farbe : C.line }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 14.5, fontWeight: 550 }}>
@@ -105,7 +105,7 @@ export function OffeneSchichten({ sitz, akt, gehZu }) {
                     background: an ? C.accentLight : "transparent",
                     borderLeft: `3px solid ${an ? C.accent : "transparent"}`,
                     borderBottom: i < offen.length - 1 ? `1px solid ${C.lineSoft}` : "none" }}>
-                  <span style={{ width: 4, alignSelf: "stretch", minHeight: 34, borderRadius: 2,
+                  <span style={{ width: 4, alignSelf: "stretch", minHeight: 34, borderRadius: "var(--v4-r-pille)",
                     background: da ? da.farbe : C.line }} />
                   <span style={{ flex: 1, minWidth: 0 }}>
                     <span style={{ display: "block", fontSize: 14, fontWeight: an ? 640 : 550 }}>
@@ -257,7 +257,7 @@ export function OffeneSchichten({ sitz, akt, gehZu }) {
                       {" "}· {da.start}–{da.ende}</span>}</div>
                 </div>
 
-                <div style={{ padding: "14px 16px", borderRadius: 10,
+                <div style={{ padding: "14px 16px", borderRadius: "var(--v4-r-mittel)",
                   background: moeglich > 0 ? C.okLight : C.warnLight,
                   border: `1px solid ${moeglich > 0 ? C.ok : C.warn}66` }}>
                   <div style={{ fontSize: 14, lineHeight: 1.55,

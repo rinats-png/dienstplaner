@@ -122,7 +122,7 @@ export function Schichtfolge({ sitz, akt }) {
             <Lab style={{ margin: "20px 0 12px" }}>Startpunkt je {m.einheitLabel}</Lab>
             {m.einheiten.map((e) => (
               <div key={e.id} style={{ display: "flex", alignItems: "center", gap: "8px 13px", marginBottom: 10, flexWrap: "wrap" }}>
-                <span style={{ width: 8, height: 8, borderRadius: 4, background: lesbar(e.farbe, 3) }} />
+                <span style={{ width: 8, height: 8, borderRadius: "var(--v4-r-pille)", background: lesbar(e.farbe, 3) }} />
                 <span style={{ fontSize: 13.5, flex: "1 1 120px", minWidth: 0 }}>{e.name}</span>
                 <Sel value={versatzTageVon(e)} disabled={!editierbar}
                   aria-label={`Startpunkt im Zyklus für ${e.name}`}

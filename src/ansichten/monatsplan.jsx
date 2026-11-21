@@ -140,7 +140,7 @@ export function Monatsplan({ sitz, ym, setYm, oeffneTag, akt, schmal,
                 <td style={{ position: "sticky", left: 0, zIndex: 1, background: C.flaeche, padding: "11px 20px",
                   borderBottom: `1px solid ${C.lineSoft}` }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <span style={{ width: 8, height: 8, borderRadius: 4, background: lesbar(e.farbe, 3), flexShrink: 0 }} />
+                    <span style={{ width: 8, height: 8, borderRadius: "var(--v4-r-pille)", background: lesbar(e.farbe, 3), flexShrink: 0 }} />
                     <div><div style={{ fontSize: 14, fontWeight: 500 }}>{e.name}</div>
                       <div style={{ fontSize: 11.5, color: C.dimmer, ...NUM }}>
                         {aktive(m, tage[0]).filter((p) => einheitAm(p, tage[0]) === e.id).length} Pers. · Versatz {e.versatz}</div>
@@ -193,11 +193,11 @@ export function Monatsplan({ sitz, ym, setYm, oeffneTag, akt, schmal,
                       <div style={{ fontSize: 11.5, lineHeight: 1.1, ...NUM }}>
                         <span style={{ color: col, fontWeight: b.status === "ok" ? 500 : 700 }}>{b.anzahl}</span>
                         <span style={{ color: C.dimmer, fontSize: 9.5 }} {...(b.bedarfOffen ? { title: BEDARF_OFFEN_TEXT } : {})}>/{sollAnzeige(b)}</span></div>
-                      <div style={{ width: "72%", height: 3, borderRadius: 2, background: C.lineSoft, overflow: "hidden" }}>
+                      <div style={{ width: "72%", height: 3, borderRadius: "var(--v4-r-pille)", background: C.lineSoft, overflow: "hidden" }}>
                         <div style={{ width: `${anteil}%`, height: "100%",
                           background: b.status === "ok" ? C.ok : b.status === "warn" ? C.warn : C.danger }} /></div>
                       {b.qualFehlt && <div title="Fachkraftquote nicht erfüllt"
-                        style={{ width: 5, height: 5, borderRadius: 3, background: C.danger }} />}
+                        style={{ width: 5, height: 5, borderRadius: "var(--v4-r-pille)", background: C.danger }} />}
                     </div></td>); })}
               </tr>))}
           </tbody>
