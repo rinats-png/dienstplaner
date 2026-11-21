@@ -39,6 +39,10 @@ export function Personalakte({ sitz, personId, ym, onClose, akt }) {
   const zeigt = kontoSichtbar(sitz, p);
   const nm = Array.from({ length: 12 }, (_, i) => istStunden(m, p, `${jahr}-${pad(i + 1)}`).nacht);
   const maxN = Math.max(1, ...nm);
+  /* A11Y-2 (Review #445): Monat der Ansicht; die Monatswerte als Text für Vorlesesoftware (nicht nur im title). */
+  const mAkt = Number(ym.slice(5)) - 1;
+  const nachtText = `Nachtstunden je Monat ${jahr}: ${nm.map((v, i) =>
+    `${MON[i]} ${v === null || v === undefined ? "keine Angabe" : `${n1(v)} Stunden`}`).join(", ")}; markiert: ${MON[mAkt]}`;
 
   const eintragen = () => {
     setFehler(null);
@@ -71,12 +75,15 @@ export function Personalakte({ sitz, personId, ym, onClose, akt }) {
         </KpiRow>
         <div style={{ margin: "24px 0" }}>
           <Lab style={{ marginBottom: 11 }}>Nachtarbeit im Jahresverlauf</Lab>
-          <div style={{ display: "flex", alignItems: "flex-end", gap: 6, height: 72 }}>
-            {nm.map((v, i) => (<div key={i} style={{ flex: 1, textAlign: "center" }}>
+          {/* A11Y-2: eine Grafik mit Namen (alle Monatswerte); die Spalten sind aria-hidden (keine doppelte Ansage).
+              Der Monat der Ansicht ist zusätzlich ohne Farbe markiert: Buchstabe fett und unterstrichen (1.4.1). */}
+          <div role="img" aria-label={nachtText} style={{ display: "flex", alignItems: "flex-end", gap: 6, height: 72 }}>
+            {nm.map((v, i) => (<div key={i} aria-hidden="true" style={{ flex: 1, textAlign: "center" }}>
               <div title={`${MON[i]}: ${n1Ist(v)} h`} style={{ height: Math.max(3, ((v || 0) / maxN) * 56),
-                background: i === Number(ym.slice(5)) - 1 ? C.accent : C.steuer, borderRadius: "var(--v4-r-klein) var(--v4-r-klein) 0 0",
+                background: i === mAkt ? C.accent : C.steuer, borderRadius: "var(--v4-r-klein) var(--v4-r-klein) 0 0",
                 transition: "height .4s" }} />
-              <div style={{ fontSize: 10, color: C.dimmer, marginTop: 5 }}>{MON[i].slice(0, 1)}</div></div>))}
+              <div style={{ fontSize: 10, color: i === mAkt ? C.text : C.dimmer, marginTop: 5,
+                fontWeight: i === mAkt ? 700 : undefined, textDecoration: i === mAkt ? "underline" : undefined }}>{MON[i].slice(0, 1)}</div></div>))}
           </div>
         </div>
       </>)}
