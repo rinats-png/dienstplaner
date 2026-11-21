@@ -724,7 +724,7 @@ describe("Doku INVENTUR-KONSOLE.md: Tor-Grenzen (A-7, A-8)", () => {
       expect(s, `§${nr}`).toMatch(/genau 32 Zeichen/);
       expect(s, `§${nr}`).toMatch(/K1[^\n]*`1`/);
     }
-    expect(abschnitt(d, 2)).toMatch(/vor `Enter` zählen/);
+    expect(abschnitt(d, 2)).toMatch(/[Vv]or `Enter` zählen/);
   });
 
   it("Restrisiken: 12-stelliger Präfix im <ref> und SIGPIPE bei `| head -n 60` sind genannt", () => {

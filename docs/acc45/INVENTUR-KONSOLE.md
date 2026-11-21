@@ -39,10 +39,18 @@ aktuellen Sollwert und ihrer Zeichenzahl stehen in Abschnitt 3.
 2. `printf %s "$s" | sha256sum | grep -q '^<32-Hex>' && bash -c "$s"` — **Tor**: Die Maschine vergleicht die ersten
    32 Hex-Zeichen (128 Bit) der Prüfsumme mit dem Sollwert. Nur bei Gleichheit startet `bash` das Skript. Ein
    Tippfehler im Sollwert oder ein anderer Inhalt führt dazu, dass **nichts** ausgeführt wird (keine Ausgabe).
+   Das gilt nur, wenn `&&` richtig steht (siehe Kasten).
 3. `unset s` — entfernt die Variable.
 
+> **Vor `Enter` bei Befehl 2, V1, V2 (10 Sekunden):**
+> - `&&` sind zwei Zeichen. Ein `&` oder ein `;` statt `&&` startet das Skript **ohne** Prüfung.
+> - Erscheint `[1] …` (eine Zahl in Klammern) oder fehlt `&&`: **STOPP.** Befehl 3, Foto an Claude.
+> - Sollwert: genau 32 Zeichen tippen. Vor `Enter` zählen. Ein kürzerer Sollwert schwächt das Tor.
+> - Empfohlen: zuerst **K1** tippen. K1 muss `1` zeigen. Zeigt K1 `0`: Befehl 2 nicht tippen.
+
 Optional, als zusätzliche sichtbare Kontrolle vor Befehl 2: **K1** zeigt `1` (Prüfsumme passt) oder `0`; **K2** zeigt
-Zeilen und Bytes. Nur auf Bitte von Claude: **V1**/**V2** zeigen das ausführliche Protokoll in Blöcken zu 60 Zeilen.
+Zeilen und Bytes. K1 vor Befehl 2 ist empfohlen (Kasten oben). Nur auf Bitte von Claude: **V1**/**V2** zeigen das
+ausführliche Protokoll in Blöcken zu 60 Zeilen.
 
 Tippen Sie jede Zeile von Hand und prüfen Sie sie vor `Enter`. Auf manchen Tastaturbelegungen kommen `|`, `$`, `"`,
 `'`, `^`, `(` oder `)` falsch an; dann zeigt die Zeile vor `Enter` ein anderes Zeichen.
@@ -153,6 +161,7 @@ Bedeutung der Kurzformen:
 | `curl: (22) … 404` | `<ref>` falsch getippt | Befehl 1 neu tippen |
 | `bash: curl: command not found` | curl fehlt | Abschnitt 7 |
 | Befehl 2 zeigt nichts (K1 zeigt `0`; K2 andere Zahlen) | Prüfsumme passt nicht: falscher Inhalt oder Tippfehler im Sollwert | Befehl 2 neu tippen; bleibt es leer: STOPP, Befehl 3, Foto an Claude |
+| `[1] <Zahl>` nach Befehl 2, V1 oder V2 | `&` statt `&&` getippt: Skript lief ungeprüft | STOPP, Befehl 3, Foto an Claude |
 | `ABBRUCH: nicht root` | nicht als root angemeldet | als root anmelden, erneut ab Befehl 1 |
 | `ABBRUCH: fremdes System …` | kein Ubuntu 24.04 | STOPP, Foto an Claude |
 | `ABBRUCH: Besitz verschieden …` / `Besitzer ist root …` / `… fehlt` | Betriebsverzeichnis anders als bestätigt | STOPP, Foto an Claude |
@@ -197,8 +206,16 @@ aus der Konsole ebenso. Hinweis: Die Shell von root merkt sich die getippten Bef
   gezielt passenden anderen Inhalt (zweites Urbild) bräuchte ein Angreifer nach heutigem Wissen rund 2^128
   Versuche; das gilt als nicht durchführbar. Das Tor schützt nicht, wenn der Sollwert selbst falsch übermittelt
   wurde; deshalb muss er aus dem Chat UND aus Abschnitt 3 dieses Commits stammen und gleich sein.
-- Der Vergleich prüft nur den Anfang (`grep -q '^…'`). Ein Tippfehler im Sollwert führt dazu, dass nichts läuft —
-  nie dazu, dass ein anderer Inhalt läuft.
+- Der Vergleich prüft nur den Anfang (`grep -q '^…'`). Ein Tippfehler **im Sollwert** führt dazu, dass nichts
+  läuft. Das gilt nur für den Sollwert und nur bei vollständigem Sollwert:
+  - **`&` oder `;` statt `&&` (A-7):** Dann ist das Tor umgangen. Das Skript läuft ungeprüft, auch bei falschem
+    Inhalt. Bei `&` meldet die Shell `[1] <PID>`. `&&` sind zwei Zeichen; erscheint `[1] …` oder fehlt `&&`: STOPP.
+  - **Verkürzter Sollwert (A-8):** Ein kürzerer Sollwert (z. B. `'^dc'`) ist ein kürzerer Präfixvergleich und
+    schwächt das Tor. Tippen Sie genau 32 Zeichen. Kontrolle: K1 muss `1` zeigen.
+- `<ref>` ist ein 12-stelliger Präfix eines Commits. Ein Commit (auch in einem Fork) mit gleichem Präfix und anderem
+  Inhalt wird vom Tor abgefangen (andere Prüfsumme, nichts läuft).
+- V1 endet mit `| head -n 60`. Nach 60 Zeilen beendet `head` die Pipe; das Skript bricht per SIGPIPE ab. Das hat
+  keine Schreibwirkung (das Skript schreibt nichts); die restlichen Zeilen zeigt V2.
 - `bash -c` liest beim Start `BASH_ENV`, bevor das Skript diese Variable entfernt. In der Remotekonsole setzt sie
   niemand. Prüfvariablen (`INVENTUR_*`, `CENTRIC_*`) dienen nur den Tests.
 - `docker compose ps/config` liest die `.env`. Fehlertexte von Compose werden verworfen (wie in `inventur.sh`).
@@ -208,6 +225,7 @@ aus der Konsole ebenso. Hinweis: Die Shell von root merkt sich die getippten Bef
 - **Folgeaufgaben (Review #449, bewusst nicht in diesem Stand, damit der Skript-Hash stabil bleibt):** A-3
   Allowlist-Lücken im Werkzeug schließen (`date -s`, `sort -o`, `umask`-Argumente, `printf -v`, `mapfile -C`,
   `read` ohne Umlenkung, awk `system`/Pipe, Datei-Argumente von `grep`/`head`/`tail`/`awk`); A-6 laut Review #449.
+  A-7 und A-8 sind nur in dieser Anleitung behoben (Hinweise oben und in Abschnitt 2), nicht technisch.
   Das Skript selbst nutzt keine dieser Formen schreibend (Review: Zeile für Zeile geprüft).
 
 ## 10. Werkzeug (für Claude)
