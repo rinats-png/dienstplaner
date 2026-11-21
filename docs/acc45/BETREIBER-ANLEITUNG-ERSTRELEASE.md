@@ -87,13 +87,20 @@ Claude startet nie einen Deploy-Workflow und greift nie auf den VPS zu ([RELEASE
 
 - **Ziel / Gate:** REL-0. Ein Zugang, der nur das Lese-Skript `deploy/inventur.sh` ausführt.
 - **Handlung:** [VPS-ZUGANG-EINRICHTUNG.md](VPS-ZUGANG-EINRICHTUNG.md) in dieser Reihenfolge:
-  Abschnitt 0 (0a–0d, Arbeitsrechner), Abschnitt 1 (1a–1e, IONOS-Remotekonsole, nur lesen), danach Abschnitt 3
-  (3a–3e, Installation) und Abschnitt 4 (4a–4c, Nachprüfung und Negativproben). Befehle stehen dort.
-- **Erwartet:** wie dort je Unterschritt. In 1e: alle drei Host-Fingerabdrücke stimmen. In 3a/3b: Prüfsumme
-  `d99207298c12…` Zeichen für Zeichen. In 4c: alle Proben N-1 bis N-11 verweigern.
-- **Weiter nur wenn:** jeder Unterschritt „Weiter nur wenn“ erfüllt. Prüfsumme zusätzlich aus einem zweiten Kanal
-  bestätigt (Review-Kommentar oder Chat, VPS-ZUGANG §3).
-- **Rückweg:** VPS-ZUGANG §6 (Zeile entfernen, Skript entfernen, Schlüssel löschen).
+  Abschnitt 0 (0a–0d, Arbeitsrechner; die Zeile aus 0d an Claude geben, Claude trägt sie als
+  `deploy/inventur-schluessel.pub` ein), Abschnitt 1 (1a–1e, IONOS-Remotekonsole, nur lesen), danach die
+  **Einrichtung mit einem Befehl (REL-0-Installer)**: eine Zeile in der Remotekonsole als root
+  (`cd /root && curl -fsSLo rel0 …/<commit>/deploy/inventur-install.sh && [[ $(sha256sum rel0) == "<sha256>  rel0" ]] && bash rel0`;
+  genaue Zeile mit Commit und Prüfsumme kommt aus der Freigabe). Sie ersetzt 3a–3e; Abschnitt 3 bleibt als
+  Alternative. Danach Abschnitt 4 (4a–4c, Nachprüfung und Negativproben). Befehle stehen dort.
+- **Erwartet:** wie dort je Unterschritt. In 1e: alle drei Host-Fingerabdrücke stimmen. Installer: letzte Zeile
+  `REL-0 OK: Inventurzugang eingerichtet. Fingerabdruck F-INV: SHA256:… Skript sha256: d99207298c12…`, F-INV gleich
+  0c. In 4c: alle Proben N-1 bis N-11 verweigern.
+- **Weiter nur wenn:** jeder Unterschritt „Weiter nur wenn“ erfüllt. Commit und Prüfsumme des Installers zusätzlich
+  aus einem zweiten Kanal bestätigt (Review-Kommentar oder Chat, VPS-ZUGANG §3). Bei `REL-0 ABBRUCH: …`: nichts
+  wurde geändert; Ausgabe melden (Tabelle der Abbruchmeldungen in VPS-ZUGANG).
+- **Rückweg:** `cd /root && bash rel0 --rueckbau` (Zeile und Skript entfernen, nur bei Hash-Übereinstimmung), sonst
+  VPS-ZUGANG §6 (Zeile entfernen, Skript entfernen, Schlüssel löschen).
 - **Danach Claude:** nichts. Claude wartet auf 4.2.
 
 ### 4.2 Inventur V-1 bis V-9 ausführen und ablegen
