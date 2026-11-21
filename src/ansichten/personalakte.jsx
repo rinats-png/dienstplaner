@@ -190,7 +190,7 @@ export function Personalakte({ sitz, personId, ym, onClose, akt }) {
                   {DOW.map((wt, i) => {
                     const an = (p.teilzeit.wochentage || []).includes(i);
                     return <button key={i} onClick={() => akt.toggleWochentag(p.id, i)} className="btn btn-sm"
-                      style={{ background: an ? C.flaecheStill : C.bg,
+                      style={{ background: an ? C.lineSoft : C.bg,
                         color: an ? C.text : C.dimmer, fontWeight: 600, minWidth: 44 }}>{wt}</button>; })}
                 </div>
               </div>)}

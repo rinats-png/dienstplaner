@@ -14,7 +14,7 @@
      - feste Tabelle je Datei: Stufe jeder Stelle (Review #440, Befund 1); die Regel prüft die Tabelle;
      - kein neuer Übergang (V4-2d): Anzahl `transition` je Datei wie vorher (Personalakte: 1, der Nachtbalken);
      - Personalakte: Palette statt rgba-Literal (Nachtbalken, Arbeitstage); Kontrast hell und dunkel nicht schlechter
-       (1.4.11 Balken gegen Fläche; 1.4.3 Schrift auf der Arbeitstag-Fläche >= 4,5:1).
+       (1.4.11 Balken gegen Fläche; Schrift auf der Arbeitstag-Fläche >= 7:1; gewählt gegen frei nicht schwächer).
 
    Keine Uhr, kein Netz.
    ========================================================================== */
@@ -101,10 +101,10 @@ describe("V4-3b Personal: Farbe der Personalakte", () => {
     return "#" + [43, 52, 64].map((c, i) => Math.round(c * a + g[i] * (1 - a)).toString(16).padStart(2, "0")).join("");
   };
 
-  it("keine rgba-Literale mehr; Nachtbalken C.lineStark, Arbeitstag C.flaecheStill", () => {
+  it("keine rgba-Literale mehr; Nachtbalken C.lineStark, Arbeitstag C.lineSoft", () => {
     expect(q()).not.toMatch(/rgba?\(/);
     expect(q()).toMatch(/\?\s*C\.accent\s*:\s*C\.lineStark/);
-    expect(q()).toMatch(/background:\s*an\s*\?\s*C\.flaecheStill\s*:\s*C\.bg/);
+    expect(q()).toMatch(/background:\s*an\s*\?\s*C\.lineSoft\s*:\s*C\.bg/);
   });
 
   it("Nachtbalken: Kontrast gegen die Fläche hell und dunkel nicht schlechter als vorher (1.4.11)", () => {
@@ -116,10 +116,12 @@ describe("V4-3b Personal: Farbe der Personalakte", () => {
     }
   });
 
-  it("Arbeitstag: Schrift auf der Fläche >= 4,5:1 hell und dunkel (1.4.3)", () => {
+  it("Arbeitstag: Schrift auf der Fläche >= 7:1; gewählt und frei nicht schwerer zu unterscheiden als vorher", () => {
     for (const thema of ["hell", "dunkel"]) {
       const p = v4AlsAltePalette(thema);
-      expect(kontrastVon(p.text, p.flaecheStill), thema).toBeGreaterThanOrEqual(4.5);
+      expect(kontrastVon(p.text, p.lineSoft), thema).toBeGreaterThanOrEqual(7);
+      const vorher = kontrastVon(altMisch(0.12, p.flaeche), p.bg);
+      expect(kontrastVon(p.lineSoft, p.bg), `${thema}: gewählt gegen frei`).toBeGreaterThanOrEqual(vorher);
     }
   });
 });
