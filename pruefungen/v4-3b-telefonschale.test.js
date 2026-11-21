@@ -47,8 +47,8 @@ const TELEFON_ZUORDNUNG = {
     { wo: "Mein Plan: Farbstreifen 3 px", alt: 2, kante: 3, stufe: "pille" },
     { wo: "Mein Plan: Monatsfeld (Quadrat)", alt: 12, stufe: "mittel" },
     { wo: "Tagblatt: Tausch suchen (Höhe 50)", alt: 16, kante: 50, stufe: "gross" },
-    { wo: "Tagblatt: zweiter Knopf (Höhe 50)", alt: 16, kante: 50, stufe: "gross" },
-    { wo: "Tagblatt: dritter Knopf (Höhe 50)", alt: 16, kante: 50, stufe: "gross" },
+    { wo: "Tagblatt: Frei beantragen (Höhe 50)", alt: 16, kante: 50, stufe: "gross" },
+    { wo: "Tagblatt: gern arbeiten (Höhe 50)", alt: 16, kante: 50, stufe: "gross" },
     { wo: "Tagblatt: Wunsch (Höhe 46)", alt: 16, kante: 46, stufe: "gross" },
     { wo: "Anliegen: Frei beantragen (Höhe 52)", alt: 17, kante: 52, stufe: "gross" },
     { wo: "Anliegen: Krank melden (Höhe 52)", alt: 17, kante: 52, stufe: "gross" },
@@ -64,7 +64,7 @@ const TELEFON_ZUORDNUNG = {
     { wo: "Notruf: Art wählen", alt: 14, stufe: "mittel" },
     { wo: "Offene Schichten: Zurückziehen", alt: 12, stufe: "mittel" },
     { wo: "Offene Schichten: Ich melde mich", alt: 12, stufe: "mittel" },
-    { wo: "Mehr: Mitteilungen aufs Gerät", alt: 12, stufe: "mittel" },
+    { wo: "Mehr: Mitteilungen ein/aus", alt: 12, stufe: "mittel" },
     { wo: "Mehr: E-Mail-Adresse", alt: 12, stufe: "mittel" },
     { wo: "Mehr: Zustellweg E-Mail/Gerät", alt: 10, stufe: "mittel" },
     { wo: "Zeit bestätigen: Wie geplant (Höhe 46)", alt: 15, kante: 46, stufe: "gross" },
@@ -106,11 +106,16 @@ function rueckgerechnetStil(tabelle = STIL_ZUORDNUNG) {
   return t;
 }
 
-const radiusVon = (css, regel) => {
-  const esc = regel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const m = css.match(new RegExp(`(?:^|\\n)${esc}\\{([^}]*)\\}`));
-  return m && (m[1].match(/border-radius:([^;]+);/) || [])[1];
+/** Rumpf einer Regel im globalen Stil: ab "\n<regel>{" bis zur nächsten Zeile, die mit einem Selektor beginnt. Die
+ *  Rümpfe enthalten ${C.…} (geschweifte Klammern), daher nicht bis zur ersten "}". */
+const rumpfVon = (css, regel) => {
+  const a = css.indexOf(`\n${regel}{`);
+  if (a < 0) return null;
+  const rest = css.slice(a + regel.length + 2);
+  const e = rest.search(/\n(?:[.@#a-z]|\/\*)/);
+  return e < 0 ? rest : rest.slice(0, e);
 };
+const radiusVon = (css, regel) => ((rumpfVon(css, regel) || "").match(/border-radius:([^;]+);/) || [])[1];
 
 describe("V4-3b Telefonschale: Messung", () => {
   it("keine Form- und Farbliterale; Form 1/1; „voll V4“ 1/1; Inline-Stile und Dialogstellen unverändert", async () => {
@@ -202,8 +207,8 @@ describe("V4-3b Telefonschale: Messung", () => {
     expect((ohneKommentare(lies(MOBIL)).match(/transition/gi) || []).length).toBe(0);
     const css = lies(STIL);
     for (const s of STIL_ZUORDNUNG) {
-      const esc = s.regel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const rumpf = css.match(new RegExp(`(?:^|\\n)${esc}\\{([^}]*)\\}`))[1];
+      const rumpf = rumpfVon(css, s.regel);
+      expect(rumpf, s.regel).toContain("border-radius:");
       expect(rumpf, s.regel).not.toMatch(/transition/);
     }
   });

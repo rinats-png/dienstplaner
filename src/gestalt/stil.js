@@ -389,7 +389,7 @@ button.kachel{cursor:pointer; display:block; width:100%;}
 .m-wort{flex:1; display:flex; align-items:center; font-size:15.5px; font-weight:700; letter-spacing:.14em; color:${C.text};}
 .m-postknopf{position:relative; width:46px; height:46px; border:1px solid ${C.line}; border-radius:50%;
   background:${C.flaeche}; color:${C.dim}; cursor:pointer; display:flex; align-items:center; justify-content:center;}
-.m-zahl{position:absolute; top:-4px; right:-4px; min-width:19px; height:19px; padding:0 4px; border-radius:10px;
+.m-zahl{position:absolute; top:-4px; right:-4px; min-width:19px; height:19px; padding:0 4px; border-radius:var(--v4-r-pille);
   background:${C.danger}; color:var(--c-auf-akzent); font-size:10.5px; font-weight:700; display:flex;
   align-items:center; justify-content:center; box-sizing:border-box;}
 .m-tabs{position:fixed; left:0; right:0; bottom:0; z-index:50; display:flex; gap:4px;
@@ -397,7 +397,7 @@ button.kachel{cursor:pointer; display:block; width:100%;}
   padding:8px 8px calc(8px + env(safe-area-inset-bottom)); background:var(--c-kopf-grund);
   backdrop-filter:saturate(160%) blur(16px); -webkit-backdrop-filter:saturate(160%) blur(16px);
   border-top:1px solid ${C.line};}
-.m-tabs button{flex:1 1 0; min-width:0; min-height:56px; border:0; border-radius:16px; background:transparent;
+.m-tabs button{flex:1 1 0; min-width:0; min-height:56px; border:0; border-radius:var(--v4-r-gross); background:transparent;
   color:${C.dim}; font-family:inherit; font-size:11.5px; font-weight:500; cursor:pointer; display:flex;
   flex-direction:column; align-items:center; justify-content:center; gap:4px; padding:4px 2px;}
 .m-tabs button.on{background:${C.accentLight}; color:${C.accent}; font-weight:620; box-shadow:inset 0 -2px 0 ${C.accent};}
@@ -405,10 +405,10 @@ button.kachel{cursor:pointer; display:block; width:100%;}
 html:has(.m-tabs){scroll-padding-top:76px; scroll-padding-bottom:calc(92px + env(safe-area-inset-bottom));}
 .m-blattrahmen{position:fixed; inset:0; z-index:80; display:flex; align-items:flex-end;
   background:var(--c-ueberlagerung); backdrop-filter:blur(5px); -webkit-backdrop-filter:blur(5px);}
-.m-blatt{width:100%; max-height:92vh; overflow-y:auto; background:${C.flaeche}; border-radius:26px 26px 0 0;
+.m-blatt{width:100%; max-height:92vh; overflow-y:auto; background:${C.flaeche}; border-radius:var(--v4-r-gross) var(--v4-r-gross) 0 0;
   border:1px solid ${C.line}; border-bottom:0; box-shadow:var(--schatten-blatt);
   padding:10px 20px calc(28px + env(safe-area-inset-bottom));}
-.m-griff{width:42px; height:4.5px; border-radius:3px; background:${C.lineStark}; margin:6px auto 16px;}
+.m-griff{width:42px; height:4.5px; border-radius:var(--v4-r-pille); background:${C.lineStark}; margin:6px auto 16px;}
 .m-blatttitel{font-size:20px; font-weight:650; letter-spacing:-.02em; margin-bottom:18px;}
 @media print{ .m-tabs{display:none !important;} .m-schale::before{display:none;} }
 
