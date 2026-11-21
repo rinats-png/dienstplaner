@@ -37,7 +37,8 @@
      G6  Sicherung, Restore-Probe, Widerrufbuch-Probe: vollständig und aktuell
      G7  Rückweg: Zeile `vorherig` oder dokumentierte Entscheidung O-1/O-2
      G8  SSOT: kein P0/P1-Paket im Status REVIEW/BLOCKED/IN_PROGRESS/READY,
-         dessen PR im Paket steckt (außer akzeptiertePakete mit Grund)
+         dessen PR im Paket steckt (außer akzeptiertePakete mit Grund); jede
+         Paket-ID in ssotPakete von RELEASE-UNFERTIG.json steht in der SSOT
      G9  keine offenen P0/P1-Befunde (Strang folge, ABN-*, V4-*; REL-* sind der
          Release-Prozess selbst und zählen nicht; akzeptierteBefunde mit Grund)
      G10 Freigabedatei docs/acc45/releases/<id>.freigabe.json gültig, commitet,
@@ -147,6 +148,30 @@ const HEX40 = /^[0-9a-f]{40}$/;
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
 const DATUM = /^\d{4}-\d{2}-\d{2}$/;
 const RELEASE_ID = /^[a-z0-9][a-z0-9._-]{2,63}$/;
+// Steuerzeichen in Pfaden (N1, Review #437, Delta-Check #437): Steuerzeichen (Cc: C0, DEL, C1), Formatzeichen (Cf:
+// u. a. Richtungsumkehr, Nullbreite, BOM) und Zeilen-/Absatztrenner (Zl, Zp: U+2028/U+2029). Ein solcher Pfad im
+// Wurzelverzeichnis oder unter deploy/ ist NO-GO.
+const STEUERZEICHEN = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
+// Für jede Ausgabe (JSON, Kurzfassung, stderr): alle Zeichen der Klassen C (Steuer-, Format-, private, nicht
+// vergebene Zeichen, Surrogate), Zl, Zp und jedes besondere Leerzeichen außer dem normalen werden als Escape
+// geschrieben, nie roh (keine Terminal- oder Log-Injektion).
+const UNSICHER = /[\p{C}\p{Zl}\p{Zp}]|(?! )\p{Zs}/gu;
+const KURZ = { "\n": "\\n", "\r": "\\r", "\t": "\\t" };
+const escape = (z) => {
+  const n = z.codePointAt(0);
+  return KURZ[z] ?? (n > 0xffff ? `\\u{${n.toString(16)}}` : "\\u" + n.toString(16).padStart(4, "0"));
+};
+/** Text für die Ausgabe: unsichere Zeichen als Escape; „\“ bleibt (idempotent). */
+export const sicher = (s) => String(s).replace(UNSICHER, escape);
+/** Pfad für die Ausgabe: zusätzlich „\“ verdoppelt, damit ein Escape im Namen eindeutig bleibt. */
+const maskiert = (f) => sicher(String(f).replace(/\\/g, "\\\\"));
+/** Alle Zeichenketten eines JSON-Werts (auch Schlüssel) über sicher(). */
+function tiefSicher(x) {
+  if (typeof x === "string") return sicher(x);
+  if (Array.isArray(x)) return x.map(tiefSicher);
+  if (istObjekt(x)) return Object.fromEntries(Object.entries(x).map(([k, v]) => [sicher(k), tiefSicher(v)]));
+  return x;
+}
 
 const gate = (id, name) => ({ id, name, ergebnis: "GO", gruende: [], belege: [], manuell: [] });
 const nogo = (g, grund) => { g.ergebnis = "NO-GO"; g.gruende.push(grund); return g; };
@@ -657,7 +682,7 @@ export function g3Schalter({ codeNamen, klassen, vorlagen, unfertig, quelltexte,
     if (!Array.isArray(composeDateien)) nogo(g, "Compose-Dateien des Kandidaten nicht ermittelbar (fail-closed)");
     else {
       const geprueft = new Set(konfig.vorlagen.filter((v) => v.art === "compose").map((v) => v.pfad));
-      for (const f of composeDateien) if (!geprueft.has(f)) nogo(g, `${f}: wird von Compose geladen, ist aber keine geprüfte Vorlage`);
+      for (const f of composeDateien) if (!geprueft.has(f)) nogo(g, `${maskiert(f)}: wird von Compose geladen, ist aber keine geprüfte Vorlage`);
     }
   }
   g.bindung = [];
@@ -674,7 +699,7 @@ export function g3Schalter({ codeNamen, klassen, vorlagen, unfertig, quelltexte,
           if (!Object.hasOwn(soll, f)) binde(`${f}: fehlt in vorlagenHashes`);
           else if (soll[f] !== h) binde(`${f}: Hash weicht von der Freigabe ab (Vorlage geändert, neu freigeben)`);
         }
-        for (const f of Object.keys(soll)) if (!Object.hasOwn(vorlagenStand.dateien, f)) binde(`${f}: in vorlagenHashes, aber nicht im Kandidaten`);
+        for (const f of Object.keys(soll)) if (!Object.hasOwn(vorlagenStand.dateien, f)) binde(`${maskiert(f)}: in vorlagenHashes, aber nicht im Kandidaten`);
       }
     }
   }
@@ -899,7 +924,7 @@ export function g7Rueckweg({ liste, kandidat, digest }, freigabe, konfig) {
 
 const annahmen = (liste) => new Map((Array.isArray(liste) ? liste : []).filter((a) => istObjekt(a) && a.id && String(a.grund || "").trim()).map((a) => [a.id, a.grund]));
 
-export function g8Blocker(ssot, prsImKandidaten, freigabe, konfig) {
+export function g8Blocker(ssot, prsImKandidaten, freigabe, konfig, unfertig = null, klassen = null) {
   const g = gate("G8", "Keine offenen P0/P1-Pakete im Kandidaten");
   if (!istObjekt(ssot) || !Array.isArray(ssot.pakete)) return nogo(g, `${konfig.ssot} fehlt oder ist ungültig (fail-closed)`);
   if (!Array.isArray(prsImKandidaten)) return nogo(g, "PR-Liste des Kandidaten nicht ermittelbar (fail-closed)");
@@ -911,6 +936,30 @@ export function g8Blocker(ssot, prsImKandidaten, freigabe, konfig) {
     if (!prs.length) continue;
     if (akzeptiert.has(p.id)) { g.belege.push(`${p.id} (${p.prio}, ${p.status}) vom Betreiber akzeptiert: ${akzeptiert.get(p.id)}`); continue; }
     nogo(g, `${p.id} (${p.prio}, ${p.status}) steckt im Kandidaten über ${prs.map((x) => "#" + x).join(", ")}`);
+  }
+  // Unfertige Funktionen (RELEASE-UNFERTIG.json, Feld ssotPakete): Jede genannte Paket-ID muss in der SSOT stehen
+  // (sonst ist die Liste veraltet, fail-closed). Steckt das Paket im Kandidaten, belegt G8, dass sein Code nur hinter
+  // dem Schalter AUS ausgeliefert wird; die Sperre selbst prüft G3. Eine ungültige Liste meldet G3.
+  if (istObjekt(unfertig) && Array.isArray(unfertig.funktionen)) {
+    const pakete = new Map(ssot.pakete.filter(istObjekt).map((p) => [p.id, p]));
+    for (const f of unfertig.funktionen) {
+      if (!istObjekt(f) || f.ssotPakete === undefined) continue;
+      if (!Array.isArray(f.ssotPakete)) { nogo(g, `${konfig.unfertigDatei}: ${f.id}: ssotPakete ist keine Liste`); continue; }
+      // Review #437 (3): ohne Variablen gibt es keinen Schalter, hinter dem der Code ruhen könnte → kein Beleg, NO-GO
+      const variablen = Array.isArray(f.variablen) ? f.variablen.filter((v) => typeof v === "string" && v) : [];
+      if (!variablen.length) { nogo(g, `${konfig.unfertigDatei}: ${f.id} nennt ssotPakete, aber keine variablen (kein Schalter)`); continue; }
+      // Delta-Check #437 (2): Beleg nur, wenn jede Variable in RELEASE-SCHALTER.json als schalter-aus klassifiziert ist
+      const keinAus = variablen.filter((v) => !(istObjekt(klassen?.variablen) && istObjekt(klassen.variablen[v]) && klassen.variablen[v].klasse === "schalter-aus"));
+      if (keinAus.length) { nogo(g, `${konfig.unfertigDatei}: ${f.id}: nicht als schalter-aus klassifiziert (${konfig.schalterDatei}): ${keinAus.join(", ")}`); continue; }
+      for (const id of f.ssotPakete) {
+        const p = pakete.get(id);
+        if (!p) { nogo(g, `${konfig.unfertigDatei}: ${f.id} nennt ${id}, das nicht in der SSOT steht (Liste veraltet)`); continue; }
+        const prs = (Array.isArray(p.pr) ? p.pr : []).map(prNummer).filter((x) => imKandidat.has(x));
+        // Ein offenes P0/P1-Paket ist oben schon NO-GO (außer akzeptiert); dafür kein entlastender Beleg.
+        const offenBlocker = konfig.blocker.prios.includes(p.prio) && konfig.blocker.status.includes(p.status) && !akzeptiert.has(p.id);
+        if (prs.length && !offenBlocker) g.belege.push(`${id} im Kandidaten (${prs.map((x) => "#" + x).join(", ")}): „${f.name}“ nur hinter Schalter AUS (G3: ${variablen.join(", ")})`);
+      }
+    }
   }
   return g;
 }
@@ -1014,14 +1063,16 @@ export function auswerten(e, konfig = KONFIG_STANDARD) {
     g5Migration(bericht, freigabe, liste),
     g6Sicherung(e.nachweise, e.jetztMs, konfig),
     g7Rueckweg({ liste, kandidat: e.kandidat, digest: e.digest }, freigabe, konfig),
-    g8Blocker(e.ssot, prs, freigabe, konfig),
+    g8Blocker(e.ssot, prs, freigabe, konfig, e.unfertig, e.klassen),
     g9Befunde(e.ssot, freigabe, konfig),
     g10Freigabe({ releaseId: e.releaseId, freigabe: roheFreigabe, freigabeFehler: e.freigabeFehler, commitet: e.freigabeCommitet, kandidat: e.kandidat, digest: e.digest, basis: e.basis, stand: e.stand }, konfig),
   ];
   const gesamt = gates.every((g) => g.ergebnis === "GO") ? "GO" : "NO-GO";
   const modus = e.modus || "offline-fixture";
   const uebersteuert = modus !== "online" || e.jetztUeberschrieben === true;
-  return {
+  // Delta-Check #437: Gründe, Belege und Bericht enthalten Text aus Pfaden, Vorlagen, SSOT und Freigabedatei. Die
+  // Ausgabe trägt kein rohes Steuer- oder Formatzeichen (keine Terminal- oder Log-Injektion), siehe sicher().
+  return tiefSicher({
     werkzeug: "release-pruefung", version: VERSION,
     zeitpunkt: Number.isFinite(e.jetztMs) ? new Date(e.jetztMs).toISOString() : null,
     modus, jetztUeberschrieben: e.jetztUeberschrieben === true, konfigAbweichend: false, uebersteuert,
@@ -1037,7 +1088,7 @@ export function auswerten(e, konfig = KONFIG_STANDARD) {
     migrationsbericht: bericht,
     gates,
     konfiguration: konfig,
-  };
+  });
 }
 
 /* ------------------------------------------------- Sammeln (Ein-/Ausgabe) */
@@ -1149,29 +1200,37 @@ export function basisPruefen(wurzel, basis, kandidat, konfig = KONFIG_STANDARD) 
 
 /** SHA-256 je Vorlage dieser Art im Kandidaten; nicht gelistete Dateien dieser Art als „unbekannt“. */
 export function vorlagenStandErmitteln(kq, konfig = KONFIG_STANDARD) {
-  const art = new RegExp(konfig.vorlagenArt, "i");
-  const kandidaten = [...new Set([...kq.wurzelDateien(), ...kq.dateien(konfig.vorlagenSuche)])]
-    .filter((f) => art.test(f.split("/").pop())).sort();
-  const dateien = {};
+  // s-Flag: „.“ trifft auch Zeilenumbrüche und -trenner (Review #437); Steuerzeichen sperrt ohnehin STEUERZEICHEN
+  const art = new RegExp(konfig.vorlagenArt, "is");
+  const alle = kq.eintraege(konfig.vorlagenSuche);
+  const dateiPfade = [...new Set([...kq.wurzelDateien(), ...kq.dateien(konfig.vorlagenSuche)])];
   const unbekannt = [];
+  // je Pfad höchstens eine Meldung (roher Pfad als Schlüssel, Ausgabe immer maskiert; Delta-Check #437)
+  const gemeldet = new Set();
+  const melde = (f, grund) => { if (!gemeldet.has(f)) { gemeldet.add(f); unbekannt.push(`${maskiert(f)} (${grund})`); } };
+  // N1 (Delta-Check #427): Ein Pfad mit Steuerzeichen (\n, \r, \t, NUL …) im Wurzelverzeichnis oder unter deploy/
+  // ist immer NO-GO (Dateien, Verzeichnisse, Links). Das Muster vorlagenArt („.“ ohne s-Flag) erkannte etwa
+  // „Dockerfile\nx“ nicht als Vorlage.
+  for (const f of new Set([...dateiPfade, ...(Array.isArray(alle) ? alle.map((x) => x.pfad) : [])])) {
+    if (STEUERZEICHEN.test(f)) melde(f, "Steuerzeichen im Pfad, nicht zulässig");
+  }
+  const kandidaten = dateiPfade.filter((f) => !STEUERZEICHEN.test(f) && art.test(f.split("/").pop())).sort();
+  const dateien = {};
   for (const f of kandidaten) {
-    if (!konfig.gebundeneVorlagen.includes(f)) { unbekannt.push(`${f} (nicht gelistet)`); continue; }
+    if (!konfig.gebundeneVorlagen.includes(f)) { melde(f, "nicht gelistet"); continue; }
     const modus = kq.modus(f);
-    if (modus !== "100644" && modus !== "100755") { unbekannt.push(`${f} (Mode ${modus ?? "unbekannt"}, keine reguläre Datei)`); continue; }
+    if (modus !== "100644" && modus !== "100755") { melde(f, `Mode ${modus ?? "unbekannt"}, keine reguläre Datei`); continue; }
     const roh = kq.lesenRoh(f);
-    if (roh == null) { unbekannt.push(`${f} (nicht lesbar)`); continue; }
+    if (roh == null) { melde(f, "nicht lesbar"); continue; }
     // gebunden: Mode und rohe Bytes, ohne Dekodieren
     dateien[f] = createHash("sha256").update(Buffer.concat([Buffer.from(`${modus}\0`), Buffer.from(roh)])).digest("hex");
   }
   // Jeder Symlink (120000) und jedes Submodul (160000) im Wurzelverzeichnis und unter deploy/ ist unzulässig —
   // auch ein Verzeichnis-Symlink, der gebundene Vorlagen still verschwinden ließe.
-  const alle = kq.eintraege(konfig.vorlagenSuche);
   if (!Array.isArray(alle)) unbekannt.push("(Baum des Kandidaten nicht lesbar)");
   else {
     for (const { pfad, modus } of alle) {
-      if ((modus === "120000" || modus === "160000") && !unbekannt.some((u) => u.startsWith(`${pfad} (`))) {
-        unbekannt.push(`${pfad} (Mode ${modus}, Symlink/Submodul nicht zulässig)`);
-      }
+      if (modus === "120000" || modus === "160000") melde(pfad, `Mode ${modus}, Symlink/Submodul nicht zulässig`);
     }
   }
   return { dateien, unbekannt: [...new Set(unbekannt)].sort() };
@@ -1359,23 +1418,26 @@ export function kurzfassung(r) {
   return z.join("\n");
 }
 
+/** stderr-Ausgabe der CLI: Aufrufwerte und Fehlertexte können fremde Zeichen tragen (Delta-Check #437). */
+const ausgabeFehler = (s) => console.error(sicher(s));
+
 function main(argv) {
   let o;
-  try { o = argumenteLesen(argv); } catch (err) { console.error("Aufruf: " + err.message); return 2; }
+  try { o = argumenteLesen(argv); } catch (err) { ausgabeFehler("Aufruf: " + err.message); return 2; }
   if (o.vorlagenHashes) {
     // Hilfe für die Freigabedatei: SHA-256 der Vorlagen des Kandidaten (offline: Arbeitsstand unter --wurzel).
     const w = resolve(o.wurzel || fileURLToPath(new URL("..", import.meta.url)));
     let rev = null;
     if (!o.offline) {
       rev = revisionAufloesen(w, o.kandidat);
-      if (!rev) { console.error("Aufruf: --vorlagen-hashes braucht --kandidat <commit> (oder --offline)"); return 2; }
+      if (!rev) { ausgabeFehler("Aufruf: --vorlagen-hashes braucht --kandidat <commit> (oder --offline)"); return 2; }
     }
     const stand = vorlagenStandErmitteln(quelle(w, rev));
     const ausgabe = { vorlagenHashes: stand.dateien };
     if (o.basis) {
       // Nur Anzeige: was hat sich gegenüber dem vorigen Release geändert (der Betreiber sieht, was er quittiert).
       const bRev = o.offline ? null : revisionAufloesen(w, o.basis);
-      if (!bRev) { console.error("Aufruf: --basis ist kein Commit (Vergleich nur online)"); return 2; }
+      if (!bRev) { ausgabeFehler("Aufruf: --basis ist kein Commit (Vergleich nur online)"); return 2; }
       const alt = vorlagenStandErmitteln(quelle(w, bRev)).dateien;
       ausgabe.vergleichMitBasis = Object.fromEntries(Object.entries(stand.dateien).map(([f, h]) => [f, {
         basis: alt[f] ?? null, kandidat: h, status: alt[f] == null ? "neu" : alt[f] === h ? "unverändert" : "geändert" }]));
@@ -1383,12 +1445,12 @@ function main(argv) {
         if (!Object.hasOwn(stand.dateien, f)) ausgabe.vergleichMitBasis[f] = { basis: h, kandidat: null, status: "entfernt" };
       }
     }
-    console.log(JSON.stringify(ausgabe, null, 2));
-    for (const f of stand.unbekannt) console.error(`nicht gelistete Vorlage: ${f}`);
+    console.log(JSON.stringify(tiefSicher(ausgabe), null, 2));
+    for (const f of stand.unbekannt) ausgabeFehler(sicher(`nicht gelistete Vorlage: ${f}`));
     return stand.unbekannt.length ? 1 : 0;
   }
   if (o.konfigZeigen) {
-    if (argv.length !== 1) { console.error("Aufruf: --konfig-zeigen steht allein"); return 2; }
+    if (argv.length !== 1) { ausgabeFehler("Aufruf: --konfig-zeigen steht allein"); return 2; }
     console.log(JSON.stringify(KONFIG_STANDARD, null, 2));
     return 0;
   }
@@ -1396,29 +1458,29 @@ function main(argv) {
   let fixture = null;
   let jetztMs;
   if (o.offline) {
-    if (!o.fixture) { console.error("Aufruf: --offline braucht --fixture <datei.json>"); return 2; }
+    if (!o.fixture) { ausgabeFehler("Aufruf: --offline braucht --fixture <datei.json>"); return 2; }
     const j = jsonLesen(lesenPfad(o.fixture));
-    if (!istObjekt(j.wert)) { console.error(`Fixture ${o.fixture}: ${j.fehler || "kein Objekt"}`); return 2; }
+    if (!istObjekt(j.wert)) { ausgabeFehler(`Fixture ${o.fixture}: ${j.fehler || "kein Objekt"}`); return 2; }
     fixture = j.wert;
     jetztMs = o.jetzt ? Date.parse(o.jetzt) : Date.now();
-    if (!Number.isFinite(jetztMs)) { console.error("Aufruf: --jetzt ist keine Zeit"); return 2; }
+    if (!Number.isFinite(jetztMs)) { ausgabeFehler("Aufruf: --jetzt ist keine Zeit"); return 2; }
   } else {
-    if (o.jetzt) { console.error("Aufruf: --jetzt ist nur offline zulässig"); return 2; }
-    if (!o.kandidat) { console.error("Aufruf: --kandidat <bild-commit> fehlt"); return 2; }
-    if (!o.basis) { console.error("Aufruf: --basis <voriger-release-commit> fehlt (Pflicht, keine Ableitung aus der Liste)"); return 2; }
+    if (o.jetzt) { ausgabeFehler("Aufruf: --jetzt ist nur offline zulässig"); return 2; }
+    if (!o.kandidat) { ausgabeFehler("Aufruf: --kandidat <bild-commit> fehlt"); return 2; }
+    if (!o.basis) { ausgabeFehler("Aufruf: --basis <voriger-release-commit> fehlt (Pflicht, keine Ableitung aus der Liste)"); return 2; }
     o.kandidatSha = revisionAufloesen(wurzel, o.kandidat);
     o.basisSha = revisionAufloesen(wurzel, o.basis);
-    if (!o.kandidatSha) { console.error(`Aufruf: --kandidat ${o.kandidat} ist kein Commit`); return 2; }
-    if (!o.basisSha) { console.error(`Aufruf: --basis ${o.basis} ist kein Commit`); return 2; }
+    if (!o.kandidatSha) { ausgabeFehler(`Aufruf: --kandidat ${o.kandidat} ist kein Commit`); return 2; }
+    if (!o.basisSha) { ausgabeFehler(`Aufruf: --basis ${o.basis} ist kein Commit`); return 2; }
     const basisFehler = basisPruefen(wurzel, o.basisSha, o.kandidatSha);
-    if (basisFehler) { console.error(`Aufruf: Basis ungeeignet: ${basisFehler}`); return 2; }
+    if (basisFehler) { ausgabeFehler(`Aufruf: Basis ungeeignet: ${basisFehler}`); return 2; }
     jetztMs = Date.now();
   }
   let r;
   try {
     r = auswerten(sammeln({ ...o, wurzel, fixture, jetztMs, jetztUeberschrieben: !!o.jetzt }));
   } catch (err) {
-    console.error("Struktur- oder Lesefehler: " + (err && err.message));
+    ausgabeFehler("Struktur- oder Lesefehler: " + (err && err.message));
     return 2;
   }
   if (o.kurz) console.log(kurzfassung(r));

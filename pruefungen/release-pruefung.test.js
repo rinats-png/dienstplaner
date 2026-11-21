@@ -14,6 +14,7 @@ import {
   g6Sicherung, g7Rueckweg, g8Blocker, g9Befunde, g10Freigabe, migrationsbericht, reviewNachweiseLesen,
   codeNamenFinden, vorlageLesen, wertAufloesen, abweichend, bildAngabenLesen, prsAusCommits, commitsOhnePr,
   argumenteLesen, ssotReviewBelege, freigabeSchema, basisPruefen, ausfuehrOptionen, ausfuehren, vorlageUnlesbar,
+  vorlagenStandErmitteln, kurzfassung,
 } from "../werkzeug/release-pruefung.mjs";
 
 const WURZEL = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -59,6 +60,8 @@ const SSOT = { pakete: [
   { id: "WP-2", prio: "P2", status: "REVIEW", strang: "acc45", pr: ["#11"], titel: "P2 darf" },
   { id: "F-1", prio: "P2", status: "BLOCKED", strang: "folge", pr: [], titel: "P2-Befund" },
   { id: "REL-2", prio: "P1", status: "BLOCKED", strang: "folge", pr: [], titel: "Release-Prozess selbst, kein Befund" },
+  // RELEASE-UNFERTIG.json nennt IMP-6 (ssotPakete); G8 verlangt das Paket in der SSOT
+  { id: "IMP-6", prio: "P2", status: "IN_PROGRESS", strang: "acc45", pr: [], titel: "Schichtmodelle" },
 ] };
 
 const KOPF = "| PR | Modell | Urteil | Stand |\n|---|---|---|---|\n";
@@ -1478,4 +1481,276 @@ describe("Delta-Review 9 #427: Verzeichnis-Symlinks, Nicht-ASCII-Pfade, entfernt
     expect(j.vergleichMitBasis["deploy/staging-o2/compose.yml"].kandidat).toBe(null);
     expect(j.vorlagenHashes["deploy/staging-o2/compose.yml"]).toBeUndefined();
   }, 60_000);
+});
+
+describe("REL-1 Nachzug: IMP-6 Planwirkung als eigene unfertige Funktion (G3, G8)", () => {
+  const W = "CENTRIC_SCHICHTMODELL_WIRKUNG";
+  const qt = { "src/lib/import-schnittstelle.js": "export const IMPORT_DATEI_AKTIV = false;" };
+  const g3 = (text, art = "env", unfertig = UNFERTIG) => g3Schalter({ codeNamen: ["CENTRIC_DEMO"], klassen: KL, vorlagen: [{ pfad: "v", art, pflicht: true, text }], unfertig, quelltexte: qt }, KONFIG_STANDARD);
+  const eintrag = () => UNFERTIG.funktionen.find((f) => f.id === "schichtmodell-wirkung");
+
+  it("RELEASE-UNFERTIG.json: eigener Eintrag mit Gründen und Vorbedingungen vor AN; Schalter klassifiziert schalter-aus", () => {
+    const f = eintrag();
+    expect(f, "Eintrag schichtmodell-wirkung fehlt").toBeTruthy();
+    expect(f.variablen).toEqual([W]);
+    // genau ein Eintrag nennt die Variable (keine doppelte Führung neben der Pflege)
+    expect(UNFERTIG.funktionen.filter((x) => (x.variablen || []).includes(W)).map((x) => x.id)).toEqual(["schichtmodell-wirkung"]);
+    expect(Array.isArray(f.vorbedingungen) && f.vorbedingungen.length).toBeGreaterThanOrEqual(5);
+    const text = f.vorbedingungen.join("\n");
+    for (const muss of ["src/speicher.js", "teilzeitProfil", "src/lib/fachlogik.js", "P2-24 (b)", "P2-25", "P2-26", "P2-27", "P2-28", "P2-29", "P2-30", "P2-31", "Clients neu laden"]) {
+      expect(text, muss).toContain(muss);
+    }
+    expect(f.ssotPakete).toEqual(["IMP-6"]);
+    expect(KL.variablen[W].klasse).toBe("schalter-aus");
+  });
+  it("G3: Planwirkung aktiv in env, compose oder Dockerfile → NO-GO mit Namen der Funktion; aus oder auskommentiert → GO", () => {
+    const name = eintrag().name;
+    for (const [t, art] of [[`${W}=true\n`, "env"], [`${W}=an\n`, "env"], [`    environment:\n      ${W}: "true"\n`, "compose"],
+      [`    environment:\n      - ${W}=true\n`, "compose"], [`ENV ${W}=true\n`, "dockerfile"]]) {
+      const g = g3(t, art);
+      expect(g.ergebnis, t).toBe("NO-GO");
+      expect(g.gruende.join("\n"), t).toContain(`„${name}“`);
+    }
+    // Vorgabewert über Selbstbezug: keine benannte Form → unlesbar, ebenfalls NO-GO
+    expect(g3(`    environment:\n      - ${W}=\${${W}:-true}\n`, "compose").ergebnis).toBe("NO-GO");
+    for (const t of [`# ${W}=true\n`, `${W}=false\n`, `${W}=\n`, `${W}=aus\n`]) expect(g3(t).ergebnis, t).toBe("GO");
+  });
+  it("G3: auch ohne Eintrag in RELEASE-UNFERTIG bleibt der Schalter gesperrt (zweite Schicht schalter-aus)", () => {
+    const ohne = { ...UNFERTIG, funktionen: UNFERTIG.funktionen.filter((f) => !(f.variablen || []).includes(W)) };
+    expect(g3(`${W}=true\n`, "env", ohne).gruende.join()).toMatch(/Schalter CENTRIC_SCHICHTMODELL_WIRKUNG aktiv/);
+  });
+  it("G8: ssotPakete einer unfertigen Funktion müssen in der SSOT stehen (fail-closed); im Kandidaten → Beleg „hinter Schalter AUS“", () => {
+    const ssot = { pakete: [{ id: "IMP-6", prio: "P2", status: "IN_PROGRESS", strang: "acc45", pr: ["#429", "#436"] }] };
+    const unfertig = { funktionen: [{ id: "schichtmodell-wirkung", name: "Planwirkung", variablen: [W], ssotPakete: ["IMP-6"] }] };
+    const g = g8Blocker(ssot, [436], null, KONFIG_STANDARD, unfertig, KL);
+    expect(g.ergebnis).toBe("GO");
+    expect(g.belege.join()).toMatch(/IMP-6.*#436.*Planwirkung.*hinter Schalter AUS \(G3: CENTRIC_SCHICHTMODELL_WIRKUNG\)/);
+    expect(g8Blocker(ssot, [1], null, KONFIG_STANDARD, unfertig, KL).belege.join()).not.toMatch(/IMP-6/);
+    const falsch = { funktionen: [{ ...unfertig.funktionen[0], ssotPakete: ["IMP-99"] }] };
+    const n = g8Blocker(ssot, [436], null, KONFIG_STANDARD, falsch, KL);
+    expect(n.ergebnis).toBe("NO-GO");
+    expect(n.gruende.join()).toMatch(/IMP-99.*nicht in der SSOT/);
+    expect(g8Blocker(ssot, [436], null, KONFIG_STANDARD, { funktionen: [{ ...unfertig.funktionen[0], ssotPakete: "IMP-6" }] }, KL).ergebnis).toBe("NO-GO");
+    // ohne Liste (G3 meldet sie selbst) und ohne ssotPakete bleibt G8 wie bisher
+    expect(g8Blocker(ssot, [436], null, KONFIG_STANDARD).ergebnis).toBe("GO");
+    expect(g8Blocker(ssot, [436], null, KONFIG_STANDARD, { funktionen: [{ id: "x", variablen: [] }] }).ergebnis).toBe("GO");
+  });
+  it("Review #437 (3): Beleg „hinter Schalter AUS“ nur mit Variablen; leere oder fehlende variablen → NO-GO, kein Beleg", () => {
+    const ssot = { pakete: [{ id: "IMP-6", prio: "P2", status: "IN_PROGRESS", strang: "acc45", pr: ["#436"] }] };
+    for (const variablen of [[], undefined, "X"]) {
+      const g = g8Blocker(ssot, [436], null, KONFIG_STANDARD, { funktionen: [{ id: "w", name: "Planwirkung", variablen, ssotPakete: ["IMP-6"] }] }, KL);
+      expect(g.ergebnis, JSON.stringify(variablen)).toBe("NO-GO");
+      expect(g.belege.join(), JSON.stringify(variablen)).not.toMatch(/hinter Schalter AUS/);
+    }
+  });
+  it("Review #437 (3, 4): ssotPakete mit offenem P0/P1-Paket im Kandidaten bleibt G8-NO-GO, ohne Beleg „hinter Schalter AUS“", () => {
+    const ssot = { pakete: [
+      { id: "WP-48", prio: "P0", status: "IN_PROGRESS", strang: "acc45", pr: ["#87"] },
+      { id: "WP-16c", prio: "P0", status: "REVIEW", strang: "acc45", pr: ["#223"] },
+    ] };
+    const unfertig = { funktionen: [{ id: "t", name: "Teilspeicherung", variablen: ["CENTRIC_TEILSPEICHERUNG"], ssotPakete: ["WP-48", "WP-16c"] }] };
+    const g = g8Blocker(ssot, [87, 223], null, KONFIG_STANDARD, unfertig, KL);
+    expect(g.ergebnis).toBe("NO-GO");
+    expect(g.gruende.map((x) => x.split(" ")[0])).toEqual(["WP-48", "WP-16c"]);
+    expect(g.belege.join()).not.toMatch(/hinter Schalter AUS/);
+    // akzeptiert der Betreiber das Paket, ist es kein NO-GO mehr; dann gilt der Beleg
+    const f = { akzeptiertePakete: [{ id: "WP-48", grund: "hinter Schalter" }, { id: "WP-16c", grund: "x" }] };
+    const a = g8Blocker(ssot, [87, 223], f, KONFIG_STANDARD, unfertig, KL);
+    expect(a.ergebnis).toBe("GO");
+    expect(a.belege.join()).toMatch(/WP-48 im Kandidaten .*hinter Schalter AUS/);
+  });
+  it("G8 im Gesamtlauf liest RELEASE-UNFERTIG.json des Kandidaten", () => {
+    datei("docs/acc45/RELEASE-UNFERTIG.json", { ...UNFERTIG, funktionen: [...UNFERTIG.funktionen, { id: "t", name: "T", variablen: ["CENTRIC_SCHICHTMODELL_WIRKUNG"], ssotPakete: ["GIBT-ES-NICHT"] }] });
+    expect(gateVon(pruefe(), "G8").gruende.join()).toMatch(/GIBT-ES-NICHT/);
+  });
+  it("Repository-Stand: jedes ssotPakete in RELEASE-UNFERTIG.json steht in work-packages.json", () => {
+    const ssot = JSON.parse(readFileSync(join(WURZEL, "docs/acc45/work-packages.json"), "utf8"));
+    const ids = new Set(ssot.pakete.map((p) => p.id));
+    for (const f of UNFERTIG.funktionen) for (const id of f.ssotPakete || []) expect(ids.has(id), `${f.id}: ${id}`).toBe(true);
+  });
+});
+
+describe("REL-1 Nachzug N1 (Delta-Check #427): Pfade mit Steuerzeichen im Wurzelverzeichnis und unter deploy/", () => {
+  // Ersatz-Quelle für vorlagenStandErmitteln: Pfade frei wählbar (auch NUL, das Git selbst nicht zulässt)
+  const kqAus = (wurzel, deploy = []) => ({
+    wurzelDateien: () => wurzel, dateien: () => deploy, modus: () => "100644", lesenRoh: () => Buffer.from("x"),
+    eintraege: () => [...wurzel, ...deploy].map((pfad) => ({ pfad, modus: "100644" })),
+  });
+  it("jedes Steuerzeichen (\\n, \\r, \\t, NUL, ESC, DEL) im Pfad → unbekannt (NO-GO), auch wenn der Name sonst keine Vorlage wäre", () => {
+    for (const p of ["Dockerfile\nx", "x\n.env", "README\r", "a\tb", "a\0b", "a\x1bb", "a\x7fb"]) {
+      expect(vorlagenStandErmitteln(kqAus([p])).unbekannt.join(), JSON.stringify(p)).toMatch(/Steuerzeichen/);
+    }
+    for (const p of ["deploy/x\n.env", "deploy/a/b\tc.txt", "deploy/\rcompose.yml"]) {
+      expect(vorlagenStandErmitteln(kqAus([], [p])).unbekannt.join(), JSON.stringify(p)).toMatch(/Steuerzeichen/);
+    }
+    // die Ausgabe enthält das Steuerzeichen nicht roh (sichtbar maskiert)
+    expect(vorlagenStandErmitteln(kqAus(["Dockerfile\nx"])).unbekannt.join()).toContain("Dockerfile\\nx");
+  });
+  it("Gegenprobe: gewöhnliche Pfade (auch Umlaute, Leerzeichen) lösen keinen Steuerzeichen-Fund aus", () => {
+    const s = vorlagenStandErmitteln(kqAus([".env.example", "Dockerfile", "README.md", "Ä ö.txt"], ["deploy/compose.yml", "deploy/a b/c.sh"]));
+    expect(s.unbekannt.join()).not.toMatch(/Steuerzeichen/);
+  });
+  it("echtes Git-Repo: Dockerfile\\nx, deploy/x\\n.env und deploy/t\\tab.yml im Kandidaten → Vorlagenstand unbekannt", () => {
+    const repo = mkdtempSync(join(tmpdir(), "rel1-n1-"));
+    // core.protectNTFS=false: Git für Windows lehnt Steuerzeichen im Pfad sonst schon beim Anlegen ab (unter Linux
+    // erlaubt) — der Kandidat kann solche Pfade aber enthalten, das Werkzeug muss sie erkennen.
+    const g = (...args) => {
+      const r = spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false", "-c", "core.autocrlf=false", "-c", "core.protectNTFS=false", ...args], { cwd: repo, encoding: "utf8" });
+      if (r.status !== 0) throw new Error(args.join(" ") + ": " + r.stderr);
+      return r.stdout.trim();
+    };
+    try {
+      g("init", "-q");
+      writeFileSync(join(repo, ".env.example"), "NODE_ENV=production\n");
+      g("add", "-A"); g("commit", "-q", "-m", "Basis");
+      const basis = g("rev-parse", "HEAD");
+      const blob = spawnSync("git", ["hash-object", "-w", "--stdin"], { cwd: repo, input: "ENV CENTRIC_DEMO=true\n", encoding: "utf8" }).stdout.trim();
+      g("update-index", "--add", "--cacheinfo", `100644,${blob},Dockerfile\nx`);
+      g("update-index", "--add", "--cacheinfo", `100644,${blob},deploy/x\n.env`);
+      g("update-index", "--add", "--cacheinfo", `100644,${blob},deploy/t\tab.yml`);
+      g("commit", "-q", "-m", "Steuerzeichen");
+      const s = sammeln({ wurzel: repo, offline: false, kandidatSha: g("rev-parse", "HEAD"), basisSha: basis, releaseId: "x1y", digest: D, jetztMs: JETZT_MS, gh: () => { throw new Error("kein Netz"); } }).vorlagenStand;
+      const u = s.unbekannt.join("|");
+      expect(u).toContain("Dockerfile\\nx");
+      expect(u).toContain("deploy/x\\n.env");
+      expect(u).toContain("deploy/t\\tab.yml");
+      expect(s.unbekannt.filter((x) => /Steuerzeichen/.test(x))).toHaveLength(3);
+    } finally { rmSync(repo, { recursive: true, force: true }); }
+  }, 60_000);
+  it("Review #437 (1, 2): C1-Zeichen (U+0080–U+009F) und U+2028/U+2029 sind Steuerzeichen; Ausgabe maskiert, nie roh", () => {
+    // Zeichen zur Laufzeit gebildet (keine rohen Zeilentrenner im Quelltext)
+    const LS = String.fromCharCode(0x2028), PS = String.fromCharCode(0x2029), c = (n) => String.fromCharCode(n);
+    const roh = new RegExp("[" + c(0) + "-" + c(0x1f) + c(0x7f) + "-" + c(0x9f) + LS + PS + "]");
+    for (const p of ["Dockerfile" + LS + "x", "x" + PS + ".env", "a" + c(0x85) + "b", "a" + c(0x9b) + "b", "a" + c(0x80) + "b", "a" + c(0x9f) + "b"]) {
+      const u = vorlagenStandErmitteln(kqAus([p])).unbekannt.join();
+      expect(u, JSON.stringify(p)).toMatch(/Steuerzeichen/);
+      expect(roh.test(u), JSON.stringify(u)).toBe(false);
+    }
+    const bs = String.fromCharCode(0x5c);
+    expect(vorlagenStandErmitteln(kqAus(["Dockerfile" + LS + "x"])).unbekannt.join()).toContain("Dockerfile" + bs + "u2028x");
+    expect(vorlagenStandErmitteln(kqAus(["a" + c(0x9b) + "b"])).unbekannt.join()).toContain("a" + bs + "u009bb");
+    expect(vorlagenStandErmitteln(kqAus([], ["deploy/a" + c(0) + "b"])).unbekannt.join()).toContain("deploy/a" + bs + "u0000b");
+    expect(vorlagenStandErmitteln(kqAus(["Dockerfile" + c(10) + "x"])).unbekannt.join()).toContain("Dockerfile" + bs + "nx");
+    // vorlagenArt mit s-Flag: auch ohne Steuerzeichen-Sperre wäre Dockerfile<U+2028>x eine Vorlage dieser Art
+    expect(new RegExp(KONFIG_STANDARD.vorlagenArt, "is").test("Dockerfile" + LS + "x")).toBe(true);
+  });
+  it("Review #437 (1): echtes Git-Repo — Dockerfile<U+2028>x mit aktiver Planwirkung und deploy/compose<U+2028>.yml → unbekannt", () => {
+    const repo = mkdtempSync(join(tmpdir(), "rel1-n1b-"));
+    const g = (...args) => {
+      const r = spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false", "-c", "core.autocrlf=false", "-c", "core.protectNTFS=false", ...args], { cwd: repo, encoding: "utf8" });
+      if (r.status !== 0) throw new Error(args.join(" ") + ": " + r.stderr);
+      return r.stdout.trim();
+    };
+    try {
+      g("init", "-q");
+      writeFileSync(join(repo, ".env.example"), "NODE_ENV=production\n");
+      g("add", "-A"); g("commit", "-q", "-m", "Basis");
+      const basis = g("rev-parse", "HEAD");
+      const blob = spawnSync("git", ["hash-object", "-w", "--stdin"], { cwd: repo, input: "ENV CENTRIC_SCHICHTMODELL_WIRKUNG=true\n", encoding: "utf8" }).stdout.trim();
+      const LS = String.fromCharCode(0x2028);
+      g("update-index", "--add", "--cacheinfo", `100644,${blob},Dockerfile${LS}x`);
+      g("update-index", "--add", "--cacheinfo", `100644,${blob},deploy/compose${LS}.yml`);
+      g("commit", "-q", "-m", "Zeilentrenner");
+      const s = sammeln({ wurzel: repo, offline: false, kandidatSha: g("rev-parse", "HEAD"), basisSha: basis, releaseId: "x1y", digest: D, jetztMs: JETZT_MS, gh: () => { throw new Error("kein Netz"); } }).vorlagenStand;
+      const u = s.unbekannt.join("|");
+      expect(u).toContain("Dockerfile\\u2028x");
+      expect(u).toContain("deploy/compose\\u2028.yml");
+    } finally { rmSync(repo, { recursive: true, force: true }); }
+  }, 60_000);
+  it("0 Fehlalarme: echte Vorlagen im Kopf-Commit des Repositorys (online, aus den Git-Objekten)", () => {
+    const r = spawnSync(process.execPath, [WERKZEUG, "--vorlagen-hashes", "--kandidat", "HEAD"], { cwd: WURZEL, encoding: "utf8" });
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stderr).not.toMatch(/Steuerzeichen|nicht gelistete Vorlage/);
+    expect(Object.keys(JSON.parse(r.stdout).vorlagenHashes).sort()).toEqual([...KONFIG_STANDARD.gebundeneVorlagen].sort());
+  }, 60_000);
+});
+
+describe("Delta-Check #437: keine rohen Steuer- oder Formatzeichen in der Ausgabe", () => {
+  // Alle Sonderzeichen zur Laufzeit gebildet (kein rohes Zeichen im Quelltext)
+  const c = (...n) => String.fromCharCode(...n);
+  const ESC = c(0x1b), CSI = c(0x9b), LS = c(0x2028), PS = c(0x2029), RLO = c(0x202e), LF = c(10);
+  // erlaubt: druckbare Zeichen, Leerzeichen und \n der eigenen Formatierung; verboten: \p{C} (Steuer-, Format-,
+  // private Zeichen), Zeilen-/Absatztrenner, besondere Leerzeichen
+  const unsicher = (s) => s.replace(/\n/g, "").match(/[\p{C}\p{Zl}\p{Zp}]|(?! )\p{Zs}/u);
+  const kqAus = (eintraege) => ({
+    wurzelDateien: () => eintraege.filter((e) => !e.pfad.includes("/")).map((e) => e.pfad),
+    dateien: () => eintraege.filter((e) => e.pfad.startsWith("deploy/") && e.modus.startsWith("100")).map((e) => e.pfad),
+    modus: (p) => (eintraege.find((e) => e.pfad === p) || {}).modus ?? null, lesenRoh: () => Buffer.from("x"),
+    eintraege: () => eintraege,
+  });
+
+  it("Symlink und Submodul mit bösartigem Namen: maskiert, genau eine Meldung je Pfad", () => {
+    const link = "deploy/link" + ESC + "[2J" + LS, wl = "wl" + CSI + "2J" + LF, mod = "deploy/mod" + ESC + "x";
+    const s = vorlagenStandErmitteln(kqAus([{ pfad: link, modus: "120000" }, { pfad: wl, modus: "120000" }, { pfad: mod, modus: "160000" }]));
+    for (const u of s.unbekannt) expect(unsicher(u), JSON.stringify(u)).toBe(null);
+    expect(s.unbekannt.filter((u) => u.startsWith("deploy/link"))).toHaveLength(1);
+    expect(s.unbekannt.filter((u) => u.startsWith("wl"))).toHaveLength(1);
+    expect(s.unbekannt.filter((u) => u.startsWith("deploy/mod"))).toHaveLength(1);
+    // auch ein Symlink ohne Steuerzeichen, aber mit Formatzeichen (Richtungsumkehr), ist maskiert und gemeldet
+    const r = vorlagenStandErmitteln(kqAus([{ pfad: "deploy/a" + RLO + "lmy.env", modus: "120000" }]));
+    expect(r.unbekannt).toHaveLength(1);
+    expect(unsicher(r.unbekannt[0])).toBe(null);
+  });
+  it("Formatzeichen (U+202E, U+200B, U+FEFF) im Pfad sind wie Steuerzeichen NO-GO", () => {
+    for (const p of ["Dockerfile" + RLO + "x", "a" + c(0x200b) + ".env", c(0xfeff) + "compose.yml"]) {
+      const u = vorlagenStandErmitteln(kqAus([{ pfad: p, modus: "100644" }])).unbekannt.join();
+      expect(u, JSON.stringify(p)).toMatch(/Steuerzeichen/);
+      expect(unsicher(u)).toBe(null);
+    }
+  });
+  it("G8: Beleg nur, wenn jede Variable als schalter-aus klassifiziert ist; sonst NO-GO", () => {
+    const ssot = { pakete: [{ id: "IMP-6", prio: "P2", status: "IN_PROGRESS", strang: "acc45", pr: ["#436"] }] };
+    const mit = (variablen) => ({ funktionen: [{ id: "w", name: "Planwirkung", variablen, ssotPakete: ["IMP-6"] }] });
+    expect(g8Blocker(ssot, [436], null, KONFIG_STANDARD, mit(["CENTRIC_SCHICHTMODELL_WIRKUNG"]), KL).belege.join()).toMatch(/hinter Schalter AUS/);
+    for (const [v, kl] of [[["VAPID_PRIVATE"], KL], [["CENTRIC_ERSTLEITUNG_STRENG"], KL], [["CENTRIC_SCHICHTMODELL_WIRKUNG"], null],
+      [["CENTRIC_SCHICHTMODELL_WIRKUNG", "CENTRIC_UNBEKANNT_X"], KL]]) {
+      const g = g8Blocker(ssot, [436], null, KONFIG_STANDARD, mit(v), kl);
+      expect(g.ergebnis, v.join()).toBe("NO-GO");
+      expect(g.belege.join(), v.join()).not.toMatch(/hinter Schalter AUS/);
+    }
+  });
+  it("Gesamtausgabe eines Laufs (JSON, Kurzfassung, CLI) mit bösartigen Namen und Werten enthält kein unsicheres Zeichen", () => {
+    const repo = mkdtempSync(join(tmpdir(), "rel1-aus-"));
+    const g = (...args) => {
+      const r = spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false", "-c", "core.autocrlf=false", "-c", "core.protectNTFS=false", ...args], { cwd: repo, encoding: "utf8" });
+      if (r.status !== 0) throw new Error(args.join(" ") + ": " + r.stderr);
+      return r.stdout.trim();
+    };
+    try {
+      g("init", "-q");
+      writeFileSync(join(repo, ".env.example"), "NODE_ENV=production\n");
+      writeFileSync(join(repo, "server.mjs"), 'process.env.CENTRIC_DEMO === "true";\n');
+      g("add", "-A"); g("commit", "-q", "-m", "Basis");
+      const basis = g("rev-parse", "HEAD");
+      // aktiver Wert und unlesbare Zeile mit ANSI-Folge, SSOT-Titel mit Richtungsumkehr
+      writeFileSync(join(repo, ".env.example"), "NODE_ENV=production\nCENTRIC_DEMO=" + ESC + "[2J" + CSI + "31m\nCENTRIC_X" + ESC + "=1\n");
+      mkdirSync(join(repo, "docs/acc45"), { recursive: true });
+      writeFileSync(join(repo, "docs/acc45/work-packages.json"), JSON.stringify({ pakete: [
+        { id: "V4-9", prio: "P1", status: "BLOCKED", strang: "folge", pr: [], titel: "Titel" + RLO + ESC + "[2J" + LS + "x" }] }));
+      g("add", "-A");
+      const blob = spawnSync("git", ["hash-object", "-w", "--stdin"], { cwd: repo, input: "x", encoding: "utf8" }).stdout.trim();
+      g("update-index", "--add", "--cacheinfo", `120000,${blob},deploy/link${ESC}[2J${LS}`);
+      g("update-index", "--add", "--cacheinfo", `120000,${blob},wl${CSI}2J${LF}`);
+      g("update-index", "--add", "--cacheinfo", `160000,${"2".repeat(40)},deploy/mod${ESC}x`);
+      g("update-index", "--add", "--cacheinfo", `100644,${blob},deploy/x${RLO}.env`);
+      g("update-index", "--add", "--cacheinfo", `100644,${blob},deploy/compose${PS}.yml`);
+      g("commit", "-q", "-m", "boese" + ESC + "[2J");
+      const k = g("rev-parse", "HEAD");
+      const r = auswerten(sammeln({ wurzel: repo, offline: false, kandidatSha: k, basisSha: basis, releaseId: "x1y", digest: D, jetztMs: JETZT_MS, gh: () => { throw new Error("kein Netz" + ESC); } }));
+      const json = JSON.stringify(r, null, 2);
+      expect(unsicher(json), "JSON").toBe(null);
+      expect(unsicher(kurzfassung(r)), "Kurzfassung").toBe(null);
+      expect(gateVon(r, "G3").ergebnis).toBe("NO-GO");
+      expect(gateVon(r, "G9").gruende.join()).toMatch(/V4-9/);
+      // je Pfad genau eine Meldung im Vorlagenstand
+      const u = sammeln({ wurzel: repo, offline: false, kandidatSha: k, basisSha: basis, releaseId: "x1y", digest: D, jetztMs: JETZT_MS, gh: () => { throw new Error("x"); } }).vorlagenStand.unbekannt;
+      for (const p of ["deploy/link", "wl", "deploy/mod", "deploy/x", "deploy/compose"]) expect(u.filter((x) => x.startsWith(p)), p).toHaveLength(1);
+      // CLI: --vorlagen-hashes (stderr), --kurz (stdout/stderr) und JSON-Lauf
+      for (const args of [["--vorlagen-hashes", "--kandidat", k, "--basis", basis], ["--kandidat", k, "--basis", basis, "--kurz"], ["--kandidat", k, "--basis", basis]]) {
+        const c2 = spawnSync(process.execPath, [WERKZEUG, "--wurzel", repo, ...args], { encoding: "utf8" });
+        expect(unsicher(c2.stdout), args.join(" ") + " stdout").toBe(null);
+        expect(unsicher(c2.stderr), args.join(" ") + " stderr").toBe(null);
+      }
+    } finally { rmSync(repo, { recursive: true, force: true }); }
+  }, 120_000);
 });
