@@ -115,7 +115,8 @@ const AUSNAHMEN = [
   { datei: MAIN, art: "form", stelle: "{{ height: 15, borderRadius: 6, background: C.bg, marginBottom: 12,",
     grund: "Ladeplatzhalter 15 px hoch: klein (8) >= halbe Höhe 7,5 machte den Balken zur Kapsel" },
   { datei: RECHT, art: "form", stelle: 'background: C.flaecheStill, padding: "1px 5px", borderRadius: 4 }}',
-    grund: "Code-Auszeichnung im Fließtext, Höhe aus der Schrift: klein (8) machte sie zur Kapsel (wie die Normmarke)" },
+    grund: "Code-Auszeichnung im Fließtext, Höhe aus der Schrift (Browser: 17 px): klein (8) läge bei 94 % der halben "
+      + "Höhe, die Marke würde fast zur Kapsel (wie die Normmarke in pruefung.jsx, Schnitt 4)" },
   { datei: MARKE, art: "farbe", stelle: 'const MARKENFARBE = { grund: "#10222A", c: "#FFFFFF", punkt: "#0B7C7C" };',
     grund: "Bildmarke mit festen Markenfarben, folgt nicht dem Farbschema; zugleich Canvas-Quelle der Startsequenz" },
   { datei: STARTBILD, art: "farbe", stelle: "ctx.fillStyle = `rgb(${p.r},${p.g},${p.b})`;",
