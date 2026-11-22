@@ -103,8 +103,8 @@ export function Zelle({ da, abw, size = 28, blass }) {
 export function Balken({ ist, soll, tone }) {
   const pct = Math.min(100, (ist / Math.max(1, soll)) * 100);
   const col = tone === "danger" ? C.danger : tone === "warn" ? C.warn : C.ok;
-  return <div style={{ height: 5, background: "rgba(20,20,25,.08)", borderRadius: 3, overflow: "hidden" }}>
-    <div style={{ width: `${pct}%`, height: "100%", background: col, borderRadius: 3, transition: "width .4s cubic-bezier(.4,0,.2,1)" }} /></div>;
+  return <div style={{ height: 5, background: "rgba(20,20,25,.08)", borderRadius: "var(--v4-r-pille)", overflow: "hidden" }}>
+    <div style={{ width: `${pct}%`, height: "100%", background: col, borderRadius: "var(--v4-r-pille)", transition: "width .4s cubic-bezier(.4,0,.2,1)" }} /></div>;
 }
 /* Welche Blätter gerade offen sind, in der Reihenfolge des Öffnens.
    Escape schließt immer nur das oberste — sonst räumt ein Tastendruck

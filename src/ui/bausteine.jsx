@@ -9,7 +9,7 @@ import { lesbar, NUM } from "./thema.js";
 /** Einheitlicher Leerzustand — mit Symbol, Erklärung und optionalem Weg. */
 export const Leer = ({ titel, text, symbol = "kreis-leer", aktion }) => (
   <div style={{ padding: "56px 28px", textAlign: "center" }}>
-    <div style={{ width: 46, height: 46, borderRadius: 14, margin: "0 auto 16px", display: "flex",
+    <div style={{ width: 46, height: 46, borderRadius: "var(--v4-r-mittel)", margin: "0 auto 16px", display: "flex",
       alignItems: "center", justifyContent: "center", background: C.flaecheStill, color: C.dim }}>
       <Icon n={symbol} size={22} /></div>
     <div style={{ fontSize: 15.5, fontWeight: 620, marginBottom: 7 }}>{titel}</div>

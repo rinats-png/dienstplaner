@@ -50,6 +50,11 @@
                        Auswahlfläche des ersten Farbpunkts („Farbe von …“) (öffnen, messen, Bild, schließen ohne Wahl); in
                        „Qualifikationen“ das Hinweisfenster des ersten Diagrammbalkens (Maus darüber). Es wird nichts
                        geschrieben.
+     QUERSCHNITT=2     wie QUERSCHNITT=1 und zusätzlich Teil 2 (V4-3b): in jeder Ansicht der Leitung jede Inline-Stufe
+                       gegen V4_RADIEN; im Handbuch Haken-Knopf und Marken, Bild; dort die Schnellsuche (Strg + K) öffnen,
+                       Esc-Taste (Radius, Höhe) und Treffersymbol messen, Bild, mit Escape schließen. Mit Rolle
+                       betreiber: „Rechner“ (Ringregler) und „Mandanten“ → „Mandant anlegen“ bis Schritt 3
+                       (Schrittleiste, Tageskacheln der ModellVorschau), Bild, Blatt ohne Anlegen schließen. Nur lesend.
    Browser: vorinstalliertes Playwright (playwright-core, playwright im Projekt
    oder global); chromium.launch() ohne Optionen. Es wird nichts installiert.
    Exit 0: keine Befunde · 1: Befunde · 2: Aufruf oder Umgebung · 3: Aufbau gescheitert
@@ -484,6 +489,95 @@ async function querschnittBausteine(p, ansicht, k) {
   }
 }
 
+/* V4-3b Querschnitt Teil 2 (QUERSCHNITT=2): Bausteine aus handbuch, kommandoleiste, tourleiste, ringregler,
+   ui/bausteine, ui/leisten, ui/ziehen und schrittleiste tragen Radiusstufen im Inline-Stil. In jeder Ansicht der Leitung
+   wird jede Inline-Stufe gegen V4_RADIEN gemessen (Leerzustand, Balken, wo sie erscheinen). Im Handbuch zusätzlich:
+   Haken-Knopf (26×26 klein), Marken (22×22 pille), Bild; dann die Schnellsuche (Strg + K) öffnen, Esc-Taste (klein,
+   Höhe) und Treffersymbol (27×27 klein) messen, Bild, mit Escape schließen. Es wird nichts geschrieben. */
+async function querschnittTeil2(p, ansicht, k) {
+  const { V4_RADIEN: R } = await import(pathToFileURL(path.join(WT, "src", "v4", "tokens.js")).href);
+  const messen = () => [...document.querySelectorAll('[style*="--v4-r-"]')].filter((e) => e.getBoundingClientRect().width > 0).map((e) => {
+    const stufe = (e.getAttribute("style").match(/--v4-r-([a-z]+)/) || [])[1];
+    const cs = getComputedStyle(e);
+    return { stufe, wert: /--v4-r-/.test(e.style.borderTopLeftRadius) ? cs.borderTopLeftRadius : cs.borderTopRightRadius };
+  });
+  const st = await p.evaluate(messen);
+  const falsch = st.filter((s) => R[s.stufe] !== s.wert);
+  if (falsch.length) melde("radius", `${ansicht}: ${falsch.length} Stellen mit falschem Radius (z. B. ${falsch[0].stufe} = ${falsch[0].wert})`);
+  if (!/Handbuch$/.test(ansicht)) return;
+  const je = {};
+  for (const s of st) je[s.stufe] = (je[s.stufe] || 0) + 1;
+  const mass = (e) => ({ inline: e.style.borderRadius, wert: getComputedStyle(e).borderTopLeftRadius,
+    b: Math.round(e.getBoundingClientRect().width), h: Math.round(e.getBoundingClientRect().height) });
+  const haken = p.getByRole("button", { name: /^Als (erledigt|ungelesen) markieren$/ }).first();
+  if (!(await haken.count())) { melde("querschnitt", `${ansicht}: kein Haken-Knopf`); return; }
+  const h = await haken.evaluate(mass);
+  const marken = await p.evaluate(() => [...document.querySelectorAll('span[style*="--v4-r-pille"]')]
+    .filter((x) => Math.round(x.getBoundingClientRect().width) === 22).map((x) => getComputedStyle(x).borderTopLeftRadius));
+  if (h.wert !== R.klein || h.b !== 26 || !marken.length || marken.some((m) => m !== R.pille))
+    melde("radius", `${ansicht}: Haken ${h.inline} = ${h.wert} (${h.b}×${h.h}), Marken ${[...new Set(marken)].join("/")}`);
+  else beleg("querschnitt2", `${ansicht}: ${st.length} Inline-Stufen = V4_RADIEN (${Object.entries(je).map(([a, n]) => `${a} ${n}`).join(", ")}); Haken 26×26 = ${h.wert}, ${marken.length} Marken 22×22 = ${R.pille}`);
+  await bild(p, ansicht);
+  await p.keyboard.press("Control+k");
+  const dialog = p.getByRole("dialog", { name: "Schnellsuche" });
+  if (!(await dialog.waitFor({ state: "visible", timeout: 5000 }).then(() => true).catch(() => false))) { melde("querschnitt", `${ansicht}: Schnellsuche öffnet nicht`); return; }
+  const name = `${ansicht}/Schnellsuche`;
+  await p.keyboard.type("Hand");
+  await p.waitForTimeout(300);
+  geprueft++;
+  const m = await p.evaluate(MESSEN);
+  if (k.reflow && !reflowOk(m.gesamt, m.breite)) melde("reflow", `${name}: Seite ${m.gesamt - m.breite}px breiter als ${m.breite}px — ${m.taeter}`);
+  const esc = await dialog.locator("kbd", { hasText: "Esc" }).evaluate(mass);
+  const sym = await dialog.getByRole("option").first().locator("span").first().evaluate(mass).catch(() => null);
+  if (esc.wert !== R.klein || esc.h <= 16 || !sym || sym.wert !== R.klein || sym.b !== 27)
+    melde("radius", `${name}: Esc ${esc.wert} (${esc.b}×${esc.h}), Symbol ${sym ? `${sym.wert} (${sym.b}×${sym.h})` : "fehlt"}`);
+  else beleg("querschnitt2", `${name}: Esc ${esc.inline} = ${esc.wert} bei ${esc.b}×${esc.h} px (8 < ${esc.h / 2}); Treffersymbol ${sym.b}×${sym.h} = ${sym.wert}`);
+  await bild(p, name);
+  await p.keyboard.press("Escape");
+  await dialog.waitFor({ state: "hidden", timeout: 5000 }).catch(() => melde("querschnitt", `${name}: Schnellsuche schließt nicht`));
+}
+
+/* QUERSCHNITT=2, Rolle betreiber: „Rechner“ (Ringregler: Ring pille, Tasten 34×34 klein) und „Mandanten“ →
+   „Mandant anlegen“ bis Schritt 3 (Schrittleiste: Marken 26×26 pille; ModellVorschau des gewählten Modells: Tageskacheln
+   17×17 klein, Review #466 H2). Der Name wird nur im Formular eingetragen; das Blatt wird ohne Anlegen geschlossen
+   (Escape). Es wird nichts geschrieben. */
+async function querschnittTeil2Betreiber(p, ansicht, k) {
+  const { V4_RADIEN: R } = await import(pathToFileURL(path.join(WT, "src", "v4", "tokens.js")).href);
+  const radienVon = (sel) => p.evaluate((s) => [...document.querySelectorAll(s)].filter((e) => e.getBoundingClientRect().width > 0)
+    .map((e) => ({ inline: e.style.borderRadius, wert: getComputedStyle(e).borderTopLeftRadius,
+      b: Math.round(e.getBoundingClientRect().width), h: Math.round(e.getBoundingClientRect().height) })), sel);
+  const gleich = (liste, inline, wert, b) => liste.length > 0 && liste.every((x) => x.inline === inline && x.wert === wert && (!b || x.b === b));
+  if (/Rechner$/.test(ansicht)) {
+    const ring = await radienVon('[role="slider"]');
+    const tasten = await radienVon('button[title$="verringern"], button[title$="erhöhen"]');
+    if (!gleich(ring, "var(--v4-r-pille)", R.pille) || !gleich(tasten, "var(--v4-r-klein)", R.klein, 34))
+      melde("radius", `${ansicht}: Ring ${JSON.stringify(ring[0] || null)}, Tasten ${JSON.stringify(tasten[0] || null)}`);
+    else beleg("querschnitt2", `${ansicht}: ${ring.length} Ringe = ${R.pille} (${ring[0].b}×${ring[0].h}), ${tasten.length} Tasten 34×34 = ${R.klein}`);
+    await bild(p, `${ansicht}/Ringregler`);
+    return;
+  }
+  if (!/Mandanten$/.test(ansicht)) return;
+  const knopf = p.getByRole("button", { name: "Mandant anlegen" }).first();
+  if (!(await knopf.count())) { hinweis("querschnitt2", `${ansicht}: kein Knopf „Mandant anlegen“`); return; }
+  await knopf.click({ timeout: 4000 });
+  const blatt = p.getByRole("dialog", { name: /Neuen Mandanten einrichten/ }).first();
+  if (!(await blatt.waitFor({ state: "visible", timeout: 5000 }).then(() => true).catch(() => false))) { melde("querschnitt2", `${ansicht}: Blatt öffnet nicht`); return; }
+  await blatt.getByPlaceholder("z. B. Wachdienst Süd GmbH").fill("Abnahme Testbetrieb");
+  for (let i = 0; i < 2; i++) { await blatt.getByRole("button", { name: "Weiter" }).first().click({ timeout: 4000 }); await p.waitForTimeout(250); }
+  const name = `${ansicht}/Mandant anlegen, Schritt 3`;
+  geprueft++;
+  const m = await p.evaluate(MESSEN);
+  if (k.reflow && !reflowOk(m.gesamt, m.breite)) melde("reflow", `${name}: Seite ${m.gesamt - m.breite}px breiter als ${m.breite}px — ${m.taeter}`);
+  const marken = (await radienVon('.reiterreihe span[style*="--v4-r-"]')).filter((x) => x.b === 26);
+  const kacheln = (await radienVon('div[style*="--v4-r-klein"]')).filter((x) => x.b === 17 && x.h === 17);
+  if (!gleich(marken, "var(--v4-r-pille)", R.pille) || !gleich(kacheln, "var(--v4-r-klein)", R.klein))
+    melde("radius", `${name}: Marken ${marken.length} ${JSON.stringify(marken[0] || null)}, Tageskacheln ${kacheln.length} ${JSON.stringify(kacheln[0] || null)}`);
+  else beleg("querschnitt2", `${name}: ${marken.length} Schrittmarken 26×26 = ${R.pille}; ${kacheln.length} Tageskacheln der ModellVorschau 17×17 = ${R.klein} (Teil 1, H2)`);
+  await bild(p, name);
+  await p.keyboard.press("Escape");
+  await blatt.waitFor({ state: "hidden", timeout: 5000 }).catch(() => melde("querschnitt2", `${name}: Blatt schließt nicht`));
+}
+
 /* ===================================================== 1 + 2  Reflow, Zielgröße */
 if (KRITERIEN.includes("reflow") || KRITERIEN.includes("ziele")) {
   const konfig = [];
@@ -511,6 +605,8 @@ if (KRITERIEN.includes("reflow") || KRITERIEN.includes("ziele")) {
       if (process.env.SPEICHERLAGE && /Heute$/.test(name)) await speicherLeiste(p, name, k);
       if (process.env.BRANCHENMODULE && rolle === "leitung" && /Betrieb$/.test(name)) await branchenBereich(p, name, k);
       if (process.env.QUERSCHNITT && rolle === "leitung" && /(Betrieb|Qualifikationen)$/.test(name)) await querschnittBausteine(p, name, k);
+      if (process.env.QUERSCHNITT === "2" && rolle === "leitung") await querschnittTeil2(p, name, k);
+      if (process.env.QUERSCHNITT === "2" && rolle === "betreiber") await querschnittTeil2Betreiber(p, name, k);
     });
     for (const f of fehler) melde("konsole", `${marke}: ${f}`);
     if (ansichten === 0) melde("keine-ansicht", `${marke}: keine Ansicht erreicht`);
