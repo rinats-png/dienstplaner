@@ -29,7 +29,7 @@ import { wachbuchZusammen } from "./modul-wachbuch.mjs";
 import { bereitschaftZusammen } from "./modul-bereitschaftsdienst.mjs";
 import { funktionsZusammen } from "./modul-funktionsdienst.mjs";
 import { rotationZusammen } from "./modul-rotation.mjs";
-import { pflegeZusammen } from "./modul-pflegequal.mjs";
+import { pflegeZusammen, pflegeQualAenderung } from "./modul-pflegequal.mjs";
 import { BRANCHENMODULE, modulAktiv } from "./branchenmodule.mjs";
 import { betriebstag } from "./betriebszeit.mjs";
 
@@ -112,7 +112,22 @@ const funktionsWeg = weg("funktionsdienst", { funktionsbereiche: "leitung", funk
 
 const rotationWeg = weg("rotation", { rotationen: "leitung" }, (_altM, neuM) => rotationZusammen(neuM));
 
-const pflegeWeg = weg("pflegequal", { pflegeNiveaus: "leitung" }, (altM, neuM) => pflegeZusammen(neuM, altM));
+const pflegeNiveauWeg = weg("pflegequal", { pflegeNiveaus: "leitung" }, (altM, neuM) => pflegeZusammen(neuM, altM));
+
+/* Auflage A1 (Delta-Review M-PQ1, 2026-11-22): Ändern sich die Qualifikationen des Betriebs, prüft pflegeQualAenderung
+   die gespeicherten Niveaus — auch ohne Änderung an den Niveaus und auch bei Modul „geplant“ oder aus (die Niveaus
+   bleiben gespeichert und würden sonst nach dem Einschalten falsch zählen). Wer `qualifikationen` schreiben darf, regelt
+   rechte.mjs; hier keine weitere Rechte- oder Modulbedingung. Danach der Schreibweg der Niveaus wie bisher. */
+const pflegeWeg = Object.freeze({
+  modul: pflegeNiveauWeg.modul, felder: pflegeNiveauWeg.felder,
+  zusammen(altM, neuM, ktx) {
+    if (istObjekt(neuM) && geaendert(altM, neuM, "qualifikationen")) {
+      const r = pflegeQualAenderung(neuM, altM);
+      if (r.grund) return { grund: r.grund };
+    }
+    return pflegeNiveauWeg.zusammen(altM, neuM, ktx);
+  },
+});
 
 /** Die Schreibwege der sechs Module (der Objektbericht hat keine Betriebsfelder). */
 export const MODULWEGE_WP19 = Object.freeze([wachbuchWeg, bereitschaftWeg, funktionsWeg, rotationWeg, pflegeWeg]);

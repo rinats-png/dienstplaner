@@ -15,6 +15,9 @@
              neue oder geänderte Niveaus ab; ein unverändert gespeichertes Altniveau
              wird nicht still umgedeutet, die Verteilung zählt die Qualifikation
              dort aber nie (nicht als Pflegekraft) und meldet einen Hinweis.
+             A1 (Delta-Review 2026-11-22): breitere Erkennung (Positivliste bei
+             istBetreuungsQualifikation) und Prüfung auch bei geänderten
+             Qualifikationen (pflegeQualAenderung, Umbenennen/Grundlage/Löschen).
      Q3 b    Keine verbindliche Besetzungsprüfung: die Personalbemessungswerte
              sind nicht festgelegt (Fachnachweis offen). Die Verteilung ist eine
              Kennzahl, kein Befund.
@@ -31,17 +34,33 @@ export const PFLEGE_GRENZEN = Object.freeze({ niveaus: 40, qualifikationen: 50, 
 
 const istObjekt = (x) => !!x && typeof x === "object" && !Array.isArray(x);
 const idOk = (s) => typeof s === "string" && s.length >= 1 && s.length <= 60;
-const P43B = /§\s*43\s*b(?![a-z0-9])/i;
+/* Erkennung (Auflage A1, Delta-Review 2026-11-22). Die Zeichenkette wird normalisiert: NFKC (NBSP und NNBSP werden
+   Leerzeichen), Kleinschreibung, Leerraum zusammengezogen, „paragraf“/„paragraph“ und „§§“ gelten als „§“.
+   Positivliste, klein und belegt:
+     - Norm § 43b SGB XI (zusätzliche Betreuungskräfte; FN-14, Branchenkatalog server/lib/branchen.mjs):
+       „§ 43b“ (mit Paragrafzeichen, auch ohne Gesetz) oder „43b SGB XI“ (ohne Paragrafzeichen nur mit „SGB XI“).
+     - Norm § 87b SGB XI: die frühere Fundstelle derselben Betreuungskräfte (bis 2016), im Altbestand häufig
+       („Betreuungsassistent § 87b“). Gleiche Schreibweisen wie § 43b.
+     - Bezeichnungen „Betreuungskraft/Betreuungskräfte“, „Betreuungsassistent/-in/-enz“, „Alltagsbegleiter/-in/-ung“.
+     - Merkmal „betreuung“ (Groß-/Kleinschreibung und Leerraum egal).
+   Bewusst nicht: andere Paragrafen (§ 43, § 43c, § 87a, § 143b, SGB XII), das bloße Wort „Betreuung“ oder „Betreuer“ —
+   eine Fehlerkennung nähme eine echte Pflegekraft aus der Zählung. Nicht aufgenommen, weil im Repo nicht belegt:
+   die Richtliniennorm (§ 53b/§ 53c SGB XI) und weitere Landes- oder Hausbezeichnungen; dafür das Merkmal. */
+const normal = (s) => s.normalize("NFKC").toLowerCase().replace(/\s+/gu, " ").replace(/paragra(?:ph|f)(?:en)?\.?/g, "§").replace(/§(?:\s*§)+/g, "§").trim();
+const NORM_MIT_ZEICHEN = /§\s*(?:43|87)\s*b(?![a-z0-9])/;
+const NORM_OHNE_ZEICHEN = /(?<![a-z0-9§])(?:43|87)\s*b(?:\s*abs\.?\s*\d+)?\s*sgb\s*xi(?![a-z0-9])/;
+const BEZEICHNUNG = /betreuungs(?:kr(?:a|ä|ae)ft|assist)|alltagsbegleit/;
+const erkannt = (s) => typeof s === "string" && (() => { const n = normal(s); return NORM_MIT_ZEICHEN.test(n) || NORM_OHNE_ZEICHEN.test(n) || BEZEICHNUNG.test(n); })();
 
 /**
- * Ist die Qualifikation eine Betreuungsqualifikation (§ 43b SGB XI)? Erkannt an der Grundlage oder am Namen
- * („§ 43b“, „§43b“) oder am Merkmal „betreuung“ (FN-14, Q2 a).
+ * Ist die Qualifikation eine Betreuungsqualifikation (§ 43b SGB XI, früher § 87b)? Erkannt an Grundlage oder Name
+ * (Positivliste oben) oder am Merkmal „betreuung“ (FN-14, Q2 a; A1).
  * @param {any} q
  * @returns {boolean}
  */
 export function istBetreuungsQualifikation(q) {
   if (!istObjekt(q)) return false;
-  return q.merkmal === "betreuung" || (typeof q.grundlage === "string" && P43B.test(q.grundlage)) || (typeof q.name === "string" && P43B.test(q.name));
+  return (typeof q.merkmal === "string" && normal(q.merkmal) === "betreuung") || erkannt(q.grundlage) || erkannt(q.name);
 }
 
 /**
@@ -137,6 +156,45 @@ export function pflegeVerteilung(m, personenImDienst, { qualGueltig, heute }) {
     ohneNiveau: ohne,
     ...(hinweise.length ? { hinweise } : {}),
   };
+}
+
+/**
+ * Schreibweg (Prüfung, A1): geänderte Qualifikationen des Betriebs gegen die Niveaus. Läuft, wenn sich `qualifikationen`
+ * ändert — auch ohne Änderung an den Niveaus und unabhängig davon, ob das Modul wirkt (die Niveaus bleiben gespeichert).
+ * Geprüft wird nur eine Qualifikation, die in einem Niveau außerhalb der Gruppe betreuung steht und sich geändert hat
+ * (umbenannt, Grundlage oder Merkmal geändert, gelöscht):
+ *   - wird sie dadurch Betreuungsqualifikation → abgewiesen (gehört nur in die Gruppe betreuung);
+ *   - war sie im gespeicherten Stand Betreuungsqualifikation und ist es danach nicht mehr → abgewiesen (sonst zählte die
+ *     Person still als Pflegekraft, ohne Hinweis).
+ * Eine unveränderte Qualifikation wird nie abgewiesen (Altbestand bleibt speicherbar, keine Migration); der Lesepfad
+ * (pflegeVerteilung) zählt sie dann nicht und meldet einen Hinweis. Die Gruppe betreuung ist frei: dort zählt sie
+ * ohnehin nur als Betreuung.
+ * @param {any} neuM
+ * @param {any} [altM]
+ * @returns {{ grund?: string }}
+ */
+export function pflegeQualAenderung(neuM, altM) {
+  if (!istObjekt(neuM)) return {};
+  const niveaus = Array.isArray(neuM.pflegeNiveaus) ? neuM.pflegeNiveaus.filter((n) => istObjekt(n) && Array.isArray(n.qualifikationen)) : [];
+  if (!niveaus.length) return {};
+  const neuQ = Array.isArray(neuM.qualifikationen) ? neuM.qualifikationen : [];
+  const altQ = istObjekt(altM) && Array.isArray(altM.qualifikationen) ? altM.qualifikationen : [];
+  const finde = (liste, id) => liste.find((x) => istObjekt(x) && x.id === id);
+  for (const n of niveaus) {
+    if (n.gruppe === "betreuung") continue;
+    for (const id of n.qualifikationen) {
+      const neu = finde(neuQ, id);
+      const alt = finde(altQ, id);
+      if (JSON.stringify(neu) === JSON.stringify(alt)) continue;
+      const wo = `Niveau „${String(n.name || n.id || "").slice(0, 40)}“ (Gruppe ${String(n.gruppe).slice(0, 20)})`;
+      const name = String((neu && neu.name) || (alt && alt.name) || id).slice(0, 40);
+      if (istBetreuungsQualifikation(neu))
+        return { grund: `Qualifikation „${name}“ wäre danach eine Betreuungsqualifikation (§ 43b SGB XI), steht aber im ${wo}. Sie gehört nur in die Gruppe betreuung — erst das Niveau berichtigen (Q2 a, FN-14).` };
+      if (istBetreuungsQualifikation(alt))
+        return { grund: `Qualifikation „${name}“ ist eine Betreuungsqualifikation (§ 43b SGB XI) im ${wo}. Umbenennen, Grundlage ändern oder Löschen ließe sie still als Pflegekraft zählen — erst das Niveau berichtigen (Q2 a, FN-14).` };
+    }
+  }
+  return {};
 }
 
 /**
