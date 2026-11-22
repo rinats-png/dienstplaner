@@ -81,30 +81,30 @@ im Testtext): *hoch* = Grenze höchstens 500 ms bei reiner Rechenzeit oder Einze
 *mittel* = Grenze 600 bis 1500 ms oder Mittel je Aufruf; *niedrig* = Grenze ab 2000 ms oder Obergrenze gegen einen Hänger mit großem
 Abstand zum Normalwert.
 
-| Stelle (Datei:Zeile) | Grenze | Risiko | Bemerkung |
-|---|---|---|---|
-| `hilfe-assistent-i23.test.js:444` | < 500 ms | hoch | drei Bereinigungen, reine Rechenzeit; Absicht „nicht quadratisch“ |
-| `intelligence-gateway-anbieter.test.js:76` | < 500 ms | hoch | Zeitüberschreitung mit 30 ms Frist; Wartezeit |
-| `intelligence-gateway-anbieter.test.js:84` | < 600 ms | mittel | wie oben |
-| `intelligence-gateway-review.test.js:182` | < 450 ms | hoch | Gateway-Test mit Zeitgrenze |
-| `intelligence-gateway-review2.test.js:211` | < 400 ms | hoch | Gateway-Test mit Zeitgrenze |
-| `intelligence-gateway-review2.test.js:215`, `:229` | < 1500 / < 1000 ms | mittel | Gateway-Test mit Zeitgrenze |
-| `intelligence-gateway-review3.test.js:160` | < 2000 ms | niedrig | Zeitüberschreitung |
-| `intelligence-gateway-kern.test.js:231`, `:243` | < 1200 / < 900 ms | mittel | Frist 40 ms, Gesamtfrist 1500 ms (:231) |
-| `import-schichtmodell-vorschau-imp6.test.js:316`, `:376` | < 500 ms | hoch | Abweisung vor der Rechnung, Einzelmessung |
-| `import-schichtmodell-vorschau-imp6.test.js:250, 329, 337, 344` | < 5000 / 2000 ms | niedrig | Rechenlast, großer Abstand |
-| `intelligence-nachtrag.test.js:282`, `:289` | < 500 ms | hoch | Leckprüfung, reine Rechenzeit |
-| `dsgvo-server.test.js:201` | < 50 ms | mittel | Aufruf kostet Mikrosekunden; ein GC-Stillstand über 50 ms ist selten, aber möglich. Ein Aufrufzähler belegt „keine Schleife“ besser |
-| `gesund.test.js:158`, `:164` | < 5000 ms | niedrig | Zeitgrenze der Zustandsprüfung |
-| `import-parser.test.js:326, 356, 455, 737, 1131, 1198, 1300, 1306, 1339, 1346, 1443` | 1000 bis 20000 ms | niedrig, `:1339` (1000 ms) mittel | Größenprüfungen des Parsers |
-| `intelligence-planungsreife.test.js:215`, `intelligence-regelbaukasten.test.js:440` | < 1000 ms | mittel | Rechenzeit |
-| `post-smtp.test.js:199, 268, 328` | < 1500 ms | mittel | Zeitüberschreitung gegen Attrappe |
-| `schreibhalt.test.js:202` | < 1500 ms | niedrig | Haltefrist 2000 ms |
-| `nachpruefung-wp11.test.js:469` | < 300 ms (nur mit `CI`) | mittel | 300 Personen; lokal nur Warnung, in CI hart |
-| `wp16c-korrekturrevision.test.js:742` | < 5 ms je Aufruf (Mittel aus 100) | mittel | |
-| `engine-rechenkern.test.js:176` | < 30000 ms | niedrig | Richtwert, Normalwert Sekunden |
-| `imp8-testmatrix.test.js:435`, `mail-push-anbieter.test.js:378, 389`, `monatsabschluss-nachtrag.test.js:189`, `passwoerter.test.js:194` | 5000 bis 120000 ms | niedrig | Obergrenzen gegen Hänger |
-| `pruefungen/browser/bereiche.mjs:173` | > 3500 ms meldet „langsam“ | mittel | Browserlauf, nicht Vitest; Einzelmessung, nur Meldung |
+| Stelle (Datei:Zeile) | Grenze | Risiko | Bemerkung | Status (nach #484) |
+|---|---|---|---|---|
+| `hilfe-assistent-i23.test.js:444` | < 500 ms | hoch | drei Bereinigungen, reine Rechenzeit; Absicht „nicht quadratisch“ | **gehärtet** (abwechselnde Skalierung gleicher Gesamtlänge, Grenze 2, Grobgrenze 8000 ms) |
+| `intelligence-gateway-anbieter.test.js:76` | < 500 ms | hoch | Zeitüberschreitung mit 30 ms Frist; Wartezeit | **gehärtet** (Fake-Uhr) |
+| `intelligence-gateway-anbieter.test.js:84` | < 600 ms | mittel | wie oben | **gehärtet** (Fake-Uhr) |
+| `intelligence-gateway-review.test.js:182` | < 450 ms | hoch | Gateway-Test mit Zeitgrenze | **gehärtet** (Fake-Uhr) |
+| `intelligence-gateway-review2.test.js:211` | < 400 ms | hoch | Gateway-Test mit Zeitgrenze | **gehärtet** (Fake-Uhr) |
+| `intelligence-gateway-review2.test.js:215`, `:229` | < 1500 / < 1000 ms | mittel | Gateway-Test mit Zeitgrenze | offen (jetzt `:224` / `:238`; bewusst nicht angefasst) |
+| `intelligence-gateway-review3.test.js:160` | < 2000 ms | niedrig | Zeitüberschreitung | offen (Risiko niedrig, nicht angefasst) |
+| `intelligence-gateway-kern.test.js:231`, `:243` | < 1200 / < 900 ms | mittel | Frist 40 ms, Gesamtfrist 1500 ms (:231) | offen (bewusst nicht angefasst) |
+| `import-schichtmodell-vorschau-imp6.test.js:316`, `:376` | < 500 ms | hoch | Abweisung vor der Rechnung, Einzelmessung | **gehärtet** (Zähler + Verhältnis) |
+| `import-schichtmodell-vorschau-imp6.test.js:250, 329, 337, 344` | < 5000 / 2000 ms | niedrig | Rechenlast, großer Abstand | offen (jetzt `:250` / `:341` / `:349` / `:356`; Risiko niedrig, nicht angefasst) |
+| `intelligence-nachtrag.test.js:282`, `:289` | < 500 ms | hoch | Leckprüfung, reine Rechenzeit | **gehärtet** (Test F9: abwechselnde Skalierung gleicher Gesamtlänge, Grenze 2, Grobgrenze 2000 ms) |
+| `dsgvo-server.test.js:201` | < 50 ms | mittel | Aufruf kostet Mikrosekunden; ein GC-Stillstand über 50 ms ist selten, aber möglich. Ein Aufrufzähler belegt „keine Schleife“ besser | offen (bewusst nicht angefasst) |
+| `gesund.test.js:158`, `:164` | < 5000 ms | niedrig | Zeitgrenze der Zustandsprüfung | offen (niedrig) |
+| `import-parser.test.js:326, 356, 455, 737, 1131, 1198, 1300, 1306, 1339, 1346, 1443` | 1000 bis 20000 ms | niedrig, `:1339` (1000 ms) mittel | Größenprüfungen des Parsers | offen (niedrig, `:1339` mittel) |
+| `intelligence-planungsreife.test.js:215`, `intelligence-regelbaukasten.test.js:440` | < 1000 ms | mittel | Rechenzeit | offen (bewusst nicht angefasst) |
+| `post-smtp.test.js:199, 268, 328` | < 1500 ms | mittel | Zeitüberschreitung gegen Attrappe | offen (bewusst nicht angefasst) |
+| `schreibhalt.test.js:202` | < 1500 ms | niedrig | Haltefrist 2000 ms | offen (niedrig) |
+| `nachpruefung-wp11.test.js:469` | < 300 ms (nur mit `CI`) | mittel | 300 Personen; lokal nur Warnung, in CI hart | offen |
+| `wp16c-korrekturrevision.test.js:742` | < 5 ms je Aufruf (Mittel aus 100) | mittel | | offen (bewusst nicht angefasst) |
+| `engine-rechenkern.test.js:176` | < 30000 ms | niedrig | Richtwert, Normalwert Sekunden | offen (niedrig) |
+| `imp8-testmatrix.test.js:435`, `mail-push-anbieter.test.js:378, 389`, `monatsabschluss-nachtrag.test.js:189`, `passwoerter.test.js:194` | 5000 bis 120000 ms | niedrig | Obergrenzen gegen Hänger | offen (niedrig) |
+| `pruefungen/browser/bereiche.mjs:173` | > 3500 ms meldet „langsam“ | mittel | Browserlauf, nicht Vitest; Einzelmessung, nur Meldung | offen (Browserlauf) |
 
 Nicht geändert (Mangel nicht nachgewiesen). Warteschleifen mit Obergrenze 30 bis 120 s in `abnahme-c-absturz`, `br-auswertung`,
 `dauerlauf-prozess` sind Zeitüberschreitungsgrenzen ohne Leistungsaussage.
@@ -113,3 +113,29 @@ Nicht geändert (Mangel nicht nachgewiesen). Warteschleifen mit Obergrenze 30 bi
 Risiko *hoch*: reine Rechenzeit durch das Verhältnis zweier Größen (n und n/2, wie im Selbsttest) oder durch einen Aufrufzähler
 ersetzen; Fristen und Wartezeiten gegen die eingestellte Frist plus großen Puffer prüfen statt gegen eine feste Zahl. Je Stelle ein
 Mutantenbeleg (Test auf der alten Fassung rot, auf der neuen grün), die Absicht des Tests bleibt. Danach die Stellen mit Risiko *mittel*.
+
+## Status-Nachtrag 2026-11-22 (PR #484, gemergt 2026-11-22, Merge `acd7ce85`)
+
+PR #484 hat die Stellen mit Risiko *hoch* gehärtet (Spalte „Status (nach #484)“ in der Tabelle oben). Die Zeilennummern der Tabelle
+gelten für die Fassung vor #484; wo sich Zeilen verschoben haben, steht die neue Zeile in der Statusspalte.
+
+**Gehärtet:**
+- `intelligence-gateway-anbieter.test.js:76` und `:84`, `intelligence-gateway-review.test.js:182`, `intelligence-gateway-review2.test.js:211`: Fake-Uhr statt Wandzeit.
+- `import-schichtmodell-vorschau-imp6.test.js:316` und `:376`: Aufrufzähler und Verhältnis statt fester Millisekunden.
+- `hilfe-assistent-i23.test.js:444`: abwechselnde Messung von Läufen gleicher Gesamtlänge, Verhältnisgrenze 2, dazu Grobgrenze 8000 ms.
+- `intelligence-nachtrag.test.js`, Test F9 (Leckprüfung): dieselbe Methode, Verhältnisgrenze 2, Grobgrenze 2000 ms.
+
+**Offen (Risiko mittel oder niedrig, bewusst nicht angefasst):** `intelligence-gateway-review2.test.js` (:224, :238),
+`intelligence-gateway-kern.test.js` (:231, :243), `import-schichtmodell-vorschau-imp6.test.js` (:250, :341, :349, :356),
+`intelligence-planungsreife.test.js`, `intelligence-regelbaukasten.test.js`, `post-smtp.test.js`, `dsgvo-server.test.js:201`,
+`wp16c-korrekturrevision.test.js` und weitere (alle Zeilen der Tabelle mit Status „offen“). Das Kleinpaket „Wandzeit-Grenzen auf
+Zähler/Skalierung umstellen“ bleibt für diese Stellen offen.
+
+**Ehrliche Reichweite (Delta-Review Opus, 2026-11-22):**
+- Quadratanteile unter der Schwelle bleiben unerkannt: im Test F9 (`intelligence-nachtrag`) ein quadratischer Anteil mit x < 1, in
+  `hilfe-assistent-i23` mit x < 1/6. Auch ein Aufwand der Ordnung n log n bleibt unerkannt.
+- Der MAIL-Mutant in `hilfe-assistent-i23` ergibt ein Verhältnis von 2,5 bis 2,9 gegen die Grenze 2 (nicht 3,45).
+- Methodik: Gemessen wird abwechselnd mit Läufen gleicher Gesamtlänge (viele kurze gegen wenige lange Läufe). Blöcke ungleicher Länge
+  sind unter Last unzuverlässig, weil der Scheduler ungleich lange Läufe ungleich stört. Der Erstansatz mit größerem Längenfaktor schlug
+  unter Last in 14 von 30 Läufen fehl (Verhältnis 8 bis 9 statt 3,7).
+- Nachweis: 30 Läufe unter 6 Busy-Loops, 0 Rotfälle (i23 und nachtrag).
