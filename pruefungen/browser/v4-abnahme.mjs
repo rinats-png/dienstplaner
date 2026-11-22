@@ -45,6 +45,11 @@
      BRANCHENMODULE=1  in der Ansicht „Betrieb“ (Rolle leitung) zusätzlich den Bereich „Branchenmodule“ messen: Reflow,
                        Zielgröße, Radius der Modulzeilen (Stufe klein), Bild (V4-3b Branchenmodule). Die Registry steht
                        auf „geplant“; sichtbar sind nur die Modulzeilen, keine Moduloberfläche. Es wird nichts geschrieben.
+     QUERSCHNITT=1     Bausteine des Querschnitts, Teil 1 (V4-3b): in „Betrieb“ (Rolle leitung) alle Inline-Stufen der
+                       Seite (Rechte-Matrix, Farbpunkte, ab 1000 px das Kürzel der Seitenleiste) gegen V4_RADIEN, dazu die
+                       Auswahlfläche des ersten Farbpunkts („Farbe von …“) (öffnen, messen, Bild, schließen ohne Wahl); in
+                       „Qualifikationen“ das Hinweisfenster des ersten Diagrammbalkens (Maus darüber). Es wird nichts
+                       geschrieben.
    Browser: vorinstalliertes Playwright (playwright-core, playwright im Projekt
    oder global); chromium.launch() ohne Optionen. Es wird nichts installiert.
    Exit 0: keine Befunde · 1: Befunde · 2: Aufruf oder Umgebung · 3: Aufbau gescheitert
@@ -418,6 +423,67 @@ async function branchenBereich(p, ansicht, k) {
   if (schlecht || process.env.BILDER_ALLE) await bild(p, name);
 }
 
+/* V4-3b Querschnitt Teil 1 (QUERSCHNITT=1): Bausteine aus App.jsx, ui/farbwahl.jsx und ui/diagramme.jsx tragen jetzt
+   Radiusstufen im Inline-Stil. Gemessen wird je Stelle die Stufe gegen den berechneten Radius (V4_RADIEN). Die
+   Auswahlfläche eines Farbpunkts und das Hinweisfenster eines Balkens erscheinen erst auf Klick bzw. Maus; das Skript
+   öffnet sie, misst, macht ein Bild und schließt (Klick auf den Punkt, Maus weg). Keine Farbe wird gewählt. */
+async function querschnittBausteine(p, ansicht, k) {
+  const { V4_RADIEN: R } = await import(pathToFileURL(path.join(WT, "src", "v4", "tokens.js")).href);
+  /* Wie STUFEN_MESSEN (weiter unten, beim Ablauf hier noch nicht definiert): Stufe und berechneter Radius je Stelle. */
+  const stufenMessen = () => [...document.querySelectorAll('[style*="--v4-r-"]')].filter((e) => e.getBoundingClientRect().width > 0).map((e) => {
+    const cs = getComputedStyle(e);
+    const stufe = (e.getAttribute("style").match(/--v4-r-([a-z]+)/) || [])[1];
+    const ecke = /--v4-r-/.test(e.style.borderTopLeftRadius) ? cs.borderTopLeftRadius : cs.borderTopRightRadius;
+    return { stufe, wert: ecke, text: (e.innerText || e.getAttribute("aria-label") || e.tagName).trim().slice(0, 24).split("\n")[0] };
+  });
+  const pruefeStufen = async (name, art) => {
+    const st = await p.evaluate(stufenMessen);
+    const falsch = st.filter((s) => R[s.stufe] !== s.wert);
+    if (falsch.length) melde("radius", `${name}: ${falsch.length} Stellen mit falschem Radius (z. B. ${falsch[0].stufe} = ${falsch[0].wert}, ${falsch[0].text})`);
+    const je = {};
+    for (const s of st) je[s.stufe] = (je[s.stufe] || 0) + 1;
+    if (!falsch.length) beleg("querschnitt", `${name}: ${art}${st.length} Inline-Stufen = V4_RADIEN (${Object.entries(je).map(([a, n]) => `${a} ${n}`).join(", ")})`);
+    return st;
+  };
+  if (/Betrieb$/.test(ansicht)) {
+    await pruefeStufen(ansicht, "");
+    const punkt = p.locator('button[aria-expanded][title^="Farbe von "]:visible').first();
+    if (!(await punkt.count())) { hinweis("querschnitt", `${ansicht}: kein Farbpunkt sichtbar`); return; }
+    await punkt.scrollIntoViewIfNeeded().catch(() => {});
+    await punkt.click({ timeout: 4000 }).catch(() => melde("klick", `${ansicht}: Farbpunkt scheitert`));
+    const gruppe = p.getByRole("group", { name: "Farbe wählen" }).first();
+    if (!(await gruppe.waitFor({ state: "visible", timeout: 5000 }).then(() => true).catch(() => false))) { melde("querschnitt", `${ansicht}: Auswahlfläche öffnet nicht`); return; }
+    const name = `${ansicht}/Farbauswahl`;
+    await p.waitForTimeout(300);
+    geprueft++;
+    const m = await p.evaluate(MESSEN);
+    if (k.reflow && !reflowOk(m.gesamt, m.breite)) melde("reflow", `${name}: Seite ${m.gesamt - m.breite}px breiter als ${m.breite}px — ${m.taeter}`);
+    const flaeche = await gruppe.evaluate((g) => { const e = g.parentElement; return { inline: e.style.borderRadius, wert: getComputedStyle(e).borderTopLeftRadius }; });
+    if (flaeche.inline !== "var(--v4-r-mittel)" || flaeche.wert !== R.mittel) melde("radius", `${name}: Auswahlfläche ${flaeche.inline} = ${flaeche.wert}`);
+    else beleg("querschnitt", `${name}: Auswahlfläche ${flaeche.inline} = ${flaeche.wert}`);
+    await pruefeStufen(name, "mit Auswahlfläche ");
+    await bild(p, name);
+    await punkt.click({ timeout: 4000 }).catch(() => melde("klick", `${name}: Schließen scheitert`));
+    await gruppe.waitFor({ state: "hidden", timeout: 5000 }).catch(() => melde("querschnitt", `${name}: Auswahlfläche schließt nicht`));
+  }
+  if (/Qualifikationen$/.test(ansicht)) {
+    const balken = p.locator('div[style*="5px 5px 2px 2px"]').first();
+    if (!(await balken.count())) { hinweis("querschnitt", `${ansicht}: kein Diagrammbalken`); return; }
+    await balken.scrollIntoViewIfNeeded().catch(() => {});
+    await balken.hover({ timeout: 4000 }).catch(() => melde("klick", `${ansicht}: Maus über Balken scheitert`));
+    const fenster = balken.locator('div[style*="--v4-r-klein"]').first();
+    if (!(await fenster.waitFor({ state: "visible", timeout: 4000 }).then(() => true).catch(() => false))) { melde("querschnitt", `${ansicht}: Hinweisfenster erscheint nicht`); return; }
+    const name = `${ansicht}/Hinweisfenster Balken`;
+    geprueft++;
+    const r = await fenster.evaluate((e) => ({ wert: getComputedStyle(e).borderTopLeftRadius, text: e.innerText.trim().slice(0, 30) }));
+    const b = await balken.evaluate((e) => ({ oben: getComputedStyle(e).borderTopLeftRadius, unten: getComputedStyle(e).borderBottomLeftRadius }));
+    if (r.wert !== R.klein) melde("radius", `${name}: ${r.wert}, erwartet ${R.klein}`);
+    else beleg("querschnitt", `${name}: Hinweisfenster var(--v4-r-klein) = ${r.wert} („${r.text}“); Balken bleibt ${b.oben}/${b.unten} (Ausnahme)`);
+    await bild(p, name);
+    await p.mouse.move(1, 1);
+  }
+}
+
 /* ===================================================== 1 + 2  Reflow, Zielgröße */
 if (KRITERIEN.includes("reflow") || KRITERIEN.includes("ziele")) {
   const konfig = [];
@@ -444,6 +510,7 @@ if (KRITERIEN.includes("reflow") || KRITERIEN.includes("ziele")) {
       if (process.env.TELEFON_BLATT && /Heute$/.test(name)) await telefonBlatt(p, name, k);
       if (process.env.SPEICHERLAGE && /Heute$/.test(name)) await speicherLeiste(p, name, k);
       if (process.env.BRANCHENMODULE && rolle === "leitung" && /Betrieb$/.test(name)) await branchenBereich(p, name, k);
+      if (process.env.QUERSCHNITT && rolle === "leitung" && /(Betrieb|Qualifikationen)$/.test(name)) await querschnittBausteine(p, name, k);
     });
     for (const f of fehler) melde("konsole", `${marke}: ${f}`);
     if (ansichten === 0) melde("keine-ansicht", `${marke}: keine Ansicht erreicht`);
