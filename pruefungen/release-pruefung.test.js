@@ -62,8 +62,9 @@ const SSOT = { pakete: [
   { id: "REL-2", prio: "P1", status: "BLOCKED", strang: "folge", pr: [], titel: "Release-Prozess selbst, kein Befund" },
   // RELEASE-UNFERTIG.json nennt IMP-6 (ssotPakete); G8 verlangt das Paket in der SSOT
   { id: "IMP-6", prio: "P2", status: "IN_PROGRESS", strang: "acc45", pr: [], titel: "Schichtmodelle" },
-  // RELEASE-UNFERTIG.json nennt WP-48 (Teilspeicherung, Abschluss segmentweise); ohne PR im Kandidaten kein Blocker
-  { id: "WP-48", prio: "P0", status: "IN_PROGRESS", strang: "acc45", pr: [], titel: "Teilspeicherung" },
+  // RELEASE-UNFERTIG.json nennt WP-48 (Teilspeicherung, Abschluss segmentweise); ohne PR im Kandidaten kein Blocker.
+  // pr enthält die ssotPrs des echten Eintrags teilspeicherung (Review #473 H1: ssotPrs muss im pr der ssotPakete stehen)
+  { id: "WP-48", prio: "P0", status: "IN_PROGRESS", strang: "acc45", pr: ["#342", "#348", "#350"], titel: "Teilspeicherung" },
 ] };
 
 const KOPF = "| PR | Modell | Urteil | Stand |\n|---|---|---|---|\n";
