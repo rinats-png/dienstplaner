@@ -9,8 +9,10 @@
 
    Vorhandener Code allein ist keine Integration und keine Freigabe.
 
-   Aufruf:  node werkzeug/ssot-belege.mjs [--anwenden] [--datei F]
+   Aufruf:  node werkzeug/ssot-belege.mjs [--anwenden] [--datei F] [--prs F]
      Ohne --anwenden: nur Bericht (Standard).
+     --prs F: gemergte PRs aus Datei (JSON-Array wie gh) statt gh (Prüfungen ohne Netz).
+     PR-Belege aus dem SSOT-Feld pr zählen nur im Format "#123" (PR_MUSTER; Review #486 H-e).
      --anwenden: Pakete mit INTEGRIERT_OHNE_PR oder NICHT_BELEGT werden
                  auf REVIEW gesetzt (nie neu implementiert). Der Beleg
                  (Commits, Tests, Nachweise) wird eingetragen. Danach
@@ -69,13 +71,15 @@ export function imBasisstand(hash) {
  * PR-Belege aus der SSOT: PR gemergt (gleich welche Basis) UND sein
  * Merge-Commit liegt im Integrationsbranch. Nur dann zählt er als Integration.
  */
-export function ssotPrBelege(p) {
+export function ssotPrBelege(p, ansicht = prAnsicht) {
   const belege = [];
   for (const x of p.pr || []) {
-    const n = String(x).match(/\d+/)?.[0];
-    if (!n) continue;
+    // Review #486 H-e: genau PR_MUSTER („#123“), wie das Schema (acc45-backlog pruefen) es für pr verlangt; ein anderer
+    // Eintrag („12“, „#0“, „#12a“) zählt nicht als Beleg und löst keinen Abruf aus. Gültige Daten: unverändert.
+    if (typeof x !== "string" || !PR_MUSTER.test(x)) continue;
+    const n = x.slice(1);
     let info;
-    try { info = prAnsicht(n, WURZEL); }
+    try { info = ansicht(n, WURZEL); }
     catch { continue; }
     const hashes = Object.values(p.stufen || {}).map((st) => String(st?.beleg || "")).join(" ").match(/\b[0-9a-f]{7,40}\b/g) || [];
     const ueber = info.mergeCommit?.oid && imBasisstand(info.mergeCommit.oid);
@@ -165,8 +169,10 @@ function main() {
   const datei = process.argv.includes("--datei") ? process.argv[process.argv.indexOf("--datei") + 1] : null;
   /* Die Quelle ist die Arbeitsdatei, sonst überschreibt --anwenden die eigenen Änderungen mit dem Integrationsstand. */
   const quelle = datei ? path.resolve(datei) : path.join(WURZEL, "docs", "acc45", "work-packages.json");
+  /* --prs F: PR-Liste aus Datei statt gh (wie ssot-abgleich.mjs; für Prüfungen ohne Netz, Review #486 H-d). */
+  const prsDatei = process.argv.includes("--prs") ? process.argv[process.argv.indexOf("--prs") + 1] : null;
   const ssot = JSON.parse(readFileSync(quelle, "utf8"));
-  const zeilen = ebenen(ssot, gemergteUndPrs(null), commitBetreffs(), dateienImBasisstand());
+  const zeilen = ebenen(ssot, gemergteUndPrs(prsDatei), commitBetreffs(), dateienImBasisstand());
   const zaehl = {};
   for (const z of zeilen) zaehl[z.klasse] = (zaehl[z.klasse] || 0) + 1;
   console.log("SSOT-Belege (implementiert / integriert / freigabebereit):", JSON.stringify(zaehl));
