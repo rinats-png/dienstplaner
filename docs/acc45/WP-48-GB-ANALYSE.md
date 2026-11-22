@@ -259,3 +259,42 @@ Akzeptanzformulierung „e2e-Suite ohne workers: 1“ ist damit nicht wörtlich 
 Dialog) ist belegt. Ob die Formulierung so ersetzt wird, entscheidet der Koordinator/Betreiber.
 
 **Weiter offen:** Produktfragen Abschnitt 5 (P2-9), P2-20, unabhängiges Review, Restrisiken §6/§7 (Telefon/PWA).
+
+## 9. Nachtrag 2026-11-22: Suite ohne `workers: 1` (je Arbeiter ein eigener Raum)
+
+Grundlage: integration/release-v4 (bd26afb5). Offen war nur noch die Akzeptanz „e2e-Suite ohne die Notlösung workers: 1“.
+
+**Analyse (Beleg).** Das Öffnen schreibt nicht (unverändert grün: `pruefungen/wp48-gb-oeffnen.test.js` und
+`pruefungen/wp48-gb-lesen.test.js`, 17/17 auf bd26afb5). Der verbliebene Konflikt bei mehreren Arbeitern ist ein ECHTER
+Schreibkonflikt im gemeinsamen Demo-Raum `e2e-wp33`:
+
+- `e2e/hilfen.mjs` `anmelden()`/`geheZu()` rufen `tourZu()` (Zeile 106): ein Klick auf „Tour schließen“/„Später“ ist eine
+  Handlung und schreibt `tour` an der eigenen Person (`src/app/aktionen/einstellungen.js:41`, `tourSchliessen` → `mUpd`).
+- Personen gehören zum Kern des Bestands; der Server prüft den ETag (`server/funktionen/daten.mjs:1975-1990`,
+  `bestandSchreiben(… erwarteterStand: etag)`, 409 „Jemand anderes hat inzwischen die Stammdaten geändert.“).
+- Ein zweiter Arbeiter mit offener Seite im selben Raum schreibt danach mit veraltetem ETag → 409 → Dialog
+  „Gleichzeitig bearbeitet“ (`src/ansichten/speicherlage.jsx:289`). Das ist zu Recht gemeldet, kein Fehler des Öffnens.
+
+**Reproduktion (rot vorher).** Acht Specs (`v4-3b-plan/zeit/personal/lage/einstellungen-form`, `barrierefreiheit`,
+`a11y-1-arbeitstag`, `teilkonflikt`), `--project=390x844 --workers=2`, gemeinsamer Raum: 1 fehlgeschlagen
+(`barrierefreiheit › einstellungen-leitung`: Dialog „Gleichzeitig bearbeitet“ verdeckt die Navigation), 13 bestanden.
+
+**Behebung (nur Testaufbau, Produktcode unverändert).**
+
+- `e2e/global-setup.mjs`: je Arbeiter (`config.workers`, höchstens `RAEUME_HOECHSTENS` = 4) ein eigener Raum (`e2e-wp33`,
+  `e2e-wp33-w1` …) mit eigenem Betreiber, eigenem Demo-Bestand und eigenen Zugängen (Rollen, Zusatz-, Öffnen- und
+  Pool-Codes). Codes je Raum als `CENTRIC_E2E_ZUGAENGE_<k>` / `CENTRIC_E2E_BETREIBER_<k>`. Je Raum eigene Herkunft
+  (Bremse „einrichten“); der eigene Betreiber trennt auch die Bremse „zugaenge“ (je Betreiberraum).
+- `e2e/umgebung.mjs` `arbeiterRaumWaehlen()`: im Testprozess (`TEST_PARALLEL_INDEX`) werden die Codes des eigenen Raums
+  zu den gewohnten Variablen; fehlt der Raum, werden sie geleert (Test scheitert mit „Kein Testzugang“ statt still im
+  fremden Raum zu schreiben). Specs und `hilfen.mjs` bleiben unverändert.
+- `playwright.config.mjs`: `workers: Math.min(RAEUME_HOECHSTENS, Math.max(1, Number(process.env.E2E_WORKERS) || 2))`,
+  `fullyParallel: false` bleibt (Tests einer Datei laufen nacheinander in einem Arbeiter).
+- Vertragstest `pruefungen/e2e-flaechen.test.js` (WP-48-GB-Block): Raumwahl je Index, Leeren bei fehlendem Raum, keine
+  Wirkung außerhalb eines Testprozesses, Konfiguration ohne `workers: 1`, Aufbau je Raum.
+
+**Konfliktmeldung unverändert.** Kein Eingriff in `daten.mjs`, `speicher.js`, `speicherlage.jsx`, `App.jsx`; die
+Gegenproben D/D2 (`wp48-gb-oeffnen`) und M4 (`wp48-gb-lesen`) sowie `e2e/teilkonflikt.spec.mjs` bleiben grün.
+
+**Läufe und Mutanten:** siehe PR (lokal zwei Läufe `--project=390x844`, zwei Arbeiter; volle Suite in der CI,
+`browser-abnahme`).

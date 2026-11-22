@@ -127,3 +127,46 @@ describe("Code-Pool je Rolle (e2e/herkunft.mjs codeSchluessel)", () => {
     expect(lies("../e2e/global-setup.mjs")).toContain("for (let n = 2; n <= ZUGANG_POOL; n++)");
   });
 });
+
+/* WP-48-GB (Akzeptanz „e2e-Suite ohne die Notlösung workers: 1“): je Arbeiter ein eigener Raum. Zwei Arbeiter im selben
+   Raum bearbeiten denselben Bestand (Tour schließen, Abläufe) — echte Konflikte, kein Fehler des Öffnens. */
+describe("WP-48-GB: je Arbeiter ein eigener Raum (e2e/umgebung.mjs arbeiterRaumWaehlen)", () => {
+  it("wählt die Codes des eigenen Raums; fehlt er, werden die Variablen geleert statt fremd geteilt; außerhalb eines Testprozesses nichts", async () => {
+    const { arbeiterRaumWaehlen, ZUGAENGE_VAR, BETREIBER_VAR, RAEUME_VAR } = await import("../e2e/umgebung.mjs");
+    const basis = { [RAEUME_VAR]: "2", [ZUGAENGE_VAR]: "R0", [BETREIBER_VAR]: "B0",
+      [`${ZUGAENGE_VAR}_0`]: "R0", [`${BETREIBER_VAR}_0`]: "B0", [`${ZUGAENGE_VAR}_1`]: "R1", [`${BETREIBER_VAR}_1`]: "B1" };
+    const u1 = { ...basis, TEST_PARALLEL_INDEX: "1" };
+    expect(arbeiterRaumWaehlen(u1)).toBe(1);
+    expect([u1[ZUGAENGE_VAR], u1[BETREIBER_VAR]]).toEqual(["R1", "B1"]);
+    const u0 = { ...basis, TEST_PARALLEL_INDEX: "0" };
+    expect(arbeiterRaumWaehlen(u0)).toBe(0);
+    expect([u0[ZUGAENGE_VAR], u0[BETREIBER_VAR]]).toEqual(["R0", "B0"]);
+    const u2 = { ...basis, TEST_PARALLEL_INDEX: "2" };                    // mehr Arbeiter als Räume
+    arbeiterRaumWaehlen(u2);
+    expect(u2[ZUGAENGE_VAR]).toBeUndefined();
+    expect(u2[BETREIBER_VAR]).toBeUndefined();
+    const ohne = { ...basis };                                          // Konfiguration, global-setup.mjs
+    expect(arbeiterRaumWaehlen(ohne)).toBeNull();
+    expect(ohne[ZUGAENGE_VAR]).toBe("R0");
+  });
+  it("Konfiguration ohne workers: 1; Aufbau legt je Arbeiter einen Raum an und reicht die Codes je Index", async () => {
+    const lies = (p) => readFileSync(new URL(p, import.meta.url), "utf8");
+    const konf = lies("../playwright.config.mjs");
+    expect(konf).not.toMatch(/^\s*workers:\s*1\s*,/m);
+    expect(konf).toMatch(/^\s*workers:\s*Math\.min\(RAEUME_HOECHSTENS,/m);
+    const { RAEUME_HOECHSTENS } = await import("../e2e/umgebung.mjs");
+    const { default: konfiguration } = await import("../playwright.config.mjs");
+    expect(konfiguration.workers).toBeGreaterThanOrEqual(2);
+    expect(konfiguration.workers).toBeLessThanOrEqual(RAEUME_HOECHSTENS);
+    const auf = lies("../e2e/global-setup.mjs");
+    expect(auf).toContain("export default async function globalSetup(config)");
+    expect(auf).toMatch(/const raeume = Math\.max\(1, Math\.min\(RAEUME_HOECHSTENS, Number\(config && config\.workers\) \|\| 1\)\);/);
+    expect(auf).toContain("const raum = nr === 0 ? RAUM : `${RAUM}-w${nr}`;");
+    expect(auf).toContain("process.env[`${ZUGAENGE_VAR}_${k}`] = JSON.stringify(r.codes);");
+    expect(auf).toContain("process.env[`${BETREIBER_VAR}_${k}`] = r.betreiber;");
+    /* Jeder Raum bekommt seinen eigenen Betreiber und seine Zugänge (kein Rest des festen Raumnamens im Rumpf). */
+    expect(auf).toContain('bestand: raum, rolle: "betreiber"');
+    expect(auf).toContain('"/api/zugaenge", { bestand: raum, eintraege }');
+    expect(auf).not.toMatch(/bestand: RAUM\b/);
+  });
+});
