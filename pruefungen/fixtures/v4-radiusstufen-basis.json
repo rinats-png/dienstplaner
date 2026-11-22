@@ -1124,6 +1124,213 @@
           "literaleSha256": "ec31d2a0be3bde0157cb1af2c44df2dfb44fdc2c156ee488adec4a96ee112f7b"
         }
       }
+    },
+    "Einstieg": {
+      "basis": "b9ab081a8453e18b0752eca5ee6534cf6a3cd402",
+      "dateien": {
+        "src/ansichten/anmeldung.jsx": {
+          "sha256": "253912d6273df383896746be664a5c1786fa9e6b25d162a66f924ff5fc78cf4b",
+          "literale": [
+            {
+              "wert": "0 8px 8px 0",
+              "kontext": "{{ display: \"flex\", alignItems: \"flex-start\", gap: 12, padding: \"14px 18px\",\n            marginBottom: 22, background: C.warnLight, borderLeft: `3px solid ${C.warn}`,\n            borderRadius: \"0 8px 8px 0\" }}"
+            },
+            {
+              "wert": "14",
+              "kontext": "{{ width: 46, height: 46, borderRadius: 14, background: C.accent, color: C.aufAkzent,\n                display: \"flex\", alignItems: \"center\", justifyContent: \"center\", fontSize: 15, fontWeight: 700, flexShrink: 0 }}"
+            },
+            {
+              "wert": "10",
+              "kontext": "{{ width: 30, height: 30, borderRadius: 10, background: `${r.farbe}1E`, color: lesbar(r.farbe),\n                      display: \"flex\", alignItems: \"center\", justifyContent: \"center\", fontSize: 12, fontWeight: 700 }}"
+            }
+          ],
+          "literaleSha256": "328642cd6075a51414756ae21defc783958fceb2395856d0a6c2a85109cfd328"
+        },
+        "src/ansichten/ladefehler.jsx": {
+          "sha256": "cca50c5e94ae3ebd39cb6dcfe1a90b9d42a611b4ead875c502d786dd758db7d8",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/mailbestaetigung.jsx": {
+          "sha256": "50b8236cf510e84e7105ec13b830b4d5d224150235bdb97cd9d16a04aee890ca",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/betreiber-2fa.jsx": {
+          "sha256": "c956d8799d3b93197254de7fe4f713063d8fc8638cc21dd502d862ace805b4dc",
+          "literale": [
+            {
+              "wert": "14",
+              "kontext": "{{ marginTop: 18, border: `1px solid ${F.line}`, borderRadius: 14, background: F.bg, color: F.text }}"
+            },
+            {
+              "wert": "10",
+              "kontext": "{{ padding: \"11px 13px\", fontSize: 15, borderRadius: 10, border: `1px solid ${F.line}`,\n    background: F.bg, color: F.text, fontFamily: \"inherit\", boxSizing: \"border-box\", width: \"100%\" }}"
+            },
+            {
+              "wert": "999",
+              "kontext": "{{ padding: \"9px 16px\", fontSize: 14, fontWeight: 600, borderRadius: 999, fontFamily: \"inherit\",\n    cursor: p.disabled ? \"default\" : \"pointer\", border: primaer ? \"none\" : `1px solid ${F.line}`,\n    background: primaer ? F.accent : \"transparent\", color: primaer ? F.aufAkzent : F.text, opacity: p.disabled ? 0.55 : 1 }}"
+            },
+            {
+              "wert": "12",
+              "kontext": "{{ width: \"100%\", padding: \"13px 15px\", fontSize: 17, borderRadius: 12,\n          border: `1px solid ${F.line}`, fontFamily: \"inherit\", letterSpacing: \".06em\",\n          fontVariantNumeric: \"tabular-nums\", boxSizing: \"border-box\", background: F.bg, color: F.text }}"
+            }
+          ],
+          "literaleSha256": "e8304e2b85aa91ae2452461f8d21e32e34a6363f1c1486bc59e47998f5785888"
+        },
+        "src/main.jsx": {
+          "sha256": "711f9d09f4e3f6469852f26be76b625643e0862ea170f694f654c5dc8b9712b1",
+          "literale": [
+            {
+              "wert": "18",
+              "kontext": "const KARTE = { background: \"var(--v4-flaeche)\", border: \"1px solid var(--v4-line)\", borderRadius: 18,\n  boxShadow: \"var(--v4-schatten)\" };\nconst Markenzeile = () => (\n  <div style={{ display: \"flex\", alignItems: \"center\", gap: 14, marginBottom: 36 }}"
+            },
+            {
+              "wert": "16",
+              "kontext": "{{ background: C.flaeche, border: `1px solid ${C.accent}`, borderRadius: 16,\n        padding: 26, marginBottom: 40 }}"
+            },
+            {
+              "wert": "8",
+              "kontext": "{{ width: 76, padding: \"8px 10px\", borderRadius: 8,\n                    border: `1px solid ${C.line}`, fontFamily: \"inherit\", fontSize: 14 }}"
+            },
+            {
+              "wert": "8",
+              "kontext": "{{ alignSelf: \"flex-start\", padding: \"8px 14px\", borderRadius: 8,\n                  border: `1px solid ${C.line}`, background: \"transparent\", color: C.text,\n                  fontFamily: \"inherit\", fontSize: 13, cursor: \"pointer\" }}"
+            },
+            {
+              "wert": "10",
+              "kontext": "{{ display: \"flex\", flexWrap: \"wrap\", alignItems: \"baseline\",\n                  justifyContent: \"space-between\", gap: 10, padding: \"12px 14px\",\n                  borderRadius: 10, cursor: p.buchbar ? \"pointer\" : \"default\",\n                  opacity: p.buchbar ? 1 : 0.7,\n                  border: `1px solid ${an ? C.accent : C.line}`,\n                  background: an ? C.accentLight : \"transparent\" }}"
+            },
+            {
+              "wert": "16",
+              "kontext": "{{ padding: 24, borderRadius: 16,\n              border: `1px solid ${an ? C.accent : C.line}`,\n              background: an ? C.accentLight : C.flaeche }}"
+            },
+            {
+              "wert": "14",
+              "kontext": "{{ background: C.flaeche, border: `1px solid ${C.line}`, borderRadius: 14,\n        padding: 24, marginBottom: 36 }}"
+            },
+            {
+              "wert": "11",
+              "kontext": "{{ flex: \"1 1 130px\", padding: \"13px 15px\", borderRadius: 11,\n              border: `1px solid ${C.line}` }}"
+            },
+            {
+              "wert": "999",
+              "kontext": "{{ width: \"100%\", padding: 15, fontSize: 15.5, fontWeight: 600, borderRadius: 999,\n          border: \"none\", background: C.accent, color: C.aufAkzent, fontFamily: \"inherit\",\n          cursor: \"pointer\", marginBottom: 14 }}"
+            },
+            {
+              "wert": "14",
+              "kontext": "{{ padding: \"22px 24px\", borderRadius: 14, background: C.okLight,\n        border: `1px solid ${C.line}`, marginBottom: 24 }}"
+            },
+            {
+              "wert": "8",
+              "kontext": "{{ fontSize: 15, fontWeight: 700, letterSpacing: \".07em\",\n              padding: \"8px 13px\", borderRadius: 8, background: C.bg,\n              border: `1px solid ${C.line}`, fontVariantNumeric: \"tabular-nums\" }}"
+            },
+            {
+              "wert": "999",
+              "kontext": "{{ marginTop: 18, padding: \"11px 18px\", borderRadius: 999,\n          border: `1px solid ${C.line}`, background: \"transparent\", color: C.text,\n          fontFamily: \"inherit\", fontSize: 14, fontWeight: 600, cursor: \"pointer\" }}"
+            },
+            {
+              "wert": "999",
+              "kontext": "{{ width: \"100%\", padding: 15, fontSize: 15.5, fontWeight: 600, borderRadius: 999,\n          border: \"none\", background: C.accent, color: C.aufAkzent, fontFamily: \"inherit\",\n          cursor: \"pointer\" }}"
+            },
+            {
+              "wert": "12",
+              "kontext": "{{ width: \"100%\", padding: \"13px 15px\", fontSize: 16, borderRadius: 12,\n              border: `1px solid ${C.steuer}`, fontFamily: \"inherit\", boxSizing: \"border-box\",\n              background: C.bg, color: C.text }}"
+            },
+            {
+              "wert": "11",
+              "kontext": "{{ display: \"block\", width: \"100%\", textAlign: \"left\", cursor: \"pointer\",\n                  padding: \"13px 16px\", borderRadius: 11, fontFamily: \"inherit\",\n                  border: `1px solid ${branche === id ? C.accent : C.line}`,\n                  background: branche === id ? C.accentLight : \"transparent\", color: C.text }}"
+            },
+            {
+              "wert": "10",
+              "kontext": "{{ display: \"flex\", alignItems: \"center\", gap: 11,\n                padding: \"10px 14px\", borderRadius: 10, cursor: \"pointer\",\n                border: `1px solid ${rollen.includes(id) ? C.accent : C.line}`,\n                background: rollen.includes(id) ? C.accentLight : \"transparent\" }}"
+            },
+            {
+              "wert": "12",
+              "kontext": "{{ width: \"100%\", padding: \"13px 15px\", fontSize: 16, borderRadius: 12,\n              border: `1px solid ${C.steuer}`, fontFamily: \"inherit\", boxSizing: \"border-box\",\n              background: C.bg, color: C.text }}"
+            },
+            {
+              "wert": "10",
+              "kontext": "{{ padding: \"13px 16px\", borderRadius: 10,\n            background: C.dangerLight, color: C.danger, fontSize: 13.5, lineHeight: 1.5 }}"
+            },
+            {
+              "wert": "999",
+              "kontext": "{{ width: \"100%\", padding: 15, fontSize: 15.5, fontWeight: 600, borderRadius: 999,\n            border: \"none\", fontFamily: \"inherit\",\n            cursor: name.trim() && branche && !laeuft ? \"pointer\" : \"default\",\n            background: name.trim() && branche && !laeuft ? C.accent : C.lineStark, color: C.aufAkzent }}"
+            },
+            {
+              "wert": "6",
+              "kontext": "{{ height: 15, borderRadius: 6, background: C.bg, marginBottom: 12,\n                  width: `${92 - i * 16}%` }}"
+            },
+            {
+              "wert": "999",
+              "kontext": "{{ width: \"100%\", padding: 14, fontSize: 15.5, fontWeight: 600,\n                  borderRadius: 999, border: \"none\", background: C.accent, color: C.aufAkzent,\n                  fontFamily: \"inherit\", cursor: \"pointer\" }}"
+            },
+            {
+              "wert": "18",
+              "kontext": "{{ display: \"flex\", alignItems: \"center\", gap: 16, width: \"100%\",\n                        background: C.flaeche, border: `1px solid ${C.line}`, borderRadius: 18,\n                        padding: \"16px 18px\", cursor: laeuft ? \"default\" : \"pointer\",\n                        fontFamily: \"inherit\", textAlign: \"left\", color: C.text,\n                        opacity: laeuft ? .5 : 1, transition: \"border-color .14s, background .14s\" }}"
+            },
+            {
+              "wert": "12",
+              "kontext": "{{ width: 40, height: 40, borderRadius: 12, flexShrink: 0,\n                        display: \"flex\", alignItems: \"center\", justifyContent: \"center\",\n                        background: C.accentLight, color: C.accent, fontSize: 12.5, fontWeight: 700 }}"
+            },
+            {
+              "wert": "12",
+              "kontext": "{{ width: \"100%\", padding: \"13px 15px\", fontSize: 17, borderRadius: 12,\n                  border: `1px solid ${fehler ? C.danger : C.line}`, fontFamily: \"inherit\",\n                  letterSpacing: \".06em\", fontVariantNumeric: \"tabular-nums\", boxSizing: \"border-box\",\n                  background: C.bg, color: C.text }}"
+            },
+            {
+              "wert": "999",
+              "kontext": "{{ width: \"100%\", marginTop: 22, padding: 14, fontSize: 15, fontWeight: 600,\n                  borderRadius: 999, border: \"none\", fontFamily: \"inherit\",\n                  cursor: code.trim() && !laeuft ? \"pointer\" : \"default\",\n                  background: code.trim() && !laeuft ? C.accent : C.lineStark, color: C.aufAkzent }}"
+            }
+          ],
+          "literaleSha256": "4c78ced5e14f1445a6c2af5c9f7b79e6e1b7e3b4e087f598bb77233b25752ea6"
+        },
+        "src/marke.jsx": {
+          "sha256": "f9c79d1d6a1154652777a4088e3f2921ea14fe235bbb2694e8d14f118b0c6b37",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/rechtstexte.jsx": {
+          "sha256": "c623a25bee07b6f3e2fa0606f7a41a643eaf038e710e7cf9bad2eaf8c530fc2e",
+          "literale": [
+            {
+              "wert": "4",
+              "kontext": "{{ fontFamily: \"ui-monospace, monospace\", fontSize: \"0.92em\",\n        background: C.flaecheStill, padding: \"1px 5px\", borderRadius: 4 }}"
+            },
+            {
+              "wert": "10",
+              "kontext": "{{ overflowX: \"auto\", margin: \"0 0 20px\",\n          border: `1px solid ${C.lineSoft}`, borderRadius: 10 }}"
+            },
+            {
+              "wert": "10",
+              "kontext": "{{ margin: \"0 0 18px\", padding: \"14px 16px\",\n        background: C.flaecheStill, borderRadius: 10, border: `1px solid ${C.lineSoft}`,\n        fontSize: 13.5, lineHeight: 1.6, fontFamily: \"inherit\", whiteSpace: \"pre-wrap\",\n        overflowX: \"auto\" }}"
+            },
+            {
+              "wert": "8",
+              "kontext": "{{ border: `1px solid ${C.line}`, background: \"transparent\", cursor: \"pointer\",\n              borderRadius: 8, padding: \"6px 12px\", fontSize: 13.5, color: C.dim,\n              fontFamily: \"inherit\" }}"
+            }
+          ],
+          "literaleSha256": "228a7fa8019c3aed3bb40da4db4b61ac2bc5ce4015684cd58065cd9ca53374ff"
+        },
+        "src/startbild.jsx": {
+          "sha256": "86e6e1eb1779133140c52182e4c72cce5a180df64b5bc2f91ddcbf1db1a79a9d",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/verlustweg.jsx": {
+          "sha256": "038396503e81d22d752ee485f998e3f247a182b257931cf354395e724d315d51",
+          "literale": [
+            {
+              "wert": "10",
+              "kontext": "const KASTEN = { padding: \"12px 14px\", borderRadius: 10, border: \"1px solid currentColor\", display: \"grid\", gap: 8, minWidth: 0 };"
+            },
+            {
+              "wert": "999",
+              "kontext": "const TAST = { padding: \"8px 14px\", minHeight: 36, fontSize: 14, fontWeight: 600, borderRadius: 999, fontFamily: \"inherit\","
+            }
+          ],
+          "literaleSha256": "7540fe6657efb3228fdab44d1728361e7f1862210b878846e0445c39dd817d11"
+        }
+      }
     }
   }
 }

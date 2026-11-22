@@ -34,6 +34,11 @@
                        (Eingabe, Vorschau; ohne Übernahme) messen (V4-3b Import)
      TELEFON_BLATT=1   in der Telefonschale (Reiter „Heute“) zusätzlich das Blatt „Mitteilungen“
                        (Postknopf) messen: Reflow, Zielgröße, Radius, Fokus (V4-3b Telefonschale)
+     EINSTIEG=1        zusätzlich den Einstieg ohne Anmeldung messen (V4-3b Einstieg): Startseite, Preise,
+                       Registrierung (leer, Fehler, fertig), Anmeldung mit Code, zweiter Faktor, Rechtsfenster.
+                       Nur Testdaten: GET /api/demos und POST /starten beantwortet der Browser selbst (page.route,
+                       erfundene Einträge, kein Serveraufruf); es wird kein Code abgeschickt. Mit ROLLEN= (leer)
+                       nur der Einstieg.
    Browser: vorinstalliertes Playwright (playwright-core, playwright im Projekt
    oder global); chromium.launch() ohne Optionen. Es wird nichts installiert.
    Exit 0: keine Befunde · 1: Befunde · 2: Aufruf oder Umgebung · 3: Aufbau gescheitert
@@ -56,7 +61,8 @@ if (!istLoopback(BASE)) { console.error("ABBRUCH: Ziel ist nicht die eigene Masc
 const ALLE = ["reflow", "ziele", "fokus", "fehler", "folge", "ki"];
 const KRITERIEN = (process.argv[2] || ALLE.join(",")).split(",").map((s) => s.trim()).filter(Boolean);
 if (KRITERIEN.some((k) => !ALLE.includes(k)) || process.argv.length > 3) { console.error(`ABBRUCH: kriterien aus ${ALLE.join(", ")}`); process.exit(2); }
-const ROLLEN = (process.env.ROLLEN || "leitung,mitarbeiter").split(",");
+/* ROLLEN= (leer) mit EINSTIEG=1: nur der Einstieg ohne Anmeldung. */
+const ROLLEN = (process.env.ROLLEN ?? "leitung,mitarbeiter").split(",").filter(Boolean);
 const THEMEN = (process.env.THEMEN || "light,dark").split(",");
 const BREITEN_REFLOW = (process.env.BREITEN_REFLOW || "320").split(",").map(Number);
 const BILDER = path.resolve(WT, process.env.BILDER || "design/abnahme/v4-staging");
@@ -369,6 +375,150 @@ if (KRITERIEN.includes("reflow") || KRITERIEN.includes("ziele")) {
     for (const f of fehler) melde("konsole", `${marke}: ${f}`);
     if (ansichten === 0) melde("keine-ansicht", `${marke}: keine Ansicht erreicht`);
     else beleg("ansichten", `${marke}: ${ansichten} Ansichten gemessen${k.ziele ? `, ${zielAnzahl} Ziele, kleinstes ${kleinste ? `${Math.round(kleinste.w)}x${Math.round(kleinste.h)} (${kleinste.id})` : "–"}` : ""}`);
+    await ctx.close();
+  }
+}
+
+/* ======================================== 1b  Einstieg ohne Anmeldung (EINSTIEG=1, V4-3b Einstieg) */
+/* Erfundene Testdaten: zwei Demo-Einträge (GET /api/demos) und die Antworten auf „Betrieb anlegen“ (POST /starten:
+   erst ein Fehler, dann ein angelegter Testbetrieb mit erfundenen Codes). Der Browser beantwortet beide selbst; der
+   Server sieht keine Registrierung. Kein Code wird abgeschickt, kein Demozugang geöffnet. */
+const TEST_DEMOS = [
+  { id: "abnahme-1", name: "Testbetrieb", rolle: "leitung", gruppe: "Testdaten", bestand: "abnahme", betrieb: 0, hinweis: "Erfundener Testzugang der Abnahme" },
+  { id: "abnahme-2", name: "Testbetrieb", rolle: "mitarbeiter", gruppe: "Testdaten", bestand: "abnahme", betrieb: 0, hinweis: "Erfundener Testzugang der Abnahme" },
+];
+const TEST_START = { zugaenge: [{ rolle: "leitung", code: "TEST-0000-0001" }, { rolle: "mitarbeiter", code: "TEST-0000-0002" }], testtage: 30 };
+const rgbaTeile = (s) => (String(s).match(/[\d.]+/g) || []).map(Number);
+const gleicheFarbe = (a, b) => { const x = rgbaTeile(a), y = rgbaTeile(b); return x.length === y.length && x.every((v, i) => Math.abs(v - y[i]) < 0.01); };
+
+/** Stellen mit Radiusstufe im Inline-Stil: Stufe und berechneter Radius der ersten gesetzten Ecke. */
+const STUFEN_MESSEN = () => [...document.querySelectorAll('[style*="--v4-r-"]')].filter((e) => e.getBoundingClientRect().width > 0).map((e) => {
+  const cs = getComputedStyle(e);
+  const stufe = (e.getAttribute("style").match(/--v4-r-([a-z]+)/) || [])[1];
+  const ecke = /--v4-r-/.test(e.style.borderTopLeftRadius) ? cs.borderTopLeftRadius : cs.borderTopRightRadius;
+  return { stufe, wert: ecke, text: (e.innerText || e.getAttribute("aria-label") || e.tagName).trim().slice(0, 24).split("\n")[0] };
+});
+
+async function einstiegSeite(w, t) {
+  const ctx = await browser.newContext({ viewport: { width: w, height: w < 700 ? 800 : 850 }, serviceWorkers: "block", colorScheme: t, hasTouch: w < 700 });
+  const p = await ctx.newPage();
+  const fehler = new Set();
+  p.on("pageerror", (x) => fehler.add(`pageerror ${String(x).slice(0, 120)}`));
+  p.on("console", (m) => { if (m.type() === "error" && !/favicon|Failed to load resource/.test(m.text())) fehler.add(`console ${m.text().slice(0, 120)}`); });
+  let starten = 0;
+  await p.route("**/api/demos", (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ demos: TEST_DEMOS }) }));
+  await p.route("**/starten", (r) => {
+    if (r.request().method() !== "POST") return r.continue();
+    starten++;
+    return starten === 1
+      ? r.fulfill({ status: 400, contentType: "application/json", body: JSON.stringify({ text: "Testantwort der Abnahme: nicht angelegt." }) })
+      : r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(TEST_START) });
+  });
+  await p.goto(BASE + "/", { waitUntil: "networkidle" });
+  await p.getByRole("button", { name: "Selbst starten" }).waitFor({ state: "visible", timeout: 20000 });
+  await p.waitForTimeout(2500);   // Startsequenz (Startbild) ausklingen lassen
+  return { ctx, p, fehler };
+}
+
+async function einstiegZustand(p, name, k) {
+  await p.waitForTimeout(450);
+  geprueft++;
+  const m = await p.evaluate(MESSEN);
+  let schlecht = false;
+  if (k.reflow && !reflowOk(m.gesamt, m.breite)) { schlecht = true; melde("reflow", `${name}: Seite ${m.gesamt - m.breite}px breiter als ${m.breite}px — ${m.taeter}`); }
+  if (k.ziele) {
+    const z = zielgroessenBefunde(m.ziele, 24);
+    if (z.length) { schlecht = true; melde("zielgroesse", `${name}: ${z.length} Ziele unter 24 px ohne Abstandsausnahme (z. B. ${z.slice(0, 3).map((x) => `${x.id} ${Math.round(x.w)}x${Math.round(x.h)}`).join("; ")})`); }
+  }
+  const st = await p.evaluate(STUFEN_MESSEN);
+  const falsch = st.filter((x) => x.wert !== V4_RADIEN[x.stufe]);
+  if (falsch.length) { schlecht = true; melde("radius", `${name}: ${falsch.length} von ${st.length} Stellen nicht im Radius ihrer Stufe (${falsch.slice(0, 3).map((x) => `${x.text} ${x.stufe} ${x.wert}`).join("; ")})`); }
+  if (!schlecht) beleg("einstieg", `${name}: Reflow${k.ziele ? " und Zielgröße" : ""} ohne Befund; ${st.length} Stellen mit Radiusstufe, alle gleich V4_RADIEN${k.ziele ? `; ${m.ziele.length} Ziele` : ""}`);
+  if (schlecht || process.env.BILDER_ALLE) await bild(p, name);
+}
+
+const { V4_RADIEN, V4_UEBERLAGERUNG } = await import(pathToFileURL(path.join(WT, "src", "v4", "tokens.js")).href);
+if (process.env.EINSTIEG && (KRITERIEN.includes("reflow") || KRITERIEN.includes("ziele"))) {
+  const konfig = [];
+  if (KRITERIEN.includes("reflow")) for (const w of BREITEN_REFLOW) for (const t of THEMEN) konfig.push({ w, t, reflow: true, ziele: false });
+  if (KRITERIEN.includes("ziele")) { const hit = konfig.find((k) => k.w === 390 && k.t === "light"); if (hit) hit.ziele = true; else konfig.push({ w: 390, t: "light", reflow: false, ziele: true }); }
+  for (const k of konfig) {
+    const { ctx, p, fehler } = await einstiegSeite(k.w, k.t);
+    const marke = `einstieg@${k.w}/${k.t}`;
+    const klick = async (loc, was) => { await loc.first().click({ timeout: 5000 }).catch(() => melde("klick", `${marke}: ${was} scheitert`)); };
+    await einstiegZustand(p, `${marke} Start`, k);
+    await klick(p.getByRole("button", { name: /Was kostet das/ }), "Was kostet das?");
+    await einstiegZustand(p, `${marke} Preise`, k);
+    await klick(p.getByRole("button", { name: "Zurück", exact: true }), "Zurück (Preise)");
+    await klick(p.getByRole("button", { name: "Selbst starten" }), "Selbst starten");
+    await einstiegZustand(p, `${marke} Registrierung`, k);
+    await p.locator("#betrieb-name").fill("Abnahme Testbetrieb").catch(() => melde("klick", `${marke}: Betriebsname scheitert`));
+    await klick(p.locator("button[aria-pressed]", { hasText: "Pflege" }), "Branche Pflege");
+    await klick(p.getByRole("button", { name: "Betrieb anlegen", exact: true }), "Betrieb anlegen (Fehler)");
+    await p.locator('[role="alert"]').first().waitFor({ state: "visible", timeout: 5000 }).catch(() => melde("einstieg", `${marke}: Fehlermeldung der Registrierung erscheint nicht`));
+    await einstiegZustand(p, `${marke} Registrierung Fehler`, k);
+    await klick(p.getByRole("button", { name: "Betrieb anlegen", exact: true }), "Betrieb anlegen (fertig)");
+    await p.getByText("TEST-0000-0001").waitFor({ state: "visible", timeout: 5000 }).catch(() => melde("einstieg", `${marke}: Registrierung fertig erscheint nicht`));
+    await einstiegZustand(p, `${marke} Registrierung fertig`, k);
+    await klick(p.getByRole("button", { name: "Mit der Organisationsleitung anmelden" }), "Mit der Organisationsleitung anmelden");
+    await p.locator("#code").waitFor({ state: "visible", timeout: 5000 }).catch(() => melde("einstieg", `${marke}: Anmeldung mit Code erscheint nicht`));
+    await einstiegZustand(p, `${marke} Anmeldung mit Code`, k);
+    await klick(p.getByRole("button", { name: "Zweiten Faktor einrichten oder verwalten" }), "Zweiten Faktor einrichten");
+    await einstiegZustand(p, `${marke} Zweiter Faktor`, k);
+    await klick(p.getByRole("button", { name: "Impressum", exact: true }), "Impressum");
+    const dlg = p.getByRole("dialog", { name: "Rechtliche Angaben" });
+    if (await dlg.waitFor({ state: "visible", timeout: 5000 }).then(() => true).catch(() => false)) {
+      await einstiegZustand(p, `${marke} Rechtsfenster`, k);
+      const r = await p.evaluate(() => {
+        const d = document.querySelector('[role="dialog"][aria-label="Rechtliche Angaben"]');
+        const codes = [...d.querySelectorAll("code")].map((c) => Math.round(c.getBoundingClientRect().height * 10) / 10);
+        return { grund: getComputedStyle(d).backgroundColor, codes, codeRadius: d.querySelector("code") ? getComputedStyle(d.querySelector("code")).borderTopLeftRadius : null };
+      });
+      const soll = V4_UEBERLAGERUNG[k.t === "dark" ? "dunkel" : "hell"];
+      if (!gleicheFarbe(r.grund, soll)) melde("einstieg", `${marke} Rechtsfenster: Überlagerung ${r.grund}, erwartet ${soll}`);
+      else beleg("einstieg", `${marke} Rechtsfenster: Überlagerung ${r.grund} (V4_UEBERLAGERUNG); Code-Auszeichnung ${r.codes.length}× Höhe ${r.codes.join("/")} px, Radius ${r.codeRadius} (Ausnahme)`);
+      await p.keyboard.press("Escape");
+      await dlg.waitFor({ state: "hidden", timeout: 5000 }).catch(() => melde("einstieg", `${marke}: Rechtsfenster schließt nicht mit Escape`));
+    } else melde("einstieg", `${marke}: Rechtsfenster öffnet nicht`);
+    for (const f of fehler) melde("konsole", `${marke}: ${f}`);
+    await ctx.close();
+  }
+}
+if (process.env.EINSTIEG && KRITERIEN.includes("fokus")) {
+  for (const w of [1280, 320]) {
+    const { ctx, p } = await einstiegSeite(w, "light");
+    for (const zustand of ["Start", "Registrierung"]) {
+      const marke = `einstieg@${w} ${zustand}`;
+      if (zustand === "Registrierung") await p.getByRole("button", { name: "Selbst starten" }).first().click({ timeout: 5000 }).catch(() => melde("klick", `${marke}: Selbst starten scheitert`));
+      await p.waitForTimeout(400);
+      await p.evaluate(() => { if (document.activeElement) document.activeElement.blur(); window.scrollTo(0, 0); });
+      let n = 0, ohneRing = 0, verdeckt = 0, draussen = 0; const beisp = [];
+      for (let i = 0; i < 30; i++) {
+        await p.keyboard.press("Tab");
+        await p.waitForTimeout(200);
+        const f = await p.evaluate(() => {
+          const e = document.activeElement;
+          if (!e || e === document.body || e === document.documentElement) return null;
+          const cs = getComputedStyle(e), r = e.getBoundingClientRect();
+          const treffer = [[r.left + r.width / 2, r.top + r.height / 2], [r.left + 2, r.top + 2], [r.right - 2, r.bottom - 2]]
+            .filter(([x, y]) => x >= 0 && y >= 0 && x < innerWidth && y < innerHeight)
+            .map(([x, y]) => { const h = document.elementFromPoint(x, y); return { frei: !h || h === e || e.contains(h) || h.contains(e) }; });
+          return { name: `${e.tagName.toLowerCase()}[${(e.getAttribute("aria-label") || e.innerText || "").trim().slice(0, 20).split("\n")[0]}]`,
+            stil: { outlineStyle: cs.outlineStyle, outlineWidth: cs.outlineWidth, outlineColor: cs.outlineColor, boxShadow: cs.boxShadow },
+            treffer, draussen: r.bottom < 0 || r.top > innerHeight || r.right < 0 || r.left > innerWidth };
+        });
+        if (!f) continue;
+        n++;
+        if (!fokusSichtbar(f.stil)) { ohneRing++; if (beisp.length < 3) beisp.push(f.name); }
+        if (f.draussen) draussen++; else if (!fokusNichtVerdeckt(f.treffer)) { verdeckt++; if (beisp.length < 6) beisp.push(`${f.name} verdeckt`); }
+      }
+      geprueft++;
+      if (n < 5) melde("fokus", `${marke}: nur ${n} Tab-Stopps erreicht`);
+      if (ohneRing) melde("fokus-sichtbar", `${marke}: ${ohneRing} von ${n} ohne sichtbaren Fokus (z. B. ${beisp.join("; ")})`);
+      if (verdeckt) melde("fokus-verdeckt", `${marke}: ${verdeckt} von ${n} verdeckt (z. B. ${beisp.join("; ")})`);
+      if (n >= 5 && !ohneRing && !verdeckt) beleg("fokus", `${marke}: ${n} Tab-Stopps, Fokus sichtbar, nichts verdeckt${draussen ? ` (${draussen} außerhalb des Fensters, rollt beim Weiter-Tabben)` : ""}`);
+      await bild(p, `fokus-${marke}`);
+    }
     await ctx.close();
   }
 }

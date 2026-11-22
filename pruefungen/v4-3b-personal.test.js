@@ -242,7 +242,7 @@ describe("A11Y-1: Arbeitstage und Nachtbalken der Personalakte", () => {
      - der aktuelle Monat (Monat der Ansicht, ym) ist ohne Farbe erkennbar: Monatsbuchstabe fett und unterstrichen
        (1.4.1); C.accent gegen C.steuer bleibt zulässig, ist aber nicht mehr das einzige Merkmal;
      - die zwölf Monatswerte sind für Vorlesesoftware erreichbar, nicht nur über title: Gruppe role="img" mit
-       aria-label (Jahr, alle zwölf Monate mit Stunden, markierter Monat); die zwölf Spalten (Balken und Buchstabe)
+       aria-label (Jahr, alle zwölf Monate mit Stunden, Monat der Ansicht); die zwölf Spalten (Balken und Buchstabe)
        aria-hidden, damit nichts doppelt angesagt wird (1.3.1, 4.1.2);
      - Fachlogik (nm, maxN), Klassennamen, Übergang unverändert (V4-2d, oben); Kontrast Balken und Marker >= 3:1
        gegen die Fläche, hell und dunkel (1.4.11), festgeschrieben.
@@ -274,7 +274,7 @@ describe("A11Y-2: Nachtbalken der Personalakte", () => {
     return `${name} ${v === null || v === undefined ? "keine Angabe" : `${n1(v)} Stunden`}`;
   });
 
-  it("Gruppe role=img mit aria-label: Jahr, alle zwölf Monatswerte, markierter Monat (1.3.1, 4.1.2)", () => {
+  it("Gruppe role=img mit aria-label: Jahr, alle zwölf Monatswerte, Monat der Ansicht (1.3.1, 4.1.2)", () => {
     const { m, leitung, ziel } = aufbau();
     const a = abschnitt(rendern(m, leitung, ziel, "2026-11"));
     const gruppen = [...a.matchAll(/<div[^>]*role="img"[^>]*>/g)];

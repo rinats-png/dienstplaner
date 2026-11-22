@@ -3,7 +3,7 @@
    Geprüft bei 390 px und 1024 px:
      - getByRole("img") mit Accessible Name: Jahr, alle zwölf Monate mit Stunden, am Ende „Monat der Ansicht: …“ (1.3.1, 4.1.2);
      - genau eine solche Grafik; die zwölf Spalten sind für Vorlesesoftware ausgeblendet (keine doppelte Ansage);
-     - der markierte Monat ist ohne Farbe erkennbar: sein Buchstabe ist fett (>= 700) und unterstrichen (computed
+     - der Monat der Ansicht ist ohne Farbe erkennbar: sein Buchstabe ist fett (>= 700) und unterstrichen (computed
        style), die übrigen nicht (1.4.1);
      - axe (hilfen.mjs axePruefen) auf der offenen Personalakte je Breite: keine serious/critical-Befunde.
    Liest nur; schreibt keine Daten. Bremsen-Bilanz: 1 Anmeldung als Leitung je Lauf (nur Projekt 390x844;
@@ -17,7 +17,7 @@ const MON = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "Augu
 
 test.describe("A11Y-2: Nachtbalken mit Text und Marker ohne Farbe", () => {
   test.setTimeout(150_000);
-  test("390/1024 px: Grafik mit Monatswerten als Name, markierter Monat fett und unterstrichen", async ({ page }, testInfo) => {
+  test("390/1024 px: Grafik mit Monatswerten als Name, Monat der Ansicht fett und unterstrichen", async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== PROJEKT, "einmal je Lauf; die Breiten stellt der Test selbst ein");
     await anmelden(page, "leitung");
 
@@ -38,7 +38,7 @@ test.describe("A11Y-2: Nachtbalken mit Text und Marker ohne Farbe", () => {
       const name = await grafik.getAttribute("aria-label");
       for (const mo of MON) expect(name, `${breite.width} px: ${mo}`).toMatch(new RegExp(`${mo} (\\d+(,\\d)? Stunden|keine Angabe)`));
       const markiert = (name.match(/; Monat der Ansicht: (\S+?)\.?$/) || [])[1];
-      expect(MON, `${breite.width} px: markierter Monat im Namen`).toContain(markiert);
+      expect(MON, `${breite.width} px: Monat der Ansicht im Namen`).toContain(markiert);
 
       /* Spalten ausgeblendet: in der Grafik keine weiteren benannten Elemente; zwölf Spalten aria-hidden. */
       await expect.poll(() => grafik.evaluate((g) => g.querySelectorAll(":scope > [aria-hidden='true']").length),
