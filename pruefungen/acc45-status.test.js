@@ -290,6 +290,65 @@ describe("Schema prio und pr (Review #477 H3, fail-closed)", () => {
   });
 });
 
+/* Review #483 (Opus) Folgebefund H2: G9 (release-pruefung.mjs) erkennt Befund-Pakete an strang und ID-Präfix. Die Quelle
+   erzwingt deshalb einen bekannten strang (kein stilles „acc45“ für einen fehlenden) und ein festes ID-Format. */
+describe("Schema strang und id (Review #483 H2, fail-closed)", () => {
+  const paket = (id, o = {}) => ({ id, titel: String(id), strang: "acc45", prio: "P1", aufwandPT: { min: 1, max: 2 }, abhaengigkeiten: [], status: "BLOCKED", pr: [], ...o });
+  const GUELTIG = ["WP-01", "WP-19.0", "E-21i", "V4-2b", "A11Y-1", "REL-0c", "WP-I12a", "ABNAHME-V4", "x_1"];
+  const UNGUELTIG = ["ABN‑1", "ABN–1", "ABN−1", "ABN 1", "ABN-1\u0000", "ABN​-1", "ＡBN-1", " WP-1", "WP-1 ",
+    "WP-1\n", "", "-WP", ".x", "WP/1", "Ä-1"];
+
+  it("ID_MUSTER: ASCII-Buchstabe/Ziffer am Anfang, dann nur A–Z, a–z, 0–9, Punkt, Unterstrich, Bindestrich", () => {
+    for (const id of GUELTIG) expect(BL.ID_MUSTER.test(id), id).toBe(true);
+    for (const id of UNGUELTIG) expect(BL.ID_MUSTER.test(id), JSON.stringify(id)).toBe(false);
+  });
+
+  it("pruefeQuelle: ungültige ID (auch kein Text) → Fehler; gültige IDs ohne Fehler", () => {
+    expect(BL.pruefeQuelle(BL.paketeAus(GUELTIG.map((id) => paket(id))))).toEqual([]);
+    for (const id of [...UNGUELTIG, null, 1]) {
+      const f = BL.pruefeQuelle(BL.paketeAus([paket(id)]));
+      expect(f.some((x) => /: id .* ungültig/.test(x)), JSON.stringify(id)).toBe(true);
+    }
+  });
+
+  it("fehlender strang wird nicht still zu „acc45“: pruefeQuelle meldet ihn; Tupelformat bleibt acc45", () => {
+    const ohne = paket("X");
+    delete ohne.strang;
+    const [p] = BL.paketeAus([ohne]);
+    expect(p.strang).toBeUndefined();
+    expect(BL.pruefeQuelle([p]).some((x) => x.startsWith("X: strang"))).toBe(true);
+    for (const strang of ["", null, "Folge", "folge "]) {
+      expect(BL.pruefeQuelle(BL.paketeAus([paket("X", { strang })])).some((x) => x.startsWith("X: strang")), JSON.stringify(strang)).toBe(true);
+    }
+    expect(BL.paketeAus([["WP-77", "Alt", "P2", 2, [], "B", "READY", "Akz", "Tests", "x.mjs"]])[0].strang).toBe("acc45");
+  });
+
+  it("Repo-Stand: jedes Paket trägt einen bekannten strang und eine gültige ID (Härtung verhaltensneutral)", () => {
+    const roh = BL.quelleLesen().pakete;
+    for (const p of roh) {
+      expect(BL.STRAENGE, p.id).toContain(p.strang);
+      expect(p.id, p.id).toMatch(BL.ID_MUSTER);
+    }
+  });
+
+  it("status-schreiben mit fehlendem strang oder Unicode-Bindestrich in der ID → Rückgabe 2, Quelle unverändert", async () => {
+    for (const [name, aendern, meldung] of [
+      ["roh-strang-fehlt", (p) => { delete p.strang; }, /WP-16: strang/],
+      ["roh-id-bindestrich", (p) => { p.id = "WP‑16"; }, /id "WP‑16" ungültig/],
+    ]) {
+      const w = await kopie(name);
+      await mkdir(path.join(w, "werkzeug"), { recursive: true });
+      await copyFile(path.join(REPO, "werkzeug", "acc45-backlog.mjs"), path.join(w, "werkzeug", "acc45-backlog.mjs"));
+      await jsonAendern(w, (j) => aendern(j.pakete.find((p) => p.id === "WP-16")));
+      const vorher = await readFile(path.join(w, "docs/acc45/work-packages.json"), "utf8");
+      const s = spawnSync(process.execPath, [path.join(w, "werkzeug", "acc45-backlog.mjs"), "status-schreiben"], { cwd: w, encoding: "utf8" });
+      expect(s.status, name + s.stdout + s.stderr).toBe(2);
+      expect(s.stderr, name).toMatch(meldung);
+      expect(await readFile(path.join(w, "docs/acc45/work-packages.json"), "utf8"), name).toBe(vorher);
+    }
+  });
+});
+
 describe("Prognose: Simulation, Konfliktzonen, Kalender", () => {
   const sz = { agenten: 2, ptJeAgentTag: 1, minDauerAT: 0.5, pt: "min", aufschlag: 1, warte: "min", appJsxNachWP39Frei: false };
   const p = (id, o = {}) => ({ id, titel: id, strang: "acc45", prio: "P1", aufwandPT: { min: 2, max: 2 }, abhaengigkeiten: [], status: "READY", konfliktzonen: [], ...o });

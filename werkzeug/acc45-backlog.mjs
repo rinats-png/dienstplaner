@@ -40,6 +40,10 @@ export const NUR_REIHENFOLGE = Object.freeze(["WP-09"]);
    exakt und lesen pr als Liste "#123". Die Quelle erzwingt beides; jede andere Schreibweise ist ein Schemafehler. */
 export const PRIOS = Object.freeze(["P0", "P1", "P2", "P3"]);
 export const PR_MUSTER = /^#[1-9]\d*$/;
+/* Review #483 H2: G9 erkennt Befund-Pakete an strang und ID-Präfix (ABN-, V4-). Deshalb ist strang Pflicht (kein stilles
+   „acc45“ für einen fehlenden) und die ID hat ein festes ASCII-Format: keine Unicode-Bindestriche, Leerzeichen, Steuer-
+   oder Breitzeichen. release-pruefung.mjs ID_MUSTER/STRAENGE sind per Test an diese Werte gebunden. */
+export const ID_MUSTER = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const QUELLE = path.join(REPO, "docs", "acc45", "work-packages.json");
@@ -64,7 +68,7 @@ function normalisieren(p) {
   const stufen = leereStufen();
   for (const k of STUFEN) if (p.stufen?.[k]) stufen[k] = { wert: p.stufen[k].wert, beleg: p.stufen[k].beleg ?? null };
   const o = {
-    id: p.id, titel: p.titel, strang: p.strang || "acc45", prio: p.prio,
+    id: p.id, titel: p.titel, strang: p.strang, prio: p.prio,       // kein Standardwert: pruefeQuelle meldet fehlenden strang
     aufwandPT: alsSpanne(p.aufwandPT),
   };
   if (p.restPT) o.restPT = alsSpanne(p.restPT);
@@ -128,8 +132,12 @@ export function pruefeQuelle(pakete) {
   }
   for (const p of pakete) {
     const w = (t) => f.push(`${p.id}: ${t}`);
+    if (typeof p.id !== "string" || !ID_MUSTER.test(p.id)) w(`id ${JSON.stringify(p.id) ?? "fehlt"} ungültig (Format ${ID_MUSTER.source})`);
     if (!p.titel) w("titel fehlt");
-    if (!STRAENGE.includes(p.strang)) w(`strang ${p.strang}`);
+    if (!STRAENGE.includes(p.strang)) {
+      const s = typeof p.strang === "string" && /^[\x21-\x7e]+$/.test(p.strang) ? p.strang : JSON.stringify(p.strang) ?? "fehlt";
+      w(`strang ${s} (zulässig: ${STRAENGE.join("|")}, genau so geschrieben)`);
+    }
     if (!PRIOS.includes(p.prio)) w(`prio ${JSON.stringify(p.prio) ?? "fehlt"} (zulässig: ${PRIOS.join("|")}, genau so geschrieben)`);
     const prFalsch = p.pr.filter((x) => typeof x !== "string" || !PR_MUSTER.test(x));
     if (prFalsch.length) w(`pr enthält ungültige Einträge ${JSON.stringify(prFalsch)} (Format "#123")`);

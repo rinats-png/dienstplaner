@@ -44,9 +44,12 @@
          jede Paket-ID in ssotPakete von RELEASE-UNFERTIG.json steht in der SSOT;
          „nur hinter Schalter AUS“ nur für PRs aus ssotPrs (fehlt: keine Aussage); ssotPrs nur mit ssotPakete, jeder
          Eintrag genau "#123" und im pr eines genannten Pakets, sonst NO-GO
-     G9  keine offenen P0/P1-Befunde (Strang folge, ABN-*, V4-*; REL-* sind der
+     G9  keine offenen P0/P1-Befunde (Strang folge, ABN-*, V4-*; Präfix nach NFKC,
+         Groß-/Kleinschreibung, Unicode-Bindestrich → „-“; REL-* exakt sind der
          Release-Prozess selbst und zählen nicht; akzeptierteBefunde mit Grund);
-         unbekannte oder fehlende prio blockiert wie P0/P1
+         unbekannte oder fehlende prio blockiert wie P0/P1; ein offenes P0/P1-Paket
+         mit fehlendem/unbekanntem strang (STRAENGE) oder ID außerhalb ID_MUSTER ⇒ NO-GO
+     G8/G9: ein Eintrag in pakete, der kein Objekt ist ⇒ NO-GO (nicht still übersprungen)
      G10 Freigabedatei docs/acc45/releases/<id>.freigabe.json gültig, commitet,
          passend; Stand HEAD = Kandidat + nur Freigabepfade
 
@@ -84,6 +87,12 @@ export const PRIO_STUFEN = Object.freeze(["P0", "P1", "P2", "P3"]);
 export const BLOCKER_PRIOS = Object.freeze(["P0", "P1"]);
 /** PR-Verweis in SSOT (pr) und RELEASE-UNFERTIG.json (ssotPrs): genau "#123" (Schema: acc45-backlog.mjs PR_MUSTER). */
 export const PR_MUSTER = /^#[1-9]\d*$/;
+/** Bekannte SSOT-Stränge (Schema: acc45-backlog.mjs STRAENGE, per Test gebunden). Review #483 H2: G9 erkennt Befunde
+ *  auch am Strang; ein fehlender oder anders geschriebener strang eines offenen P0/P1-Pakets blockiert (fail-closed). */
+export const STRAENGE = Object.freeze(["acc45", "wp19", "intelligence", "folge", "extern"]);
+/** Paket-ID (Schema: acc45-backlog.mjs ID_MUSTER, per Test gebunden). Review #483 H2: G9 blockiert ein offenes P0/P1-Paket
+ *  mit anderer ID (Unicode-Bindestrich, Leerzeichen, Steuerzeichen), weil seine Befund-Zuordnung nicht sicher ist. */
+export const ID_MUSTER = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
 export const KONFIG_STANDARD = Object.freeze({
   repo: "rinats-png/dienstplaner",
@@ -972,6 +981,14 @@ const prioBlockiert = (prio, prios) => prios.includes(prio) || !PRIO_STUFEN.incl
 const prioText = (prio) => (PRIO_STUFEN.includes(prio) ? prio
   : `Priorität ${prio === undefined ? "fehlt" : String(JSON.stringify(prio)).slice(0, 40)}, unbekannt → blockierend`);
 
+/** Review #483 H3: Zeile für einen Eintrag in pakete, der kein Objekt ist (Tupel, null, Text, Zahl). */
+const keinObjekt = (konfig, i, x) =>
+  `${konfig.ssot}: pakete[${i}] ist kein Objekt (${x === null ? "null" : Array.isArray(x) ? "Liste" : typeof x}) — nicht prüfbar (fail-closed)`;
+/** Wert für Meldungen: JSON, nur druckbares ASCII (alles andere als \uXXXX), gekürzt. */
+const idText = (x) => String(JSON.stringify(x) ?? "fehlt").replace(/[^\x20-\x7e]/gu, escape).slice(0, 60);
+/** Review #483 H2: ID für den Präfix-Abgleich (ABN-, V4-): NFKC, Unicode-Bindestriche und Minus zu „-“, Großschreibung. */
+const idNormal = (id) => id.normalize("NFKC").replace(/[\p{Pd}−]/gu, "-").toUpperCase();
+
 /** Ein PR-Verweis "#123" als sichere Ganzzahl, sonst null (Review #473 H4/H5: keine Zahl ohne „#“, kein Überlauf). */
 const prVerweis = (x) => {
   if (typeof x !== "string" || !PR_MUSTER.test(x)) return null;
@@ -1008,8 +1025,9 @@ export function g8Blocker(ssot, prsImKandidaten, freigabe, konfig, unfertig = nu
   if (!Array.isArray(prsImKandidaten)) return nogo(g, "PR-Liste des Kandidaten nicht ermittelbar (fail-closed)");
   const imKandidat = new Set(prsImKandidaten.map(Number));
   const akzeptiert = annahmen(freigabe?.akzeptiertePakete);
-  for (const p of ssot.pakete) {
-    if (!istObjekt(p) || konfig.blocker.erledigt.includes(p.status) || !prioBlockiert(p.prio, konfig.blocker.prios)) continue;
+  for (const [i, p] of ssot.pakete.entries()) {
+    if (!istObjekt(p)) { nogo(g, keinObjekt(konfig, i, p)); continue; }          // Review #483 H3: nicht still überspringen
+    if (konfig.blocker.erledigt.includes(p.status) || !prioBlockiert(p.prio, konfig.blocker.prios)) continue;
     const kopf = `${p.id} (${prioText(p.prio)}, ${p.status})`;
     // Review #477 H3: ohne gültige pr-Liste ist nicht bestimmbar, ob das Paket im Kandidaten steckt (fail-closed)
     const liste = prListeLesen(p.pr);
@@ -1081,14 +1099,26 @@ export function g9Befunde(ssot, freigabe, konfig) {
   const muster = konfig.befund.idMuster.map((m) => new RegExp(m));
   const ausnahme = konfig.befund.ausnahmeMuster.map((m) => new RegExp(m));
   const akzeptiert = annahmen(freigabe?.akzeptierteBefunde);
-  for (const p of ssot.pakete) {
-    if (!istObjekt(p)) continue;
-    if (ausnahme.some((m) => m.test(p.id))) continue;
-    const istBefund = konfig.befund.straenge.includes(p.strang) || muster.some((m) => m.test(p.id));
-    if (!istBefund || !prioBlockiert(p.prio, konfig.befund.prios) || konfig.befund.erledigt.includes(p.status)) continue;
-    if (akzeptiert.has(p.id)) { g.belege.push(`${p.id} vom Betreiber akzeptiert: ${akzeptiert.get(p.id)}`); continue; }
+  ssot.pakete.forEach((p, i) => {
+    if (!istObjekt(p)) { nogo(g, keinObjekt(konfig, i, p)); return; }            // Review #483 H3
+    // Nur offene Pakete mit P0/P1 oder unbekannter prio können blockieren; alle anderen bleiben wie vorher unberührt.
+    if (konfig.befund.erledigt.includes(p.status) || !prioBlockiert(p.prio, konfig.befund.prios)) return;
+    // Review #483 H2: ID und strang müssen dem Schema genügen, sonst ist die Befund-Zuordnung nicht sicher (fail-closed).
+    // Eine Annahme (akzeptierteBefunde) hebt das nicht auf: erst die Daten korrigieren.
+    if (typeof p.id !== "string" || !ID_MUSTER.test(p.id)) {
+      nogo(g, `Paket pakete[${i}] (${prioText(p.prio)}): ID ${idText(p.id)} ungültig (Format ${ID_MUSTER.source}) — Befund-Zuordnung nicht bestimmbar (fail-closed)`);
+      return;
+    }
+    if (!STRAENGE.includes(p.strang)) {
+      nogo(g, `${p.id} (${prioText(p.prio)}, ${p.status}): strang ${p.strang === undefined ? "fehlt" : `${idText(p.strang)} unbekannt`} (zulässig: ${STRAENGE.join("|")}) — Befund-Zuordnung nicht bestimmbar (fail-closed)`);
+      return;
+    }
+    if (ausnahme.some((m) => m.test(p.id))) return;                                // REL-*: nur exakt (keine Normalisierung)
+    const istBefund = konfig.befund.straenge.includes(p.strang) || muster.some((m) => m.test(idNormal(p.id)));
+    if (!istBefund) return;
+    if (akzeptiert.has(p.id)) { g.belege.push(`${p.id} vom Betreiber akzeptiert: ${akzeptiert.get(p.id)}`); return; }
     nogo(g, `${p.id} (${prioText(p.prio)}, ${p.status}): ${String(p.titel || "").slice(0, 80)}`);
-  }
+  });
   return g;
 }
 
