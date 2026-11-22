@@ -213,7 +213,7 @@ export function NichtGespeichert({ lage, melde, aufGeloest, onKonflikt = null })
   };
 
   return (
-    <div role="alert" style={{ padding: "16px 20px", borderRadius: 12, marginBottom: 20,
+    <div role="alert" style={{ padding: "16px 20px", borderRadius: "var(--v4-r-mittel)", marginBottom: 20,
       background: C.dangerLight, border: `1px solid ${C.danger}44` }}>
       <div style={{ fontSize: 15, fontWeight: 650, marginBottom: 6 }}>{l.titel}</div>
       <p style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.6, margin: "0 0 14px", maxWidth: "72ch" }}>
@@ -389,7 +389,7 @@ export function Offlineleiste({ lage }) {
           : `vor ${Math.round(minuten / 1440)} Tagen`;
 
   return (
-    <div role="status" style={{ padding: "12px 18px", borderRadius: 12, marginBottom: 20,
+    <div role="status" style={{ padding: "12px 18px", borderRadius: "var(--v4-r-mittel)", marginBottom: 20,
       background: C.warnLight, border: `1px solid ${C.warn}33`,
       display: "flex", gap: 14, alignItems: "baseline", flexWrap: "wrap" }}>
       <span style={{ fontSize: 14, fontWeight: 640 }}>Keine Verbindung</span>
