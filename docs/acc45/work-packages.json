@@ -4,9 +4,9 @@
   "anzahl": 245,
   "statusZaehlung": {
     "BLOCKED": 90,
-    "READY": 17,
+    "READY": 16,
     "IN_PROGRESS": 19,
-    "REVIEW": 11,
+    "REVIEW": 12,
     "INTEGRATED": 105,
     "DONE": 3
   },
@@ -15,8 +15,8 @@
       "pakete": 121,
       "offen": 39,
       "restPT": {
-        "min": 61.6,
-        "max": 105.54999999999998
+        "min": 61.36,
+        "max": 104.91
       }
     },
     "wp19": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 334.3,
-    "max": 575.65
+    "min": 334.06,
+    "max": 575.0100000000001
   },
   "kritischerPfad": {
     "summe": 70,
@@ -4608,26 +4608,26 @@
       "prio": "P3",
       "aufwandPT": {"min":0.3,"max":0.8},
       "abhaengigkeiten": ["SI-P10"],
-      "status": "READY",
+      "status": "REVIEW",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"acc45/sicherheit/si-p11-scan-hinweise: 9b1ae203 (Tests zuerst, rot auf 93b5f7f7: 9 von 11 neuen Tests; die 2 H1-Tests sind dort grün, Nachweis per Mutation), fe667d38 (Korrektur)"},
+        "lokalGetestet": {"wert":true,"beleg":"Lauf 2026-11-22 (Windows): geheimnisse-freigabe 73/74 (1 übersprungen: Dateinamen mit `:`/Zeilenumbruch nur unter POSIX, läuft in CI); pruefung:sicherheit-intern 151/153 (1 übersprungen wie oben, 1 rot nur lokal: DEP-1 liest node_modules/web-push im Worktree ohne node_modules, nicht berührt); verdrahtung 8/8, ci-abdeckung 9/9, prozess-wachen 15/15; 10 Mutationen rot (H1: entfernte Zeile → fort = datei bzw. null; H3a: alle Rückgabewerte erlaubt bzw. await ende entfernt; H3b: ohne -z bzw. Namensteile nicht zusammengesetzt; H4: Kombinationsprüfung entfernt; H5: p.catch entfernt, error-Handler entfernt, p.catch und Absturz-Netz entfernt); Absturz-Netz allein entfernt bleibt grün (zweite Linie); Scan --remotes=origin 0 offen, 3 begründete Fehlalarme; --nur-arbeitsstand 0 offen"},
         "reviewt": {"wert":false,"beleg":null},
         "integriert": {"wert":false,"beleg":null},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
       },
-      "branch": null,
-      "agent": null,
+      "branch": "acc45/sicherheit/si-p11-scan-hinweise",
+      "agent": "Agent Sicherheit",
       "modell": "opus",
       "konfliktzonen": [],
-      "pr": [],
+      "pr": ["#464"],
       "nachweis": "Opus-Sicherheitsreview zu PR #461 (SI-P10), Hinweise H1, H3, H4, H5 (Bericht beim Koordinator).",
       "akzeptanz": "H1: eigener Testfall nur mit entfernter Zeile in pruefungen/geheimnisse-freigabe.test.js (um Zeile 764), rot auf der Mutation. H3: Im Modus --nur-arbeitsstand wird der Rückgabewert von git grep ausgewertet (Fehler = Rückgabe 2); die Trennung von Datei und Treffer erfolgt nicht mehr allein am ersten Doppelpunkt. H4: --nur-arbeitsstand zusammen mit --remotes wird abgelehnt, oder die Kombination wird dokumentiert und getestet. H5: Fehlt git oder das Arbeitsverzeichnis, gibt das Werkzeug 2 zurück (nicht 1). Je Punkt Test zuerst mit Mutationsnachweis. H2 und H6 bleiben Hinweise ohne Umsetzung.",
       "tests": "pruefungen/geheimnisse-freigabe.test.js",
       "dateien": "werkzeug/sicherheit/geheimnisse.mjs, pruefungen/geheimnisse-freigabe.test.js, docs/acc45/SICHERHEIT-INTERN-2026-11.md",
-      "notiz": "Angelegt 2026-11-22 aus dem Review zu #461. Kein Betreiberentscheid nötig. Priorität niedrig: H1 wirkt nur in Richtung Fehlalarm, H3 bis H5 betreffen Randfälle des lokalen Werkzeugs. H2 (Geheimnisse in Dateinamen werden nicht geprüft; Diff-Kopfzeilen übersprungen, schon vor SI-P10) und H6 (Binärdateien jetzt mitgeprüft; künftig mögliche Fehlalarme nur mit Freigabe aufnehmen) sind nicht Teil dieses Pakets. Das Verhalten von gitleaks bei Binär-Diffs ist weiter ungeprüft. PT sind Schätzung."
+      "notiz": "Angelegt 2026-11-22 aus dem Review zu #461. Kein Betreiberentscheid nötig. Priorität niedrig: H1 wirkt nur in Richtung Fehlalarm, H3 bis H5 betreffen Randfälle des lokalen Werkzeugs. H2 (Geheimnisse in Dateinamen werden nicht geprüft; Diff-Kopfzeilen übersprungen, schon vor SI-P10) und H6 (Binärdateien jetzt mitgeprüft; künftig mögliche Fehlalarme nur mit Freigabe aufnehmen) sind nicht Teil dieses Pakets. Das Verhalten von gitleaks bei Binär-Diffs ist weiter ungeprüft. PT sind Schätzung. Stand 2026-11-22 (Zweig acc45/sicherheit/si-p11-scan-hinweise, PR #464): erledigt H1 (eigene Fälle nur mit entfernter Zeile bzw. Kontextzeile plus Fortsetzung → kein Fund; Gegenprobe `+` → Fund), H3a (neue Funktion arbeitsstandScannen; Rückgabewert von git grep: 0/1 ok, sonst Ablehnung → Rückgabe 2), H3b (git grep -z: Dateiname wörtlich bis NUL; Dateinamen mit Zeilenumbruch werden zusammengesetzt; unerwartete Zeilen fail-closed mit „Datei unbekannt“), H4 (--nur-arbeitsstand mit --remotes → Rückgabe 2, „nicht kombinierbar“), H5 (Startfehler von git werden in gitFehler sofort als behandelt markiert → Rückgabe 2; zusätzlich Absturz-Netz im CLI: unerwarteter Abbruch → 2 statt 1). Offen bleiben: H2 (Geheimnisse in Dateinamen nicht geprüft), H6 (Binärdateien mitgeprüft, künftige Fehlalarme nur mit Freigabe), gitleaks-Verhalten bei Binär-Diffs (nur nach Quelltext beurteilt); der Test mit `:`/Zeilenumbruch im echten Dateinamen läuft nur unter POSIX (CI), lokal unter Windows nur über die Attrappe im git-Format; Review durch Agent F ausstehend. Keine Änderung an .github/workflows."
     },
     {
       "id": "SI-P6b",

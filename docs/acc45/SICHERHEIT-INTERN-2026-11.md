@@ -137,6 +137,20 @@ Anlass: Review #453 H1 (Inhalt von Binär-Diffs nicht geprüft), Review #455 H1 
   - c: `if (f) throw` entfernt.
   - d: stdin-`error`-Handler, `close`-Handler oder beide entfernt. Rot jeweils nach der eigenen Frist von rund 5 s, nicht nach 60 s.
 
+#### SI-P11: Review-Hinweise H1, H3, H4, H5 aus #461 (2026-11-22)
+
+Anlass: Opus-Sicherheitsreview zu #461 (SI-P10). Alle Hinweise sind niedrig. Sie betreffen nur die Fehlalarm- oder Fehlerpfad-Richtung; der CI-Lauf (`--all`) war nicht fail-open.
+
+- **H1 (Testlücke):** Der Test „Fortsetzung einer entfernten Zeile wird nicht geprüft“ blieb unter der Mutation grün, weil sein Fund mit dem der unerwarteten Zeile zusammenfiel. Neu: eigene Fälle nur mit einer entfernten Zeile bzw. einer Kontextzeile und Fortsetzungen (PEM-Kopfzeile, Schlüsselmuster). Erwartet: kein Fund. Gegenprobe: dieselbe Fortsetzung nach einer `+`-Zeile ist ein Fund.
+- **H3a (`--nur-arbeitsstand`, Rückgabewert):** Vorher wurde der Rückgabewert von `git grep` nicht ausgewertet; ein Fehler ergab still „0 Funde“ (Rückgabe 0). Jetzt (`arbeitsstandScannen`): 0 = Treffer, 1 = keine Treffer, alles andere (auch Signal) = Fehler → Rückgabe 2.
+- **H3b (Trennung von Datei und Treffer):** Vorher wurde jede Zeile am ersten `:` getrennt. Ein Dateiname mit `:` konnte so eine Freigabe für eine andere Datei treffen (z. B. `<freigegebene Datei>:x`). Jetzt `git grep -z`: Datei, Zeilennummer und Inhalt sind durch NUL getrennt, der Dateiname steht wörtlich. Ein Zeilenumbruch im Dateinamen teilt den Datensatz; Zeilen ohne NUL sind Namensteile und werden mit dem folgenden Datensatz zusammengesetzt. Namensteile ohne Datensatz und Zeilen ohne gültige Zeilennummer werden fail-closed mit `(Datei unbekannt)` geprüft.
+- **H4:** `--nur-arbeitsstand` zusammen mit `--remotes` (auch `--remotes=<name>`) überging `--remotes` still. Jetzt Rückgabe 2 mit der Meldung „nicht kombinierbar“.
+- **H5:** Fehlte git oder das Arbeitsverzeichnis, endete das Werkzeug mit einer unbehandelten Ablehnung (Rückgabe 1 = „Funde“). Jetzt markiert `gitFehler` die Ablehnung sofort als behandelt; der Aufrufer bekommt sie beim Warten, das Werkzeug endet mit Rückgabe 2. Zweite Linie: Das CLI fängt jeden unerwarteten Abbruch ab und endet mit 2.
+- **Tests:** Wegwerf-Repos, Attrappen für `git grep` im Ausgabeformat von git (mit und ohne `-z`) und CLI-Läufe (GIT_DIR ins Leere, PATH ohne git). Der Test mit echten Dateinamen mit `:` und Zeilenumbruch läuft nur unter POSIX (CI); NTFS erlaubt diese Namen nicht.
+- **Mutationsnachweis (lokal, 2026-11-22):** Die neuen Tests sind auf dem alten Stand 93b5f7f7 rot (9 von 11; die zwei H1-Tests sind dort grün, sie schließen eine Testlücke). Zehn Mutationen sind rot: H1 entfernte Zeile wird geprüft (Datei oder „unbekannt“); H3a Rückgabewert ignoriert bzw. nicht abgewartet; H3b ohne `-z` bzw. Namensteile nicht zusammengesetzt; H4 Kombinationsprüfung entfernt; H5 `p.catch` entfernt, `error`-Handler entfernt, `p.catch` und Absturz-Netz entfernt. Das Absturz-Netz allein entfernt bleibt grün; es ist eine zweite Linie.
+- **Scan:** `--remotes=origin` lokal 0 offen (3 begründete Fehlalarme), `--nur-arbeitsstand` 0 offen.
+- **Nicht Teil:** H2 (Geheimnisse in Dateinamen werden nicht geprüft), H6 (Binärdateien werden mitgeprüft; künftige Fehlalarme nur mit Freigabe), gitleaks. Keine Änderung an `.github/workflows`.
+
 ### 4. Authentifizierung und Autorisierung
 
 Unabhängiges Review (Opus, nur lesend) plus eigene Tests.
