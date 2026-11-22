@@ -57,7 +57,7 @@ export function pruefeInhalt({ skript, doku }) {
   if (!k.startsWith("#!/bin/bash\n")) f.push("Shebang muss #!/bin/bash sein");
   if (!/^set -euo pipefail$/m.test(k)) f.push("set -euo pipefail fehlt");
   if (!/^export LC_ALL=C$/m.test(k)) f.push("export LC_ALL=C fehlt");
-  if (/[^\x09\x0a\x20-\x7e]/.test(k)) f.push("Skript enthält Zeichen außerhalb von druckbarem ASCII");
+  if (/[^\t\n -~]/.test(k)) f.push("Skript enthält Zeichen außerhalb von druckbarem ASCII");
   const schl = konstante(k, "SCHLUESSEL");
   if (schl !== SOLL_SCHLUESSEL) f.push("SCHLUESSEL im Skript ≠ vom Betreiber gelieferter öffentlicher Schlüssel");
   if (!/^ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI[A-Za-z0-9+/]{43} CENTRIC-Mobile$/.test(schl ?? "")) f.push("SCHLUESSEL hat nicht das Format ssh-ed25519 <base64> CENTRIC-Mobile");

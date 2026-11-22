@@ -323,7 +323,7 @@ function lauf(args = [], { skript = SKRIPT, env = {} } = {}) {
 /* Jede Zeile beginnt mit einem festen Präfix, nur ASCII, keine Geheimnisse. */
 function form(r) {
   for (const x of r.zeilen) expect(x, x).toMatch(/^(OK|INFO|PLAN|WARNUNG|STOPP|PROBELAUF OK|EINGERICHTET|RUECKGEBAUT): /);
-  expect(r.out).toMatch(/^[\x09\x0a\x20-\x7e]*$/);
+  expect(r.out).toMatch(/^[\t\n -~]*$/);
   expect(r.alles).not.toContain(GEHEIM);
   expect(r.alles).not.toMatch(/PRIVATE KEY/);
 }
@@ -684,7 +684,7 @@ describe("werkzeug/handy-zugang-bauen.mjs", () => {
   it("Befehle: nur ASCII, Tor mit 32 Hex und &&, feste Zeichenzahlen; --bauen ist idempotent", () => {
     const w = bau.werte(QUELLTEXT);
     const b = bau.befehle("0123456789ab", w);
-    for (const x of b) expect(x.befehl).toMatch(/^[\x20-\x7e]+$/);
+    for (const x of b) expect(x.befehl).toMatch(/^[ -~]+$/);
     for (const nr of ["2", "3", "3W", "R"]) {
       const x = b.find((y) => y.nr === nr);
       expect(x.befehl.startsWith(`printf %s "$s" | sha256sum | grep -q '^${w.kurz32}' && bash -c "$s"`)).toBe(true);
@@ -727,7 +727,7 @@ describe("handy-zugang.sh: Quelltext-Wächter", () => {
   });
 
   it("nur ASCII; set -euo pipefail, LC_ALL=C, fester PATH, Prüfvariablen bei SSH verworfen", () => {
-    expect(QUELLTEXT).toMatch(/^[\x09\x0a\x20-\x7e]*$/);
+    expect(QUELLTEXT).toMatch(/^[\t\n -~]*$/);
     expect(QUELLTEXT).toContain("\nset -euo pipefail\n");
     expect(QUELLTEXT).toContain("\nexport LC_ALL=C\n");
     expect(QUELLTEXT).toContain('PATH="${HANDY_PRUEFPFAD:-/usr/sbin:/usr/bin:/sbin:/bin}"');
