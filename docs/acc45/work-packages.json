@@ -4,9 +4,9 @@
   "anzahl": 244,
   "statusZaehlung": {
     "BLOCKED": 90,
-    "READY": 17,
+    "READY": 16,
     "IN_PROGRESS": 19,
-    "REVIEW": 11,
+    "REVIEW": 12,
     "INTEGRATED": 104,
     "DONE": 3
   },
@@ -15,8 +15,8 @@
       "pakete": 120,
       "offen": 39,
       "restPT": {
-        "min": 61.8,
-        "max": 106.25
+        "min": 61.400000000000006,
+        "max": 105.04999999999998
       }
     },
     "wp19": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 334.5,
-    "max": 576.35
+    "min": 334.1,
+    "max": 575.15
   },
   "kritischerPfad": {
     "summe": 70,
@@ -4580,17 +4580,17 @@
       "prio": "P2",
       "aufwandPT": {"min":0.5,"max":1.5},
       "abhaengigkeiten": [],
-      "status": "READY",
+      "status": "REVIEW",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"acc45/sicherheit/si-p10-binaer: e7255604 (Tests zuerst, rot auf 64bde2d8: 11 von 62), Folgecommit Korrektur"},
+        "lokalGetestet": {"wert":true,"beleg":"Lauf 2026-11-22: geheimnisse-freigabe 62/62; pruefung:sicherheit-intern 140/141 (1 rot nur lokal: DEP-1 liest node_modules/web-push im Worktree ohne node_modules, nicht berührt); verdrahtung 8/8, ci-abdeckung 9/9, prozess-wachen 15/15; 10 Mutationen alle rot (c: if (f) throw entfernt; d1–d3: stdin-Handler entfernt, rot nach 5-s-Frist; a1: --text entfernt; a2: Binary-files-Fund entfernt; a3: Fortsetzungen nicht geprüft; a4: keine Überlappung; b1: --remotes = --all; b2: 0 Commits nicht abgelehnt); Scan --remotes lokal 0 offen"},
         "reviewt": {"wert":false,"beleg":null},
         "integriert": {"wert":false,"beleg":null},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
       },
-      "branch": null,
+      "branch": "acc45/sicherheit/si-p10-binaer",
       "agent": "Agent Sicherheit",
       "modell": "opus",
       "konfliktzonen": [],
@@ -4599,7 +4599,7 @@
       "akzeptanz": "Inhalt solcher Dateien wird geprüft: `--text` bzw. `-c diff.*`/Attribut-Übersteuerung erzwingen ODER `Binary files`-Einträge als offenen Fund `(Datei unbekannt)` melden ODER Inhalt per `git show`/`git cat-file` scannen; echte Binärdateien ohne Fehlalarm-Flut; Laufzeit gemessen; Verhalten von gitleaks (Job `geheimnisse`) für dieselben Fälle geprüft und dokumentiert; Test zuerst mit Mutationsnachweis.",
       "tests": "pruefungen/geheimnisse-freigabe.test.js (neu: Binär-Diff-Fälle)",
       "dateien": "werkzeug/sicherheit/geheimnisse.mjs, pruefungen/geheimnisse-freigabe.test.js, docs/acc45/SICHERHEIT-INTERN-2026-11.md",
-      "notiz": "Nur Eintrag (Koordinator 2026-11-21); nicht Teil von PR #453. Keine Änderung an .github/workflows vorgesehen. Nachtrag 2026-11-21: Die Delta-Review-Punkte zu #453 A-1 (Test Octopus-Nachlauf scheitert → Rückgabe 2), H-a (Zufallskennung je Lauf in den Markern @@COMMIT/@@OCTOPUS) und H-b (stdin-Fehlerbehandlung des Octopus-Nachlaufs) sind im PR des Zweigs acc45/sicherheit/geheimnis-scan-nachzug erledigt. H1 (Binär-Diff-Inhalt, eigentlicher Gegenstand dieses Pakets) bleibt offen; Status unverändert."
+      "notiz": "Nur Eintrag (Koordinator 2026-11-21); nicht Teil von PR #453. Keine Änderung an .github/workflows vorgesehen. Nachtrag 2026-11-21: Die Delta-Review-Punkte zu #453 A-1 (Test Octopus-Nachlauf scheitert → Rückgabe 2), H-a (Zufallskennung je Lauf in den Markern @@COMMIT/@@OCTOPUS) und H-b (stdin-Fehlerbehandlung des Octopus-Nachlaufs) sind im PR des Zweigs acc45/sicherheit/geheimnis-scan-nachzug erledigt. H1 (Binär-Diff-Inhalt, eigentlicher Gegenstand dieses Pakets) bleibt offen; Status unverändert. Stand 2026-11-22 (Zweig acc45/sicherheit/si-p10-binaer): erledigt #453 H1 (git log -p --text in Haupt- und Octopus-Lauf; Rest-„Binary files“ = offener Fund „Binär-Diff ungeprüft“; überlange Zeilen in 1-MiB-Abschnitten mit 4096 Zeichen Überlappung; --nur-arbeitsstand mit git grep -a), #455 H3 (Option --remotes[=<name>], Standard --all unverändert, 0 geprüfte Commits = Rückgabe 2), #455 H1 (Attrappen-Test Octopus-Nachlauf Exit 0 mit EPIPE → Ablehnung; Mutation rot), #455 H4 (eigene 5-s-Frist in den eingabeSenden-Tests). Offen bleiben: gitleaks-Verhalten für Binär-Diffs nur nach Quelltext beurteilt, nicht ausgeführt; git lädt beide Fassungen einer Datei ganz in den Speicher (größte Datei im origin-Verlauf rund 35 MB); Laufzeit lokal rund 107 s statt rund 60 s; Review durch Agent F ausstehend."
     },
     {
       "id": "SI-P6b",

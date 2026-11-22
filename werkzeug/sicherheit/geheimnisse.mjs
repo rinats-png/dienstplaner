@@ -15,13 +15,18 @@
    Commit (kurz), Datei, Regel und die Länge des Treffers. Platzhalter
    (beispiel, example, xxx, <...>, ${...}, process.env) gelten nicht als Fund.
 
-   Aufruf:   node werkzeug/sicherheit/geheimnisse.mjs [--nur-arbeitsstand]
-   Ausgang:  0 = keine Funde, 1 = Funde (ohne Werte gelistet)
+   Binärdateien (SI-P10): `--text` erzwingt den Textdiff auch für Dateien mit
+   NUL-Byte oder `.gitattributes` `-diff`/`binary`; siehe GIT_BASIS_ARGS.
+
+   Aufruf:   node werkzeug/sicherheit/geheimnisse.mjs [--nur-arbeitsstand | --remotes[=<name>]]
+             ohne Option: `--all` (alle Referenzen, auch lokale Zweige und Stash;
+             so in CI); `--remotes`: nur `--remotes=origin`
+   Ausgang:  0 = keine Funde, 1 = Funde (ohne Werte gelistet),
+             2 = Aufruf- oder git-Fehler, kein Commit geprüft
    ========================================================================== */
 
-import { spawn } from "node:child_process";
+import { spawn as nodeSpawn } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { createInterface } from "node:readline";
 import { StringDecoder } from "node:string_decoder";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -96,11 +101,20 @@ export const COMMIT_TEXT = "(Commit-Text)";
      crypto.randomBytes je Lauf. Ein fester Marker, den jemand über
      Dateiname, Kopfzeile oder Inhalt einschleust, wird so nie als Marker
      gelesen. Die Kennung erscheint in keiner Ausgabe. GIT_LOG_ARGS und
-     GIT_OCTOPUS_ARGS sind nur die Vorlage ohne Kennung (Doku/Tests). */
+     GIT_OCTOPUS_ARGS sind nur die Vorlage ohne Kennung (Doku/Tests).
+   - `--text` (SI-P10, Review #453 H1): Ohne die Option zeigt git für Dateien,
+     die als binär gelten, nur „Binary files … differ“ – bei einem NUL-Byte im
+     Inhalt, bei `.gitattributes` `-diff`/`binary`/`diff=<treiber>` mit
+     `diff.<treiber>.binary` und über `core.bigFileThreshold`. `--text`
+     erzwingt für ALLE Dateien den Textdiff; `--no-textconv` und
+     `--no-ext-diff` verhindern, dass ein Attribut `diff=<treiber>` den Inhalt
+     über textconv oder ein externes Programm umschreibt. Erscheint trotzdem
+     eine Zeile „Binary files … differ“, ist das ein offener Fund
+     BINAER_UNGEPRUEFT (fail-closed). */
 const GIT_BASIS_ARGS = [
   "-c", "core.quotePath=true", "-c", "diff.noprefix=false", "-c", "diff.mnemonicPrefix=false",
   "-c", "log.showSignature=false", "-c", "diff.suppressBlankEmpty=false", "-c", "log.showRoot=true",
-  "log", "-p", "--no-color", "--no-ext-diff", "--no-textconv", "-M",
+  "log", "-p", "--text", "--no-color", "--no-ext-diff", "--no-textconv", "-M",
   "--src-prefix=a/", "--dst-prefix=b/", "-U0",
 ];
 const mit = (nonce) => (nonce ? `-${nonce}` : "");
@@ -112,6 +126,17 @@ export const GIT_LOG_ARGS = gitLogArgs("");
 export const GIT_OCTOPUS_ARGS = gitOctopusArgs("");
 /** Regel-Name für einen Octopus-Merge, dessen Inhalt nicht geprüft wurde. */
 export const OCTOPUS_UNGEPRUEFT = "Octopus-Merge ungeprüft";
+/** Regel-Name für einen Diff-Eintrag „Binary files … differ“ trotz `--text` (Inhalt nicht gesehen). */
+export const BINAER_UNGEPRUEFT = "Binär-Diff ungeprüft";
+
+/* Überlange Zeilen (SI-P10): Binärdateien und minifizierte Dateien haben oft
+   Megabytes ohne Zeilenumbruch. zeilenAus hält höchstens MAX_ZEILE Zeichen je
+   Zeile im Speicher. Längere Zeilen kommen als Anfang (Zeichenkette, zählt für
+   den Zustandsautomaten) und danach als Fortsetzungen `{ fortsetzung }`; jede
+   Fortsetzung beginnt mit den letzten UEBERLAPPUNG Zeichen des vorigen
+   Abschnitts, damit ein Treffer an der Schnittstelle nicht verloren geht. */
+export const MAX_ZEILE = 1 << 20;
+export const UEBERLAPPUNG = 4096;
 
 /* Entschlüsselt einen Pfad aus `+++ b/<Pfad>` nach git-Quoting (quote_c_style):
    "…" mit \\ \" \a \b \t \n \v \f \r und Oktal-Bytes \ooo (UTF-8). Git hängt an
@@ -199,13 +224,23 @@ export async function fundeSammeln(zeilen, { freigaben = FREIGABEN, nonce = "" }
     }
   };
 
+  /* SI-P10: Ziel für Fortsetzungen überlanger Zeilen. Datei (String) für eine
+     hinzugefügte Zeile, null für unerwartete Zeilen (fail-closed, Datei
+     unbekannt), undefined für entfernte und Kontextzeilen (alter Inhalt). */
+  let fort = null, fortsetzungen = 0;
   for await (const z of zeilen) {
+    if (typeof z !== "string") {
+      fortsetzungen++;
+      if (fort !== undefined) pruefen(z.fortsetzung, fort);
+      continue;
+    }
     anzahl++;
+    fort = null;
     if (zustand === "hunk") {
       const c = z[0];
-      if (c === "+") { restNeu--; pruefen(z.slice(1), datei); }
-      else if (c === "-") restAlt--;
-      else if (c === " ") { restAlt--; restNeu--; }
+      if (c === "+") { restNeu--; pruefen(z.slice(1), datei); fort = datei; }
+      else if (c === "-") { restAlt--; fort = undefined; }
+      else if (c === " ") { restAlt--; restNeu--; fort = undefined; }
       else if (c === "\\") { /* „\ No newline at end of file“ */ }
       else pruefen(z, null);                                   // unerwartet: fail-closed
       if (restAlt <= 0 && restNeu <= 0) zustand = "nachHunk";
@@ -244,6 +279,11 @@ export async function fundeSammeln(zeilen, { freigaben = FREIGABEN, nonce = "" }
         datei = z === "+++ /dev/null" ? null : pfadAusKopf(z.slice(4));
         continue;
       }
+      if (z.startsWith("Binary files ") && letzteKopf === "diff") {
+        /* SI-P10: trotz --text kein Textdiff → Inhalt nicht gesehen, nie frei */
+        einstufen({ commit, datei: DATEI_UNBEKANNT, regel: BINAER_UNGEPRUEFT, laenge: 0 });
+        continue;
+      }
       if (KOPFZEILE.test(z) && letzteKopf === "diff") continue;
     }
     if (z === "") continue;
@@ -257,7 +297,7 @@ export async function fundeSammeln(zeilen, { freigaben = FREIGABEN, nonce = "" }
   for (const o of octopusGesehen) {
     if (!octopusGeprueft.has(o)) einstufen({ commit: o, datei: DATEI_UNBEKANNT, regel: OCTOPUS_UNGEPRUEFT, laenge: 0 });
   }
-  return { offen: [...offen.values()], frei: [...frei.values()], zeilen: anzahl, commits, merges, doppelt, octopus: octopusGesehen.size };
+  return { offen: [...offen.values()], frei: [...frei.values()], zeilen: anzahl, commits, merges, doppelt, octopus: octopusGesehen.size, fortsetzungen };
 }
 
 /* Commit-Nachricht und Autor-/Committer-Felder. Eingabe: Text von
@@ -288,21 +328,37 @@ export function commitTexteSammeln(text, { freigaben = FREIGABEN } = {}) {
 }
 
 /* Zerlegt einen Byte-Strom NUR an "\n" (nicht an einzelnem "\r" wie readline):
-   ein "\r" im Dateiinhalt darf die Hunk-Zählung nicht verschieben. */
-export async function* zeilenAus(strom) {
+   ein "\r" im Dateiinhalt darf die Hunk-Zählung nicht verschieben.
+   SI-P10: Speicher je Zeile begrenzt (MAX_ZEILE); längere Zeilen kommen als
+   Anfang (String) plus Fortsetzungen `{ fortsetzung }` mit Überlappung. */
+export async function* zeilenAus(strom, { maxZeile = MAX_ZEILE, ueberlappung = UEBERLAPPUNG } = {}) {
+  if (!(ueberlappung >= 0 && maxZeile > ueberlappung)) throw new Error("zeilenAus: maxZeile muss größer als ueberlappung sein");
   const dec = new StringDecoder("utf8");
-  let rest = "";
+  const ohneCr = (z) => (z.endsWith("\r") ? z.slice(0, -1) : z);
+  let rest = "", lang = false;                               // lang: aktuelle Zeile schon angebrochen
+  const ausgabe = (z) => (lang ? { fortsetzung: z } : z);
+  /* gibt vom Zeilenanfang `s` Abschnitte aus, bis höchstens maxZeile übrig sind */
+  function* abschnitte(s) {
+    while (s.length > maxZeile) {
+      yield ausgabe(s.slice(0, maxZeile));
+      lang = true;
+      s = s.slice(maxZeile - ueberlappung);
+    }
+    return s;
+  }
   for await (const stueck of strom) {
     rest += dec.write(stueck);
     let i;
     while ((i = rest.indexOf("\n")) >= 0) {
-      const z = rest.slice(0, i);
+      const z = yield* abschnitte(rest.slice(0, i));
       rest = rest.slice(i + 1);
-      yield z.endsWith("\r") ? z.slice(0, -1) : z;
+      yield ausgabe(ohneCr(z));
+      lang = false;
     }
+    rest = yield* abschnitte(rest);
   }
   rest += dec.end();
-  if (rest) yield rest.endsWith("\r") ? rest.slice(0, -1) : rest;
+  if (rest) { const z = yield* abschnitte(rest); yield ausgabe(ohneCr(z)); }
 }
 
 function gitFehler(kind, name) {
@@ -330,8 +386,9 @@ export function eingabeSenden(kind, text) {
   });
 }
 
-/** Ganzer Verlauf: Diffs (inkl. Merge-Remerge-Diff) und Commit-Texte. `refs` z. B. ["--all"]. */
-export async function historieScannen({ cwd = WURZEL, refs = ["--all"], freigaben = FREIGABEN } = {}) {
+/** Ganzer Verlauf: Diffs (inkl. Merge-Remerge-Diff) und Commit-Texte. `refs` z. B. ["--all"].
+    `spawn` nur für Tests (Attrappe eines Kindprozesses, SI-P10 c). */
+export async function historieScannen({ cwd = WURZEL, refs = ["--all"], freigaben = FREIGABEN, spawn = nodeSpawn } = {}) {
   /* Octopus-Merges vorab bestimmen (fail-closed: Fehler bricht ab) */
   const ok = spawn("git", ["rev-list", "--min-parents=3", ...refs], { cwd });
   const okEnde = gitFehler(ok, "git rev-list (Octopus)");
@@ -381,21 +438,47 @@ export function zeilePruefen(zeile) {
   return funde;
 }
 
+/* Aufrufoptionen (SI-P10 b, Review #455 H3). Standard bleibt `--all` (CI
+   unverändert). `--remotes` prüft nur die Zweige von `origin`
+   (`--remotes=origin`), `--remotes=<name>` die eines anderen Remotes – lokal
+   ohne Altfunde aus lokalen Zweigen und dem Stash-Stapel. Unbekannte Optionen
+   führen zu Rückgabe 2 (kein stiller Rückfall auf einen anderen Umfang). */
+export function argumenteLesen(argv) {
+  let modus = "historie", refs = ["--all"];
+  for (const a of argv) {
+    if (a === "--nur-arbeitsstand") modus = "arbeitsstand";
+    else if (a === "--remotes") refs = ["--remotes=origin"];
+    else if (a.startsWith("--remotes=")) {
+      const name = a.slice("--remotes=".length);
+      if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name)) throw new Error(`ungültiger Remote-Name: ${JSON.stringify(name)}`);
+      refs = [`--remotes=${name}`];
+    } else throw new Error(`unbekannte Option: ${JSON.stringify(a)}`);
+  }
+  return { modus, refs };
+}
+
 const istHaupt = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (istHaupt) {
-  const nurArbeitsstand = process.argv.includes("--nur-arbeitsstand");
+  let aufruf;
+  try { aufruf = argumenteLesen(process.argv.slice(2)); } catch (e) {
+    console.error(`FEHLER: ${e.message}. Aufruf: node werkzeug/sicherheit/geheimnisse.mjs [--nur-arbeitsstand | --remotes[=<name>]]`);
+    process.exit(2);
+  }
   const kurz = (c) => (/^[0-9a-f]{40}$/.test(c) ? c.slice(0, 8) : c);
   let offen, frei;
-  if (nurArbeitsstand) {
-    const kind = spawn("git", ["grep", "-n", "-I", "-E", ".", "--", "."], { cwd: WURZEL });
-    const rl = createInterface({ input: kind.stdout, crlfDelay: Infinity });
-    let zeilen = 0;
+  if (aufruf.modus === "arbeitsstand") {
+    /* `-a` statt `-I` (SI-P10): Dateien mit NUL-Byte oder Attribut `-diff`
+       werden als Text durchsucht; überlange Zeilen in Abschnitten. */
+    const kind = nodeSpawn("git", ["grep", "-n", "-a", "--no-textconv", "-E", ".", "--", "."], { cwd: WURZEL });
+    let zeilen = 0, datei = null;
     const funde = new Map();
-    for await (const z of rl) {
+    const merken = (text, d) => { for (const f of zeilePruefen(text)) funde.set(`${d}|${f.regel}`, { commit: "Arbeitsstand", datei: d, ...f }); };
+    for await (const z of zeilenAus(kind.stdout)) {
+      if (typeof z !== "string") { merken(z.fortsetzung, datei ?? DATEI_UNBEKANNT); continue; }
       zeilen++;
       const i = z.indexOf(":"); const j = z.indexOf(":", i + 1);
-      const datei = z.slice(0, i);
-      for (const f of zeilePruefen(z.slice(j + 1))) funde.set(`${datei}|${f.regel}`, { commit: "Arbeitsstand", datei, ...f });
+      datei = i > 0 && j > i ? z.slice(0, i) : DATEI_UNBEKANNT;
+      merken(j > i ? z.slice(j + 1) : z, datei);
     }
     await new Promise((r) => kind.on("close", r));
     console.log(`Arbeitsstand: ${zeilen} Zeilen geprüft`);
@@ -407,11 +490,15 @@ if (istHaupt) {
   } else {
     const start = Date.now();
     let r;
-    try { r = await historieScannen(); } catch (e) {
+    try { r = await historieScannen({ refs: aufruf.refs }); } catch (e) {
       console.error(`FEHLER: Verlauf nicht vollständig lesbar – ${e.message}`);
       process.exit(2);
     }
-    console.log(`Historie: ${r.commits} Commits (davon ${r.merges} Merges, Remerge-Diff), ${r.zeilen} Diff-Zeilen, ${r.textCommits} Commit-Texte geprüft; ${r.doppelt} Merge-Kopien bekannter Funde zusammengefasst; ${((Date.now() - start) / 1000).toFixed(1)} s`);
+    if (r.commits === 0) {                                     // z. B. Remote ohne Zweige: nichts geprüft ≠ sauber
+      console.error(`FEHLER: kein Commit geprüft (Umfang ${aufruf.refs.join(" ")})`);
+      process.exit(2);
+    }
+    console.log(`Historie (${aufruf.refs.join(" ")}): ${r.commits} Commits (davon ${r.merges} Merges, Remerge-Diff), ${r.zeilen} Diff-Zeilen (Textdiff auch für Binärdateien, ${r.fortsetzungen} Abschnitte überlanger Zeilen), ${r.textCommits} Commit-Texte geprüft; ${r.doppelt} Merge-Kopien bekannter Funde zusammengefasst; ${((Date.now() - start) / 1000).toFixed(1)} s`);
     ({ offen, frei } = r);
   }
   for (const f of frei) console.log(`FREI ${kurz(f.commit)} ${f.datei} – ${f.regel}: ${f.grund}`);

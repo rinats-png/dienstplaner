@@ -97,7 +97,7 @@ Alle Befehle laufen im Repo-Wurzelverzeichnis. Die neuen Werkzeuge liegen unter 
 
 ### 3. Geheimnisse
 
-`npm run sicherheit:geheimnisse` (`werkzeug/sicherheit/geheimnisse.mjs`; `--nur-arbeitsstand` für den Arbeitsbaum)
+`npm run sicherheit:geheimnisse` (`werkzeug/sicherheit/geheimnisse.mjs`; `--nur-arbeitsstand` für den Arbeitsbaum; `--remotes` nur für die Zweige von `origin`, siehe SI-P10)
 
 - Geprüft wurde die gesamte Historie (`git log -p --all`): 801 Commits und rund 496 000 Diff-Zeilen. Die Muster decken PEM, AWS, GitHub, Slack, Stripe, Resend, Anthropic/OpenAI, Google, JWT, VAPID-privat, URLs mit Zugangsdaten und Zuweisungen an Geheimnis-Variablen ab.
 - **Es gibt keinen echten Fund.** Vier Treffer sind begründete Fehlalarme und stehen mit Grund in der Freigabeliste:
@@ -106,7 +106,7 @@ Alle Befehle laufen im Repo-Wurzelverzeichnis. Die neuen Werkzeuge liegen unter 
 - Die Ausgabe nennt nie Werte. Zusätzlich läuft gitleaks in `sicherheit.yml`.
 - Härtung 2026-11-21 (Review #450):
   - A1: Die Datei eines Treffers kommt nur noch aus dem Diff-Kopf (`+++ b/…` direkt nach `--- …`, vor dem ersten `@@`). Hunk-Zeilen werden nach `@@ -a,b +c,d @@` gezählt. Eine hinzugefügte Inhaltszeile `++ b/<Pfad>` kann deshalb keine freigegebene Datei mehr vortäuschen. Quoting (`core.quotePath`), Leerzeichen und Umbenennung sind abgedeckt. Ist die Datei nicht sicher bestimmbar, bleibt der Fund offen (`(Datei unbekannt)`).
-  - Binärdateien: Abgedeckt ist nur die **Dateizuordnung** (ein Eintrag `Binary files … differ` verschiebt die Zuordnung der nächsten Datei nicht). Der **Inhalt** solcher Dateien wird **nicht** geprüft. Das betrifft auch Textdateien, die über `.gitattributes` (`-diff`) als binär gelten. Offener, vorbestehender Befund H1 aus Review #453, geführt als Paket SI-P10.
+  - Binärdateien: Stand 2026-11-21 war nur die **Dateizuordnung** abgedeckt, der **Inhalt** nicht (Befund H1 aus Review #453). Seit SI-P10 (2026-11-22) wird der Inhalt geprüft, siehe Unterabschnitt „SI-P10“ unten.
   - A2: Merge-Commits mit zwei Eltern werden mit `--remerge-diff` geprüft: nur was der Merge selbst einbringt, etwa eine Konfliktauflösung. Ein Merge-Fund, der zeilengleich schon in einem normalen Commit vorkommt (Datei × Regel × Zeile), wird nur dann nicht doppelt gemeldet, wenn das Original offen ist oder über eine Freigabe **ohne** `commit` frei ist. Ist das Original nur über eine commit-gebundene Freigabe frei (z. B. b8e67edd), gilt die Bindung nicht für den Merge; der Merge-Fund wird mit dem Merge-SHA eingestuft (Review #453, Auflage 2).
   - Octopus-Merges (mehr als zwei Eltern): `--remerge-diff` zeigt dafür keinen Diff. Sie werden in einem zweiten Lauf mit `--diff-merges=first-parent` geprüft (Inhalte der Zweige erscheinen dort erneut und werden über den Zeilenabgleich zusammengefasst). Fehlt dieser Nachlauf für einen Octopus, meldet das Werkzeug einen offenen Fund `Octopus-Merge ungeprüft` (fail-closed). Im Repo gibt es derzeit keinen Octopus-Merge.
   - Commit-Nachricht und Autor-/Committer-Felder werden ebenfalls geprüft (Pseudo-Datei `(Commit-Text)`, Freigabe nur mit `commit`).
@@ -115,8 +115,27 @@ Alle Befehle laufen im Repo-Wurzelverzeichnis. Die neuen Werkzeuge liegen unter 
     - A-1: Scheitert der Octopus-Nachlauf (z. B. fehlendes Objekt), lehnt `historieScannen` ab; das Werkzeug endet mit Rückgabe 2. Test mit Wegwerf-Repo (gelöschter Loose-Blob, den nur der Octopus enthält); Mutation „Nachlauf-Fehler ignorieren“ ist rot.
     - H-a: Die Marker tragen je Lauf eine Zufallskennung (`@@COMMIT-<kennung>`, `@@OCTOPUS-<kennung>`, 16 Bytes aus `crypto.randomBytes`). Ein fester Marker aus Dateiname, Kopfzeile, Inhalt oder Commit-Text wird nie als Marker gelesen. Die Kennung erscheint in keiner Ausgabe.
     - H-b: Die Commit-Liste für den Octopus-Nachlauf geht über `eingabeSenden` an git; ein Schreibfehler (EPIPE) wird behandelt und führt zu Rückgabe 2 statt zu einem Absturz mit Rückgabe 1.
-    - Offen bleibt H1 (Inhalt von Binär-Diffs, Paket SI-P10).
+    - H1 (Inhalt von Binär-Diffs) war danach noch offen; erledigt in SI-P10 (Unterabschnitt unten).
   - Laufzeit auf dem Repo-Stand vom 2026-11-21 (rund 2 770 Commits, davon 703 Merges, nur `origin`-Zweige): Windows-Rechner rund 45–50 s statt rund 21 s; CI (`interne-pruefung`, Ubuntu) 7–9 s. Den Unterschied kostet der Remerge-Diff.
+
+#### SI-P10: Binär-Diffs, Umfang `--remotes`, Nachlauf-Fehler (2026-11-22)
+
+Anlass: Review #453 H1 (Inhalt von Binär-Diffs nicht geprüft), Review #455 H1 (Mutation `if (f) throw` überlebte), H3 (nur `--all`), H4 (EPIPE-Test erst nach 60 s rot).
+
+- **Ist-Zustand vorher (reproduziert im Wegwerf-Repo):** `git log -p` zeigt für Dateien, die als binär gelten, nur `Binary files … differ`. Das gilt bei einem NUL-Byte im Inhalt, bei `.gitattributes` `-diff` oder `binary`, bei `.git/info/attributes`, bei `diff=<treiber>` mit `diff.<treiber>.binary=true` und über `core.bigFileThreshold`. Eine PEM-Kopfzeile in solchen Dateien blieb ungemeldet. `linguist-generated` wirkt auf git nicht. Die Attribute gelten aus dem Arbeitsbaum (Checkout) und aus `info/attributes`; ein Commit mit `.gitattributes` wirkt also, sobald er ausgecheckt ist.
+- **Korrektur:** Haupt- und Octopus-Lauf rufen `git log -p --text` auf. `--text` erzwingt den Textdiff für jede Datei und hebt die Binärerkennung aus NUL-Byte, Attribut, Treiber und `core.bigFileThreshold` auf. `--no-textconv` und `--no-ext-diff` (schon vorher gesetzt) verhindern, dass ein Treiber den Inhalt umschreibt. Meldet git trotzdem `Binary files … differ`, entsteht ein offener Fund `Binär-Diff ungeprüft` mit `(Datei unbekannt)`, nie frei (fail-closed). `--nur-arbeitsstand` nutzt `git grep -a` statt `-I`.
+- **Speichergrenze (dokumentiert, nichts wird übersprungen):** Das Werkzeug hält je Zeile höchstens 1 MiB Zeichen (`MAX_ZEILE`). Längere Zeilen, typisch für Binärdateien ohne Zeilenumbruch, werden in Abschnitten von 1 MiB geprüft. Jeder Abschnitt überlappt den vorigen um 4 096 Zeichen, damit ein Treffer an der Schnittstelle nicht verloren geht. Fortsetzungen einer hinzugefügten Zeile gehören zur Datei aus dem Diff-Kopf; Fortsetzungen unerwarteter Zeilen sind fail-closed `(Datei unbekannt)`; Fortsetzungen entfernter oder Kontextzeilen werden wie bisher nicht geprüft. Grenze bleibt **git selbst**: Für den Diff lädt git beide Fassungen einer Datei vollständig in den Speicher. Die größte Datei im Verlauf von `origin` hat rund 35 MB (Marketing-Material); GitHub lehnt Dateien über 100 MiB ab. Eine Größengrenze mit Überspringen gibt es bewusst nicht.
+- **Fehlalarme durch Binärinhalt:** Auf dem Repo-Stand vom 2026-11-22 (`--remotes`) entstand durch den Textdiff der Binärdateien kein neuer Fund; es bleiben die drei begründeten Fehlalarme.
+- **Laufzeit:** Der Textdiff der Binärdateien kostet Zeit. Windows-Rechner, `--remotes` (2 826 Commits, 711 Merges): rund 107 s statt rund 60 s; die Zahl der Diff-Zeilen stieg von rund 0,97 Mio. auf rund 1,8 Mio. Die CI-Laufzeit im Job `interne-pruefung` steht im Nachweis des PRs.
+- **Umfang `--remotes` (H3):** Ohne Option prüft das Werkzeug weiter `--all` (alle Referenzen, auch lokale Zweige und Stash-Stapel); so läuft es in CI, unverändert. `--remotes` prüft nur `--remotes=origin`, `--remotes=<name>` ein anderes Remote. Lokal zeigt `--all` bekannte Altfunde aus lokalen Zweigen; `--remotes` gibt den Stand wieder, der auch veröffentlicht ist. Noch nicht gepushte Commits prüft `--remotes` nicht. Prüft ein Lauf keinen einzigen Commit (etwa ein Remote ohne Zweige), endet das Werkzeug mit Rückgabe 2. Unbekannte Optionen: Rückgabe 2.
+- **Nachlauf-Eingabefehler (#455 H1):** Neuer Verhaltenstest mit einer Attrappe für den Octopus-Nachlauf: Das Kind endet mit 0 und liefert eine saubere Ausgabe, aber stdin meldet EPIPE. `historieScannen` lehnt ab (Rückgabe 2 im Werkzeug). Die Mutation „`if (f) throw` entfernt“ ist jetzt rot.
+- **Kurze Fristen (#455 H4):** Die drei Tests zu `eingabeSenden` warten höchstens 5 s auf das Ergebnis und werden danach rot, statt den globalen Test-Timeout (60 s) abzuwarten.
+- **gitleaks (Job `geheimnisse`):** Lokal nicht ausgeführt (kein Binärprogramm installiert); nicht verifiziert. Nach dem Quelltext von gitleaks v8 liest gitleaks `git log -p` ohne `--text` und überspringt Diffs, die als `Binary files … differ` erscheinen. Für dieselben Fälle (NUL-Byte, `-diff`, `binary`) sieht gitleaks den Inhalt also vermutlich nicht. Der eigene Lauf im Job `interne-pruefung` deckt diese Lücke ab. Eine Änderung an den Workflows gehört nicht zu SI-P10.
+- **Mutationsnachweis (lokal, 2026-11-22):** Die neuen Tests sind auf dem alten Stand 64bde2d8 rot (11 von 62). Zehn Mutationen am neuen Stand sind alle rot:
+  - a: `--text` entfernt; Fund „Binär-Diff ungeprüft“ entfernt; Fortsetzungen nicht geprüft; keine Überlappung.
+  - b: `--remotes` wirkt wie `--all`; Lauf ohne Commit wird nicht abgelehnt.
+  - c: `if (f) throw` entfernt.
+  - d: stdin-`error`-Handler, `close`-Handler oder beide entfernt. Rot jeweils nach der eigenen Frist von rund 5 s, nicht nach 60 s.
 
 ### 4. Authentifizierung und Autorisierung
 

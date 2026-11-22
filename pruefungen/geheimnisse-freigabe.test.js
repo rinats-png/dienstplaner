@@ -20,7 +20,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import fs from "node:fs";
 import os from "node:os";
-import { Readable, Writable } from "node:stream";
+import { PassThrough, Readable, Writable } from "node:stream";
+import { EventEmitter } from "node:events";
 import { FREIGABEN, fundeSammeln, freigabeFuer } from "../werkzeug/sicherheit/geheimnisse.mjs";
 /* Neue Exporte über den Namensraum: auf altem Stand schlagen nur die neuen
    Tests fehl, nicht die Regressionstests (Nachweis „rot vorher“). */
@@ -222,13 +223,13 @@ describe("Geheimnis-Werkzeug: A1 – Datei nur aus dem Diff-Kopf", () => {
     expect(r.offen.map((f) => f.datei)).toEqual(["werkzeug/neu.mjs"]);
   });
 
-  it("Binärdatei (ohne Hunks) und gelöschte Datei stören die Zuordnung der nächsten Datei nicht", async () => {
+  it("Binärdatei (ohne Hunks) und gelöschte Datei stören die Zuordnung der nächsten Datei nicht; „Binary files“ selbst ist seit SI-P10 ein offener Fund", async () => {
     const r = await fundeSammeln(roh(ANDERER_SHA, [
       "diff --git a/bild.png b/bild.png", "index 1..2 100644", "Binary files a/bild.png and b/bild.png differ",
       `diff --git a/${SONDE_PFAD} b/${SONDE_PFAD}`, "deleted file mode 100644", "index 1..0", `--- a/${SONDE_PFAD}`, "+++ /dev/null", "@@ -1 +0,0 @@", "-alt",
       ...kopf("b.js", 1), "+" + PEM_ZEILE,
     ]));
-    expect(r.offen.map((f) => f.datei)).toEqual(["b.js"]);
+    expect(r.offen.map((f) => [f.datei, f.regel])).toEqual([[G.DATEI_UNBEKANNT, G.BINAER_UNGEPRUEFT], ["b.js", PEM]]);
   });
 
   it("Pfade mit Leerzeichen (git hängt ein Tab an), Unicode und Anführungszeichen (core.quotePath) werden richtig gelesen", async () => {
@@ -636,31 +637,205 @@ describe("Geheimnis-Werkzeug: Delta-Review #453 – H-a Zufallskennung im Marker
   }, 60000);
 });
 
+/* SI-P10 d (Review #455, H4): eigene kurze Frist statt des globalen
+   Test-Timeouts (60 s). Bleibt eingabeSenden unter einer Mutation hängen
+   (z. B. ohne close-/error-Handler), wird der Test nach FRIST_MS rot. */
+const FRIST_MS = 5000;
+const ZEIT_UM = Symbol("Frist abgelaufen");
+function frist(p, ms = FRIST_MS) {
+  let t;
+  return Promise.race([p, new Promise((res) => { t = setTimeout(() => res(ZEIT_UM), ms); })]).finally(() => clearTimeout(t));
+}
+
 describe("Geheimnis-Werkzeug: Delta-Review #453 – H-b stdin des Octopus-Nachlaufs", () => {
   it("H-b: Kind endet, bevor es stdin liest → eingabeSenden liefert den Fehler (kein unbehandeltes EPIPE, kein Absturz)", async () => {
     const kind = spawn(process.execPath, ["-e", "process.exit(3)"], { stdio: ["pipe", "ignore", "ignore"] });
-    await new Promise((res) => kind.on("exit", res));
-    const f = await G.eingabeSenden(kind, "x".repeat(16 * 1024 * 1024));
+    await frist(new Promise((res) => kind.on("exit", res)));
+    const f = await frist(G.eingabeSenden(kind, "x".repeat(16 * 1024 * 1024)));
+    expect(f).not.toBe(ZEIT_UM);
     expect(f).toBeInstanceOf(Error);
-  }, 60000);
+  }, 3 * FRIST_MS);
 
   it("H-b: stdin meldet EPIPE (wie unter Linux, wenn git vor dem Lesen endet) → Fehler wird geliefert, nicht geworfen", async () => {
     const stdin = new Writable({ write(_c, _e, cb) { cb(Object.assign(new Error("write EPIPE"), { code: "EPIPE" })); } });
-    const f = await G.eingabeSenden({ stdin }, "z".repeat(1024));
+    const f = await frist(G.eingabeSenden({ stdin }, "z".repeat(1024)));
+    expect(f).not.toBe(ZEIT_UM);
     expect(f).toBeInstanceOf(Error);
     expect(f.code).toBe("EPIPE");
-  });
+  }, 3 * FRIST_MS);
 
   it("H-b: Kind liest stdin vollständig → kein Fehler", async () => {
     const kind = spawn(process.execPath, ["-e", "process.stdin.resume(); process.stdin.on('end', () => process.exit(0))"], { stdio: ["pipe", "ignore", "ignore"] });
-    const f = await G.eingabeSenden(kind, "y".repeat(1024 * 1024));
+    const f = await frist(G.eingabeSenden(kind, "y".repeat(1024 * 1024)));
+    expect(f).not.toBe(ZEIT_UM);
     expect(f).toBeNull();
-    await new Promise((res) => kind.on("exit", res));
-  }, 60000);
+    await frist(new Promise((res) => kind.on("exit", res)));
+  }, 3 * FRIST_MS);
 
   it("H-b: historieScannen speist den Octopus-Nachlauf über eingabeSenden und wertet dessen Fehler aus (Rückgabe 2 über den CLI-Fehlerpfad)", () => {
     const q = fs.readFileSync(path.join(WURZEL, "werkzeug/sicherheit/geheimnisse.mjs"), "utf8");
     expect(q).toMatch(/eingabeSenden\(ko,/);
     expect(q).not.toMatch(/ko\.stdin\.end\(/);
   });
+});
+
+/* ==========================================================================
+   SI-P10 (Review #453 H1, Review #455 H1/H3/H4): Binär-Diffs, überlange
+   Zeilen, Umfang `--remotes`, Eingabefehler des Octopus-Nachlaufs.
+   Wegwerf-Repos, synthetische Werte; nichts davon gelangt in dieses Repo.
+   ========================================================================== */
+
+/** Umgebung nur für die Dauer von fn setzen (git liest GIT_CONFIG_* aus der Umgebung) */
+async function mitUmgebung(env, fn) {
+  const alt = {};
+  for (const [k, v] of Object.entries(env)) { alt[k] = process.env[k]; process.env[k] = v; }
+  try { return await fn(); } finally {
+    for (const k of Object.keys(env)) { if (alt[k] === undefined) delete process.env[k]; else process.env[k] = alt[k]; }
+  }
+}
+
+describe("Geheimnis-Werkzeug: SI-P10 a – Inhalt von Binär-Diffs wird geprüft", () => {
+  it("git-Aufruf erzwingt den Textdiff (Haupt- und Octopus-Lauf) und schaltet textconv/externe Diffs ab", () => {
+    for (const args of [G.GIT_LOG_ARGS, G.GIT_OCTOPUS_ARGS, G.gitLogArgs("ab"), G.gitOctopusArgs("ab")]) {
+      expect(args).toEqual(expect.arrayContaining(["--text", "--no-textconv", "--no-ext-diff"]));
+    }
+  });
+
+  it("echtes git: `-diff`, `binary`, `diff=<treiber>` mit binary=true, info/attributes, linguist-generated, NUL-Byte und core.bigFileThreshold verbergen keinen Fund", async () => {
+    const { d, g, w, weg } = wegwerfRepo();
+    try {
+      w(".gitattributes", "*.dat -diff\n*.bin binary\n*.tc diff=meins\n*.gen linguist-generated\n");
+      fs.mkdirSync(path.join(d, ".git", "info"), { recursive: true });
+      fs.writeFileSync(path.join(d, ".git", "info", "attributes"), "*.info -diff\n");
+      for (const f of ["a.dat", "b.bin", "e.tc", "d.gen", "f.info"]) w(f, `vorher\n${PEM_ZEILE}\n`);
+      fs.writeFileSync(path.join(d, "c-nul.txt"), Buffer.concat([Buffer.from("kopf\0mitte\n"), Buffer.from(`${PEM_ZEILE}\n`)]));
+      w("gross.txt", `${"z".repeat(200)}\n${PEM_ZEILE}\n`);
+      g("add", "-A"); g("commit", "-qm", "binaer");
+      const env = { GIT_CONFIG_COUNT: "3", GIT_CONFIG_KEY_0: "diff.meins.binary", GIT_CONFIG_VALUE_0: "true",
+        GIT_CONFIG_KEY_1: "diff.meins.textconv", GIT_CONFIG_VALUE_1: "true", GIT_CONFIG_KEY_2: "core.bigFileThreshold", GIT_CONFIG_VALUE_2: "100" };
+      await mitUmgebung(env, async () => {
+        // Vorbedingung: ohne --text zeigt git sechs dieser Dateien nur als „Binary files … differ“ (d.gen bleibt Text)
+        const ohne = execFileSync("git", ["log", "-p", "--no-textconv", "--format=%H"], { cwd: d, encoding: "latin1" });
+        expect(ohne.match(/^Binary files /gm)?.length).toBe(6);
+        const r = await G.historieScannen({ cwd: d, refs: ["--all"] });
+        expect(r.offen.map((f) => [f.datei, f.regel]).sort()).toEqual(
+          ["a.dat", "b.bin", "c-nul.txt", "d.gen", "e.tc", "f.info", "gross.txt"].map((f) => [f, PEM]));
+        expect(r.offen.some((f) => f.regel === G.BINAER_UNGEPRUEFT)).toBe(false);
+      });
+    } finally { weg(); }
+  }, 60000);
+
+  it("trotz --text gemeldetes „Binary files … differ“ → offener Fund „Binär-Diff ungeprüft“ (fail-closed), auch für eine freigegebene Datei", async () => {
+    const r = await fundeSammeln(roh(ANDERER_SHA, [
+      `diff --git a/${SONDE_PFAD} b/${SONDE_PFAD}`, "index 1..2 100644", `Binary files a/${SONDE_PFAD} and b/${SONDE_PFAD} differ`,
+    ]));
+    expect(r.frei).toEqual([]);
+    expect(r.offen.map((f) => [f.commit, f.datei, f.regel])).toEqual([[ANDERER_SHA, G.DATEI_UNBEKANNT, G.BINAER_UNGEPRUEFT]]);
+  });
+});
+
+describe("Geheimnis-Werkzeug: SI-P10 a – überlange Zeilen mit begrenztem Speicher", () => {
+  it("zeilenAus hält keine Zeile über MAX_ZEILE; Fortsetzungen überlappen; Zeilenzählung bleibt richtig", async () => {
+    expect(G.MAX_ZEILE).toBeGreaterThan(G.UEBERLAPPUNG);
+    const lang = "+" + "q".repeat(3 * G.MAX_ZEILE) + PEM_ZEILE + "q".repeat(10);
+    const text = `vorn\n${lang}\nhinten\n`;
+    const stuecke = [];
+    for (let i = 0; i < text.length; i += 65536) stuecke.push(Buffer.from(text.slice(i, i + 65536)));
+    const aus = [];
+    for await (const z of G.zeilenAus(Readable.from(stuecke))) aus.push(z);
+    const laengen = aus.map((z) => (typeof z === "string" ? z : z.fortsetzung).length);
+    expect(Math.max(...laengen)).toBeLessThanOrEqual(G.MAX_ZEILE);
+    expect(aus.filter((z) => typeof z === "string").map((z) => z.slice(0, 5))).toEqual(["vorn", "+qqqq", "hinte"]);
+    expect(aus.length).toBeGreaterThan(4);
+    expect(aus.filter((z) => typeof z !== "string").some((z) => z.fortsetzung.includes(PEM_ZEILE))).toBe(true);
+  }, 60000);
+
+  it("Treffer genau an der Abschnittsgrenze wird über die Überlappung gefunden (kleine Grenze)", async () => {
+    const vorn = "+" + "q".repeat(60);                          // PEM beginnt bei Zeichen 61 von 64
+    const z = [`@@COMMIT ${ANDERER_SHA}`, "", ...kopf("a.bin", 1)].join("\n") + "\n" + vorn + PEM_ZEILE + "q".repeat(200) + "\n" + [...kopf("b.js", 1), "+ok"].join("\n") + "\n";
+    const zeilen = [];
+    for await (const x of G.zeilenAus(Readable.from([Buffer.from(z)]), { maxZeile: 64, ueberlappung: 48 })) zeilen.push(x);
+    expect(zeilen.some((x) => typeof x === "string" && x.includes(PEM_ZEILE))).toBe(false);
+    const r = await fundeSammeln(zeilen);
+    expect(r.offen.map((f) => [f.datei, f.regel])).toEqual([["a.bin", PEM]]);
+    expect(r.fortsetzungen).toBeGreaterThan(0);
+  });
+
+  it("Fortsetzung einer entfernten Zeile wird nicht geprüft; Fortsetzung einer unerwarteten Zeile fail-closed mit „Datei unbekannt“", async () => {
+    const r = await fundeSammeln([
+      ...roh(ANDERER_SHA, ["diff --git a/a.js b/a.js", "--- a/a.js", "+++ b/a.js", "@@ -1 +1 @@", "-alt", { fortsetzung: PEM_ZEILE }, "+neu"]),
+      "unerwartet", { fortsetzung: PEM_ZEILE },
+    ]);
+    expect(r.offen.map((f) => [f.datei, f.regel])).toEqual([[G.DATEI_UNBEKANNT, PEM]]);
+  });
+
+  it("echtes git: Binärdatei (NUL-Byte) mit über MAX_ZEILE Zeichen ohne Zeilenumbruch, PEM am Ende → Fund mit richtiger Datei", async () => {
+    const { d, g, weg } = wegwerfRepo();
+    try {
+      fs.writeFileSync(path.join(d, "gross.bin"), Buffer.concat([Buffer.from([0, 1, 2]), Buffer.alloc((G.MAX_ZEILE ?? 1 << 20) + 300000, 0x07), Buffer.from(PEM_ZEILE)]));
+      fs.writeFileSync(path.join(d, "danach.txt"), "harmlos\n");
+      g("add", "-A"); g("commit", "-qm", "gross");
+      const r = await G.historieScannen({ cwd: d, refs: ["--all"] });
+      expect(r.offen.map((f) => [f.datei, f.regel])).toEqual([["gross.bin", PEM]]);
+      expect(r.fortsetzungen).toBeGreaterThan(0);
+    } finally { weg(); }
+  }, 60000);
+});
+
+describe("Geheimnis-Werkzeug: SI-P10 b – Umfang `--remotes` (Review #455, H3)", () => {
+  it("argumenteLesen: Standard --all; --remotes = origin; --remotes=<name>; ungültige und unbekannte Optionen werfen", () => {
+    expect(G.argumenteLesen([])).toEqual({ modus: "historie", refs: ["--all"] });
+    expect(G.argumenteLesen(["--remotes"])).toEqual({ modus: "historie", refs: ["--remotes=origin"] });
+    expect(G.argumenteLesen(["--remotes=upstream"])).toEqual({ modus: "historie", refs: ["--remotes=upstream"] });
+    expect(G.argumenteLesen(["--nur-arbeitsstand"]).modus).toBe("arbeitsstand");
+    expect(() => G.argumenteLesen(["--remotes="])).toThrow(/Remote-Name/);
+    expect(() => G.argumenteLesen(["--remotes=--output=x"])).toThrow(/Remote-Name/);
+    expect(() => G.argumenteLesen(["--remote"])).toThrow(/unbekannte Option/);
+  });
+
+  it("CLI: lokaler Zweig mit Fund → Standard (--all) Rückgabe 1; --remotes prüft nur origin → 0; ohne origin-Zweige → 2; unbekannte Option → 2", () => {
+    const { d, g, w, weg } = wegwerfRepo();
+    const cli = (...a) => spawnSync(process.execPath, [path.join(WURZEL, "werkzeug/sicherheit/geheimnisse.mjs"), ...a], {
+      cwd: d, encoding: "utf8", env: { ...process.env, GIT_DIR: path.join(d, ".git") },
+    });
+    try {
+      w("a.txt", "a\n"); g("add", "-A"); g("commit", "-qm", "sauber");
+      const ohneRemote = cli("--remotes");
+      expect(ohneRemote.status).toBe(2);
+      expect(ohneRemote.stderr).toMatch(/kein Commit geprüft/);
+      g("update-ref", "refs/remotes/origin/main", "HEAD");
+      g("checkout", "-qb", "lokal"); w("b.txt", `${PEM_ZEILE}\n`); g("add", "-A"); g("commit", "-qm", "lokal");
+      const alle = cli();
+      expect(alle.status).toBe(1);
+      expect(alle.stdout).toMatch(/Historie \(--all\)/);
+      const nurOrigin = cli("--remotes");
+      expect(nurOrigin.status).toBe(0);
+      expect(nurOrigin.stdout).toMatch(/Historie \(--remotes=origin\): 1 Commits/);
+      expect(cli("--remote").status).toBe(2);
+    } finally { weg(); }
+  }, 60000);
+});
+
+describe("Geheimnis-Werkzeug: SI-P10 c – Eingabefehler des Octopus-Nachlaufs trotz Exit 0 (Review #455, H1)", () => {
+  it("Attrappe: Octopus-Nachlauf endet mit 0 und liefert eine saubere Ausgabe, aber stdin meldet EPIPE → historieScannen lehnt ab", async () => {
+    const { d, octo, weg } = octopusRepo();
+    let attrappeBenutzt = false;
+    const stub = (cmd, args, opts) => {
+      if (!args.includes("--stdin")) return spawn(cmd, args, opts);
+      attrappeBenutzt = true;
+      const marker = args.find((a) => a.startsWith("--format=@@OCTOPUS")).slice("--format=".length).split(" ")[0];
+      const kind = new EventEmitter();
+      kind.stdout = Readable.from([Buffer.from(`${marker} ${octo} ${OCTO_ELTERN}\n\n`)]);
+      kind.stderr = new PassThrough(); kind.stderr.end();
+      kind.stdin = new Writable({ write(_c, _e, cb) { cb(Object.assign(new Error("write EPIPE"), { code: "EPIPE" })); } });
+      setTimeout(() => kind.emit("close", 0), 50);
+      return kind;
+    };
+    try {
+      const r = await frist(G.historieScannen({ cwd: d, refs: ["--all"], spawn: stub }).then(() => "aufgelöst", (e) => e), 30000);
+      expect(attrappeBenutzt).toBe(true);
+      expect(r).toBeInstanceOf(Error);
+      expect(r.message).toMatch(/Octopus.*Eingabe nicht vollständig übergeben \(EPIPE\)/);
+    } finally { weg(); }
+  }, 60000);
 });
