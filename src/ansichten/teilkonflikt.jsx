@@ -160,7 +160,7 @@ export function TeilwegLeiste({ zustand, onOeffnen }) {
   if (!zustand || (zustand.phase !== "neuLaden" && !(zustand.konflikte || []).length)) return null;
   const neuLaden = zustand.phase === "neuLaden";
   return (
-    <div role="alert" style={{ padding: "12px 18px", borderRadius: 12, marginBottom: 20, background: C.warnLight,
+    <div role="alert" style={{ padding: "12px 18px", borderRadius: "var(--v4-r-mittel)", marginBottom: 20, background: C.warnLight,
       border: `1px solid ${C.warn}33`, display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
       <span style={{ fontSize: 14, fontWeight: 640 }}>
         {neuLaden ? "Neu laden nötig — Änderungen sind noch nicht gespeichert" : "Speichern wartet auf deine Entscheidung"}</span>

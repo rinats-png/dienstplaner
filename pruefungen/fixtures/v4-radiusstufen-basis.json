@@ -1331,6 +1331,35 @@
           "literaleSha256": "7540fe6657efb3228fdab44d1728361e7f1862210b878846e0445c39dd817d11"
         }
       }
+    },
+    "Speicherlage": {
+      "basis": "93b5f7f70d1b02700de3e19920b2ee0fd85b0b48",
+      "dateien": {
+        "src/ansichten/speicherlage.jsx": {
+          "sha256": "46f411f17ff5d864d038e4204095e5eea80bfe09748901658feba2d349a76a8a",
+          "literale": [
+            {
+              "wert": "12",
+              "kontext": "{{ padding: \"16px 20px\", borderRadius: 12, marginBottom: 20,\n      background: C.dangerLight, border: `1px solid ${C.danger}44` }}"
+            },
+            {
+              "wert": "12",
+              "kontext": "{{ padding: \"12px 18px\", borderRadius: 12, marginBottom: 20,\n      background: C.warnLight, border: `1px solid ${C.warn}33`,\n      display: \"flex\", gap: 14, alignItems: \"baseline\", flexWrap: \"wrap\" }}"
+            }
+          ],
+          "literaleSha256": "7e5d933726b8a638d626ec8bba86da5c4a1623710c3c7187189b89ebf1ef0111"
+        },
+        "src/ansichten/teilkonflikt.jsx": {
+          "sha256": "7177d6df740507c6b47c9f5f23bed5ac4eae509e415dc1698bf0cd5e3ea41ed7",
+          "literale": [
+            {
+              "wert": "12",
+              "kontext": "{{ padding: \"12px 18px\", borderRadius: 12, marginBottom: 20, background: C.warnLight,\n      border: `1px solid ${C.warn}33`, display: \"flex\", gap: 14, alignItems: \"center\", flexWrap: \"wrap\" }}"
+            }
+          ],
+          "literaleSha256": "b0499dba4ba9f83382e3f54e4bd6323224c00a9b339477b8cf6e33ba9d606b16"
+        }
+      }
     }
   }
 }
