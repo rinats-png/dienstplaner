@@ -42,6 +42,9 @@
      SPEICHERLAGE=1    im Reiter „Heute“ (Rolle mitarbeiter) zusätzlich die Leiste „Keine Verbindung“ messen: Kontext
                        offline, Reflow, Zielgröße, Radius (Stufe mittel), Bild; wieder online, Leiste weg
                        (V4-3b Speicherlage). Es wird nichts geschrieben.
+     BRANCHENMODULE=1  in der Ansicht „Betrieb“ (Rolle leitung) zusätzlich den Bereich „Branchenmodule“ messen: Reflow,
+                       Zielgröße, Radius der Modulzeilen (Stufe klein), Bild (V4-3b Branchenmodule). Die Registry steht
+                       auf „geplant“; sichtbar sind nur die Modulzeilen, keine Moduloberfläche. Es wird nichts geschrieben.
    Browser: vorinstalliertes Playwright (playwright-core, playwright im Projekt
    oder global); chromium.launch() ohne Optionen. Es wird nichts installiert.
    Exit 0: keine Befunde · 1: Befunde · 2: Aufruf oder Umgebung · 3: Aufbau gescheitert
@@ -384,6 +387,37 @@ async function speicherLeiste(p, ansicht, k) {
   if (!(await leiste.waitFor({ state: "detached", timeout: 10000 }).then(() => true).catch(() => false))) melde("speicherlage", `${name}: Leiste bleibt nach „online“ stehen`);
 }
 
+/* V4-3b Branchenmodule (BRANCHENMODULE=1): In der Ansicht „Betrieb“ der Leitung steht der Bereich „Branchenmodule“
+   (src/module/kern.jsx) mit einer Modulzeile (article, Rahmen RAHMEN) je Modul. Die Moduloberflächen erscheinen erst mit
+   einem eingeschalteten Modul; die Registry steht auf „geplant“, also nie im Browser. Gemessen werden Reflow, Zielgröße
+   und der berechnete Radius aller Modulzeilen (Stufe klein); dazu ein Bild des Bereichs. Es wird nichts geschrieben. */
+async function branchenBereich(p, ansicht, k) {
+  const { V4_RADIEN: R } = await import(pathToFileURL(path.join(WT, "src", "v4", "tokens.js")).href);
+  const name = `${ansicht}/Branchenmodule`;
+  const bereich = p.locator('section[aria-label="Branchenmodule"]').first();
+  if (!(await bereich.waitFor({ state: "visible", timeout: 8000 }).then(() => true).catch(() => false))) {
+    melde("branchenmodule", `${name}: Bereich fehlt`);
+    return;
+  }
+  await bereich.scrollIntoViewIfNeeded().catch(() => {});
+  await p.waitForTimeout(300);
+  geprueft++;
+  const m = await p.evaluate(MESSEN);
+  let schlecht = false;
+  if (k.reflow && !reflowOk(m.gesamt, m.breite)) { schlecht = true; melde("reflow", `${name}: Seite ${m.gesamt - m.breite}px breiter als ${m.breite}px — ${m.taeter}`); }
+  if (k.ziele) {
+    const z = zielgroessenBefunde(m.ziele, 24);
+    if (z.length) { schlecht = true; melde("zielgroesse", `${name}: ${z.length} Ziele unter 24 px ohne Abstandsausnahme (z. B. ${z.slice(0, 3).map((x) => `${x.id} ${Math.round(x.w)}x${Math.round(x.h)}`).join("; ")})`); }
+  }
+  const zeilen = await bereich.evaluate((b) => [...b.querySelectorAll("article")].map((e) => ({ inline: e.style.borderRadius,
+    wert: getComputedStyle(e).borderTopLeftRadius, hoehe: Math.round(e.getBoundingClientRect().height) })));
+  const falsch = zeilen.filter((r) => r.inline !== "var(--v4-r-klein)" || r.wert !== R.klein);
+  if (!zeilen.length) { schlecht = true; melde("branchenmodule", `${name}: keine Modulzeile`); }
+  if (falsch.length) { schlecht = true; melde("radius", `${name}: ${falsch.length} Modulzeilen nicht var(--v4-r-klein) = ${R.klein} (z. B. ${falsch[0].inline} = ${falsch[0].wert})`); }
+  if (!schlecht) beleg("branchenmodule", `${name}: Reflow${k.ziele ? " und Zielgröße" : ""} ohne Befund; ${zeilen.length} Modulzeilen var(--v4-r-klein) = ${R.klein}, Höhe ${Math.min(...zeilen.map((z) => z.hoehe))}–${Math.max(...zeilen.map((z) => z.hoehe))} px`);
+  if (schlecht || process.env.BILDER_ALLE) await bild(p, name);
+}
+
 /* ===================================================== 1 + 2  Reflow, Zielgröße */
 if (KRITERIEN.includes("reflow") || KRITERIEN.includes("ziele")) {
   const konfig = [];
@@ -409,6 +443,7 @@ if (KRITERIEN.includes("reflow") || KRITERIEN.includes("ziele")) {
       if (process.env.IMPORT_BLATT && /Personal$/.test(name)) await importBlatt(p, name, k);
       if (process.env.TELEFON_BLATT && /Heute$/.test(name)) await telefonBlatt(p, name, k);
       if (process.env.SPEICHERLAGE && /Heute$/.test(name)) await speicherLeiste(p, name, k);
+      if (process.env.BRANCHENMODULE && rolle === "leitung" && /Betrieb$/.test(name)) await branchenBereich(p, name, k);
     });
     for (const f of fehler) melde("konsole", `${marke}: ${f}`);
     if (ansichten === 0) melde("keine-ansicht", `${marke}: keine Ansicht erreicht`);
