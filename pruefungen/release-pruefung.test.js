@@ -14,7 +14,7 @@ import {
   g6Sicherung, g7Rueckweg, g8Blocker, g9Befunde, g10Freigabe, migrationsbericht, reviewNachweiseLesen,
   codeNamenFinden, vorlageLesen, wertAufloesen, abweichend, bildAngabenLesen, prsAusCommits, commitsOhnePr,
   argumenteLesen, ssotReviewBelege, freigabeSchema, basisPruefen, ausfuehrOptionen, ausfuehren, vorlageUnlesbar,
-  vorlagenStandErmitteln, kurzfassung,
+  vorlagenStandErmitteln, kurzfassung, urteilPositiv,
 } from "../werkzeug/release-pruefung.mjs";
 
 const WURZEL = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -2078,5 +2078,81 @@ describe("OF-13 (O-2 b): G7 — erste Auslieferung vom unbeschrifteten Bild 274b
     const rp = readFileSync(join(WURZEL, "docs/acc45/RELEASE-PROZESS.md"), "utf8").split(/\r?\n/).find((z) => z.startsWith("| G7 |"));
     expect(rp).toMatch(/274bfa0/);
     expect(rp).toMatch(/ruecksprung/);
+  });
+});
+
+describe("Endurteil #427 Auflage A1: G8 fail-closed — blockierend ist jeder Status außer erledigt", () => {
+  const P = (status, prio = "P0", pr = ["#90"]) => ({ id: "WP-X", prio, status, strang: "acc45", pr, titel: "x" });
+  const g8 = (p, prs = [90]) => g8Blocker({ pakete: [p] }, prs, null, KONFIG_STANDARD);
+  it("P0/P1-Paket in CI_FAILED mit PR im Kandidaten → NO-GO", () => {
+    for (const prio of ["P0", "P1"]) {
+      const g = g8(P("CI_FAILED", prio));
+      expect(g.ergebnis, prio).toBe("NO-GO");
+      expect(g.gruende.join(" ")).toMatch(/WP-X \(P\d, CI_FAILED\)/);
+    }
+  });
+  it("unbekannter oder fehlender Status → NO-GO (fail-closed)", () => {
+    for (const s of ["GIBT-ES-NICHT", "done", "", undefined, null, 5]) expect(g8(P(s)).ergebnis, String(s)).toBe("NO-GO");
+  });
+  it("DONE, INTEGRATED, VERIFIED blockieren nicht; P2 blockiert nie; ohne PR im Kandidaten kein Blocker", () => {
+    for (const s of ["DONE", "INTEGRATED", "VERIFIED"]) expect(g8(P(s)).ergebnis, s).toBe("GO");
+    expect(g8(P("CI_FAILED", "P2")).ergebnis).toBe("GO");
+    expect(g8(P("CI_FAILED"), [91]).ergebnis).toBe("GO");
+  });
+  it("jeder Status des SSOT-Schemas außer erledigt blockiert (Bindung an acc45-backlog.mjs STATUS)", async () => {
+    const { STATUS } = await import("../werkzeug/acc45-backlog.mjs");
+    expect(STATUS).toContain("CI_FAILED");
+    const offen = STATUS.filter((s) => !["DONE", "INTEGRATED", "VERIFIED"].includes(s));
+    expect(offen.length).toBeGreaterThanOrEqual(5);
+    for (const s of offen) expect(g8(P(s)).ergebnis, s).toBe("NO-GO");
+  });
+  it("G8 und G9 teilen dieselbe Liste der erledigten Status (keine Doppelung)", () => {
+    expect(KONFIG_STANDARD.blocker.erledigt).toBe(KONFIG_STANDARD.befund.erledigt);
+    expect([...KONFIG_STANDARD.blocker.erledigt].sort()).toEqual(["DONE", "INTEGRATED", "VERIFIED"]);
+    expect(KONFIG_STANDARD.blocker.status).toBeUndefined(); // keine Positivliste mehr
+    expect(g9Befunde({ pakete: [{ id: "V4-X", prio: "P1", status: "CI_FAILED", strang: "folge", pr: [] }] }, null, KONFIG_STANDARD).ergebnis).toBe("NO-GO");
+  });
+  it("ssotPakete-Beleg: ein P0-Paket in CI_FAILED erhält keinen entlastenden Beleg „hinter Schalter AUS“", () => {
+    const ssot = { pakete: [{ id: "IMP-6", prio: "P0", status: "CI_FAILED", strang: "acc45", pr: ["#90"] }] };
+    const unfertig = { funktionen: [{ id: "f", name: "F", variablen: ["CENTRIC_F"], ssotPakete: ["IMP-6"], ssotPrs: ["#90"] }] };
+    const klassen = { variablen: { CENTRIC_F: { klasse: "schalter-aus" } } };
+    const g = g8Blocker(ssot, [90], null, KONFIG_STANDARD, unfertig, klassen);
+    expect(g.ergebnis).toBe("NO-GO");
+    expect(g.belege.join(" ")).not.toMatch(/hinter Schalter AUS/);
+  });
+});
+
+describe("Endurteil #427 Auflage A2: G1 — jeder Lauf zählt, auch ein älterer roter vor einem neueren grünen", () => {
+  it("alter roter Lauf (niedrige id, zuerst in der Liste), neuer grüner Lauf derselben Prüfung → NO-GO", () => {
+    const gruen = checks().map((c) => ({ ...c, id: c.id + 100 })); // ids 101..111, später gestartet
+    const alt = { id: 1, name: "pruefen", status: "completed", conclusion: "failure", head_sha: K };
+    for (const runs of [[alt, ...gruen], [...gruen.slice(0, 1), alt, ...gruen.slice(1)]]) {
+      const g = g1Ci(runs, K, KONFIG_STANDARD);
+      expect(g.ergebnis).toBe("NO-GO");
+      expect(g.gruende.join(" ")).toMatch(/Pflicht-Check pruefen: failure/);
+    }
+    // Gegenprobe: ohne den roten Lauf GO
+    expect(g1Ci(gruen, K, KONFIG_STANDARD).ergebnis).toBe("GO");
+  });
+  it("dasselbe für einen Nicht-Pflicht-Check: alter abgebrochener Lauf bleibt NO-GO trotz neuem grünem Lauf", () => {
+    const x = (id, conclusion) => ({ id, name: "extra", status: "completed", conclusion, head_sha: K });
+    expect(g1Ci([x(1, "cancelled"), ...checks(), x(500, "success")], K, KONFIG_STANDARD).ergebnis).toBe("NO-GO");
+  });
+});
+
+describe("Endurteil #427 Auflage A5: REVIEW-NACHWEIS-2026-11-22.md ist für #427 kein positiver Beleg", () => {
+  const ZEILE = "7 Runden (NICHT FREIGEGEBEN, Delta ×6) → Endurteil 2026-11-22 MIT AUFLAGEN";
+  it("das Urteil ist keine echte Positivform, auch nicht mit „→ erledigt“", () => {
+    expect(urteilPositiv(ZEILE)).toBe(false);
+    expect(urteilPositiv(ZEILE + " → erledigt")).toBe(false);
+  });
+  it("die echte Datei steht im Format der Vorlage und belegt #427 nicht; als spätere Datei hebt sie einen früheren Beleg auf", () => {
+    const text = readFileSync(join(WURZEL, "docs/acc45/REVIEW-NACHWEIS-2026-11-22.md"), "utf8").replace(/\r\n/g, "\n");
+    expect(text).toContain("| PR | Review-Modell | Runden / Urteil | Stand |\n|---|---|---|---|\n");
+    expect(text).toContain(`| #427 | Opus | ${ZEILE} | gemergt |`);
+    expect(reviewNachweiseLesen([{ datei: "REVIEW-NACHWEIS-2026-11-22.md", text }]).has(427)).toBe(false);
+    const frueher = { datei: "REVIEW-NACHWEIS-2026-11-20.md", text: KOPF + "| #427 | Opus | MERGEBAR | gemergt |\n" };
+    expect(reviewNachweiseLesen([frueher]).has(427)).toBe(true);
+    expect(reviewNachweiseLesen([{ datei: "REVIEW-NACHWEIS-2026-11-22.md", text }, frueher]).has(427)).toBe(false);
   });
 });
