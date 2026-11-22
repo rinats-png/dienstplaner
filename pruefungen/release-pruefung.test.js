@@ -2240,6 +2240,21 @@ describe("Gate-Härtung Review #477 H3 / #473 H1, H2, H4, H5: G8/G9 fail-closed 
     expect(g8Blocker(WP48, [], null, KONFIG_STANDARD, fkt({ ssotPrs: ["#342"] }), KL).ergebnis).toBe("GO");
   });
 
+  it("H1 (Review #483): ssotPakete-Paket mit unbekannter prio erhält keinen entlastenden Beleg „hinter Schalter AUS“", () => {
+    for (const prio of ["p2", " P2", undefined, "P4"]) {
+      const s = { pakete: [{ id: "IMP-6", prio, status: "IN_PROGRESS", strang: "acc45", pr: ["#436"] }] };
+      const u = { funktionen: [{ id: "w", name: "Planwirkung", variablen: ["CENTRIC_SCHICHTMODELL_WIRKUNG"], ssotPakete: ["IMP-6"], ssotPrs: ["#436"] }] };
+      const g = g8Blocker(s, [436], null, KONFIG_STANDARD, u, KL);
+      const n = JSON.stringify(prio) ?? "undefined";
+      expect(g.ergebnis, n).toBe("NO-GO");
+      expect(g.belege.join(" "), n).not.toMatch(/hinter Schalter AUS/);
+    }
+    // Gegenprobe: gültige P2 erhält den Beleg
+    const ok = g8Blocker({ pakete: [{ id: "IMP-6", prio: "P2", status: "IN_PROGRESS", strang: "acc45", pr: ["#436"] }] }, [436], null, KONFIG_STANDARD,
+      { funktionen: [{ id: "w", name: "Planwirkung", variablen: ["CENTRIC_SCHICHTMODELL_WIRKUNG"], ssotPakete: ["IMP-6"], ssotPrs: ["#436"] }] }, KL);
+    expect(ok.belege.join(" ")).toMatch(/hinter Schalter AUS/);
+  });
+
   it("ssotPrs ohne ssotPakete → NO-GO (Schemafehler); ohne beide Felder unverändert GO", () => {
     for (const extra of [{ ssotPakete: undefined, ssotPrs: ["#342"] }, { ssotPakete: undefined, ssotPrs: [] }, { ssotPakete: undefined, ssotPrs: "x" }]) {
       const g = g8Blocker(WP48, [], null, KONFIG_STANDARD, fkt(extra), KL);

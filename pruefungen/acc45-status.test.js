@@ -271,6 +271,23 @@ describe("Schema prio und pr (Review #477 H3, fail-closed)", () => {
       expect(s.stderr, name).toMatch(/Quelle ungültig/);
     }
   });
+
+  it("Auflage A1 (Review #483): status-schreiben mit fehlendem pr oder pr: null → Rückgabe 2, work-packages.json unverändert (kein stilles [])", async () => {
+    for (const [name, aendern] of [
+      ["roh-pr-fehlt", (p) => { delete p.pr; }],
+      ["roh-pr-null", (p) => { p.pr = null; }],
+    ]) {
+      const w = await kopie(name);
+      await mkdir(path.join(w, "werkzeug"), { recursive: true });
+      await copyFile(path.join(REPO, "werkzeug", "acc45-backlog.mjs"), path.join(w, "werkzeug", "acc45-backlog.mjs"));
+      await jsonAendern(w, (j) => aendern(j.pakete.find((p) => p.id === "WP-16")));
+      const vorher = await readFile(path.join(w, "docs/acc45/work-packages.json"), "utf8");
+      const s = spawnSync(process.execPath, [path.join(w, "werkzeug", "acc45-backlog.mjs"), "status-schreiben"], { cwd: w, encoding: "utf8" });
+      expect(s.status, name + s.stdout + s.stderr).toBe(2);
+      expect(s.stderr, name).toMatch(/Quelle ungültig:[\s\S]*WP-16: pr (fehlt|ist keine Liste)/);
+      expect(await readFile(path.join(w, "docs/acc45/work-packages.json"), "utf8"), name).toBe(vorher);
+    }
+  });
 });
 
 describe("Prognose: Simulation, Konfliktzonen, Kalender", () => {
