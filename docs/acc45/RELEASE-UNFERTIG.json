@@ -92,7 +92,16 @@
         "CENTRIC_TEILSPEICHERUNG"
       ],
       "stand": "aus bis Oberfläche WP-48.5 und Betreiberfreigabe",
-      "quelle": "server/lib/schalter.mjs; docs/acc45/WP48-TEILSPEICHERUNG.md"
+      "quelle": "server/lib/schalter.mjs; docs/acc45/WP48-TEILSPEICHERUNG.md",
+      "ssotPakete": [
+        "WP-48"
+      ],
+      "ssotPrs": [
+        "#342",
+        "#348",
+        "#350"
+      ],
+      "ssotUmfang": "Hinter dem Schalter liegen nur diese Wege: POST /api/bestand/teile und POST /api/loeschlauf (server/funktionen/daten.mjs:1461, :1465, nur mit teilwegAn(), server/lib/schalter.mjs:21, genau true; Teilweg-Nutzung daten.mjs:322) und die Oberfläche des Teilwegs und des Löschlauf-Knopfs (nur mit Fähigkeit teile aus dem GET: src/speicher.js:411-413, :435; src/app/aktionen/ausgaben.js:93, :105). Damit gedeckt: #342, #348, #350 (Oberfläche) und der Löschlauf-Weg aus #346. NUR TEILWEISE gedeckt, aktiver Anteil ohne Schalter: #224 (server/lib/rechte.mjs:1514 zusammenfuehren entfernt abgeleitete Felder aus dem gespeicherten Stand bei jedem vollen PUT; server/lib/arbeitssitzung.mjs:256-257 sitzungsKennung bei jeder Sitzungsprüfung; server/lib/raumloeschung.mjs:249; Umbau des vollen PUT-Wegs in daten.mjs ab :1466) und #346 (gemeinsamer Schreibweg daten.mjs ab :1466 mit Abzweig loeschweg). NICHT gedeckt, aktiv ausgeliefert: #87 (Bestand/Scherben), #271 (Öffnen schreibt nicht), #341 (Kette, an ohne CENTRIC_KETTE_AUS). WP-48 bleibt G8-Blocker bis fertig oder akzeptiertePakete."
     },
     {
       "id": "abschluss-segmentweise",
@@ -102,7 +111,11 @@
         "CENTRIC_ABSCHLUSS_OHNE_SPERRE"
       ],
       "stand": "aus bis Messung auf Staging (WP-48.9) und Betreiberfreigabe",
-      "quelle": "server/lib/schalter.mjs"
+      "quelle": "server/lib/schalter.mjs",
+      "ssotPakete": [
+        "WP-48"
+      ],
+      "ssotUmfang": "Hinter dem Schalter liegen nur die segmentweisen Zweige des Monatsabschlusses: server/funktionen/daten.mjs:2765 (abschlussOhneSperreAn(), Stufe b) und :2791 (abschlussSegmentweiseAn(), Stufe a); Abfragen server/lib/schalter.mjs:36, :52, genau true, OHNE_SPERRE nur zusammen mit SEGMENTWEISE. NUR TEILWEISE gedeckt, aktiver Anteil ohne Schalter: #322 und #351 haben den vollen Monatsabschluss-Weg in daten.mjs umgebaut (Rechnung als rechnenM, Reihenfolge der Prüfungen); dieser Umbau läuft bei jedem Monatsabschluss, auch mit Schalter AUS. Übrige WP-48-PRs siehe Eintrag teilspeicherung. WP-48 bleibt G8-Blocker bis fertig oder akzeptiertePakete."
     },
     {
       "id": "hilfe-assistent",

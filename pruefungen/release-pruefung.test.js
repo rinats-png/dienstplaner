@@ -62,6 +62,8 @@ const SSOT = { pakete: [
   { id: "REL-2", prio: "P1", status: "BLOCKED", strang: "folge", pr: [], titel: "Release-Prozess selbst, kein Befund" },
   // RELEASE-UNFERTIG.json nennt IMP-6 (ssotPakete); G8 verlangt das Paket in der SSOT
   { id: "IMP-6", prio: "P2", status: "IN_PROGRESS", strang: "acc45", pr: [], titel: "Schichtmodelle" },
+  // RELEASE-UNFERTIG.json nennt WP-48 (Teilspeicherung, Abschluss segmentweise); ohne PR im Kandidaten kein Blocker
+  { id: "WP-48", prio: "P0", status: "IN_PROGRESS", strang: "acc45", pr: [], titel: "Teilspeicherung" },
 ] };
 
 const KOPF = "| PR | Modell | Urteil | Stand |\n|---|---|---|---|\n";
@@ -1638,6 +1640,69 @@ describe("Opus-Review #470 A2: G8-Belegzeile nennt nur die durch ssotPrs gedeckt
       for (const x of nr) expect(x, f.id).toMatch(/^#[1-9]\d*$/);
       expect(new Set(nr).size, f.id).toBe(nr.length);
     }
+  });
+  it("Repository-Stand WP-48: ssotPrs nur voll gedeckte PRs (teilweise #224/#346/#322/#351 und ungedeckte #87/#271/#341 nicht)", () => {
+    const fx = (id) => UNFERTIG.funktionen.find((x) => x.id === id);
+    expect(fx("teilspeicherung").ssotPrs).toEqual(["#342", "#348", "#350"]);
+    expect(fx("abschluss-segmentweise").ssotPrs).toBeUndefined();
+    for (const f of UNFERTIG.funktionen) for (const nr of ["#87", "#224", "#271", "#322", "#341", "#346", "#351"]) {
+      expect((f.ssotPrs || []).map(String), `${f.id}: ${nr}`).not.toContain(nr);
+    }
+  });
+});
+
+describe("v4-r1 G8: ssotPakete nur mit belegtem Schalter-Standard AUS", () => {
+  // Jede Variable einer Funktion mit ssotPakete braucht hier ihre Abfrage aus server/lib/schalter.mjs (fail-closed:
+  // ein neuer Eintrag ohne Abfrage lässt diesen Test scheitern). `vor` setzt Voraussetzungen für die Gegenprobe.
+  const ABFRAGE = {
+    CENTRIC_TEILSPEICHERUNG: { fn: "teilwegAn" },
+    CENTRIC_ABSCHLUSS_SEGMENTWEISE: { fn: "abschlussSegmentweiseAn" },
+    CENTRIC_ABSCHLUSS_OHNE_SPERRE: { fn: "abschlussOhneSperreAn", vor: { CENTRIC_ABSCHLUSS_SEGMENTWEISE: "true" } },
+    CENTRIC_SCHICHTMODELL_PFLEGE: { fn: "schichtmodellPflegeAn" },
+    CENTRIC_SCHICHTMODELL_WIRKUNG: { fn: "schichtmodellWirkungAn" },
+  };
+  const mitSsot = UNFERTIG.funktionen.filter((f) => Array.isArray(f.ssotPakete) && f.ssotPakete.length);
+  const variablen = [...new Set(mitSsot.flatMap((f) => f.variablen))];
+  let gemerkt;
+  beforeEach(() => { gemerkt = Object.fromEntries(Object.keys(ABFRAGE).map((k) => [k, process.env[k]])); for (const k of Object.keys(ABFRAGE)) delete process.env[k]; });
+  afterEach(() => { for (const [k, v] of Object.entries(gemerkt)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
+
+  it("WP-48 steht über teilspeicherung und abschluss-segmentweise in ssotPakete, je mit Umfang (kein Vollbeleg)", () => {
+    for (const id of ["teilspeicherung", "abschluss-segmentweise"]) {
+      const f = UNFERTIG.funktionen.find((x) => x.id === id);
+      expect(f.ssotPakete).toEqual(["WP-48"]);
+      expect(f.ssotUmfang).toMatch(/bleibt G8-Blocker/);
+    }
+    // aktiv ausgelieferte WP-48-PRs sind ausdrücklich als nicht gedeckt genannt
+    expect(UNFERTIG.funktionen.find((x) => x.id === "teilspeicherung").ssotUmfang).toMatch(/NICHT gedeckt.*#87.*#271.*#341/);
+  });
+  it("jede Variable mit ssotPakete: schalter-aus klassifiziert und Abfrage vorhanden", () => {
+    expect(variablen.length).toBeGreaterThan(0);
+    for (const v of variablen) {
+      expect(KL.variablen[v]?.klasse, v).toBe("schalter-aus");
+      expect(ABFRAGE[v], `${v}: Abfrage in diesem Test nachtragen`).toBeTruthy();
+    }
+  });
+  it("Standard AUS: ungesetzt und verstümmelte Werte → aus; nur genau true → an (Gegenprobe)", async () => {
+    const s = await import("../server/lib/schalter.mjs");
+    for (const v of variablen) {
+      const { fn, vor = {} } = ABFRAGE[v];
+      expect(typeof s[fn], fn).toBe("function");
+      Object.assign(process.env, vor);
+      expect(s[fn](), `${v} ungesetzt`).toBe(false);
+      for (const w of ["", "1", "TRUE", " true", "true ", "an", "yes", "on"]) { process.env[v] = w; expect(s[fn](), `${v}=${JSON.stringify(w)}`).toBe(false); }
+      process.env[v] = "true";
+      expect(s[fn](), `${v}=true`).toBe(true);
+      delete process.env[v];
+      for (const k of Object.keys(vor)) delete process.env[k];
+    }
+    // OHNE_SPERRE allein schaltet nichts ein
+    process.env.CENTRIC_ABSCHLUSS_OHNE_SPERRE = "true";
+    expect(s.abschlussOhneSperreAn()).toBe(false);
+  });
+  it("Repository-Vorlagen: keine dieser Variablen aktiv in .env.example", () => {
+    const env = readFileSync(join(WURZEL, ".env.example"), "utf8").split(/\r?\n/);
+    for (const v of variablen) expect(env.filter((z) => new RegExp(`^\\s*${v}\\s*=`).test(z)), v).toEqual([]);
   });
 });
 
