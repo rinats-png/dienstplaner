@@ -17,7 +17,7 @@ import { readFileSync } from "node:fs";
 import { eigeneEinheit, imEigenenBereich, bestandFuerRolle, zusammenfuehren } from "../server/lib/rechte.mjs";
 import { leitungsperson } from "../server/lib/provisionierung.mjs";
 import { baueLeerenBetrieb } from "../server/lib/leerbetrieb.mjs";
-import { leitungFuerBestaetigung, schutzKonfliktMitteilungen } from "../server/lib/bestaetigungen.mjs";
+import { leitungFuerBestaetigung, schutzKonfliktMitteilungen, BEFUND_KATALOG, BESTAETIGUNGEN_JE_TAG } from "../server/lib/bestaetigungen.mjs";
 import { servermitteilung } from "../server/lib/mitteilungen.mjs";
 import { heuteBerlin, tagePlus } from "../server/lib/zeiterfassung.mjs";
 
@@ -137,6 +137,42 @@ describe("P3: weitere UTC-Tage", () => {
   });
 });
 
+describe("P3: Mitteilungen und Tagesbremse am Betriebstag (Verhalten)", () => {
+  it("schutzKonfliktMitteilungen: keine Mitteilung an die gestern ausgetretene Leitung, aber an die heute letzte", () => {
+    fuerAlle((d, _t, z) => {
+      const personen = [
+        person("l1", "leitung", { austritt: tagePlus(d, -1) }),
+        person("l2", "leitung", { austritt: d }),
+        person("p1", "planer"), person("a1", "mitarbeiter")];
+      const neu = schutzKonfliktMitteilungen({ personen }, { personen, nachrichten: [] }, [{ personId: "a1", datum: d }], "p1");
+      const an = neu.nachrichten.map((n) => n.personId).sort();
+      expect(an, `${d} ${z}`).toEqual(["l2", "p1"]);
+    });
+  });
+
+  it("Tagesbremse der Bestätigungen: Einträge von gestern (Berlin) zählen nicht zu heute", () => {
+    /* Regel ohne Schutzbezug und ohne Sperre, die sich als Einzelbestätigung anhängen lässt. */
+    const regel = Object.keys(BEFUND_KATALOG).find((r) => !BEFUND_KATALOG[r].sperrt && !BEFUND_KATALOG[r].schutz
+      && ["achtung", "recht"].includes(BEFUND_KATALOG[r].stufe));
+    expect(regel).toBeTruthy();
+    fuerAlle((d, _t, z) => {
+      /* Gestern Mittag UTC = gestern Berlin; um 00:30 Berlin ist der UTC-Tag noch gestern. */
+      const gesternMittag = `${tagePlus(d, -1)}T12:00:00.000Z`;
+      const alte = Array.from({ length: BESTAETIGUNGEN_JE_TAG }, (_, i) => ({ id: `alt${i}`, art: "sammel", durchId: "l1", zeit: gesternMittag }));
+      const m0 = { id: "m1", name: "Haus", einheiten: [{ id: "e1" }], dienstarten: [{ id: "F", name: "Früh" }],
+        personen: [person("l1", "leitung", { bereich: "ALLE", email: "l@x.de" })], bestaetigungen: alte };
+      const gespeichert = { version: 9, stand: 1, session: null, mandanten: [m0] };
+      const sitz = { rolle: "leitung", person: "l1", betrieb: 0 };
+      const gelesen = JSON.parse(JSON.stringify(bestandFuerRolle(gespeichert, sitz)));
+      gelesen.mandanten[0].bestaetigungen = [{ id: "neu1", personId: "l1", datum: d, dienstId: "F", aktion: "plan", befunde: [{ regel }], gelesen: true },
+        ...gelesen.mandanten[0].bestaetigungen];
+      const e = zusammenfuehren(gespeichert, gelesen, sitz);
+      expect(e && e.verweigert, `${d} ${z}`).toBeFalsy();
+      expect(e.mandanten[0].bestaetigungen[0].id, `${d} ${z}`).toBe("neu1");
+    });
+  });
+});
+
 describe("Z57: gespeicherte Zeittexte in Europe/Berlin, Format unverändert (Golden)", () => {
   it("servermitteilung.zeit", () => {
     fuerAlle((d, text, z) => {
@@ -155,7 +191,7 @@ describe("Z57: gespeicherte Zeittexte in Europe/Berlin, Format unverändert (Gol
   });
 });
 
-describe("P5: gestern ist Kalendertag − 1", () => {
+describe("P5: gestern ist Kalendertag − 1 (Hinweis: prüft die Rechenregel; der Pfad in daten.mjs ist nur durch den Quellwächter gesichert)", () => {
   it("tagePlus(heuteBerlin(jetzt), -1) trifft auch den Tag nach der Frühjahrsumstellung; jetzt − 24 h verfehlt ihn", () => {
     /* 30.03.2026 00:30 MESZ = 29.03. 22:30 UTC; 24 h davor ist 28.03. 23:30 MEZ → falscher „gestern“-Tag 28.03. */
     const jetzt = new Date("2026-03-29T22:30:00Z");

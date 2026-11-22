@@ -330,7 +330,7 @@ describe("Strang A: Betreiber → Leitung → Personal → Schichtmodell → Pla
   it("5.4 Planung veröffentlicht; die Beschäftigte sieht danach ihren Plan", async () => {
     const a = await schreiben(T.p1, (m) => {
       const abbild = Object.fromEntries(Object.entries(m.abweichungen).filter(([k]) => k.split("|")[1].startsWith(M)));
-      m.freigaben = { ...(m.freigaben || {}), [M]: { stand: 1, zeit: new Date().toLocaleString("de-DE"), durch: "Planung" } };
+      m.freigaben = { ...(m.freigaben || {}), [M]: { stand: 1, zeit: new Date().toLocaleString("de-DE", { timeZone: "Europe/Berlin" }), durch: "Planung" } };
       m.planstaende = { ...(m.planstaende || {}), [M]: abbild };
     });
     expect(a.status, a.text || a.fehler).toBe(200);

@@ -510,7 +510,7 @@ describe("Differenztest alt/neu: Schichtverantwortung (einheitZusammen, anfragen
     const fremdText = (pid, tag) => (ohneEinheit(pid, tag) ? "Person ist an diesem Tag keiner Einheit zugeordnet – Zugehörigkeit prüfen."
       : `${(personen.get(String(pid)) || {}).nachname || "Diese Person"} gehört nicht zu deinem Bereich.`);
     return { eigen: (pid) => String(pid) === "s1", imBereich, fremdText, ichId: "s1", meinName: "Vs1 Ns1",
-      jetztText: () => new Date().toLocaleString("de-DE") };
+      jetztText: () => new Date().toLocaleString("de-DE", { timeZone: "Europe/Berlin" }) };
   };
   const verborgen = (h, v) => !h.eigen(v.personId) && !h.imBereich(v.personId, v.von)
     && !(v.typ === "tausch" && v.status === "offen" && !v.partnerId);
