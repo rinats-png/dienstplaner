@@ -98,6 +98,11 @@ html[data-v4-app] .suchknopf{background:var(--v4-flaeche); border-color:var(--v4
   html[data-v4-app] .btn, html[data-v4-app] .slink, html[data-v4-app] .seg button{min-height:var(--v4-ziel);}
 }
 
+/* WP-40 (WCAG 1.4.10 Reflow, gemessen bei 320 px): Die Seitenüberschrift (h1.titel, 38 px) ragte bei langen Wörtern
+   ("Belastungsverteilung": 336 px Text in 310 px Platz) über den Rand und schob die ganze Seite 26 px nach rechts. Ein zu
+   langes Wort bricht jetzt (mit Trennung, wo lang="de" sie kennt); kurze Wörter bleiben unverändert. */
+html[data-v4-app] h1.titel{overflow-wrap:break-word; hyphens:auto;}
+
 /* Bewegung und Transparenz: reduziert, ohne Glas */
 @media (prefers-reduced-motion: reduce){
   html[data-v4-app] .btn, html[data-v4-app] .slink{transition:none;}
