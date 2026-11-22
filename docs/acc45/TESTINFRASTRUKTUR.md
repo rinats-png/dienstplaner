@@ -26,7 +26,7 @@ als Schritte ausführt (`pruefung:ci-abdeckung` stellt das sicher). Der Trockenl
 
 ### Bekannte Umgebungsfehler
 
-`pruefungen/sammelpruefung-bekannt.json` (seit QS-2 mit einem Windows-Eintrag, siehe unten): Liste von `{ "skript", "grund" (mind. 20 Zeichen), "plattform" }`.
+`pruefungen/sammelpruefung-bekannt.json` (derzeit leer; der frühere Windows-Eintrag zu `pruefung:selbst` entfiel mit dem Nachtrag zu QS-2, siehe unten): Liste von `{ "skript", "grund" (mind. 20 Zeichen), "plattform" }`.
 Scheitert ein Glied auf genau dieser Plattform, wird es im Bericht als BEKANNT mit Grund geführt. Der Gesamtlauf bleibt trotzdem rot
 (Exit 1): nichts wird übersprungen oder abgeschwächt, die Liste ordnet nur ein. Einträge ohne Grund, ohne Plattform, doppelt oder
 auf ein Nicht-Kettenglied zeigend lassen den Trockenlauf scheitern.
@@ -41,9 +41,9 @@ Deterministisch gemacht (ohne die Aussage der Pruefung zu aendern):
 | `schreibhalt.test.js` "fremde Anfrage waehrend des Halts ..." | feste `warte(400)` auf die Ablehnung | Abfrage, bis die Antwort mit dem fremden Token da ist |
 | `anmeldung-http.test.js` "Gesamtaufkommen" und "gelungene Anmeldungen nicht auf die Gesamtgrenze" | Notbremse zaehlt in an der Uhr ausgerichteten 300-s-Fenstern (`Date.now`); eine Messung ueber eine Fenstergrenze verschiebt den gleitenden Stand | `vi.useFakeTimers({ toFake: ["Date"] })`, Uhr steht mitten im Fenster |
 
-Nur auf Windows-Ressourcengrenzen scheiternd, ausdruecklich nicht gelockert und nicht uebersprungen (`sammelpruefung-bekannt.json`, Plattform `win32`; der Gesamtlauf bleibt rot):
+Nur auf Windows-Ressourcengrenzen scheiternd, ausdruecklich nicht gelockert und nicht uebersprungen (der Gesamtlauf bleibt rot):
 
-- `pruefung:selbst`: Zusicherung "Erster Aufbau unter 500 ms" (src/pruefung.jsx) misst reine Rechenzeit; auf diesem Windows-Rechner reproduzierbar darueber (kalter Transform/JIT).
+- `pruefung:selbst` (erledigt, Nachtrag QS-2, siehe `docs/acc45/QS-2-NACHTRAG-WANDZEIT.md`): die Wandzeit-Zusicherung "Erster Aufbau unter 500 ms" (src/pruefung.jsx) maß Rechnerlast statt Code (auf CI Run 45027175416 rot ohne Codeänderung, lokal unter Last 600 bis 1800 ms). Ersetzt durch Zähler, Skalierungsverhältnis und ein Verhältnis zu einer festen Vergleichsarbeit; der Bekannt-Eintrag entfiel.
 - `pruefung:sicherung-ablage` (kein Glied der Kette `pruefung`, daher nicht in der Bekannt-Liste): Pruefungen mit 60 s Frist (`LIMIT`), z. B. "meldet eine Quelle, die sich beim Sichern aendert ...", reissen die Frist auf Windows unter Last.
 - `pruefung:mail-push-produktion`: die Flut-Pruefungen ("Notruf-Flut ...", "dringende Mitteilungen einer Quelle ...") brauchen unter Last mehr als die 5 s Vorgabe von vitest; die Folgefehler (Reste in der Ablage) liessen den Lauf wie einen Absturz aussehen. Behoben im Skript: `--testTimeout=60000`; kein Eintrag noetig.
 
