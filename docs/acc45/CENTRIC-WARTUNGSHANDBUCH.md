@@ -55,7 +55,7 @@ Risiko ist die **höchste** relevante Klasse, nicht der Durchschnitt. Eine klein
 
 Claude fragt den Betreiber **nur** bei wesentlichen Grundsatz-, Rechts-, Daten-, Kosten-, Berechtigungs- und Produktionsentscheidungen; er liefert eine bevorzugte Option, Alternativen und Konsequenzen. Gewöhnliche technische Entscheidungen erfolgen autonom. Externe juristische Beurteilung ist nicht durch ein Modellreview ersetzt.
 
-## 3. Wartungsdomänen – fachliche Karte (24 Bereiche, 8 Cluster)
+## 3. Wartungsdomänen – fachliche Karte (25 Bereiche, 8 Cluster)
 
 Jede Domäne führt einen primären Wartungsweg. Querschnittsabnahmen prüfen die gekoppelten Bereiche. Die Pfade sind Beispiele, **nicht** abschließend.
 
