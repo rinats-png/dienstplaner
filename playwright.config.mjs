@@ -13,9 +13,11 @@ export default defineConfig({
   /* WP-48-GB: Mehrere Arbeiter, JE ARBEITER EIN EIGENER RAUM (e2e/global-setup.mjs, e2e/umgebung.mjs arbeiterRaumWaehlen).
      Früher workers: 1 als Notlösung: Parallel geöffnete Sitzungen lösten den Dialog „Gleichzeitig bearbeitet“ aus. Das
      bloße Öffnen schreibt seit #271/#365/#374 nicht mehr (pruefungen/wp48-gb-oeffnen.test.js, wp48-gb-lesen.test.js,
-     e2e/oeffnen-parallel.spec.mjs). Was danach blieb, waren ECHTE Konflikte: Praktisch alle Specs schreiben in den Raum
-     (anmelden() schließt mit tourZu() eine offene Tour, dazu Abnahme A/B, Teilkonflikt, lokale Abnahme); zwei Arbeiter im
-     selben Raum bearbeiten denselben Bestand. Getrennte Räume trennen sie; innerhalb eines Arbeiters laufen die Tests
+     e2e/oeffnen-parallel.spec.mjs). Was danach blieb, waren technisch korrekte 409: Praktisch alle Specs schreiben in den
+     Raum (anmelden() schließt mit tourZu() eine offene Tour, dazu Abnahme A/B, Teilkonflikt, lokale Abnahme); zwei
+     Arbeiter im selben Raum bearbeiten denselben Bestand. Dass schon das Tour-Schließen zweier Personen kollidiert, ist
+     ein offener Produktbefund (WP-48-GB-T, ENTSCHEIDUNGSLISTE P2-32: Tourzustand liegt im Kern des Bestands), kein Fehler
+     des Öffnens. Getrennte Räume trennen die Arbeiter; innerhalb eines Arbeiters laufen die Tests
      einer Datei nacheinander (fullyParallel: false). E2E_WORKERS (oder --workers) ändert die Zahl, höchstens
      RAEUME_HOECHSTENS Räume. */
   fullyParallel: false,

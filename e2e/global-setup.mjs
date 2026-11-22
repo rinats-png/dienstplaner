@@ -70,7 +70,8 @@ export default async function globalSetup(config) {
     /* WP-48-GB (Akzeptanz „Suite ohne workers: 1“): JE ARBEITER EIN EIGENER RAUM mit eigenem Demo-Bestand, eigenen
        Zugängen und eigenem Betreiber. Alle Rollen eines Raums schreiben in DENSELBEN Bestand (eine Datei je Raum, ein
        ETag); schließt ein Arbeiter eine Tour oder plant er, während ein zweiter im selben Raum eine Seite offen hat, ist
-       das ein echter, zu Recht gemeldeter Konflikt („Gleichzeitig bearbeitet“). Getrennte Räume trennen die Arbeiter
+       das ein technisch korrekter 409 („Gleichzeitig bearbeitet“; dass schon Tour-Schließen kollidiert, ist der offene
+       Produktbefund WP-48-GB-T, ENTSCHEIDUNGSLISTE P2-32). Getrennte Räume trennen die Arbeiter
        vollständig; innerhalb eines Arbeiters laufen die Tests nacheinander wie bisher. Raum 0 heißt wie früher. Die
        Codes gehen als ${ZUGAENGE_VAR}_<k> bzw. ${BETREIBER_VAR}_<k> an die Arbeiter; umgebung.mjs wählt je Arbeiter
        (TEST_PARALLEL_INDEX) den eigenen Raum. Der Betreiber je Raum hält auch die Bremse „zugaenge“ (je Betreiberraum)

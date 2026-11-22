@@ -149,6 +149,24 @@ describe("WP-48-GB: je Arbeiter ein eigener Raum (e2e/umgebung.mjs arbeiterRaumW
     expect(arbeiterRaumWaehlen(ohne)).toBeNull();
     expect(ohne[ZUGAENGE_VAR]).toBe("R0");
   });
+  it("Import-Seiteneffekt (Review #476, Auflage 1): im Testprozess mit TEST_PARALLEL_INDEX=1 gilt nach dem Import Raum 1", async () => {
+    /* Eigener Kindprozess mit der Umgebung eines Playwright-Arbeiters: Ohne den Aufruf arbeiterRaumWaehlen() beim Import
+       blieben die ungesuffixten Variablen (global-setup.mjs: Raum 0) stehen, und alle Arbeiter schrieben still wieder in
+       denselben Raum. Geprüft über umgebung.mjs UND hilfen.mjs (zugangscode), wie die Specs sie lesen. */
+    const { spawnSync } = await import("node:child_process");
+    const { ZUGAENGE_VAR, BETREIBER_VAR, RAEUME_VAR } = await import("../e2e/umgebung.mjs");
+    const umg = new URL("../e2e/umgebung.mjs", import.meta.url).href;
+    const hil = new URL("../e2e/hilfen.mjs", import.meta.url).href;
+    const skript = `const u = await import(${JSON.stringify(umg)}); const h = await import(${JSON.stringify(hil)});
+      console.log(JSON.stringify({ z: process.env[u.ZUGAENGE_VAR], b: process.env[u.BETREIBER_VAR], planer: h.zugangscode("planer") }));`;
+    const r0 = JSON.stringify({ planer: "R0-planer" }), r1 = JSON.stringify({ planer: "R1-planer" });
+    const env = { ...process.env, TEST_PARALLEL_INDEX: "1", [RAEUME_VAR]: "2", [ZUGAENGE_VAR]: r0, [BETREIBER_VAR]: "B0",
+      [`${ZUGAENGE_VAR}_0`]: r0, [`${BETREIBER_VAR}_0`]: "B0", [`${ZUGAENGE_VAR}_1`]: r1, [`${BETREIBER_VAR}_1`]: "B1" };
+    const lauf = spawnSync(process.execPath, ["--input-type=module", "-e", skript], { env, encoding: "utf8", timeout: 50000 });
+    expect(lauf.status, lauf.stderr).toBe(0);
+    const aus = JSON.parse(lauf.stdout.trim().split(/\r?\n/).pop());
+    expect(aus).toEqual({ z: r1, b: "B1", planer: "R1-planer" });
+  });
   it("Konfiguration ohne workers: 1; Aufbau legt je Arbeiter einen Raum an und reicht die Codes je Index", async () => {
     const lies = (p) => readFileSync(new URL(p, import.meta.url), "utf8");
     const konf = lies("../playwright.config.mjs");

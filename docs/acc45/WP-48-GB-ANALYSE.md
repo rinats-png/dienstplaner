@@ -273,7 +273,12 @@ Schreibkonflikt im gemeinsamen Demo-Raum `e2e-wp33`:
 - Personen gehören zum Kern des Bestands; der Server prüft den ETag (`server/funktionen/daten.mjs:1975-1990`,
   `bestandSchreiben(… erwarteterStand: etag)`, 409 „Jemand anderes hat inzwischen die Stammdaten geändert.“).
 - Ein zweiter Arbeiter mit offener Seite im selben Raum schreibt danach mit veraltetem ETag → 409 → Dialog
-  „Gleichzeitig bearbeitet“ (`src/ansichten/speicherlage.jsx:289`). Das ist zu Recht gemeldet, kein Fehler des Öffnens.
+  „Gleichzeitig bearbeitet“ (`src/ansichten/speicherlage.jsx:289`). Technisch korrekt gemeldet und kein Fehler des Öffnens
+  oder dieses PR — aber Folge eines **offenen Produktbefunds WP-48-GB-T** (Review #476): Der Tour-/UI-Zustand der Person
+  liegt im Kern-Segment. Zwei Sitzungen vom selben ETag: A schließt die Tour, danach schließt B die Tour oder ändert
+  Stammdaten → B sieht den Dialog, obwohl die Änderungen fachlich disjunkt sind (Teilweg `CENTRIC_TEILSPEICHERUNG` aus).
+  Im Pilot möglich, bis der Tourzustand aus dem Kern gelöst oder der Teilweg (WP-48.5) eingeschaltet ist. Entscheidung
+  offen: `ENTSCHEIDUNGSLISTE.md` P2-32 (Vorschlag: Tourzustand aus dem Kern lösen).
 
 **Reproduktion (rot vorher).** Acht Specs (`v4-3b-plan/zeit/personal/lage/einstellungen-form`, `barrierefreiheit`,
 `a11y-1-arbeitstag`, `teilkonflikt`), `--project=390x844 --workers=2`, gemeinsamer Raum: 1 fehlgeschlagen
@@ -296,5 +301,22 @@ Schreibkonflikt im gemeinsamen Demo-Raum `e2e-wp33`:
 **Konfliktmeldung unverändert.** Kein Eingriff in `daten.mjs`, `speicher.js`, `speicherlage.jsx`, `App.jsx`; die
 Gegenproben D/D2 (`wp48-gb-oeffnen`) und M4 (`wp48-gb-lesen`) sowie `e2e/teilkonflikt.spec.mjs` bleiben grün.
 
-**Läufe und Mutanten:** siehe PR (lokal zwei Läufe `--project=390x844`, zwei Arbeiter; volle Suite in der CI,
-`browser-abnahme`).
+**Läufe:** rot vorher (gemeinsamer Raum, 8 Specs, zwei Arbeiter): 1 fehlgeschlagen (`barrierefreiheit ›
+einstellungen-leitung`, Dialog), 13 bestanden. Grün nachher, je Arbeiter ein Raum: Lauf 1 (dieselben 8 Specs) 14
+bestanden, 1 übersprungen; Lauf 2 (+ `abnahme-b-ablaeufe`) 25 bestanden, 1 übersprungen. Volle Suite: CI
+`browser-abnahme`.
+
+**Mutanten:**
+- Öffnen schreibt wieder (`src/app/oeffnen.js` `schreibAbbild` ohne Abbildvergleich) → `wp48-gb-oeffnen` B und C rot.
+- ETag-Prüfung entfernt (`daten.mjs` `erwarteterStand: null`) → 8 Tests rot (A, A2, C, D, D2, M1, M2, M4).
+- Raumwahl im Rumpf ausgeschaltet (`arbeiterRaumWaehlen` setzt nichts) → Vertragstest „wählt die Codes …“ rot.
+- Aufruf `arbeiterRaumWaehlen();` beim Import gelöscht → erst seit dem Nachtrag Review #476 rot (Test
+  „Import-Seiteneffekt“: Kindprozess mit `TEST_PARALLEL_INDEX=1`, Import von `umgebung.mjs` und `hilfen.mjs`, Raum 1 muss
+  gelten). Vorher überlebte dieser Mutant.
+
+**Reichweite und Hinweise (Review #476):**
+- `e2e/oeffnen-parallel.spec.mjs` (§8): Welche Specs vorher im selben Raum liefen, hängt jetzt von der Verteilung auf die
+  Arbeiter ab. Der Zweig von P1 („Urlaubshinweis schon verschickt“ oder „frisch“) ist im Suite-Lauf nicht mehr
+  deterministisch; die Spec erlaubt beide. Die Aussage zum Mutanten Tour-Selbststart (frische Zugänge) bleibt gültig.
+- `.github/workflows/staging-gate.yml` ruft `npm run e2e` gegen einen fremden Container auf; `global-setup.mjs` legt dort
+  jetzt zwei Räume an (zwei Betreiber über `/einrichten`). Dieser Weg ist in diesem PR nicht gelaufen.
