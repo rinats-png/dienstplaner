@@ -85,6 +85,11 @@ export function geraeteStil() {
 .scrollbereich:focus-visible{outline:2px solid ${C.accent}; outline-offset:-2px; border-radius:4px;}
 .scrollhinweis{display:none; font-size:12.5px; line-height:1.4; color:${C.dim}; padding:6px 14px 8px; border-top:1px solid ${C.lineSoft};}
 
+/* WP-40 (WCAG 1.4.10 Reflow, gemessen bei 320 px): Die Seitenueberschrift (h1.titel, 38 px) ragte bei langen Woertern
+   ("Belastungsverteilung", 336 px Text in 310 px Platz) ueber den Rand und schob die ganze Seite 26 px nach rechts. Ein zu
+   langes Wort bricht jetzt (mit Trennung, wo das Gebietsschema de sie kennt) statt zu ueberstehen; kurze Woerter bleiben unveraendert. */
+h1.titel{overflow-wrap:break-word; hyphens:auto;}
+
 /* WP-21: Seitenleiste auf Telefon und Tablet.
    Zugeklappt ist sie nicht nur aus dem Bild geschoben, sondern auch aus Tastaturreihenfolge und Vorlesesoftware genommen
    (sonst landet der Fokus in unsichtbaren Eintraegen). Offen steht dahinter eine Abdunkelung, die beim Antippen schliesst;

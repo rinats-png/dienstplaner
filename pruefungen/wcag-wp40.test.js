@@ -267,3 +267,18 @@ describe("Verdrahtung des Browser-Skripts", () => {
     expect(ci).toContain("pruefung:wcag-wp40");
   });
 });
+
+describe("WP-40 1.4.10 bei 320 px: Überschrift bricht zu lange Wörter, Browser-Spec liegt in der Suite", () => {
+  it("geraeteStil bricht h1.titel (Belastungsverteilung: 336 px Text in 310 px Platz)", async () => {
+    const { geraeteStil } = await import("../src/ui/geraete.js");
+    expect(geraeteStil()).toMatch(/h1\.titel\{[^}]*overflow-wrap:break-word/);
+  });
+  it("e2e/wcag-320.spec.mjs misst Reflow aller Leitungsansichten und Tab-Stopps der geschlossenen Schublade bei 320 px", () => {
+    const spec = LIES("e2e/wcag-320.spec.mjs");
+    expect(spec).toContain("const BREITE = 320");
+    expect(spec).toContain("1.4.10");
+    expect(spec).toContain("2.4.11");
+    expect(spec).toMatch(/dok\.scrollWidth - vw/);
+    expect(spec).toContain('closest(".seitenleiste")');
+  });
+});
