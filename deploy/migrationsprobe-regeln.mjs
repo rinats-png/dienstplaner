@@ -3,11 +3,22 @@
    verglich den echten Pfad mit dem getippten und lief über einen Link stumm mit Exit 0). */
 import fs from "node:fs"; import path from "node:path";
 
-/** Echter Pfad: existierender Anfang über realpath (Links aufgelöst), Rest unverändert angehängt. */
+/** Echter Pfad: existierender Anfang über realpath (Links aufgelöst), Rest unverändert angehängt.
+    Delta-Review #471 H1: Existiert ein Teil des Rests doch (lstat), konnte realpath ihn nicht auflösen — ein toter
+    Link (Ziel fehlt) oder eine Schleife. Sein Ziel ist unbekannt, also null (fail-closed). */
 function echterPfad(abs) {
   let kopf = abs; const rest = [];
   for (;;) {
-    try { return path.join(fs.realpathSync.native(kopf), ...rest); } catch { /* weiter nach oben */ }
+    let echt = null;
+    try { echt = fs.realpathSync.native(kopf); } catch { /* weiter nach oben */ }
+    if (echt !== null) {
+      let p = echt;
+      for (const teil of rest) {
+        p = path.join(p, teil);
+        if (fs.lstatSync(p, { throwIfNoEntry: false })) return null;
+      }
+      return path.join(echt, ...rest);
+    }
     const oben = path.dirname(kopf);
     if (oben === kopf) return null;
     rest.unshift(path.basename(kopf)); kopf = oben;
@@ -16,15 +27,23 @@ function echterPfad(abs) {
 
 /** Isolation (Review #471 A1, fail-closed): Ablage liegt segmentgenau unter …/scratchpad/daten-mig[-…]/…
     - keine `..`-Segmente in der Angabe, kein UNC-/Netzpfad (\\srv\… bzw. //srv/…), kein CENTRIC_BASIS;
-    - geprüft wird das echte Ziel (realpath des existierenden Teils), nicht nur die Schreibweise. */
-export function isolationGeprueft(daten, env = process.env) {
+    - geprüft wird das echte Ziel (realpath des existierenden Teils), nicht nur die Schreibweise;
+    - Delta-Review #471 A1: Trenner je Plattform. Unter Windows (`sep` = „\“) gelten „\“ und „/“. Unter POSIX
+      (`sep` = „/“) ist „\“ ein gewöhnliches Zeichen im Namen; eine Angabe mit „\“ wird dort abgewiesen
+      (`C:\…\scratchpad\daten-mig` wäre unter Linux EIN Ordnername im aktuellen Verzeichnis).
+    `sep` nur für Tests; Vorgabe ist die echte Plattform. */
+export function isolationGeprueft(daten, env = process.env, sep = path.sep) {
   if (typeof daten !== "string" || !daten.trim() || env.CENTRIC_BASIS) return false;
-  if (/^[\\/]{2}/.test(daten)) return false;
-  const roh = daten.split(/[\\/]+/);
+  const posix = sep === "/";
+  if (posix && daten.includes("\\")) return false;
+  const trenner = posix ? /\/+/ : /[\\/]+/;
+  const unc = posix ? /^\/\// : /^[\\/]{2}/;
+  if (unc.test(daten)) return false;
+  const roh = daten.split(trenner);
   if (roh.includes("..")) return false;
   const echt = echterPfad(path.resolve(daten));
-  if (!echt || /^[\\/]{2}/.test(echt)) return false;
-  const seg = echt.split(/[\\/]+/);
+  if (!echt || unc.test(echt)) return false;
+  const seg = echt.split(trenner);
   for (let i = 0; i + 1 < seg.length; i++) {
     if (seg[i] === "scratchpad" && /^daten-mig(-[A-Za-z0-9._]+)*$/.test(seg[i + 1])) return true;
   }
@@ -48,6 +67,35 @@ export function schreibErgebnis(status, gleich) {
   if (status === 409) return { bestanden: false, text: `PUT ${status}: nicht geschrieben (Kandidat lehnt ab)` };
   if (status !== 200) return { bestanden: false, text: `PUT ${status}: Schreiben fehlgeschlagen` };
   return { bestanden: !!gleich, text: `PUT ${status}: geschrieben, Inhalt ${gleich ? "gleich" : "UNGLEICH"}` };
+}
+
+/** Frist je HTTP-Aufruf in ms (Delta-Review #471 H6): CENTRIC_PROBE_FRIST_MS, ganze Zahl 1…600000; sonst 30000. */
+export function fristAus(env = process.env) {
+  const s = String(env.CENTRIC_PROBE_FRIST_MS ?? "");
+  const n = /^\d{1,6}$/.test(s) ? Number(s) : 0;
+  return n >= 1 && n <= 600000 ? n : 30000;
+}
+
+/** Port des Kandidaten auf 127.0.0.1 (der Rechner bleibt fest): CENTRIC_PROBE_PORT, 1…65535; sonst 3012. */
+export function portAus(env = process.env) {
+  const s = String(env.CENTRIC_PROBE_PORT ?? "");
+  const n = /^\d{1,5}$/.test(s) ? Number(s) : 0;
+  return n >= 1 && n <= 65535 ? n : 3012;
+}
+
+/** HTTP mit Frist (Delta-Review #471 H6): die Frist umfasst Antwortkopf UND Rumpf. Bei Ablauf wirft der Aufruf
+    „Zeitüberschreitung nach … ms: METHODE /pfad“; die Probe wertet das als FEHLGESCHLAGEN, statt zu hängen.
+    @returns {Promise<{s: number, x: string}>} */
+export async function holenMitFrist(url, init = {}, ms = 30000) {
+  const was = `${init.method || "GET"} ${new URL(url).pathname}`;
+  try {
+    const a = await fetch(url, { ...init, signal: AbortSignal.timeout(ms) });
+    return { s: a.status, x: await a.text() };
+  } catch (e) {
+    const name = e && /** @type {any} */ (e).name;
+    if (name === "TimeoutError" || name === "AbortError") throw new Error(`Zeitüberschreitung nach ${ms} ms: ${was}`);
+    throw new Error(`Verbindung fehlgeschlagen: ${was} (${String(e && /** @type {any} */ (e).cause?.code || e)})`);
+  }
 }
 
 /** Exit-Code: 0 nur, wenn mindestens eine Prüfung lief und alle bestanden; sonst 1 (keine Räume = nichts belegt). */
