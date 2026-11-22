@@ -3545,7 +3545,7 @@ export function lohnausgabeText(m, ym) {
   return [
     `Lohnausgabe ${m.name}`,
     `Abrechnungsmonat: ${MON[Number(monat) - 1]} ${jahr}`,
-    `Erstellt: ${new Date().toLocaleString("de-DE")}`,
+    `Erstellt: ${new Date().toLocaleString("de-DE", { timeZone: "Europe/Berlin" })}`,
     ...(st ? [`Abschluss: Revision ${st.revision} · Prüfsumme ${st.abdruck} · Zeilen-Prüfsumme ${st.zeilen}`]
       : ["Monat nicht abgeschlossen — vorläufige Ausgabe, nicht als Lohnexport bestätigbar."]),
     "",

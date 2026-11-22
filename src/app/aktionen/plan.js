@@ -59,7 +59,7 @@ export function aktionenPlan(k) {
         if (vorher !== nachher) {
           const vl = vorlauf(d);
           next = { ...next, aenderungen: [{ id: uid("c"), personId: pid, datum: d, von: vorher || "-",
-            nach: nachher || "-", zeit: new Date().toLocaleString("de-DE"), regelstand: REGELSTAND.version, vorlauf: vl }, ...(next.aenderungen || [])].slice(0, 800) };
+            nach: nachher || "-", zeit: new Date().toLocaleString("de-DE", { timeZone: "Europe/Berlin" }), regelstand: REGELSTAND.version, vorlauf: vl }, ...(next.aenderungen || [])].slice(0, 800) };
           if (istFreigegeben(m, d.slice(0, 7))) {
             const nam = (x) => x === "-" || !x ? "frei" : (m.dienstarten.find((y) => y.id === x) || {}).name || x;
             next = { ...next, nachrichten: [baueMitteilung(next, pid, "planGeaendert", `Dienst am ${fKurz(d)} geändert`,
@@ -147,9 +147,9 @@ export function aktionenPlan(k) {
         if (nachrAbw.length) m = { ...m, nachrichten: [...nachrAbw, ...(m.nachrichten || [])].slice(0, 400) };
         return { ...m,
           abweichungen: { ...m.abweichungen, [`${pid}|${d}`]: dienstId },
-          einspruenge: [{ id: uid("s"), personId: pid, datum: d, dienstId, zeit: new Date().toLocaleString("de-DE") }, ...(m.einspruenge || [])].slice(0, 500),
+          einspruenge: [{ id: uid("s"), personId: pid, datum: d, dienstId, zeit: new Date().toLocaleString("de-DE", { timeZone: "Europe/Berlin" }) }, ...(m.einspruenge || [])].slice(0, 500),
           aenderungen: [{ id: uid("c"), personId: pid, datum: d, von: "-", nach: dienstId,
-            zeit: new Date().toLocaleString("de-DE"), regelstand: REGELSTAND.version, vorlauf: vorlauf(d) }, ...(m.aenderungen || [])].slice(0, 800),
+            zeit: new Date().toLocaleString("de-DE", { timeZone: "Europe/Berlin" }), regelstand: REGELSTAND.version, vorlauf: vorlauf(d) }, ...(m.aenderungen || [])].slice(0, 800),
           nachrichten: [baueMitteilung(m, pid, "planGeaendert", `Zusätzlicher Dienst am ${fKurz(d)}`,
             `${da ? da.name : dienstId} · ${da ? `${da.start}–${da.ende}` : ""} · als Ersatz eingeteilt`, "meine", d), ...(m.nachrichten || [])].slice(0, 400) };
       }, "Ersatz eingeteilt"),
@@ -164,7 +164,7 @@ export function aktionenPlan(k) {
               : `Stand ${stand} — der Plan wurde nach Änderungen erneut freigegeben.`,
             "meine")).filter(Boolean);
         melde(`Plan freigegeben · Stand ${stand}.`);
-        return { ...m, freigaben: { ...(m.freigaben || {}), [ym2]: { stand, zeit: new Date().toLocaleString("de-DE"), durch: wer } },
+        return { ...m, freigaben: { ...(m.freigaben || {}), [ym2]: { stand, zeit: new Date().toLocaleString("de-DE", { timeZone: "Europe/Berlin" }), durch: wer } },
           planstaende: { ...(m.planstaende || {}), [ym2]: planAbbild(m, ym2) },
           nachrichten: [...nachr, ...(m.nachrichten || [])].slice(0, 400) };
       }, "Plan freigegeben"),
@@ -439,7 +439,7 @@ export function aktionenPlan(k) {
         if (ja) {
           next = { ...next, abweichungen: { ...next.abweichungen, [`${a.personId}|${a.von}`]: a.dienstId },
             einspruenge: [{ id: uid("s"), personId: a.personId, datum: a.von, dienstId: a.dienstId,
-              zeit: new Date().toLocaleString("de-DE") }, ...(next.einspruenge || [])] };
+              zeit: new Date().toLocaleString("de-DE", { timeZone: "Europe/Berlin" }) }, ...(next.einspruenge || [])] };
           // Übrige Anfragen für dieselbe Lücke verfallen
           next = { ...next, anfragen: next.anfragen.map((x) => (x.typ === "einsatz" && x.von === a.von
             && x.dienstId === a.dienstId && x.id !== id && x.status === "offen") ? { ...x, status: "abgelehnt", antwort: "anderweitig besetzt" } : x) };
@@ -450,7 +450,7 @@ export function aktionenPlan(k) {
       entscheideAntrag: (id, ja, text) => mUpd((m) => {
         const a = m.anfragen.find((x) => x.id === id); if (!a) return m;
         const wer = `${sitz.person.vorname} ${sitz.person.nachname}`;
-        const jetzt = new Date().toLocaleString("de-DE");
+        const jetzt = new Date().toLocaleString("de-DE", { timeZone: "Europe/Berlin" });
         // Mehrstufige Genehmigung: erst wenn alle Stufen erteilt sind, gilt der
         // Antrag als genehmigt. Eine Ablehnung beendet den Vorgang sofort.
         if (ja) {

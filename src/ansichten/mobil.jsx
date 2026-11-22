@@ -726,7 +726,7 @@ export function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge, startTab, 
                           <span style={{ display: "block", fontSize: 12.5, color: C.dim,
                             marginTop: 4 }}>
                             {new Date(z.zeit).toLocaleTimeString("de-DE",
-                              { hour: "2-digit", minute: "2-digit" })} Uhr
+                              { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" })} Uhr
                             {z.nachtraeglich ? " · nachgetragen" : ""}</span>)}
                         {!z.pflicht && !z.erledigt && (
                           <span style={{ display: "block", fontSize: 12.5, color: C.dimmer,

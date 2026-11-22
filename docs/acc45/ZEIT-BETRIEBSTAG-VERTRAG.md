@@ -4,7 +4,7 @@
 **Stand des Codes:** `origin/integration/release-v4` @ `c8be9e25` (Merge PR #294). Alle Fundstellen `Datei:Zeile` beziehen sich auf diesen Stand.
 **Auslöser:** Betreiberentscheidung 2026-11-14 (verbindlich) und Befund P2: `src/stempelvorgang.js:120-137` wählt den Stempeltag nach dem Gerätedatum, der Server stempelt auf den Berliner Tag. E2E B7 schlug auf CI (UTC, 00:02 Berlin) fehl; PR #294 hat das nur testseitig behoben (`e2e/abnahme-b-ablaeufe.spec.mjs:118-123`, `:335-340`: `timezoneId: "Europe/Berlin"`).
 **Ergänzung 2026-11-14 (Betreiber, verbindlich):** drei Zeitbegriffe streng getrennt (§ 1), Entscheidung Datensatz-Schnappschuss vs. versionierter Verlauf (§ 5), Regel gegen rückwirkende Zonenwechsel (§ 5.4), zusätzliche Regressionstests (§ 9).
-**Umsetzungsstand:** ZEIT-E Teil **E6/Z47 umgesetzt** (Branch `feature/wp-zeit-e`, § 10.1) — Zuschläge in den Umstellungsnächten, `RECHEN_STAND` 3, nur offene Monate. Übrige ZEIT-E-Punkte (ICS-Zone, Z56, Z57, Auskunftserläuterung) offen.
+**Umsetzungsstand:** ZEIT-E Teil **E6/Z47 umgesetzt** (Branch `feature/wp-zeit-e`, § 10.1) — Zuschläge in den Umstellungsnächten, `RECHEN_STAND` 3, nur offene Monate. Übrige ZEIT-E-Punkte: ICS-Zone und Auskunftserläuterung offen; Z56 und Z57 mit WP-ZEIT C/E-Rest umgesetzt (2026-11-22, § 13.2).
 
 Kennzeichnung: **[V]** im Code verifiziert, **[A]** Annahme / nicht im Code verifizierbar (z. B. Laufzeitumgebung), **[E]** Entscheidung des Betreibers nötig (§ 11).
 
@@ -472,13 +472,24 @@ Die Entscheidungen ersetzen die Empfehlungen aus § 11 dort, wo sie abweichen.
 |---|---|
 | **T1 = ZEIT-A (Kern) + ZEIT-C (Kern)** | `server/lib/betriebszeit.mjs` (`betriebstag`, `wanduhr`, `montagDerWoche`, Positivliste `zoneErlaubt`, fail-closed); `heuteBerlin` als Alias; `heute()` der Planrechnung = Berliner Kalendertag in Browser und Server (Z02, mit Z04–Z06, Z14–Z16, Z56); `stempelVorgang` ohne Gerätetag (Z01); Modulansicht (Z18); `ankerMontag` (P3). Tests `pruefungen/betriebstag.test.js` (DST 2026-03-29/2026-10-25, Mitternacht, Nachtdienste, Prozesszonen UTC/Los Angeles/Auckland/Kiritimati). Keine Datenwirkung, keine Migration. |
 | ZEIT-A Rest | `zeitpunktAusWanduhr` (Frühjahrslücke, Z22), `zoneZum` (mit ZEIT-B), `uhrzeitBerlin`/`berlinZeitpunkt`/`laufenderTag` als Aliase. |
-| ZEIT-C Rest | Anzeigen ohne Zone (Z13, Z16 `wann`, Z17 Protokolltexte), Z19 `src/pruefung.jsx` (Selbsttest), `seit` in `leerbetrieb.mjs` (UTC-Datum), Hinweise `monotonMs`/`letzterKontaktAm` erfassen, Playwright-Zonenprojekte (T-E2E-TZ). |
+| ZEIT-C Rest | Teilweise erledigt mit WP-ZEIT C/E-Rest (2026-11-22, § 13.2): Anzeigen Z13, Z16 `wann`, Z17 Protokolltexte (Aktionsdateien) und `seit` in `leerbetrieb.mjs`. Offen: Z17 in `src/App.jsx` (Konfliktzone), Z19 `src/pruefung.jsx` (Selbsttest, byte-genau festgelegt), Hinweise `monotonMs`/`letzterKontaktAm` erfassen, Playwright-Zonenprojekte (T-E2E-TZ). |
 | ZEIT-B | offen — Zeitmodell 2, `eingegangenAm` immer, Zonenverlauf (E2), Schalter `CENTRIC_ZEITMODELL`, Rücksprungsperre. |
 | ZEIT-D | offen — Plausibilitätsgründe (E3–E5, E8), Informationstexte Beschäftigte/Betriebsrat (E5). |
-| ZEIT-E | offen — **Z47 Zuschläge Zeitumstellung (E6, release-relevant)**, ICS-Zone, Z57 Protokollzeiten; Z56 ist mit T1 erledigt. |
+| ZEIT-E | **Z47 Zuschläge Zeitumstellung (E6) umgesetzt** (PR #303, `RECHEN_STAND` 3, § 10.1). Z57 Protokollzeiten und die Reste von Z56 (UTC-Tage in `rechte.mjs`, `bestaetigungen.mjs`, `provisionierung.mjs`, `leerbetrieb.mjs`) mit WP-ZEIT C/E-Rest (§ 13.2). Offen: ICS-Zone, Auskunftserläuterung. Z56 war mit T1 nicht ganz erledigt: `provisionierung.mjs` und die Schreibwege der Schichtverantwortung rechneten weiter mit dem UTC-Tag. |
 | ZEIT-F / ZEIT-G | offen — Restmatrix § 9, Reviews. |
 
 ### Hinweise aus dem Review von T1 (2026-11-14)
 
 - **Intl-Voraussetzung:** `heute()` (`betriebszeit.mjs`) braucht `Intl.DateTimeFormat` mit Zeitzonenunterstützung. Fehlt sie, wirft die Funktion einen Fehler; es gibt bewusst **keinen** Rückfall auf das Gerätedatum, weil der stille Rückfall genau den Fehler wieder einführen würde, den T1 behebt. Jeder unterstützte Browser (seit 2017) und die Server-Laufzeit erfüllen das. Vor einer Erweiterung des Browserumfangs ist das zu prüfen.
 - **Leistung:** `heute()` rechnet bei jedem Aufruf `formatToParts` (der Formatierer ist gecacht). In heißen Schleifen (`plan.mjs` ~255/258) ist das nicht gemessen; bei Auffälligkeiten den Tageswert je Render einmal berechnen und weiterreichen.
+
+### 13.2 Stand WP-ZEIT C/E-Rest (2026-11-22)
+
+Umfang: Betriebstag (Europe/Berlin, E1/E7/E8) statt UTC-Tag oder Prozesszone in der Server-Fachlogik und in gespeicherten Zeittexten. Keine Änderung an Stempeln, `istAbdruck`, Freeze, Monatsabschluss und Zeitmodell. Nachweis: `pruefungen/zeit-c-e-rest-betriebstag.test.js` (Uhren 2026-03-29, 2026-10-25, 2026-11-22 jeweils 00:30 Berlin; Prozesszonen UTC, Pacific/Kiritimati, America/Los_Angeles).
+
+- **P2 (rechtenah):** `eigeneEinheit`, `imEigenenBereich` und `einheitZusammen` (`rechte.mjs`) nehmen `heuteBerlin()`. Vorher galt beim Schreiben in der Stunde nach Mitternacht der Bereich von D−1, beim Lesen (`schichtSichtKontext`) der von D.
+- **P3 UTC-Tage:** `leitungsperson` (`eintritt`, `zugehoerigkeit.ab`), `baueLeerenBetrieb` (`seit`), Notruf ohne Datum, Austritt-Filter (`leitungFuerBestaetigung`, `schutzKonfliktMitteilungen`), Tagesbremse der Bestätigungen (Tag der gespeicherten `zeit` jetzt als Berliner Kalendertag).
+- **Z57:** Alle gespeicherten oder angezeigten Zeittexte mit `toLocaleString("de-DE")` oder `toLocaleTimeString("de-DE")` in den Server-Modulen und in den Aktionsdateien der Oberfläche (`stempelpuffer`, `korrekturen`, `notrufe`, `einladungen`, `mobil`, `speicherlage`, `src/app/aktionen/*`, `aushang`, `zustellung`, Lohnausgabe-Kopf) nennen `timeZone: "Europe/Berlin"`. Das Textformat bleibt gleich. Alte gespeicherte Texte bleiben unverändert (keine Migration).
+- **„gestern“:** `daten.mjs` (Offline-Ende klemmen) bildet den Vortag als `tagePlus(heuteBerlin(jetzt0), -1)`.
+- **Kein Fehler, nicht geändert:** `rechte.mjs` Zeile `istTag` (Formprüfung, kein „heute“).
+- **Offen:** Z17 in `src/App.jsx` (Konfliktzone, nicht angefasst); `src/pruefung.jsx` und Beispieldaten in `src/lib/fachlogik.js` (Spiegel zu `pruefung.jsx`, Erstellungszeit der Demo-Anträge); Zone des Containers (`TZ`) ist ein eigener Betriebspunkt und bleibt unverändert.

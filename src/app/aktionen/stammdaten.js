@@ -112,14 +112,14 @@ export function aktionenStammdaten(k) {
         return { ...org.mandant, personen: [...m.personen, ...neue] };
       }, "Personal importiert"),
       dienstbuchEintrag: (datum, art, text, einheitId = null) => mUpd((m) => ({ ...m, dienstbuch: [
-        { id: uid("db"), datum, art, text, zeit: new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }),
+        { id: uid("db"), datum, art, text, zeit: new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" }),
           durch: `${sitz.person.vorname} ${sitz.person.nachname}`, vonId: sitz.person.id,
           einheitId: waehltEinheit(sitz) ? einheitId : eigeneEinheitVon(sitz) }, ...(m.dienstbuch || [])] }), "Dienstbucheintrag"),
 
       melden: melde,
       /* --- Schichtübergabe --- */
       uebergabeSpeichern: (datum, dienstId, f, einheitWahl = null) => mUpd((m) => {
-        const jetzt = new Date().toLocaleString("de-DE");
+        const jetzt = new Date().toLocaleString("de-DE", { timeZone: "Europe/Berlin" });
         const einheitId = waehltEinheit(sitz) ? einheitWahl : eigeneEinheitVon(sitz);
         if (uebergabeAm(m, datum, dienstId, einheitId)) { melde("Für diese Schicht und Einheit gibt es schon eine Übergabe."); return m; }
         const b = besetzung(m, datum)[dienstId];
@@ -136,7 +136,7 @@ export function aktionenStammdaten(k) {
         uebergaben: uebergabenVon(m).map((u) => u === uebergabeAm(m, datum, dienstId,
           waehltEinheit(sitz) ? einheitWahl : eigeneEinheitVon(sitz))
           ? { ...u, ergaenzungen: [...(u.ergaenzungen || []),
-              { zeit: new Date().toLocaleString("de-DE"),
+              { zeit: new Date().toLocaleString("de-DE", { timeZone: "Europe/Berlin" }),
                 von: `${sitz.person.vorname} ${sitz.person.nachname}`, text }] }
           : u) }), "Ergänzung angehängt"),
 

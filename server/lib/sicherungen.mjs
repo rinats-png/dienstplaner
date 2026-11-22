@@ -209,7 +209,7 @@ export function betriebWiederherstellen(jetzt, sicherung, sitzung,
     return rein;
   });
 
-  const eintrag = { id: `w-${marke || "?"}`, zeit: heute.toLocaleString("de-DE"),
+  const eintrag = { id: `w-${marke || "?"}`, zeit: heute.toLocaleString("de-DE", { timeZone: "Europe/Berlin" }),
     text: `Betrieb aus der Sicherung ${marke || "?"} wiederhergestellt` };
   const zurueck = { ...aus, id: alt.id, personen,
     protokoll: [eintrag, ...(Array.isArray(alt.protokoll) ? alt.protokoll : [])],

@@ -36,7 +36,7 @@ export function Notrufe({ sitz, akt }) {
             {n.notiz && <div style={{ fontSize: 13.5, color: C.dim, marginTop: 6,
               lineHeight: 1.5 }}>{n.notiz}</div>}
             <div style={{ fontSize: 12.5, color: C.dim, marginTop: 7, ...NUM }}>
-              {new Date(n.zeit).toLocaleString("de-DE")}
+              {new Date(n.zeit).toLocaleString("de-DE", { timeZone: "Europe/Berlin" })}
               {istOffen ? ` · vor ${alter < 60 ? `${alter} Min` : `${Math.round(alter / 60)} Std`}` : ""}
               {n.bestaetigt ? ` · bestätigt von ${n.durch || "unbekannt"}` : ""}</div>
           </div>

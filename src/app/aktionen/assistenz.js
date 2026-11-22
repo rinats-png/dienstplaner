@@ -26,13 +26,13 @@ export function aktionenAssistenz(k) {
       oeffneWizard: () => setWizard(true),
       anfrageVermerken: (d, dienstId, weg) => mUpd((m) => ({ ...m,
         aenderungen: [{ id: uid("c"), personId: null, datum: d, von: "-", nach: `Anfrage ${weg}`,
-          zeit: new Date().toLocaleString("de-DE"), regelstand: REGELSTAND.version, vorlauf: vorlauf(d) }, ...(m.aenderungen || [])].slice(0, 800) }),
+          zeit: new Date().toLocaleString("de-DE", { timeZone: "Europe/Berlin" }), regelstand: REGELSTAND.version, vorlauf: vorlauf(d) }, ...(m.aenderungen || [])].slice(0, 800) }),
         `Dienstanfrage für ${fKurz(d)} versandt`),
 
       /* --- Tauschbörse --- */
       tauschMelden: (id) => mUpd((m) => {
         const a = m.anfragen.find((x) => x.id === id); if (!a) return m;
-        const jetzt = new Date().toLocaleString("de-DE");
+        const jetzt = new Date().toLocaleString("de-DE", { timeZone: "Europe/Berlin" });
         melde("Meldung eingegangen. Die Planung entscheidet.");
         /* Die Mitteilung an die Person des Gesuchs erzeugt der Server (Commit 4). */
         return { ...m,
@@ -55,7 +55,7 @@ export function aktionenAssistenz(k) {
         const ab = { ...m.abweichungen };
         ab[`${a.personId}|${a.von}`] = t2.dienstId || "-";
         ab[`${interessentId}|${a.von}`] = t1.dienstId || "-";
-        const jetzt = new Date().toLocaleString("de-DE");
+        const jetzt = new Date().toLocaleString("de-DE", { timeZone: "Europe/Berlin" });
         const namen = (x) => { const p = m.personen.find((y) => y.id === x); return p ? `${p.vorname} ${p.nachname}` : "?"; };
         melde(`Tausch bestätigt: ${namen(a.personId)} und ${namen(interessentId)}.`);
         return { ...m, abweichungen: ab,
@@ -102,7 +102,7 @@ export function aktionenAssistenz(k) {
       oeffneAssistent: () => setAssist(true),
       uebernehmeVorschlag: (erg) => mUpd((m) => {
         const neue = Object.keys(erg.abweichungen).filter((k) => m.abweichungen[k] !== erg.abweichungen[k]);
-        const jetzt = new Date().toLocaleString("de-DE");
+        const jetzt = new Date().toLocaleString("de-DE", { timeZone: "Europe/Berlin" });
         const aend = neue.map((k) => { const [pid, d] = k.split("|");
           return { id: uid("c"), personId: pid, datum: d, von: "-", nach: erg.abweichungen[k], zeit: jetzt, vorlauf: vorlauf(d) }; });
         const nachr = istFreigegeben(m, erg.ym) ? neue.map((k) => { const [pid, d] = k.split("|");
@@ -135,7 +135,7 @@ export function aktionenAssistenz(k) {
       oeffneEskalation: (d, dienstId) => setEskal({ datum: d, dienstId }),
       einsatzanfrage: (d, dienstId, ids) => mUpd((m) => {
         const da = m.dienstarten.find((x) => x.id === dienstId);
-        const jetzt = new Date().toLocaleString("de-DE");
+        const jetzt = new Date().toLocaleString("de-DE", { timeZone: "Europe/Berlin" });
         const nachr = ids.map((pid) => baueMitteilung(m, pid, "einspringen",
           `Einsatzanfrage für ${fKurz(d)}`,
           `${da ? da.name : dienstId} · ${da ? `${da.start}–${da.ende}` : ""} — bitte in „Meine Schichten" zusagen oder absagen.`,
@@ -148,7 +148,7 @@ export function aktionenAssistenz(k) {
       dokumentiereUnterschreitung: (d, dienstId, grund) => mUpd((m) => {
         melde("Unterschreitung dokumentiert.");
         return { ...m, unterschreitungen: [{ id: uid("u"), datum: d, dienstId, grund,
-          durch: `${sitz.person.vorname} ${sitz.person.nachname}`, zeit: new Date().toLocaleString("de-DE") },
+          durch: `${sitz.person.vorname} ${sitz.person.nachname}`, zeit: new Date().toLocaleString("de-DE", { timeZone: "Europe/Berlin" }) },
           ...(m.unterschreitungen || [])] };
       }, "Unterschreitung dokumentiert"),
 
@@ -179,7 +179,7 @@ export function aktionenAssistenz(k) {
       wunschEntscheiden: (id, ja) => mUpd((m) => {
         const w = m.urlaubsrunde.wuensche.find((x) => x.id === id);
         const p = m.personen.find((x) => x.id === w.personId);
-        const jetzt = new Date().toLocaleString("de-DE");
+        const jetzt = new Date().toLocaleString("de-DE", { timeZone: "Europe/Berlin" });
         let next = { ...m, urlaubsrunde: { ...m.urlaubsrunde,
           wuensche: m.urlaubsrunde.wuensche.map((x) => x.id === id ? { ...x, status: ja ? "genehmigt" : "abgelehnt" } : x),
           vorjahrZurueck: ja ? (m.urlaubsrunde.vorjahrZurueck || []).filter((x) => x !== w.personId)

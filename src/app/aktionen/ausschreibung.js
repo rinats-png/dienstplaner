@@ -81,7 +81,7 @@ export function aktionenAusschreibung(k) {
         }
         if (abw) m = { ...m, abwesenheiten: abwesenheitTagAufheben(m, personId, a.datum).abwesenheiten };
         m = bestaetigungVermerken(m, best, wer(), "ausschreibung");
-        const jetzt = new Date().toLocaleString("de-DE");
+        const jetzt = new Date().toLocaleString("de-DE", { timeZone: "Europe/Berlin" });
         const abgelehnt = (a.bewerbungen || []).filter((b) => b.personId !== personId);
         const nachr = [
           baueMitteilung(m, personId, "planGeaendert",

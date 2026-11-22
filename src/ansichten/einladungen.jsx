@@ -36,7 +36,7 @@ import { vergebbareRollen } from "../../server/lib/rollenvergabe.mjs";
 
 const personName = (p) => [p.vorname, p.nachname].filter(Boolean).join(" ").trim() || String(p.id);
 const bisText = (ms) => new Date(ms).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric",
-  hour: "2-digit", minute: "2-digit" });
+  hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" });
 
 /* ----------------------------- Link und Fragment ----------------------------- */
 
