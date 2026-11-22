@@ -62,13 +62,54 @@ Berichte und Agentenmeldungen folgen etwa zu 80 % den Grundprinzipien von ASD-ST
 
     ERGEBNIS: Was ist abgeschlossen?
     NACHWEIS: Welche Tests, Reviews und Commits belegen das?
-    PRODUKTIONSSTAND: Was ist tatsächlich veröffentlicht?
-    RISIKEN / BLOCKADEN: Was ist noch offen?
+    RELEASE-STAND: Welche Änderungen sind aufgenommen? Welcher Kandidat ist aktuell?
+    PRODUKTION: Welche Version läuft nachweislich auf dem VPS?
+    BLOCKADEN: Was ist noch offen? (Restrisiken hier nennen)
     NÄCHSTE AKTION: Was wird als Nächstes ausgeführt?
 
-Punkt 5 des Arbeitsvertrags legt den Inhalt der Implementierungsberichte fest. Der Statusbericht gibt die Gliederung für Meldungen an den Betreiber vor.
+Punkt 5 des Arbeitsvertrags legt den Inhalt der Implementierungsberichte fest. Der Statusbericht gibt die Gliederung für Meldungen an den Betreiber vor (seit Masterauftrag 2026-11-22 mit PRODUKTION und BLOCKADEN statt PRODUKTIONSSTAND und RISIKEN / BLOCKADEN; siehe „Dauerbetrieb und Release-Fluss“).
 
 Dieser Abschnitt ändert keine Regel zu Autonomie, Modellrouting, Parallelisierung, Reviews, CI, Sicherheit oder Freigabegrenzen.
+
+## Dauerbetrieb und Release-Fluss (Masterauftrag 2026-11-22)
+
+Gilt zusätzlich zu den Abschnitten oben. Bei Widerspruch gelten die strengeren Sicherheits- und Freigaberegeln; bestehende Betreiberentscheidungen bleiben gültig.
+
+**Weiterarbeit.** Nach jedem Abschluss: Nachweise sichern, SSOT aktualisieren, Reviews, CI und Integration prüfen, dann sofort das nächste freigegebene, ausführbare Paket beginnen. „Als Nächstes …“ ersetzt keine Ausführung. Eine Sitzung endet nur mit dokumentiertem nächsten Schritt. Dauerbetrieb ist erst zugesagt, wenn der externe Dauerlauf-Koordinator aktiviert und nachgewiesen ist (siehe „Grenze“ oben). Kein bisher nicht freigegebener Dauer-Trigger wird eigenmächtig eingerichtet.
+
+**Entscheidungen.** Technische Entscheidungen innerhalb von Architektur, Betreiberfreigaben und Sicherheitsvorgaben trifft der Agent selbst. Rückfragen nur bei wesentlichen Betreiberentscheidungen:
+- produktive personenbezogene Daten (irreversible Änderung oder Löschung);
+- produktive Migration ohne vollständig nachgewiesene Rückwärtskompatibilität;
+- Authentifizierung, wirksame Berechtigungen, Erweiterung privilegierter Zugriffe;
+- rechtliche, datenschutzrechtliche oder geschäftliche Grundsatzfragen;
+- zusätzliche laufende Kosten oder neue kostenpflichtige Dienste;
+- dauerhafte Änderung produktiver Infrastruktur mit erheblichem Betriebsrisiko;
+- Änderung ausdrücklicher Betreiberentscheidungen;
+- Produktionsdeployment ohne Freigabe oder ohne erfüllte Gates.
+
+Jede Frage nennt Sachverhalt, Empfehlung, Alternativen, Risiken und genau die zu treffende Entscheidung. Eine ausstehende Entscheidung blockiert nur den abhängigen Teil: eindeutige Kennung dokumentieren, Frage mit Empfehlung vorlegen, übrigen Backlog sofort weiterbearbeiten.
+
+**Ohne direkt ausführbares Paket** werden bearbeitet: Fehler, Review-Nachträge, Tests, Barrierefreiheit, Leistung, technische Schulden, Doku-Lücken. Keine künstlichen Aufgaben. Fehlt wirklich Arbeit, wird der Grund dokumentiert und die Lease regelkonform freigegeben (`WIEDERAUFNAHME.md`).
+
+**Modellrouting und Reviews.** Maßgeblich ist `MODELL-ROUTING.md` (dort um Auth, Kryptografie und Release-Gates ergänzt). Modelleinsparung geht nie zulasten der Prüfungstiefe. Der implementierende Agent gibt sein Review nie als unabhängig aus. Strengere vorhandene Regeln haben Vorrang.
+
+**Parallelisierung** richtet sich nach tatsächlicher Rechenleistung und RAM, unabhängigen Worktrees, Konfliktzonen (`src/App.jsx`, zentrale Servermodule, Tabelle Dateibesitz), CI- und Review-Kapazität, Lease/Epoche/Fencing und Kosten. Die Begrenzung gleichzeitig schreibender Kontexte (Tabelle „Tatsächlich verfügbare Mittel“) bleibt maßgeblich.
+
+**Zwei Stränge.** Entwicklung und Release laufen koordiniert und gleichzeitig. Ein ausstehender Release hält die Entwicklung nicht an, und umgekehrt.
+
+**Release-Aufnahme.** Nach jedem erfolgreichen PR: geänderte Funktionen, Abhängigkeiten, Funktionsschalter, Release-Zuordnung, Auswirkungen und Kandidat-/Paket-/Commit-Referenz aktualisieren, Release-Prüfungen starten. Besteht eine neue Änderung die Gates nicht, bleibt der zuletzt freigegebene Kandidat unverändert. Ein Release-Kandidat wechselt nie stillschweigend unter derselben unveränderlichen Kennung auf einen neuen Commit: neue Version, neuer Commit, bei Images neuer unveränderlicher Digest.
+
+**Automatisierung** nur innerhalb bestehender Freigaben (Kosten, Berechtigungen, Voraussetzungen). Keine doppelten Builds oder Neubewertungen unveränderter Artefakte ohne Sicherheitsregel.
+
+**Schrittweise Veröffentlichung.** Kleine, gebündelte Releases. Produktionsfähig nur mit allen Gates: Integration, Gesamttests, Datenkompatibilität, Migration, Auth und Berechtigungen, Backup/Restore, Widerrufbuch und Rücksprungschutz, Fehler- und Rückweg, dokumentierte Betreiberfreigabe, Live-Smoke. Unfertiges liegt hinter standardmäßig deaktivierten Schaltern. Keine stillen Migrationen oder Löschungen, keine Umgehung von Gates. Eine Freigabe gilt nur für ihren dokumentierten Umfang, nie für neue Risikoklassen.
+
+**Dauerlauf-Architektur.** Vorhandene Bausteine nutzen: Supervisor außerhalb der Sitzung, SSOT, Lease/Fencing, Heartbeat, Fortschritt an überprüfbaren Ergebnissen, begrenzte Wiederholungen, Backoff, Eskalation, Not-Aus, Nutzungs- und Kostenlimits. Lücken innerhalb vorhandener Freigaben schließen. Keine Aktivierung ohne Freigabe.
+
+**Warten.** Aktivität prüfen, Weck- und Benachrichtigungsmechanismen nutzen, Unabhängiges bearbeiten, bei Abschluss reagieren. Ein fehlgeschlagener Test heißt nicht „Flake“ ohne Ursachenanalyse. Ein grüner Wiederholungslauf beweist keine behobene Ursache. Keine identischen Wartemeldungen und keine Meldung nur zur Bestätigung des Wartens.
+
+**Nachweis je Behauptung.** GETESTET, INTEGRIERT, RELEASEFÄHIG und PRODUKTIV sind verschiedene Aussagen (Kommunikationsstandard). Jede Behauptung braucht den passenden Nachweis.
+
+**Prozessaufwand.** Reihenfolge: vorhandene Funktionen nutzen, gezielt erweitern, kleine isolierte Korrekturen, neue Komponenten nur bei nachgewiesenem Bedarf. Kennzahlen: sinkender offener Netto-Restaufwand, abgeschlossene getestete Produktfunktionen, Zeit von Arbeitsbeginn bis Integration und von Integration bis Veröffentlichung, CI- und Review-Nacharbeit, Leerlauf, tatsächlich veröffentlichte Releases. Die Zahl gemergter PRs genügt nicht als Kennzahl.
 
 ## Werkzeuge
 

@@ -20,6 +20,8 @@ Subagenten können pro Aufruf ein eigenes Modell bekommen (`model` im Agent-Tool
 | **Haiku** | Dateinamen-/Symbolsuche, Logzusammenfassung, einfache Recherche, klar umrissene Dokumentationsarbeiten, einfache Klassifizierung |
 | **Opus** | serverseitige Sicherheitslogik, Datenintegrität/Ablage/Journal/Wiederherstellung, Nebenläufigkeit, Offline-Synchronisierung, schwierige Migrationen, schwere Integrationskonflikte, schwieriges Debugging, **unabhängige Reviews sicherheits-/datenschutzkritischer Änderungen** (Rechte, Art. 9, Auskunft, Löschen, Deploy) |
 
+Ergänzung Masterauftrag 2026-11-22: **Opus** zusätzlich für Architektur, Authentifizierung/Berechtigungen, Kryptografie, kritische Release-Gates und kritische Deployment-/Wiederherstellungslogik. **Sonnet** zusätzlich für React-/V4-Migration, Tests/E2E und technische Doku. **Haiku** zusätzlich für Statusberichte, strukturierte Bestandsaufnahmen und Vergleiche (risikoarme Routine). Modelleinsparung geht nie zulasten der Prüfungstiefe; der implementierende Agent gibt sein Review nie als unabhängig aus; strengere Regeln dieser Datei haben Vorrang.
+
 Unabhängige Reviews unkritischer Änderungen (Werkzeuge, Doku, UI ohne Rechtebezug) laufen auf Sonnet.
 
 ## Eskalation zu Opus (Sonnet → Opus)

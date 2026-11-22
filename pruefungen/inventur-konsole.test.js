@@ -10,7 +10,9 @@
 
    Simulierte Umgebung: Stubs im festen PATH (INVENTUR_PRUEFPFAD) für docker,
    id, date, df, free, uptime, nproc, stat (Durchreichen mit Ausnahmen),
-   crontab, restic. Pfade über CENTRIC_* und INVENTUR_OS_RELEASE. Kein Netz.
+   crontab, restic; Hüllen für head und awk, die bis zum Ende der Eingabe lesen
+   (kein SIGPIPE unter pipefail, siehe STUBS). Pfade über CENTRIC_* und
+   INVENTUR_OS_RELEASE. Kein Netz.
 
    Geprüft wird:
      - Erfolgsfall: Kurzprotokoll ≤ 25 Zeilen, ≤ 70 Zeichen, eine Zeile je
@@ -168,7 +170,19 @@ const STUBS = {
     "",
   ],
   restic: ["#!/usr/bin/env bash", "echo 'restic 0.16.4 compiled with go1.22.2 on linux/amd64'", ""],
+  /* Leser, die vorzeitig enden (head -n 1, awk '{ …; exit }'): Das Skript läuft unter „set -euo pipefail“
+     und schreibt mit printf in solche Leser. bash puffert stdout zeilenweise; ein mehrzeiliger Wert geht
+     in zwei write()-Aufrufen hinaus. Endet der Leser zwischen beiden (unter CI-Last möglich), bekommt
+     printf SIGPIPE, die Pipeline liefert 141 und set -e beendet das Skript mit 141 — nur die erste
+     Zeile steht dann in der Ausgabe (CI 2026-11-22, Jobs 137058284533 und 137173883617). Ist die
+     Ausgabe größer als der Pipe-Puffer (64 KiB), tritt das immer ein (Test „Leser lesen bis zum Ende“).
+     Das Skript ist per SHA-256 gebunden und bleibt unverändert. Die Hülle ruft deshalb das echte
+     Werkzeug und liest danach den Rest der Eingabe; Ausgabe und Rückgabe bleiben die des Werkzeugs. */
+  head: ["#!/usr/bin/env bash", "/usr/bin/head \"$@\"", "rc=$?", "[[ -t 0 ]] || cat >/dev/null 2>&1 || true", 'exit "$rc"', ""],
+  awk: ["#!/usr/bin/env bash", "/usr/bin/awk \"$@\"", "rc=$?", "[[ -t 0 ]] || cat >/dev/null 2>&1 || true", 'exit "$rc"', ""],
 };
+/* Namen der Hüllen, die bis zum Ende der Eingabe lesen (Wächter und Gegenprobe unten). */
+const LESER_HUELLEN = ["head", "awk"];
 
 /* Erlaubte Docker-Aufrufe: die lesenden aus inventur.sh — ohne docker exec. */
 const ERLAUBT = new Set([
@@ -237,9 +251,26 @@ function umgebung(env) {
   return u;
 }
 
+/* Zeitgrenze je Skriptlauf: unter Linux wenige Sekunden, unter Git Bash 30–60 s. */
+const LAUF_ZEITGRENZE_MS = 400000;
+
+/* Ergebnis eines Laufs. Ein Abbruch von außen (Zeitgrenze, Signal) oder Rückgabe 141 (SIGPIPE in einer
+   Pipeline des Skripts) wird ausdrücklich gemeldet — nicht als stille, leere Ausgabe. Keine Wiederholung. */
+function ergebnis(r, was, zeitgrenze = LAUF_ZEITGRENZE_MS) {
+  const out = r.stdout ?? "";
+  const err = r.stderr ?? "";
+  const rest = `\n--- stdout ---\n${out}--- stderr ---\n${err}`;
+  if (r.error?.code === "ETIMEDOUT") throw new Error(`${was}: Zeitgrenze ${zeitgrenze} ms überschritten, Prozess beendet (${r.signal})${rest}`);
+  if (r.error) throw new Error(`${was}: Start gescheitert: ${r.error.message}${rest}`);
+  if (r.signal) throw new Error(`${was}: durch Signal ${r.signal} beendet${rest}`);
+  if (r.status === 141) throw new Error(`${was}: Rückgabe 141 = SIGPIPE in einer Pipeline (Leser endete vor dem Schreiber)${rest}`);
+  return { code: r.status, out, err, alles: out + err };
+}
+
 function lauf(args = [], env = {}) {
-  const r = spawnSync(BASH, [p(SKRIPT), ...args], { encoding: "utf8", env: umgebung(env), timeout: 400000 });
-  return { code: r.status, out: r.stdout, err: r.stderr, alles: r.stdout + r.stderr };
+  /* input "": stdin ist leer und geschlossen (die Hüllen head/awk lesen danach bis zum Ende). */
+  const r = spawnSync(BASH, [p(SKRIPT), ...args], { encoding: "utf8", env: umgebung(env), input: "", timeout: LAUF_ZEITGRENZE_MS });
+  return ergebnis(r, `inventur-konsole.sh ${args.join(" ")}`.trim());
 }
 
 /* Wie der Betreiber: s=$(curl …) schneidet abschließende Zeilenumbrüche ab; dann bash -c "$s" x [--voll].
@@ -249,9 +280,10 @@ function laufWieKonsole(args = [], env = {}) {
   const r = spawnSync(BASH, ["-c", 's=$(cat "$1"); shift; bash -c "$s" inventur "$@"', "x", p(SKRIPT), ...args], {
     encoding: "utf8",
     env: { ...umgebung(env), PATH: process.env.PATH },
-    timeout: 400000,
+    input: "",
+    timeout: LAUF_ZEITGRENZE_MS,
   });
-  return { code: r.status, out: r.stdout, err: r.stderr, alles: r.stdout + r.stderr };
+  return ergebnis(r, `bash -c "$s" ${args.join(" ")}`.trim());
 }
 
 const aufrufe = () => {
@@ -616,6 +648,60 @@ describe.skipIf(!BASH)("deploy/inventur-konsole.sh: nur lesen, keine Geheimnisse
     expect(r.out.split("\n")[0]).toBe("Dieses Skript ändert nichts.");
     expect(r.out).toMatch(/\nPRUEFCODE [0-9a-f]{12} ZEILEN \d+\n$/);
     expect(r.out).toContain(PFLICHT[0]);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+describe.skipIf(!BASH)("Testhülle: vorzeitig endende Leser (SIGPIPE unter pipefail)", () => {
+  /* Viele Betriebsdateien: die Ausgabe von v4 (ls -la, sha256sum) wird größer als der Pipe-Puffer.
+     Dann endet awk '{ …; exit }' in k_v4, während printf noch schreibt — ohne Hülle immer SIGPIPE. */
+  const N = 2500;
+  const vieleDateien = () => {
+    for (let i = 0; i < N; i++) writeFileSync(path.join(app, `zz-probe-${String(i).padStart(4, "0")}.sh`), "# Probe\n");
+  };
+
+  it("Wächter: head und awk im Prüfpfad sind Hüllen — echtes Werkzeug, danach Rest der Eingabe lesen, Rückgabe des Werkzeugs", () => {
+    for (const n of LESER_HUELLEN) {
+      const t = readFileSync(path.join(bin, n), "utf8");
+      expect(t).toContain(`/usr/bin/${n} "$@"\nrc=$?\n`);
+      expect(t).toContain("cat >/dev/null");
+      expect(t).toContain('exit "$rc"');
+    }
+    /* Rückgabe und Ausgabe bleiben die des Werkzeugs */
+    const h = spawnSync(BASH, ["-c", 'printf "a\\nb\\nc\\n" | "$1" -n 1', "x", p(path.join(bin, "head"))], { encoding: "utf8" });
+    expect([h.status, h.stdout]).toEqual([0, "a\n"]);
+    const a = spawnSync(BASH, ["-c", 'printf "a\\nb\\n" | "$1" \'$1 == "b" { print "B"; exit 3 }\'', "x", p(path.join(bin, "awk"))], { encoding: "utf8" });
+    expect([a.status, a.stdout]).toEqual([3, "B\n"]);
+  });
+
+  it("Ausgabe > 64 KiB (viele Betriebsdateien): Leser lesen bis zum Ende, Rückgabe 0, V-4 und PRUEFCODE vollständig", () => {
+    vieleDateien();
+    const r = lauf();
+    expect(r.code, r.alles).toBe(0);
+    expect(statusZeile(r.out, "V-4")).toMatch(new RegExp(`^V-4 OK Dateien 9/9\\+${N} Summe [0-9a-f]{12} `));
+    expect(r.out).toMatch(/\nPRUEFCODE [0-9a-f]{12} ZEILEN \d+\n$/);
+  });
+
+  /* Gegenprobe: belegt, dass die Hülle nötig ist (und dass das Skript selbst nicht SIGPIPE-fest ist —
+     Befund an den Betreiber, Behebung nur mit neuem Hash und neuer Übergabe). */
+  it("Gegenprobe ohne Hüllen (echtes head/awk): Rückgabe 141, nur die erste Zeile; ergebnis() meldet SIGPIPE", () => {
+    vieleDateien();
+    for (const n of LESER_HUELLEN) rmSync(path.join(bin, n));
+    const r = spawnSync(BASH, [p(SKRIPT)], { encoding: "utf8", env: umgebung({}), input: "", timeout: LAUF_ZEITGRENZE_MS });
+    expect(r.status, r.stdout + r.stderr).toBe(141);
+    expect(r.stdout).toBe("Dieses Skript ändert nichts.\n");
+    expect(r.stderr).toBe("");
+    expect(() => ergebnis(r, "Gegenprobe")).toThrow(/Rückgabe 141 = SIGPIPE/);
+  });
+
+  it("ergebnis(): Zeitgrenze überschritten wird ausdrücklich gemeldet, nicht als leere Ausgabe", () => {
+    const t = spawnSync(BASH, ["-c", "sleep 20"], { encoding: "utf8", timeout: 300 });
+    expect(() => ergebnis(t, "Probe", 300)).toThrow(/Probe: Zeitgrenze 300 ms überschritten/);
+  });
+
+  it.skipIf(process.platform === "win32")("ergebnis(): Abbruch durch Signal wird ausdrücklich gemeldet", () => {
+    const s = spawnSync(BASH, ["-c", "kill -TERM $$"], { encoding: "utf8" });
+    expect(() => ergebnis(s, "Probe")).toThrow(/Probe: durch Signal SIGTERM beendet/);
   });
 });
 
