@@ -92,7 +92,11 @@
         "CENTRIC_TEILSPEICHERUNG"
       ],
       "stand": "aus bis Oberfläche WP-48.5 und Betreiberfreigabe",
-      "quelle": "server/lib/schalter.mjs; docs/acc45/WP48-TEILSPEICHERUNG.md"
+      "quelle": "server/lib/schalter.mjs; docs/acc45/WP48-TEILSPEICHERUNG.md",
+      "ssotPakete": [
+        "WP-48"
+      ],
+      "ssotUmfang": "Deckt nur die Teilwege WP-48.3/48.4/48.5 (#224, #342, #346, #348, #350): Server nur mit teilwegAn() (server/lib/schalter.mjs:21, genau true; server/funktionen/daten.mjs:322, :1461, :1465), Oberfläche nur mit Fähigkeit teile aus dem GET (src/speicher.js:411-413, src/app/teilweg-steuerung.js Kopf). NICHT gedeckt und aktiv ausgeliefert: #87 (Bestand/Scherben), #271 (Öffnen schreibt nicht), #341 (Kette, an ohne CENTRIC_KETTE_AUS). WP-48 bleibt G8-Blocker bis fertig oder akzeptiertePakete."
     },
     {
       "id": "abschluss-segmentweise",
@@ -102,7 +106,11 @@
         "CENTRIC_ABSCHLUSS_OHNE_SPERRE"
       ],
       "stand": "aus bis Messung auf Staging (WP-48.9) und Betreiberfreigabe",
-      "quelle": "server/lib/schalter.mjs"
+      "quelle": "server/lib/schalter.mjs",
+      "ssotPakete": [
+        "WP-48"
+      ],
+      "ssotUmfang": "Deckt nur WP-48.7 (Stufe a/b, #322, #351): abschlussSegmentweiseAn() und abschlussOhneSperreAn() (server/lib/schalter.mjs:36, :52, genau true; OHNE_SPERRE nur zusammen mit SEGMENTWEISE). Ohne Schalter läuft der volle Weg; #322 hat ihn in server/funktionen/daten.mjs (Monatsabschluss) umgebaut (Rechnung als rechnenM, gleiche Prüfungen), dieser Umbau ist aktiv ausgeliefert. bestandLesenAuswahlStreng (server/lib/bestand.mjs) wird nur mit Schalter aufgerufen. Übrige WP-48-PRs siehe Eintrag teilspeicherung. WP-48 bleibt G8-Blocker bis fertig oder akzeptiertePakete."
     },
     {
       "id": "hilfe-assistent",
