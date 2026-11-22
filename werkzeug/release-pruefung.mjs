@@ -38,8 +38,8 @@
      G7  Rückweg: Zeile `vorherig` oder dokumentierte Entscheidung O-1/O-2;
          `ruecksprung` NO-GO, wenn Basis oder Zeile `vorherig` ein Bild ohne
          Revisionslabel ist (ohneRevisionslabel: 274bfa0) oder die Basis fehlt
-     G8  SSOT: kein P0/P1-Paket im Status REVIEW/BLOCKED/IN_PROGRESS/READY,
-         dessen PR im Paket steckt (außer akzeptiertePakete mit Grund); jede
+     G8  SSOT: kein P0/P1-Paket mit Status außer DONE/INTEGRATED/VERIFIED (auch
+         CI_FAILED, unbekannt oder fehlend blockiert), dessen PR im Paket steckt (außer akzeptiertePakete mit Grund); jede
          Paket-ID in ssotPakete von RELEASE-UNFERTIG.json steht in der SSOT;
          „nur hinter Schalter AUS“ nur für PRs aus ssotPrs (fehlt: keine Aussage)
      G9  keine offenen P0/P1-Befunde (Strang folge, ABN-*, V4-*; REL-* sind der
@@ -71,6 +71,9 @@ import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 export const VERSION = 2;
+
+/** SSOT-Status, die als erledigt gelten (Schema: werkzeug/acc45-backlog.mjs STATUS). Jeder andere Status ist offen. */
+export const ERLEDIGT_STATUS = Object.freeze(["DONE", "INTEGRATED", "VERIFIED"]);
 
 export const KONFIG_STANDARD = Object.freeze({
   repo: "rinats-png/dienstplaner",
@@ -130,8 +133,10 @@ export const KONFIG_STANDARD = Object.freeze({
   startblockQuellen: ["server.mjs"],
   sicherung: { sicherungMaxStunden: 26, restoreProbeMaxTage: 35, widerrufbuchProbeMaxTage: 35, widerrufbuchProbePflicht: true },
   ssot: "docs/acc45/work-packages.json",
-  blocker: { prios: ["P0", "P1"], status: ["REVIEW", "BLOCKED", "IN_PROGRESS", "READY"] },
-  befund: { straenge: ["folge"], idMuster: ["^ABN-", "^V4-"], ausnahmeMuster: ["^REL-"], prios: ["P0", "P1"], erledigt: ["DONE", "INTEGRATED", "VERIFIED"] },
+  // G8 und G9 (Endurteil #427 A1): blockierend ist jeder Status, der NICHT in `erledigt` steht — auch CI_FAILED und
+  // jeder unbekannte oder fehlende Status (fail-closed). Beide Gates teilen dieselbe Liste (ERLEDIGT_STATUS).
+  blocker: { prios: ["P0", "P1"], erledigt: ERLEDIGT_STATUS },
+  befund: { straenge: ["folge"], idMuster: ["^ABN-", "^V4-"], ausnahmeMuster: ["^REL-"], prios: ["P0", "P1"], erledigt: ERLEDIGT_STATUS },
   freigabeVerzeichnis: "docs/acc45/releases",
   // „Gepusht“: origin muss dieses GitHub-Repository sein, und ein Freigabezweig muss genau auf HEAD zeigen.
   repoUrlMuster: "^(?:https://github\\.com/|git@github\\.com:|ssh://git@github\\.com/)rinats-png/dienstplaner(?:\\.git)?/?$",
@@ -974,7 +979,7 @@ export function g8Blocker(ssot, prsImKandidaten, freigabe, konfig, unfertig = nu
   const imKandidat = new Set(prsImKandidaten.map(Number));
   const akzeptiert = annahmen(freigabe?.akzeptiertePakete);
   for (const p of ssot.pakete) {
-    if (!istObjekt(p) || !konfig.blocker.prios.includes(p.prio) || !konfig.blocker.status.includes(p.status)) continue;
+    if (!istObjekt(p) || !konfig.blocker.prios.includes(p.prio) || konfig.blocker.erledigt.includes(p.status)) continue;
     const prs = (Array.isArray(p.pr) ? p.pr : []).map(prNummer).filter((x) => imKandidat.has(x));
     if (!prs.length) continue;
     if (akzeptiert.has(p.id)) { g.belege.push(`${p.id} (${p.prio}, ${p.status}) vom Betreiber akzeptiert: ${akzeptiert.get(p.id)}`); continue; }
@@ -1003,7 +1008,7 @@ export function g8Blocker(ssot, prsImKandidaten, freigabe, konfig, unfertig = nu
         if (!p) { nogo(g, `${konfig.unfertigDatei}: ${f.id} nennt ${id}, das nicht in der SSOT steht (Liste veraltet)`); continue; }
         const prs = (Array.isArray(p.pr) ? p.pr : []).map(prNummer).filter((x) => imKandidat.has(x));
         // Ein offenes P0/P1-Paket ist oben schon NO-GO (außer akzeptiert); dafür kein entlastender Beleg.
-        const offenBlocker = konfig.blocker.prios.includes(p.prio) && konfig.blocker.status.includes(p.status) && !akzeptiert.has(p.id);
+        const offenBlocker = konfig.blocker.prios.includes(p.prio) && !konfig.blocker.erledigt.includes(p.status) && !akzeptiert.has(p.id);
         if (!prs.length || offenBlocker) continue;
         const liste = (xs) => xs.map((x) => "#" + x).join(", ");
         if (!deckung.prs) {
