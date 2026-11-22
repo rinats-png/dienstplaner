@@ -2081,6 +2081,26 @@
           "literaleSha256": "1d3130426801149e800e080786d373b9dac27d271ce26cbe1648758a55bce5b0"
         }
       }
+    },
+    "Selbsttest": {
+      "basis": "fd9dea357091659345e5b53e5f9d1604bc453055",
+      "dateien": {
+        "src/ansichten/testablauf.jsx": {
+          "sha256": "7533ecd5407d797659432bfc522550b4fc3818ad0fd4544ddc77cc853b185b9a",
+          "literale": [
+            {
+              "wert": "12",
+              "kontext": "{{ padding: \"14px 18px\", borderRadius: 12, marginBottom: 20,\n      background: grund, border: `1px solid ${rand}33`,\n      display: \"flex\", gap: 16, alignItems: \"flex-start\", flexWrap: \"wrap\" }}"
+            }
+          ],
+          "literaleSha256": "02250dbc9e30ee8bd3ca91ca40a882a4c20fee85dd602d5d56a8633192556215"
+        },
+        "src/pruefung.jsx": {
+          "sha256": "cb925a5d0477c55d6a22c198fbb8c5e86260fc93157e197f064c8474b010a71c",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        }
+      }
     }
   }
 }

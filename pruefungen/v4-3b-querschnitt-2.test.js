@@ -201,9 +201,11 @@ describe("V4-3b Querschnitt Teil 2: Messung", () => {
     expect(Object.values(je).filter((x) => x.formLiterale > 0).map((x) => [x.datei, x.formLiterale]))
       .toEqual([["src/App.jsx", 1], ["src/gestalt/bausteine.jsx", 4], ["src/ui/bausteine.jsx", 1], ["src/ui/diagramme.jsx", 2],
         ["src/ui/farbwahl.jsx", 1]]);
-    /* Gesamt ohne src/v4: Form-Literale 34 → 19 (Dateien 21 → 14), Form erreicht 143 → 146, „voll“ 123 → 127 (von 159). */
+    /* Gesamt ohne src/v4 nach Teil 2 (#467): Form-Literale 34 → 19 (Dateien 21 → 14), Form erreicht 143 → 146, „voll“
+       123 → 127 (von 159). Seit Schnitt 14 (Selbsttest) trägt v4-3b-selbsttest.test.js die Gesamtsummen (18/13/146/128/159);
+       hier bleibt der Anteil der Zeile Querschnitt/Bausteine: Form erreicht und Nenner wie nach Teil 2. */
     const z = zusammenfassung(inv).ohneV4;
-    expect([z.formLiterale, z.mitFormLiteralen, z.formErreicht, z.sichtbarVoll, z.sichtbar]).toEqual([19, 14, 146, 127, 159]);
+    expect([z.formErreicht, z.sichtbar]).toEqual([146, 159]);
   }, 60000);
 
   it("feste Tabelle: jede Stelle trägt genau die Stufe der Zuordnungsregel; 15 Stellen", async () => {
