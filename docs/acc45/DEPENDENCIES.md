@@ -552,7 +552,7 @@ flowchart LR
 | ABN-B3 | acc45 | P3 | 0,25–0,5 | 0 | – | – | opus | INTEGRATED |
 | QS-6 | acc45 | P3 | 0,25–0,5 | 0 | – | – | sonnet | INTEGRATED |
 | QS-ZEIT | acc45 | P3 | 0,25–0,5 | 0 | – | – | sonnet | INTEGRATED |
-| WP-ZEIT | acc45 | P2 | 9–15 | 4,5–7,5 | – | – | opus | IN_PROGRESS |
+| WP-ZEIT | acc45 | P2 | 9–15 | 4,5–7,5 | – | daten.mjs, rechte.mjs | opus | IN_PROGRESS |
 | BE-1 | acc45 | P1 | 2–4 | 0 | – | – | opus | INTEGRATED |
 | BE-2 | acc45 | P1 | 2–4 | 0 | – | – | opus | INTEGRATED |
 | BE-3 | acc45 | P2 | 2–4 | 2–4 | – | – | sonnet | BLOCKED |

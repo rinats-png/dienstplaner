@@ -70,6 +70,7 @@
 
 import { randomBytes } from "node:crypto";
 import { baueLeerenBetrieb } from "./leerbetrieb.mjs";
+import { betriebstag } from "./betriebszeit.mjs";
 import { bestandSchreiben, bestandLesen, raumBelegt, voruebergehend } from "./bestand.mjs";
 import { raumLoeschen } from "./raumloeschung.mjs";
 import { unterRaumsperre } from "./raumsperre.mjs";
@@ -119,7 +120,8 @@ export function raumKennung(name) {
     Zufallsgenerator des Betriebssystems statt aus Math.random. */
 export const neuePersonId = () => `p_${randomBytes(5).toString("hex").slice(0, 7)}`;
 
-const heute = () => new Date().toISOString().slice(0, 10);
+/** Betrieblicher Kalendertag (Europe/Berlin), nicht der UTC-Tag (WP-ZEIT C/E-Rest). */
+const heute = () => betriebstag();
 
 /* --------------------------------------------------------------------------
    DER GEMEINSAME KERN

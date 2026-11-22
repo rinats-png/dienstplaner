@@ -34,7 +34,7 @@ import { bestandLesen, bestandLesenStreng, bestandLesenAuswahlStreng, bestandSch
 import { geoUrteil, bestandStandorteFehler, bestandDienstartOrtFehler } from "../lib/geo.mjs";
 import { personalnummerKonflikt, personalnummerText } from "../lib/personalnummer.mjs";
 import { raumLoeschen } from "../lib/raumloeschung.mjs";
-import { stempelZiel, geplanterDienst, heuteBerlin, uhrzeitBerlin, startZuordenbar,
+import { stempelZiel, geplanterDienst, heuteBerlin, uhrzeitBerlin, startZuordenbar, tagePlus,
   offenSeitMinuten, langerDienstGrenze, stempelEreignis, ereignisFinden, OFFLINE_PRUEF_MARKIERUNGEN,
   offlineVerspaetet, offlineVertrauen, UHR_TOLERANZ_MS, pauseAngabe }
   from "../lib/zeiterfassung.mjs";
@@ -2215,7 +2215,7 @@ async function behandeln(req, context, ctx) {
              START_VERALTET, obwohl nichts veraltet ist. */
           let jetzt = jetzt0;
           if (art === "ende" && stEreignis.offline) {
-            for (const tag of [heuteBerlin(jetzt0), heuteBerlin(new Date(jetzt0.getTime() - 86400000))]) {
+            for (const tag of [heuteBerlin(jetzt0), tagePlus(heuteBerlin(jetzt0), -1)]) {
               const e0 = (m.einstempeln || {})[`${person.id}|${tag}`];
               const ab = e0 && e0.start && !e0.ende ? Date.parse(e0.startAm) : NaN;
               if (Number.isFinite(ab) && ab > jetzt0.getTime() && ab - jetzt0.getTime() <= UHR_TOLERANZ_MS) { jetzt = new Date(ab); break; }

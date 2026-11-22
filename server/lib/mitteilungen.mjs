@@ -150,7 +150,7 @@ export const servermitteilung = (o) => mitteilung(o);
 function mitteilung({ id, personId, art, titel, text, ziel, quelle, tag }) {
   const jetzt = new Date();
   return { id, personId, art, titel: kuerzen(titel, TITEL_MAX), text: kuerzen(text, TEXT_MAX), ziel,
-    zeit: jetzt.toLocaleString("de-DE"), erstellt: jetzt.toISOString(), gelesen: false,
+    zeit: jetzt.toLocaleString("de-DE", { timeZone: "Europe/Berlin" }), erstellt: jetzt.toISOString(), gelesen: false,
     dringend: !!(ZUSTELLARTEN[art] || {}).dringend, quelle,
     /* WP-30: der Tag, den die Mitteilung betrifft — für die Entwurfsregel (zustellregeln.mjs). */
     ...(typeof tag === "string" && /^\d{4}-\d{2}-\d{2}$/.test(tag) ? { tag } : {}) };

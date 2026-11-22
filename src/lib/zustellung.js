@@ -104,7 +104,7 @@ export function baueMitteilung(m, personId, art, titel, text, ziel, tag) {
   return {
     id, personId, art, titel: String(titel ?? "").slice(0, 120), text: String(text ?? "").slice(0, 500),
     ziel: ziel || null,
-    zeit: new Date().toLocaleString("de-DE"), erstellt: new Date().toISOString(),
+    zeit: new Date().toLocaleString("de-DE", { timeZone: "Europe/Berlin" }), erstellt: new Date().toISOString(),
     gelesen: false, dringend: !!(ZUSTELLARTEN[art] || {}).dringend,
     ...(typeof tag === "string" && /^\d{4}-\d{2}-\d{2}$/.test(tag) ? { tag } : {}),
   };

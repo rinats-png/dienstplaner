@@ -459,7 +459,7 @@ function notrufeZusammen(alt, neu, ich, personen) {
       id: n.id, personId: n.personId, art: n.art,
       notiz: typeof n.notiz === "string" ? n.notiz : "",
       zeit: typeof n.zeit === "string" && n.zeit.length <= 40 ? n.zeit : new Date().toISOString(),
-      datum: typeof n.datum === "string" && DATUM.test(n.datum) ? n.datum : new Date().toISOString().slice(0, 10),
+      datum: typeof n.datum === "string" && DATUM.test(n.datum) ? n.datum : heuteBerlin(),
       dienst: typeof n.dienst === "string" && n.dienst.length <= 200 ? n.dienst : null,
       ort: typeof n.ort === "string" && n.ort.length <= 200 ? n.ort : null,
       /* Wer unterrichtet wird, bestimmt nicht die Übermittlung: nur
@@ -1965,7 +1965,7 @@ export function eigeneEinheit(altM, ich) {
   if (!ich) return null;
   const gueltig = new Set((altM.einheiten || []).filter(Boolean).map((e) => String(e.id)));
   if (ich.bereich && ich.bereich !== "ALLE" && gueltig.has(String(ich.bereich))) return String(ich.bereich);
-  const heute = einheitAm(ich, new Date().toISOString().slice(0, 10));
+  const heute = einheitAm(ich, heuteBerlin());
   if (heute && heute !== "ALLE" && gueltig.has(String(heute))) return String(heute);
   return null;
 }
@@ -2053,12 +2053,12 @@ export function imEigenenBereich(altM, ichId, pid) {
   const ich = personen.find((p) => String(p.id) === String(ichId));
   const eigene = eigeneEinheit(altM, ich);
   const p = personen.find((x) => String(x.id) === String(pid));
-  return !!(eigene && p && einheitAm(p, new Date().toISOString().slice(0, 10)) === eigene);
+  return !!(eigene && p && einheitAm(p, heuteBerlin()) === eigene);
 }
 
 const gleich = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const ohne = (o, felder) => Object.fromEntries(Object.entries(o || {}).filter(([k]) => !felder.includes(k)));
-const jetztText = () => new Date().toLocaleString("de-DE");
+const jetztText = () => new Date().toLocaleString("de-DE", { timeZone: "Europe/Berlin" });
 const TAG = /^\d{4}-\d{2}-\d{2}$/;
 const TEXT_MAX = 500;
 
@@ -2257,8 +2257,11 @@ function bestaetigungenZusammen(altM, n, sitzung, imBereich) {
   if (neue.length && altL.length + neue.length > BESTAETIGUNGEN_GESAMT)
     return { grund: `bestaetigungen: Das Bestätigungsprotokoll hat seine Grenze von ${BESTAETIGUNGEN_GESAMT} Einträgen erreicht. Bitte die Leitung ansprechen — ältere Einträge werden nicht verdrängt.` };
   if (neue.length && ich) {
-    const heute = new Date().toISOString().slice(0, 10);
-    const heuteVonMir = altL.filter((x) => String(x.durchId) === String(ich.id) && typeof x.zeit === "string" && x.zeit.startsWith(heute)).length;
+    /* Der Tag der Bremse ist der betriebliche Kalendertag (Europe/Berlin), nicht der UTC-Tag: `zeit` ist ein
+       UTC-Zeitpunkt (ISO); ein unlesbarer Zeitpunkt zählt nicht zu heute. */
+    const heute = heuteBerlin();
+    const tagVon = (z) => { const ms = typeof z === "string" ? Date.parse(z) : NaN; return Number.isFinite(ms) ? heuteBerlin(new Date(ms)) : null; };
+    const heuteVonMir = altL.filter((x) => String(x.durchId) === String(ich.id) && tagVon(x.zeit) === heute).length;
     if (heuteVonMir + neue.length > BESTAETIGUNGEN_JE_TAG)
       return { grund: `bestaetigungen: höchstens ${BESTAETIGUNGEN_JE_TAG} Bestätigungen je Person und Tag.` };
   }
@@ -2287,7 +2290,7 @@ export function einheitZusammen(altM, neuM, sitzung) {
   /* Eine Pool-Einheit ist kein eigener Bereich (C1/C2). */
   const eigeneNutzbar = !(altM.einheiten || []).some((x) => x && x.pool && String(x.id) === eigene);
   const meinName = `${ich.vorname || ""} ${ich.nachname || ""}`.trim() || ichId;
-  const heute = new Date().toISOString().slice(0, 10);
+  const heute = heuteBerlin();
 
   /** Gehört die Person am Tag zum eigenen Bereich? Ohne gültigen Tag nein
       (WP-43, wie die Lesesicht) — bis dahin galt dann der heutige Tag, und

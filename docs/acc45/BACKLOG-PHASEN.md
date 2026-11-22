@@ -285,7 +285,7 @@ Von den 22 offenen PRs richten sich 11 gegen Altbasen (#6, #7, #15 bis #18, #91,
 3. **WP-19.1 bis 19.12:** BLOCKED wegen WP-19.0 (REVIEW), obwohl dessen Nacharbeit über #82 im Code ist und mehrere Module per Direkt-Merge und #234, #243, #267 integriert sind. Die Abhängigkeitskette sperrt künstlich.
 4. **WP-I12c:** Sperrgrund „bis WP-I12 integriert“ ist erfüllt (#190); der tatsächliche Grund (Spanne-Definition) steht nur in Nebennotizen, nicht in der Entscheidungsliste.
 5. **E-24 (Pilot):** hängt im SSOT an E-23 (Produktions-Deployment) und WP-42; das Phasenmodell setzt den Pilot (Gate R2) vor Final Staging und Livegang. Die Kette ist im SSOT so nicht abgebildet.
-6. **Fehlende Pakete:** WP-ZEIT (#296, #301, #303), BE-1 (#304, #307, #308), BE-2 A1, BE-3 (#313) haben kein SSOT-Paket (laut `WIEDERAUFNAHME.md`). Fortschritt ist im SSOT unsichtbar; BE-2 A1 ist Pilot-Pflicht ohne belegenden PR.
+6. **Fehlende Pakete:** (WP-ZEIT besteht seit 2026-11-17 in der SSOT, Status IN_PROGRESS; hier historisch genannt.) WP-ZEIT (#296, #301, #303), BE-1 (#304, #307, #308), BE-2 A1, BE-3 (#313) haben kein SSOT-Paket (laut `WIEDERAUFNAHME.md`). Fortschritt ist im SSOT unsichtbar; BE-2 A1 ist Pilot-Pflicht ohne belegenden PR.
 7. **Beleglücken:** 33 BELEG_FEHLT (u. a. WP-01 bis WP-47), 25 KORREKTUR; WP-16, 16b, 16c, 07b, 14c, 15 stehen auf REVIEW, obwohl der Code per Direkt-Merge im Stand ist (Bereitschaftsanalyse Klasse D). Statushebung ist Koordinator-/Betreiberentscheidung.
 8. **Entscheidungsliste unvollständig** (Abschnitt 3): acht Sperren ohne Eintrag.
 9. **Veraltete Notizen:** WP-48 („Status BLOCKED statt READY“, Status ist IN_PROGRESS), WP-21 („Stand (automatisch): INTEGRATED nach #183“, Status IN_PROGRESS).

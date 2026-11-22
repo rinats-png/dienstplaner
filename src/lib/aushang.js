@@ -53,7 +53,7 @@ td{border:1px solid #E3E1DD;height:74px;vertical-align:top;padding:5px 6px}
 <div class="kopf"><div><div class="rub">${h(m.name)}</div>
 <h1>${e ? h(e.name) : ""} — <b>${MON[mo - 1]} ${y}</b></h1></div>
 <div style="text-align:right"><div class="rub">${fg ? `Freigegeben · Stand ${h(fg.stand)}` : "Entwurf"}</div>
-<div style="font-size:8pt;color:#5A6670;margin-top:3px">${fg ? h(fg.zeit) : `erstellt ${new Date().toLocaleString("de-DE")}`}</div></div></div>
+<div style="font-size:8pt;color:#5A6670;margin-top:3px">${fg ? h(fg.zeit) : `erstellt ${new Date().toLocaleString("de-DE", { timeZone: "Europe/Berlin" })}`}</div></div></div>
 ${hinweis ? `<div class="hinweis" style="font-size:9pt;color:#5A6670;margin:-6px 0 10px">${h(hinweis)}</div>\n` : ""}<table><thead><tr>${DOW.map((d) => `<th>${d}</th>`).join("")}</tr></thead><tbody>
 ${woch.map((w) => `<tr>${w.map((d) => {
   if (!d) return '<td style="border:none"></td>';

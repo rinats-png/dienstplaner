@@ -24,7 +24,7 @@ export function StempelPuffer({ akt }) {
   return (
     <div role="status" aria-live="polite" style={{ marginTop: 10, fontSize: 12.5, lineHeight: 1.45, textAlign: "left" }}>
       {liste.map((ev) => {
-        const zeit = new Date(ev.erfasstAm).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+        const zeit = new Date(ev.erfasstAm).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" });
         const ton = ev.zustand === "abgelehnt" ? C.danger : ev.zustand === "wartet" ? C.warn : C.ok;
         return (<div key={ev.id} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", padding: "3px 0", ...NUM }}>
           <span>{ev.art === "start" ? "Beginn" : "Ende"} {zeit}</span>
