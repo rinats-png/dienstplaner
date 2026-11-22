@@ -1,7 +1,8 @@
 /* V4-3b: Zuordnungsregel der Inline-Radien auf die Radiusstufen V4_RADIEN (src/v4/tokens.js), gemeinsam für die
    Prüfungen je Hauptansicht (v4-3b-plan.test.js, v4-3b-personal.test.js, v4-3b-zeit.test.js,
    v4-3b-einstellungen.test.js, v4-3b-lage.test.js, v4-3b-betreiber.test.js, v4-3b-import.test.js, v4-3b-telefonschale.test.js,
-   v4-3b-einstieg.test.js, v4-3b-speicherlage.test.js, v4-3b-branchenmodule.test.js) und den Erzeuger der Basis-Fixture
+   v4-3b-einstieg.test.js, v4-3b-speicherlage.test.js, v4-3b-branchenmodule.test.js, v4-3b-querschnitt-1.test.js) und den
+   Erzeuger der Basis-Fixture
    (werkzeug/v4-radiusstufen-basis.mjs). Nur für Tests;
    keine Laufzeitwirkung.
 
@@ -56,7 +57,13 @@ export const SCHNITTE = {
   Einstieg: "b9ab081a8453e18b0752eca5ee6534cf6a3cd402",
   Speicherlage: "93b5f7f70d1b02700de3e19920b2ee0fd85b0b48",
   Branchenmodule: "bb782c4492b9de162dd19db17ff7d4c16c3a9e19",
+  /* Zeile „Querschnitt/Bausteine“ ist zu groß für einen Schnitt; sie wird in Teilen umgesetzt (Teil 1: App.jsx,
+     ui/diagramme.jsx, gestalt/bausteine.jsx, ui/farbwahl.jsx). Die Fixture des Teils enthält alle Dateien der Zeile. */
+  "Querschnitt/Bausteine (Teil 1)": "63a3469b115139e0046459e92e4c1695caecbe3c",
 };
+
+/** Hauptansicht (Zeile des Inventars) eines Schnitts: Schlüssel ohne den Zusatz „ (Teil n)“. */
+export const ansichtVon = (schnitt) => schnitt.replace(/ \(Teil \d+\)$/, "");
 
 export const sha256 = (s) => createHash("sha256").update(String(s), "utf8").digest("hex");
 /** Prüfsumme über die Literale einer Datei (Reihenfolge und Kontext zählen). */
@@ -170,7 +177,10 @@ export function abgleichMitLiteralen(basisLiterale, jetzigeQuelle, stellen) {
     if (b.w === "50%") {
       if (!(s.kante && s.alt === s.kante / 2)) f.push(`${s.wo}: Basis 50 %, Tabelle alt ${s.alt} kante ${s.kante}`);
     } else if (b.w !== s.alt) f.push(`${s.wo}: Basis ${b.w}, Tabelle alt ${s.alt}`);
-    if (s.kante !== undefined && !new RegExp(`\\b(?:width|height):\\s*${s.kante}\\b`).test(b.kontext))
+    /* Die Kante steht als Zahl im Stilobjekt; bei einer Größe nach Zustand (`width: aktiv === i ? 11 : 8`, Querschnitt
+       Teil 1) zählt der letzte Zweig des Ausdrucks (die Grundgröße). */
+    if (s.kante !== undefined
+      && !new RegExp(`\\b(?:width|height):\\s*(?:[^,{}]*?\\?\\s*[\\d.]+\\s*:\\s*)?${s.kante}\\b`).test(b.kontext))
       f.push(`${s.wo}: kante ${s.kante} nicht im Stilobjekt der Basis`);
   });
   return f;
