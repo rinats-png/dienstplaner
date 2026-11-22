@@ -177,7 +177,7 @@ describe("Quellwächter: Zeittexte ohne Prozess- oder Gerätezone", () => {
     "../src/app/aktionen/branchen.js", "../src/app/aktionen/plan.js", "../src/app/aktionen/stammdaten.js",
     "../src/lib/aushang.js", "../src/lib/zustellung.js",
     "../src/ansichten/notrufe.jsx", "../src/ansichten/korrekturen.jsx", "../src/ansichten/stempelpuffer.jsx",
-    "../src/ansichten/einladungen.jsx", "../src/ansichten/mobil.jsx", "../src/ansichten/speicherlage.jsx",
+    "../src/ansichten/einladungen.jsx",
   ];
   /* Zahlenformate (Nachkommastellen, Währung) sind keine Zeittexte. */
   const ZAHL = /minimumFractionDigits|maximumFractionDigits|style:/;

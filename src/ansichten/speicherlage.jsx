@@ -306,7 +306,7 @@ export function Konfliktfenster({ lage, onSchliessen, onUebernehmen, melde }) {
         <p style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.6, margin: "0 0 14px" }}>
           {wer} hat gespeichert
           {wann && `, während du gearbeitet hast — zuletzt um ${
-            wann.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" })}`}.
+            wann.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}`}.
           Arbeit in verschiedenen Monaten führt CENTRIC von selbst zusammen;
           hier überschneidet sie sich wirklich.
         </p>
