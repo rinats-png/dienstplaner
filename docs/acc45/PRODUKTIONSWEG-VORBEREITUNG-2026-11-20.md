@@ -440,6 +440,22 @@ Bezug: [STAGING-PLAN-V4.md](STAGING-PLAN-V4.md) §5.1–5.4 (Vorprüfung, Abbruc
 | K10 | restic: `sicherung-ausser-haus.sh` + `wiederherstellung-probe.sh` gegen lokales Repository; BE-3-Job dreimal + `widerrufbuch-probe.sh` | `probe-status.json` `ergebnis` ok, `abweichend`/`fehlend` 0; Gegenprobe „erkannt“ |
 | K11 | Kopie und Repositorys löschen | Löschvermerk |
 
+**K4-Zusatzpunkt Betriebskennungen (nur für K4 vorgemerkt, kein Beleg für echte Daten).** Befund aus Code-Lesen
+(Review #471, 2026-11-22): Der Kandidat weist das Schreiben mit 422 ab, wenn ein Betrieb keine Zeichenketten-Kennung
+hat (`server/lib/gestalt.mjs:501-502`, seit `54c4526b`, nicht in `274bfa0`; `server/funktionen/daten.mjs:1521-1525` → 422).
+`274bfa0` legt Betriebe mit `id: uid("m")` an, also als Zeichenkette (`src/App.jsx:1080` in `274bfa0`). Betriebe mit
+Zahl-Kennung wären nach dem Wechsel nicht mehr schreibbar. **Ungeprüft:** ob die `274bfa0`-API Zahl-Kennungen
+überhaupt annimmt und ob echte Daten solche enthalten.
+Prüfauftrag in K4 (auf der Kopie, vor dem Kandidatenstart): Jede Betriebskennung in jedem Raum ist eine Zeichenkette.
+Lesebefehl im Kandidatenbild, ohne Netz, je Raum `r`: `bestandLesen(store, r)` und `typeof m.id` für jedes `m` in
+`bestand.mandanten`. Kriterium: alle `"string"`; sonst NO-GO für den Wechsel, bis eine Entscheidung zur Umstellung
+vorliegt. Zusätzlich: PUT jedes Raums mit dem Kandidaten = 200 (nicht 409/422).
+
+**Lokale Probe `deploy/migrationsprobe-lokal.mjs` (Grenze).** Die Probe liest und schreibt je Raum einmal über die
+Kandidaten-API auf einer Wegwerfablage (nur `…/scratchpad/daten-mig…`, Exit 3 sonst; PUT 409 = FEHLGESCHLAGEN). Sie
+ersetzt K4 auf einer echten Kopie **nicht**. Nicht ausgeführt: K5, K9, K10 und Bild-Digests (lokal kein Docker, kein
+restic).
+
 Abbruch: jede Spur einer Verbindung zur Produktion; jeder Personendatenfund in Ausgaben oder Logs außerhalb der
 Umgebung; K1 nicht „In Ordnung“.
 

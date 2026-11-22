@@ -7,22 +7,12 @@
    Voraussetzung: der Kandidat läuft auf genau dieser Ablage unter http://127.0.0.1:3012. CENTRIC_BASIS darf nicht
    gesetzt sein. Je Raum: Lesen über die API, dann unverändert zurückschreiben; der Inhalt muss danach gleich sein
    (Schlüsselreihenfolge in Objekten zählt nicht, Reihenfolge in Listen schon). Exit 0 nur, wenn mindestens ein Raum
-   geprüft und alles bestanden ist; 1 sonst; 3 bei verletzter Isolation. */
+   geprüft und alles bestanden ist; 1 sonst; 3 bei verletzter Isolation. PUT 409 = „nicht geschrieben“ = FEHLGESCHLAGEN.
+   Isolation: CENTRIC_DATEN liegt segmentgenau unter …/scratchpad/daten-mig[-…] (echter Pfad, ohne `..`, ohne UNC).
+   Regeln in deploy/migrationsprobe-regeln.mjs. Das Skript läuft immer (kein Direktaufruf-Wächter, auch über Link).
+   Nicht ersetzt: K4 auf einer echten Kopie; K5, K9, K10 und Bild-Digests prüft diese Probe nicht. */
 import path from "node:path"; import { pathToFileURL } from "node:url";
-
-/** Isolation: Ablage unter scratchpad/daten-mig… (Schrägstrich oder Backslash), kein CENTRIC_BASIS. */
-export function isolationGeprueft(daten, env = process.env) {
-  return typeof daten === "string" && /scratchpad[\\/]+daten-mig/.test(daten) && !env.CENTRIC_BASIS;
-}
-
-/** JSON-Wert mit sortierten Objektschlüsseln (Listen bleiben in ihrer Reihenfolge). */
-const kanonisch = (x) => Array.isArray(x) ? x.map(kanonisch)
-  : x && typeof x === "object" ? Object.fromEntries(Object.keys(x).sort().map((k) => [k, kanonisch(x[k])])) : x;
-
-/** Inhaltsgleich: gleiche Werte; nur die Reihenfolge der Schlüssel in Objekten darf abweichen. */
-export function inhaltGleich(a, b) {
-  return JSON.stringify(kanonisch(a)) === JSON.stringify(kanonisch(b));
-}
+import { isolationGeprueft, inhaltGleich, schreibErgebnis, gesamtExit } from "./migrationsprobe-regeln.mjs";
 
 async function probe() {
   const APP = process.env.CENTRIC_APP, DATEN = process.env.CENTRIC_DATEN, BASIS = "http://127.0.0.1:3012";
@@ -51,11 +41,13 @@ async function probe() {
     const nach = await http("/api/bestand?voll=1", { t: token });
     const bitgleich = JSON.stringify(nach.d.bestand) === JSON.stringify(vorher);
     const inhalt = inhaltGleich(nach.d.bestand, vorher);
-    t(`${raum}: unveränderter Schreibzyklus akzeptiert, Inhalt gleich${inhalt && !bitgleich ? " (nur Schlüsselreihenfolge anders)" : ""}`,
-      (w.s === 200 || w.s === 409) && inhalt, `PUT ${w.s}${w.d.fehler ? " " + w.d.fehler + " " + (w.d.text || "").slice(0, 120) : ""}`);
+    const e = schreibErgebnis(w.s, inhalt);
+    t(`${raum}: unveränderter Schreibzyklus geschrieben (PUT 200), Inhalt gleich${inhalt && !bitgleich ? " (nur Schlüsselreihenfolge anders)" : ""}`,
+      e.bestanden, `${e.text}${w.d.fehler ? " " + w.d.fehler + " " + (w.d.text || "").slice(0, 120) : ""}`);
   }
   console.log(`\nMIGRATIONSPROBE: ${ok}/${n}`);
-  return n > 0 && ok === n ? 0 : 1;   // keine Räume = nichts belegt (fail-closed)
+  return gesamtExit(ok, n);   // keine Räume = nichts belegt (fail-closed)
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) process.exit(await probe());
+// Läuft immer (kein Direktaufruf-Wächter, Review #471 B1); Tests laden nur deploy/migrationsprobe-regeln.mjs.
+process.exit(await probe());
