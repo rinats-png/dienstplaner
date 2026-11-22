@@ -114,12 +114,15 @@ describe("A-1 (Review #485): Fachkraft-Flag hat Vorrang vor der Erkennung über 
       expect(istBetreuungsQualifikation({ name, fachkraft: false }), `${name} ohne Flag`).toBe(true);
     });
   }
-  it("Lesepfad: die Fachkraft zählt als Fachkraft, ohne Hinweis", () => {
+  /* Erwartung geändert (Folgebefund A-1, Review 2026-11-22): früher „ohne Hinweis“ — genau das war der Befund (zählt
+     still als Fachkraft). Die Zählung bleibt unverändert; neu kommt ein weicher Hinweis (art „fachkraftflag“) dazu,
+     nie ein Betreuungs-Fehlzuordnungshinweis. Beleg: pruefungen/modul-pflegequal-folge.test.js. */
+  it("Lesepfad: die Fachkraft zählt als Fachkraft, mit weichem Flag-Hinweis (A-1 Folge), ohne Fehlzuordnungshinweis", () => {
     const quals = FK_NAMEN.map((name, i) => ({ id: `f${i}`, name, fachkraft: true }));
     const m = { qualifikationen: quals, pflegeNiveaus: [{ id: "n-fk", name: "Fachkraft", gruppe: "fachkraft", versorgung: null, qualifikationen: quals.map((q) => q.id) }] };
     const v = pflegeVerteilung(m, quals.map((q) => ({ id: `p-${q.id}`, qualifikationen: [q.id] })), { qualGueltig: () => true, heute: "2026-11-06" });
     expect(v).toMatchObject({ fachkraefte: FK_NAMEN.length, pflegekraefte: FK_NAMEN.length, betreuung: 0, ohneNiveau: 0 });
-    expect(v.hinweise).toBeUndefined();
+    expect(v.hinweise).toEqual([expect.objectContaining({ niveau: "n-fk", art: "fachkraftflag", qualifikationen: quals.map((q) => q.id) })]);
   });
   it("Schreibweg: die Fachkraft passt in die Gruppe fachkraft", () => {
     const quals = FK_NAMEN.map((name, i) => ({ id: `f${i}`, name, fachkraft: true }));

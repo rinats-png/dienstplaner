@@ -70,7 +70,7 @@ describe("A-1: Fachkraft-Flag gegen erkannten Betreuungsnamen — weicher Hinwei
     const v = V({ qualifikationen: [g], pflegeNiveaus: [{ ...N_FK, qualifikationen: ["g"] }] }, []);
     expect(v.hinweise).toHaveLength(1);
     expect(v.hinweise[0]).toMatchObject({ art: "fachkraftflag", qualifikationen: ["g"] });
-    const mk = { id: "mk", name: "Pflegefachkraft", fachkraft: true, merkmal: "betreuung" };
+    const mk = { id: "mk", name: "Betreuungskraft § 43b", fachkraft: true, merkmal: "betreuung" };
     const w = V({ qualifikationen: [mk], pflegeNiveaus: [{ ...N_FK, qualifikationen: ["mk"] }] }, []);
     expect(w.hinweise.map((h) => h.art)).toEqual([undefined]);
   });

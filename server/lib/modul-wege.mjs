@@ -117,7 +117,9 @@ const pflegeNiveauWeg = weg("pflegequal", { pflegeNiveaus: "leitung" }, (altM, n
 /* Auflage A1 (Delta-Review M-PQ1, 2026-11-22): Ändern sich die Qualifikationen des Betriebs, prüft pflegeQualAenderung
    die gespeicherten Niveaus — auch ohne Änderung an den Niveaus und auch bei Modul „geplant“ oder aus (die Niveaus
    bleiben gespeichert und würden sonst nach dem Einschalten falsch zählen). Wer `qualifikationen` schreiben darf, regelt
-   rechte.mjs; hier keine weitere Rechte- oder Modulbedingung. Danach der Schreibweg der Niveaus wie bisher. */
+   rechte.mjs; hier keine weitere Rechte- oder Modulbedingung. Danach der Schreibweg der Niveaus wie bisher.
+   Folgereview 2026-11-22: Änderungen ohne Wechsel der Einordnung (Betreuung → Betreuung) gehen durch (A-2); die
+   Typprüfung `fachkraft` (H-1) gilt für neue oder geänderte Qualifikationen jedes Betriebs. */
 const pflegeWeg = Object.freeze({
   modul: pflegeNiveauWeg.modul, felder: pflegeNiveauWeg.felder,
   zusammen(altM, neuM, ktx) {
