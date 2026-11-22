@@ -839,3 +839,166 @@ describe("Geheimnis-Werkzeug: SI-P10 c – Eingabefehler des Octopus-Nachlaufs t
     } finally { weg(); }
   }, 60000);
 });
+
+/* ==========================================================================
+   SI-P11 (Opus-Review zu #461, Hinweise H1, H3, H4, H5): Testlücke bei
+   entfernten Zeilen, Modus `--nur-arbeitsstand` (Rückgabewert von git grep,
+   Trennung von Datei und Treffer), Kombination `--nur-arbeitsstand` +
+   `--remotes`, fehlendes git oder Arbeitsverzeichnis.
+   Synthetische Werte, Wegwerf-Repos und Attrappen; nichts gelangt ins Repo.
+   ========================================================================== */
+
+const WERKZEUG = path.join(WURZEL, "werkzeug/sicherheit/geheimnisse.mjs");
+/** Pfad, den es sicher nicht gibt (angelegt und wieder entfernt, ohne Zufall im Test) */
+function fehlenderPfad() {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), "geheimnis-scan-fehlt-"));
+  fs.rmSync(d, { recursive: true, force: true });
+  return d;
+}
+/** Attrappe eines Kindprozesses: liefert `ausgabe` auf stdout und endet mit `code` */
+function attrappenKind(ausgabe, code) {
+  const kind = new EventEmitter();
+  kind.stdout = Readable.from([Buffer.from(ausgabe, "utf8")]);
+  kind.stderr = new PassThrough(); kind.stderr.end("fatal: Attrappe\n");
+  kind.stdin = new PassThrough();
+  kind.stdout.on("end", () => setImmediate(() => kind.emit("close", code)));
+  return kind;
+}
+/** Ausgabe von `git grep -n` wie git sie schreibt: mit `-z`/`--null` NUL-getrennt und
+    Dateinamen wörtlich, sonst `:`-getrennt mit C-Quoting für Namen mit Steuerzeichen */
+function grepAusgabe(args, treffer) {
+  const z = args.includes("-z") || args.includes("--null");
+  return treffer.map(([datei, nr, text]) => {
+    if (z) return `${datei}\0${nr}\0${text}\n`;
+    const name = /[\n"\\]/.test(datei) ? `"${datei.replaceAll("\\", "\\\\").replaceAll("\n", "\\n").replaceAll('"', '\\"')}"` : datei;
+    return `${name}:${nr}:${text}\n`;
+  }).join("");
+}
+
+describe("Geheimnis-Werkzeug: SI-P11 H1 – Fortsetzung einer ENTFERNTEN Zeile allein", () => {
+  it("nur eine entfernte überlange Zeile, Fortsetzung mit PEM-Kopfzeile und Schlüsselmuster → KEIN Fund", async () => {
+    const r = await fundeSammeln(roh(ANDERER_SHA, [
+      "diff --git a/a.js b/a.js", "--- a/a.js", "+++ b/a.js", "@@ -1 +0,0 @@",
+      "-" + "q".repeat(40), { fortsetzung: PEM_ZEILE }, { fortsetzung: `x ${API_WERT} y` },
+    ]));
+    expect(r.fortsetzungen).toBe(2);
+    expect(r.offen).toEqual([]);
+    expect(r.frei).toEqual([]);
+  });
+
+  it("Kontextzeile mit Fortsetzung (alter Inhalt) → KEIN Fund; Gegenprobe: dieselbe Fortsetzung nach `+` → Fund", async () => {
+    const r = await fundeSammeln(roh(ANDERER_SHA, [
+      "diff --git a/a.js b/a.js", "--- a/a.js", "+++ b/a.js", "@@ -1,2 +1 @@", " ctx", { fortsetzung: PEM_ZEILE }, "-alt",
+    ]));
+    expect(r.offen).toEqual([]);
+    const g = await fundeSammeln(roh(ANDERER_SHA, ["diff --git a/a.js b/a.js", "--- a/a.js", "+++ b/a.js", "@@ -0,0 +1 @@", "+neu", { fortsetzung: PEM_ZEILE }]));
+    expect(g.offen.map((f) => [f.datei, f.regel])).toEqual([["a.js", PEM]]);
+  });
+});
+
+describe("Geheimnis-Werkzeug: SI-P11 H3 – Modus `--nur-arbeitsstand`", () => {
+  it("H3a: git grep endet mit 2 oder 128 oder per Signal → arbeitsstandScannen lehnt ab (kein stilles „0 Funde“)", async () => {
+    for (const code of [2, 128, null]) {
+      const stub = (cmd, args) => attrappenKind(grepAusgabe(args, [["a.txt", 1, "harmlos"]]), code);
+      const r = await frist(G.arbeitsstandScannen({ cwd: WURZEL, spawn: stub }).then(() => "aufgelöst", (e) => e));
+      expect(r).toBeInstanceOf(Error);
+      expect(r.message).toMatch(/git grep/);
+    }
+  });
+
+  it("H3a: Rückgabe 1 (keine Treffer) ist kein Fehler; Rückgabe 0 mit Treffern wird ausgewertet", async () => {
+    const leer = await G.arbeitsstandScannen({ cwd: WURZEL, spawn: () => attrappenKind("", 1) });
+    expect(leer).toMatchObject({ offen: [], frei: [], zeilen: 0 });
+    const r = await G.arbeitsstandScannen({ cwd: WURZEL, spawn: (c, a) => attrappenKind(grepAusgabe(a, [["b.txt", 3, PEM_ZEILE]]), 0) });
+    expect(r.offen.map((f) => [f.commit, f.datei, f.regel])).toEqual([["Arbeitsstand", "b.txt", PEM]]);
+    expect(r.zeilen).toBe(1);
+  });
+
+  it("H3a (echtes git, CLI): git grep scheitert (GIT_DIR zeigt ins Leere) → Rückgabe 2 statt 0", () => {
+    const cli = spawnSync(process.execPath, [WERKZEUG, "--nur-arbeitsstand"], { encoding: "utf8", env: { ...process.env, GIT_DIR: fehlenderPfad() } });
+    expect(cli.status).toBe(2);
+    expect(cli.stderr).toMatch(/FEHLER: .*git grep/);
+    expect(cli.stdout).not.toMatch(/ERGEBNIS: keine offenen Funde/);
+  });
+
+  it("H3b (Attrappe im Format von git): Dateiname mit `:` oder Zeilenumbruch trifft keine Freigabe einer anderen Datei", async () => {
+    let args = null;
+    const stub = (cmd, a) => {
+      args = a;
+      return attrappenKind(grepAusgabe(a, [
+        [`${SONDE_PFAD}:x`, 1, PEM_ZEILE],
+        [`x\n${SONDE_PFAD}`, 2, PEM_ZEILE],
+        [SONDE_PFAD, 7, PEM_ZEILE],
+      ]), 0);
+    };
+    const r = await G.arbeitsstandScannen({ cwd: WURZEL, spawn: stub });
+    expect(args).toEqual(expect.arrayContaining(["grep", "-n", "-a", "--no-textconv"]));
+    expect(r.offen.map((f) => [f.datei, f.regel]).sort()).toEqual([[`${SONDE_PFAD}:x`, PEM], [`x\n${SONDE_PFAD}`, PEM]]);
+    expect(r.frei.map((f) => [f.datei, f.regel])).toEqual([[SONDE_PFAD, PEM]]);
+    expect(r.zeilen).toBe(3);
+  });
+
+  it("H3b (echtes git): Dateiname mit Leerzeichen und Umlaut wörtlich; freigegebene Datei bleibt frei", async () => {
+    const { d, g, w, weg } = wegwerfRepo();
+    try {
+      w("ä b.txt", `vorn\n${PEM_ZEILE}\n`); w(SONDE_PFAD, `${PEM_ZEILE}\n`); w("leer.txt", "");
+      g("add", "-A");
+      const r = await G.arbeitsstandScannen({ cwd: d });
+      expect(r.offen.map((f) => [f.datei, f.regel])).toEqual([["ä b.txt", PEM]]);
+      expect(r.frei.map((f) => [f.datei, f.regel])).toEqual([[SONDE_PFAD, PEM]]);
+      expect(r.zeilen).toBe(3);
+    } finally { weg(); }
+  }, 60000);
+
+  it.skipIf(process.platform === "win32")("H3b (echtes git, nur POSIX): Dateinamen mit `:` und Zeilenumbruch → offen, nicht frei", async () => {
+    const { d, g, w, weg } = wegwerfRepo();
+    try {
+      w(`${SONDE_PFAD}:x`, `${PEM_ZEILE}\n`); w(`x\n${SONDE_PFAD}`, `${PEM_ZEILE}\n`); w(SONDE_PFAD, `${PEM_ZEILE}\n`);
+      g("add", "-A");
+      const r = await G.arbeitsstandScannen({ cwd: d });
+      expect(r.offen.map((f) => [f.datei, f.regel]).sort()).toEqual([[`${SONDE_PFAD}:x`, PEM], [`x\n${SONDE_PFAD}`, PEM]]);
+      expect(r.frei.map((f) => [f.datei, f.regel])).toEqual([[SONDE_PFAD, PEM]]);
+    } finally { weg(); }
+  }, 60000);
+});
+
+describe("Geheimnis-Werkzeug: SI-P11 H4 – `--nur-arbeitsstand` mit `--remotes`", () => {
+  it("argumenteLesen lehnt die Kombination ab (beide Reihenfolgen, auch --remotes=<name>)", () => {
+    for (const a of [["--nur-arbeitsstand", "--remotes"], ["--remotes", "--nur-arbeitsstand"], ["--remotes=upstream", "--nur-arbeitsstand"]]) {
+      expect(() => G.argumenteLesen(a)).toThrow(/nicht kombinierbar/);
+    }
+    expect(G.argumenteLesen(["--nur-arbeitsstand"]).modus).toBe("arbeitsstand");
+    expect(G.argumenteLesen(["--remotes"]).refs).toEqual(["--remotes=origin"]);
+  });
+
+  it("CLI: Rückgabe 2 mit klarer Meldung, kein Lauf", () => {
+    const cli = spawnSync(process.execPath, [WERKZEUG, "--nur-arbeitsstand", "--remotes"], { encoding: "utf8" });
+    expect(cli.status).toBe(2);
+    expect(cli.stderr).toMatch(/nicht kombinierbar/);
+    expect(cli.stdout).toBe("");
+  });
+});
+
+describe("Geheimnis-Werkzeug: SI-P11 H5 – git oder Arbeitsverzeichnis fehlt", () => {
+  it("historieScannen und arbeitsstandScannen lehnen bei fehlendem Arbeitsverzeichnis ab (keine unbehandelte Ablehnung)", async () => {
+    const fehlt = fehlenderPfad();
+    const h = await frist(G.historieScannen({ cwd: fehlt, refs: ["--all"] }).then(() => "aufgelöst", (e) => e));
+    expect(h).toBeInstanceOf(Error);
+    const a = await frist(G.arbeitsstandScannen({ cwd: fehlt }).then(() => "aufgelöst", (e) => e));
+    expect(a).toBeInstanceOf(Error);
+    expect(a.message).toMatch(/git grep/);
+  });
+
+  it("CLI: PATH ohne git → Rückgabe 2 mit Meldung in beiden Modi (Historie und Arbeitsstand)", () => {
+    const leer = fs.mkdtempSync(path.join(os.tmpdir(), "geheimnis-scan-ohne-git-"));
+    try {
+      const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => k.toUpperCase() !== "PATH"));
+      env.PATH = leer;
+      for (const a of [[], ["--remotes"], ["--nur-arbeitsstand"]]) {
+        const cli = spawnSync(process.execPath, [WERKZEUG, ...a], { encoding: "utf8", env });
+        expect(cli.status, a.join(" ")).toBe(2);
+        expect(cli.stderr).toMatch(/FEHLER: .*git/);
+      }
+    } finally { fs.rmSync(leer, { recursive: true, force: true }); }
+  }, 60000);
+});
