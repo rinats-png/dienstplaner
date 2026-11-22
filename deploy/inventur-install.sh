@@ -694,7 +694,7 @@ sshd_woerter() { sshd_wert "$1" | tr ' ' '\n' | sed '/^$/d'; }
 # Die Dateien werden nur gelesen.
 SSHD_DATEIEN=()
 pruefe_match() {
-  local cfg="$W/etc/ssh/sshd_config" f pat g match="" i=0 gesehen=" "
+  local cfg="$W/etc/ssh/sshd_config" f pat g n match="" i=0 gesehen=" "
   local -a warteschlange=()
   if [[ -L "$cfg" || ! -f "$cfg" || ! -r "$cfg" ]]; then fehl "/etc/ssh/sshd_config fehlt oder ist nicht lesbar"; return; fi
   warteschlange=("$cfg")
@@ -710,9 +710,19 @@ pruefe_match() {
     # zum ersten NUL-Byte; Rest und Zeilenumbruch fallen weg, die nächste Zeile
     # hängt sich an („Ma\0\ntch User admin“ wirkt als „Match User admin“). awk
     # liest das anders. Deshalb fail-closed: jedes NUL-Byte (auch in Kommentaren,
-    # auch am Dateiende) → Abbruch. Liefert tr/wc nichts, gilt das als Fund.
-    if [[ "$(LC_ALL=C tr -cd '\000' <"$f" | wc -c | tr -d ' ')" != 0 ]]; then
-      fehl "sshd-Konfigurationsdatei ${f#"$W"} enthält NUL-Byte; fail-closed"
+    # auch am Dateiende) → Abbruch.
+    # A-1 (Delta-Review #458): scheitert die Zählung (Datei unlesbar, tr/wc fehlt
+    # oder bricht ab), zählt wc trotzdem 0. Deshalb wird der Rückgabewert der
+    # ganzen Pipeline ausgewertet (pipefail in der Ersetzung, unabhängig von den
+    # globalen Optionen); gilt nur ein Ergebnis von genau 0 als bestanden. Jedes
+    # andere Ergebnis (Fehler, leer, keine Zahl) → Abbruch.
+    n="$(set -o pipefail; LC_ALL=C tr -cd '\000' <"$f" | wc -c | tr -d ' ')" || n=x
+    if [[ "$n" != 0 ]]; then
+      if [[ "$n" =~ ^[0-9]+$ ]]; then
+        fehl "sshd-Konfigurationsdatei ${f#"$W"} enthält NUL-Byte; fail-closed"
+      else
+        fehl "sshd-Konfigurationsdatei ${f#"$W"} nicht auf NUL-Byte prüfbar; fail-closed"
+      fi
       continue
     fi
     SSHD_DATEIEN+=("${f#"$W"}")
