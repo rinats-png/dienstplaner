@@ -57,6 +57,13 @@ const ZEILE = "Selbsttest";
 const PRUEF = "src/pruefung.jsx";
 const ABLAUF = "src/ansichten/testablauf.jsx";
 
+/** Bewusste Abweichung von der Basis, nicht Teil des Radiusschnitts: QS-2 Nachtrag (PR #478) ersetzt in
+ *  src/pruefung.jsx die Wandzeit-Zusicherung „Erster Aufbau unter 500 ms“ (+32 Zeilen, Zähler `fehl` in memo).
+ *  Die Datei bleibt byte-genau festgelegt: Prüfsumme der Datei mit dieser einen Änderung. Jede weitere
+ *  Änderung an der Datei macht die Prüfung rot, wie zuvor gegen die Basis. */
+const NACHTRAG_QS2 = { [PRUEF]: { sha256: "89d6888daa73a7e703b7cba6b63b16f43b0672dc2ca14511dc3dbd8f634eedd8", zeilenMehr: 32 } };
+const erwartetSha = (fx, d) => (NACHTRAG_QS2[d] ? NACHTRAG_QS2[d].sha256 : fx.dateien[d].sha256);
+
 /** Feste Zuordnung je Stelle (Quelltextreihenfolge). alt = Radius vorher (px); keine feste Kante (Höhe aus Inhalt). */
 const SELBSTTEST_ZUORDNUNG = {
   [ABLAUF]: [{ wo: "Testablauf-Leiste (role=status, Höhe aus Inhalt und Innenabstand 14 px)", alt: 12, stufe: "mittel" }],
@@ -143,7 +150,7 @@ describe("V4-3b Selbsttest: Messung", () => {
   it("Zeile: Form-Literale 1 → 0, Farbliterale 77 (alle pruefung.jsx), Form 1/2, „voll V4“ 0/2 → 1/2; Inline-Stile 5", async () => {
     const inv = await inventar();
     const e = jeHauptansicht(inv)[ZEILE];
-    expect([e.dateien, e.sichtbar, e.zeilen]).toEqual([2, 2, 7843]);
+    expect([e.dateien, e.sichtbar, e.zeilen]).toEqual([2, 2, 7843 + NACHTRAG_QS2[PRUEF].zeilenMehr]);
     expect(HAUPTANSICHT_DATEIEN[ZEILE]).toEqual([PRUEF, ABLAUF]);
     expect(e.formLiterale).toBe(0);
     expect(e.farbLiterale).toBe(77);
@@ -212,10 +219,10 @@ describe("V4-3b Selbsttest: Messung", () => {
     for (const d of dateien) {
       const r = rueckgerechnet(d);
       expect(r.ersetzt, `Anzahl Stufen in ${d}`).toBe((SELBSTTEST_ZUORDNUNG[d] || []).length);
-      expect(sha256(r.text), `${d} zurückgerechnet = Basis`).toBe(fx.dateien[d].sha256);
+      expect(sha256(r.text), `${d} zurückgerechnet = Basis${NACHTRAG_QS2[d] ? " + QS-2-Nachtrag" : ""}`).toBe(erwartetSha(fx, d));
     }
-    /* pruefung.jsx ist unverändert: alle 77 Farbliterale stehen wie auf der Basis. */
-    expect(sha256(lies(PRUEF))).toBe(fx.dateien[PRUEF].sha256);
+    /* pruefung.jsx trägt außer dem QS-2-Nachtrag keine Änderung: alle 77 Farbliterale stehen wie auf der Basis. */
+    expect(sha256(lies(PRUEF))).toBe(erwartetSha(fx, PRUEF));
   });
 
   it("Feld- und ARIA-Attribute in Reihenfolge wie auf der Basis", () => {
