@@ -13,7 +13,7 @@ import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { inventar, hauptansicht } from "./v4-inventar.mjs";
-import { SCHNITTE, BASIS_FIXTURE, basisText, basisEintrag } from "../pruefungen/v4-radiusstufen.mjs";
+import { SCHNITTE, BASIS_FIXTURE, basisText, basisEintrag, ansichtVon } from "../pruefungen/v4-radiusstufen.mjs";
 
 const WURZEL = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -22,7 +22,8 @@ export async function erzeugeBasisFixture(wurzel = WURZEL) {
   const schnitte = {};
   for (const [h, basis] of Object.entries(SCHNITTE)) {
     if (basisText(wurzel, basis, "package.json") === null) throw new Error(`Basis ${basis} nicht im Git-Verlauf (voller Checkout nötig)`);
-    const dateien = inv.eintraege.filter((e) => e.gruppe !== "V4" && hauptansicht(e) === h).map((e) => e.datei).sort();
+    /* Schnitt in Teilen („Querschnitt/Bausteine (Teil 1)“): alle Dateien der Zeile, nicht nur die des Teils. */
+    const dateien = inv.eintraege.filter((e) => e.gruppe !== "V4" && hauptansicht(e) === ansichtVon(h)).map((e) => e.datei).sort();
     const eintraege = {};
     for (const d of dateien) eintraege[d] = basisEintrag(basisText(wurzel, basis, d));
     schnitte[h] = { basis, dateien: eintraege };
