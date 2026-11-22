@@ -63,7 +63,7 @@ const TELEFON_ZUORDNUNG = {
     { wo: "Selbstplanung: Dienst eintragen", alt: 11, stufe: "mittel" },
     { wo: "Notruf: Art wählen", alt: 14, stufe: "mittel" },
     { wo: "Offene Schichten: Zurückziehen", alt: 12, stufe: "mittel" },
-    { wo: "Offene Schichten: Ich melde mich", alt: 12, stufe: "mittel" },
+    { wo: "Offene Schichten: Ich übernehme das", alt: 12, stufe: "mittel" },
     { wo: "Mehr: Mitteilungen ein/aus", alt: 12, stufe: "mittel" },
     { wo: "Mehr: E-Mail-Adresse", alt: 12, stufe: "mittel" },
     { wo: "Mehr: Zustellweg E-Mail/Gerät", alt: 10, stufe: "mittel" },
