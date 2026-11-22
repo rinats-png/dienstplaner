@@ -1585,7 +1585,7 @@ describe("Opus-Review #470 A2: G8-Belegzeile nennt nur die durch ssotPrs gedeckt
   const zeile = (g) => g.belege.filter((b) => b.startsWith("WP-48 im Kandidaten")).join("\n");
 
   it("ssotPrs gesetzt: „nur hinter Schalter AUS“ nennt nur gedeckte PRs; übrige stehen als NICHT gedeckt (Betreiber-Annahme)", () => {
-    const g = g8Blocker(ssot, kandidat, freigabe, KONFIG_STANDARD, fkt({ ssotPrs: ["#342", "#348", 350] }), KL);
+    const g = g8Blocker(ssot, kandidat, freigabe, KONFIG_STANDARD, fkt({ ssotPrs: ["#342", "#348", "#350"] }), KL); // H5: nur Format „#123“
     expect(g.ergebnis).toBe("GO");
     const z = zeile(g);
     expect(z).toMatch(/nur hinter Schalter AUS \(G3: CENTRIC_TEILSPEICHERUNG\): #342, #348, #350/);
@@ -2154,5 +2154,118 @@ describe("Endurteil #427 Auflage A5: REVIEW-NACHWEIS-2026-11-22.md ist für #427
     const frueher = { datei: "REVIEW-NACHWEIS-2026-11-20.md", text: KOPF + "| #427 | Opus | MERGEBAR | gemergt |\n" };
     expect(reviewNachweiseLesen([frueher]).has(427)).toBe(true);
     expect(reviewNachweiseLesen([{ datei: "REVIEW-NACHWEIS-2026-11-22.md", text }, frueher]).has(427)).toBe(false);
+  });
+});
+
+describe("Gate-Härtung Review #477 H3 / #473 H1, H2, H4, H5: G8/G9 fail-closed bei prio, pr und ssotPrs", () => {
+  const P = (o = {}) => ({ id: "WP-X", prio: "P0", status: "IN_PROGRESS", strang: "acc45", pr: ["#90"], titel: "x", ...o });
+  const g8 = (p, prs = [90], freigabe = null) => g8Blocker({ pakete: [p] }, prs, freigabe, KONFIG_STANDARD);
+  const g9 = (p) => g9Befunde({ pakete: [p] }, null, KONFIG_STANDARD);
+  const UNBEKANNT = ["p1", "p0", " P0", "P0 ", "P1\n", "", "P4", "P", null, undefined, 1, ["P0"]];
+  const T = "CENTRIC_TEILSPEICHERUNG";
+  const fkt = (extra = {}) => ({ funktionen: [{ id: "teilspeicherung", name: "Teilspeicherung", variablen: [T], ssotPakete: ["WP-48"], ...extra }] });
+  const WP48 = { pakete: [{ id: "WP-48", prio: "P0", status: "IN_PROGRESS", strang: "acc45", pr: ["#87", "#342", "#348", "#350"] }] };
+  const ANGENOMMEN = { akzeptiertePakete: [{ id: "WP-48", grund: "Betreiber-Annahme" }] };
+
+  it("Konstanten: bekannte Prioritäten und PR-Format sind an acc45-backlog.mjs gebunden; G8 und G9 teilen die Blocker-Prioritäten", async () => {
+    const BL = await import("../werkzeug/acc45-backlog.mjs");
+    const RP = await import("../werkzeug/release-pruefung.mjs");
+    expect([...RP.PRIO_STUFEN]).toEqual([...BL.PRIOS]);
+    expect(Object.isFrozen(RP.PRIO_STUFEN)).toBe(true);
+    expect(RP.PR_MUSTER.source).toBe(BL.PR_MUSTER.source);
+    expect(KONFIG_STANDARD.blocker.prios).toBe(KONFIG_STANDARD.befund.prios);
+    expect([...KONFIG_STANDARD.blocker.prios]).toEqual(["P0", "P1"]);
+  });
+
+  it("G8: unbekannte oder fehlende prio eines offenen Pakets mit PR im Kandidaten → NO-GO (nicht „kein P0/P1“)", () => {
+    for (const prio of UNBEKANNT) {
+      const g = g8(P({ prio }));
+      const n = JSON.stringify(prio) ?? "undefined";
+      expect(g.ergebnis, n).toBe("NO-GO");
+      expect(g.gruende.join(" "), n).toMatch(/WP-X .*Priorität .*unbekannt/);
+    }
+  });
+
+  it("G8: Gegenproben — P2/P3 offen, erledigt mit unbekannter prio, kein PR im Kandidaten → GO; Annahme mit Grund wirkt", () => {
+    for (const prio of ["P2", "P3"]) expect(g8(P({ prio })).ergebnis, prio).toBe("GO");
+    for (const status of ["DONE", "INTEGRATED", "VERIFIED"]) expect(g8(P({ prio: "p1", status })).ergebnis, status).toBe("GO");
+    expect(g8(P({ prio: "p1" }), [91]).ergebnis).toBe("GO");
+    const a = g8(P({ prio: "p1" }), [90], { akzeptiertePakete: [{ id: "WP-X", grund: "x" }] });
+    expect(a.ergebnis).toBe("GO");
+    expect(a.belege.join(" ")).toMatch(/WP-X .*akzeptiert/);
+  });
+
+  it("G8: pr eines offenen P0/P1-Pakets (oder mit unbekannter prio) ist keine gültige Liste „#123“ → NO-GO (fail-closed)", () => {
+    for (const pr of ["#90", 90, {}, null, undefined, ["90"], [90], ["#90a"], ["#0"], ["#90", "#90"], ["#99999999999999999999"]]) {
+      for (const prio of ["P0", "P1", "p1"]) {
+        const g = g8(P({ prio, pr }), [90]);
+        const n = `${prio} ${JSON.stringify(pr) ?? "undefined"}`;
+        expect(g.ergebnis, n).toBe("NO-GO");
+        expect(g.gruende.join(" "), n).toMatch(/WP-X .*pr /);
+      }
+    }
+    // Gegenproben: gültige Liste ohne Treffer → GO; P2 mit ungültigem pr bleibt Sache des Schemas (acc45-backlog pruefen)
+    expect(g8(P({ pr: [] })).ergebnis).toBe("GO");
+    expect(g8(P({ pr: ["#91"] })).ergebnis).toBe("GO");
+    expect(g8(P({ prio: "P2", pr: "#90" })).ergebnis).toBe("GO");
+    expect(g8(P({ status: "DONE", pr: "#90" })).ergebnis).toBe("GO");
+  });
+
+  it("G9: unbekannte oder fehlende prio eines offenen Befunds → NO-GO; P2/P3 und Nicht-Befunde → GO; REL-* bleibt ausgenommen", () => {
+    for (const prio of UNBEKANNT) {
+      for (const b of [{ id: "F-1", strang: "folge" }, { id: "V4-9", strang: "acc45" }, { id: "ABN-S9", strang: "acc45" }]) {
+        const g = g9(P({ ...b, prio, status: "BLOCKED", pr: [] }));
+        const n = `${b.id} ${JSON.stringify(prio) ?? "undefined"}`;
+        expect(g.ergebnis, n).toBe("NO-GO");
+        expect(g.gruende.join(" "), n).toMatch(/Priorität .*unbekannt/);
+      }
+    }
+    for (const prio of ["P2", "P3"]) expect(g9(P({ id: "F-1", strang: "folge", prio, status: "BLOCKED" })).ergebnis, prio).toBe("GO");
+    expect(g9(P({ id: "WP-X", strang: "acc45", prio: "p1", status: "BLOCKED" })).ergebnis).toBe("GO");
+    expect(g9(P({ id: "REL-9", strang: "folge", prio: "p1", status: "BLOCKED" })).ergebnis).toBe("GO");
+    expect(g9(P({ id: "F-1", strang: "folge", prio: "p1", status: "DONE" })).ergebnis).toBe("GO");
+  });
+
+  it("ssotPrs: Eintrag, der in keinem pr der genannten ssotPakete steht → NO-GO mit Namen; gültige Einträge → GO", () => {
+    const ok = g8Blocker(WP48, [87, 342, 348, 350], ANGENOMMEN, KONFIG_STANDARD, fkt({ ssotPrs: ["#342", "#348", "#350"] }), KL);
+    expect(ok.ergebnis).toBe("GO");
+    for (const ssotPrs of [["#999"], ["#342", "#349"], ["#342", "#348", "#350", "#1"]]) {
+      const g = g8Blocker(WP48, [87, 342, 348, 350], ANGENOMMEN, KONFIG_STANDARD, fkt({ ssotPrs }), KL);
+      expect(g.ergebnis, JSON.stringify(ssotPrs)).toBe("NO-GO");
+      expect(g.gruende.join(" "), JSON.stringify(ssotPrs)).toMatch(/teilspeicherung: ssotPrs #(999|349|1) steht in keinem pr der ssotPakete \(WP-48\)/);
+    }
+    // auch ohne PR des Pakets im Kandidaten (Tippfehler bleibt nicht unbemerkt)
+    expect(g8Blocker(WP48, [], null, KONFIG_STANDARD, fkt({ ssotPrs: ["#999"] }), KL).ergebnis).toBe("NO-GO");
+    expect(g8Blocker(WP48, [], null, KONFIG_STANDARD, fkt({ ssotPrs: ["#342"] }), KL).ergebnis).toBe("GO");
+  });
+
+  it("ssotPrs ohne ssotPakete → NO-GO (Schemafehler); ohne beide Felder unverändert GO", () => {
+    for (const extra of [{ ssotPakete: undefined, ssotPrs: ["#342"] }, { ssotPakete: undefined, ssotPrs: [] }, { ssotPakete: undefined, ssotPrs: "x" }]) {
+      const g = g8Blocker(WP48, [], null, KONFIG_STANDARD, fkt(extra), KL);
+      expect(g.ergebnis, JSON.stringify(extra)).toBe("NO-GO");
+      expect(g.gruende.join(" "), JSON.stringify(extra)).toMatch(/teilspeicherung: ssotPrs ohne ssotPakete/);
+    }
+    expect(g8Blocker(WP48, [], null, KONFIG_STANDARD, fkt({ ssotPakete: undefined }), KL).ergebnis).toBe("GO");
+  });
+
+  it("ssotPrsLesen: nur „#123“ (keine Zahl ohne #), nur sichere Ganzzahlen", async () => {
+    const { ssotPrsLesen } = await import("../werkzeug/release-pruefung.mjs");
+    for (const w of [[342], ["#342", 348], [Number.MAX_SAFE_INTEGER], ["#9007199254740993"], ["#99999999999999999999"], [1e21]]) {
+      expect(ssotPrsLesen(w).fehler, JSON.stringify(w)).toBeTruthy();
+    }
+    expect([...ssotPrsLesen(["#342", "#9007199254740991"]).prs]).toEqual([342, 9007199254740991]);
+    expect(ssotPrsLesen(undefined)).toEqual({ prs: null });
+  });
+
+  it("Repository-Stand: die echte SSOT und RELEASE-UNFERTIG.json bleiben unter der Härtung GO (verhaltensneutral)", () => {
+    const ssot = JSON.parse(readFileSync(join(WURZEL, "docs/acc45/work-packages.json"), "utf8"));
+    const g = g8Blocker(ssot, [], null, KONFIG_STANDARD, UNFERTIG, KL);
+    expect(g.gruende).toEqual([]);
+    expect(g.ergebnis).toBe("GO");
+    // jedes ssotPrs steht im pr eines genannten ssotPakete-Pakets
+    const pakete = new Map(ssot.pakete.map((p) => [p.id, p]));
+    for (const f of UNFERTIG.funktionen) for (const nr of f.ssotPrs || []) {
+      expect(f.ssotPakete.some((id) => (pakete.get(id)?.pr || []).includes(nr)), `${f.id}: ${nr}`).toBe(true);
+    }
   });
 });
