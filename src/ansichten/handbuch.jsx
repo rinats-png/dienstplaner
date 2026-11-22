@@ -75,7 +75,7 @@ export function Handbuch({ sitz, akt, gehZu }) {
         <div style={{ display: "flex", alignItems: "flex-start", gap: 14, marginBottom: 14 }}>
           <button type="button" onClick={() => akt.handbuchHaken(schluessel)}
             aria-label={ok ? "Als ungelesen markieren" : "Als erledigt markieren"}
-            style={{ width: 26, height: 26, borderRadius: 8, flexShrink: 0, cursor: "pointer",
+            style={{ width: 26, height: 26, borderRadius: "var(--v4-r-klein)", flexShrink: 0, cursor: "pointer",
               marginTop: 2, border: `1.5px solid ${ok ? C.ok : C.steuer}`,
               background: ok ? C.ok : "transparent", color: C.aufAkzent, padding: 0,
               display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit" }}>
@@ -94,7 +94,7 @@ export function Handbuch({ sitz, akt, gehZu }) {
             {a.schritte.map((s, i) => (
               <li key={i} style={{ display: "flex", gap: 13, padding: "8px 0", fontSize: 14,
                 lineHeight: 1.6, alignItems: "flex-start" }}>
-                <span style={{ width: 22, height: 22, borderRadius: 11, flexShrink: 0, marginTop: 1,
+                <span style={{ width: 22, height: 22, borderRadius: "var(--v4-r-pille)", flexShrink: 0, marginTop: 1,
                   background: C.accentLight, color: C.accent, fontSize: 11.5, fontWeight: 700,
                   display: "flex", alignItems: "center", justifyContent: "center", ...NUM }}>{i + 1}</span>
                 <span>{s}</span>
@@ -158,7 +158,7 @@ export function Handbuch({ sitz, akt, gehZu }) {
                     background: an ? C.accentLight : "transparent",
                     borderLeft: `3px solid ${an ? C.accent : "transparent"}`,
                     borderBottom: i < kapitel.length - 1 ? `1px solid ${C.lineSoft}` : "none" }}>
-                  <span style={{ width: 22, height: 22, borderRadius: 11, flexShrink: 0, marginTop: 1,
+                  <span style={{ width: 22, height: 22, borderRadius: "var(--v4-r-pille)", flexShrink: 0, marginTop: 1,
                     display: "flex", alignItems: "center", justifyContent: "center",
                     fontSize: 11, fontWeight: 700, ...NUM,
                     background: fertig ? C.ok : an ? C.accent : C.flaecheStill,

@@ -170,7 +170,7 @@ export function TourLeiste({ sitz, akt, gehZu }) {
                 <button key={k.idx} type="button" onClick={() => springe(k.von)}
                   aria-current={hier ? "step" : undefined}
                   title={`${k.name} — ${k.gesehen} von ${k.anzahl} gesehen`}
-                  style={{ padding: "3px 9px", borderRadius: 999, cursor: "pointer",
+                  style={{ padding: "3px 9px", borderRadius: "var(--v4-r-pille)", cursor: "pointer",
                     fontFamily: "inherit", fontSize: 11.5, lineHeight: 1.5,
                     border: `1px solid ${hier ? C.accent : C.lineSoft}`,
                     background: hier ? C.accentLight : "transparent",
@@ -219,7 +219,7 @@ export function TourLeiste({ sitz, akt, gehZu }) {
               beim nächsten Mal wieder hinein. */}
           {amKapitelende && (
             <div style={{ fontSize: 12, color: C.dim, lineHeight: 1.45,
-              padding: "8px 10px", borderRadius: 8, background: C.okLight }}>
+              padding: "8px 10px", borderRadius: "var(--v4-r-klein)", background: C.okLight }}>
               Ende von „{jetzt.name}". Guter Punkt für eine Pause — beim
               nächsten Mal geht es hier weiter.
             </div>)}

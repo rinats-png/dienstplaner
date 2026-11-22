@@ -78,7 +78,7 @@ export function ZiehAnbieter({ children }) {
         <div style={{ position: "fixed", left: zeiger.x, top: zeiger.y, zIndex: 999,
           transform: "translate(-50%,-140%)", pointerEvents: "none",
           background: last.farbe ? `${last.farbe}` : C.accentDeep, color: last.farbe ? "#fff" : C.aufAkzent,
-          padding: "8px 14px", borderRadius: 12, fontSize: 13.5, fontWeight: 600,
+          padding: "8px 14px", borderRadius: "var(--v4-r-mittel)", fontSize: 13.5, fontWeight: 600,
           boxShadow: "var(--schatten-toast)", whiteSpace: "nowrap" }}>
           {last.beschriftung}
           {last.zeit && <span style={{ opacity: .75, marginLeft: 8, fontVariantNumeric: "tabular-nums" }}>
@@ -150,7 +150,7 @@ export function ZiehHinweis({ text }) {
   if (!ctx || !ctx.last) return null;
   return (
     <div style={{ position: "fixed", bottom: 26, left: "50%", transform: "translateX(-50%)", zIndex: 998,
-      background: C.text, color: C.flaeche, padding: "11px 20px", borderRadius: 999,
+      background: C.text, color: C.flaeche, padding: "11px 20px", borderRadius: "var(--v4-r-pille)",
       fontSize: 13.5, boxShadow: "var(--schatten-toast)", pointerEvents: "none" }}>
       {text || "Auf ein Ziel ziehen und loslassen"}
     </div>);
