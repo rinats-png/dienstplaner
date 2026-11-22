@@ -92,6 +92,12 @@ export function geraeteStil() {
 @media (max-width: ${UMBRUCH.seitenleiste}px){
   .seitenleiste{visibility:hidden; transition:transform .24s cubic-bezier(.4,0,.2,1), visibility 0s linear .24s;}
   .seitenleiste.offen{visibility:visible; transition-delay:0s;}
+  /* V4-2d (WCAG 2.4.3, Fokus beim Oeffnen): Bei "Bewegung reduzieren" setzt App.jsx global transition-duration:.01ms !important.
+     Die Kinder der Leiste (.marke, .snav, .sfuss) haben die Vorgabe transition-property:all; damit wurde der geerbte Wechsel
+     hidden -> visible zu einem Uebergang. Beim focus() in seitenleisteFokus() stand er noch am Anfang, der Eintrag erbte
+     "hidden", der Browser verwarf den Fokus (er blieb auf der Menuetaste). Offen daher ohne Uebergang in Leiste und Inhalt;
+     sichtbar gleich (0,01 ms gegen 0 ms). Das Zuklappen bleibt unveraendert. */
+  @media (prefers-reduced-motion: reduce){ .seitenleiste.offen, .seitenleiste.offen *{transition:none !important;} }
   .seiten-abdunkelung{position:fixed; inset:0; z-index:39; border:0; padding:0; margin:0; cursor:pointer;
     background:var(--c-ueberlagerung);}
   .scrollhinweis{display:block;}

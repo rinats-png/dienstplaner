@@ -14,7 +14,7 @@ export function Kontoblatt({ m, verlauf, jetzt, trend }) {
   if (!Array.isArray(verlauf) || !verlauf.length || !verlauf.every((x) => Number.isFinite(x.kto))
     || !Number.isFinite(jetzt) || !Number.isFinite(trend)) {
     return (
-      <div style={{ background: C.flaeche, borderRadius: 24, padding: "24px 26px",
+      <div style={{ background: C.flaeche, borderRadius: "var(--v4-r-gross)", padding: "24px 26px",
         border: `1px solid ${C.line}`, marginBottom: 12, color: C.dim, fontSize: 14.5, lineHeight: 1.5 }}>
         Für dein Stundenkonto liegen noch keine Werte vor.
       </div>);
@@ -32,7 +32,7 @@ export function Kontoblatt({ m, verlauf, jetzt, trend }) {
   const richtung = Math.abs(trend) < 3 ? "gleichbleibend" : trend > 0 ? "aufbauend" : "abbauend";
 
   return (
-    <div style={{ background: C.flaeche, borderRadius: 24, padding: "30px 26px 26px",
+    <div style={{ background: C.flaeche, borderRadius: "var(--v4-r-gross)", padding: "30px 26px 26px",
       border: `1px solid ${C.line}`, marginBottom: 12 }}>
       {/* Die Zahl trägt alles */}
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16 }}>
@@ -66,7 +66,7 @@ export function Kontoblatt({ m, verlauf, jetzt, trend }) {
       {/* Endpunkt als HTML-Punkt (im gestreckten SVG würde er zur Ellipse) */}
       <span aria-hidden="true" style={{ position: "absolute", left: `${(letzterX / W) * 100}%`,
         top: (letzterY / (H + 14)) * 104, width: 10, height: 10, boxSizing: "border-box",
-        transform: "translate(-50%, -50%)", borderRadius: "50%", background: C.flaeche,
+        transform: "translate(-50%, -50%)", borderRadius: "var(--v4-r-pille)", background: C.flaeche,
         border: `2px solid ${ueber ? C.warn : C.accentHi}` }} />
       </div>
 

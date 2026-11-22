@@ -32,7 +32,7 @@ export function Planungsreife({ m, ym, heute }) {
     return n.slice(0, MAX_NAMEN).join(", ") + (n.length > MAX_NAMEN ? ` und ${n.length - MAX_NAMEN} weitere` : "");
   };
   return (
-    <div role="region" aria-label="Planungsreife" style={{ border: `1px solid ${C.lineSoft}`, borderRadius: 10, padding: "12px 14px", display: "grid", gap: 8 }}>
+    <div role="region" aria-label="Planungsreife" style={{ border: `1px solid ${C.lineSoft}`, borderRadius: "var(--v4-r-mittel)", padding: "12px 14px", display: "grid", gap: 8 }}>
       <div style={{ fontSize: 14 }}>
         <b>Planungsreife</b>{": "}<span style={{ color: u.farbe(), fontWeight: 700 }}>{u.text}</span>
       </div>

@@ -15,6 +15,7 @@ import { useState } from "react";
 import { darf } from "../lib/berechtigung.js";
 import { dauer } from "../regelwerk.js";
 import { rasterBefunde } from "../lib/rasterpruefung.js";
+import { Schichtmodelle } from "./schichtmodelle.jsx";
 
 /* ============================== SCHICHTFOLGE ============================= */
 export function Schichtfolge({ sitz, akt }) {
@@ -121,7 +122,7 @@ export function Schichtfolge({ sitz, akt }) {
             <Lab style={{ margin: "20px 0 12px" }}>Startpunkt je {m.einheitLabel}</Lab>
             {m.einheiten.map((e) => (
               <div key={e.id} style={{ display: "flex", alignItems: "center", gap: "8px 13px", marginBottom: 10, flexWrap: "wrap" }}>
-                <span style={{ width: 8, height: 8, borderRadius: 4, background: lesbar(e.farbe, 3) }} />
+                <span style={{ width: 8, height: 8, borderRadius: "var(--v4-r-pille)", background: lesbar(e.farbe, 3) }} />
                 <span style={{ fontSize: 13.5, flex: "1 1 120px", minWidth: 0 }}>{e.name}</span>
                 <Sel value={versatzTageVon(e)} disabled={!editierbar}
                   aria-label={`Startpunkt im Zyklus für ${e.name}`}
@@ -137,5 +138,7 @@ export function Schichtfolge({ sitz, akt }) {
           </div>
         </Card>
       </div>
+      {/* IMP-6: mehrere Schichtmodelle je Person (nur Planung, Leitung, Kundenrolle; ohne Planwirkung). */}
+      <Schichtmodelle sitz={sitz} akt={akt} />
     </div>);
 }

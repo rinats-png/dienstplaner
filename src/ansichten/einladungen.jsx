@@ -36,7 +36,7 @@ import { vergebbareRollen } from "../../server/lib/rollenvergabe.mjs";
 
 const personName = (p) => [p.vorname, p.nachname].filter(Boolean).join(" ").trim() || String(p.id);
 const bisText = (ms) => new Date(ms).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric",
-  hour: "2-digit", minute: "2-digit" });
+  hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" });
 
 /* ----------------------------- Link und Fragment ----------------------------- */
 
@@ -205,12 +205,12 @@ export function Einladungen({ sitz, api = SP }) {
       {ergebnis && (
         <div role="status" style={{ marginTop: 14 }}>
           <Lab>Einladung für {ergebnis.person && ergebnis.person.name} · {ROLLENBEZEICHNUNG[ergebnis.rolle] || ergebnis.rolle}</Lab>
-          <code data-einladung style={{ display: "block", marginTop: 6, padding: "10px 12px", borderRadius: 10,
+          <code data-einladung style={{ display: "block", marginTop: 6, padding: "10px 12px", borderRadius: "var(--v4-r-mittel)",
             border: `1px solid ${C.line}`, wordBreak: "break-all", fontSize: 13.5, userSelect: "all" }}>
             {ergebnis.einladung}</code>
           {link && (<>
             <Lab style={{ marginTop: 10 }}>Oder als Link</Lab>
-            <code data-link style={{ display: "block", marginTop: 6, padding: "10px 12px", borderRadius: 10,
+            <code data-link style={{ display: "block", marginTop: 6, padding: "10px 12px", borderRadius: "var(--v4-r-mittel)",
               border: `1px solid ${C.line}`, wordBreak: "break-all", fontSize: 13, userSelect: "all" }}>{link}</code>
           </>)}
           <div style={{ marginTop: 6, fontSize: 12.5, color: C.dim }}>
@@ -257,7 +257,7 @@ export function EinladungAnnehmen({ api = SP, F = C, vorgabe = "" }) {
     <div role="status" style={{ marginTop: 14, fontSize: 13.5, color: F.text, lineHeight: 1.6 }}>
       <div style={{ fontWeight: 600 }}>Dein persönlicher Zugangscode
         ({ROLLENBEZEICHNUNG[ergebnis.rolle] || ergebnis.rolle}, {ergebnis.name})</div>
-      <code data-zugangscode style={{ display: "block", margin: "8px 0", padding: "12px 14px", borderRadius: 12,
+      <code data-zugangscode style={{ display: "block", margin: "8px 0", padding: "12px 14px", borderRadius: "var(--v4-r-mittel)",
         border: `1px solid ${F.line}`, fontSize: 18, letterSpacing: ".08em", userSelect: "all" }}>
         {ergebnis.zugangscode}</code>
       <div style={{ color: F.dim }}>Er wird nur dieses eine Mal angezeigt. Bitte jetzt notieren und damit
@@ -271,11 +271,11 @@ export function EinladungAnnehmen({ api = SP, F = C, vorgabe = "" }) {
       <input id="einladung" value={einladung} onChange={(e) => setEinladung(e.target.value)}
         onKeyDown={(e) => e.key === "Enter" && annehmen()} autoComplete="off" spellCheck={false}
         placeholder="Einladung einfügen"
-        style={{ width: "100%", padding: "11px 13px", fontSize: 14, borderRadius: 12, boxSizing: "border-box",
+        style={{ width: "100%", padding: "11px 13px", fontSize: 14, borderRadius: "var(--v4-r-mittel)", boxSizing: "border-box",
           border: `1px solid ${fehler ? F.danger : F.line}`, fontFamily: "inherit", background: F.bg, color: F.text }} />
       {fehler && <div role="alert" style={{ marginTop: 8, fontSize: 13, color: F.danger, lineHeight: 1.45 }}>{fehler}</div>}
       <button onClick={annehmen} disabled={!einladung.trim() || laeuft}
-        style={{ marginTop: 10, padding: "10px 16px", fontSize: 14, fontWeight: 600, borderRadius: 999, border: "none",
+        style={{ marginTop: 10, padding: "10px 16px", fontSize: 14, fontWeight: 600, borderRadius: "var(--v4-r-pille)", border: "none",
           fontFamily: "inherit", cursor: einladung.trim() && !laeuft ? "pointer" : "default",
           background: einladung.trim() && !laeuft ? F.accent : F.lineStark, color: F.aufAkzent }}>
         {laeuft ? "Wird geprüft …" : "Einladung einlösen"}</button>

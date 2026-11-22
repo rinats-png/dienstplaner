@@ -92,7 +92,7 @@ export function Belastbarkeit({ sitz, akt, oeffneTag }) {
           {bl.map((w) => w.zeilen.length === 0 ? null : (
             <div key={w.kw} aria-expanded={gewaehlt === w.kw}
               {...klickbar(() => setGewaehlt(gewaehlt === w.kw ? null : w.kw), `Kalenderwoche ${w.kw}`)}
-              style={{ marginBottom: 6, borderRadius: 10, cursor: "pointer",
+              style={{ marginBottom: 6, borderRadius: "var(--v4-r-mittel)", cursor: "pointer",
                 background: gewaehlt === w.kw ? flaeche(w.stufe) : "transparent",
                 outline: gewaehlt === w.kw ? `1.5px solid ${farbe(w.stufe)}` : "none" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "10px 12px" }}>
@@ -102,7 +102,7 @@ export function Belastbarkeit({ sitz, akt, oeffneTag }) {
                   {w.zeilen.map((z) => (
                     <div key={z.da.id}
                       title={`${z.da.name}: verkraftet ${z.min} gleichzeitige Ausfälle in der schwächsten Schicht dieser Woche`}
-                      style={{ flex: 1, height: 26, borderRadius: 6, display: "flex", alignItems: "center",
+                      style={{ flex: 1, height: 26, borderRadius: "var(--v4-r-klein)", display: "flex", alignItems: "center",
                         justifyContent: "center", fontSize: 11, fontWeight: 650,
                         background: `${farbe(z.stufe)}1C`, color: farbe(z.stufe),
                         borderBottom: `2px solid ${farbe(z.stufe)}` }}>
@@ -114,7 +114,7 @@ export function Belastbarkeit({ sitz, akt, oeffneTag }) {
 
               {gewaehlt === w.kw && (
                 <div style={{ padding: "4px 12px 14px" }}>
-                  <table className="raster" style={{ background: C.flaeche, borderRadius: 8 }}>
+                  <table className="raster" style={{ background: C.flaeche, borderRadius: "var(--v4-r-klein)" }}>
                     <thead><tr>{["Dienst", "verkraftet am schwächsten Tag", "im Wochenschnitt",
                       "schwächster Tag"].map((h, i) => (
                       <th key={i} style={{ textAlign: i ? "right" : "left" }}>{h}</th>))}</tr></thead>

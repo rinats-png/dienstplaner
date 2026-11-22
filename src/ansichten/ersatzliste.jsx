@@ -52,7 +52,7 @@ export function Ersatzliste({ sitz, datum, dienstId, akt, onFertig }) {
       {gezeigt.map((x, i) => (
         <div key={x.person.id} className="karte" style={{ marginBottom: 8 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 13, padding: "12px 14px" }}>
-          <span style={{ width: 26, height: 26, borderRadius: 9, background: i === 0 ? C.okLight : C.bg,
+          <span style={{ width: 26, height: 26, borderRadius: "var(--v4-r-klein)", background: i === 0 ? C.okLight : C.bg,
             color: i === 0 ? C.ok : C.dimmer, display: "flex", alignItems: "center", justifyContent: "center",
             fontSize: 11.5, fontWeight: 700, flexShrink: 0, ...NUM }}>{i + 1}</span>
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -90,7 +90,7 @@ export function Ersatzliste({ sitz, datum, dienstId, akt, onFertig }) {
           {alle ? "Weniger zeigen" : `Alle ${moeglich.length} zeigen`}</Btn>)}
 
       {moeglich.length === 0 && (
-        <div style={{ marginTop: 16, padding: 16, borderRadius: 14, background: C.dangerLight }}>
+        <div style={{ marginTop: 16, padding: 16, borderRadius: "var(--v4-r-mittel)", background: C.dangerLight }}>
           <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>Niemand ohne Befund einsetzbar</div>
           <div style={{ fontSize: 13, color: C.dim, lineHeight: 1.5, marginBottom: 14 }}>
             Regelkonform findet die Suche niemanden. Du kannst eskalieren — erweiterte Anfrage

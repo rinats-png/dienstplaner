@@ -48,7 +48,7 @@ export function Zeitachse({ sitz, oeffneTag, akt }) {
         style={{ position: "absolute", top: oben, height: hoehe,
           left: `calc(${index * breite}% + 2px)`, width: `calc(${breite}% - 4px)`,
           background: `${s.da.farbe}1C`, borderLeft: `3px solid ${s.da.farbe}`,
-          borderRadius: 8, padding: "5px 7px", overflow: "hidden", cursor: "pointer",
+          borderRadius: "var(--v4-r-klein)", padding: "5px 7px", overflow: "hidden", cursor: "pointer",
           outline: s.status === "danger" ? `2px solid ${C.danger}` : s.status === "warn" ? `2px solid ${C.warn}` : "none" }}>
         <div style={{ fontSize: 11.5, fontWeight: 700, color: lesbar(s.da.farbe), lineHeight: 1.2,
           whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.da.kurz}</div>
@@ -150,7 +150,7 @@ export function Zeitachse({ sitz, oeffneTag, akt }) {
                           `${fKurz(datum)}: ${z.da.name} ${z.da.start}–${z.da.ende}`)}
                           title={`${z.da.name} ${z.da.start}–${z.da.ende}`}
                           style={{ position: "absolute", left: `${links}%`, width: `${breite}%`,
-                            top: 6, bottom: 6, borderRadius: 9, cursor: "pointer",
+                            top: 6, bottom: 6, borderRadius: "var(--v4-r-klein)", cursor: "pointer",
                             background: `${z.da.farbe}14`, borderLeft: `3px solid ${z.da.farbe}`,
                             display: "flex", alignItems: "center", padding: "0 10px", overflow: "hidden" }}>
                           <span style={{ fontSize: 11.5, fontWeight: 650, color: lesbar(z.da.farbe),
@@ -160,14 +160,14 @@ export function Zeitachse({ sitz, oeffneTag, akt }) {
                         </div>
                       ) : (
                         <div style={{ position: "absolute", left: 0, right: 0, top: 12, bottom: 12,
-                          borderRadius: 6, background: `${abwArt(z.abw.art).farbe}12`,
+                          borderRadius: "var(--v4-r-klein)", background: `${abwArt(z.abw.art).farbe}12`,
                           display: "flex", alignItems: "center", padding: "0 10px" }}>
                           <span style={{ fontSize: 11.5, color: abwArt(z.abw.art).farbe }}>
                             {abwArt(z.abw.art).label}</span>
                         </div>)}
                       {ueber && (
                         <div style={{ position: "absolute", left: 0, width: `${((bis - 1440) / 1440) * 100}%`,
-                          top: 7, bottom: 7, borderRadius: 7, background: `${z.da.farbe}18`,
+                          top: 7, bottom: 7, borderRadius: "var(--v4-r-klein)", background: `${z.da.farbe}18`,
                           borderLeft: `3px solid ${z.da.farbe}`, opacity: .65 }} />)}
                     </div>
                   </div>);
@@ -243,7 +243,7 @@ export function Zeitachse({ sitz, oeffneTag, akt }) {
                 const anzahlLagen = Math.max(1, lagen.length);
                 return (
                   <div key={d} style={{ flex: 1, position: "relative", opacity: aus ? .22 : 1,
-                    background: d === heute() ? C.flaecheStill : "transparent", borderRadius: 8 }}>
+                    background: d === heute() ? C.flaecheStill : "transparent", borderRadius: "var(--v4-r-klein)" }}>
                     {lagen.map((lage, li) => lage.map((sp) => (
                       <Balken key={`${d}${sp.da.id}`} s={sp} spalten={anzahlLagen} index={li} tag={d} />)))}
                   </div>);

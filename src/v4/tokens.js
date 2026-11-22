@@ -65,11 +65,50 @@ export const V4_VERLAUF = {
   dunkel: { a: "rgba(185,239,220,.14)", b: "rgba(143,224,198,.07)", c: "rgba(25,65,68,.22)" },
 };
 
+/* Ebenen: karte (E2), hoch (E3, Karte im Hover), blatt (E5, Blatt und Menü),
+   toast (E6), regler (Knopf im Schalter), schublade (Seitenleiste als Schublade).
+   hoch/toast/regler/schublade (V4-2) übernehmen die bisherigen Werte aus App.jsx;
+   im Hellen auf dem V4-Schattenton (7,30,34) statt (7,19,23). */
 export const V4_SCHATTEN = {
   hell: { karte: "0 1px 2px rgba(7,30,34,.05), 0 8px 22px rgba(7,30,34,.06)",
-    blatt: "0 20px 48px rgba(7,30,34,.20)" },
-  dunkel: { karte: "0 1px 2px rgba(0,0,0,.30)", blatt: "0 20px 48px rgba(0,0,0,.55)" },
+    hoch: "0 4px 12px -2px rgba(7,30,34,.10), 0 16px 32px -12px rgba(7,30,34,.14)",
+    blatt: "0 20px 48px rgba(7,30,34,.20)",
+    toast: "0 12px 32px rgba(7,30,34,.28)",
+    regler: "0 1px 2px rgba(0,0,0,.2)", schublade: "0 0 40px rgba(0,0,0,.3)" },
+  dunkel: { karte: "0 1px 2px rgba(0,0,0,.30)", hoch: "0 1px 2px rgba(0,0,0,.30)",
+    blatt: "0 20px 48px rgba(0,0,0,.55)", toast: "0 12px 32px rgba(0,0,0,.5)",
+    regler: "0 1px 2px rgba(0,0,0,.2)", schublade: "0 0 40px rgba(0,0,0,.3)" },
 };
+
+/* Seitenleiste (Schublade der Hauptanwendung): in beiden Themes dunkel
+   (V4_FARBEN.*.sidebar), daher ein Satz für beide. Schrifttöne `schrift…`
+   erreichen auf der Seitenleiste >= 4,5:1 (pruefungen/v4-markenrest.test.js).
+   Flächen sind Tönungen der Schrift über der Seitenleiste. V4-2: Werte aus
+   App.jsx übernommen; `schriftGruppe` von .40 (3,5:1) auf .55 angehoben. */
+export const V4_SEITENLEISTE = {
+  schrift: "#ffffff",
+  schriftLeise: "rgba(255,255,255,.74)",
+  schriftFuss: "rgba(255,255,255,.55)",
+  schriftGruppe: "rgba(255,255,255,.55)",
+  schriftKlein: "rgba(255,255,255,.5)",
+  trenner: "rgba(255,255,255,.08)",
+  griff: "rgba(255,255,255,.16)",
+  hover: "rgba(255,255,255,.07)",
+  an: "rgba(255,255,255,.13)",
+  zahl: "rgba(255,255,255,.14)",
+  kuerzel: "rgba(255,255,255,.12)",
+};
+
+/* Namenszeichen (Avatar): acht Paare [Fläche, Schrift] als Farbschlüssel aus
+   V4_FARBEN, je Erscheinungsbild dieselben Schlüssel. Jedes Paar >= 4,5:1
+   (kontrast.test.js, v4-markenrest.test.js). Ersetzt die V3-Töne in farben.js. */
+const V4_AVATAR_SCHLUESSEL = [
+  ["accentLight", "accent"], ["infoLight", "info"], ["accentLight", "accentDeep"], ["warnLight", "warn"],
+  ["okLight", "ok"], ["flaecheStill", "dim"], ["infoLight", "text"], ["okLight", "text"],
+];
+/** Die acht Namenszeichen-Paare eines Erscheinungsbildes als Farbwerte. */
+export const v4AvatarPaare = (thema) =>
+  V4_AVATAR_SCHLUESSEL.map(([flaeche, schrift]) => [V4_FARBEN[thema][flaeche], V4_FARBEN[thema][schrift]]);
 
 export const V4_UEBERLAGERUNG = { hell: "rgba(7,30,34,.40)", dunkel: "rgba(0,0,0,.60)" };
 

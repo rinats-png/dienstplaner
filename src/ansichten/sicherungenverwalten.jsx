@@ -1,7 +1,7 @@
 /* WP-39: aus src/App.jsx herausgeloest (Text unveraendert). */
 
 import { useState, useEffect } from "react";
-import { darfZurueckspielen, ergebnisMeldung, eintragText } from "../sicherungen-ui.js";
+import { darfZurueckspielen, ergebnisMeldung, eintragText, fehlerNachSenden } from "../sicherungen-ui.js";
 import { Card, CardHead, Laden, Btn } from "../ui/bausteine.jsx";
 import { C } from "../farben.js";
 import { Sheet } from "../ui/leisten.jsx";
@@ -31,7 +31,7 @@ export function SicherungenVerwalten({ rolle, laden, zurueckspielen, vorgabe = n
     setLaeuft(true);
     let a;
     try { a = await zurueckspielen(auswahl.marke); }
-    catch (e) { a = { status: 0, daten: { fehler: String((e && e.message) || e) } }; }
+    catch (e) { a = fehlerNachSenden(e); }                                 // Delta-Review 2 #419: kein Rohtext, Ergebnis offen
     setLaeuft(false);
     setErgebnis(ergebnisMeldung(a));
   };

@@ -116,7 +116,7 @@ export function SelbstauskunftFreigabe({ m, ichId, onErgebnis, melde }) {
                   <Btn kind="primary" onClick={() => entscheide(p, "genehmigt", "", onErgebnis, melde)}>Freigeben</Btn>
                   <input aria-label={`Begründung für ${name(p.personId)}`} placeholder="Begründung der Ablehnung (mind. 10 Zeichen)"
                     value={grund[k] || ""} onChange={(e) => setGrund({ ...grund, [k]: e.target.value })}
-                    style={{ minWidth: 240, padding: "7px 9px", border: `1px solid ${C.line}`, borderRadius: 6 }} />
+                    style={{ minWidth: 240, padding: "7px 9px", border: `1px solid ${C.line}`, borderRadius: "var(--v4-r-klein)" }} />
                   <Btn onClick={() => entscheide(p, "abgelehnt", grund[k] || "", onErgebnis, melde)}>Ablehnen</Btn>
                 </div>)}
             </div>);

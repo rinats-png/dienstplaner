@@ -20,15 +20,17 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 const wp = vi.hoisted(() => ({ gesendet: [], antwort: null, haengen: false }));
+/* DEP-1: Die Attrappe hat die Exportform von web-push 4 (nur benannte
+   Exporte, kein Standardexport). Vorher bot sie `default` an und verdeckte
+   so, dass der Code mit v4 nie sendete. Der Weg über die echte Bibliothek
+   steht in webpush-echt.test.js. */
 vi.mock("web-push", () => ({
-  default: {
-    setVapidDetails: () => {},
-    sendNotification: async (anmeldung, nutzlast, opt) => {
-      wp.gesendet.push({ anmeldung, nutzlast, opt });
-      if (wp.haengen) return new Promise(() => {});                 // der Dienst antwortet nie
-      if (wp.antwort) throw wp.antwort;
-      return { statusCode: 201 };
-    },
+  setVapidDetails: () => {},
+  sendNotification: async (anmeldung, nutzlast, opt) => {
+    wp.gesendet.push({ anmeldung, nutzlast, opt });
+    if (wp.haengen) return new Promise(() => {});                 // der Dienst antwortet nie
+    if (wp.antwort) throw wp.antwort;
+    return { statusCode: 201 };
   },
 }));
 

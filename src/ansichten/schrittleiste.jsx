@@ -9,7 +9,7 @@ export function Schrittleiste({ aktuell, schritte }) {
     <div className="reiterreihe" style={{ marginBottom: 26 }}>
       {schritte.map((s, i) => (
         <div key={i} style={{ display: "flex", alignItems: "center", gap: 9 }}>
-          <span style={{ width: 26, height: 26, borderRadius: 13, flexShrink: 0, display: "flex",
+          <span style={{ width: 26, height: 26, borderRadius: "var(--v4-r-pille)", flexShrink: 0, display: "flex",
             alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, ...NUM,
             background: i < aktuell ? C.accentDeep : i === aktuell ? C.accent : C.lineSoft,
             color: i <= aktuell ? C.aufAkzent : C.dim }}>

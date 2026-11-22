@@ -724,7 +724,7 @@ function modellPruefen(modell) {
    ========================================================================== */
 const _c = new WeakMap();
 function cache(m) { let c = _c.get(m); if (!c) { c = { map: new Map(), abs: null, posten: new Map() }; _c.set(m, c); } return c; }
-function memo(m, k, fn) { const c = cache(m); if (c.map.has(k)) return c.map.get(k); const v = fn(); c.map.set(k, v); return v; }
+function memo(m, k, fn) { const c = cache(m); if (c.map.has(k)) return c.map.get(k); c.fehl = (c.fehl || 0) + 1; const v = fn(); c.map.set(k, v); return v; }
 function absIdx(m) {
   const c = cache(m); if (c.abs) return c.abs;
   const x = new Map();
@@ -6321,12 +6321,44 @@ function selbsttest() {
     `${einheitAm(pvD, "2026-07-15")}|${einheitAm(pvD, "2026-08-15")}`);
   ok("Feiertag senkt die Mindestbesetzung nicht", 7, mindestFuer(m, m.dienstarten.find((x) => x.id === "N"), "2026-04-03"));
 
-  const t0 = Date.now();
-  for (const p of m.personen) { stundenkonto(m, p, ym); nachtJahr(m, p, 2026); urlaubskonto(m, p, ym.slice(0, 4)); }
-  const t1 = Date.now();
-  for (const p of m.personen) { stundenkonto(m, p, ym); nachtJahr(m, p, 2026); urlaubskonto(m, p, ym.slice(0, 4)); }
-  ok("Zwischenspeicher greift", true, Date.now() - t1 < 30);
-  ok("Erster Aufbau unter 500 ms", true, t1 - t0 < 500);
+  /* Leistungsvertrag des Zwischenspeichers. Wandzeit allein ist auf einem geteilten Runner kein
+     Beweis: ein einziger Messwert (kalter Start, Planer-Wechsel, GC) schlug dort schon rot, ohne
+     dass sich am Code etwas geändert hatte. Darum gelten drei Kriterien, von denen keines an
+     einem einzelnen Wandzeit-Ausreißer hängt:
+     1. Zähler: Der zweite Durchlauf berechnet nichts neu, der erste höchstens so viel, wie die
+        Schlüsselmenge hergibt. Fällt der Zwischenspeicher aus, springt der Zähler sofort.
+     2. Skalierung: Dauer(n) / Dauer(n/2) bleibt nahe 2. Ein quadratisches Verhalten in der
+        Personenzahl liegt bei 4. Beide Werte stammen vom selben Lauf, Rechnerlast kürzt sich heraus.
+     3. Grobgrenze: das Minimum aus fünf frischen Aufbauten bleibt unter dem Vierzigfachen einer
+        festen Vergleichsarbeit auf demselben Rechner (gemessen etwa 8-fach). Ein absolutes
+        „unter 500 ms" entfällt: es maß den Runner statt den Code. */
+  const aufbau = (mm) => { for (const p of mm.personen) { stundenkonto(mm, p, ym); nachtJahr(mm, p, 2026); urlaubskonto(mm, p, ym.slice(0, 4)); } };
+  const f0 = cache(m).fehl || 0;
+  aufbau(m);
+  const f1 = cache(m).fehl || 0;
+  aufbau(m);
+  ok("Zwischenspeicher greift: zweiter Durchlauf berechnet nichts neu", 0, (cache(m).fehl || 0) - f1);
+  const bis = Number(ym.slice(5, 7));
+  ok("Erster Aufbau: Zahl der Berechnungen begrenzt", true, f1 - f0 <= Math.ceil(m.personen.length * (3 + 12 + bis) * 1.25));
+  const minZeit = (mm) => {                         // frischer Zwischenspeicher je Lauf (WeakMap am Objekt)
+    let best = Infinity;
+    for (let i = 0; i < 5; i++) { const x = { ...mm }; const a = performance.now(); aufbau(x); best = Math.min(best, performance.now() - a); }
+    return best;
+  };
+  const halb = { ...m, personen: m.personen.slice(0, Math.floor(m.personen.length / 2)) };
+  const tHalb = minZeit(halb), tVoll = minZeit(m);
+  const kalib = () => {                              // feste Vergleichsarbeit: Map-Zugriffe und Zeichenketten wie der Zwischenspeicher
+    let best = Infinity;
+    for (let i = 0; i < 5; i++) {
+      const a = performance.now(), mp = new Map(); let s = 0;
+      for (let j = 0; j < 300000; j++) { const k = "k" + (j % 997); mp.set(k, (mp.get(k) || 0) + j); s += k.length; }
+      best = Math.min(best, performance.now() - a + (s < 0 ? 1 : 0));
+    }
+    return best;
+  };
+  const tKal = kalib();
+  ok("Erster Aufbau skaliert nicht überlinear", true, tVoll <= Math.max(tHalb * 3.2, 5));
+  ok("Erster Aufbau: Dauer im Verhältnis zur Vergleichsarbeit begrenzt", true, tVoll <= tKal * 40);
 
   const mE = { ...m, dienstarten: m.dienstarten.map((x) => x.id === "F" ? { ...x, mindestQual: { q1: 99 } } : x) };
   ok("Qualifikationsprüfung schlägt an", true, pruefen(mE, `${ym}-01`, `${ym}-07`).some((x) => x.art === "qualifikation"));

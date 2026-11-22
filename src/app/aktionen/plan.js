@@ -1,6 +1,6 @@
 /* WP-39: Aktionen aus dem Aktionsobjekt `akt` in src/App.jsx (AppInnen), Text unveraendert.
    Der Kontext k kommt aus AppInnen (useMemo von akt) und traegt dieselben Werte wie vorher der Abschluss. */
-import { einheitAm, einheitDienst, imDienst } from "../../../server/lib/fachpruefung.mjs";
+import { einheitAm, einheitDienst, imDienst, schichtfolgeAm, schichtfolgeOffen } from "../../../server/lib/fachpruefung.mjs";
 import { darfEinheit, vorlauf, istFreigegeben, personTag, schutzSperre, abwesenheitAm, bestaetigungVermerken, abwArt, abwesenheitTagAufheben, freigabeStand, planAbbild, EXPORT_STAND, lohnexportRueckfrage, VORLAGEN, genehmigungsStand, antragUmsetzen, eintrittPruefen, eintrittUebernehmen } from "../../lib/fachlogik.js";
 import { uid } from "../../lib/format.js";
 import { REGELSTAND, addDays } from "../../regelwerk.js";
@@ -13,6 +13,8 @@ import { nurKorrekturGrund, bestaetigungsGrund } from "../../istdaten.js";
 import { rolle } from "../../lib/rollen.js";
 import { krankSchrittErlaubt } from "../../../server/lib/krankmeldung.mjs";
 import { krankRolle } from "../../lib/berechtigung.js";
+import { mitModellen, mitZuordnungen, modelleMitDienstart, darfSchichtmodelle } from "../../lib/schichtmodelle-pflege.js";
+import { schichtmodellPflegeAn } from "../../lib/schichtmodell-schalter.js";
 
 /** Datenreview PR #130 (5): Zugehörigkeit null-sicher sortieren — ab null/leer („von Anfang an“) vor jedem
  *  Datum, gleiche Werte in der bisherigen Reihenfolge (stabile Sortierung, deterministisch). Nicht exportiert:
@@ -46,16 +48,18 @@ export function aktionenPlan(k) {
         const p = m.personen.find((x) => x.id === pid); if (!p) return m;
         const eid = einheitAm(p, d);
         if (!darfEinheit({ db: ref.current, mandant: m, person: sitz.person, rolle: "kunde" }, eid)) { melde("Keine Berechtigung für diesen Bereich."); return m; }
-        const plan = eid ? einheitDienst(m, eid, d) : null;
+        /* IMP-6 Planwirkung (Vorgabe aus): bei AN der Plan nach dem Modell der Person; aus wörtlich wie bisher. */
+        const plan = schichtfolgeAm(m, p, d, () => (eid ? einheitDienst(m, eid, d) : null));
         const ab = { ...m.abweichungen }, key = `${pid}|${d}`;
         const vorher = ab[key] !== undefined ? ab[key] : plan;
-        if ((dienstId === "-" && !plan) || dienstId === plan) delete ab[key]; else ab[key] = dienstId;
+        /* Teilrollen: außerhalb des Fensters des Servers ist der Plan unbekannt — ausdrücklich speichern, der Server entscheidet. */
+        if (!schichtfolgeOffen(p, d) && ((dienstId === "-" && !plan) || dienstId === plan)) delete ab[key]; else ab[key] = dienstId;
         const nachher = ab[key] !== undefined ? ab[key] : plan;
         let next = { ...m, abweichungen: ab };
         if (vorher !== nachher) {
           const vl = vorlauf(d);
           next = { ...next, aenderungen: [{ id: uid("c"), personId: pid, datum: d, von: vorher || "-",
-            nach: nachher || "-", zeit: new Date().toLocaleString("de-DE"), regelstand: REGELSTAND.version, vorlauf: vl }, ...(next.aenderungen || [])].slice(0, 800) };
+            nach: nachher || "-", zeit: new Date().toLocaleString("de-DE", { timeZone: "Europe/Berlin" }), regelstand: REGELSTAND.version, vorlauf: vl }, ...(next.aenderungen || [])].slice(0, 800) };
           if (istFreigegeben(m, d.slice(0, 7))) {
             const nam = (x) => x === "-" || !x ? "frei" : (m.dienstarten.find((y) => y.id === x) || {}).name || x;
             next = { ...next, nachrichten: [baueMitteilung(next, pid, "planGeaendert", `Dienst am ${fKurz(d)} geändert`,
@@ -143,9 +147,9 @@ export function aktionenPlan(k) {
         if (nachrAbw.length) m = { ...m, nachrichten: [...nachrAbw, ...(m.nachrichten || [])].slice(0, 400) };
         return { ...m,
           abweichungen: { ...m.abweichungen, [`${pid}|${d}`]: dienstId },
-          einspruenge: [{ id: uid("s"), personId: pid, datum: d, dienstId, zeit: new Date().toLocaleString("de-DE") }, ...(m.einspruenge || [])].slice(0, 500),
+          einspruenge: [{ id: uid("s"), personId: pid, datum: d, dienstId, zeit: new Date().toLocaleString("de-DE", { timeZone: "Europe/Berlin" }) }, ...(m.einspruenge || [])].slice(0, 500),
           aenderungen: [{ id: uid("c"), personId: pid, datum: d, von: "-", nach: dienstId,
-            zeit: new Date().toLocaleString("de-DE"), regelstand: REGELSTAND.version, vorlauf: vorlauf(d) }, ...(m.aenderungen || [])].slice(0, 800),
+            zeit: new Date().toLocaleString("de-DE", { timeZone: "Europe/Berlin" }), regelstand: REGELSTAND.version, vorlauf: vorlauf(d) }, ...(m.aenderungen || [])].slice(0, 800),
           nachrichten: [baueMitteilung(m, pid, "planGeaendert", `Zusätzlicher Dienst am ${fKurz(d)}`,
             `${da ? da.name : dienstId} · ${da ? `${da.start}–${da.ende}` : ""} · als Ersatz eingeteilt`, "meine", d), ...(m.nachrichten || [])].slice(0, 400) };
       }, "Ersatz eingeteilt"),
@@ -160,7 +164,7 @@ export function aktionenPlan(k) {
               : `Stand ${stand} — der Plan wurde nach Änderungen erneut freigegeben.`,
             "meine")).filter(Boolean);
         melde(`Plan freigegeben · Stand ${stand}.`);
-        return { ...m, freigaben: { ...(m.freigaben || {}), [ym2]: { stand, zeit: new Date().toLocaleString("de-DE"), durch: wer } },
+        return { ...m, freigaben: { ...(m.freigaben || {}), [ym2]: { stand, zeit: new Date().toLocaleString("de-DE", { timeZone: "Europe/Berlin" }), durch: wer } },
           planstaende: { ...(m.planstaende || {}), [ym2]: planAbbild(m, ym2) },
           nachrichten: [...nachr, ...(m.nachrichten || [])].slice(0, 400) };
       }, "Plan freigegeben"),
@@ -342,6 +346,10 @@ export function aktionenPlan(k) {
       }, "Vorlage geladen"),
       setzeVersatz: (eid, tage) => mUpd((m) => ({ ...m, einheiten: m.einheiten.map((e) => e.id === eid
         ? { ...e, versatzTage: tage, versatz: Math.round(tage / 7) } : e) }), "Startpunkt geändert"),
+      /* IMP-6 Oberfläche: mehrere Schichtmodelle je Person. Die Ansicht (schichtmodelle.jsx) hat den Entwurf mit derselben
+         Bibliothek wie der Server geprüft; Wann/Wer/Version setzt der Server. Keine Wirkung auf die Planrechnung. */
+      setzeSchichtmodelle: (liste, text) => mUpd((m) => mitModellen(m, liste), text || "Schichtmodelle geändert"),
+      setzeSchichtmodellZuordnungen: (pid, liste, text) => mUpd((m) => mitZuordnungen(m, pid, liste), text || "Schichtmodell-Zuordnung geändert"),
 
       /* --- Dienstarten --- */
       neueDienstart: (f) => mUpd((m) => {
@@ -352,6 +360,12 @@ export function aktionenPlan(k) {
       loescheDienstart: (id) => mUpd((m) => {
         const n = m.zyklus.tage.filter((t) => t === id).length + Object.values(m.abweichungen).filter((v) => v === id).length;
         if (n > 0) { melde(`Dienstart wird noch ${n}× verwendet.`); return m; }
+        /* IMP-6: Ein Schichtmodell, das die Dienstart nennt, sperrt das Löschen (Server: 403 DIENSTART_VERWENDET). */
+        const sm = modelleMitDienstart(m, id);
+        /* Review #423 H3: Den Weg nur nennen, wenn diese Sitzung ihn hat (Schalter an und Pflegerecht wie der Server). */
+        if (sm.length) { melde(`Dienstart wird noch im Schichtmodell „${sm[0].name}“ verwendet. ${schichtmodellPflegeAn() && darfSchichtmodelle(sitz)
+          ? "Bitte zuerst das Schichtmodell ändern (Schichtfolge, Abschnitt „Schichtmodelle je Person“)."
+          : "Schichtmodelle ändern Planung oder Leitung; bitte dort melden."}`); return m; }
         return { ...m, dienstarten: m.dienstarten.filter((d) => d.id !== id) };
       }, "Dienstart gelöscht"),
 
@@ -425,7 +439,7 @@ export function aktionenPlan(k) {
         if (ja) {
           next = { ...next, abweichungen: { ...next.abweichungen, [`${a.personId}|${a.von}`]: a.dienstId },
             einspruenge: [{ id: uid("s"), personId: a.personId, datum: a.von, dienstId: a.dienstId,
-              zeit: new Date().toLocaleString("de-DE") }, ...(next.einspruenge || [])] };
+              zeit: new Date().toLocaleString("de-DE", { timeZone: "Europe/Berlin" }) }, ...(next.einspruenge || [])] };
           // Übrige Anfragen für dieselbe Lücke verfallen
           next = { ...next, anfragen: next.anfragen.map((x) => (x.typ === "einsatz" && x.von === a.von
             && x.dienstId === a.dienstId && x.id !== id && x.status === "offen") ? { ...x, status: "abgelehnt", antwort: "anderweitig besetzt" } : x) };
@@ -436,7 +450,7 @@ export function aktionenPlan(k) {
       entscheideAntrag: (id, ja, text) => mUpd((m) => {
         const a = m.anfragen.find((x) => x.id === id); if (!a) return m;
         const wer = `${sitz.person.vorname} ${sitz.person.nachname}`;
-        const jetzt = new Date().toLocaleString("de-DE");
+        const jetzt = new Date().toLocaleString("de-DE", { timeZone: "Europe/Berlin" });
         // Mehrstufige Genehmigung: erst wenn alle Stufen erteilt sind, gilt der
         // Antrag als genehmigt. Eine Ablehnung beendet den Vorgang sofort.
         if (ja) {

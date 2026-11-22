@@ -23,7 +23,7 @@ export function ObjektberichtVorschau({ m, von, bis, zugriff = "keiner", dienstz
         if (b.grund) return <p key={o.id}>{o.name}: {b.grund}</p>;
         const zeilen = b.tage.flatMap((t) => t.zeilen.map((z) => ({ ...z, datum: t.datum })));
         return (
-          <article key={o.id} style={{ border: "1px solid currentColor", borderRadius: 8, padding: 12, overflowWrap: "anywhere" }}>
+          <article key={o.id} style={{ border: "1px solid currentColor", borderRadius: "var(--v4-r-klein)", padding: 12, overflowWrap: "anywhere" }}>
             <h3 style={{ margin: 0, fontSize: 15 }}>{o.name} · {von} bis {bis}</h3>
             {!zeilen.length ? <p>Keine Soll-Werte in diesem Zeitraum.</p>
               : <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>

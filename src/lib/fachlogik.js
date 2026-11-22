@@ -1,7 +1,7 @@
 /* WP-39: aus src/App.jsx herausgeloest (Text unveraendert). */
 import { branchenListe } from "../../server/lib/branchen.mjs";
 import { uid, n1, eur, zahl, n2, sgn } from "./format.js";
-import { nachtAnteil, imDienst, einheitAm, einheitDienst, nachtschwelle, zyklusLaenge, versatzTageVon } from "../../server/lib/fachpruefung.mjs";
+import { nachtAnteil, imDienst, einheitAm, einheitDienst, nachtschwelle, zyklusLaenge, versatzTageVon, schichtfolgeAm } from "../../server/lib/fachpruefung.mjs";
 import { addDays, montag, toMin, dim_, pad, AUSGLEICH_WOCHEN, ausgleichszeitraum, DURCHSCHNITT_TAG, EBENEN, fenster, dauer, stundengrenzeHinweis, REGELSTAND, between, kompetenzStand, dauerAm } from "../regelwerk.js";
 import { heute, fKurz, fDatum, MON, fLang, zeitpunktText } from "./datum.js";
 import { MATRIX_STD, ROLLEN, rollenName, anzahlWort } from "./rollen.js";
@@ -740,7 +740,8 @@ export function urlaubskonto(m, p, jahr) {
       let tage = 0;
       for (let d = a.von; d <= a.bis; d = addDays(d, 1)) {
         if (d.slice(0, 4) !== String(jahr) || feiertagFuer(m, d, p) || !imDienst(p, d)) continue;
-        const eid = einheitAm(p, d); if (eid && einheitDienst(m, eid, d)) tage++;
+        /* IMP-6 Planwirkung (Vorgabe aus): bei AN zählt der Tag nach dem Modell der Person (Lücke: kein Urlaubstag); aus wie bisher. */
+        const eid = einheitAm(p, d); if (schichtfolgeAm(m, p, d, () => eid && einheitDienst(m, eid, d))) tage++;
       }
       genommen += tage; zeilen.push({ ...a, tage });
     }
@@ -2709,7 +2710,7 @@ export function planVergleich(m, ym) {
       const damals = stand[k] !== undefined ? stand[k] : null;
       const jetztAb = m.abweichungen[k];
       const eid = einheitAm(p, d);
-      const plan = eid && p.imSchichtdienst !== false ? einheitDienst(m, eid, d) : null;
+      const plan = schichtfolgeAm(m, p, d, () => (eid && p.imSchichtdienst !== false ? einheitDienst(m, eid, d) : null));   // IMP-6: AUS wie bisher
       const alt = damals !== null ? damals : plan;
       const neu = jetztAb !== undefined ? jetztAb : plan;
       if ((alt || "-") === (neu || "-")) continue;
@@ -3544,7 +3545,7 @@ export function lohnausgabeText(m, ym) {
   return [
     `Lohnausgabe ${m.name}`,
     `Abrechnungsmonat: ${MON[Number(monat) - 1]} ${jahr}`,
-    `Erstellt: ${new Date().toLocaleString("de-DE")}`,
+    `Erstellt: ${new Date().toLocaleString("de-DE", { timeZone: "Europe/Berlin" })}`,
     ...(st ? [`Abschluss: Revision ${st.revision} · Prüfsumme ${st.abdruck} · Zeilen-Prüfsumme ${st.zeilen}`]
       : ["Monat nicht abgeschlossen — vorläufige Ausgabe, nicht als Lohnexport bestätigbar."]),
     "",

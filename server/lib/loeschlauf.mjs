@@ -163,7 +163,7 @@ export function loeschlaufVorbereiten(sicht, mandantId, heute, auftrag) {
   /* Wie die Oberfläche: raeumen auf den eigenen Betrieb der Sicht, dann der Eintrag im Betriebsprotokoll (mUpd:
      vorn anhängen, höchstens 200 Einträge, Text „Löschlauf: <Bericht der Vorschau>"). */
   const { mandant } = raeumen(m, heute);
-  const eintrag = { id: `l${randomBytes(6).toString("hex")}`, zeit: new Date().toLocaleString("de-DE"), text: `Löschlauf: ${bericht}` };
+  const eintrag = { id: `l${randomBytes(6).toString("hex")}`, zeit: new Date().toLocaleString("de-DE", { timeZone: "Europe/Berlin" }), text: `Löschlauf: ${bericht}` };
   const neu = { ...mandant, protokoll: [eintrag, ...(Array.isArray(mandant.protokoll) ? mandant.protokoll : [])].slice(0, 200) };
   const virtuell = { ...sicht, mandanten: mandanten.map((x, j) => (j === i ? neu : x)) };
   return { virtuell, bericht, zahlen, kennung };

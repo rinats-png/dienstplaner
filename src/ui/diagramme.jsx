@@ -48,7 +48,7 @@ export function LinienDiagramm({ daten: rohdaten, hoehe = 168, wert = "y", label
         <span key={i} onMouseEnter={() => setAktiv(i)} onMouseLeave={() => setAktiv(null)}
           style={{ position: "absolute", left: `${x(i)}%`, top: (y(d[wert]) / H) * hoehe,
             width: aktiv === i ? 11 : 8, height: aktiv === i ? 11 : 8, boxSizing: "border-box",
-            transform: "translate(-50%, -50%)", borderRadius: "50%", background: C.flaeche,
+            transform: "translate(-50%, -50%)", borderRadius: "var(--v4-r-pille)", background: C.flaeche,
             border: `2px solid ${farbe}`, cursor: "pointer" }} />))}
       <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
         {daten.map((d, i) => (
@@ -58,7 +58,7 @@ export function LinienDiagramm({ daten: rohdaten, hoehe = 168, wert = "y", label
       {aktiv !== null && (
         <div style={{ position: "absolute", top: -6, left: `${(aktiv / (daten.length - 1)) * 100}%`,
           transform: "translateX(-50%)", background: C.accentDeep, color: C.aufAkzent, padding: "5px 10px",
-          borderRadius: 9, fontSize: 12, fontWeight: 650, whiteSpace: "nowrap", pointerEvents: "none", ...NUM }}>
+          borderRadius: "var(--v4-r-klein)", fontSize: 12, fontWeight: 650, whiteSpace: "nowrap", pointerEvents: "none", ...NUM }}>
           {f(daten[aktiv][wert])}
         </div>)}
     </div>);
@@ -94,7 +94,7 @@ export function BalkenDiagramm({ daten, hoehe = 150, wert = "y", label = "label"
               {aktiv === i && (
                 <div style={{ position: "absolute", bottom: "calc(100% + 7px)", left: "50%",
                   transform: "translateX(-50%)", background: C.accentDeep, color: C.aufAkzent, padding: "5px 10px",
-                  borderRadius: 9, fontSize: 12, fontWeight: 650, whiteSpace: "nowrap", zIndex: 5, ...NUM }}>
+                  borderRadius: "var(--v4-r-klein)", fontSize: 12, fontWeight: 650, whiteSpace: "nowrap", zIndex: 5, ...NUM }}>
                   {d[label]} · {n1(d[wert])}{einheit}
                 </div>)}
             </div>);
@@ -176,7 +176,7 @@ export function Schritte({ aktuell, schritte }) {
       {schritte.map((s, i) => (
         <Fragment key={i}>
           <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-            <span style={{ width: 26, height: 26, borderRadius: 13, flexShrink: 0, display: "flex",
+            <span style={{ width: 26, height: 26, borderRadius: "var(--v4-r-pille)", flexShrink: 0, display: "flex",
               alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, ...NUM,
               background: i < aktuell ? C.accentDeep : i === aktuell ? C.accent : C.lineSoft,
               color: i <= aktuell ? C.aufAkzent : C.dim }}>
@@ -200,7 +200,7 @@ export function ModellVorschau({ modell, tage = 28, gruppe = 0 }) {
         const v = DIENST_VORLAGEN[k];
         return (
           <div key={i} title={v ? v.name : "frei"}
-            style={{ width: 17, height: 17, borderRadius: 5, fontSize: 8.5, fontWeight: 700, ...NUM,
+            style={{ width: 17, height: 17, borderRadius: "var(--v4-r-klein)", fontSize: 8.5, fontWeight: 700, ...NUM,
               display: "flex", alignItems: "center", justifyContent: "center",
               background: v ? `${v.farbe}22` : C.bg, color: v ? v.farbe : C.dimmer }}>
             {v ? v.kurz : ""}</div>);

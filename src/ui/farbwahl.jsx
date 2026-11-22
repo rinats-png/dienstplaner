@@ -20,7 +20,7 @@ export function Farbwahl({ wert, onChange }) {
       {PALETTE.map((c, i) => (
         <button key={c} type="button" onClick={() => onChange(c)}
           aria-pressed={wert === c} title={PALETTE_NAMEN[i] || c}
-          style={{ width: 25, height: 25, borderRadius: 8, background: c, cursor: "pointer",
+          style={{ width: 25, height: 25, borderRadius: "var(--v4-r-klein)", background: c, cursor: "pointer",
             border: wert === c ? "3px solid #fff" : "1px solid rgba(0,0,0,.12)",
             boxShadow: wert === c ? `0 0 0 2px ${c}` : "none" }} />))}
     </div>);
@@ -46,11 +46,11 @@ export function Farbpunkt({ wert, onChange, titel = "Farbe ändern" }) {
     <div ref={box} style={{ position: "relative", flexShrink: 0 }}>
       <button type="button" onClick={() => setOffen((o) => !o)} title={titel}
         aria-label={titel} aria-expanded={offen}
-        style={{ width: 18, height: 18, borderRadius: 9, background: wert, cursor: "pointer",
+        style={{ width: 18, height: 18, borderRadius: "var(--v4-r-pille)", background: wert, cursor: "pointer",
           border: `1px solid ${C.lineStark}`, padding: 0 }} />
       {offen && (
         <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, zIndex: 20,
-          background: C.flaeche, border: `1px solid ${C.line}`, borderRadius: 10,
+          background: C.flaeche, border: `1px solid ${C.line}`, borderRadius: "var(--v4-r-mittel)",
           padding: 10, boxShadow: "0 10px 28px -10px rgba(7,19,23,.28)" }}>
           <Farbwahl wert={wert} onChange={(c) => { onChange(c); setOffen(false); }} />
         </div>)}

@@ -39,6 +39,10 @@ export function Personalakte({ sitz, personId, ym, onClose, akt }) {
   const zeigt = kontoSichtbar(sitz, p);
   const nm = Array.from({ length: 12 }, (_, i) => istStunden(m, p, `${jahr}-${pad(i + 1)}`).nacht);
   const maxN = Math.max(1, ...nm);
+  /* A11Y-2 (Review #445): Monat der Ansicht; die Monatswerte als Text für Vorlesesoftware (nicht nur im title). */
+  const mAkt = Number(ym.slice(5)) - 1;
+  const nachtText = `Nachtstunden je Monat ${jahr}: ${nm.map((v, i) =>
+    `${MON[i]} ${v === null || v === undefined ? "keine Angabe" : `${n1(v)} Stunden`}`).join(", ")}; Monat der Ansicht: ${MON[mAkt]}`;
 
   const eintragen = () => {
     setFehler(null);
@@ -71,12 +75,15 @@ export function Personalakte({ sitz, personId, ym, onClose, akt }) {
         </KpiRow>
         <div style={{ margin: "24px 0" }}>
           <Lab style={{ marginBottom: 11 }}>Nachtarbeit im Jahresverlauf</Lab>
-          <div style={{ display: "flex", alignItems: "flex-end", gap: 6, height: 72 }}>
-            {nm.map((v, i) => (<div key={i} style={{ flex: 1, textAlign: "center" }}>
+          {/* A11Y-2: eine Grafik mit Namen (alle Monatswerte); die Spalten sind aria-hidden (keine doppelte Ansage).
+              Der Monat der Ansicht ist zusätzlich ohne Farbe markiert: Buchstabe fett und unterstrichen (1.4.1). */}
+          <div role="img" aria-label={nachtText} style={{ display: "flex", alignItems: "flex-end", gap: 6, height: 72 }}>
+            {nm.map((v, i) => (<div key={i} aria-hidden="true" style={{ flex: 1, textAlign: "center" }}>
               <div title={`${MON[i]}: ${n1Ist(v)} h`} style={{ height: Math.max(3, ((v || 0) / maxN) * 56),
-                background: i === Number(ym.slice(5)) - 1 ? C.accent : "rgba(43,52,64,.24)", borderRadius: "5px 5px 0 0",
+                background: i === mAkt ? C.accent : C.steuer, borderRadius: "var(--v4-r-klein) var(--v4-r-klein) 0 0",
                 transition: "height .4s" }} />
-              <div style={{ fontSize: 10, color: C.dimmer, marginTop: 5 }}>{MON[i].slice(0, 1)}</div></div>))}
+              <div style={{ fontSize: 10, color: i === mAkt ? C.text : C.dimmer, marginTop: 5,
+                fontWeight: i === mAkt ? 700 : undefined, textDecoration: i === mAkt ? "underline" : undefined }}>{MON[i].slice(0, 1)}</div></div>))}
           </div>
         </div>
       </>)}
@@ -171,7 +178,7 @@ export function Personalakte({ sitz, personId, ym, onClose, akt }) {
             {(p.mutterschutz || p.schwerbehindert
               || (alterAm(p.geburtstag, heute()) !== null && alterAm(p.geburtstag, heute()) < 18)) && (
               <div style={{ fontSize: 12.5, color: C.dim, lineHeight: 1.55,
-                background: C.accentLight, padding: "10px 13px", borderRadius: 8 }}>
+                background: C.accentLight, padding: "10px 13px", borderRadius: "var(--v4-r-klein)" }}>
                 {alterAm(p.geburtstag, heute()) !== null && alterAm(p.geburtstag, heute()) < 18
                   && "Unter 18: keine Nachtarbeit, höchstens acht Stunden täglich (JArbSchG). "}
                 {p.mutterschutz
@@ -189,9 +196,13 @@ export function Personalakte({ sitz, personId, ym, onClose, akt }) {
                 <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
                   {DOW.map((wt, i) => {
                     const an = (p.teilzeit.wochentage || []).includes(i);
+                    /* A11Y-1: Zustand für Vorlesesoftware (aria-pressed, 4.1.2) und nicht nur über die Fläche:
+                       gewählt zeigt den Haken wie bei den Qualifikationen (1.4.1, 1.4.11). */
                     return <button key={i} onClick={() => akt.toggleWochentag(p.id, i)} className="btn btn-sm"
-                      style={{ background: an ? "rgba(43,52,64,.12)" : C.bg,
-                        color: an ? C.text : C.dimmer, fontWeight: 600, minWidth: 44 }}>{wt}</button>; })}
+                      aria-pressed={an}
+                      style={{ background: an ? C.lineSoft : C.bg,
+                        color: an ? C.text : C.dimmer, fontWeight: 600, minWidth: 44 }}>
+                      {an && <Icon n="haken" size={13} strokeWidth={2.4} />}{wt}</button>; })}
                 </div>
               </div>)}
             {(() => { const prof = teilzeitProfil(m, p);

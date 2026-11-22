@@ -146,7 +146,7 @@ export default function BetreiberZweifaktor({ ui }) {
 const FarbenKontext = createContext(/** @type {any} */ ({}));
 function ZCard({ children }) {
   const F = useContext(FarbenKontext);
-  return <div style={{ marginTop: 18, border: `1px solid ${F.line}`, borderRadius: 14, background: F.bg, color: F.text }}>{children}</div>;
+  return <div style={{ marginTop: 18, border: `1px solid ${F.line}`, borderRadius: "var(--v4-r-mittel)", background: F.bg, color: F.text }}>{children}</div>;
 }
 function ZCardHead({ children }) {
   return <div style={{ padding: "16px 22px 0", fontSize: 15, fontWeight: 600 }}>{children}</div>;
@@ -160,13 +160,13 @@ function ZField({ label, hint, children }) {
 }
 function ZInp(p) {
   const F = useContext(FarbenKontext);
-  return <input {...p} style={{ padding: "11px 13px", fontSize: 15, borderRadius: 10, border: `1px solid ${F.line}`,
+  return <input {...p} style={{ padding: "11px 13px", fontSize: 15, borderRadius: "var(--v4-r-mittel)", border: `1px solid ${F.line}`,
     background: F.bg, color: F.text, fontFamily: "inherit", boxSizing: "border-box", width: "100%" }} />;
 }
 function ZBtn({ kind, children, ...p }) {
   const F = useContext(FarbenKontext);
   const primaer = kind === "primary";
-  return <button {...p} style={{ padding: "9px 16px", fontSize: 14, fontWeight: 600, borderRadius: 999, fontFamily: "inherit",
+  return <button {...p} style={{ padding: "9px 16px", fontSize: 14, fontWeight: 600, borderRadius: "var(--v4-r-pille)", fontFamily: "inherit",
     cursor: p.disabled ? "default" : "pointer", border: primaer ? "none" : `1px solid ${F.line}`,
     background: primaer ? F.accent : "transparent", color: primaer ? F.aufAkzent : F.text, opacity: p.disabled ? 0.55 : 1 }}>{children}</button>;
 }
@@ -201,7 +201,7 @@ export function ZweifaktorFeld({ wert, setWert, senden, F }) {
         onChange={(e) => setWert(e.target.value)}
         onKeyDown={(e) => e.key === "Enter" && senden()}
         placeholder="123456"
-        style={{ width: "100%", padding: "13px 15px", fontSize: 17, borderRadius: 12,
+        style={{ width: "100%", padding: "13px 15px", fontSize: 17, borderRadius: "var(--v4-r-mittel)",
           border: `1px solid ${F.line}`, fontFamily: "inherit", letterSpacing: ".06em",
           fontVariantNumeric: "tabular-nums", boxSizing: "border-box", background: F.bg, color: F.text }} />
     </div>

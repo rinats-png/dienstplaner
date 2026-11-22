@@ -197,7 +197,7 @@ async function wiederholen(raum, [code, zweiter], vorgemerkt) {
   expect((await personenIn(raum)).map((p) => p.id)).toEqual([a.person]);
 }
 
-describe.sequential("Erstanmeldung: harter Prozessabbruch zwischen den Schritten, Neustart auf derselben Ablage", () => {
+describe("Erstanmeldung: harter Prozessabbruch zwischen den Schritten, Neustart auf derselben Ablage", { concurrent: false }, () => {
   /* Jeder Fall beginnt ohne laufenden Server (sonst hielte der vorige die Ablage). */
   afterEach(async () => { await anhalten(); });
   it("K1 nach Schritt 1 (Vormerkung): keine Person, keine Marke, keine Sitzung; Wiederholung legt genau die vorgemerkte an", async () => {
@@ -270,7 +270,7 @@ describe.sequential("Erstanmeldung: harter Prozessabbruch zwischen den Schritten
   });
 });
 
-describe.sequential("Ein Prozess je Ablage (Produktionsannahme)", () => {
+describe("Ein Prozess je Ablage (Produktionsannahme)", { concurrent: false }, () => {
   it("ein zweiter Server auf derselben Ablage startet nicht (fail-closed); der erste arbeitet weiter", async () => {
     if (!kind || kind.exitCode !== null || kind.signalCode !== null) await starten();
     const port = await freierPort();

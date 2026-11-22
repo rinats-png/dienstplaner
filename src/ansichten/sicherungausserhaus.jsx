@@ -105,10 +105,10 @@ export function SicherungAusserHaus({ sitz, melde }) {
                 Schlüssel angelegt — gültig bis {fDatum(neu.gueltigBis.slice(0, 10))}</div>
               <code style={{ display: "block", fontFamily: "ui-monospace, monospace",
                 fontSize: 12.5, wordBreak: "break-all", background: C.flaeche,
-                padding: "9px 11px", borderRadius: 8, marginBottom: 10 }}>{neu.schluessel}</code>
+                padding: "9px 11px", borderRadius: "var(--v4-r-klein)", marginBottom: 10 }}>{neu.schluessel}</code>
               <div style={{ fontSize: 12.5, color: C.dim, marginBottom: 8 }}>
                 Jetzt notieren. Er wird nicht wieder angezeigt.</div>
-              <pre style={{ margin: 0, padding: "10px 12px", borderRadius: 8,
+              <pre style={{ margin: 0, padding: "10px 12px", borderRadius: "var(--v4-r-klein)",
                 background: C.flaecheStill, color: C.text, border: `1px solid ${C.lineSoft}`, fontSize: 12,
                 overflowX: "auto", lineHeight: 1.5 }}>{befehl(neu.schluessel)}</pre>
             <div style={{ fontSize: 12.5, color: C.dim, margin: "6px 0 10px", lineHeight: 1.5 }}>

@@ -96,7 +96,7 @@ export function Sparkline({ daten, art = "linie", hoehe = 40, beschriftung, herv
         <polyline points={punkte} fill="none" stroke={tonFarbe(ton)} strokeWidth="1.8" strokeLinejoin="round"
           strokeLinecap="round" vectorEffect="non-scaling-stroke" />
       </svg>
-      <span style={{ position: "absolute", right: 0, top: y(letzte) - 4, width: 8, height: 8, borderRadius: "50%",
+      <span style={{ position: "absolute", right: 0, top: y(letzte) - 4, width: 8, height: 8, borderRadius: "var(--v4-r-pille)",
         background: tonFarbe(ton), boxShadow: `0 0 0 1.5px ${C.flaeche}` }} />
     </div>);
 }

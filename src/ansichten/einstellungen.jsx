@@ -218,7 +218,7 @@ export function Einstellungen({ sitz, akt, gehZu }) {
           {p.kalenderVerweis && (<>
             <Zeile titel="Dein Verweis"
               text="Wer ihn hat, sieht deine Dienste. Nicht öffentlich teilen — bei Verdacht neu erzeugen.">
-              <code style={{ fontSize: 11.5, padding: "7px 11px", borderRadius: 8,
+              <code style={{ fontSize: 11.5, padding: "7px 11px", borderRadius: "var(--v4-r-klein)",
                 background: C.bg, border: `1px solid ${C.line}`, maxWidth: 300,
                 display: "block", overflow: "hidden", textOverflow: "ellipsis",
                 whiteSpace: "nowrap", ...NUM }}>{p.kalenderVerweis}</code>

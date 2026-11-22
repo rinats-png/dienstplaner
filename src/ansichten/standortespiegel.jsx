@@ -41,7 +41,7 @@ export function StandorteSpiegel({ m, p }) {
           const zuschlag = inklusive ? 0 : standortZuschlag(a.personen);
           return (
             <div key={a.standort.id} style={{ display: "flex", alignItems: "center", gap: 12,
-              background: C.bg, borderRadius: 10, padding: "12px 14px", flexWrap: "wrap" }}>
+              background: C.bg, borderRadius: "var(--v4-r-mittel)", padding: "12px 14px", flexWrap: "wrap" }}>
               <div style={{ minWidth: 0, flex: "1 1 160px" }}>
                 <div style={{ fontSize: 13.5, fontWeight: 550 }}>{a.standort.name}</div>
                 <div style={{ fontSize: 11.5, color: C.dimmer, ...NUM }}>

@@ -62,7 +62,7 @@ export function MandantNeuAnlegen({ db, akt, onFertig }) {
 
   if (ergebnis) return (
     <div style={{ display: "grid", gap: 20 }}>
-      <div style={{ padding: "20px 22px", borderRadius: 12, background: C.okLight,
+      <div style={{ padding: "20px 22px", borderRadius: "var(--v4-r-mittel)", background: C.okLight,
         border: `1px solid ${C.ok}33` }}>
         <div style={{ fontSize: 17, fontWeight: 640, marginBottom: 6 }}>
           {ergebnis.mandant.name} ist angelegt</div>
@@ -89,7 +89,7 @@ export function MandantNeuAnlegen({ db, akt, onFertig }) {
                 {ROLLEN.find((r) => r.id === c.rolle)?.beschreibung || ""}</div>
             </div>
             <code style={{ fontSize: 16, fontWeight: 700, letterSpacing: ".08em",
-              padding: "9px 14px", borderRadius: 8, background: C.bg,
+              padding: "9px 14px", borderRadius: "var(--v4-r-klein)", background: C.bg,
               border: `1px solid ${C.line}`, ...NUM }}>{c.code}</code>
             <Btn size="sm" onClick={() => {
               try { navigator.clipboard.writeText(c.code); } catch { /* egal */ }
@@ -150,7 +150,7 @@ export function MandantNeuAnlegen({ db, akt, onFertig }) {
             ["mitarbeiter", "Beschäftigte", false],
             ["betriebsrat", "Betriebsrat (kostenfrei)", false]].map(([id, label, fest]) => (
             <label key={id} style={{ display: "flex", alignItems: "center", gap: 11,
-              padding: "11px 14px", borderRadius: 10, cursor: fest ? "default" : "pointer",
+              padding: "11px 14px", borderRadius: "var(--v4-r-mittel)", cursor: fest ? "default" : "pointer",
               border: `1px solid ${fest || extra.includes(id) ? C.accent : C.line}`,
               background: fest || extra.includes(id) ? C.accentLight : "transparent" }}>
               <input type="checkbox" disabled={fest} checked={fest || extra.includes(id)}
@@ -172,7 +172,7 @@ export function MandantNeuAnlegen({ db, akt, onFertig }) {
           onChange={(e) => setFaktor(e.target.value)} placeholder="6-stelliger Code" /></Field>
 
       {fehler && (
-        <div role="alert" style={{ padding: "13px 16px", borderRadius: 10,
+        <div role="alert" style={{ padding: "13px 16px", borderRadius: "var(--v4-r-mittel)",
           background: C.dangerLight, color: C.danger, fontSize: 13.5, lineHeight: 1.5 }}>
           {fehler}</div>)}
 

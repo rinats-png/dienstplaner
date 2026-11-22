@@ -205,7 +205,7 @@ export default function Ringregler({
           /* Nie breiter als die Spalte — in engen Karten schrumpft der
              Ring mit, statt überzustehen. */
           width: `min(${groesse}px, 100%)`, aspectRatio: "1",
-          borderRadius: "50%", outlineOffset: 4,
+          borderRadius: "var(--v4-r-pille)", outlineOffset: 4,
           cursor: gefasst ? "grabbing" : "pointer", touchAction: "none",
         }}
       >
@@ -294,7 +294,7 @@ function Taste({ children, title, aus, onClick }) {
       disabled={aus}
       onClick={onClick}
       style={{
-        width: 34, height: 34, borderRadius: 9, cursor: aus ? "default" : "pointer",
+        width: 34, height: 34, borderRadius: "var(--v4-r-klein)", cursor: aus ? "default" : "pointer",
         border: `1px solid ${C.line}`, background: C.flaeche, color: C.text,
         fontFamily: "inherit", fontSize: 17, lineHeight: 1, opacity: aus ? 0.4 : 1,
       }}

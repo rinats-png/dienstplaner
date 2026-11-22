@@ -112,7 +112,7 @@ afterAll(async () => {
   await rm(daten, { recursive: true, force: true }).catch(() => {});
 });
 
-describe.sequential("Strang A: Betreiber → Leitung → Personal → Schichtmodell → Plan → Beschäftigte, zwei Betriebe", () => {
+describe("Strang A: Betreiber → Leitung → Personal → Schichtmodell → Plan → Beschäftigte, zwei Betriebe", { concurrent: false }, () => {
   /* ---------------- Bereich 1: Betrieb anlegen und konfigurieren ---------------- */
   it("1.1 Betreiber richtet sich ein und legt zwei leere Betriebe an", async () => {
     const e = await anfrage("/einrichten", { methode: "POST", rumpf: { verwaltung: ADMIN, name: "Betreiber", bestand: "abn-a-betreiber",
@@ -330,7 +330,7 @@ describe.sequential("Strang A: Betreiber → Leitung → Personal → Schichtmod
   it("5.4 Planung veröffentlicht; die Beschäftigte sieht danach ihren Plan", async () => {
     const a = await schreiben(T.p1, (m) => {
       const abbild = Object.fromEntries(Object.entries(m.abweichungen).filter(([k]) => k.split("|")[1].startsWith(M)));
-      m.freigaben = { ...(m.freigaben || {}), [M]: { stand: 1, zeit: new Date().toLocaleString("de-DE"), durch: "Planung" } };
+      m.freigaben = { ...(m.freigaben || {}), [M]: { stand: 1, zeit: new Date().toLocaleString("de-DE", { timeZone: "Europe/Berlin" }), durch: "Planung" } };
       m.planstaende = { ...(m.planstaende || {}), [M]: abbild };
     });
     expect(a.status, a.text || a.fehler).toBe(200);

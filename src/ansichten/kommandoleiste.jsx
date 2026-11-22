@@ -82,7 +82,7 @@ export function Kommandoleiste({ sitz, nav, akt, offen, onClose, gehZu, oeffneTa
             style={{ flex: 1, border: "none", outline: "none", background: "transparent",
               fontFamily: FONT, fontSize: 17, color: C.text }} />
           <kbd style={{ fontSize: 11, color: C.dimmer, background: C.lineSoft,
-            padding: "3px 7px", borderRadius: 6, ...NUM }}>Esc</kbd>
+            padding: "3px 7px", borderRadius: "var(--v4-r-klein)", ...NUM }}>Esc</kbd>
         </div>
         <div id="suchtreffer" role="listbox" aria-label="Treffer"
           style={{ maxHeight: "52vh", overflowY: "auto" }}>
@@ -95,7 +95,7 @@ export function Kommandoleiste({ sitz, nav, akt, offen, onClose, gehZu, oeffneTa
                 onMouseEnter={() => setI(k)} onClick={() => waehlen(t)}
                 style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 22px", cursor: "pointer",
                   background: i === k ? "rgba(43,44,37,.07)" : "transparent" }}>
-                <span style={{ width: 27, height: 27, borderRadius: 9, flexShrink: 0, fontSize: 13,
+                <span style={{ width: 27, height: 27, borderRadius: "var(--v4-r-klein)", flexShrink: 0, fontSize: 13,
                   display: "flex", alignItems: "center", justifyContent: "center",
                   background: C.bg, color: C.dim }}><Icon n={SYM[t.art] || "info"} size={15} /></span>
                 <div style={{ flex: 1, minWidth: 0 }}>

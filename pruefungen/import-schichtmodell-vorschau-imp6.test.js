@@ -307,13 +307,25 @@ describe("IMP-6 Vorschau: Last und Obergrenzen (kein Absturz durch große Tabell
     const r = fn();
     return { r, ms: Date.now() - t0, heapMb: (process.memoryUsage().heapUsed - heap0) / 1048576 };
   };
+  /* QS-2: Wandzeit-Grenzen (früher „< 500 ms“) sind auf einem gestörten Runner nicht reproduzierbar. Ersatz: Aufrufzähler an der
+     Bibliothek (deterministisch) und Verhältnis zweier Messungen desselben Laufs (Minimum aus mehreren Läufen, Last kürzt sich heraus). */
+  const minMs = (fn, n = 5) => { let m = Infinity; for (let i = 0; i < n; i++) { const t0 = performance.now(); fn(); m = Math.min(m, performance.now() - t0); } return m; };
   it("Obergrenze: größere Tabellen werden VOR jeder Rechnung mit 422-Code abgewiesen (Zuordnungen und Modelle)", () => {
     aufrufe.modelle.length = 0; aufrufe.zuordnungen.length = 0;
     const n = GRENZEN.zeilenMax + 1;
+    const KOPFZEILE = ["Personalnummer", "Modell", "Beginn", "Versatz"];
     const gross = Array.from({ length: n }, () => ["1001", "A", "2026-06-01", 0]);
-    const a = messen(() => schichtVorschau({ mandant, modellZeilen: MODELL, zuordnungZeilen: [["Personalnummer", "Modell", "Beginn", "Versatz"], ...gross] }));
+    const a = messen(() => schichtVorschau({ mandant, modellZeilen: MODELL, zuordnungZeilen: [KOPFZEILE, ...gross] }));
     expect(a.r).toMatchObject({ ok: false, code: "PRUEFUMFANG_ZU_GROSS" });
-    expect(a.ms).toBeLessThan(500);
+    /* Deterministisch: die Bibliothek sieht die große Zuordnungstabelle nie (höchstens Kopfzeilen der Blatterkennung). */
+    expect(Math.max(0, ...aufrufe.zuordnungen)).toBeLessThanOrEqual(1);
+    /* Relativ: die Abweisung kostet einen kleinen Bruchteil einer echten Rechnung mit der erlaubten Höchstzahl Zeilen
+       (gemessen etwa 1 %, Grenze 25 %; ohne frühe Abweisung läge das Verhältnis bei etwa 1). */
+    const erlaubt = gross.slice(1);
+    const rechnen = minMs(() => schichtVorschau({ mandant, modellZeilen: MODELL, zuordnungZeilen: [KOPFZEILE, ...erlaubt] }));
+    const abweisen = minMs(() => schichtVorschau({ mandant, modellZeilen: MODELL, zuordnungZeilen: [KOPFZEILE, ...gross] }));
+    expect(abweisen).toBeLessThanOrEqual(0.25 * rechnen);
+    aufrufe.modelle.length = 0; aufrufe.zuordnungen.length = 0;      // die Vergleichsläufe riefen die Bibliothek absichtlich
     const b = schichtVorschau({ mandant, modellZeilen: [MODELL[0], ...Array.from({ length: n }, (_, i) => ["A", (i % 2) + 1, "F"])] });
     expect(b).toMatchObject({ ok: false, code: "PRUEFUMFANG_ZU_GROSS" });
     /* Die Bibliothek wurde nicht mit den großen Tabellen gerufen (höchstens mit Kopfzeilen der Blatterkennung). */
@@ -370,10 +382,13 @@ describe("IMP-6 Vorschau: sehr lange Zellen", { timeout: 120000 }, () => {
       const n = GRENZEN.zeilenMax;
       const zeilen = Array.from({ length: n }, (_, i) => [eigen(i), eigen(i + 1), eigen(i + 2), eigen(i + 3)]);
       aufrufe.laengsteZelle = 0;
-      const t0 = Date.now();
       const r = schichtVorschau({ mandant, modellZeilen: MODELL, zuordnungZeilen: [KOPF, ...zeilen] });
-      const ms = Date.now() - t0;
-      expect(ms).toBeLessThan(500);
+      /* QS-2: statt „< 500 ms“ ein Verhältnis zweier Messungen desselben Laufs (Minimum aus 3): dieselbe Tabelle mit kurzen Zellen
+         ist die Vergleichsarbeit. Gemessen etwa 1,4 (lang) zu 1; Grenze 6 plus 20 ms Spielraum. Ohne Kürzen der Zellen wüchse die
+         Zeit je Zelle mit der Zellenlänge (5000 bis 32.767 Zeichen gegen 4). */
+      const kurz = Array.from({ length: n }, () => ["7777", "7777", "7777", "7777"]);
+      const minMs = (z) => { let m = Infinity; for (let i = 0; i < 3; i++) { const t0 = performance.now(); schichtVorschau({ mandant, modellZeilen: MODELL, zuordnungZeilen: [KOPF, ...z] }); m = Math.min(m, performance.now() - t0); } return m; };
+      expect(minMs(zeilen)).toBeLessThanOrEqual(6 * minMs(kurz) + 20);
       /* Deterministisch: die Bibliothek bekommt nie eine Zelle über zellMax Zeichen (kein Hashen/Vergleichen langer Texte). */
       expect(aufrufe.laengsteZelle).toBeLessThanOrEqual(GRENZEN.zellMax + 1);
       expect(r.ok).toBe(true);

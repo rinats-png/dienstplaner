@@ -82,3 +82,40 @@ export const hilfeModus = () => {
   const w = process.env.CENTRIC_HILFE_ASSISTENT;
   return w === "suche" || w === "an" ? w : "aus";
 };
+
+/* --------------------------------------------------------------------------
+   PFLEGE DER SCHICHTMODELLE JE PERSON (IMP-6 Oberfläche, P2-24 B, Betreiberentscheidung 2026-11-20) — Vorgabe AUS
+
+   CENTRIC_SCHICHTMODELL_PFLEGE  Nur die Anzeige: Ist er an, meldet GET /api/bestand
+                 `schichtmodellPflege: true`, und die Oberfläche zeigt unter „Schichtfolge“
+                 den Abschnitt „Schichtmodelle je Person“. Aus: kein Abschnitt; gespeicherte
+                 Modelle und Zuordnungen bleiben im Bestand und gehen beim Speichern unverändert
+                 mit. Der Schreibweg des Servers (Rechte, Prüfungen, historischer Schutz,
+                 Protokoll) ist unabhängig vom Schalter und bleibt unverändert (Begründung:
+                 docs/acc45/IMP-6-MEHRFACHMODELLE.md, Abschnitt „Schalter“). Kein neuer Weg,
+                 kein neues Recht. Einschalten erst mit Betreiberfreigabe.
+   Nur genau `true` schaltet ein.
+   -------------------------------------------------------------------------- */
+export const schichtmodellPflegeAn = () => process.env.CENTRIC_SCHICHTMODELL_PFLEGE === "true";
+
+/* --------------------------------------------------------------------------
+   PLANWIRKUNG DER SCHICHTMODELLE JE PERSON (IMP-6, ENTSCHEIDUNGSLISTE P2-4 Punkt 6) — Vorgabe AUS
+
+   CENTRIC_SCHICHTMODELL_WIRKUNG  Ist er an, rechnet die Planrechnung je Person und Tag
+                 mit dem zugeordneten Schichtmodell (server/lib/fachpruefung.mjs,
+                 planDienst): Wechsel am Folgetag mit eigener Zykluslänge und eigenem
+                 Versatz, Lücke = kein Dienst aus einem Modell (Q5), Überschneidung =
+                 „uneindeutig“ (nie still gewählt). Aus: die Planrechnung bleibt
+                 byte-gleich zum Stand ohne Modelle (pruefungen/imp6-planwirkung.test.js).
+                 STAND PR 2 (Verdrahtung): verbunden über server/lib/schichtmodell-
+                 wirkung.mjs (Planrechnung des Servers, Auslöser der Schutzrechnung,
+                 Ersatzvorschlag) und GET /api/bestand `schichtmodellWirkung: true` —
+                 nur an Rollen mit vollständiger Sicht (Planung, Leitung, Kundenrolle);
+                 die Oberfläche rechnet dann Plan, Aktionen, Urlaubskonto und Änderungen
+                 gegenüber der Freigabe nach den Modellen. NICHT gebaut: Sicht der
+                 Beschäftigten auf die Pläne anderer (vom Server gerechneter Dienst).
+                 Einschalten erst nach diesem Teil, den Entscheidungen P2-26 (Wieder-
+                 herstellen) und P2-27 (Stichtag) und mit Betreiberfreigabe.
+   Nur genau `true` schaltet ein.
+   -------------------------------------------------------------------------- */
+export const schichtmodellWirkungAn = () => process.env.CENTRIC_SCHICHTMODELL_WIRKUNG === "true";

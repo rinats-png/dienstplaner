@@ -206,9 +206,18 @@ describe("Gateway-Befunde", () => {
     const haengt = () => new Promise(() => {});
     const limits = new Limits({ betriebKontingentIE: 700, gesamtTagesIE: 1000, gesamtHartTagesIE: 2000, senke: haengt, parallelJeBetrieb: 5 });
     const r = limits.reservieren({ betrieb: "b", person: "p", rolle: "planer", klasse: "B", tokens: 0, fingerprint: "x" });
-    const t0 = Date.now();
-    expect(await limits.dauerhaft(r.beleg, 40)).toBe(false);
-    expect(Date.now() - t0).toBeLessThan(400);
+    /* Vorgetäuschte Uhr statt Wandzeit (QS-2; frühere Grenze „< 400 ms“ war auf einem gestörten Runner nicht reproduzierbar):
+       Die Frist von 40 ms Uhrzeit gilt genau, und danach ist die Antwort „nicht dauerhaft“, ohne auf den hängenden Speicher zu warten. */
+    vi.useFakeTimers();
+    try {
+      let antwort = "offen";
+      const dauer = limits.dauerhaft(r.beleg, 40).then((v) => { antwort = v; });
+      await vi.advanceTimersByTimeAsync(39);
+      expect(antwort).toBe("offen");                       // die Frist wird nicht verkürzt
+      await vi.advanceTimersByTimeAsync(61);               // 100 ms Uhrzeit
+      expect(antwort).toBe(false);
+      await dauer;
+    } finally { vi.useRealTimers(); }
     const t = bauen({ limits: new Limits({ betriebKontingentIE: 700, gesamtTagesIE: 1000, gesamtHartTagesIE: 2000, senke: haengt, parallelJeBetrieb: 5 }), zeiten: { zaehlerMs: 30 } });
     const t1 = Date.now();
     expect(await code(t.gw.ausfuehren(S.leitung, { funktion: "F1", eingabe: { zeitraum: ZR } }))).toBe("KI_LIMIT");

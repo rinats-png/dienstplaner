@@ -25,7 +25,7 @@ export function Notrufe({ sitz, akt }) {
       <div style={{ padding: "18px var(--pad-x)", borderBottom: `1px solid ${C.lineSoft}`,
         background: istOffen && a.dringend ? C.dangerLight : "transparent" }}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 14 }}>
-          <span style={{ width: 10, height: 10, borderRadius: 5, marginTop: 6, flexShrink: 0,
+          <span style={{ width: 10, height: 10, borderRadius: "var(--v4-r-pille)", marginTop: 6, flexShrink: 0,
             background: istOffen ? (a.dringend ? C.danger : C.warn) : C.ok }} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 15.5, fontWeight: 640,
@@ -36,7 +36,7 @@ export function Notrufe({ sitz, akt }) {
             {n.notiz && <div style={{ fontSize: 13.5, color: C.dim, marginTop: 6,
               lineHeight: 1.5 }}>{n.notiz}</div>}
             <div style={{ fontSize: 12.5, color: C.dim, marginTop: 7, ...NUM }}>
-              {new Date(n.zeit).toLocaleString("de-DE")}
+              {new Date(n.zeit).toLocaleString("de-DE", { timeZone: "Europe/Berlin" })}
               {istOffen ? ` · vor ${alter < 60 ? `${alter} Min` : `${Math.round(alter / 60)} Std`}` : ""}
               {n.bestaetigt ? ` · bestätigt von ${n.durch || "unbekannt"}` : ""}</div>
           </div>

@@ -274,20 +274,34 @@ describe("F8: Rückübersetzung an die Betriebskennung gebunden; Lauf-Store-Kart
 });
 
 describe("F9: Leck-Prüfung ohne quadratische Laufzeit", () => {
-  it("20 × 4000 Zeichen mit „@“ in der Mitte: unter 500 ms", () => {
-    const block = "a".repeat(1999) + "@" + "b".repeat(1999);
-    const fremdtext = Array.from({ length: 20 }, (_, i) => ({ kapselId: `k${i}`, text: block + String.fromCharCode(97 + i) }));
-    const t0 = performance.now();
-    leckPruefen({ fremdtext }, SP);
-    expect(performance.now() - t0).toBeLessThan(500);
+  /* QS-2: statt fester Wandzeit-Grenze („< 500 ms“, auf einem gestörten Runner nicht reproduzierbar) die Skalierung: ein Lauf mit
+     Texten von 8000 Zeichen gegen vier Läufe mit Texten von 2000 Zeichen (gleiche Gesamtlänge, also gleiche Dauer und gleiche
+     Störanfälligkeit durch den Scheduler; ein Verhältnis 8000 zu 2000 bei ungleicher Dauer lag unter Last bei 8 bis 9 statt bei 3,7).
+     Beide Seiten werden ABWECHSELND gemessen (je Runde einmal je Seite; Minimum je Seite aus 9 Runden). Linear ergibt etwa 1
+     (gemessen 0,9 bis 1,1), quadratisch etwa 4; Grenze 2. Zusätzlich eine absolute Grobgrenze mit großem
+     Vorrat gegen eine Regression im Sekundenbereich (Muster GRAD war quadratisch: 3,9 s bei 20 × 4000 Zeichen): 20 × 4000 Zeichen
+     in höchstens 2000 ms (gemessen 36 bis 111 ms, Vorrat etwa 18-fach). */
+  const zeit = (fn) => { const t0 = performance.now(); fn(); return performance.now() - t0; };
+  const mitLaenge = (text, L) => () => leckPruefen({ fremdtext: Array.from({ length: 20 }, (_, i) => ({ kapselId: `k${i}`, text: text(L) + String.fromCharCode(97 + i) })) }, SP);
+  const pruefen = (name, text) => {
+    const k2000 = mitLaenge(text, 2000), lang = mitLaenge(text, 8000), mittel = mitLaenge(text, 4000);
+    const kurz = () => { k2000(); k2000(); k2000(); k2000(); };            // gleiche Gesamtlänge wie ein Lauf mit 8000 Zeichen
+    let vier = Infinity, eins = Infinity;
+    const start = performance.now();
+    /* Höchstens 9 Runden, mindestens 2; ein Mangel (Sekunden je Runde) bricht nach 5 s ab statt Minuten zu laufen. */
+    for (let runde = 0; runde < 9 && (runde < 2 || performance.now() - start < 5000); runde++) { vier = Math.min(vier, zeit(kurz)); eins = Math.min(eins, zeit(lang)); }
+    expect(eins, `${name}: 4 × 2000 Zeichen ${vier.toFixed(2)} ms`).toBeLessThanOrEqual(Math.max(2 * vier, vier + 4));
+    expect(Math.min(zeit(mittel), zeit(mittel), zeit(mittel)), `${name}: 20 × 4000 Zeichen`).toBeLessThanOrEqual(2000);
+  };
+  it("20 Texte mit „@“ in der Mitte: vierfache Länge kostet höchstens das Achtfache (nicht quadratisch), 20 × 4000 unter 2 s", { timeout: 120_000 }, () => {
+    pruefen("@ in der Mitte", (L) => "a".repeat(L / 2 - 1) + "@" + "b".repeat(L / 2 - 1));
   });
-  it("auch lange Ziffern-, Punkt-, Komma- und @-Läufe (Nachmessung: Muster GRAD war quadratisch): je unter 500 ms", () => {
-    for (const lauf of ["1".repeat(3998) + "x", "@" + "a".repeat(3997) + "@", "1.".repeat(1999), "1,234 ".repeat(660), "-1".repeat(1999)]) {
-      const fremdtext = Array.from({ length: 20 }, (_, i) => ({ kapselId: `k${i}`, text: lauf.slice(0, 3999) + String.fromCharCode(97 + i) }));
-      const t0 = performance.now();
-      leckPruefen({ fremdtext }, SP);
-      expect(performance.now() - t0, lauf.slice(0, 6)).toBeLessThan(500);
-    }
+  it("auch lange Ziffern-, Punkt-, Komma- und @-Läufe (Nachmessung: Muster GRAD war quadratisch): vierfache Länge höchstens das Achtfache, 20 × 4000 unter 2 s", { timeout: 120_000 }, () => {
+    const laeufe = {
+      "1111": (L) => "1".repeat(L - 2) + "x", "@aaa": (L) => "@" + "a".repeat(L - 3) + "@", "1.1.": (L) => "1.".repeat(L / 2 - 1),
+      "1,234": (L) => "1,234 ".repeat(Math.floor(L / 6)), "-1-1": (L) => "-1".repeat(L / 2 - 1),
+    };
+    for (const [name, text] of Object.entries(laeufe)) pruefen(name, text);
   });
   it("E-Mail wird weiter erkannt (zerlegt statt Rückverfolgung)", () => {
     for (const t of ["Mail an lena.brandt@sonnenhof.example", "x@y.de", "(a@b.co)"]) expect(kat(t), t).toContain("KONTAKT");

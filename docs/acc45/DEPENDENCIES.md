@@ -4,7 +4,7 @@ Erzeugt von `werkzeug/acc45-backlog.mjs` aus `docs/acc45/work-packages.json` (ni
 
 **Kritischer Pfad gemeinsam** (offener Entwicklungsaufwand, ohne extern): WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **50–90 PT**
 **Ohne Intelligence:** WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 → WP-42a → WP-42 = **22,5–35 PT**
-**Offener Entwicklungsaufwand:** 327,9–562,35 PT in 90 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
+**Offener Entwicklungsaufwand:** 334,5–575,85 PT in 102 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
 
 WP-09 ist nur Livegang-Reihenfolge und zählt im Pfad nicht als Abhängigkeit. Der Graph zeigt nur offene Pakete.
 
@@ -49,6 +49,7 @@ flowchart LR
     ABN_C1["ABN-C1<br/>BLOCKED"]
     WP_ZEIT["WP-ZEIT<br/>IN_PROGRESS"]
     BE_3["BE-3<br/>BLOCKED"]
+    REL_0c["REL-0c<br/>BLOCKED"]
   end
   subgraph wp19[WP-19-Module]
     WP_19_1["WP-19.1<br/>BLOCKED"]
@@ -101,12 +102,23 @@ flowchart LR
     WP_28b["WP-28b<br/>IN_PROGRESS"]
     WP_07b["WP-07b<br/>REVIEW"]
     WP_PILOT["WP-PILOT<br/>IN_PROGRESS"]
-    V4_1["V4-1<br/>BLOCKED"]
-    V4_2["V4-2<br/>BLOCKED"]
+    V4_1["V4-1<br/>IN_PROGRESS"]
     V4_3["V4-3<br/>BLOCKED"]
+    V4_3a["V4-3a<br/>REVIEW"]
+    V4_3b["V4-3b<br/>IN_PROGRESS"]
+    V4_3c["V4-3c<br/>BLOCKED"]
+    V4_3d["V4-3d<br/>BLOCKED"]
     V4_4["V4-4<br/>BLOCKED"]
     V4_5["V4-5<br/>BLOCKED"]
     V4_6["V4-6<br/>BLOCKED"]
+    DEP_1["DEP-1<br/>REVIEW"]
+    DEP_2["DEP-2<br/>REVIEW"]
+    DEP_3["DEP-3<br/>BLOCKED"]
+    DEP_4["DEP-4<br/>BLOCKED"]
+    REL_1["REL-1<br/>REVIEW"]
+    REL_2["REL-2<br/>BLOCKED"]
+    REL_3["REL-3<br/>BLOCKED"]
+    REL_4["REL-4<br/>BLOCKED"]
   end
   subgraph extern[Extern/Entscheidungen]
     E_1["E-1<br/>BLOCKED"]
@@ -302,15 +314,24 @@ flowchart LR
   WR_7 --> WR_8
   OPT_4 --> WR_9
   WR_4 --> WR_BETREIBER
-  V4_1 --> V4_2
-  WP_40 --> V4_2
   V4_1 --> V4_3
   WP_40 --> V4_3
   WP_48_GB --> V4_3
+  V4_3a --> V4_3b
+  V4_3a --> V4_3c
+  WP_40 --> V4_3c
+  V4_3b --> V4_3d
   V4_1 --> V4_4
-  V4_2 --> V4_5
   V4_3 --> V4_6
   V4_4 --> V4_6
+  V4_3a --> V4_6
+  V4_3b --> V4_6
+  V4_3c --> V4_6
+  REL_1 --> REL_2
+  REL_1 --> REL_3
+  REL_3 --> REL_4
+  E_7 --> REL_4
+  E_8 --> REL_4
 ```
 
 | Paket | Strang | Prio | PT | Rest-PT | hängt ab von | Konfliktzonen | Modell | Status |
@@ -472,6 +493,8 @@ flowchart LR
 | SI-P7 | acc45 | P2 | 1,5–2,5 | 0 | – | daten.mjs | opus | INTEGRATED |
 | SI-P8 | acc45 | P2 | 0,5–1 | 0 | – | – | opus | INTEGRATED |
 | SI-P9 | acc45 | P2 | 0,5–1 | 0 | SI-P8 | – | opus | INTEGRATED |
+| SI-P10 | acc45 | P2 | 0,5–1,5 | 0 | – | – | opus | INTEGRATED |
+| SI-P11 | acc45 | P3 | 0,3–0,8 | 0 | SI-P10 | – | opus | INTEGRATED |
 | SI-P6b | acc45 | P1 | 1,5–3 | 1,5–3 | SI-P6 | daten.mjs | opus | BLOCKED |
 | WP-42R1 | acc45 | P1 | 0 | 0 | WP-16, WP-16c, WP-07b, WP-S1, WP-18, WP-33, WP-44, SI-P4 | – | opus | BLOCKED |
 | WP-42R2 | acc45 | P1 | 0 | 0 | WP-42R1, WP-19.R, WP-21, WP-15, WP-30, SI-P6b, SI-P5, WP-32d, WP-40, WP-14c, WP-16b, WP-24b, WP-27c, WP-47b | – | opus | BLOCKED |
@@ -529,14 +552,33 @@ flowchart LR
 | ABN-B3 | acc45 | P3 | 0,25–0,5 | 0 | – | – | opus | INTEGRATED |
 | QS-6 | acc45 | P3 | 0,25–0,5 | 0 | – | – | sonnet | INTEGRATED |
 | QS-ZEIT | acc45 | P3 | 0,25–0,5 | 0 | – | – | sonnet | INTEGRATED |
-| WP-ZEIT | acc45 | P2 | 9–15 | 4,5–7,5 | – | – | opus | IN_PROGRESS |
+| WP-ZEIT | acc45 | P2 | 9–15 | 4,5–7,5 | – | daten.mjs, rechte.mjs | opus | IN_PROGRESS |
 | BE-1 | acc45 | P1 | 2–4 | 0 | – | – | opus | INTEGRATED |
 | BE-2 | acc45 | P1 | 2–4 | 0 | – | – | opus | INTEGRATED |
 | BE-3 | acc45 | P2 | 2–4 | 2–4 | – | – | sonnet | BLOCKED |
 | V4-0 | folge | P2 | 0,5–1 | 0 | – | – | opus | INTEGRATED |
-| V4-1 | folge | P2 | 2–3 | 2–3 | V4-0 | – | opus | BLOCKED |
-| V4-2 | folge | P2 | 1–2 | 1–2 | V4-1, WP-40 | App.jsx | opus | BLOCKED |
-| V4-3 | folge | P2 | 6–10 | 6–10 | V4-1, WP-40, WP-48-GB | App.jsx | opus | BLOCKED |
+| V4-1 | folge | P2 | 2–3 | 1–1,5 | V4-0 | package.json | opus | IN_PROGRESS |
+| V4-2 | folge | P2 | 1–2 | 0 | V4-1, WP-40 | App.jsx | opus | INTEGRATED |
+| V4-2b | folge | P1 | 0,5–1 | 0 | V4-2 | App.jsx | opus | INTEGRATED |
+| V4-2c | folge | P2 | 0,25–0,5 | 0 | V4-2 | – | opus | INTEGRATED |
+| V4-2d | folge | P2 | 0,25–0,5 | 0 | V4-2c | – | opus | INTEGRATED |
+| V4-3 | folge | P2 | 1–2 | 1–2 | V4-1, WP-40, WP-48-GB | App.jsx | opus | BLOCKED |
+| V4-3a | folge | P2 | 1–1,5 | 0,2–0,3 | V4-2 | App.jsx | opus | REVIEW |
+| V4-3b | folge | P2 | 4–7 | 2–3,5 | V4-3a | src/ansichten | sonnet | IN_PROGRESS |
+| V4-3c | folge | P2 | 2–3 | 2–3 | V4-3a, WP-40 | – | sonnet | BLOCKED |
+| V4-3d | folge | P3 | 2–5 | 2–5 | V4-3b | src/ansichten | sonnet | BLOCKED |
+| A11Y-1 | folge | P2 | 0,25–0,5 | 0 | – | src/ansichten | sonnet | INTEGRATED |
+| A11Y-2 | folge | P2 | 0,25–0,5 | 0 | A11Y-1 | src/ansichten | sonnet | INTEGRATED |
 | V4-4 | folge | P2 | 2–3 | 2–3 | V4-1, WP-33 | – | opus | BLOCKED |
 | V4-5 | folge | P2 | 3–5 | 3–5 | V4-2 | – | opus | BLOCKED |
-| V4-6 | folge | P2 | 2–4 | 2–4 | V4-3, V4-4 | – | opus | BLOCKED |
+| V4-6 | folge | P2 | 2–4 | 2–4 | V4-3, V4-4, V4-3a, V4-3b, V4-3c | – | opus | BLOCKED |
+| DEP-1 | folge | P2 | 0,5–1 | 0,1–0,2 | – | – | opus | REVIEW |
+| DEP-2 | folge | P3 | 0,5–1 | 0,1–0,2 | – | – | opus | REVIEW |
+| DEP-3 | folge | P3 | 3–5 | 3–5 | – | – | opus | BLOCKED |
+| DEP-4 | folge | P3 | 0,5–1 | 0,5–1 | – | – | opus | BLOCKED |
+| REL-0 | acc45 | P1 | 0,5–1 | 0 | – | package.json | opus | INTEGRATED |
+| REL-0c | acc45 | P2 | 0,5–1 | 0,5–1 | REL-0 | – | opus | BLOCKED |
+| REL-1 | folge | P1 | 1–1,5 | 0,2–0,3 | – | – | opus | REVIEW |
+| REL-2 | folge | P1 | 1–2 | 1–2 | REL-1 | – | opus | BLOCKED |
+| REL-3 | folge | P1 | 1–2 | 1–2 | REL-1, WP-09 | – | opus | BLOCKED |
+| REL-4 | folge | P1 | 1–1,5 | 1–1,5 | REL-3, E-7, E-8 | – | sonnet | BLOCKED |

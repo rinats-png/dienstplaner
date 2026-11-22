@@ -50,8 +50,8 @@ export const gestaltStil = () => `
 .suchfeld .inp{padding-left:40px; border-radius:var(--r-pille);}
 
 /* Fortschritt, Checkliste, Erklärkasten, Sparkline */
-.fortschritt{background:${C.flaecheStill}; border-radius:999px; overflow:hidden;}
-.fortschritt > i{display:block; height:100%; border-radius:999px; background:${C.accent};}
+.fortschritt{background:${C.flaecheStill}; border-radius:var(--v4-r-pille); overflow:hidden;}
+.fortschritt > i{display:block; height:100%; border-radius:var(--v4-r-pille); background:${C.accent};}
 .checkliste{list-style:none; margin:0; padding:0;}
 .checkliste li{display:flex; align-items:center; gap:10px; padding:7px 0; font-size:13.5px;}
 .checkliste li.erledigt .text{color:${C.dim}; text-decoration:line-through;}
@@ -84,7 +84,7 @@ export const gestaltStil = () => `
 .fokus .bereiche, .fokus .unterleiste{display:none;}
 
 .kopf-marke{display:flex; align-items:center; gap:9px; flex:0 1 auto; min-width:0;}
-.kopf-marke .wort{font-size:16px; font-weight:700; letter-spacing:.14em; color:${C.text};}
+.kopf-marke .wort{display:flex; font-size:16px; font-weight:700; letter-spacing:.14em; color:${C.text};}
 .kopf-marke .trenner{width:1px; height:22px; background:${C.line}; flex-shrink:0; margin:0 3px;}
 .kopf-marke .betrieb{font-size:12.5px; color:${C.dim}; max-width:190px; flex:0 1 auto; min-width:0; overflow:hidden;
   text-overflow:ellipsis; white-space:nowrap;}
@@ -99,7 +99,7 @@ export const gestaltStil = () => `
   transition:background .14s, color .14s;}
 .bpille:hover{background:${C.flaecheStill}; color:${C.text};}
 .bpille.on{background:${C.accentLight}; color:${C.accent}; font-weight:620;}
-.bzahl,.uzahl{min-width:18px; height:18px; padding:0 5px; border-radius:999px; font-size:11px; font-weight:600;
+.bzahl,.uzahl{min-width:18px; height:18px; padding:0 5px; border-radius:var(--v4-r-pille); font-size:11px; font-weight:600;
   display:inline-flex; align-items:center; justify-content:center; font-variant-numeric:tabular-nums;}
 .bzahl{background:${C.warnLight}; color:${C.warn};}
 .uzahl{background:${C.accentLight}; color:${C.accent};}
@@ -111,7 +111,7 @@ export const gestaltStil = () => `
 .ikn:hover{background:${C.flaecheStill}; color:${C.text};}
 .ikn-klein{width:32px; height:32px;}
 .ikn-zahl{position:absolute; top:3px; right:2px; min-width:16px; height:16px; padding:0 4px;
-  border-radius:999px; background:${C.accent}; color:${C.aufAkzent}; font-size:10px; font-weight:600;
+  border-radius:var(--v4-r-pille); background:${C.accent}; color:${C.aufAkzent}; font-size:10px; font-weight:600;
   display:flex; align-items:center; justify-content:center; font-variant-numeric:tabular-nums;}
 .ansichtknopf{display:flex; align-items:center; gap:6px; height:40px; padding:0 12px 0 16px; flex-shrink:0;
   border:1px solid ${C.line}; border-radius:var(--r-pille); background:${C.flaeche}; color:${C.text};
@@ -240,7 +240,7 @@ button.kachel{cursor:pointer; display:block; width:100%;}
 .legende li{display:flex; align-items:center; gap:7px;}
 .legende b{font-weight:650;}
 
-.namenschip{display:inline-flex; align-items:center; gap:8px; padding:4px 12px 4px 4px; border-radius:999px;
+.namenschip{display:inline-flex; align-items:center; gap:8px; padding:4px 12px 4px 4px; border-radius:var(--v4-r-pille);
   background:${C.flaecheStill}; font-size:13px; max-width:100%;}
 .namenschip .n{overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0;}
 
@@ -333,7 +333,7 @@ button.kachel{cursor:pointer; display:block; width:100%;}
 .wegzeile{display:flex; align-items:flex-start; gap:16px; flex-wrap:wrap; padding:15px var(--pad-x);
   border-bottom:1px solid ${C.lineSoft};}
 .wegzeile:last-child{border-bottom:0;}
-.wegsymbol{width:40px; height:40px; border-radius:12px; flex-shrink:0; display:flex; align-items:center;
+.wegsymbol{width:40px; height:40px; border-radius:var(--v4-r-mittel); flex-shrink:0; display:flex; align-items:center;
   justify-content:center; background:${C.accentLight}; color:${C.accent};}
 
 /* Handbuch: Kapitelliste, Kapitel, Stand — Liste und Stand kleben unter der Kopfzeile (112 px) */
@@ -386,10 +386,10 @@ button.kachel{cursor:pointer; display:block; width:100%;}
 .m-kopf{position:sticky; top:0; z-index:40; padding:10px 18px; display:flex; align-items:center; gap:12px;
   background:var(--c-kopf-grund); backdrop-filter:saturate(160%) blur(12px);
   -webkit-backdrop-filter:saturate(160%) blur(12px); border-bottom:1px solid ${C.line};}
-.m-wort{flex:1; font-size:15.5px; font-weight:700; letter-spacing:.14em; color:${C.text};}
+.m-wort{flex:1; display:flex; align-items:center; font-size:15.5px; font-weight:700; letter-spacing:.14em; color:${C.text};}
 .m-postknopf{position:relative; width:46px; height:46px; border:1px solid ${C.line}; border-radius:50%;
   background:${C.flaeche}; color:${C.dim}; cursor:pointer; display:flex; align-items:center; justify-content:center;}
-.m-zahl{position:absolute; top:-4px; right:-4px; min-width:19px; height:19px; padding:0 4px; border-radius:10px;
+.m-zahl{position:absolute; top:-4px; right:-4px; min-width:19px; height:19px; padding:0 4px; border-radius:var(--v4-r-pille);
   background:${C.danger}; color:var(--c-auf-akzent); font-size:10.5px; font-weight:700; display:flex;
   align-items:center; justify-content:center; box-sizing:border-box;}
 .m-tabs{position:fixed; left:0; right:0; bottom:0; z-index:50; display:flex; gap:4px;
@@ -397,7 +397,7 @@ button.kachel{cursor:pointer; display:block; width:100%;}
   padding:8px 8px calc(8px + env(safe-area-inset-bottom)); background:var(--c-kopf-grund);
   backdrop-filter:saturate(160%) blur(16px); -webkit-backdrop-filter:saturate(160%) blur(16px);
   border-top:1px solid ${C.line};}
-.m-tabs button{flex:1 1 0; min-width:0; min-height:56px; border:0; border-radius:16px; background:transparent;
+.m-tabs button{flex:1 1 0; min-width:0; min-height:56px; border:0; border-radius:var(--v4-r-gross); background:transparent;
   color:${C.dim}; font-family:inherit; font-size:11.5px; font-weight:500; cursor:pointer; display:flex;
   flex-direction:column; align-items:center; justify-content:center; gap:4px; padding:4px 2px;}
 .m-tabs button.on{background:${C.accentLight}; color:${C.accent}; font-weight:620; box-shadow:inset 0 -2px 0 ${C.accent};}
@@ -405,10 +405,24 @@ button.kachel{cursor:pointer; display:block; width:100%;}
 html:has(.m-tabs){scroll-padding-top:76px; scroll-padding-bottom:calc(92px + env(safe-area-inset-bottom));}
 .m-blattrahmen{position:fixed; inset:0; z-index:80; display:flex; align-items:flex-end;
   background:var(--c-ueberlagerung); backdrop-filter:blur(5px); -webkit-backdrop-filter:blur(5px);}
-.m-blatt{width:100%; max-height:92vh; overflow-y:auto; background:${C.flaeche}; border-radius:26px 26px 0 0;
+.m-blatt{width:100%; max-height:92vh; overflow-y:auto; background:${C.flaeche}; border-radius:var(--v4-r-gross) var(--v4-r-gross) 0 0;
   border:1px solid ${C.line}; border-bottom:0; box-shadow:var(--schatten-blatt);
   padding:10px 20px calc(28px + env(safe-area-inset-bottom));}
-.m-griff{width:42px; height:4.5px; border-radius:3px; background:${C.lineStark}; margin:6px auto 16px;}
+.m-griff{width:42px; height:4.5px; border-radius:var(--v4-r-pille); background:${C.lineStark}; margin:6px auto 16px;}
 .m-blatttitel{font-size:20px; font-weight:650; letter-spacing:-.02em; margin-bottom:18px;}
 @media print{ .m-tabs{display:none !important;} .m-schale::before{display:none;} }
+
+/* ------------------- Glas-Rückfall (DESIGNSYSTEM Gate 4) -------------------
+   V4-2. Ohne Weichzeichner (Browser ohne backdrop-filter) oder bei reduzierter
+   Transparenz tragen die Leisten die opake Fläche (Tokens: V4_GLAS.grund =
+   flaeche) statt des durchscheinenden Kopfgrunds. Der Rücken hinter dem Blatt
+   verliert nur den Weichzeichner; die Abdunklung bleibt. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))){
+  .kopfblock, .tabbar, .m-kopf, .m-tabs{background:var(--c-flaeche);}
+}
+@media (prefers-reduced-transparency: reduce){
+  .kopfblock, .tabbar, .m-kopf, .m-tabs{background:var(--c-flaeche);
+    backdrop-filter:none; -webkit-backdrop-filter:none;}
+  .m-blattrahmen{backdrop-filter:none; -webkit-backdrop-filter:none;}
+}
 `;

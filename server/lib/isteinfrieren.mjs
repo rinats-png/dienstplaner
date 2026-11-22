@@ -31,7 +31,8 @@
    Sicht wie die Erfassung: Beschäftigte die eigenen, Betriebsrat keine,
    Schichtverantwortung eigene und Bereich (sicht.mjs).
    ========================================================================== */
-import { einheitAm, imDienst, einheitDienst, teilzeitDienst, landFuerEinheit, nachtAnteil, nachtschwelle, eintrittFehlt } from "./fachpruefung.mjs";
+import { einheitAm, imDienst, einheitDienst, teilzeitDienst, landFuerEinheit, nachtAnteil, nachtschwelle, eintrittFehlt,
+  planDienst, schichtmodellWirkungAktiv } from "./fachpruefung.mjs";
 import { between, dow, addDays, toMin, fenster, uhrversatz, dim_, pad, dauerAm } from "./regelwerk.mjs";
 import { gewertet, abwHoechste, abwBezahlt, LOHNARTEN_STD, RECHEN_STAND } from "./lohnrechnung.mjs";
 import { zeitpunktAusWanduhr } from "./betriebszeit.mjs";
@@ -149,13 +150,17 @@ export function postenBesatzung(m, eid, d, pid, merk = new Map()) {
     .sort((a, b) => (a.id < b.id ? -1 : 1));
   if (!pool.length) { merk.set(k, out); return out; }
   const start = Math.abs(between(m.anker, d)) % pool.length;
+  const wirkung = schichtmodellWirkungAktiv();
   let n = 0;
   for (let i = 0; i < pool.length && n < rest; i++) {
     const p = pool[(start + i) % pool.length];
     if (abwesend(m, p.id, d, merk)) continue;
     if (ab[`${p.id}|${d}`] !== undefined) continue;
     // Teilzeitkräfte, die an diesem Tag nicht arbeiten, können den Posten nicht besetzen
-    if (p.springer || !teilzeitDienst(m, p, d, einheitDienst(m, eid, d))) continue;
+    if (!wirkung) { if (p.springer || !teilzeitDienst(m, p, d, einheitDienst(m, eid, d))) continue; }
+    /* IMP-6 Planwirkung: jede Person hat ihre eigene Folge — den Posten besetzt nur, wer an diesem Tag den
+       Gruppendienst des Postens hat (ohne Modelle haben alle der Einheit dieselbe Folge: gleiche Auswahl). */
+    else { const r = p.springer ? null : planDienst(m, p, d, eid); if (!r || (posten && r !== posten.quelle)) continue; }
     out.add(p.id); n++;
   }
   merk.set(k, out); return out;
@@ -170,8 +175,8 @@ export function postenBesatzung(m, eid, d, pid, merk = new Map()) {
 export function planTag(m, p, d, merk = new Map()) {
   if (!imDienst(p, d)) return null;
   const eid = einheitAm(p, d);
-  const roh = (eid && !p.springer && p.imSchichtdienst !== false) ? einheitDienst(m, eid, d) : null;
-  const plan = teilzeitDienst(m, p, d, roh);
+  /* Schichtfolge mit Teilzeit (IMP-6: bei eingeschalteter Planwirkung das zugeordnete Modell; aus: wörtlich wie bisher). */
+  const plan = planDienst(m, p, d, eid);
   const ab = objekt(m.abweichungen) ? m.abweichungen[`${p.id}|${d}`] : undefined;
   let basis = ab !== undefined ? (ab === "-" ? null : ab) : plan;
   if (ab === undefined && plan) {

@@ -51,7 +51,7 @@ export function Nachweise({ sitz, akt }) {
               <div key={i} className="row" style={{ display: "flex", alignItems: "center", gap: 16,
                 padding: "14px 22px", borderBottom: i < gezeigt.length - 1 ? `1px solid ${C.lineSoft}` : "none",
                 flexWrap: "wrap" }}>
-                <span style={{ width: 4, alignSelf: "stretch", borderRadius: 2, flexShrink: 0,
+                <span style={{ width: 4, alignSelf: "stretch", borderRadius: "var(--v4-r-pille)", flexShrink: 0,
                   background: tone === "danger" ? C.danger : tone === "warn" ? C.warn : "transparent" }} />
                 <div style={{ flex: 1, minWidth: 180 }}>
                   <div style={{ fontSize: 14.5, fontWeight: 500 }}>{x.person.nachname}, {x.person.vorname}</div>

@@ -155,7 +155,7 @@ export function Selbstplanung({ sitz, akt, gehZu }) {
                                 <span style={{ color: C.aus, fontSize: 12 }}>—</span>
                               ) : (
                                 <span style={{ display: "inline-block", minWidth: 44,
-                                  padding: "3px 8px", borderRadius: 8, fontSize: 12.5,
+                                  padding: "3px 8px", borderRadius: "var(--v4-r-klein)", fontSize: 12.5,
                                   fontWeight: 600, ...NUM,
                                   background: x.gedeckt ? C.okLight : x.drin > 0 ? C.warnLight : C.dangerLight,
                                   color: x.gedeckt ? C.ok : x.drin > 0 ? C.warn : C.danger }}>

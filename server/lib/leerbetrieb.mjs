@@ -20,7 +20,7 @@ import { MATRIX } from "./rechte.mjs";
 import { brancheVon, einheitLabel, qualifikationenFuer, dienstartenFuer, quoteFuer, paketFuer }
   from "./branchen.mjs";
 import { paketFuerNeubuchung } from "./paketstand.mjs";
-import { montagDerWoche } from "./betriebszeit.mjs";
+import { montagDerWoche, betriebstag } from "./betriebszeit.mjs";
 
 /* Muss zu VERSION in src/migration.js passen. Weicht es ab, zieht die
    Migration den Bestand beim ersten Öffnen hoch — unschön, aber harmlos. */
@@ -78,7 +78,7 @@ export function baueLeerenBetrieb({ name, branche, email, land, raum, laeuftAb, 
     bundesland: land || "HE",
     tarif: "pro",
     status: "test",
-    seit: jetzt.toISOString().slice(0, 10),
+    seit: betriebstag(jetzt),
     stichtag: laeuftAb ? String(laeuftAb).slice(0, 10) : null,
     kontakt: email ? String(email).trim() : "",
     anschrift: "",

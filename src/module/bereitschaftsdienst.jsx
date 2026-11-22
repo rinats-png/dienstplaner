@@ -24,7 +24,7 @@ export function BereitschaftsUebersicht({ m, datum, personen = {} }) {
       {dienste.map(({ pid, e, stufe }) => {
         const a = bereitschaftAnrechnung(e, stufe);
         return (
-          <article key={pid} style={{ border: "1px solid currentColor", borderRadius: 8, padding: 12, overflowWrap: "anywhere" }}>
+          <article key={pid} style={{ border: "1px solid currentColor", borderRadius: "var(--v4-r-klein)", padding: 12, overflowWrap: "anywhere" }}>
             <h3 style={{ margin: 0, fontSize: 15 }}>{personen[pid] || "Person"}</h3>
             <p style={{ margin: "6px 0 0" }}>
               {stufe.name} ({stufe.art === "rufbereitschaft" ? "Rufbereitschaft" : "Bereitschaft"}) · {e.beginn}–{e.ende}

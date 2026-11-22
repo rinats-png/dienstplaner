@@ -1,0 +1,142 @@
+{
+  "schema": 1,
+  "hinweis": "Liste unfertiger oder nicht freigegebener Funktionen (REL-1, Gate G3 in werkzeug/release-pruefung.mjs). Keine dieser Variablen darf in einer Release-Vorlage (.env.example, deploy/compose.yml, Dockerfile, deploy/staging-o2/*) aktiv gesetzt sein. Aktiv heißt: Zeile nicht auskommentiert, Wert (auch der Vorgabewert in ${X:-wert}) nicht leer, kein Platzhalter <…> und nach trim/Kleinschreibung nicht aus/false/0/nein/off und nicht in sicherWerte. Ein Eintrag wird erst entfernt, wenn die Funktion fertig und vom Betreiber freigegeben ist. Optional: gruende und vorbedingungen (Text, vor AN zu erledigen); ssotPakete (Paket-IDs aus work-packages.json, G8 prüft, dass sie dort stehen); ssotPrs (nur mit ssotPakete, sonst NO-GO: nicht leere Liste der PR-Nummern genau \"#123\", jede im pr eines genannten Pakets, die der Schalter VOLL deckt; nur diese nennt G8 als „nur hinter Schalter AUS“, teilweise gedeckte PRs gehören nicht hinein; fehlt das Feld, behauptet G8 keine Deckung).",
+  "funktionen": [
+    {
+      "id": "schichtmodell-pflege",
+      "name": "Schichtmodell-Pflege (IMP-6, P2-24 a)",
+      "variablen": [
+        "CENTRIC_SCHICHTMODELL_PFLEGE"
+      ],
+      "stand": "im Code (server/lib/schalter.mjs, #423), Vorgabe AUS, nur genau true schaltet ein",
+      "quelle": "server/lib/schalter.mjs; PR #423",
+      "ssotPakete": [
+        "IMP-6"
+      ]
+    },
+    {
+      "id": "schichtmodell-wirkung",
+      "name": "Schichtmodell-Planwirkung (IMP-6)",
+      "variablen": [
+        "CENTRIC_SCHICHTMODELL_WIRKUNG"
+      ],
+      "stand": "im Code (server/lib/schalter.mjs, schichtmodellWirkungAn; #429, #431, #436), Vorgabe AUS, nur genau true schaltet ein; nirgends gesetzt, auch nicht in CI. Bleibt AUS, bis alle Vorbedingungen erledigt oder entschieden sind",
+      "gruende": [
+        "Bei AN rechnen Plan, Ist offener Monate, Urlaubskonto und Änderungsliste nach den Modellen der Personen; mehrere Folgen davon sind fachlich nicht entschieden (Kategorie C, ENTSCHEIDUNGSLISTE P2-24 b, P2-25 bis P2-31).",
+        "Zwei bekannte Lücken im Code (Review #431, Befund 4 und 5) sind vor AN nicht behoben."
+      ],
+      "vorbedingungen": [
+        "Offline-Merker (Befund 5, Review #431): src/speicher.js (lies, ~Z. 381) übernimmt schichtmodellWirkung und schichtfolgeServer auch aus einer gemerkten Antwort des Dienstarbeiters; nach dem Abschalten rechnet ein Offline-Client weiter mit den Modellen. Vor AN: gemerkte Antwort nicht als Quelle nehmen oder den Speicher beim Abschalten verwerfen.",
+        "Teilzeitprofil (Befund 4, Review #431): teilzeitProfil (src/lib/fachlogik.js, ~Z. 1743) rechnet aus m.zyklus (Betriebsmodell), auch bei AN; gehört zu P2-28.",
+        "Entscheidungen beim Betreiber: P2-24 (b) Versionierung laufender Modelle, P2-25 Auskunft Art. 15, P2-26 Wiederherstellen (Vorbedingung), P2-27 Stichtag, P2-28 Teilzeit und Urlaubskonto im eigenen Modell.",
+        "Entscheidungen aus Review #436 (Teilrollen): P2-29 Mitteilung „eigene Zuordnung“ (mit Datenschutzbeauftragten, einschließlich Ruhezeit-Nebenkanal), P2-30 Ersatzvorschlag, P2-31 Entwurfstage.",
+        "Deploy-Hinweis beim Einschalten: „Clients neu laden“ (veraltete Clients schicken den Kopf x-centric-schichtfolge nicht; IMP-6-MEHRFACHMODELLE.md, Teilrollen, Grenze 1; wie P2-19 e)."
+      ],
+      "quelle": "server/lib/schalter.mjs; docs/acc45/IMP-6-MEHRFACHMODELLE.md (Vorbedingungen vor AN, Teilrollen/Grenzen); docs/acc45/ENTSCHEIDUNGSLISTE.md P2-24 bis P2-31; PR #429, #431, #436",
+      "ssotPakete": [
+        "IMP-6"
+      ]
+    },
+    {
+      "id": "import-dateiweg",
+      "name": "Personalimport (Dateiweg /api/import/*)",
+      "variablen": [
+        "CENTRIC_IMPORT_AKTIV"
+      ],
+      "quelltextKonstanten": [
+        {
+          "datei": "src/lib/import-schnittstelle.js",
+          "name": "IMPORT_DATEI_AKTIV",
+          "sollWert": "false"
+        }
+      ],
+      "stand": "aus bis Prüfung IMP-9 §13 und Betreiberfreigabe",
+      "quelle": "server/lib/schalter.mjs; docs/acc45/IMPORT-VERTRAG.md"
+    },
+    {
+      "id": "push",
+      "name": "Push-Mitteilungen (WP-30, E-9)",
+      "variablen": [
+        "VAPID_PUBLIC",
+        "VAPID_PRIVATE"
+      ],
+      "stand": "Einrichtung E-9 offen",
+      "quelle": "docs/acc45/work-packages.json E-9"
+    },
+    {
+      "id": "mail",
+      "name": "E-Mail-Versand (WP-30, E-9)",
+      "variablen": [
+        "RESEND_API_KEY",
+        "CENTRIC_MAIL_WEG",
+        "CENTRIC_SMTP_HOST",
+        "CENTRIC_SMTP_PASSWORT"
+      ],
+      "stand": "Einrichtung E-9 offen",
+      "quelle": "docs/acc45/work-packages.json E-9"
+    },
+    {
+      "id": "dauerlauf",
+      "name": "Dauerlauf (Entwicklungswerkzeug, nie im Betrieb)",
+      "variablen": [
+        "CENTRIC_DAUERLAUF_TESTWORKER",
+        "CENTRIC_DAUERLAUF_UHRDATEI"
+      ],
+      "stand": "nur Entwicklung",
+      "quelle": "werkzeug/dauerlauf.mjs"
+    },
+    {
+      "id": "teilspeicherung",
+      "name": "Teilspeicherung je Segment und Löschlauf-Weg (WP-48.3/48.4)",
+      "variablen": [
+        "CENTRIC_TEILSPEICHERUNG"
+      ],
+      "stand": "aus bis Oberfläche WP-48.5 und Betreiberfreigabe",
+      "quelle": "server/lib/schalter.mjs; docs/acc45/WP48-TEILSPEICHERUNG.md",
+      "ssotPakete": [
+        "WP-48"
+      ],
+      "ssotPrs": [
+        "#342",
+        "#348",
+        "#350"
+      ],
+      "ssotUmfang": "Hinter dem Schalter liegen nur diese Wege: POST /api/bestand/teile und POST /api/loeschlauf (server/funktionen/daten.mjs:1461, :1465, nur mit teilwegAn(), server/lib/schalter.mjs:21, genau true; Teilweg-Nutzung daten.mjs:322) und die Oberfläche des Teilwegs und des Löschlauf-Knopfs (nur mit Fähigkeit teile aus dem GET: src/speicher.js:411-413, :435; src/app/aktionen/ausgaben.js:93, :105). Damit gedeckt: #342, #348, #350 (Oberfläche) und der Löschlauf-Weg aus #346. NUR TEILWEISE gedeckt, aktiver Anteil ohne Schalter: #224 (server/lib/rechte.mjs:1514 zusammenfuehren entfernt abgeleitete Felder aus dem gespeicherten Stand bei jedem vollen PUT; server/lib/arbeitssitzung.mjs:256-257 sitzungsKennung bei jeder Sitzungsprüfung; server/lib/raumloeschung.mjs:249; Umbau des vollen PUT-Wegs in daten.mjs ab :1466) und #346 (gemeinsamer Schreibweg daten.mjs ab :1466 mit Abzweig loeschweg). NICHT gedeckt, aktiv ausgeliefert: #87 (Bestand/Scherben), #271 (Öffnen schreibt nicht), #341 (Kette, an ohne CENTRIC_KETTE_AUS). WP-48 bleibt G8-Blocker bis fertig oder akzeptiertePakete."
+    },
+    {
+      "id": "abschluss-segmentweise",
+      "name": "Monatsabschluss segmentweise / ohne Sperre (WP-48.7)",
+      "variablen": [
+        "CENTRIC_ABSCHLUSS_SEGMENTWEISE",
+        "CENTRIC_ABSCHLUSS_OHNE_SPERRE"
+      ],
+      "stand": "aus bis Messung auf Staging (WP-48.9) und Betreiberfreigabe",
+      "quelle": "server/lib/schalter.mjs",
+      "ssotPakete": [
+        "WP-48"
+      ],
+      "ssotUmfang": "Hinter dem Schalter liegen nur die segmentweisen Zweige des Monatsabschlusses: server/funktionen/daten.mjs:2765 (abschlussOhneSperreAn(), Stufe b) und :2791 (abschlussSegmentweiseAn(), Stufe a); Abfragen server/lib/schalter.mjs:36, :52, genau true, OHNE_SPERRE nur zusammen mit SEGMENTWEISE. NUR TEILWEISE gedeckt, aktiver Anteil ohne Schalter: #322 und #351 haben den vollen Monatsabschluss-Weg in daten.mjs umgebaut (Rechnung als rechnenM, Reihenfolge der Prüfungen); dieser Umbau läuft bei jedem Monatsabschluss, auch mit Schalter AUS. Übrige WP-48-PRs siehe Eintrag teilspeicherung. WP-48 bleibt G8-Blocker bis fertig oder akzeptiertePakete."
+    },
+    {
+      "id": "hilfe-assistent",
+      "name": "Hilfe-Assistent (WP-I23)",
+      "variablen": [
+        "CENTRIC_HILFE_ASSISTENT"
+      ],
+      "stand": "aus bis Betreiberfreigabe",
+      "quelle": "server/lib/schalter.mjs"
+    },
+    {
+      "id": "datenschutzlauf-loeschen",
+      "name": "Datenschutzlauf mit Löschen",
+      "variablen": [
+        "CENTRIC_DATENSCHUTZLAUF"
+      ],
+      "stand": "Betreiberentscheidung offen (W-8, Produktionsweg 3.2)",
+      "quelle": "docs/acc45/PRODUKTIONSWEG-VORBEREITUNG-2026-11-20.md",
+      "sicherWerte": [
+        "vorschau"
+      ]
+    }
+  ]
+}
