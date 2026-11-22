@@ -40,7 +40,8 @@
          Revisionslabel ist (ohneRevisionslabel: 274bfa0) oder die Basis fehlt
      G8  SSOT: kein P0/P1-Paket im Status REVIEW/BLOCKED/IN_PROGRESS/READY,
          dessen PR im Paket steckt (außer akzeptiertePakete mit Grund); jede
-         Paket-ID in ssotPakete von RELEASE-UNFERTIG.json steht in der SSOT
+         Paket-ID in ssotPakete von RELEASE-UNFERTIG.json steht in der SSOT;
+         „nur hinter Schalter AUS“ nur für PRs aus ssotPrs (fehlt: keine Aussage)
      G9  keine offenen P0/P1-Befunde (Strang folge, ABN-*, V4-*; REL-* sind der
          Release-Prozess selbst und zählen nicht; akzeptierteBefunde mit Grund)
      G10 Freigabedatei docs/acc45/releases/<id>.freigabe.json gültig, commitet,
@@ -949,6 +950,23 @@ export function g7Rueckweg({ liste, kandidat, digest, basis }, freigabe, konfig)
 
 const annahmen = (liste) => new Map((Array.isArray(liste) ? liste : []).filter((a) => istObjekt(a) && a.id && String(a.grund || "").trim()).map((a) => [a.id, a.grund]));
 
+/** ssotPrs einer unfertigen Funktion: fehlt → { prs: null }; gültig → { prs: Set<Nummer> }; sonst { fehler }.
+ *  Gültig: nicht leere Liste aus "#123" oder positiven Ganzzahlen, ohne Duplikate. */
+export function ssotPrsLesen(wert) {
+  if (wert === undefined) return { prs: null };
+  if (!Array.isArray(wert)) return { fehler: "ist keine Liste" };
+  if (!wert.length) return { fehler: "ist leer (dann Feld weglassen)" };
+  const nummern = [];
+  for (const x of wert) {
+    const ok = (typeof x === "string" && /^#[1-9]\d*$/.test(x)) || (Number.isInteger(x) && x > 0);
+    if (!ok) return { fehler: `enthält ungültigen Eintrag ${JSON.stringify(x) ?? String(x)} (Format #123)` };
+    nummern.push(prNummer(x));
+  }
+  const prs = new Set(nummern);
+  if (prs.size !== nummern.length) return { fehler: "enthält Duplikate" };
+  return { prs };
+}
+
 export function g8Blocker(ssot, prsImKandidaten, freigabe, konfig, unfertig = null, klassen = null) {
   const g = gate("G8", "Keine offenen P0/P1-Pakete im Kandidaten");
   if (!istObjekt(ssot) || !Array.isArray(ssot.pakete)) return nogo(g, `${konfig.ssot} fehlt oder ist ungültig (fail-closed)`);
@@ -976,13 +994,29 @@ export function g8Blocker(ssot, prsImKandidaten, freigabe, konfig, unfertig = nu
       // Delta-Check #437 (2): Beleg nur, wenn jede Variable in RELEASE-SCHALTER.json als schalter-aus klassifiziert ist
       const keinAus = variablen.filter((v) => !(istObjekt(klassen?.variablen) && istObjekt(klassen.variablen[v]) && klassen.variablen[v].klasse === "schalter-aus"));
       if (keinAus.length) { nogo(g, `${konfig.unfertigDatei}: ${f.id}: nicht als schalter-aus klassifiziert (${konfig.schalterDatei}): ${keinAus.join(", ")}`); continue; }
+      // Opus-Review #470 A2: ssotPrs (optional) nennt die PRs, die der Eintrag ausdrücklich und voll deckt. Nur diese
+      // stehen in der Belegzeile als „nur hinter Schalter AUS“; fehlt ssotPrs, behauptet G8 keine Deckung (fail-closed).
+      const deckung = ssotPrsLesen(f.ssotPrs);
+      if (deckung.fehler) { nogo(g, `${konfig.unfertigDatei}: ${f.id}: ssotPrs ${deckung.fehler}`); continue; }
       for (const id of f.ssotPakete) {
         const p = pakete.get(id);
         if (!p) { nogo(g, `${konfig.unfertigDatei}: ${f.id} nennt ${id}, das nicht in der SSOT steht (Liste veraltet)`); continue; }
         const prs = (Array.isArray(p.pr) ? p.pr : []).map(prNummer).filter((x) => imKandidat.has(x));
         // Ein offenes P0/P1-Paket ist oben schon NO-GO (außer akzeptiert); dafür kein entlastender Beleg.
         const offenBlocker = konfig.blocker.prios.includes(p.prio) && konfig.blocker.status.includes(p.status) && !akzeptiert.has(p.id);
-        if (prs.length && !offenBlocker) g.belege.push(`${id} im Kandidaten (${prs.map((x) => "#" + x).join(", ")}): „${f.name}“ nur hinter Schalter AUS (G3: ${variablen.join(", ")})`);
+        if (!prs.length || offenBlocker) continue;
+        const liste = (xs) => xs.map((x) => "#" + x).join(", ");
+        if (!deckung.prs) {
+          g.belege.push(`${id} im Kandidaten (${liste(prs)}): „${f.name}“ (Schalter ${variablen.join(", ")}): Deckungsumfang nicht angegeben (ssotPrs fehlt) — keine Aussage; alle PRs bleiben Betreiber-Annahme`);
+          continue;
+        }
+        const gedeckt = prs.filter((x) => deckung.prs.has(x));
+        const offen = prs.filter((x) => !deckung.prs.has(x));
+        const teil1 = gedeckt.length
+          ? `nur hinter Schalter AUS (G3: ${variablen.join(", ")}): ${liste(gedeckt)}`
+          : `kein PR des Pakets im Kandidaten durch den Schalter gedeckt (ssotPrs)`;
+        const teil2 = offen.length ? `; NICHT durch den Schalter gedeckt: ${liste(offen)} — bleibt Betreiber-Annahme` : "";
+        g.belege.push(`${id} im Kandidaten: „${f.name}“ ${teil1}${teil2}`);
       }
     }
   }
