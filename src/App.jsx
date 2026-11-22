@@ -48,7 +48,7 @@ class Fehlerauffang extends Component {
             gehen nicht verloren. Bitte melde den folgenden Text zusammen mit dem, was du zuletzt
             gemacht hast.
           </p>
-          <pre style={{ background: C.flaecheStill, borderRadius: 12, padding: 14, fontSize: 12,
+          <pre style={{ background: C.flaecheStill, borderRadius: "var(--v4-r-mittel)", padding: 14, fontSize: 12,
             overflowX: "auto", margin: "0 0 20px", whiteSpace: "pre-wrap" }}>{meldung}</pre>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <button onClick={() => window.location.reload()} className="btn btn-primary">Neu laden</button>
@@ -875,7 +875,7 @@ function Betrieb({ sitz, akt }) {
                         title={festesRecht ? "Verbindlich freigeben dürfen nur Leitung und Planung — nicht änderbar."
                           : fest ? "Die Organisationsleitung hat immer alle Rechte."
                           : `${rollenName(m, r.id)}: ${an ? "erlaubt" : "nicht erlaubt"}`}
-                        style={{ width: 25, height: 25, borderRadius: 8, cursor: fest ? "not-allowed" : "pointer",
+                        style={{ width: 25, height: 25, borderRadius: "var(--v4-r-klein)", cursor: fest ? "not-allowed" : "pointer",
                           display: "inline-flex", alignItems: "center", justifyContent: "center", padding: 0,
                           border: an ? "none" : `1.5px solid ${C.steuer}`,
                           background: an ? r.farbe : "transparent", color: an ? "white" : "transparent",
@@ -916,7 +916,7 @@ function Betrieb({ sitz, akt }) {
               {tests.filter((t) => t.ok).length} von {tests.length} bestanden</Pill></div>
             {tests.map((t, i) => (
               <div key={i} style={{ display: "flex", gap: 13, alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${C.lineSoft}` }}>
-                <span style={{ width: 23, height: 23, borderRadius: 12, flexShrink: 0, display: "flex", alignItems: "center",
+                <span style={{ width: 23, height: 23, borderRadius: "var(--v4-r-pille)", flexShrink: 0, display: "flex", alignItems: "center",
                   justifyContent: "center", background: t.ok ? C.okLight : C.dangerLight,
                   color: t.ok ? C.ok : C.danger }}>
                   <Icon n={t.ok ? "haken" : "x"} size={13} strokeWidth={2.5} />
@@ -1691,17 +1691,17 @@ function AppInnen() {
     <div className="sw-root" style={{ display: "flex", minHeight: "100vh" }}>
       <div style={{ width: 252, background: C.sidebar, flexShrink: 0 }} className="nur-breit" />
       <div style={{ flex: 1, padding: "28px 32px" }}>
-        <div className="pulsiert" style={{ width: 220, height: 34, borderRadius: 8,
+        <div className="pulsiert" style={{ width: 220, height: 34, borderRadius: "var(--v4-r-klein)",
           background: C.flaecheStill, marginBottom: 12 }} />
         <div className="pulsiert" style={{ width: 320, height: 16, borderRadius: 6,
           background: C.flaecheStill, marginBottom: 30 }} />
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
           gap: 12, marginBottom: 26 }}>
           {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="pulsiert" style={{ height: 92, borderRadius: 12,
+            <div key={i} className="pulsiert" style={{ height: 92, borderRadius: "var(--v4-r-mittel)",
               background: C.flaeche, border: `1px solid ${C.lineSoft}` }} />))}
         </div>
-        <div className="pulsiert" style={{ height: 240, borderRadius: 12,
+        <div className="pulsiert" style={{ height: 240, borderRadius: "var(--v4-r-mittel)",
           background: C.flaeche, border: `1px solid ${C.lineSoft}` }} />
         <div className="nurLeser" role="status" aria-live="polite">CENTRIC wird geladen</div>
       </div>
@@ -1758,7 +1758,7 @@ function AppInnen() {
         Absage eines Stempels („Stempel abgelehnt: …“) vor. Eine erst mit dem Text entstehende Region wird oft überhört. */}
     <div role="status" aria-live="polite">
       {hinweis && <div style={{ position: "fixed", bottom: 104, left: "50%", transform: "translateX(-50%)",
-        zIndex: 90, background: C.accentDeep, color: C.aufAkzent, padding: "12px 20px", borderRadius: 999,
+        zIndex: 90, background: C.accentDeep, color: C.aufAkzent, padding: "12px 20px", borderRadius: "var(--v4-r-pille)",
         fontSize: 14, boxShadow: "var(--schatten-toast)", maxWidth: "90vw", textAlign: "center",
         /* WP-21: im Querformat liegt der Streifen über Schaltflächen eines Blattes (gemessen: „Schließen“ der Krankmeldung bei 390 und 430 px Höhe); er nimmt keine Eingaben an. */
         pointerEvents: "none" }}>
@@ -1845,7 +1845,7 @@ function AppInnen() {
 
           <div className="sfuss">
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ width: 30, height: 30, borderRadius: 9, flexShrink: 0, display: "flex",
+              <span style={{ width: 30, height: 30, borderRadius: "var(--v4-r-klein)", flexShrink: 0, display: "flex",
                 alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700,
                 background: "var(--sl-kuerzel)", color: "var(--sl-schrift)" }}>{r.kurz}</span>
               <div style={{ flex: 1, minWidth: 0 }}>
@@ -2059,7 +2059,7 @@ function AppInnen() {
           {!istBetreiber && <button onClick={() => setPostfach(true)}>
             <span className="glyph" style={{ position: "relative", display: "flex" }}><Icon n="brief" size={20} />
               {ungelesen > 0 && <span style={{ position: "absolute", top: -4, right: -8, minWidth: 15, height: 15,
-                borderRadius: 8, background: C.danger, color: istDunkel() ? C.bg : "#fff", fontSize: 9.5, fontWeight: 700,
+                borderRadius: "var(--v4-r-pille)", background: C.danger, color: istDunkel() ? C.bg : "#fff", fontSize: 9.5, fontWeight: 700,
                 display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px" }}>{ungelesen}</span>}
             </span>Post</button>}
           {!istBetreiber && <button onClick={() => akt.oeffneKrankmeldung(sitz.person.id)}>
