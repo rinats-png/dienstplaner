@@ -25,7 +25,7 @@ export function WachbuchTages({ m, datum, zugriff = "keiner", person = null, eig
         const ausgabe = wachbuchAusgabe(m.wachbuch, { objektId: o.id, von: datum, bis: datum, zugriff, person, eigeneEinheit });
         const eintraege = ausgabe.eintraege || [];
         return (
-          <article key={o.id} style={{ border: "1px solid currentColor", borderRadius: 8, padding: 12, overflowWrap: "anywhere" }}>
+          <article key={o.id} style={{ border: "1px solid currentColor", borderRadius: "var(--v4-r-klein)", padding: 12, overflowWrap: "anywhere" }}>
             <h3 style={{ margin: 0, fontSize: 15 }}>{namen[o.id]}</h3>
             {ausgabe.grund ? <p>{ausgabe.grund}</p>
               : !eintraege.length ? <p>Keine sichtbaren Einträge an diesem Tag.</p>

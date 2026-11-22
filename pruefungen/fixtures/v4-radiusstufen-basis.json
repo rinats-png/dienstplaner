@@ -1360,6 +1360,116 @@
           "literaleSha256": "b0499dba4ba9f83382e3f54e4bd6323224c00a9b339477b8cf6e33ba9d606b16"
         }
       }
+    },
+    "Branchenmodule": {
+      "basis": "bb782c4492b9de162dd19db17ff7d4c16c3a9e19",
+      "dateien": {
+        "src/module/anlagen.jsx": {
+          "sha256": "7d34cbdb5af2409535967a1b2930fc1798417a4191410045b524332672e8db3c",
+          "literale": [
+            {
+              "wert": "8",
+              "kontext": "{{ border: \"1px solid currentColor\", borderRadius: 8, padding: 12, overflowWrap: \"anywhere\" }}"
+            }
+          ],
+          "literaleSha256": "9efc90e1470836d9f8e7706f66794fdc44a102a3d8f71dea51b799dd282233ba"
+        },
+        "src/module/bereichsplan.jsx": {
+          "sha256": "535ad56cdaddb103d866013f6ab4c4f8081358994110b28be8bd9ed9606b979b",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/module/bereitschaftsdienst.jsx": {
+          "sha256": "1c8577e2f392771a8fdb9bb024e0a4fa2d99ff30a899b189cddea79d34640c26",
+          "literale": [
+            {
+              "wert": "8",
+              "kontext": "{{ border: \"1px solid currentColor\", borderRadius: 8, padding: 12, overflowWrap: \"anywhere\" }}"
+            }
+          ],
+          "literaleSha256": "9efc90e1470836d9f8e7706f66794fdc44a102a3d8f71dea51b799dd282233ba"
+        },
+        "src/module/funktionsdienst.jsx": {
+          "sha256": "e6308a073677f4a9ea9f77148719c021a2fb9c755768045be0d7b6b943a2a1fb",
+          "literale": [
+            {
+              "wert": "8",
+              "kontext": "{{ border: \"1px solid currentColor\", borderRadius: 8, padding: 12, overflowWrap: \"anywhere\" }}"
+            }
+          ],
+          "literaleSha256": "9efc90e1470836d9f8e7706f66794fdc44a102a3d8f71dea51b799dd282233ba"
+        },
+        "src/module/geteilterdienst.jsx": {
+          "sha256": "6df418e57eb41a85bd78943f0059e48d31214346970935f8a6b0818be88214f8",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/module/kern.jsx": {
+          "sha256": "fc1b70410c8e2eb3688b7c46cbeaf5944ca60e7300dedeabf4eaf332e3019545",
+          "literale": [
+            {
+              "wert": "8",
+              "kontext": "const RAHMEN = { border: \"1px solid currentColor\", borderRadius: 8, padding: 12, overflowWrap: \"anywhere\", maxWidth: \"100%\" };"
+            }
+          ],
+          "literaleSha256": "b7381de531267b7de885cfb3220a53af4e79ba4240e77cf292e2432df493a500"
+        },
+        "src/module/kontimodelle.jsx": {
+          "sha256": "8c0bdf067b1ad3e380966819357a32455b62747724b4abb03d4fd7fcbe6f3947",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/module/maschinenqual.jsx": {
+          "sha256": "bd4fac8c7993eaef968429f24d198f9093ec907cf66549df8b94bddd6cb31453",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/module/objektbericht.jsx": {
+          "sha256": "aa5e750178600e1226fe0c8a650ef29a6bd54d7a86fd4b4082173291791584f4",
+          "literale": [
+            {
+              "wert": "8",
+              "kontext": "{{ border: \"1px solid currentColor\", borderRadius: 8, padding: 12, overflowWrap: \"anywhere\" }}"
+            }
+          ],
+          "literaleSha256": "9efc90e1470836d9f8e7706f66794fdc44a102a3d8f71dea51b799dd282233ba"
+        },
+        "src/module/pflegequal.jsx": {
+          "sha256": "19db8c6410146544f3bcb97a7972fcbec9b19278269f3813eb9473ae8fb9ad33",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/module/posten.jsx": {
+          "sha256": "e959a1b4b8e66a5c3aa2ddfe95b963be523eb72fb72a54e8992b0fcc2eff5e6b",
+          "literale": [
+            {
+              "wert": "8",
+              "kontext": "{{ border: \"1px solid currentColor\", borderRadius: 8, padding: 12, overflowWrap: \"anywhere\" }}"
+            }
+          ],
+          "literaleSha256": "9efc90e1470836d9f8e7706f66794fdc44a102a3d8f71dea51b799dd282233ba"
+        },
+        "src/module/rotation.jsx": {
+          "sha256": "56f56d95ea09653451ab551df4154f69def794bff75b9d68279241e1f7c89c7a",
+          "literale": [
+            {
+              "wert": "8",
+              "kontext": "{{ border: \"1px solid currentColor\", borderRadius: 8, padding: 12, overflowWrap: \"anywhere\" }}"
+            }
+          ],
+          "literaleSha256": "9efc90e1470836d9f8e7706f66794fdc44a102a3d8f71dea51b799dd282233ba"
+        },
+        "src/module/wachbuch.jsx": {
+          "sha256": "2e3bd3433ca78d649a48234fe5431c0d5c8c99c70fb9924828736e3275eb1332",
+          "literale": [
+            {
+              "wert": "8",
+              "kontext": "{{ border: \"1px solid currentColor\", borderRadius: 8, padding: 12, overflowWrap: \"anywhere\" }}"
+            }
+          ],
+          "literaleSha256": "9efc90e1470836d9f8e7706f66794fdc44a102a3d8f71dea51b799dd282233ba"
+        }
+      }
     }
   }
 }
