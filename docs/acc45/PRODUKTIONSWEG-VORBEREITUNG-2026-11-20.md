@@ -447,12 +447,22 @@ hat (`server/lib/gestalt.mjs:501-502`, seit `54c4526b`, nicht in `274bfa0`; `ser
 Zahl-Kennung wären nach dem Wechsel nicht mehr schreibbar. **Ungeprüft:** ob die `274bfa0`-API Zahl-Kennungen
 überhaupt annimmt und ob echte Daten solche enthalten.
 Prüfauftrag in K4 (auf der Kopie, vor dem Kandidatenstart): Jede Betriebskennung in jedem Raum ist eine Zeichenkette.
-Lesebefehl im Kandidatenbild, ohne Netz, je Raum `r`: `bestandLesen(store, r)` und `typeof m.id` für jedes `m` in
-`bestand.mandanten`. Kriterium: alle `"string"`; sonst NO-GO für den Wechsel, bis eine Entscheidung zur Umstellung
-vorliegt. Zusätzlich: PUT jedes Raums mit dem Kandidaten = 200 (nicht 409/422).
+Werkzeug: `deploy/betriebskennungen-pruefen.mjs` (nur lesend, kein Netz; liest die Räume wie die Probe: Store
+`centric`, Schlüssel `kern:` und `bestand:`, je Raum `bestandLesen`; Isolation wie die Probe). Aufrufzeile für den
+Betriebsagenten (Kopie unter einem Wegwerfpfad, CENTRIC_BASIS nicht gesetzt):
+
+    CENTRIC_APP=<Kandidaten-Quellbaum> node deploy/betriebskennungen-pruefen.mjs <…/scratchpad/daten-mig…>
+
+Ausgabe je Raum: Zahl der Betriebe und Verteilung von `typeof m.id` (z. B. `string=3` oder `number=1, string=2`).
+Kriterium: Exit 0 (mindestens ein Raum gelesen, alle `"string"`); Exit 1 = NO-GO für den Wechsel, bis eine
+Entscheidung zur Umstellung vorliegt; Exit 3 = Pfad verletzt die Isolation. Test mit Wegwerfdaten:
+`pruefungen/betriebskennungen-pruefen.test.js`. Zusätzlich: PUT jedes Raums mit dem Kandidaten = 200 (nicht 409/422).
 
 **Lokale Probe `deploy/migrationsprobe-lokal.mjs` (Grenze).** Die Probe liest und schreibt je Raum einmal über die
-Kandidaten-API auf einer Wegwerfablage (nur `…/scratchpad/daten-mig…`, Exit 3 sonst; PUT 409 = FEHLGESCHLAGEN). Sie
+Kandidaten-API auf einer Wegwerfablage (nur `…/scratchpad/daten-mig…`, Exit 3 sonst; PUT 409 = FEHLGESCHLAGEN).
+Delta-Review #471 (2026-11-22): Unter Linux ist „\“ kein Pfadtrenner; eine Angabe mit „\“ wird dort abgewiesen
+(Exit 3). Ein toter Link im Pfad wird abgewiesen. Jeder HTTP-Aufruf hat eine Frist (`CENTRIC_PROBE_FRIST_MS`, Vorgabe
+30000 ms); Ablauf = FEHLGESCHLAGEN, kein Hängen. Sie
 ersetzt K4 auf einer echten Kopie **nicht**. Nicht ausgeführt: K5, K9, K10 und Bild-Digests (lokal kein Docker, kein
 restic).
 
