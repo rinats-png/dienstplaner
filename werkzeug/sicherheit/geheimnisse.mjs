@@ -20,7 +20,8 @@
 
    Aufruf:   node werkzeug/sicherheit/geheimnisse.mjs [--nur-arbeitsstand | --remotes[=<name>]]
              ohne Option: `--all` (alle Referenzen, auch lokale Zweige und Stash;
-             so in CI); `--remotes`: nur `--remotes=origin`
+             so in CI); `--remotes`: nur `--remotes=origin`;
+             `--nur-arbeitsstand` mit `--remotes`: Rückgabe 2 (nicht kombinierbar)
    Ausgang:  0 = keine Funde, 1 = Funde (ohne Werte gelistet),
              2 = Aufruf- oder git-Fehler, kein Commit geprüft
    ========================================================================== */
@@ -361,13 +362,21 @@ export async function* zeilenAus(strom, { maxZeile = MAX_ZEILE, ueberlappung = U
   if (rest) { const z = yield* abschnitte(rest); yield ausgabe(ohneCr(z)); }
 }
 
-function gitFehler(kind, name) {
-  return new Promise((res, rej) => {
+/* Ende eines git-Kindprozesses als Promise. `erlaubt`: Rückgabewerte, die
+   kein Fehler sind (git grep: 1 = keine Treffer). Startfehler (git fehlt,
+   Arbeitsverzeichnis fehlt: Ereignis `error`) lehnen ab (SI-P11 H5). Die
+   Ablehnung ist sofort als behandelt markiert: Sie tritt oft ein, bevor der
+   Aufrufer das Promise abwartet, und wäre sonst eine unbehandelte Ablehnung
+   (Absturz mit Rückgabe 1 statt 2). Der Aufrufer bekommt sie beim `await`. */
+function gitFehler(kind, name, erlaubt = [0]) {
+  const p = new Promise((res, rej) => {
     let fehler = "";
-    kind.stderr.on("data", (d) => { if (fehler.length < 4000) fehler += d; });
-    kind.on("error", rej);
-    kind.on("close", (code) => (code === 0 ? res() : rej(new Error(`${name} endete mit ${code}: ${fehler.trim().split("\n")[0] ?? ""}`))));
+    kind.stderr?.on("data", (d) => { if (fehler.length < 4000) fehler += d; });
+    kind.on("error", (e) => rej(new Error(`${name} nicht startbar (${e.code ?? e.message})`)));
+    kind.on("close", (code) => (erlaubt.includes(code) ? res(code) : rej(new Error(`${name} endete mit ${code}: ${fehler.trim().split("\n")[0] ?? ""}`))));
   });
+  p.catch(() => {});
+  return p;
 }
 
 /* Schreibt `text` nach stdin des Kindprozesses (Delta-Review #453, H-b).
@@ -422,6 +431,48 @@ export async function historieScannen({ cwd = WURZEL, refs = ["--all"], freigabe
   return { ...r, offen: [...r.offen, ...t.offen], frei: [...r.frei, ...t.frei], textCommits: t.commits };
 }
 
+/* Arbeitsstand (`--nur-arbeitsstand`): alle verfolgten Dateien im Arbeitsbaum
+   über `git grep`. `-a` statt `-I` (SI-P10): Dateien mit NUL-Byte oder
+   Attribut `-diff` werden als Text durchsucht; überlange Zeilen in Abschnitten.
+   SI-P11 (Review #461):
+   - H3a: Rückgabewert von git grep wird ausgewertet: 0 = Treffer, 1 = keine
+     Treffer, alles andere (auch Signal) = Fehler → Ablehnung (Werkzeug: 2).
+   - H3b: `-z`: Datei, Zeilennummer und Inhalt sind durch NUL getrennt, der
+     Dateiname steht wörtlich. Ein `:` im Dateinamen verschiebt die Trennung
+     nicht mehr. Ein Zeilenumbruch im Dateinamen teilt den Datensatz auf
+     mehrere Zeilen; Zeilen ohne NUL sind solche Namensteile und werden mit
+     dem folgenden Datensatz wieder zusammengesetzt. Namensteile ohne
+     Datensatz und Zeilen ohne gültige Zeilennummer werden fail-closed mit
+     DATEI_UNBEKANNT geprüft. */
+export const GIT_GREP_ARGS = ["grep", "-n", "-z", "-a", "--no-textconv", "--color=never", "--no-column", "-E", ".", "--", "."];
+export async function arbeitsstandScannen({ cwd = WURZEL, freigaben = FREIGABEN, spawn = nodeSpawn } = {}) {
+  const kind = spawn("git", GIT_GREP_ARGS, { cwd });
+  const ende = gitFehler(kind, "git grep", [0, 1]);
+  let zeilen = 0, fortsetzungen = 0, datei = DATEI_UNBEKANNT, namensTeile = [];
+  const funde = new Map();
+  const merken = (text, d) => { for (const f of zeilePruefen(text)) { const k = `${d}\0${f.regel}`; if (!funde.has(k)) funde.set(k, { commit: "Arbeitsstand", datei: d, ...f }); } };
+  for await (const z of zeilenAus(kind.stdout)) {
+    if (typeof z !== "string") { fortsetzungen++; merken(z.fortsetzung, datei); continue; }
+    const i = z.indexOf("\0");
+    if (i < 0) { namensTeile.push(z); datei = DATEI_UNBEKANNT; continue; }
+    zeilen++;
+    const pfad = [...namensTeile, z.slice(0, i)].join("\n");
+    namensTeile = [];
+    const m = /^\d+[\0:]/.exec(z.slice(i + 1));
+    if (!m || pfad === "") { datei = DATEI_UNBEKANNT; merken(z, datei); continue; }
+    datei = pfad;
+    merken(z.slice(i + 1 + m[0].length), datei);
+  }
+  for (const t of namensTeile) merken(t, DATEI_UNBEKANNT);
+  await ende;                                                  // H3a/H5: Fehler bricht ab
+  const offen = [], frei = [];
+  for (const f of funde.values()) {
+    const g = freigabeFuer(f, freigaben);
+    if (g) frei.push({ ...f, grund: g.grund }); else offen.push(f);
+  }
+  return { offen, frei, zeilen, fortsetzungen };
+}
+
 /* Review: Ein Platzhalter unterdrückt nur den eigenen Treffer, nie die ganze
    Zeile — sonst versteckte „example“ irgendwo in der Zeile ein echtes
    Geheimnis daneben. Deshalb werden alle Treffer einer Regel einzeln geprüft. */
@@ -442,23 +493,32 @@ export function zeilePruefen(zeile) {
    unverändert). `--remotes` prüft nur die Zweige von `origin`
    (`--remotes=origin`), `--remotes=<name>` die eines anderen Remotes – lokal
    ohne Altfunde aus lokalen Zweigen und dem Stash-Stapel. Unbekannte Optionen
-   führen zu Rückgabe 2 (kein stiller Rückfall auf einen anderen Umfang). */
+   führen zu Rückgabe 2 (kein stiller Rückfall auf einen anderen Umfang).
+   SI-P11 H4: `--nur-arbeitsstand` prüft keinen Verlauf; zusammen mit
+   `--remotes` wird der Aufruf abgelehnt statt `--remotes` still zu übergehen. */
 export function argumenteLesen(argv) {
-  let modus = "historie", refs = ["--all"];
+  let modus = "historie", refs = ["--all"], remotes = false;
   for (const a of argv) {
     if (a === "--nur-arbeitsstand") modus = "arbeitsstand";
-    else if (a === "--remotes") refs = ["--remotes=origin"];
+    else if (a === "--remotes") { refs = ["--remotes=origin"]; remotes = true; }
     else if (a.startsWith("--remotes=")) {
       const name = a.slice("--remotes=".length);
       if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name)) throw new Error(`ungültiger Remote-Name: ${JSON.stringify(name)}`);
-      refs = [`--remotes=${name}`];
+      refs = [`--remotes=${name}`]; remotes = true;
     } else throw new Error(`unbekannte Option: ${JSON.stringify(a)}`);
   }
+  if (modus === "arbeitsstand" && remotes) throw new Error("--nur-arbeitsstand und --remotes sind nicht kombinierbar (der Arbeitsstand hat keinen Verlauf)");
   return { modus, refs };
 }
 
 const istHaupt = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (istHaupt) {
+  /* SI-P11 H5: Rückgabe 1 heißt „Funde“. Ein unerwarteter Absturz darf nie so
+     aussehen; er endet als Aufruf-/git-Fehler mit 2 (zweite Linie hinter der
+     Behandlung in gitFehler und den try/catch unten). */
+  const absturz = (e) => { console.error(`FEHLER: unerwarteter Abbruch – ${e?.message ?? e}`); process.exit(2); };
+  process.on("uncaughtException", absturz);
+  process.on("unhandledRejection", absturz);
   let aufruf;
   try { aufruf = argumenteLesen(process.argv.slice(2)); } catch (e) {
     console.error(`FEHLER: ${e.message}. Aufruf: node werkzeug/sicherheit/geheimnisse.mjs [--nur-arbeitsstand | --remotes[=<name>]]`);
@@ -467,26 +527,13 @@ if (istHaupt) {
   const kurz = (c) => (/^[0-9a-f]{40}$/.test(c) ? c.slice(0, 8) : c);
   let offen, frei;
   if (aufruf.modus === "arbeitsstand") {
-    /* `-a` statt `-I` (SI-P10): Dateien mit NUL-Byte oder Attribut `-diff`
-       werden als Text durchsucht; überlange Zeilen in Abschnitten. */
-    const kind = nodeSpawn("git", ["grep", "-n", "-a", "--no-textconv", "-E", ".", "--", "."], { cwd: WURZEL });
-    let zeilen = 0, datei = null;
-    const funde = new Map();
-    const merken = (text, d) => { for (const f of zeilePruefen(text)) funde.set(`${d}|${f.regel}`, { commit: "Arbeitsstand", datei: d, ...f }); };
-    for await (const z of zeilenAus(kind.stdout)) {
-      if (typeof z !== "string") { merken(z.fortsetzung, datei ?? DATEI_UNBEKANNT); continue; }
-      zeilen++;
-      const i = z.indexOf(":"); const j = z.indexOf(":", i + 1);
-      datei = i > 0 && j > i ? z.slice(0, i) : DATEI_UNBEKANNT;
-      merken(j > i ? z.slice(j + 1) : z, datei);
+    let r;
+    try { r = await arbeitsstandScannen(); } catch (e) {
+      console.error(`FEHLER: Arbeitsstand nicht vollständig lesbar – ${e.message}`);
+      process.exit(2);
     }
-    await new Promise((r) => kind.on("close", r));
-    console.log(`Arbeitsstand: ${zeilen} Zeilen geprüft`);
-    offen = []; frei = [];
-    for (const f of funde.values()) {
-      const g = freigabeFuer(f);
-      if (g) frei.push({ ...f, grund: g.grund }); else offen.push(f);
-    }
+    console.log(`Arbeitsstand: ${r.zeilen} Zeilen geprüft (${r.fortsetzungen} Abschnitte überlanger Zeilen)`);
+    ({ offen, frei } = r);
   } else {
     const start = Date.now();
     let r;
