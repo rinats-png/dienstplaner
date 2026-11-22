@@ -39,6 +39,9 @@
                        Nur Testdaten: GET /api/demos und POST /starten beantwortet der Browser selbst (page.route,
                        erfundene Einträge, kein Serveraufruf); es wird kein Code abgeschickt. Mit ROLLEN= (leer)
                        nur der Einstieg.
+     SPEICHERLAGE=1    im Reiter „Heute“ (Rolle mitarbeiter) zusätzlich die Leiste „Keine Verbindung“ messen: Kontext
+                       offline, Reflow, Zielgröße, Radius (Stufe mittel), Bild; wieder online, Leiste weg
+                       (V4-3b Speicherlage). Es wird nichts geschrieben.
    Browser: vorinstalliertes Playwright (playwright-core, playwright im Projekt
    oder global); chromium.launch() ohne Optionen. Es wird nichts installiert.
    Exit 0: keine Befunde · 1: Befunde · 2: Aufruf oder Umgebung · 3: Aufbau gescheitert
@@ -347,6 +350,40 @@ async function telefonBlatt(p, ansicht, k) {
   await blatt.waitFor({ state: "hidden", timeout: 5000 }).catch(() => melde("telefon-blatt", `${name}: Blatt schließt nicht mit Escape`));
 }
 
+/* V4-3b Speicherlage (SPEICHERLAGE=1): Die Leiste „Keine Verbindung“ (Offlineleiste, role=status) erscheint nur ohne
+   Netz. Im Reiter „Heute“ schaltet das Skript den Browserkontext offline (Ereignis „offline“), misst die Seite mit der
+   Leiste (Reflow, Zielgröße, Bild) und den berechneten Radius der Leiste (Stufe mittel), schaltet wieder online
+   (Ereignis „online“) und erwartet, dass die Leiste verschwindet. Es wird nichts geschrieben. */
+async function speicherLeiste(p, ansicht, k) {
+  const { V4_RADIEN: R } = await import(pathToFileURL(path.join(WT, "src", "v4", "tokens.js")).href);
+  const ctx = p.context();
+  const name = `${ansicht}/Leiste Keine Verbindung`;
+  await ctx.setOffline(true);
+  await p.evaluate(() => window.dispatchEvent(new Event("offline")));
+  const leiste = p.getByRole("status").filter({ hasText: "Keine Verbindung" }).first();
+  if (!(await leiste.waitFor({ state: "visible", timeout: 8000 }).then(() => true).catch(() => false))) {
+    melde("speicherlage", `${name}: Leiste erscheint nicht`);
+  } else {
+    await p.waitForTimeout(400);
+    geprueft++;
+    const m = await p.evaluate(MESSEN);
+    let schlecht = false;
+    if (k.reflow && !reflowOk(m.gesamt, m.breite)) { schlecht = true; melde("reflow", `${name}: Seite ${m.gesamt - m.breite}px breiter als ${m.breite}px — ${m.taeter}`); }
+    if (k.ziele) {
+      const z = zielgroessenBefunde(m.ziele, 24);
+      if (z.length) { schlecht = true; melde("zielgroesse", `${name}: ${z.length} Ziele unter 24 px ohne Abstandsausnahme (z. B. ${z.slice(0, 3).map((x) => `${x.id} ${Math.round(x.w)}x${Math.round(x.h)}`).join("; ")})`); }
+    }
+    const r = await leiste.evaluate((e) => ({ inline: e.style.borderRadius, wert: getComputedStyle(e).borderTopLeftRadius,
+      hoehe: Math.round(e.getBoundingClientRect().height) }));
+    if (r.inline !== "var(--v4-r-mittel)" || r.wert !== R.mittel) { schlecht = true; melde("radius", `${name}: Radius ${r.inline} = ${r.wert}, erwartet var(--v4-r-mittel) = ${R.mittel}`); }
+    if (!schlecht) beleg("speicherlage", `${name}: Reflow${k.ziele ? " und Zielgröße" : ""} ohne Befund; Radius ${r.inline} = ${r.wert}, Höhe ${r.hoehe} px`);
+    if (schlecht || process.env.BILDER_ALLE) { await leiste.scrollIntoViewIfNeeded().catch(() => {}); await bild(p, name); }
+  }
+  await ctx.setOffline(false);
+  await p.evaluate(() => window.dispatchEvent(new Event("online")));
+  if (!(await leiste.waitFor({ state: "detached", timeout: 10000 }).then(() => true).catch(() => false))) melde("speicherlage", `${name}: Leiste bleibt nach „online“ stehen`);
+}
+
 /* ===================================================== 1 + 2  Reflow, Zielgröße */
 if (KRITERIEN.includes("reflow") || KRITERIEN.includes("ziele")) {
   const konfig = [];
@@ -371,6 +408,7 @@ if (KRITERIEN.includes("reflow") || KRITERIEN.includes("ziele")) {
       if (schlecht || process.env.BILDER_ALLE) await bild(p, `${name}`);
       if (process.env.IMPORT_BLATT && /Personal$/.test(name)) await importBlatt(p, name, k);
       if (process.env.TELEFON_BLATT && /Heute$/.test(name)) await telefonBlatt(p, name, k);
+      if (process.env.SPEICHERLAGE && /Heute$/.test(name)) await speicherLeiste(p, name, k);
     });
     for (const f of fehler) melde("konsole", `${marke}: ${f}`);
     if (ansichten === 0) melde("keine-ansicht", `${marke}: keine Ansicht erreicht`);
