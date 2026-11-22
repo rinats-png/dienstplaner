@@ -269,9 +269,9 @@ describe("Verdrahtung des Browser-Skripts", () => {
 });
 
 describe("WP-40 1.4.10 bei 320 px: Überschrift bricht zu lange Wörter, Browser-Spec liegt in der Suite", () => {
-  it("geraeteStil bricht h1.titel (Belastungsverteilung: 336 px Text in 310 px Platz)", async () => {
-    const { geraeteStil } = await import("../src/ui/geraete.js");
-    expect(geraeteStil()).toMatch(/h1\.titel\{[^}]*overflow-wrap:break-word/);
+  it("v4AppStil bricht h1.titel (Belastungsverteilung: 336 px Text in 310 px Platz)", async () => {
+    const { v4AppStil } = await import("../src/v4/app-stil.js");
+    expect(v4AppStil()).toMatch(/html\[data-v4-app\] h1\.titel\{[^}]*overflow-wrap:break-word/);
   });
   it("e2e/wcag-320.spec.mjs misst Reflow aller Leitungsansichten und Tab-Stopps der geschlossenen Schublade bei 320 px", () => {
     const spec = LIES("e2e/wcag-320.spec.mjs");

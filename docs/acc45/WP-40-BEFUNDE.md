@@ -88,7 +88,7 @@ Lücke vorher: Die CI misst nie bei 320 px (kleinster Viewport 360 px); Reflow 1
 
 - Ursache (gemessen): `h1.titel` ("Belastungsverteilung", 38 px, Gewicht 300; Regel in `src/App.jsx`, dort nicht geändert) ist 336 px breit bei 310 px Platz; das Wort ist unteilbar, der Text ragt über den Rand, `scrollWidth` von `.sw-root` ist 346 statt 320. Die frühere Vermutung "Schublade/Verteilung" traf also die Ansicht Verteilung, nicht die Schublade.
 - Verworfene Vermutung: das Diagramm-Raster `repeat(auto-fit,minmax(280px,1fr))` in `src/ansichten/verteilung.jsx`. Die Änderung auf `minmax(min(280px,100%),1fr)` ließ den Test rot (26 px blieben); sie wurde zurückgenommen.
-- Korrektur: `h1.titel{overflow-wrap:break-word; hyphens:auto;}` in `geraeteStil()` (`src/ui/geraete.js`, wird nach den App-Regeln eingebunden). Kurze Wörter bleiben unverändert; zu lange brechen (mit Trennung, wo `lang="de"` sie kennt).
+- Korrektur: `h1.titel{overflow-wrap:break-word; hyphens:auto;}` als `html[data-v4-app] h1.titel{…}` in `src/v4/app-stil.js` (Oberflächenschicht; `src/ui/geraete.js` und `src/gestalt/stil.js` sind durch die V4-3b-Rückrechnung byte-genau festgelegt, CI-Lauf auf b16bc1af rot). Kurze Wörter bleiben unverändert; zu lange brechen (mit Trennung, wo `lang="de"` sie kennt).
 - Wirkung: nachher 0 px Querscroll in allen 44 Ansichten. Mutation: ohne die Regel bleibt der Test rot (Lauf mit nur der Rasteränderung: Verteilung 26 px).
 - Test: `e2e/wcag-320.spec.mjs` (CI-Job `browser-abnahme`, Projekt 360x740 setzt die Breite selbst auf 320 px) und `pruefungen/wcag-wp40.test.js` (Quelltext der Regel).
 
