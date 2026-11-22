@@ -68,8 +68,9 @@ describe("Prüfung der Niveaus (M-PQ1)", () => {
       }
       expect(pruefePflegeNiveaus([{ id: "x", name: "X", gruppe: "fachkraft", qualifikationen: [q] }], QUALS)).toMatch(/nur Fachkraft/);
     }
-    /* auch eine als Fachkraft markierte § 43b-Qualifikation gehört nicht in die Gruppe fachkraft */
-    const fk43b = [{ id: "z", name: "Betreuungskraft § 43b", fachkraft: true }];
+    /* auch eine als Fachkraft markierte Betreuungsqualifikation gehört nicht in die Gruppe fachkraft — seit A-1 (Review #485)
+       gilt gegen das Fachkraft-Flag nur das ausdrückliche Merkmal, nicht der Name (Name allein: modul-pflegequal-erkennung.test.js) */
+    const fk43b = [{ id: "z", name: "Betreuungskraft § 43b", fachkraft: true, merkmal: "betreuung" }];
     expect(pruefePflegeNiveaus([{ id: "x", name: "X", gruppe: "fachkraft", qualifikationen: ["z"] }], fk43b)).toMatch(/nur in die Gruppe betreuung/);
   });
   it("gültige Niveaus bleiben gültig (bisheriges Verhalten)", () => {

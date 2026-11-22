@@ -36,16 +36,22 @@ const istObjekt = (x) => !!x && typeof x === "object" && !Array.isArray(x);
 const idOk = (s) => typeof s === "string" && s.length >= 1 && s.length <= 60;
 /* Erkennung (Auflage A1, Delta-Review 2026-11-22). Die Zeichenkette wird normalisiert: NFKC (NBSP und NNBSP werden
    Leerzeichen), Kleinschreibung, Leerraum zusammengezogen, „paragraf“/„paragraph“ und „§§“ gelten als „§“.
-   Positivliste, klein und belegt:
-     - Norm § 43b SGB XI (zusätzliche Betreuungskräfte; FN-14, Branchenkatalog server/lib/branchen.mjs):
-       „§ 43b“ (mit Paragrafzeichen, auch ohne Gesetz) oder „43b SGB XI“ (ohne Paragrafzeichen nur mit „SGB XI“).
-     - Norm § 87b SGB XI: die frühere Fundstelle derselben Betreuungskräfte (bis 2016), im Altbestand häufig
-       („Betreuungsassistent § 87b“). Gleiche Schreibweisen wie § 43b.
-     - Bezeichnungen „Betreuungskraft/Betreuungskräfte“, „Betreuungsassistent/-in/-enz“, „Alltagsbegleiter/-in/-ung“.
-     - Merkmal „betreuung“ (Groß-/Kleinschreibung und Leerraum egal).
-   Bewusst nicht: andere Paragrafen (§ 43, § 43c, § 87a, § 143b, SGB XII), das bloße Wort „Betreuung“ oder „Betreuer“ —
-   eine Fehlerkennung nähme eine echte Pflegekraft aus der Zählung. Nicht aufgenommen, weil im Repo nicht belegt:
-   die Richtliniennorm (§ 53b/§ 53c SGB XI) und weitere Landes- oder Hausbezeichnungen; dafür das Merkmal. */
+   Positivliste, klein; im Repo belegt ist nur § 43b SGB XI (FN-14, ENTSCHEIDUNGSLISTE.md; branchen.mjs). Der Rest ist
+   eine Annahme ohne Fachnachweis (vorläufig, Fachfreigabe offen):
+     - § 43b SGB XI (belegt): „§ 43b“ (mit Paragrafzeichen, auch ohne Gesetz — erkennt damit auch „§ 43b SGB V“ oder
+       „§ 43b BetrVG“; im Pflegekatalog hingenommen) oder „43b SGB XI“ (ohne Paragrafzeichen nur mit „SGB XI“).
+     - § 87b SGB XI a. F. (nicht im Repo belegt): sachlich der Vorgänger bis 31.12.2016, im Altbestand
+       („Betreuungsassistent § 87b“). Gleiche Schreibweisen.
+     - Bezeichnungen „Betreuungskraft/-kräfte“, „Betreuungsassistent/-in/-enz“ (Sprachgebrauch für § 43b/§ 87b, nicht
+       belegt) und „Alltagsbegleiter/-in/-ung“ (gehört fachlich eher zu § 45a SGB XI; aufgenommen, weil nie Pflegekraft).
+       Erkennt auch z. B. „Kinderbetreuungskraft“ (harmlos: nie Pflegekraft).
+     - Merkmal „betreuung“ (Groß-/Kleinschreibung und Leerraum egal) — die ausdrückliche Einordnung.
+   Vorrang (A-1): Bei fachkraft === true zählen Name und Grundlage nicht, nur das Merkmal.
+   Bewusst nicht: andere Paragrafen (§ 43, § 43c, § 87a, § 143b, SGB XII), das bloße Wort „Betreuung“ oder „Betreuer“,
+   rechtliche Betreuung (Betreuungsrecht, Berufsbetreuer) — eine Fehlerkennung nähme eine echte Pflegekraft aus der
+   Zählung. Nicht aufgenommen: § 53b/§ 53c SGB XI und weitere Haus- oder Landesbezeichnungen; dafür das Merkmal.
+   Bekannte Grenze: Schreibweisen mit Bindestrich, weichem Trennstrich (U+00AD), Nullbreite (U+200B) oder fremden
+   Schriftzeichen umgehen die Erkennung (Befund H-2, offen). */
 const normal = (s) => s.normalize("NFKC").toLowerCase().replace(/\s+/gu, " ").replace(/paragra(?:ph|f)(?:en)?\.?/g, "§").replace(/§(?:\s*§)+/g, "§").trim();
 const NORM_MIT_ZEICHEN = /§\s*(?:43|87)\s*b(?![a-z0-9])/;
 const NORM_OHNE_ZEICHEN = /(?<![a-z0-9§])(?:43|87)\s*b(?:\s*abs\.?\s*\d+)?\s*sgb\s*xi(?![a-z0-9])/;
@@ -60,7 +66,12 @@ const erkannt = (s) => typeof s === "string" && (() => { const n = normal(s); re
  */
 export function istBetreuungsQualifikation(q) {
   if (!istObjekt(q)) return false;
-  return (typeof q.merkmal === "string" && normal(q.merkmal) === "betreuung") || erkannt(q.grundlage) || erkannt(q.name);
+  if (typeof q.merkmal === "string" && normal(q.merkmal) === "betreuung") return true;
+  /* A-1 (Review #485): Das Fachkraft-Flag ist die ausdrückliche Einordnung des Betriebs (die Fachkraftquote des Kerns
+     zählt danach). Name und Grundlage sind nur ein Hinweis; sie nehmen eine Fachkraft nie aus der Zählung
+     („Pflegefachkraft, Anleitung Betreuungskräfte“). Gegen das Flag wirkt nur das ausdrückliche Merkmal. */
+  if (q.fachkraft === true) return false;
+  return erkannt(q.grundlage) || erkannt(q.name);
 }
 
 /**

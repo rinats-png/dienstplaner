@@ -18,7 +18,7 @@
    § 87a). Das Modul bleibt „geplant“; geschrieben wird im Prüfmodus.
    ========================================================================== */
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
-import { istBetreuungsQualifikation, pflegeVerteilung, pflegeQualAenderung } from "../server/lib/modul-pflegequal.mjs";
+import { istBetreuungsQualifikation, pflegeVerteilung, pflegeQualAenderung, pruefePflegeNiveaus } from "../server/lib/modul-pflegequal.mjs";
 import { modulVon } from "../server/lib/branchenmodule.mjs";
 import { branchenbestand, schreibeAls, vorlaeufigListe, schalterAn } from "./hilfen/branchenbetrieb.mjs";
 
@@ -90,6 +90,50 @@ describe("Erkennung: Gegenproben (keine echte Pflegekraft aus der Zählung nehme
       expect(istBetreuungsQualifikation({ name: "Haus", merkmal }), JSON.stringify(merkmal)).toBe(false);
     for (const q of [null, undefined, "Betreuungskraft § 43b", ["§ 43b"], { name: 43 }, { grundlage: {} }])
       expect(istBetreuungsQualifikation(q), JSON.stringify(q)).toBe(false);
+  });
+});
+
+describe("H-1 (Review #485): rechtliche Betreuung ist keine Betreuungskraft", () => {
+  for (const name of ["Betreuungsrecht", "Rechtliche Betreuung", "Rechtlicher Betreuer", "Rechtliche Betreuerin", "Berufsbetreuer",
+    "Berufsbetreuerin", "Betreuungsrecht (Fortbildung)", "Betreuungsverfahren", "Betreuungsgericht"]) {
+    it(`nicht erkannt: ${name}`, () => {
+      expect(istBetreuungsQualifikation({ name, fachkraft: false }), name).toBe(false);
+      expect(istBetreuungsQualifikation({ name: "Zusatzkurs", grundlage: name, fachkraft: false }), `Grundlage ${name}`).toBe(false);
+    });
+  }
+});
+
+describe("A-1 (Review #485): Fachkraft-Flag hat Vorrang vor der Erkennung über Name oder Grundlage", () => {
+  const FK_NAMEN = ["Pflegefachkraft (Zusatzqualifikation Betreuungsassistent)", "Pflegefachkraft, Anleitung Betreuungskräfte",
+    "Pflegefachkraft § 43b-Koordination", "Pflegefachkraft mit Weiterbildung Alltagsbegleitung", "Fachkraft 87b SGB XI (Anleitung)"];
+  for (const name of FK_NAMEN) {
+    it(`fachkraft: true bleibt Fachkraft: ${name}`, () => {
+      expect(istBetreuungsQualifikation({ name, fachkraft: true }), name).toBe(false);
+      expect(istBetreuungsQualifikation({ name: "Pflegefachkraft", grundlage: name, fachkraft: true }), `Grundlage ${name}`).toBe(false);
+      /* ohne Fachkraft-Flag greift die Erkennung (Gegenprobe der Gegenprobe) */
+      expect(istBetreuungsQualifikation({ name, fachkraft: false }), `${name} ohne Flag`).toBe(true);
+    });
+  }
+  it("Lesepfad: die Fachkraft zählt als Fachkraft, ohne Hinweis", () => {
+    const quals = FK_NAMEN.map((name, i) => ({ id: `f${i}`, name, fachkraft: true }));
+    const m = { qualifikationen: quals, pflegeNiveaus: [{ id: "n-fk", name: "Fachkraft", gruppe: "fachkraft", versorgung: null, qualifikationen: quals.map((q) => q.id) }] };
+    const v = pflegeVerteilung(m, quals.map((q) => ({ id: `p-${q.id}`, qualifikationen: [q.id] })), { qualGueltig: () => true, heute: "2026-11-06" });
+    expect(v).toMatchObject({ fachkraefte: FK_NAMEN.length, pflegekraefte: FK_NAMEN.length, betreuung: 0, ohneNiveau: 0 });
+    expect(v.hinweise).toBeUndefined();
+  });
+  it("Schreibweg: die Fachkraft passt in die Gruppe fachkraft", () => {
+    const quals = FK_NAMEN.map((name, i) => ({ id: `f${i}`, name, fachkraft: true }));
+    expect(pruefePflegeNiveaus([{ id: "n-fk", name: "Fachkraft", gruppe: "fachkraft", qualifikationen: quals.map((q) => q.id) }], quals)).toBeNull();
+  });
+  it("das ausdrückliche Merkmal „betreuung“ gilt auch bei fachkraft: true (Konflikt wird gemeldet, nie Fachkraft)", () => {
+    const q = { id: "z", name: "Pflegefachkraft", fachkraft: true, merkmal: "Betreuung" };
+    expect(istBetreuungsQualifikation(q)).toBe(true);
+    expect(pruefePflegeNiveaus([{ id: "x", name: "X", gruppe: "fachkraft", qualifikationen: ["z"] }], [q])).toMatch(/nur in die Gruppe betreuung/);
+    expect(pruefePflegeNiveaus([{ id: "x", name: "X", gruppe: "betreuung", qualifikationen: ["z"] }], [q])).toMatch(/Fachkraft-Qualifikation/);
+  });
+  it("fachkraft nur bei true (nicht \"true\", 1): sonst gilt die Erkennung", () => {
+    for (const fachkraft of ["true", 1, undefined, null])
+      expect(istBetreuungsQualifikation({ name: "Betreuungskraft § 43b", fachkraft }), JSON.stringify(fachkraft)).toBe(true);
   });
 });
 
