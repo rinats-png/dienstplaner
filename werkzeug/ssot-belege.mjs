@@ -16,6 +16,9 @@
                  (Commits, Tests, Nachweise) wird eingetragen. Danach
                  status-schreiben und pruefen; scheitert die Prüfung,
                  wird zurückgerollt. Gemeinsame Sperre wie ssot-nach-integration.
+                 PR-Verweise genau "#123" (PR_MUSTER aus acc45-backlog.mjs),
+                 exakter Duplikatvergleich; ein ungültiger Verweis bricht vor
+                 jeder Änderung ab (Rückgabe 1, Quelle unverändert; Review #483 H4).
 
    Exit: 0 ok · 1 Prüfung fehlgeschlagen · 3 Sperre belegt
    ========================================================================== */
@@ -27,6 +30,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { trifftText, ERLEDIGT, brauchtPrBeleg } from "./ssot-zuordnung.mjs";
 import { gemergteUndPrs, abgleich, ssotLesen } from "./ssot-abgleich.mjs";
+// Review #483 H4: eine Quelle für das PR-Format (kein Zyklus: acc45-backlog.mjs importiert nur node:*).
+import { PR_MUSTER } from "./acc45-backlog.mjs";
 
 const WURZEL = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const BASIS = "origin/integration/release-v4";
@@ -117,14 +122,29 @@ function lockFreigeben() { try { rmSync(LOCK, { recursive: true, force: true });
  * Pakete werden auf REVIEW gesetzt. DONE wird nie automatisch herabgestuft.
  * Nie INTEGRATED durch dieses Werkzeug, nie neue Umsetzung.
  */
+/**
+ * PR-Verweise aus dem Feld integriert („PR #1,#2“, sonst keine). Review #483 H4: jeder Eintrag genau nach PR_MUSTER
+ * („#0“, führende Null, Zusatz oder Leerzeichen → Fehler); doppelte Einträge zählen einmal.
+ */
+export function prVerweiseAus(integriert) {
+  const m = /^PR (.*)$/s.exec(String(integriert));
+  if (!m) return [];
+  const xs = m[1].split(",");
+  const falsch = xs.filter((x) => !PR_MUSTER.test(x));
+  if (falsch.length) throw new Error(`ungültiger PR-Verweis ${JSON.stringify(falsch)} (Format "#123")`);
+  return [...new Set(xs)];
+}
+
 export function anwenden(ssot, zeilen) {
   let belegErgaenzt = 0;
   let statusAufReview = 0;
+  // Review #483 H4: erst alle Verweise prüfen, dann ändern — ein ungültiger Verweis ändert nichts (main: Rückgabe 1).
+  const verweise = new Map(zeilen.filter((z) => z.klasse === "OK").map((z) => [z, prVerweiseAus(z.integriert)]));
   for (const z of zeilen) {
     const p = ssot.pakete.find((x) => x.id === z.id);
     if (z.klasse === "OK") {
-      const nummern = (z.integriert.match(/#\d+/g) || []);
-      const neu = nummern.filter((x) => !(p.pr || []).some((y) => String(y).includes(x)));
+      const vorhanden = new Set((p.pr || []).map(String));                  // exakter Listenvergleich, kein includes
+      const neu = verweise.get(z).filter((x) => !vorhanden.has(x));
       if (neu.length > 0) { p.pr = [...(p.pr || []), ...neu]; belegErgaenzt++; }
       continue;
     }
