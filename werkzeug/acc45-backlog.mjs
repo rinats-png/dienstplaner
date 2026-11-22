@@ -36,6 +36,10 @@ export const STUFEN = Object.freeze(["implementiert", "lokalGetestet", "reviewt"
 export const KONFLIKTZONEN = Object.freeze(["App.jsx", "daten.mjs", "rechte.mjs", "sicht.mjs", "package.json", "stempelintegritaet.mjs", "src/ansichten"]);
 export const ERLEDIGT = Object.freeze(["INTEGRATED", "VERIFIED", "DONE"]);
 export const NUR_REIHENFOLGE = Object.freeze(["WP-09"]);
+/* Review #477 H3: G8/G9 (werkzeug/release-pruefung.mjs, PRIO_STUFEN/PR_MUSTER, per Test gebunden) vergleichen prio
+   exakt und lesen pr als Liste "#123". Die Quelle erzwingt beides; jede andere Schreibweise ist ein Schemafehler. */
+export const PRIOS = Object.freeze(["P0", "P1", "P2", "P3"]);
+export const PR_MUSTER = /^#[1-9]\d*$/;
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const QUELLE = path.join(REPO, "docs", "acc45", "work-packages.json");
@@ -103,6 +107,18 @@ export const P = Object.freeze(existsSync(QUELLE) ? quelleLesen().pakete.map((p)
 /* --------------------------------------------------------------------------
    Prüfung der Quelle (Schema, Graph, Statusstufen ehrlich)
    -------------------------------------------------------------------------- */
+/** Rohprüfung vor dem Normalisieren (normalisieren macht aus fehlendem pr eine leere Liste und zerlegt einen Text in
+ *  Zeichen): pr ist Pflicht und eine Liste; Pakete ohne PR haben pr: []. */
+export function pruefeRoh(roh) {
+  const f = [];
+  for (const p of Array.isArray(roh) ? roh : []) {
+    if (p === null || typeof p !== "object" || Array.isArray(p)) { f.push(`Paket ohne Objektform: ${JSON.stringify(p)}`); continue; }
+    if (!("pr" in p)) f.push(`${p.id}: pr fehlt (Pakete ohne PR: leere Liste [])`);
+    else if (!Array.isArray(p.pr)) f.push(`${p.id}: pr ist keine Liste`);
+  }
+  return f;
+}
+
 export function pruefeQuelle(pakete) {
   const f = [];
   const ids = new Map();
@@ -114,6 +130,10 @@ export function pruefeQuelle(pakete) {
     const w = (t) => f.push(`${p.id}: ${t}`);
     if (!p.titel) w("titel fehlt");
     if (!STRAENGE.includes(p.strang)) w(`strang ${p.strang}`);
+    if (!PRIOS.includes(p.prio)) w(`prio ${JSON.stringify(p.prio) ?? "fehlt"} (zulässig: ${PRIOS.join("|")}, genau so geschrieben)`);
+    const prFalsch = p.pr.filter((x) => typeof x !== "string" || !PR_MUSTER.test(x));
+    if (prFalsch.length) w(`pr enthält ungültige Einträge ${JSON.stringify(prFalsch)} (Format "#123")`);
+    if (new Set(p.pr).size !== p.pr.length) w("pr enthält Duplikate");
     if (!STATUS_QUELLE.includes(p.status)) w(`status ${p.status} (zulässig: ${STATUS_QUELLE.join("|")})`);
     for (const s of [p.aufwandPT, p.restPT, p.wartezeitAT].filter(Boolean))
       if (!(Number.isFinite(s.min) && Number.isFinite(s.max) && s.min >= 0 && s.min <= s.max)) w("Spanne ungültig");
@@ -762,6 +782,8 @@ export function sollInhalte(pakete, quelle, wurzel = REPO) {
 /** Abweichungen zwischen Soll und Ist (für Prüfung und Test). */
 export function abweichungen(wurzel = REPO) {
   const quelle = quelleLesen(path.join(wurzel, "docs", "acc45", "work-packages.json"));
+  const roh = pruefeRoh(quelle.pakete);
+  if (roh.length) return roh.map((x) => `Quelle: ${x}`);     // vor dem Normalisieren: kein Absturz, kein stilles []
   const pakete = paketeAus(quelle.pakete);
   const fehler = pruefeQuelle(pakete).map((x) => `Quelle: ${x}`);
   const soll = sollInhalte(pakete, quelle, wurzel);
@@ -810,15 +832,19 @@ function prognoseText(pakete, quelle) {
 
 export function main(argv, say = (s) => console.log(s)) {
   const [befehl, ...rest] = argv;
-  if (!befehl || befehl === "status-schreiben") { say(JSON.stringify(schreiben(paketeAus()))); return 0; }
-  const pakete = paketeAus();
-  if (befehl === "pruefen") {
+  if (!befehl || befehl === "status-schreiben") {
+    const roh = pruefeRoh(quelleLesen().pakete);
+    if (roh.length) throw new Error(`Quelle ungültig:\n${roh.join("\n")}`);
+    say(JSON.stringify(schreiben(paketeAus()))); return 0;
+  }
+  if (befehl === "pruefen") {                     // vor paketeAus(): eine ungültige Quelle ergibt Rückgabe 1, keinen Absturz
     const f = abweichungen();
     if (!f.length) { say("OK: Quelle gültig, erzeugte Dateien stimmen mit work-packages.json überein."); return 0; }
     for (const x of f) say(`ABWEICHUNG: ${x}`);
     say("Beheben: Quelle korrigieren, dann node werkzeug/acc45-backlog.mjs status-schreiben");
     return 1;
   }
+  const pakete = paketeAus();
   if (befehl === "bereit") {
     const opt = { alle: rest.includes("--alle") };
     const zeile = (p) => `${p.id}  ${p.prio}  ${spanneText(p.aufwandPT)} PT  ${p.status}  ${p.strang}  ${p.titel}`;

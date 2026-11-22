@@ -39,11 +39,14 @@
          `ruecksprung` NO-GO, wenn Basis oder Zeile `vorherig` ein Bild ohne
          Revisionslabel ist (ohneRevisionslabel: 274bfa0) oder die Basis fehlt
      G8  SSOT: kein P0/P1-Paket mit Status außer DONE/INTEGRATED/VERIFIED (auch
-         CI_FAILED, unbekannt oder fehlend blockiert), dessen PR im Paket steckt (außer akzeptiertePakete mit Grund); jede
-         Paket-ID in ssotPakete von RELEASE-UNFERTIG.json steht in der SSOT;
-         „nur hinter Schalter AUS“ nur für PRs aus ssotPrs (fehlt: keine Aussage)
+         CI_FAILED, unbekannt oder fehlend blockiert), dessen PR im Paket steckt (außer akzeptiertePakete mit Grund);
+         prio außer genau P0–P3 (auch fehlend) blockiert wie P0/P1; pr eines solchen Pakets keine Liste "#123" ⇒ NO-GO;
+         jede Paket-ID in ssotPakete von RELEASE-UNFERTIG.json steht in der SSOT;
+         „nur hinter Schalter AUS“ nur für PRs aus ssotPrs (fehlt: keine Aussage); ssotPrs nur mit ssotPakete, jeder
+         Eintrag genau "#123" und im pr eines genannten Pakets, sonst NO-GO
      G9  keine offenen P0/P1-Befunde (Strang folge, ABN-*, V4-*; REL-* sind der
-         Release-Prozess selbst und zählen nicht; akzeptierteBefunde mit Grund)
+         Release-Prozess selbst und zählen nicht; akzeptierteBefunde mit Grund);
+         unbekannte oder fehlende prio blockiert wie P0/P1
      G10 Freigabedatei docs/acc45/releases/<id>.freigabe.json gültig, commitet,
          passend; Stand HEAD = Kandidat + nur Freigabepfade
 
@@ -74,6 +77,13 @@ export const VERSION = 2;
 
 /** SSOT-Status, die als erledigt gelten (Schema: werkzeug/acc45-backlog.mjs STATUS). Jeder andere Status ist offen. */
 export const ERLEDIGT_STATUS = Object.freeze(["DONE", "INTEGRATED", "VERIFIED"]);
+/** Bekannte SSOT-Prioritäten (Schema: werkzeug/acc45-backlog.mjs PRIOS, per Test gebunden). Review #477 H3: Eine
+ *  andere oder fehlende prio eines offenen Pakets blockiert in G8/G9 (fail-closed), statt als „nicht P0/P1“ zu gelten. */
+export const PRIO_STUFEN = Object.freeze(["P0", "P1", "P2", "P3"]);
+/** Blockierende Prioritäten; G8 und G9 teilen dieselbe Liste (wie ERLEDIGT_STATUS). */
+export const BLOCKER_PRIOS = Object.freeze(["P0", "P1"]);
+/** PR-Verweis in SSOT (pr) und RELEASE-UNFERTIG.json (ssotPrs): genau "#123" (Schema: acc45-backlog.mjs PR_MUSTER). */
+export const PR_MUSTER = /^#[1-9]\d*$/;
 
 export const KONFIG_STANDARD = Object.freeze({
   repo: "rinats-png/dienstplaner",
@@ -135,8 +145,9 @@ export const KONFIG_STANDARD = Object.freeze({
   ssot: "docs/acc45/work-packages.json",
   // G8 und G9 (Endurteil #427 A1): blockierend ist jeder Status, der NICHT in `erledigt` steht — auch CI_FAILED und
   // jeder unbekannte oder fehlende Status (fail-closed). Beide Gates teilen dieselbe Liste (ERLEDIGT_STATUS).
-  blocker: { prios: ["P0", "P1"], erledigt: ERLEDIGT_STATUS },
-  befund: { straenge: ["folge"], idMuster: ["^ABN-", "^V4-"], ausnahmeMuster: ["^REL-"], prios: ["P0", "P1"], erledigt: ERLEDIGT_STATUS },
+  // Review #477 H3: dazu blockiert jede prio außerhalb PRIO_STUFEN (Schreibweise, Leerzeichen, fehlend), fail-closed.
+  blocker: { prios: BLOCKER_PRIOS, erledigt: ERLEDIGT_STATUS },
+  befund: { straenge: ["folge"], idMuster: ["^ABN-", "^V4-"], ausnahmeMuster: ["^REL-"], prios: BLOCKER_PRIOS, erledigt: ERLEDIGT_STATUS },
   freigabeVerzeichnis: "docs/acc45/releases",
   // „Gepusht“: origin muss dieses GitHub-Repository sein, und ein Freigabezweig muss genau auf HEAD zeigen.
   repoUrlMuster: "^(?:https://github\\.com/|git@github\\.com:|ssh://git@github\\.com/)rinats-png/dienstplaner(?:\\.git)?/?$",
@@ -955,21 +966,40 @@ export function g7Rueckweg({ liste, kandidat, digest, basis }, freigabe, konfig)
 
 const annahmen = (liste) => new Map((Array.isArray(liste) ? liste : []).filter((a) => istObjekt(a) && a.id && String(a.grund || "").trim()).map((a) => [a.id, a.grund]));
 
-/** ssotPrs einer unfertigen Funktion: fehlt → { prs: null }; gültig → { prs: Set<Nummer> }; sonst { fehler }.
- *  Gültig: nicht leere Liste aus "#123" oder positiven Ganzzahlen, ohne Duplikate. */
-export function ssotPrsLesen(wert) {
-  if (wert === undefined) return { prs: null };
+/** Review #477 H3: blockiert die Priorität? P0/P1 (prios) und jede unbekannte oder fehlende prio (fail-closed). */
+const prioBlockiert = (prio, prios) => prios.includes(prio) || !PRIO_STUFEN.includes(prio);
+/** Priorität für Meldungen; unbekannte Werte nur als JSON (keine rohen Steuerzeichen), gekürzt. */
+const prioText = (prio) => (PRIO_STUFEN.includes(prio) ? prio
+  : `Priorität ${prio === undefined ? "fehlt" : String(JSON.stringify(prio)).slice(0, 40)}, unbekannt → blockierend`);
+
+/** Ein PR-Verweis "#123" als sichere Ganzzahl, sonst null (Review #473 H4/H5: keine Zahl ohne „#“, kein Überlauf). */
+const prVerweis = (x) => {
+  if (typeof x !== "string" || !PR_MUSTER.test(x)) return null;
+  const n = Number(x.slice(1));
+  return Number.isSafeInteger(n) ? n : null;
+};
+
+/** Liste von PR-Verweisen: { nummern } oder { fehler }. Gültig: Liste aus "#123" ohne Duplikate (leer erlaubt). */
+function prListeLesen(wert) {
+  if (wert === undefined) return { fehler: "fehlt" };
   if (!Array.isArray(wert)) return { fehler: "ist keine Liste" };
-  if (!wert.length) return { fehler: "ist leer (dann Feld weglassen)" };
   const nummern = [];
   for (const x of wert) {
-    const ok = (typeof x === "string" && /^#[1-9]\d*$/.test(x)) || (Number.isInteger(x) && x > 0);
-    if (!ok) return { fehler: `enthält ungültigen Eintrag ${JSON.stringify(x) ?? String(x)} (Format #123)` };
-    nummern.push(prNummer(x));
+    const n = prVerweis(x);
+    if (n === null) return { fehler: `enthält ungültigen Eintrag ${String(JSON.stringify(x) ?? x).slice(0, 40)} (Format #123)` };
+    nummern.push(n);
   }
-  const prs = new Set(nummern);
-  if (prs.size !== nummern.length) return { fehler: "enthält Duplikate" };
-  return { prs };
+  if (new Set(nummern).size !== nummern.length) return { fehler: "enthält Duplikate" };
+  return { nummern };
+}
+
+/** ssotPrs einer unfertigen Funktion: fehlt → { prs: null }; gültig → { prs: Set<Nummer> }; sonst { fehler }.
+ *  Gültig: nicht leere Liste aus "#123" (sichere Ganzzahl), ohne Duplikate. */
+export function ssotPrsLesen(wert) {
+  if (wert === undefined) return { prs: null };
+  if (Array.isArray(wert) && !wert.length) return { fehler: "ist leer (dann Feld weglassen)" };
+  const l = prListeLesen(wert);
+  return l.fehler ? { fehler: l.fehler } : { prs: new Set(l.nummern) };
 }
 
 export function g8Blocker(ssot, prsImKandidaten, freigabe, konfig, unfertig = null, klassen = null) {
@@ -979,11 +1009,15 @@ export function g8Blocker(ssot, prsImKandidaten, freigabe, konfig, unfertig = nu
   const imKandidat = new Set(prsImKandidaten.map(Number));
   const akzeptiert = annahmen(freigabe?.akzeptiertePakete);
   for (const p of ssot.pakete) {
-    if (!istObjekt(p) || !konfig.blocker.prios.includes(p.prio) || konfig.blocker.erledigt.includes(p.status)) continue;
-    const prs = (Array.isArray(p.pr) ? p.pr : []).map(prNummer).filter((x) => imKandidat.has(x));
+    if (!istObjekt(p) || konfig.blocker.erledigt.includes(p.status) || !prioBlockiert(p.prio, konfig.blocker.prios)) continue;
+    const kopf = `${p.id} (${prioText(p.prio)}, ${p.status})`;
+    // Review #477 H3: ohne gültige pr-Liste ist nicht bestimmbar, ob das Paket im Kandidaten steckt (fail-closed)
+    const liste = prListeLesen(p.pr);
+    if (liste.fehler) { nogo(g, `${kopf}: pr ${liste.fehler} — PRs im Kandidaten nicht bestimmbar (fail-closed)`); continue; }
+    const prs = liste.nummern.filter((x) => imKandidat.has(x));
     if (!prs.length) continue;
-    if (akzeptiert.has(p.id)) { g.belege.push(`${p.id} (${p.prio}, ${p.status}) vom Betreiber akzeptiert: ${akzeptiert.get(p.id)}`); continue; }
-    nogo(g, `${p.id} (${p.prio}, ${p.status}) steckt im Kandidaten über ${prs.map((x) => "#" + x).join(", ")}`);
+    if (akzeptiert.has(p.id)) { g.belege.push(`${kopf} vom Betreiber akzeptiert: ${akzeptiert.get(p.id)}`); continue; }
+    nogo(g, `${kopf} steckt im Kandidaten über ${prs.map((x) => "#" + x).join(", ")}`);
   }
   // Unfertige Funktionen (RELEASE-UNFERTIG.json, Feld ssotPakete): Jede genannte Paket-ID muss in der SSOT stehen
   // (sonst ist die Liste veraltet, fail-closed). Steckt das Paket im Kandidaten, belegt G8, dass sein Code nur hinter
@@ -991,7 +1025,12 @@ export function g8Blocker(ssot, prsImKandidaten, freigabe, konfig, unfertig = nu
   if (istObjekt(unfertig) && Array.isArray(unfertig.funktionen)) {
     const pakete = new Map(ssot.pakete.filter(istObjekt).map((p) => [p.id, p]));
     for (const f of unfertig.funktionen) {
-      if (!istObjekt(f) || f.ssotPakete === undefined) continue;
+      if (!istObjekt(f)) continue;
+      // Review #473 H2: ssotPrs ist nur mit ssotPakete erlaubt; sonst würde es nie geprüft (Schemafehler, NO-GO)
+      if (f.ssotPakete === undefined) {
+        if (f.ssotPrs !== undefined) nogo(g, `${konfig.unfertigDatei}: ${f.id}: ssotPrs ohne ssotPakete (Schemafehler)`);
+        continue;
+      }
       if (!Array.isArray(f.ssotPakete)) { nogo(g, `${konfig.unfertigDatei}: ${f.id}: ssotPakete ist keine Liste`); continue; }
       // Review #437 (3): ohne Variablen gibt es keinen Schalter, hinter dem der Code ruhen könnte → kein Beleg, NO-GO
       const variablen = Array.isArray(f.variablen) ? f.variablen.filter((v) => typeof v === "string" && v) : [];
@@ -1003,12 +1042,20 @@ export function g8Blocker(ssot, prsImKandidaten, freigabe, konfig, unfertig = nu
       // stehen in der Belegzeile als „nur hinter Schalter AUS“; fehlt ssotPrs, behauptet G8 keine Deckung (fail-closed).
       const deckung = ssotPrsLesen(f.ssotPrs);
       if (deckung.fehler) { nogo(g, `${konfig.unfertigDatei}: ${f.id}: ssotPrs ${deckung.fehler}`); continue; }
+      // Review #473 H1: jeder ssotPrs-Eintrag muss im pr eines genannten ssotPakete-Pakets stehen (Tippfehler → NO-GO).
+      // Die Belegzeilen unten bleiben; ein solcher Eintrag deckt ohnehin keinen PR des Kandidaten.
+      if (deckung.prs) {
+        const bekannt = new Set(f.ssotPakete.flatMap((id) => prListeLesen(pakete.get(id)?.pr).nummern ?? []));
+        for (const nr of deckung.prs) {
+          if (!bekannt.has(nr)) nogo(g, `${konfig.unfertigDatei}: ${f.id}: ssotPrs #${nr} steht in keinem pr der ssotPakete (${f.ssotPakete.join(", ")})`);
+        }
+      }
       for (const id of f.ssotPakete) {
         const p = pakete.get(id);
         if (!p) { nogo(g, `${konfig.unfertigDatei}: ${f.id} nennt ${id}, das nicht in der SSOT steht (Liste veraltet)`); continue; }
-        const prs = (Array.isArray(p.pr) ? p.pr : []).map(prNummer).filter((x) => imKandidat.has(x));
-        // Ein offenes P0/P1-Paket ist oben schon NO-GO (außer akzeptiert); dafür kein entlastender Beleg.
-        const offenBlocker = konfig.blocker.prios.includes(p.prio) && !konfig.blocker.erledigt.includes(p.status) && !akzeptiert.has(p.id);
+        const prs = (prListeLesen(p.pr).nummern ?? []).filter((x) => imKandidat.has(x));
+        // Ein offenes P0/P1-Paket (oder mit unbekannter prio) ist oben schon NO-GO (außer akzeptiert); kein entlastender Beleg.
+        const offenBlocker = prioBlockiert(p.prio, konfig.blocker.prios) && !konfig.blocker.erledigt.includes(p.status) && !akzeptiert.has(p.id);
         if (!prs.length || offenBlocker) continue;
         const liste = (xs) => xs.map((x) => "#" + x).join(", ");
         if (!deckung.prs) {
@@ -1038,9 +1085,9 @@ export function g9Befunde(ssot, freigabe, konfig) {
     if (!istObjekt(p)) continue;
     if (ausnahme.some((m) => m.test(p.id))) continue;
     const istBefund = konfig.befund.straenge.includes(p.strang) || muster.some((m) => m.test(p.id));
-    if (!istBefund || !konfig.befund.prios.includes(p.prio) || konfig.befund.erledigt.includes(p.status)) continue;
+    if (!istBefund || !prioBlockiert(p.prio, konfig.befund.prios) || konfig.befund.erledigt.includes(p.status)) continue;
     if (akzeptiert.has(p.id)) { g.belege.push(`${p.id} vom Betreiber akzeptiert: ${akzeptiert.get(p.id)}`); continue; }
-    nogo(g, `${p.id} (${p.prio}, ${p.status}): ${String(p.titel || "").slice(0, 80)}`);
+    nogo(g, `${p.id} (${prioText(p.prio)}, ${p.status}): ${String(p.titel || "").slice(0, 80)}`);
   }
   return g;
 }
