@@ -32,6 +32,11 @@ Nicht abgeschwächt: Die Zusicherungen erkennen mehr als vorher (Cache-Ausfall, 
 oder gelockert; die absolute 500-ms-Grenze auf einer Einzelmessung entfällt, weil sie nicht reproduzierbar war.
 `pruefungen/sammelpruefung-bekannt.json` ist leer (der Windows-Eintrag betraf genau diese Zusicherung).
 
+Folge im Schnitt „Selbsttest“ der V4-Radiusstufen: `pruefungen/v4-3b-selbsttest.test.js` legte `src/pruefung.jsx` byte-genau auf
+die Basis fd9dea35 fest (7843 Zeilen, Prüfsumme). CI (Lauf auf 455be5fc, Schritt „Querschnittsprüfungen“) wurde dadurch rot:
+7875 statt 7843 Zeilen, andere Prüfsumme. Die Festlegung bleibt byte-genau, gilt jetzt aber für Basis plus genau diese Änderung
+(`NACHTRAG_QS2`: +32 Zeilen, Prüfsumme der Datei). Jede weitere Änderung an der Datei macht die Prüfung weiter rot.
+
 ## Nachweis
 
 | Fall | Ergebnis |
