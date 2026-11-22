@@ -35,6 +35,27 @@ export const ZUGAENGE_VAR = "CENTRIC_E2E_ZUGAENGE";
  *  nie ausgegeben). */
 export const BETREIBER_VAR = "CENTRIC_E2E_BETREIBER";
 
+/** WP-48-GB: Zahl der Räume, die global-setup.mjs angelegt hat (je Arbeiter einer, höchstens RAEUME_HOECHSTENS). */
+export const RAEUME_VAR = "CENTRIC_E2E_RAEUME";
+export const RAEUME_HOECHSTENS = 4;
+
+/** WP-48-GB: Raum des laufenden Arbeiters. Playwright setzt TEST_PARALLEL_INDEX (0 … workers-1) in jedem Testprozess;
+ *  global-setup.mjs legt je Index einen eigenen Raum an und reicht dessen Codes als <VAR>_<Index>. Hier werden sie, bevor
+ *  irgendein Test sie liest, zu den gewohnten Variablen ZUGAENGE_VAR und BETREIBER_VAR — alle Specs und hilfen.mjs lesen
+ *  unverändert diese. Fehlt der Raum des Index (mehr Arbeiter als Räume), werden die Variablen geleert: Die Tests scheitern
+ *  dann mit „Kein Testzugang“, statt still in einem fremden Raum zu schreiben (echte Konflikte, siehe global-setup.mjs).
+ *  Außerhalb eines Testprozesses (Konfiguration, global-setup.mjs, Prüfungen) geschieht nichts. */
+export function arbeiterRaumWaehlen(umgebung = process.env) {
+  const index = umgebung.TEST_PARALLEL_INDEX;
+  if (index === undefined || index === "" || umgebung[RAEUME_VAR] === undefined) return null;
+  for (const v of [ZUGAENGE_VAR, BETREIBER_VAR]) {
+    const eigen = umgebung[`${v}_${index}`];
+    if (eigen) umgebung[v] = eigen; else delete umgebung[v];
+  }
+  return Number(index);
+}
+arbeiterRaumWaehlen();
+
 /** axe-Regelsätze für WCAG 2.2 Stufe AA (A und AA aus 2.0, 2.1 und 2.2). */
 export const AXE_TAGS = Object.freeze(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22a", "wcag22aa"]);
 

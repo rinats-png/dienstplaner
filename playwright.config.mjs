@@ -3,22 +3,25 @@
    Keine Spuren, keine Videos, keine Bildschirmfotos (Zugangscodes stehen im Anmeldefeld). Anleitung:
    docs/acc45/WP-33-PLAYWRIGHT-AXE.md. Aufruf: npm run e2e (vorher einmal: npx playwright install chromium). */
 import { defineConfig } from "@playwright/test";
-import { BASIS, VIEWPORTS } from "./e2e/umgebung.mjs";
+import { BASIS, VIEWPORTS, RAEUME_HOECHSTENS } from "./e2e/umgebung.mjs";
 
 export default defineConfig({
   testDir: "./e2e",
   testMatch: "**/*.spec.mjs",
   outputDir: "./e2e/ergebnisse/artefakte",
   globalSetup: "./e2e/global-setup.mjs",
-  /* Nacheinander: Alle Rollen arbeiten im selben Demo-Betrieb. Parallel geöffnete Sitzungen lösten im ersten Lauf den
-     Dialog „Gleichzeitig bearbeitet“ aus, der die Navigation verdeckte; ein Test soll keinen Konflikt entscheiden müssen.
-     Ursache behoben (WP-48-GB, #271/#365/#374): bloßes Öffnen schreibt nicht mehr, belegt mit mehreren gleichzeitigen
-     Browser-Kontexten in e2e/oeffnen-parallel.spec.mjs. workers: 1 bleibt, weil praktisch alle Specs
-     schreiben: anmelden() (hilfen.mjs) schließt mit tourZu() eine offene Tour (schreibt), dazu die Abläufe von Abnahme A/B,
-     Teilkonflikt und lokaler Abnahme. Ausgenommen ist nur oeffnen-parallel.spec.mjs selbst. Parallele Worker ergäben
-     echte, zu Recht gemeldete Konflikte. */
+  /* WP-48-GB: Mehrere Arbeiter, JE ARBEITER EIN EIGENER RAUM (e2e/global-setup.mjs, e2e/umgebung.mjs arbeiterRaumWaehlen).
+     Früher workers: 1 als Notlösung: Parallel geöffnete Sitzungen lösten den Dialog „Gleichzeitig bearbeitet“ aus. Das
+     bloße Öffnen schreibt seit #271/#365/#374 nicht mehr (pruefungen/wp48-gb-oeffnen.test.js, wp48-gb-lesen.test.js,
+     e2e/oeffnen-parallel.spec.mjs). Was danach blieb, waren technisch korrekte 409: Praktisch alle Specs schreiben in den
+     Raum (anmelden() schließt mit tourZu() eine offene Tour, dazu Abnahme A/B, Teilkonflikt, lokale Abnahme); zwei
+     Arbeiter im selben Raum bearbeiten denselben Bestand. Dass schon das Tour-Schließen zweier Personen kollidiert, ist
+     ein offener Produktbefund (WP-48-GB-T, ENTSCHEIDUNGSLISTE P2-32: Tourzustand liegt im Kern des Bestands), kein Fehler
+     des Öffnens. Getrennte Räume trennen die Arbeiter; innerhalb eines Arbeiters laufen die Tests
+     einer Datei nacheinander (fullyParallel: false). E2E_WORKERS (oder --workers) ändert die Zahl, höchstens
+     RAEUME_HOECHSTENS Räume. */
   fullyParallel: false,
-  workers: 1,
+  workers: Math.min(RAEUME_HOECHSTENS, Math.max(1, Number(process.env.E2E_WORKERS) || 2)),
   retries: 0,
   forbidOnly: !!process.env.CI,
   timeout: 90_000,

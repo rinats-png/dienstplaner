@@ -85,6 +85,11 @@ Betrieb, ohne Eingabe) erschien in zwei Läufen der Dialog „Gleichzeitig bearb
 deshalb nacheinander (`workers: 1`). Ob das bloße Öffnen in zwei Sitzungen einen Schreibkonflikt auslösen darf, gehört fachlich
 geprüft (WP-48/WP-16-Umfeld).
 
+Nachtrag 2026-11-22 (WP-48-GB): Das bloße Öffnen schreibt seit #271/#365/#374 nicht mehr. Der verbliebene Grund für
+`workers: 1` waren echte Konflikte: Die Specs schreiben in den gemeinsamen Demo-Raum (Tour schließen, Abläufe). Seitdem legt
+`e2e/global-setup.mjs` je Arbeiter einen eigenen Raum an (`e2e/umgebung.mjs` `arbeiterRaumWaehlen`); die Suite läuft mit zwei
+Arbeitern (`E2E_WORKERS`, höchstens vier). Analyse: `docs/acc45/WP-48-GB-ANALYSE.md` Abschnitt 9.
+
 ## 4a. Teil 4: Toast-Kontrast und stabile Prüfung (2026-11-13)
 
 Nach dem Merge (#262) schlug `browser-abnahme` in der CI zeitabhängig fehl, beide Male `[360x740] einstellungen-leitung`:
