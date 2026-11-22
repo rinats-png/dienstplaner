@@ -35,12 +35,16 @@ test.describe("V4-3b: Branchenmodule mit Radiusstufen", () => {
       await expect.poll(() => zeilen.count(), { message: `${wo}: Modulzeilen`, timeout: 15000 }).toBeGreaterThanOrEqual(12);
       const r = await zeilen.evaluateAll((alle) => alle.map((e) => ({ inline: e.style.borderRadius,
         oben: getComputedStyle(e).borderTopLeftRadius, unten: getComputedStyle(e).borderBottomRightRadius,
-        rahmen: e.style.border })));
+        /* Rahmen 1px solid currentColor: Chrome kürzt e.style.border auf "1px solid" (currentcolor ist Vorgabe);
+           deshalb berechnet: Breite, Art und Rahmenfarbe = Textfarbe. */
+        rahmen: `${getComputedStyle(e).borderTopWidth} ${getComputedStyle(e).borderTopStyle}`,
+        farbeGleich: getComputedStyle(e).borderTopColor === getComputedStyle(e).color })));
       for (const [i, x] of r.entries()) {
         expect(x.inline, `${wo}: Modulzeile ${i + 1} Stufe im Inline-Stil`).toBe("var(--v4-r-klein)");
         expect(x.oben, `${wo}: Modulzeile ${i + 1} Radius klein`).toBe(V4_RADIEN.klein);
         expect(x.unten, `${wo}: Modulzeile ${i + 1} Radius klein (unten)`).toBe(V4_RADIEN.klein);
-        expect(x.rahmen, `${wo}: Modulzeile ${i + 1} Rahmen`).toMatch(/^1px solid currentcolor$/i);
+        expect(x.rahmen, `${wo}: Modulzeile ${i + 1} Rahmen`).toBe("1px solid");
+        expect(x.farbeGleich, `${wo}: Modulzeile ${i + 1} Rahmenfarbe = Textfarbe (currentColor)`).toBe(true);
       }
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `${wo}: kein waagrechtes Scrollen`)
         .toBe(true);
