@@ -283,7 +283,7 @@ Konten, Gruppen, sudoers oder Docker-Rechte. Er liest keine `.env`, nutzt kein N
 | System | `/etc/os-release`: Ubuntu 24.04. Abbruch bei jeder anderen Version: Die Bestandsaufnahme (1a–1e) und der Sicherheitsnachweis (7.3, OpenSSH 9.6p1) gelten dann nicht mehr |
 | OpenSSH | `openssh-server` ≥ 7.2 (`restrict`) |
 | Konto | `/opt/apps/centric-dienstplanung` und `data/` gehören demselben Konto, und das ist `admin` (uid 1000); Konto in `getent passwd`; Login-Shell nicht `nologin`/`false`; Heimatverzeichnis vorhanden, nicht für andere beschreibbar |
-| sshd-Dateien | `/etc/ssh/sshd_config`, alle `/etc/ssh/sshd_config.d/*.conf` und alle `Include`-Ziele (auch außerhalb von `sshd_config.d`, relativ zu `/etc/ssh`) sind lesbar und enthalten **keine** Zeile `Match` (Groß/Klein, führende Leerzeichen). Grund: `sshd -T` ohne Verbindungsdaten wertet `Match`-Blöcke nicht aus; ein Block wie `Match User admin` mit `AcceptEnv *` bliebe sonst unsichtbar. Die Dateien werden nur gelesen |
+| sshd-Dateien | `/etc/ssh/sshd_config`, alle `/etc/ssh/sshd_config.d/*.conf` und alle `Include`-Ziele (auch außerhalb von `sshd_config.d`, relativ zu `/etc/ssh`) sind lesbar und enthalten **keine** Zeile `Match` (Groß/Klein, führende Leerzeichen). Eine Datei mit einem NUL-Byte (auch in einem Kommentar oder am Dateiende) wird abgewiesen („enthält NUL-Byte; fail-closed“, B-1 Review #458): sshd übernimmt eine Zeile nur bis zum ersten NUL-Byte und hängt die nächste Zeile an, `Ma`␀ + Zeilenumbruch + `tch User admin` wirkt also als `Match User admin`. Scheitert die NUL-Zählung selbst (Datei unlesbar, `tr` bricht ab), bricht der Installer ebenfalls ab („nicht auf NUL-Byte prüfbar; fail-closed“, A-1 Delta-Review #458). Jede Zeile wird vorher so normalisiert, wie sshd sie liest (N-1, Delta-Review #447): alle `"` entfernt, Leerraum am Zeilenende (auch `\r` aus CRLF) abgeschnitten, `\r` am Zeilenanfang wie Leerraum behandelt (A-2 Review #458), führende Leerzeichen, Tabs und `=` abgeschnitten; damit zählen auch `M"atch"`, `""Match`, `=Match`, ` = Match` und `\rMatch`. `Include`-Zeilen werden nach derselben Normalisierung verfolgt; enthält eine `'`, `\`, ein `\r` mitten in der Zeile, Leerzeichen in Anführungszeichen oder andere Sonderzeichen im Pfad, bricht der Installer ab („nicht eindeutig verfolgbar“, N-2). Grund: `sshd -T` ohne Verbindungsdaten wertet `Match`-Blöcke nicht aus; ein Block wie `Match User admin` mit `AcceptEnv *` bliebe sonst unsichtbar. Die Dateien werden nur gelesen. Grenze (H-1 Delta-Review #458): Die Prüfung gilt für ihren Zeitpunkt; ändern kann die Dateien nur root, und sshd liest sie bei jedem späteren Start oder Reload erneut |
 | sshd | `sshd -T` **und** `sshd -T -C user=admin,host=localhost,addr=127.0.0.1` **und** `… addr=192.0.2.1`: je `pubkeyauthentication yes`, `permituserenvironment no`, `strictmodes yes`; `acceptenv` nur `LANG`, `LC_*` und (E-a) `COLORTERM`, `NO_COLOR`; `allowusers`/`allowgroups` fehlen oder schließen das Konto ein; `denyusers`/`denygroups` nennen es nicht; `authorizedkeysfile` gleich in allen drei Ausgaben und im Heimatverzeichnis; `sshd -t` gültig |
 | Schlüsseldatei | `~/.ssh` gehört dem Konto, `700`; `authorized_keys` gehört dem Konto, Rechte `600`, `640` oder `644` (E-b; fehlt sie, wird sie mit `600` angelegt); kein Link; kein anderer Eintrag mit diesem Schlüssel, Kommentar oder Skriptpfad |
 | Ziel | `/`, `/usr`, `/usr/local`, `/usr/local/sbin` root-eigen, nicht für andere beschreibbar; `/usr/local/sbin/centric-inventur.sh` fehlt oder ist identisch (`root 0755`) |
@@ -330,13 +330,18 @@ cd /root && [[ $(sha256sum rel0) == "<installer-sha256>  rel0" ]] && bash rel0
 - Warum so: Der Download kommt aus einem festen Commit. Ausgeführt wird nur, wenn die Prüfsumme Zeichen für Zeichen
   stimmt. Die Prüfsumme deckt alles ab: Der Installer enthält `inventur.sh` und den öffentlichen Schlüssel samt
   deren Prüfsummen und prüft sie vor der Installation. Der Installer selbst nutzt kein Netz.
-- `rm -f rel0` am Anfang: Eine alte Datei aus einem früheren Versuch kann so nie ungeprüft weiterverwendet werden.
+- `rm -f rel0` am Anfang steht **nur in Eingabe 1 und im Rückweg** (beide laden die Datei neu): Eine alte Datei aus
+  einem früheren Versuch kann so nie ungeprüft weiterverwendet werden.
+- Eingabe 2 hat bewusst kein `rm -f`: Sie verwendet die in Eingabe 1 geladene und geprüfte Datei und vergleicht deren
+  Prüfsumme vor `bash` erneut.
 - Die Zeilen haben keine Pipe, keine Umlenkung und kein Semikolon. Die meisten Tippfehler (in Adresse, Prüfsumme,
   `[[`, `$(`, `"`) führen zu einem Fehler. **Grenze:** Wird aus `&&` ein einzelnes `&`, läuft der Teil davor im
   Hintergrund und `bash rel0 …` startet sofort, also **ohne** abgeschlossenen Prüfsummenvergleich. Eine Option wie
-  `--trocken` schützt dann nicht: Eine ungeprüfte Datei könnte jede Option ignorieren. Es schützen nur zwei Dinge:
-  `rm -f rel0` am Anfang (beim sofortigen Start fehlt die Datei meist noch, `bash` bricht ab) und die feste
-  Commit-Quelle (eine fertig geladene Datei stammt aus genau diesem Commit). Prüfen Sie vor `Enter`
+  `--trocken` schützt dann nicht: Eine ungeprüfte Datei könnte jede Option ignorieren. In Eingabe 1 und im Rückweg
+  schützen nur zwei Dinge: `rm -f rel0` am Anfang (beim sofortigen Start fehlt die Datei meist noch, `bash` bricht ab)
+  und die feste Commit-Quelle (eine fertig geladene Datei stammt aus genau diesem Commit). Folge eines `&` in
+  Eingabe 2: `bash rel0` startet ohne erneuten Vergleich, und zwar mit der Datei, die in Eingabe 1 geprüft wurde
+  (geschützt nur, solange `/root/rel0` seitdem unverändert ist). Prüfen Sie vor `Enter`
   jedes `&&`.
 - Hex-Zeichen (`0-9`, `a-f`) sind auf deutscher und US-Tastaturbelegung gleich.
 - **Kurz-SHA (12 Zeichen) statt 40:** weniger Tippaufwand. Risiko: Ein Branch oder Tag mit genau diesem Namen könnte
@@ -346,7 +351,7 @@ cd /root && [[ $(sha256sum rel0) == "<installer-sha256>  rel0" ]] && bash rel0
 **Soll-Prüfsumme des Installers im aktuellen Stand** (die Prüfung `pruefungen/inventur-install.test.js` stellt sicher,
 dass sie zur Datei passt; sie ändert sich mit dem Schlüssel-Commit):
 
-- **SHA-256 von deploy/inventur-install.sh: `11fcd584bfe603c754e07b017c1a622c5e517a2f186922e5f4d16587b8084410`**
+- **SHA-256 von deploy/inventur-install.sh: `1b08f1fdfbb5d9b2feb11a27dd462dc0c8f10bbd2b6a7e02846b965f95ba0998`**
   (noch ohne Schlüssel — dieser Stand bricht fail-closed ab)
 
 ### Erwartete Ausgabe
@@ -377,7 +382,7 @@ darüber als Zeilen `FEHLER …`. Ändern Sie in keinem Fall selbst etwas am Sys
 | `OpenSSH … älter als 7.2` | `restrict` fehlt | STOPP; melden |
 | `… gehören verschiedenen Konten`, `… gehört root`, `… erwartet admin` | Besitz anders als 1a | STOPP; 1a erneut, melden |
 | `… keine Login-Shell`, `Konto … fehlt`, `Heimatverzeichnis …` | Konto nicht nutzbar | STOPP; melden (Entscheidung nötig) |
-| `sshd-Konfiguration enthält Match-Blöcke`, `/etc/ssh/sshd_config fehlt …`, `… nicht lesbar` | Prüfung ohne Verbindungsdaten wäre unvollständig | STOPP; nur lesend `grep -inE '^[[:space:]]*match' /etc/ssh/sshd_config /etc/ssh/sshd_config.d/*.conf` ausführen und melden; Entscheidung nötig |
+| `sshd-Konfiguration enthält Match-Blöcke`, `Include in … nicht eindeutig verfolgbar`, `/etc/ssh/sshd_config fehlt …`, `… nicht lesbar`, `… nicht auswertbar`, `… enthält NUL-Byte; fail-closed`, `… nicht auf NUL-Byte prüfbar; fail-closed` | Prüfung ohne Verbindungsdaten wäre unvollständig; ein NUL-Byte verändert, wie sshd die Zeilen liest | STOPP; nur lesend (`-i`: Groß/Klein egal) `grep -ainE 'm.?a.?t.?c.?h' /etc/ssh/sshd_config /etc/ssh/sshd_config.d/*.conf` und `grep -ainE 'i.?n.?c.?l.?u.?d.?e' /etc/ssh/sshd_config /etc/ssh/sshd_config.d/*.conf` ausführen und melden; bei NUL-Byte zusätzlich `grep -laP '\x00' /etc/ssh/sshd_config /etc/ssh/sshd_config.d/*.conf` (nennt nur Dateinamen). Grenzen: Ohne `-a` meldet `grep` bei Binärinhalt (NUL-Byte) nur `Binary file matches`; ein über zwei Zeilen verteiltes Schlüsselwort (`Ma`␀ + Zeilenumbruch + `tch`) finden beide Lesebefehle nicht. Include-Ziele außerhalb von `sshd_config.d` sind nicht abgedeckt. Entscheidung nötig |
 | `sshd -T fehlgeschlagen: /run/sshd fehlt (Socket-Aktivierung …)` | Ubuntu 24.04 mit `ssh.socket`: `ssh.service` läuft nur bei Verbindungen, `/run/sshd` fehlt, `sshd -T`/`-t` scheitern | **Nichts starten, nichts anlegen.** Nur lesend prüfen: `ls -ld /run/sshd`, `systemctl is-active ssh.socket ssh.service`; Ausgabe melden. Entscheidung nötig |
 | `sshd: …` (pubkeyauthentication, permituserenvironment, strictmodes, acceptenv, allowusers, allowgroups, denyusers, denygroups; je mit Kontext), `authorizedkeysfile …`, `sshd -T … fehlgeschlagen`, `sshd -t …` | sshd-Konfiguration passt nicht | STOPP. Eine sshd-Änderung ist eine eigene Entscheidung (1b) |
 | `… erwartet Besitzer admin und 700`, `… erwartet Besitzer admin und 600, 640 oder 644` | Rechte von `~/.ssh` oder `authorized_keys` | melden; Korrektur nur nach Entscheidung |

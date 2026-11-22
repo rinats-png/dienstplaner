@@ -43,8 +43,12 @@ const BAUER = path.join(WURZEL, "werkzeug", "inventur-install-bauen.mjs");
 const BASH = bashFinden();
 const FESTER_PFAD = "/usr/sbin:/usr/bin:/sbin:/bin";
 /* Ein Installerlauf startet unter Git Bash einige hundert Prozesse (10–25 s); Fälle mit bis zu drei Läufen (Idempotenz,
-   Rückbau) brauchen deshalb mehr als 60 s. Jeder Lauf hat zusätzlich seine eigene Grenze (spawnSync, 90 s). */
-vi.setConfig({ testTimeout: 180000 });
+   Rückbau) brauchen deshalb mehr als 60 s. Jeder Lauf hat zusätzlich seine eigene Grenze (spawnSync, LAUF_GRENZE_MS);
+   H-2 (Review #458): sie liegt nahe an der Vitest-Grenze (180 s), damit ein langsamer Lauf unter Windows-Last nicht
+   vorzeitig beendet wird. Ein Abbruch (Zeitgrenze, Signal, Startfehler) wird ausdrücklich gemeldet, nie als code null. */
+const TEST_GRENZE_MS = 180000;
+const LAUF_GRENZE_MS = 150000;
+vi.setConfig({ testTimeout: TEST_GRENZE_MS });
 
 const sha = (b) => createHash("sha256").update(b).digest("hex");
 const INVENTUR_TEXT = readFileSync(INVENTUR, "utf8");
@@ -82,6 +86,109 @@ const SSHD_T_STANDARD = [
   "acceptenv LC_*",
   "subsystem sftp /usr/lib/openssh/sftp-server",
 ].join("\n");
+
+/* Standard-/etc/ssh/sshd_config von Ubuntu 24.04 (openssh-server 1:9.6p1-3ubuntu13), wörtlich bis auf gekürzte
+   Kommentarblöcke; enthält das auskommentierte Beispiel „#Match User anoncvs“. */
+const UBUNTU_2404_SSHD_CONFIG = `
+# This is the sshd server system-wide configuration file.  See
+# sshd_config(5) for more information.
+
+# This sshd was compiled with PATH=/usr/local/bin:/usr/bin:/bin:/usr/games
+
+# The strategy used for options in the default sshd_config shipped with
+# OpenSSH is to specify options with their default value where
+# possible, but leave them commented.  Uncommented options override the
+# default value.
+
+Include /etc/ssh/sshd_config.d/*.conf
+
+# When systemd socket activation is used (the default), the socket
+# configuration must be re-generated after changing Port, AddressFamily, or
+# ListenAddress.
+#
+# For changes to take effect, run:
+#
+#   systemctl daemon-reload
+#   systemctl restart ssh.socket
+#
+#Port 22
+#AddressFamily any
+#ListenAddress 0.0.0.0
+#ListenAddress ::
+
+#HostKey /etc/ssh/ssh_host_rsa_key
+#HostKey /etc/ssh/ssh_host_ecdsa_key
+#HostKey /etc/ssh/ssh_host_ed25519_key
+
+# Logging
+#SyslogFacility AUTH
+#LogLevel INFO
+
+# Authentication:
+
+#LoginGraceTime 2m
+#PermitRootLogin prohibit-password
+#StrictModes yes
+#MaxAuthTries 6
+#MaxSessions 10
+
+#PubkeyAuthentication yes
+
+# Expect .ssh/authorized_keys2 to be disregarded by default in future.
+#AuthorizedKeysFile	.ssh/authorized_keys .ssh/authorized_keys2
+
+#AuthorizedPrincipalsFile none
+
+#AuthorizedKeysCommand none
+#AuthorizedKeysCommandUser nobody
+
+# To disable tunneled clear text passwords, change to no here!
+#PasswordAuthentication yes
+#PermitEmptyPasswords no
+
+# Change to yes to enable challenge-response passwords (beware issues with
+# some PAM modules and threads)
+KbdInteractiveAuthentication no
+
+UsePAM yes
+
+#AllowAgentForwarding yes
+#AllowTcpForwarding yes
+#GatewayPorts no
+X11Forwarding yes
+#X11DisplayOffset 10
+#X11UseLocalhost yes
+#PermitTTY yes
+PrintMotd no
+#PrintLastLog yes
+#TCPKeepAlive yes
+#PermitUserEnvironment no
+#Compression delayed
+#ClientAliveInterval 0
+#ClientAliveCountMax 3
+#UseDNS no
+#PidFile /run/sshd.pid
+#MaxStartups 10:30:100
+#PermitTunnel no
+#ChrootDirectory none
+#VersionAddendum none
+
+# no default banner path
+#Banner none
+
+# Allow client to pass locale and color environment variables
+AcceptEnv LANG LC_* COLORTERM NO_COLOR
+
+# override default of no subsystems
+Subsystem	sftp	/usr/lib/openssh/sftp-server
+
+# Example of overriding settings on a per-user basis
+#Match User anoncvs
+#	X11Forwarding no
+#	AllowTcpForwarding no
+#	PermitTTY no
+#	ForceCommand cvs server
+`;
 
 /* ---------------------------------------------------------------- Stubs */
 const STUBS = {
@@ -188,6 +295,20 @@ awk -F'|' -v q="$q" -v z="$z" 'BEGIN { OFS = "|" } $1 == z { next } $1 == q { $1
 `,
 };
 
+/* awk-Stub (A-1, Review #458): scheitert nur beim awk-Programm der sshd-Dateiprüfung (erkennbar an „function inc(“),
+   ohne Endmarke E; alle anderen awk-Aufrufe (Installer und Stubs) laufen mit dem echten awk. */
+const AWK_STUB_SCHEITERT = `#!/bin/bash
+for a in "$@"; do case "$a" in *"function inc("*) echo "awk: Fehler" >&2; exit 2 ;; esac; done
+exec /usr/bin/awk "$@"
+`;
+
+/* tr-Stub (A-1 Delta-Review #458): scheitert nur bei der NUL-Zählung (tr -cd '\000'), ohne Ausgabe; wc zählt dann 0.
+   Alle anderen tr-Aufrufe laufen mit dem echten tr. */
+const TR_STUB_NUL_SCHEITERT = `#!/bin/bash
+if [[ "\${1:-}" == -cd && "\${2:-}" == '\\000' ]]; then echo "tr: Lesefehler" >&2; exit 1; fi
+exec /usr/bin/tr "$@"
+`;
+
 /* ---------------------------------------------------------- Testwurzel */
 let tmp, w, stub, meta, passwd, sshdT, proto, inst;
 
@@ -243,7 +364,7 @@ function gebaut({ schluessel = PUB, ersetze = [] } = {}) {
   return t;
 }
 
-function lauf(args = [], env = {}, datei = inst) {
+function lauf(args = [], env = {}, datei = inst, grenzeMs = LAUF_GRENZE_MS) {
   const umgebung = {
     ...process.env,
     INVENTUR_INSTALL_PRUEFPFAD: `${posixPfad(stub)}:${FESTER_PFAD}`,
@@ -255,8 +376,12 @@ function lauf(args = [], env = {}, datei = inst) {
     ...env,
   };
   for (const n of ["SSH_CONNECTION", "BASH_ENV", "ENV"]) if (!(n in env)) delete umgebung[n];
-  const r = spawnSync(BASH, [p(datei), ...args], { encoding: "utf8", env: umgebung, timeout: 90000 });
+  const r = spawnSync(BASH, [p(datei), ...args], { encoding: "utf8", env: umgebung, timeout: grenzeMs });
   const out = r.stdout ?? "";
+  if (r.error || r.signal || r.status === null) {
+    const grund = r.error?.code === "ETIMEDOUT" ? `Zeitgrenze ${grenzeMs} ms überschritten` : r.error ? `Startfehler ${r.error.code ?? r.error.message}` : "ohne Rückgabewert";
+    throw new Error(`Installerlauf abgebrochen (${grund}, Signal ${r.signal ?? "keins"}); letzte Ausgabe:\n${(out + (r.stderr ?? "")).slice(-2000)}`);
+  }
   const zeilen = out.trimEnd().split("\n");
   return { code: r.status, out, err: r.stderr ?? "", letzte: zeilen[zeilen.length - 1], alles: out + (r.stderr ?? "") };
 }
@@ -470,6 +595,109 @@ describe.skipIf(!BASH)("deploy/inventur-install.sh — Vorabprüfungen (Abbruch 
     /* Pfad mit Leerzeichen in Anführungszeichen: nicht verfolgbar → fail-closed */
     fall("etc/ssh/sshd_config", 'Include "/etc/ssh/mit leer/x.conf"\n');
   }, 600000);
+  /* Delta-Review #447 N-1: sshd (strdelim) entfernt Anführungszeichen auch mitten im Wort und überspringt ein leeres
+     erstes Token (führendes „=“ oder „""“). Mit OpenSSH 9.5 bestätigt. */
+  const N_FAELLE_MATCH = [
+    ["M\"atch\"", 'M"atch" User admin\n  AcceptEnv *\n'],
+    ["\"\"Match", '""Match User admin\n  AcceptEnv *\n'],
+    ["=Match", "=Match User admin\n  AcceptEnv *\n"],
+    [" = Match", " = Match User admin\n  AcceptEnv *\n"],
+    ["\"Match\"x (sshd: Schlüsselwort Match, Argument x)", '"Match"x User admin\n'],
+    ["Match mit CRLF", "Match User admin\r\n  AcceptEnv *\r\n"],
+  ];
+  for (const [name, text] of N_FAELLE_MATCH) {
+    it(`N-1: Match-Schreibweise ${name} → Abbruch ohne Änderung`, () => {
+      negativ(() => schreiben(path.join(w, "etc/ssh/sshd_config.d/60-x.conf"), text), /Match/);
+    });
+  }
+  /* N-2: Include-Zeilen, die sshd (argv_split) anders liest als ein einfaches Aufteilen, werden fail-closed
+     abgewiesen; CRLF wird wie bei sshd am Zeilenende abgeschnitten und das Ziel verfolgt. Das Ziel enthält jeweils
+     einen Match-Block: Ein stilles Überspringen der Zeile ließe den Lauf grün werden. */
+  const N_FAELLE_INCLUDE = [
+    ["'…' (einfache Anführungszeichen)", "Include '/etc/ssh/extra/a.conf'\n", /Include/],
+    ["'…' mit Leerzeichen", "Include '/etc/ssh/mit leer.conf'\n", /Include/],
+    ["Backslash-Leerzeichen", "Include /etc/ssh/mit\\ leer.conf\n", /Include/],
+    ["Inc\"lude\"", 'Inc"lude" /etc/ssh/extra/a.conf\n', /Match|Include/],
+    ["=Include", "=Include /etc/ssh/extra/a.conf\n", /Match|Include/],
+    ["CRLF", "Include /etc/ssh/extra/a.conf\r\n", /Match|Include/],
+    ["Sonderzeichen ($, ~, [, #)", "Include /etc/ssh/extra/$X.conf ~/b.conf\n", /Include/],
+    ["Wagenrücklauf mitten in der Zeile", "Include /etc/ssh/extra/a.conf\r/etc/ssh/b.conf\n", /Include/],
+  ];
+  for (const [name, text, grund] of N_FAELLE_INCLUDE) {
+    it(`N-2: Include-Schreibweise ${name} → Abbruch ohne Änderung`, () => {
+      negativ(() => {
+        schreiben(path.join(w, "etc/ssh/extra/a.conf"), "Match User admin\n  AcceptEnv *\n");
+        schreiben(path.join(w, "etc/ssh/mit leer.conf"), "Match User admin\n");
+        writeFileSync(path.join(w, "etc/ssh/sshd_config"), readFileSync(path.join(w, "etc/ssh/sshd_config"), "utf8") + text);
+      }, grund);
+    });
+  }
+  /* Review #458 B-1: sshd (load_server_config) übernimmt jede gelesene Zeile nur bis zum ersten NUL-Byte; der Rest und
+     der Zeilenumbruch fallen weg, die nächste Zeile hängt sich direkt an (führender Leerraum wird abgeschnitten).
+     „Ma\0\ntch User admin“ liest sshd als „Match User admin“ (mit OpenSSH 9.5p2 nachgewiesen). Jede Datei mit
+     NUL-Byte wird deshalb fail-closed abgewiesen, auch in Kommentaren und am Dateiende. */
+  const B1_FAELLE_NUL = [
+    ["Ma\\0\\ntch in sshd_config.d", () => schreiben(path.join(w, "etc/ssh/sshd_config.d/60-x.conf"), "Ma\0\ntch User admin\n  AcceptEnv *\n")],
+    ["Inc\\0\\nlude in sshd_config", () => {
+      schreiben(path.join(w, "etc/ssh/extra/a.conf"), "Match User admin\n  AcceptEnv *\n");
+      writeFileSync(path.join(w, "etc/ssh/sshd_config"), readFileSync(path.join(w, "etc/ssh/sshd_config"), "utf8") + "Inc\0\nlude /etc/ssh/extra/a.conf\n");
+    }],
+    ["NUL im Include-Ziel", () => {
+      schreiben(path.join(w, "etc/ssh/extra/a.conf"), "Ma\0\n\ttch User admin\n  AcceptEnv *\n");
+      writeFileSync(path.join(w, "etc/ssh/sshd_config"), readFileSync(path.join(w, "etc/ssh/sshd_config"), "utf8") + "Include extra/*.conf\n");
+    }],
+    ["NUL in einer Kommentarzeile", () => schreiben(path.join(w, "etc/ssh/sshd_config.d/60-x.conf"), "# Hinweis\0 alt\nPasswordAuthentication no\n")],
+    ["NUL nur am Dateiende", () => schreiben(path.join(w, "etc/ssh/sshd_config.d/60-x.conf"), "PasswordAuthentication no\n\0")],
+  ];
+  for (const [name, vorbereiten] of B1_FAELLE_NUL) {
+    it(`B-1: ${name} → Abbruch „enthält NUL-Byte“ ohne Änderung`, () => {
+      negativ(vorbereiten, /sshd-Konfigurationsdatei \/etc\/ssh\/\S+ enthält NUL-Byte; fail-closed/);
+    });
+  }
+  /* Review #458 A-2: sshd schneidet führendes \r (wie Leerraum) ab; der Installer ersetzt \r vor dem Normalisieren. */
+  const A2_FAELLE_CR = [
+    ["\\rMatch User admin", "\rMatch User admin\n  AcceptEnv *\n", /Match/],
+    [" \\r=Match User x", " \r=Match User x\n", /Match/],
+    ["\\rInclude /etc/ssh/x.conf", "\rInclude /etc/ssh/x.conf\n", /Include/],
+  ];
+  for (const [name, text, grund] of A2_FAELLE_CR) {
+    it(`A-2: ${name} → Abbruch ohne Änderung`, () => {
+      negativ(() => {
+        schreiben(path.join(w, "etc/ssh/x.conf"), "Match User admin\n");
+        schreiben(path.join(w, "etc/ssh/sshd_config.d/60-x.conf"), text);
+      }, grund);
+    });
+  }
+  /* Review #458 A-1: scheitert awk (ohne Endmarke E), bricht der Installer ab („nicht auswertbar“). */
+  it("A-1: awk scheitert bei der sshd-Auswertung (exit 2, ohne Endmarke) → Abbruch „nicht auswertbar“", () => {
+    negativ(() => schreiben(path.join(stub, "awk"), AWK_STUB_SCHEITERT, true), /sshd-Konfigurationsdatei \/etc\/ssh\/sshd_config nicht auswertbar/);
+  });
+  /* Delta-Review #458 A-1: scheitert die NUL-Zählung (tr bricht ab, Datei unlesbar), zählt wc trotzdem 0. Der Installer
+     wertet den Rückgabewert der Pipeline aus und bricht ab („nicht auf NUL-Byte prüfbar“). */
+  it("A-1 (Delta): tr scheitert bei der NUL-Zählung (exit 1, keine Ausgabe) → Abbruch „nicht auf NUL-Byte prüfbar“", () => {
+    negativ(() => schreiben(path.join(stub, "tr"), TR_STUB_NUL_SCHEITERT, true), /sshd-Konfigurationsdatei \/etc\/ssh\/sshd_config nicht auf NUL-Byte prüfbar; fail-closed/);
+  });
+  it("A-1 (Delta) Mutation: ohne „|| n=x“ endet der Lauf nicht mit der geordneten Abbruchzeile", () => {
+    schreiben(path.join(stub, "tr"), TR_STUB_NUL_SCHEITERT, true);
+    writeFileSync(inst, gebaut({ ersetze: [["|| n=x", ""]] }));
+    const r = lauf(["--trocken"]);
+    expect(r.letzte).not.toMatch(/nicht auf NUL-Byte prüfbar/);
+  });
+  it("H-2: lauf() meldet einen Abbruch durch die Zeitgrenze ausdrücklich (kein stilles code null)", () => {
+    const f = path.join(tmp, "langsam.sh");
+    schreiben(f, "#!/bin/bash\nsleep 8\n", true);
+    expect(() => lauf([], {}, f, 1500)).toThrow(/Installerlauf abgebrochen \(Zeitgrenze 1500 ms überschritten, Signal SIGTERM\)/);
+  });
+  it("N-1/N-2: kein Fehlalarm gegen die Standard-sshd_config von Ubuntu 24.04 (#Match-Kommentar, Include); „Matchx“ wie bisher", () => {
+    schreiben(path.join(w, "etc/ssh/sshd_config"), UBUNTU_2404_SSHD_CONFIG);
+    schreiben(path.join(w, "etc/ssh/sshd_config.d/60-x.conf"), "Matchx yes\n");
+    const vorher = abbild();
+    const r = lauf(["--trocken"]);
+    expect(r.code, r.alles).toBe(0);
+    expect(r.out).toMatch(/ok +sshd-Konfiguration ohne Match-Blöcke \(3 Dateien gelesen\)/);
+    expect(r.letzte).toMatch(/^REL-0 TROCKEN OK: /);
+    expect(abbild()).toEqual(vorher);
+  });
   it("sshd -T -C (Verbindungsdaten) weicht ab: permituserenvironment yes / acceptenv * → Abbruch (B-2)", () => {
     const c = path.join(tmp, "sshd-T-C.txt");
     negativ(() => schreiben(c, SSHD_T_STANDARD.replace("permituserenvironment no", "permituserenvironment yes") + "\n"), /permituserenvironment/, [], { PRUEF_SSHD_T_C: p(c) });
@@ -703,19 +931,55 @@ describe.skipIf(!BASH)("Mutationsnachweis: ohne die Prüfung wird der Negativfal
       vorbereiten: () => schreiben(path.join(w, "etc/ssh/sshd_config.d/60-x.conf"), "Match User admin\n  PermitUserEnvironment yes\n"),
     },
     {
-      name: "Match in Anführungszeichen (Delta A-1)",
-      anker: `grep -qiE '^[[:space:]]*"?match"?([[:space:]]|=|$)'`,
-      ersatz: `grep -qiE '^[[:space:]]*match([[:space:]]|$)'`,
-      vorbereiten: () => schreiben(path.join(w, "etc/ssh/sshd_config.d/60-x.conf"), '"Match" User admin\n  PermitUserEnvironment yes\n'),
+      name: "N-1 Normalisierung: Anführungszeichen entfernen (M\"atch\", Delta A-1)",
+      anker: 'n = l; gsub(/"/, "", n);',
+      ersatz: "n = l;",
+      vorbereiten: () => schreiben(path.join(w, "etc/ssh/sshd_config.d/60-x.conf"), 'M"atch" User admin\n  PermitUserEnvironment yes\n'),
     },
     {
-      name: "Include mit „=“ (Delta A-1)",
-      anker: 'match(l, /^"?[Ii][Nn][Cc][Ll][Uu][Dd][Ee]"?([ \\t]*=[ \\t]*|[ \\t]+)/)',
-      ersatz: 'match(l, /^[Ii][Nn][Cc][Ll][Uu][Dd][Ee][ \\t]+/)',
+      name: "N-1 Normalisierung: führendes „=“ abschneiden (=Match)",
+      anker: 'sub(/^[ \\t=]+/, "", n)',
+      ersatz: 'sub(/^[ \\t]+/, "", n)',
+      vorbereiten: () => schreiben(path.join(w, "etc/ssh/sshd_config.d/60-x.conf"), "=Match User admin\n  PermitUserEnvironment yes\n"),
+    },
+    {
+      name: "N-1 fail-closed: Präfix genügt bei Anführungszeichen (\"Match\"x)",
+      anker: '(q || c == "" || c !~ /[A-Za-z0-9_-]/)) print "M"',
+      ersatz: '(c == "" || c !~ /[A-Za-z0-9_-]/)) print "M"',
+      vorbereiten: () => schreiben(path.join(w, "etc/ssh/sshd_config.d/60-x.conf"), '"Match"x User admin\n'),
+    },
+    {
+      name: "N-2 Include nicht eindeutig verfolgbar ('…') → Abbruch",
+      anker: 'X\\ *) fehl "Include in ${f#"$W"} nicht eindeutig verfolgbar (${z#X }); fail-closed" ;;',
+      ersatz: "X\\ *) ;;",
       vorbereiten: () => {
         schreiben(path.join(w, "etc/ssh/extra/a.conf"), "Match User admin\n");
-        writeFileSync(path.join(w, "etc/ssh/sshd_config"), readFileSync(path.join(w, "etc/ssh/sshd_config"), "utf8") + "Include=/etc/ssh/extra/a.conf\n");
+        writeFileSync(path.join(w, "etc/ssh/sshd_config"), readFileSync(path.join(w, "etc/ssh/sshd_config"), "utf8") + "Include '/etc/ssh/extra/a.conf'\n");
       },
+    },
+    {
+      name: "B-1 NUL-Byte in sshd-Datei (Ma\\0\\ntch, Review #458)",
+      anker: `    if [[ "$n" != 0 ]]; then`,
+      ersatz: "    if false; then",
+      vorbereiten: () => schreiben(path.join(w, "etc/ssh/sshd_config.d/60-x.conf"), "Ma\0\ntch User admin\n  PermitUserEnvironment yes\n"),
+    },
+    {
+      name: "A-1 (Delta-Review #458) Rückgabewert der NUL-Zählung ausgewertet (tr scheitert)",
+      anker: "|| n=x",
+      ersatz: "|| true",
+      vorbereiten: () => schreiben(path.join(stub, "tr"), TR_STUB_NUL_SCHEITERT, true),
+    },
+    {
+      name: "A-1 Endmarke E fehlt (awk scheitert, Review #458)",
+      anker: '    if [[ "$ende" != ja ]]; then fehl "sshd-Konfigurationsdatei ${f#"$W"} nicht auswertbar"; fi',
+      ersatz: "    :",
+      vorbereiten: () => schreiben(path.join(stub, "awk"), AWK_STUB_SCHEITERT, true),
+    },
+    {
+      name: "A-2 führendes \\r ersetzen (\\rMatch, Review #458)",
+      anker: 'gsub(/\\r/, " ", n); ',
+      ersatz: "",
+      vorbereiten: () => schreiben(path.join(w, "etc/ssh/sshd_config.d/60-x.conf"), "\rMatch User admin\n  PermitUserEnvironment yes\n"),
     },
     {
       name: "sshd -T -C mit Verbindungsdaten (B-2)",
@@ -810,11 +1074,53 @@ describe("Quelltext-Wächter deploy/inventur-install.sh", () => {
     expect(abschnitt).toContain("INVENTUR-KONSOLE.md");
     expect(abschnitt).not.toMatch(/Deshalb ist\s+Eingabe 1 immer `--trocken`/);
     expect(abschnitt).toMatch(/Prüfen Sie vor `Enter`\s+jedes `&&`/);
+    /* Delta-Review #447 N-4: rm -f nur in Eingabe 1 und Rückweg; Eingabe 2 bewusst ohne, Folge eines & benannt */
+    expect(abschnitt).toMatch(/`rm -f rel0` am Anfang steht \*\*nur in Eingabe 1 und im Rückweg\*\*/);
+    expect(abschnitt).toMatch(/Eingabe 2 hat bewusst kein `rm -f`/);
+    expect(abschnitt).toMatch(/Folge eines `&` in\s+Eingabe 2:/);
+    expect(abschnitt).not.toMatch(/^- `rm -f rel0` am Anfang: /m);
+    const eingabe2 = abschnitt.slice(abschnitt.indexOf("**Eingabe 2"), abschnitt.indexOf("- `<commit>`"));
+    expect(eingabe2).not.toContain("rm -f");
+    /* N-1/N-2: Normalisierung und Include-Abbruch in der Prüftabelle beschrieben */
+    expect(abschnitt).toMatch(/nicht eindeutig verfolgbar/);
+    expect(abschnitt).toMatch(/M"atch"/);
+    /* Review #458 B-1/A-3: NUL-Byte abgewiesen (Prüftabelle und Meldungstabelle), Grenzen der Lesebefehle benannt */
+    expect(abschnitt).toMatch(/NUL-Byte[^\n]*abgewiesen/);
+    expect(abschnitt).toMatch(/`… enthält NUL-Byte; fail-closed`/);
+    expect(abschnitt).toMatch(/Binary file matches/);
+    /* Delta-Review #458 B-1 (Doku): Lesebefehle mit -i (Groß/Klein), sonst passt das Muster nicht auf „Match“ */
+    expect(abschnitt).toContain("grep -ainE 'm.?a.?t.?c.?h'");
+    expect(abschnitt).toContain("grep -ainE 'i.?n.?c.?l.?u.?d.?e'");
+    expect(abschnitt).toMatch(/`… nicht auf NUL-Byte prüfbar; fail-closed`/);
+    /* H-1 (Delta-Review #458): Grenze der Prüfung (Zeitpunkt) benannt */
+    expect(abschnitt).toMatch(/Prüfung gilt für ihren Zeitpunkt/);
     const anleitung = readFileSync(path.join(WURZEL, "docs", "acc45", "BETREIBER-ANLEITUNG-ERSTRELEASE.md"), "utf8");
     const a41 = anleitung.slice(anleitung.indexOf("### 4.1"), anleitung.indexOf("### 4.2"));
     expect(a41).toMatch(/vorbereitet, nicht aktiviert/);
     expect(a41).toContain("INVENTUR-KONSOLE.md");
     expect(a41).toMatch(/Arbeitsrechner/);
+  });
+
+  /* Delta-Review #458 B-1 (Doku): die Lesebefehle der Meldungstabelle werden aus dem Doku-Text gelesen und gegen eine
+     Wegwerfdatei ausgeführt. Sie müssen „Match User admin“ und „Include /x.conf“ finden (rc 0). Gegenprobe: ohne -i
+     findet derselbe Befehl nichts (rc 1) – so fällt ein fehlendes -i sofort auf. */
+  it("Meldungstabelle: Lesebefehle für Match/Include finden „Match User admin“ und „Include /x.conf“ (Verhalten)", () => {
+    const doku = readFileSync(path.join(WURZEL, "docs", "acc45", "VPS-ZUGANG-EINRICHTUNG.md"), "utf8");
+    const abschnitt = doku.slice(doku.indexOf("### Abbruch- und Fehlermeldungen"), doku.indexOf("### Rückweg"));
+    const befehle = new Map();
+    for (const m of abschnitt.matchAll(/`(grep -[A-Za-z]+ '([^']+)') \/etc\/ssh\/sshd_config \/etc\/ssh\/sshd_config\.d\/\*\.conf`/g)) befehle.set(m[2], m[1]);
+    const probe = path.join(tmp, "sshd-probe.conf");
+    writeFileSync(probe, "PasswordAuthentication no\nMatch User admin\n  AcceptEnv *\nInclude /x.conf\n");
+    for (const [muster, erwartet] of [["m.?a.?t.?c.?h", "2:Match User admin"], ["i.?n.?c.?l.?u.?d.?e", "4:Include /x.conf"]]) {
+      const cmd = befehle.get(muster);
+      expect(cmd, `Lesebefehl für ${muster} fehlt in der Meldungstabelle`).toBeTruthy();
+      const r = spawnSync(BASH, ["-c", `${cmd} "$1"`, "probe", p(probe)], { encoding: "utf8" });
+      expect(r.status, `${cmd}: ${r.stderr}`).toBe(0);
+      expect(r.stdout).toContain(erwartet);
+      /* Gegenprobe: -i entfernt → kein Treffer */
+      const ohneI = cmd.replace(/^grep -([A-Za-z]+)/, (_, f) => `grep -${f.replace("i", "")}`);
+      expect(spawnSync(BASH, ["-c", `${ohneI} "$1"`, "probe", p(probe)], { encoding: "utf8" }).status).toBe(1);
+    }
   });
 
   it("keine öffentliche Schlüsseldatei mit erfundenem Inhalt im Repository", () => {
