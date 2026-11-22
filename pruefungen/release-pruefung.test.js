@@ -1522,10 +1522,10 @@ describe("REL-1 Nachzug: IMP-6 Planwirkung als eigene unfertige Funktion (G3, G8
   });
   it("G8: ssotPakete einer unfertigen Funktion müssen in der SSOT stehen (fail-closed); im Kandidaten → Beleg „hinter Schalter AUS“", () => {
     const ssot = { pakete: [{ id: "IMP-6", prio: "P2", status: "IN_PROGRESS", strang: "acc45", pr: ["#429", "#436"] }] };
-    const unfertig = { funktionen: [{ id: "schichtmodell-wirkung", name: "Planwirkung", variablen: [W], ssotPakete: ["IMP-6"] }] };
+    const unfertig = { funktionen: [{ id: "schichtmodell-wirkung", name: "Planwirkung", variablen: [W], ssotPakete: ["IMP-6"], ssotPrs: ["#436"] }] };
     const g = g8Blocker(ssot, [436], null, KONFIG_STANDARD, unfertig, KL);
     expect(g.ergebnis).toBe("GO");
-    expect(g.belege.join()).toMatch(/IMP-6.*#436.*Planwirkung.*hinter Schalter AUS \(G3: CENTRIC_SCHICHTMODELL_WIRKUNG\)/);
+    expect(g.belege.join()).toMatch(/IMP-6.*Planwirkung.*hinter Schalter AUS \(G3: CENTRIC_SCHICHTMODELL_WIRKUNG\): #436/);
     expect(g8Blocker(ssot, [1], null, KONFIG_STANDARD, unfertig, KL).belege.join()).not.toMatch(/IMP-6/);
     const falsch = { funktionen: [{ ...unfertig.funktionen[0], ssotPakete: ["IMP-99"] }] };
     const n = g8Blocker(ssot, [436], null, KONFIG_STANDARD, falsch, KL);
@@ -1549,7 +1549,7 @@ describe("REL-1 Nachzug: IMP-6 Planwirkung als eigene unfertige Funktion (G3, G8
       { id: "WP-48", prio: "P0", status: "IN_PROGRESS", strang: "acc45", pr: ["#87"] },
       { id: "WP-16c", prio: "P0", status: "REVIEW", strang: "acc45", pr: ["#223"] },
     ] };
-    const unfertig = { funktionen: [{ id: "t", name: "Teilspeicherung", variablen: ["CENTRIC_TEILSPEICHERUNG"], ssotPakete: ["WP-48", "WP-16c"] }] };
+    const unfertig = { funktionen: [{ id: "t", name: "Teilspeicherung", variablen: ["CENTRIC_TEILSPEICHERUNG"], ssotPakete: ["WP-48", "WP-16c"], ssotPrs: ["#87"] }] };
     const g = g8Blocker(ssot, [87, 223], null, KONFIG_STANDARD, unfertig, KL);
     expect(g.ergebnis).toBe("NO-GO");
     expect(g.gruende.map((x) => x.split(" ")[0])).toEqual(["WP-48", "WP-16c"]);
@@ -1558,7 +1558,9 @@ describe("REL-1 Nachzug: IMP-6 Planwirkung als eigene unfertige Funktion (G3, G8
     const f = { akzeptiertePakete: [{ id: "WP-48", grund: "hinter Schalter" }, { id: "WP-16c", grund: "x" }] };
     const a = g8Blocker(ssot, [87, 223], f, KONFIG_STANDARD, unfertig, KL);
     expect(a.ergebnis).toBe("GO");
-    expect(a.belege.join()).toMatch(/WP-48 im Kandidaten .*hinter Schalter AUS/);
+    expect(a.belege.join()).toMatch(/WP-48 im Kandidaten: „Teilspeicherung“ nur hinter Schalter AUS \(G3: CENTRIC_TEILSPEICHERUNG\): #87/);
+    // WP-16c: kein PR in ssotPrs → keine Deckungsbehauptung, #223 NICHT gedeckt
+    expect(a.belege.join()).toMatch(/WP-16c im Kandidaten: „Teilspeicherung“ kein PR .*NICHT durch den Schalter gedeckt: #223/);
   });
   it("G8 im Gesamtlauf liest RELEASE-UNFERTIG.json des Kandidaten", () => {
     datei("docs/acc45/RELEASE-UNFERTIG.json", { ...UNFERTIG, funktionen: [...UNFERTIG.funktionen, { id: "t", name: "T", variablen: ["CENTRIC_SCHICHTMODELL_WIRKUNG"], ssotPakete: ["GIBT-ES-NICHT"] }] });
@@ -1568,6 +1570,74 @@ describe("REL-1 Nachzug: IMP-6 Planwirkung als eigene unfertige Funktion (G3, G8
     const ssot = JSON.parse(readFileSync(join(WURZEL, "docs/acc45/work-packages.json"), "utf8"));
     const ids = new Set(ssot.pakete.map((p) => p.id));
     for (const f of UNFERTIG.funktionen) for (const id of f.ssotPakete || []) expect(ids.has(id), `${f.id}: ${id}`).toBe(true);
+  });
+});
+
+describe("Opus-Review #470 A2: G8-Belegzeile nennt nur die durch ssotPrs gedeckten PRs (fail-closed)", () => {
+  const T = "CENTRIC_TEILSPEICHERUNG";
+  // WP-48-artig: P0, viele PRs im Kandidaten, nur ein Teil liegt hinter dem Schalter
+  const ssot = { pakete: [{ id: "WP-48", prio: "P0", status: "IN_PROGRESS", strang: "acc45", pr: ["#87", "#224", "#342", "#346", "#348", "#350"] }] };
+  const kandidat = [87, 224, 342, 346, 348, 350];
+  const freigabe = { akzeptiertePakete: [{ id: "WP-48", grund: "Betreiber-Annahme" }] };
+  const fkt = (extra = {}) => ({ funktionen: [{ id: "teilspeicherung", name: "Teilspeicherung", variablen: [T], ssotPakete: ["WP-48"], ...extra }] });
+  const zeile = (g) => g.belege.filter((b) => b.startsWith("WP-48 im Kandidaten")).join("\n");
+
+  it("ssotPrs gesetzt: „nur hinter Schalter AUS“ nennt nur gedeckte PRs; übrige stehen als NICHT gedeckt (Betreiber-Annahme)", () => {
+    const g = g8Blocker(ssot, kandidat, freigabe, KONFIG_STANDARD, fkt({ ssotPrs: ["#342", "#348", 350] }), KL);
+    expect(g.ergebnis).toBe("GO");
+    const z = zeile(g);
+    expect(z).toMatch(/nur hinter Schalter AUS \(G3: CENTRIC_TEILSPEICHERUNG\): #342, #348, #350/);
+    const [gedeckt, rest = ""] = z.split("NICHT durch den Schalter gedeckt:");
+    for (const nr of ["#87", "#224", "#346"]) {
+      expect(gedeckt, nr).not.toContain(nr);
+      expect(rest, nr).toContain(nr);
+    }
+    expect(rest).toMatch(/Betreiber-Annahme/);
+  });
+  it("ssotPrs fehlt: keine Deckungsbehauptung, Hinweis „ssotPrs fehlt — keine Aussage“; G8-Wirkung unverändert", () => {
+    const g = g8Blocker(ssot, kandidat, freigabe, KONFIG_STANDARD, fkt(), KL);
+    expect(g.ergebnis).toBe("GO");
+    expect(g.belege.join("\n")).not.toMatch(/hinter Schalter AUS/);
+    expect(zeile(g)).toMatch(/Deckungsumfang nicht angegeben \(ssotPrs fehlt\) — keine Aussage/);
+    // ohne akzeptiertePakete bleibt WP-48 G8-Blocker, mit und ohne ssotPrs
+    for (const extra of [{}, { ssotPrs: ["#342"] }]) {
+      const n = g8Blocker(ssot, kandidat, null, KONFIG_STANDARD, fkt(extra), KL);
+      expect(n.ergebnis, JSON.stringify(extra)).toBe("NO-GO");
+      expect(n.gruende.join(), JSON.stringify(extra)).toMatch(/WP-48 \(P0, IN_PROGRESS\) steckt im Kandidaten/);
+      expect(n.belege.join(), JSON.stringify(extra)).not.toMatch(/hinter Schalter AUS/);
+    }
+  });
+  it("ssotPrs ohne gedeckten PR im Kandidaten: keine Deckungsbehauptung, alle PRs NICHT gedeckt", () => {
+    const g = g8Blocker(ssot, kandidat, freigabe, KONFIG_STANDARD, fkt({ ssotPrs: ["#999"] }), KL);
+    expect(g.belege.join("\n")).not.toMatch(/hinter Schalter AUS/);
+    expect(zeile(g)).toMatch(/kein PR des Pakets im Kandidaten durch den Schalter gedeckt.*NICHT durch den Schalter gedeckt: #87, #224, #342, #346, #348, #350/);
+  });
+  it("ssotPrs ungültig (keine Liste, leer, Duplikat, falsches Format) → NO-GO, keine Deckungsbehauptung", () => {
+    for (const ssotPrs of ["#342", [], ["#342", "#342"], ["#342", 342], ["342"], ["#0"], [0], [-1], [1.5], ["#12a"], [null], [{}]]) {
+      const g = g8Blocker(ssot, kandidat, freigabe, KONFIG_STANDARD, fkt({ ssotPrs }), KL);
+      expect(g.ergebnis, JSON.stringify(ssotPrs)).toBe("NO-GO");
+      expect(g.gruende.join(), JSON.stringify(ssotPrs)).toMatch(/teilspeicherung: ssotPrs/);
+      expect(g.belege.join(), JSON.stringify(ssotPrs)).not.toMatch(/hinter Schalter AUS/);
+    }
+  });
+  it("P2-Paket (IMP-6-artig) folgt derselben Regel", () => {
+    const s = { pakete: [{ id: "IMP-6", prio: "P2", status: "IN_PROGRESS", strang: "acc45", pr: ["#185", "#436"] }] };
+    const u = (extra) => ({ funktionen: [{ id: "w", name: "Planwirkung", variablen: ["CENTRIC_SCHICHTMODELL_WIRKUNG"], ssotPakete: ["IMP-6"], ...extra }] });
+    const ohne = g8Blocker(s, [185, 436], null, KONFIG_STANDARD, u({}), KL);
+    expect(ohne.ergebnis).toBe("GO");
+    expect(ohne.belege.join()).not.toMatch(/hinter Schalter AUS/);
+    const mit = g8Blocker(s, [185, 436], null, KONFIG_STANDARD, u({ ssotPrs: ["#436"] }), KL).belege.join();
+    expect(mit).toMatch(/nur hinter Schalter AUS \(G3: CENTRIC_SCHICHTMODELL_WIRKUNG\): #436; NICHT durch den Schalter gedeckt: #185/);
+  });
+  it("Repository-Stand: ssotPrs in RELEASE-UNFERTIG.json gültig und nur mit ssotPakete", () => {
+    for (const f of UNFERTIG.funktionen) {
+      if (f.ssotPrs === undefined) continue;
+      expect(Array.isArray(f.ssotPakete) && f.ssotPakete.length, `${f.id}: ssotPrs ohne ssotPakete`).toBeTruthy();
+      expect(Array.isArray(f.ssotPrs) && f.ssotPrs.length, f.id).toBeTruthy();
+      const nr = f.ssotPrs.map((x) => String(x));
+      for (const x of nr) expect(x, f.id).toMatch(/^#[1-9]\d*$/);
+      expect(new Set(nr).size, f.id).toBe(nr.length);
+    }
   });
 });
 
@@ -1701,7 +1771,7 @@ describe("Delta-Check #437: keine rohen Steuer- oder Formatzeichen in der Ausgab
   });
   it("G8: Beleg nur, wenn jede Variable als schalter-aus klassifiziert ist; sonst NO-GO", () => {
     const ssot = { pakete: [{ id: "IMP-6", prio: "P2", status: "IN_PROGRESS", strang: "acc45", pr: ["#436"] }] };
-    const mit = (variablen) => ({ funktionen: [{ id: "w", name: "Planwirkung", variablen, ssotPakete: ["IMP-6"] }] });
+    const mit = (variablen) => ({ funktionen: [{ id: "w", name: "Planwirkung", variablen, ssotPakete: ["IMP-6"], ssotPrs: ["#436"] }] });
     expect(g8Blocker(ssot, [436], null, KONFIG_STANDARD, mit(["CENTRIC_SCHICHTMODELL_WIRKUNG"]), KL).belege.join()).toMatch(/hinter Schalter AUS/);
     for (const [v, kl] of [[["VAPID_PRIVATE"], KL], [["CENTRIC_ERSTLEITUNG_STRENG"], KL], [["CENTRIC_SCHICHTMODELL_WIRKUNG"], null],
       [["CENTRIC_SCHICHTMODELL_WIRKUNG", "CENTRIC_UNBEKANNT_X"], KL]]) {
