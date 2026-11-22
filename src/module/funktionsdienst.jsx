@@ -19,7 +19,7 @@ export function FunktionsUebersicht({ m, datum, dienstId, personenImDienst }) {
       {bereiche.map((b) => {
         const x = nach.get(b.id);
         return (
-          <article key={b.id} style={{ border: "1px solid currentColor", borderRadius: 8, padding: 12, overflowWrap: "anywhere" }}>
+          <article key={b.id} style={{ border: "1px solid currentColor", borderRadius: "var(--v4-r-klein)", padding: 12, overflowWrap: "anywhere" }}>
             <h3 style={{ margin: 0, fontSize: 15 }}>{b.name}</h3>
             <p style={{ margin: "6px 0 0" }}>
               {!x ? "kein Soll in diesem Dienst"

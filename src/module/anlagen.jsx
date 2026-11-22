@@ -22,7 +22,7 @@ export function AnlagenUebersicht({ m, datum }) {
         const l = anlageLaeuft(a, datum);
         const besetzung = Object.entries(a.mindestBesetzung || {}).filter(([, n]) => n > 0);
         return (
-          <article key={a.id} style={{ border: "1px solid currentColor", borderRadius: 8, padding: 12, overflowWrap: "anywhere" }}>
+          <article key={a.id} style={{ border: "1px solid currentColor", borderRadius: "var(--v4-r-klein)", padding: 12, overflowWrap: "anywhere" }}>
             <h3 style={{ margin: 0, fontSize: 15 }}>{a.name}</h3>
             <p style={{ margin: "6px 0" }}>
               {l.offen ? "Laufzeit nicht hinterlegt — nicht bewertbar" : l.laeuft ? "läuft" : "steht"}

@@ -48,7 +48,7 @@ const datum = (iso) => (typeof iso === "string" && iso.length >= 10 ? `${iso.sli
 /* Betrieblicher Kalendertag (Europe/Berlin), nicht das UTC-Datum: sonst zeigte die Modulansicht zwischen
    00:00 und 01:00/02:00 Uhr den Vortag (WP-ZEIT, Z18). */
 const heuteTag = () => betriebstag();
-const RAHMEN = { border: "1px solid currentColor", borderRadius: 8, padding: 12, overflowWrap: "anywhere", maxWidth: "100%" };
+const RAHMEN = { border: "1px solid currentColor", borderRadius: "var(--v4-r-klein)", padding: 12, overflowWrap: "anywhere", maxWidth: "100%" };
 const FELD = { display: "grid", gap: 4, maxWidth: "100%" };
 const EINGABE = { maxWidth: "100%", boxSizing: "border-box", width: "100%" };
 

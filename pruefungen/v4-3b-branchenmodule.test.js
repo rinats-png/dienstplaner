@@ -211,7 +211,8 @@ describe("V4-3b Branchenmodule: Darstellung (echte Komponente BranchenModule)", 
   it("Leitung mit Prüfliste: alle Radien im Markup sind var(--v4-r-klein), keiner ist 8px; Farbe currentColor bleibt", () => {
     const s = rendere();
     const r = radien(s);
-    expect(r.length).toBeGreaterThanOrEqual(BRANCHENMODULE.length + MODUL_OBERFLAECHEN.length);
+    /* 12 Modulzeilen + 12 Rahmen der Oberflächen + 8 Karten in den Oberflächen des Prüfbetriebs. */
+    expect(r.length).toBe(BRANCHENMODULE.length + MODUL_OBERFLAECHEN.length + 8);
     expect([...new Set(r)]).toEqual(["var(--v4-r-klein)"]);
     expect(s).not.toMatch(/border-radius:\d/);
     expect(s).toContain("border:1px solid currentColor;border-radius:var(--v4-r-klein);padding:12px");
@@ -237,8 +238,8 @@ describe("V4-3b Branchenmodule: Darstellung (echte Komponente BranchenModule)", 
       expect(x.slice(0, x.indexOf(">")), `${o.titel}: Rahmen`).toContain("border-radius:var(--v4-r-klein)");
       for (const m of x.matchAll(/<article style="([^"]*)"/g)) { karten++; expect(m[1], o.titel).toContain("border-radius:var(--v4-r-klein)"); }
     }
-    /* Mindestens eine Karte je Oberfläche mit eigener Karte (sieben Dateien) im Prüfbetrieb. */
-    expect(karten).toBeGreaterThanOrEqual(1);
+    /* Karten (article) der sieben Oberflächen mit eigener Karte im Prüfbetrieb (betriebMitDaten). */
+    expect(karten).toBe(8);
   });
 
   it("Quelltext: die Stufe steht im selben Stilobjekt wie vorher", () => {
