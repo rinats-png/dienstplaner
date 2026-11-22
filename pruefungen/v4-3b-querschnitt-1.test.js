@@ -10,7 +10,9 @@
    Teilung: Die Zeile hat laut Inventar 33 Dateien (24 sichtbar) mit 42 Form-Literalen (40 Radien, 2 Schatten) in
    12 Dateien und 10 Farbliteralen. Das ist zu groß für einen Schnitt. Teil 1 = die vier Dateien mit den meisten
    Form-Literalen (App.jsx 10, ui/diagramme.jsx 7, gestalt/bausteine.jsx 5, ui/farbwahl.jsx 4; zusammen 26 Literale,
-   davon 24 Radien), jede Datei ganz. Teil 2 (offen) = die übrigen acht Dateien mit 16 Radien (TEIL2 unten).
+   davon 24 Radien), jede Datei ganz. Teil 2 = die übrigen acht Dateien mit 16 Radien (TEIL2 unten); geprüft in
+   v4-3b-querschnitt-2.test.js. Seit Teil 2 prüft dieser Test Messung und Rückrechnung nur noch für die Dateien ohne
+   Teil 2 (die Werte der Zeile nach Teil 1 stehen im Kommentar der Messung).
    Der globale Stil (CSS in App.jsx und gestalt/stil.js) gehört nicht dazu (V4-3d).
 
    Ergebnis Teil 1: 18 Radien auf Stufen, 6 Radien und 2 Schatten bleiben als begründete Ausnahme (Kapsel-Effekt bzw.
@@ -31,7 +33,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createElement as h } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { inventar, jeHauptansicht, hauptansicht, ohneKommentare, zusammenfassung } from "../werkzeug/v4-inventar.mjs";
+import { inventar, jeHauptansicht, hauptansicht, ohneKommentare } from "../werkzeug/v4-inventar.mjs";
 import { LinienDiagramm, BalkenDiagramm, AbweichungsDiagramm, Schritte, ModellVorschau } from "../src/ui/diagramme.jsx";
 import { Sparkline, Bogen } from "../src/gestalt/bausteine.jsx";
 import { Farbwahl, Farbpunkt } from "../src/ui/farbwahl.jsx";
@@ -171,36 +173,29 @@ const mische = (rgba, grund) => {
 const THEMEN = ["hell", "dunkel"];
 
 describe("V4-3b Querschnitt Teil 1: Messung", () => {
-  it("Zeile: Form-Literale 42 → 24, Farbliterale 10; Form 15/24 → 18/24, „voll V4“ 9/24 → 9/24; Inline-Stile 428, Dialog 12", async () => {
+  it("Zeile: Farbliterale 10, Inline-Stile 428, Dialog 12; Dateien von Teil 1 nur mit ihren Ausnahmen", async () => {
     const inv = await inventar();
     const e = jeHauptansicht(inv)[ZEILE];
     expect(e.dateien).toBe(33);
     expect(e.sichtbar).toBe(24);
     expect(e.zeilen).toBe(6391);
-    expect(e.formLiterale).toBe(24);
     expect(e.farbLiterale).toBe(10);
     expect(e.farbrein).toBe(19);
-    expect(e.formErreicht).toBe(18);
-    expect([e.overlayDirekt, e.ueberBaustein, e.tokenDirekt]).toEqual([10, 5, 3]);
-    expect(e.ohneForm).toEqual(["src/ansichten/bestaetigungstext.jsx", "src/ansichten/schrittleiste.jsx",
-      "src/gestalt/icons.jsx", "src/ringregler.jsx", "src/ui/scrollbereich.jsx", "src/ui/ziehen.jsx"]);
-    /* „voll V4“ = Form und Farbe ohne Literale; Inline-Stile zählen nicht (separat: 428, V4-3d). Teil 1 erreicht die
-       Form in drei Dateien, „voll“ aber in keiner: in jeder bleiben begründete Ausnahmen (Literale). */
-    expect(e.voll).toBe(9);
     expect(e.inlineStil).toBe(428);
     expect(e.dialog).toBe(12);
-    /* Je Datei: in Teil 1 übrig nur die Ausnahmen; Teil 2 unverändert. */
+    /* Stand der Zeile nach Teil 1 (gemessen auf a9e524e5): Form-Literale 24, Form 18/24 (10 / 5 / 3), „voll V4“ 9/24,
+       ohne V4-Form 6, Gesamt Form-Literale 34, Form erreicht 143, „voll“ 123/159. Teil 2 (v4-3b-querschnitt-2.test.js)
+       senkt diese Werte weiter und prüft sie dort; hier bleiben nur die Werte, die Teil 2 nicht ändert, und die Dateien
+       von Teil 1 (unten). */
+    /* Je Datei: in Teil 1 übrig nur die Ausnahmen. */
     const je = Object.fromEntries(inv.eintraege.filter((x) => hauptansicht(x) === ZEILE).map((x) => [x.datei, x]));
     expect(TEIL1.map((d) => [je[d].formLiterale, je[d].rgb + je[d].hex])).toEqual([[1, 3], [2, 0], [4, 0], [1, 3]]);
     expect(TEIL1.map((d) => je[d].form)).toEqual(["Overlay direkt", "Token direkt", "Token direkt", "Token direkt"]);
-    for (const [d, n] of Object.entries(TEIL2)) expect(je[d].formLiterale, d).toBe(n);
     expect(Object.values(TEIL2).reduce((a, n) => a + n, 0)).toBe(16);
-    /* Andere Dateien der Zeile ohne Form-Literal. */
-    expect(Object.values(je).filter((x) => x.formLiterale > 0).map((x) => x.datei).sort())
-      .toEqual([...TEIL1, ...Object.keys(TEIL2)].sort());
-    /* Gesamt ohne src/v4: Form-Literale 52 → 34, Form erreicht 140 → 143, „voll“ 123 → 123 (von 159 sichtbaren). */
-    const z = zusammenfassung(inv).ohneV4;
-    expect([z.formLiterale, z.formErreicht, z.sichtbarVoll, z.sichtbar]).toEqual([34, 143, 123, 159]);
+    /* Andere Dateien der Zeile ohne Form-Literal (Teil-2-Dateien: höchstens ihre Ausnahmen, Teil 2). */
+    for (const x of Object.values(je).filter((y) => y.formLiterale > 0)) {
+      expect([...TEIL1, ...Object.keys(TEIL2)], x.datei).toContain(x.datei);
+    }
   }, 60000);
 
   it("feste Tabelle: jede Stelle trägt genau die Stufe der Zuordnungsregel; Teil-2-Dateien ohne Stufe", async () => {
@@ -212,7 +207,7 @@ describe("V4-3b Querschnitt Teil 1: Messung", () => {
       expect(inlineStufen(lies(datei)), datei).toEqual(stellen.map((s) => s.stufe));
     }
     expect(Object.values(QUERSCHNITT_ZUORDNUNG).flat()).toHaveLength(18);
-    for (const d of Object.keys(TEIL2)) expect(inlineStufen(lies(d)), d).toEqual([]);
+    /* Die Stufen der Teil-2-Dateien prüft v4-3b-querschnitt-2.test.js (feste Tabelle Teil 2). */
     /* Sichtbar ändert sich nur, was nicht schon auf der Stufe lag und keine Kapsel/kein Kreis war. */
     const px = (s) => parseFloat(V4_RADIEN[s]);
     const sichtbar = Object.entries(QUERSCHNITT_ZUORDNUNG).flatMap(([d, st]) => st
@@ -244,10 +239,12 @@ describe("V4-3b Querschnitt Teil 1: Messung", () => {
     expect(g).toEqual([]);
   });
 
-  it("Rückrechnung: nur Radiuswerte geändert, sonst byte-gleich zur Basis (alle 33 Dateien der Zeile, ohne Git)", () => {
+  it("Rückrechnung: nur Radiuswerte geändert, sonst byte-gleich zur Basis (25 Dateien der Zeile ohne Teil 2, ohne Git)", () => {
     const fx = ladeBasisFixture(WURZEL).schnitte[SCHNITT];
-    const dateien = Object.keys(fx.dateien);
-    expect(dateien).toHaveLength(33);
+    /* Die acht Teil-2-Dateien rechnet v4-3b-querschnitt-2.test.js auf die Basis a9e524e5 zurück; dort ist auch belegt,
+       dass a9e524e5 für alle Dateien außer den vier von Teil 1 byte-gleich zu 63a3469b ist. */
+    const dateien = Object.keys(fx.dateien).filter((d) => !(d in TEIL2));
+    expect(dateien).toHaveLength(25);
     for (const d of dateien) {
       const r = rueckgerechnet(d);
       expect(r.ersetzt, `Anzahl Stufen in ${d}`).toBe((QUERSCHNITT_ZUORDNUNG[d] || []).length);

@@ -1,7 +1,8 @@
 /* V4-3b: Zuordnungsregel der Inline-Radien auf die Radiusstufen V4_RADIEN (src/v4/tokens.js), gemeinsam für die
    Prüfungen je Hauptansicht (v4-3b-plan.test.js, v4-3b-personal.test.js, v4-3b-zeit.test.js,
    v4-3b-einstellungen.test.js, v4-3b-lage.test.js, v4-3b-betreiber.test.js, v4-3b-import.test.js, v4-3b-telefonschale.test.js,
-   v4-3b-einstieg.test.js, v4-3b-speicherlage.test.js, v4-3b-branchenmodule.test.js, v4-3b-querschnitt-1.test.js) und den
+   v4-3b-einstieg.test.js, v4-3b-speicherlage.test.js, v4-3b-branchenmodule.test.js, v4-3b-querschnitt-1.test.js,
+   v4-3b-querschnitt-2.test.js) und den
    Erzeuger der Basis-Fixture
    (werkzeug/v4-radiusstufen-basis.mjs). Nur für Tests;
    keine Laufzeitwirkung.
@@ -58,8 +59,10 @@ export const SCHNITTE = {
   Speicherlage: "93b5f7f70d1b02700de3e19920b2ee0fd85b0b48",
   Branchenmodule: "bb782c4492b9de162dd19db17ff7d4c16c3a9e19",
   /* Zeile „Querschnitt/Bausteine“ ist zu groß für einen Schnitt; sie wird in Teilen umgesetzt (Teil 1: App.jsx,
-     ui/diagramme.jsx, gestalt/bausteine.jsx, ui/farbwahl.jsx). Die Fixture des Teils enthält alle Dateien der Zeile. */
+     ui/diagramme.jsx, gestalt/bausteine.jsx, ui/farbwahl.jsx; Teil 2: die übrigen acht Dateien mit Form-Literalen).
+     Die Fixture jedes Teils enthält alle Dateien der Zeile. */
   "Querschnitt/Bausteine (Teil 1)": "63a3469b115139e0046459e92e4c1695caecbe3c",
+  "Querschnitt/Bausteine (Teil 2)": "a9e524e56f5f50ca7f1ea53e32ee78979f6cfef2",
 };
 
 /** Hauptansicht (Zeile des Inventars) eines Schnitts: Schlüssel ohne den Zusatz „ (Teil n)“. */
@@ -164,7 +167,23 @@ export function abgleichMitBasis(basisQuelle, jetzigeQuelle, stellen) {
   return abgleichMitLiteralen(radiusLiterale(basisQuelle), jetzigeQuelle, stellen);
 }
 
-/** Wie abgleichMitBasis, aber mit den Basis-Literalen (aus der Fixture) statt des Basis-Quelltexts; läuft ohne Git. */
+/**
+ * Steht die Kante `kante` (px) als width/height im Stilobjekt `kontext`? Es zählt nur der ganze Wert (`width: 8,`) oder,
+ * bei einer Größe nach Zustand, der letzte Zweig eines einfachen Ausdrucks auf oberster Ebene
+ * (`width: aktiv === i ? 11 : 8,`, Querschnitt Teil 1). Review #466 (H1): Vor dem letzten Zweig steht kein Komma, keine
+ * Klammer, kein weiteres `?`/`:` und kein Zeilenumbruch, und der Wert endet nach der Kante (Komma, `}`, Zeilenende).
+ * So gilt `width: f(a ? 2 : 8)` oder `width: 8 + x` nicht als Kante 8.
+ */
+export function kanteImKontext(kontext, kante) {
+  const k = String(kante).replace(/\./g, "\\.");
+  return new RegExp(`\\b(?:width|height):\\s*(?:[^,{}()?:\\n]*\\?\\s*[\\d.]+\\s*:\\s*)?${k}(?![\\d.])\\s*(?:[,}\\n]|$)`)
+    .test(kontext);
+}
+
+/** Wie abgleichMitBasis, aber mit den Basis-Literalen (aus der Fixture) statt des Basis-Quelltexts; läuft ohne Git.
+ *  Querschnitt Teil 2: `quadrat: true` = Quelle "50%" an einem Element mit `aspectRatio: "1"` ohne feste Breite (Kreis
+ *  bei jeder Größe); `kanteAusEltern: true` = Element mit `height: "100%"`, die Kante steht im Stilobjekt des
+ *  vorigen Literals (Spur eines Balkens). */
 export function abgleichMitLiteralen(basisLiterale, jetzigeQuelle, stellen) {
   const jetzt = ohneKommentare(jetzigeQuelle);
   const basis = basisLiterale.filter((l) => !jetzt.includes(l.kontext))
@@ -175,13 +194,17 @@ export function abgleichMitLiteralen(basisLiterale, jetzigeQuelle, stellen) {
     const b = basis[i];
     if (!b) return;
     if (b.w === "50%") {
-      if (!(s.kante && s.alt === s.kante / 2)) f.push(`${s.wo}: Basis 50 %, Tabelle alt ${s.alt} kante ${s.kante}`);
+      if (s.quadrat) {
+        if (!(s.alt === "50%" && /\baspectRatio:\s*"1"/.test(b.kontext)))
+          f.push(`${s.wo}: Basis 50 %, Tabelle quadrat ohne aspectRatio "1" im Stilobjekt der Basis`);
+      } else if (!(s.kante && s.alt === s.kante / 2)) f.push(`${s.wo}: Basis 50 %, Tabelle alt ${s.alt} kante ${s.kante}`);
     } else if (b.w !== s.alt) f.push(`${s.wo}: Basis ${b.w}, Tabelle alt ${s.alt}`);
-    /* Die Kante steht als Zahl im Stilobjekt; bei einer Größe nach Zustand (`width: aktiv === i ? 11 : 8`, Querschnitt
-       Teil 1) zählt der letzte Zweig des Ausdrucks (die Grundgröße). */
-    if (s.kante !== undefined
-      && !new RegExp(`\\b(?:width|height):\\s*(?:[^,{}]*?\\?\\s*[\\d.]+\\s*:\\s*)?${s.kante}\\b`).test(b.kontext))
-      f.push(`${s.wo}: kante ${s.kante} nicht im Stilobjekt der Basis`);
+    if (s.kante === undefined) return;
+    if (s.kanteAusEltern) {
+      const eltern = basis[i - 1];
+      if (!/\b(?:width|height):\s*"100%"/.test(b.kontext) || !eltern || !kanteImKontext(eltern.kontext, s.kante))
+        f.push(`${s.wo}: kante ${s.kante} nicht im Stilobjekt des Elternelements der Basis`);
+    } else if (!kanteImKontext(b.kontext, s.kante)) f.push(`${s.wo}: kante ${s.kante} nicht im Stilobjekt der Basis`);
   });
   return f;
 }
