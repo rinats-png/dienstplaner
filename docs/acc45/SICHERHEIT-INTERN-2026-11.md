@@ -131,7 +131,11 @@ Anlass: Review #453 H1 (Inhalt von Binär-Diffs nicht geprüft), Review #455 H1 
 - **Nachlauf-Eingabefehler (#455 H1):** Neuer Verhaltenstest mit einer Attrappe für den Octopus-Nachlauf: Das Kind endet mit 0 und liefert eine saubere Ausgabe, aber stdin meldet EPIPE. `historieScannen` lehnt ab (Rückgabe 2 im Werkzeug). Die Mutation „`if (f) throw` entfernt“ ist jetzt rot.
 - **Kurze Fristen (#455 H4):** Die drei Tests zu `eingabeSenden` warten höchstens 5 s auf das Ergebnis und werden danach rot, statt den globalen Test-Timeout (60 s) abzuwarten.
 - **gitleaks (Job `geheimnisse`):** Lokal nicht ausgeführt (kein Binärprogramm installiert); nicht verifiziert. Nach dem Quelltext von gitleaks v8 liest gitleaks `git log -p` ohne `--text` und überspringt Diffs, die als `Binary files … differ` erscheinen. Für dieselben Fälle (NUL-Byte, `-diff`, `binary`) sieht gitleaks den Inhalt also vermutlich nicht. Der eigene Lauf im Job `interne-pruefung` deckt diese Lücke ab. Eine Änderung an den Workflows gehört nicht zu SI-P10.
-- **Mutationsnachweis:** Die neuen Tests sind auf dem alten Stand 64bde2d8 rot (11 von 62). Der Mutationslauf je Teil a–d steht noch aus.
+- **Mutationsnachweis (lokal, 2026-11-22):** Die neuen Tests sind auf dem alten Stand 64bde2d8 rot (11 von 62). Zehn Mutationen am neuen Stand sind alle rot:
+  - a: `--text` entfernt; Fund „Binär-Diff ungeprüft“ entfernt; Fortsetzungen nicht geprüft; keine Überlappung.
+  - b: `--remotes` wirkt wie `--all`; Lauf ohne Commit wird nicht abgelehnt.
+  - c: `if (f) throw` entfernt.
+  - d: stdin-`error`-Handler, `close`-Handler oder beide entfernt. Rot jeweils nach der eigenen Frist von rund 5 s, nicht nach 60 s.
 
 ### 4. Authentifizierung und Autorisierung
 

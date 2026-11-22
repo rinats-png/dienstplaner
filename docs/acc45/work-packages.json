@@ -4583,7 +4583,7 @@
       "status": "REVIEW",
       "stufen": {
         "implementiert": {"wert":true,"beleg":"acc45/sicherheit/si-p10-binaer: e7255604 (Tests zuerst, rot auf 64bde2d8: 11 von 62), Folgecommit Korrektur"},
-        "lokalGetestet": {"wert":true,"beleg":"Lauf 2026-11-22: geheimnisse-freigabe 62/62; Scan --remotes lokal 0 offen; Mutationslauf a–d noch ausstehend (abgebrochen wegen Speichermangel)"},
+        "lokalGetestet": {"wert":true,"beleg":"Lauf 2026-11-22: geheimnisse-freigabe 62/62; pruefung:sicherheit-intern 140/141 (1 rot nur lokal: DEP-1 liest node_modules/web-push im Worktree ohne node_modules, nicht berührt); verdrahtung 8/8, ci-abdeckung 9/9, prozess-wachen 15/15; 10 Mutationen alle rot (c: if (f) throw entfernt; d1–d3: stdin-Handler entfernt, rot nach 5-s-Frist; a1: --text entfernt; a2: Binary-files-Fund entfernt; a3: Fortsetzungen nicht geprüft; a4: keine Überlappung; b1: --remotes = --all; b2: 0 Commits nicht abgelehnt); Scan --remotes lokal 0 offen"},
         "reviewt": {"wert":false,"beleg":null},
         "integriert": {"wert":false,"beleg":null},
         "stagingGeprueft": {"wert":false,"beleg":null},
