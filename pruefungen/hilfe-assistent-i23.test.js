@@ -437,11 +437,20 @@ describe("S6 zum Gateway nur Frage und Hilfetexte, Personenangaben vorher entfer
     expect(alles).not.toContain(voll);
   });
   it("bleibt bei langen, gemeinen Eingaben schnell (keine quadratische Laufzeit)", () => {
-    const t0 = Date.now();
-    suche.frageBereinigen("1 ".repeat(150) + "a@" + "b.".repeat(100));
-    suche.frageBereinigen("1".repeat(300));
-    suche.frageBereinigen("DE12 ".repeat(60));
-    expect(Date.now() - t0).toBeLessThan(500);
+    /* QS-2: statt fester Wandzeit-Grenze („< 500 ms“, auf einem gestörten Runner nicht reproduzierbar) die Skalierung:
+       Zeit bei 3,5-facher Eingabelänge zu Zeit bei einfacher Länge, je Minimum aus 7 Läufen von 30 Durchgängen im selben Prozess
+       (Rechnerlast kürzt sich heraus). Linear ergibt etwa 3,3 (Längenverhältnis 3,5), quadratisch bis 12; Grenze 4,5 (Spielraum 2 ms gegen Zeiten im
+       Mikrosekundenbereich). Die Länge ist durch die Fremdtextgrenze (4000 Zeichen) nach oben beschränkt: k = 2 und k = 7. */
+    const durchgang = (k) => () => {
+      for (let i = 0; i < 30; i++) {
+        suche.frageBereinigen("1 ".repeat(150 * k) + "a@" + "b.".repeat(100 * k));
+        suche.frageBereinigen("1".repeat(300 * k));
+        suche.frageBereinigen("DE12 ".repeat(60 * k));
+      }
+    };
+    const minMs = (fn, n = 7) => { let m = Infinity; for (let i = 0; i < n; i++) { const t0 = performance.now(); fn(); m = Math.min(m, performance.now() - t0); } return m; };
+    const einfach = minMs(durchgang(2)), doppelt = minMs(durchgang(7));
+    expect(doppelt, `einfach ${einfach.toFixed(2)} ms`).toBeLessThanOrEqual(Math.max(4.5 * einfach, einfach + 2));
   });
 });
 

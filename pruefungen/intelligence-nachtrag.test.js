@@ -274,19 +274,27 @@ describe("F8: Rückübersetzung an die Betriebskennung gebunden; Lauf-Store-Kart
 });
 
 describe("F9: Leck-Prüfung ohne quadratische Laufzeit", () => {
-  it("20 × 4000 Zeichen mit „@“ in der Mitte: unter 500 ms", () => {
-    const block = "a".repeat(1999) + "@" + "b".repeat(1999);
-    const fremdtext = Array.from({ length: 20 }, (_, i) => ({ kapselId: `k${i}`, text: block + String.fromCharCode(97 + i) }));
-    const t0 = performance.now();
-    leckPruefen({ fremdtext }, SP);
-    expect(performance.now() - t0).toBeLessThan(500);
+  /* QS-2: statt fester Wandzeit-Grenze („< 500 ms“, auf einem gestörten Runner nicht reproduzierbar) die Skalierung: Zeit bei
+     doppelter Textlänge zu Zeit bei einfacher Länge, je Minimum aus 7 Läufen im selben Prozess (Rechnerlast kürzt sich heraus).
+     Linear ergibt etwa 2, quadratisch etwa 4; Grenze 3. Der Spielraum von 2 ms fängt Zeiten im Mikrosekundenbereich auf. */
+  const minMs = (fn, n = 7) => { let m = Infinity; for (let i = 0; i < n; i++) { const t0 = performance.now(); fn(); m = Math.min(m, performance.now() - t0); } return m; };
+  const mitLaenge = (text, L) => () => leckPruefen({ fremdtext: Array.from({ length: 20 }, (_, i) => ({ kapselId: `k${i}`, text: text(L) + String.fromCharCode(97 + i) })) }, SP);
+  const skaliert = (text, L = 4000) => {
+    const einfach = minMs(mitLaenge(text, L)), doppelt = minMs(mitLaenge(text, 2 * L));
+    return { einfach, doppelt, grenze: Math.max(3 * einfach, einfach + 2) };
+  };
+  it("20 Texte mit „@“ in der Mitte: doppelte Länge kostet höchstens das Dreifache (nicht quadratisch)", () => {
+    const { einfach, doppelt, grenze } = skaliert((L) => "a".repeat(L / 2 - 1) + "@" + "b".repeat(L / 2 - 1));
+    expect(doppelt, `einfach ${einfach.toFixed(2)} ms`).toBeLessThanOrEqual(grenze);
   });
-  it("auch lange Ziffern-, Punkt-, Komma- und @-Läufe (Nachmessung: Muster GRAD war quadratisch): je unter 500 ms", () => {
-    for (const lauf of ["1".repeat(3998) + "x", "@" + "a".repeat(3997) + "@", "1.".repeat(1999), "1,234 ".repeat(660), "-1".repeat(1999)]) {
-      const fremdtext = Array.from({ length: 20 }, (_, i) => ({ kapselId: `k${i}`, text: lauf.slice(0, 3999) + String.fromCharCode(97 + i) }));
-      const t0 = performance.now();
-      leckPruefen({ fremdtext }, SP);
-      expect(performance.now() - t0, lauf.slice(0, 6)).toBeLessThan(500);
+  it("auch lange Ziffern-, Punkt-, Komma- und @-Läufe (Nachmessung: Muster GRAD war quadratisch): doppelte Länge höchstens das Dreifache", () => {
+    const laeufe = {
+      "1111": (L) => "1".repeat(L - 2) + "x", "@aaa": (L) => "@" + "a".repeat(L - 3) + "@", "1.1.": (L) => "1.".repeat(L / 2 - 1),
+      "1,234": (L) => "1,234 ".repeat(Math.floor(L / 6)), "-1-1": (L) => "-1".repeat(L / 2 - 1),
+    };
+    for (const [name, text] of Object.entries(laeufe)) {
+      const { einfach, doppelt, grenze } = skaliert(text);
+      expect(doppelt, `${name}: einfach ${einfach.toFixed(2)} ms`).toBeLessThanOrEqual(grenze);
     }
   });
   it("E-Mail wird weiter erkannt (zerlegt statt Rückverfolgung)", () => {
