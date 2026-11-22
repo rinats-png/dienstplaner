@@ -45,8 +45,9 @@
          „nur hinter Schalter AUS“ nur für PRs aus ssotPrs (fehlt: keine Aussage); ssotPrs nur mit ssotPakete, jeder
          Eintrag genau "#123" und im pr eines genannten Pakets, sonst NO-GO
      G9  keine offenen P0/P1-Befunde (Strang folge, ABN-*, V4-*; Präfix nach NFKC,
-         Groß-/Kleinschreibung, Unicode-Bindestrich → „-“; REL-* exakt sind der
-         Release-Prozess selbst und zählen nicht; akzeptierteBefunde mit Grund);
+         Groß-/Kleinschreibung, Unicode-Bindestrich → „-“; die bekannten REL-Pakete
+         (REL_AUSNAHME_IDS, exakt) sind der Release-Prozess selbst und zählen nicht,
+         jede andere ID mit Präfix REL- ⇒ NO-GO (Review #486 H-b); akzeptierteBefunde mit Grund);
          unbekannte oder fehlende prio blockiert wie P0/P1; ein offenes P0/P1-Paket
          mit fehlendem/unbekanntem strang (STRAENGE) oder ID außerhalb ID_MUSTER ⇒ NO-GO
      G8/G9: ein Eintrag in pakete, der kein Objekt ist ⇒ NO-GO (nicht still übersprungen)
@@ -93,6 +94,12 @@ export const STRAENGE = Object.freeze(["acc45", "wp19", "intelligence", "folge",
 /** Paket-ID (Schema: acc45-backlog.mjs ID_MUSTER, per Test gebunden). Review #483 H2: G9 blockiert ein offenes P0/P1-Paket
  *  mit anderer ID (Unicode-Bindestrich, Leerzeichen, Steuerzeichen), weil seine Befund-Zuordnung nicht sicher ist. */
 export const ID_MUSTER = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+/** Review #486 H-b: G9-Ausnahme „Release-Prozess selbst“ nur für diese bekannten Pakete (exakte ID, Stand SSOT
+ *  2026-11-23: REL-0, REL-0c, REL-1 bis REL-4). Ein anderes offenes P0/P1-Paket mit exaktem Präfix REL- (z. B. REL-ABN-1,
+ *  REL-5) umgeht G9 nicht mehr: NO-GO, bis die Liste per PR mit Review ergänzt ist (fail-closed). */
+export const REL_AUSNAHME_IDS = Object.freeze(["REL-0", "REL-0c", "REL-1", "REL-2", "REL-3", "REL-4"]);
+/** Präfix der Release-Prozess-Pakete (exakt, ohne Normalisierung; „rel-1“ ist kein REL-Paket). */
+export const REL_PRAEFIX = "REL-";
 
 export const KONFIG_STANDARD = Object.freeze({
   repo: "rinats-png/dienstplaner",
@@ -156,7 +163,7 @@ export const KONFIG_STANDARD = Object.freeze({
   // jeder unbekannte oder fehlende Status (fail-closed). Beide Gates teilen dieselbe Liste (ERLEDIGT_STATUS).
   // Review #477 H3: dazu blockiert jede prio außerhalb PRIO_STUFEN (Schreibweise, Leerzeichen, fehlend), fail-closed.
   blocker: { prios: BLOCKER_PRIOS, erledigt: ERLEDIGT_STATUS },
-  befund: { straenge: ["folge"], idMuster: ["^ABN-", "^V4-"], ausnahmeMuster: ["^REL-"], prios: BLOCKER_PRIOS, erledigt: ERLEDIGT_STATUS },
+  befund: { straenge: ["folge"], idMuster: ["^ABN-", "^V4-"], ausnahmePraefix: REL_PRAEFIX, ausnahmeIds: REL_AUSNAHME_IDS, prios: BLOCKER_PRIOS, erledigt: ERLEDIGT_STATUS },
   freigabeVerzeichnis: "docs/acc45/releases",
   // „Gepusht“: origin muss dieses GitHub-Repository sein, und ein Freigabezweig muss genau auf HEAD zeigen.
   repoUrlMuster: "^(?:https://github\\.com/|git@github\\.com:|ssh://git@github\\.com/)rinats-png/dienstplaner(?:\\.git)?/?$",
@@ -1097,7 +1104,7 @@ export function g9Befunde(ssot, freigabe, konfig) {
   const g = gate("G9", "Keine offenen P0/P1-Befunde");
   if (!istObjekt(ssot) || !Array.isArray(ssot.pakete)) return nogo(g, `${konfig.ssot} fehlt oder ist ungültig (fail-closed)`);
   const muster = konfig.befund.idMuster.map((m) => new RegExp(m));
-  const ausnahme = konfig.befund.ausnahmeMuster.map((m) => new RegExp(m));
+  const { ausnahmePraefix, ausnahmeIds } = konfig.befund;
   const akzeptiert = annahmen(freigabe?.akzeptierteBefunde);
   ssot.pakete.forEach((p, i) => {
     if (!istObjekt(p)) { nogo(g, keinObjekt(konfig, i, p)); return; }            // Review #483 H3
@@ -1113,7 +1120,13 @@ export function g9Befunde(ssot, freigabe, konfig) {
       nogo(g, `${p.id} (${prioText(p.prio)}, ${p.status}): strang ${p.strang === undefined ? "fehlt" : `${idText(p.strang)} unbekannt`} (zulässig: ${STRAENGE.join("|")}) — Befund-Zuordnung nicht bestimmbar (fail-closed)`);
       return;
     }
-    if (ausnahme.some((m) => m.test(p.id))) return;                                // REL-*: nur exakt (keine Normalisierung)
+    // REL-*: nur exakt (keine Normalisierung). Review #486 H-b: Ausnahme nur für bekannte REL-Pakete; jede andere ID
+    // mit diesem Präfix blockiert (fail-closed), auch mit Annahme — erst die Liste per PR mit Review ergänzen.
+    if (p.id.startsWith(ausnahmePraefix)) {
+      if (ausnahmeIds.includes(p.id)) return;
+      nogo(g, `${p.id} (${prioText(p.prio)}, ${p.status}): Präfix ${ausnahmePraefix}, aber nicht in REL_AUSNAHME_IDS (${ausnahmeIds.join(", ")}) — Release-Prozess-Paket unbekannt, Befund-Zuordnung nicht bestimmbar (fail-closed)`);
+      return;
+    }
     const istBefund = konfig.befund.straenge.includes(p.strang) || muster.some((m) => m.test(idNormal(p.id)));
     if (!istBefund) return;
     if (akzeptiert.has(p.id)) { g.belege.push(`${p.id} vom Betreiber akzeptiert: ${akzeptiert.get(p.id)}`); return; }

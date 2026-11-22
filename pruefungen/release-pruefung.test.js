@@ -14,7 +14,7 @@ import {
   g6Sicherung, g7Rueckweg, g8Blocker, g9Befunde, g10Freigabe, migrationsbericht, reviewNachweiseLesen,
   codeNamenFinden, vorlageLesen, wertAufloesen, abweichend, bildAngabenLesen, prsAusCommits, commitsOhnePr,
   argumenteLesen, ssotReviewBelege, freigabeSchema, basisPruefen, ausfuehrOptionen, ausfuehren, vorlageUnlesbar,
-  vorlagenStandErmitteln, kurzfassung, urteilPositiv,
+  vorlagenStandErmitteln, kurzfassung, urteilPositiv, REL_AUSNAHME_IDS,
 } from "../werkzeug/release-pruefung.mjs";
 
 const WURZEL = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -2223,7 +2223,7 @@ describe("Gate-Härtung Review #477 H3 / #473 H1, H2, H4, H5: G8/G9 fail-closed 
     }
     for (const prio of ["P2", "P3"]) expect(g9(P({ id: "F-1", strang: "folge", prio, status: "BLOCKED" })).ergebnis, prio).toBe("GO");
     expect(g9(P({ id: "WP-X", strang: "acc45", prio: "p1", status: "BLOCKED" })).ergebnis).toBe("GO");
-    expect(g9(P({ id: "REL-9", strang: "folge", prio: "p1", status: "BLOCKED" })).ergebnis).toBe("GO");
+    expect(g9(P({ id: "REL-2", strang: "folge", prio: "p1", status: "BLOCKED" })).ergebnis).toBe("GO"); // bekannte REL-ID (Review #486 H-b)
     expect(g9(P({ id: "F-1", strang: "folge", prio: "p1", status: "DONE" })).ergebnis).toBe("GO");
   });
 
@@ -2347,7 +2347,8 @@ describe("Gate-Härtung Review #483 H2/H3: G9 Strang und ID fail-closed, Paket o
     expect(g9(P({ strang: "folge" })).ergebnis).toBe("NO-GO");
     expect(g9(P({ id: "ABN-S2" })).ergebnis).toBe("NO-GO");
     expect(g9(P({ id: "V4-2b", strang: "folge" })).ergebnis).toBe("NO-GO");
-    expect(g9(P({ id: "REL-9", strang: "folge" })).ergebnis).toBe("GO");
+    expect(g9(P({ id: "REL-2", strang: "folge" })).ergebnis).toBe("GO");      // bekannte REL-ID (Review #486 H-b)
+    expect(g9(P({ id: "rel-2", strang: "folge" })).ergebnis).toBe("NO-GO"); // Ausnahme REL- nur exakt
     expect(g9(P({ id: "rel-9", strang: "folge" })).ergebnis).toBe("NO-GO"); // Ausnahme REL- nur exakt
     expect(g9(P({ id: "ABN-S2" }), { akzeptierteBefunde: [{ id: "ABN-S2", grund: "x" }] }).ergebnis).toBe("GO");
     // nur offene P0/P1 (oder unbekannte prio) werden geprüft: P2/P3 und erledigte bleiben unberührt
@@ -2391,5 +2392,60 @@ describe("Gate-Härtung Review #483 H2/H3: G9 Strang und ID fail-closed, Paket o
     const g = g9Befunde(ssot, null, KONFIG_STANDARD);
     expect(g.gruende.map((x) => x.split(" ")[0])).toEqual(alt);
     expect(g8Blocker(ssot, [], null, KONFIG_STANDARD).gruende).toEqual([]);
+  });
+});
+
+/* Review #486 (Opus) H-b: G9 nahm jede ID mit exaktem Präfix REL- aus („Release-Prozess selbst“), auch ein unbekanntes
+   Paket wie REL-ABN-1 (strang acc45, P1 offen) → G9 GO. Jetzt gilt die Ausnahme nur für die bekannten REL-Pakete
+   (REL_AUSNAHME_IDS); jedes andere offene P0/P1-Paket mit Präfix REL- blockiert (fail-closed), auch mit Annahme.
+   Gültige heutige Daten: dieselbe G9-Entscheidung wie vorher (Repository-Stand unten und Test „alte exakte Regel“). */
+describe("Gate-Härtung Review #486 H-b: REL-Ausnahme in G9 nur für bekannte REL-IDs", () => {
+  const P = (o = {}) => ({ id: "X-1", prio: "P1", status: "BLOCKED", strang: "acc45", pr: [], titel: "x", ...o });
+  const g9 = (p, freigabe = null) => g9Befunde({ pakete: [p] }, freigabe, KONFIG_STANDARD);
+  const STRAENGE_HEUTE = ["acc45", "wp19", "intelligence", "folge", "extern"];
+  const UNBEKANNT_REL = ["REL-ABN-1", "REL-5", "REL-V4-1", "REL-1a", "REL-0C", "REL-10", "REL-"];
+
+  it("REL-ABN-1 mit strang acc45 und offenem P1 → NO-GO (Befund aus Review #486)", () => {
+    const g = g9(P({ id: "REL-ABN-1", strang: "acc45", prio: "P1", status: "BLOCKED" }));
+    expect(g.ergebnis).toBe("NO-GO");
+    expect(g.gruende.join(" ")).toMatch(/^REL-ABN-1 \(P1, BLOCKED\): .*REL_AUSNAHME_IDS/);
+  });
+
+  it("jede unbekannte REL-ID, jeder Strang, P0/P1/unbekannte prio, jeder offene Status → NO-GO; Annahme hebt nicht auf", () => {
+    for (const id of UNBEKANNT_REL) for (const strang of STRAENGE_HEUTE) for (const prio of ["P0", "P1", "p1", undefined]) {
+      for (const status of ["BLOCKED", "REVIEW", "IN_PROGRESS", "CI_FAILED", undefined]) {
+        const n = `${id} ${strang} ${prio} ${status}`;
+        const p = P({ id, strang, prio, status });
+        const g = g9(p);
+        expect(g.ergebnis, n).toBe("NO-GO");
+        expect(g.gruende.join(" "), n).toMatch(/REL_AUSNAHME_IDS/);
+        expect(g9(p, { akzeptierteBefunde: [{ id, grund: "x" }] }).ergebnis, n).toBe("NO-GO");
+      }
+    }
+  });
+
+  it("Gegenproben: bekannte REL-IDs bleiben Ausnahme; P2/P3 und erledigte unberührt; „rel-1“ klein wie bisher", () => {
+    expect([...REL_AUSNAHME_IDS]).toEqual(["REL-0", "REL-0c", "REL-1", "REL-2", "REL-3", "REL-4"]);
+    expect(Object.isFrozen(REL_AUSNAHME_IDS)).toBe(true);
+    for (const id of REL_AUSNAHME_IDS) for (const strang of STRAENGE_HEUTE) for (const prio of ["P0", "P1", "p1"]) {
+      expect(g9(P({ id, strang, prio })).ergebnis, `${id} ${strang} ${prio}`).toBe("GO");
+    }
+    for (const id of UNBEKANNT_REL) {
+      for (const prio of ["P2", "P3"]) expect(g9(P({ id, prio, strang: "folge" })).ergebnis, `${id} ${prio}`).toBe("GO");
+      for (const status of ["DONE", "INTEGRATED", "VERIFIED"]) expect(g9(P({ id, status, strang: "folge" })).ergebnis, `${id} ${status}`).toBe("GO");
+    }
+    // klein geschrieben ist kein REL-Paket: als Strang-folge-Befund NO-GO, sonst kein Befund (unverändert)
+    const klein = g9(P({ id: "rel-1", strang: "folge" }));
+    expect(klein.ergebnis).toBe("NO-GO");
+    expect(klein.gruende.join(" ")).not.toMatch(/REL_AUSNAHME_IDS/);
+    expect(g9(P({ id: "rel-1", strang: "acc45" })).ergebnis).toBe("GO");
+    expect(g9(P({ id: "rel-abn-1", strang: "acc45" })).ergebnis).toBe("GO");
+  });
+
+  it("Repository-Stand: die REL-Pakete der SSOT sind genau REL_AUSNAHME_IDS (neues REL-Paket ⇒ Liste per Review prüfen)", () => {
+    const ssot = JSON.parse(readFileSync(join(WURZEL, "docs/acc45/work-packages.json"), "utf8"));
+    const rel = ssot.pakete.map((p) => p.id).filter((id) => id.startsWith("REL-"));
+    expect([...rel].sort()).toEqual([...REL_AUSNAHME_IDS].sort());
+    expect(g9Befunde(ssot, null, KONFIG_STANDARD).gruende.join(" ")).not.toMatch(/REL_AUSNAHME_IDS/);
   });
 });
