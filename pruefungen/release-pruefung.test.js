@@ -2285,3 +2285,111 @@ describe("Gate-Härtung Review #477 H3 / #473 H1, H2, H4, H5: G8/G9 fail-closed 
     }
   });
 });
+
+/* Review #483 (Opus), Folgebefunde H2/H3: G9 erkennt Befund-Pakete fail-closed. Strang muss bekannt sein (genau wie in
+   acc45-backlog.mjs STRAENGE, ohne stilles „acc45“), die ID muss dem Schema genügen (ID_MUSTER), das ID-Präfix ABN-/V4-
+   zählt normalisiert (NFKC, Groß-/Kleinschreibung, Unicode-Bindestriche). Ein Eintrag in pakete, der kein Objekt ist,
+   blockiert G8 und G9 mit eigener Zeile. Gültige heutige Daten: dieselbe Entscheidung wie vorher. */
+describe("Gate-Härtung Review #483 H2/H3: G9 Strang und ID fail-closed, Paket ohne Objektform", () => {
+  const P = (o = {}) => ({ id: "X-1", prio: "P1", status: "BLOCKED", strang: "acc45", pr: [], titel: "x", ...o });
+  const g9 = (p, freigabe = null) => g9Befunde({ pakete: [p] }, freigabe, KONFIG_STANDARD);
+  const g8 = (pakete, prs = [90]) => g8Blocker({ pakete }, prs, null, KONFIG_STANDARD);
+  const STRANG_FALSCH = ["Folge", "folge ", " folge", "FOLGE", "", "unbekannt", "acc 45", null, 1, ["folge"], undefined];
+  const ID_FALSCH = ["ABN‑1", "ABN–1", "ABN‐1", "ABN−1", "ABN 1", "ABN-1\u0000", "ABN​-1", "ＡBN-1",
+    " ABN-1", "ABN-1 ", "ABN-1\n", "", "-ABN", "ABN/1", null, undefined, 1, ["ABN-1"]];
+  const ohneStrang = () => { const p = P(); delete p.strang; return p; };
+
+  it("Konstanten: STRAENGE und ID_MUSTER sind an acc45-backlog.mjs gebunden", async () => {
+    const BL = await import("../werkzeug/acc45-backlog.mjs");
+    const RP = await import("../werkzeug/release-pruefung.mjs");
+    expect([...RP.STRAENGE]).toEqual([...BL.STRAENGE]);
+    expect(Object.isFrozen(RP.STRAENGE)).toBe(true);
+    expect(RP.ID_MUSTER.source).toBe(BL.ID_MUSTER.source);
+    expect(RP.ID_MUSTER.flags).toBe(BL.ID_MUSTER.flags);
+  });
+
+  it("G9: offenes P0/P1-Paket mit unbekanntem oder fehlendem strang → NO-GO (fail-closed), auch ohne ABN-/V4-Präfix", () => {
+    for (const strang of STRANG_FALSCH) {
+      const p = strang === undefined ? ohneStrang() : P({ strang });
+      for (const prio of ["P0", "P1", "p1"]) {
+        const g = g9({ ...p, prio });
+        const n = `${prio} ${JSON.stringify(strang) ?? "fehlt"}`;
+        expect(g.ergebnis, n).toBe("NO-GO");
+        expect(g.gruende.join(" "), n).toMatch(/X-1 .*strang .*(fehlt|unbekannt)/);
+      }
+    }
+    // auch eine Annahme hebt einen Schemafehler nicht auf (erst Daten korrigieren)
+    expect(g9(P({ strang: "Folge" }), { akzeptierteBefunde: [{ id: "X-1", grund: "x" }] }).ergebnis).toBe("NO-GO");
+  });
+
+  it("G9: ID-Präfix ABN-/V4- zählt normalisiert (Groß-/Kleinschreibung) → offenes Paket NO-GO", () => {
+    for (const id of ["abn-1", "Abn-S2", "aBN-x", "v4-9", "V4-9", "ABN-1"]) {
+      const g = g9(P({ id }));
+      expect(g.ergebnis, id).toBe("NO-GO");
+      expect(g.gruende.join(" "), id).toMatch(new RegExp(`^${id} \\(P1, BLOCKED\\)`));
+    }
+  });
+
+  it("G9: ID außerhalb des Schemas (Unicode-Bindestrich, Leerzeichen, Steuer- oder Breitzeichen, kein Text) → NO-GO", () => {
+    for (const id of ID_FALSCH) {
+      for (const strang of ["acc45", "folge"]) {
+        const g = g9(P({ id, strang }));
+        const n = `${JSON.stringify(id) ?? "undefined"} ${strang}`;
+        expect(g.ergebnis, n).toBe("NO-GO");
+        expect(g.gruende.join(" "), n).toMatch(/ID .*ungültig/);
+        expect(g.gruende.join(" "), n).not.toMatch(/[\u0000​‑\n]/); // keine rohen Steuer-/Sonderzeichen
+      }
+    }
+  });
+
+  it("G9: Gegenproben — gültige Daten wie vorher", () => {
+    for (const strang of ["acc45", "wp19", "intelligence", "extern"]) expect(g9(P({ strang })).ergebnis, strang).toBe("GO");
+    expect(g9(P({ strang: "folge" })).ergebnis).toBe("NO-GO");
+    expect(g9(P({ id: "ABN-S2" })).ergebnis).toBe("NO-GO");
+    expect(g9(P({ id: "V4-2b", strang: "folge" })).ergebnis).toBe("NO-GO");
+    expect(g9(P({ id: "REL-9", strang: "folge" })).ergebnis).toBe("GO");
+    expect(g9(P({ id: "rel-9", strang: "folge" })).ergebnis).toBe("NO-GO"); // Ausnahme REL- nur exakt
+    expect(g9(P({ id: "ABN-S2" }), { akzeptierteBefunde: [{ id: "ABN-S2", grund: "x" }] }).ergebnis).toBe("GO");
+    // nur offene P0/P1 (oder unbekannte prio) werden geprüft: P2/P3 und erledigte bleiben unberührt
+    for (const prio of ["P2", "P3"]) {
+      expect(g9(P({ prio, strang: "Folge" })).ergebnis, prio).toBe("GO");
+      expect(g9(P({ prio, id: "ABN‑1" })).ergebnis, prio).toBe("GO");
+    }
+    for (const status of ["DONE", "INTEGRATED", "VERIFIED"]) {
+      expect(g9(P({ status, strang: "Folge" })).ergebnis, status).toBe("GO");
+      expect(g9(P({ status, id: "abn-1" })).ergebnis, status).toBe("GO");
+    }
+  });
+
+  it("G8 und G9: ein Eintrag in pakete, der kein Objekt ist, → NO-GO mit eigener Zeile (nicht still übersprungen)", () => {
+    const ok = P({ id: "WP-1", prio: "P2" });
+    for (const x of [null, "WP-1", ["WP-1", "Titel", "P1"], 5, true]) {
+      const n = JSON.stringify(x);
+      const a = g8([ok, x]);
+      expect(a.ergebnis, n).toBe("NO-GO");
+      expect(a.gruende.join(" "), n).toMatch(/pakete\[1\] ist kein Objekt/);
+      const b = g9Befunde({ pakete: [x, ok] }, null, KONFIG_STANDARD);
+      expect(b.ergebnis, n).toBe("NO-GO");
+      expect(b.gruende.join(" "), n).toMatch(/pakete\[0\] ist kein Objekt/);
+    }
+    expect(g8([ok]).ergebnis).toBe("GO");
+    expect(g9Befunde({ pakete: [ok] }, null, KONFIG_STANDARD).ergebnis).toBe("GO");
+  });
+
+  it("Repository-Stand: jedes Paket hat bekannten strang und gültige ID; G9 entscheidet wie die alte exakte Regel", async () => {
+    const BL = await import("../werkzeug/acc45-backlog.mjs");
+    const ssot = JSON.parse(readFileSync(join(WURZEL, "docs/acc45/work-packages.json"), "utf8"));
+    expect(ssot.pakete.length).toBeGreaterThan(200);
+    for (const p of ssot.pakete) {
+      expect(p !== null && typeof p === "object" && !Array.isArray(p), JSON.stringify(p).slice(0, 40)).toBe(true);
+      expect(BL.STRAENGE, p.id).toContain(p.strang);
+      expect(p.id, p.id).toMatch(BL.ID_MUSTER);
+    }
+    // alte Regel (vor #483-Folge): Strang exakt folge oder ID exakt ^ABN-/^V4-, REL- ausgenommen
+    const alt = ssot.pakete.filter((p) => !/^REL-/.test(p.id) && (p.strang === "folge" || /^(ABN|V4)-/.test(p.id))
+      && !["DONE", "INTEGRATED", "VERIFIED"].includes(p.status) && ["P0", "P1"].includes(p.prio)).map((p) => p.id);
+    const g = g9Befunde(ssot, null, KONFIG_STANDARD);
+    expect(g.gruende.map((x) => x.split(" ")[0])).toEqual(alt);
+    expect(g8Blocker(ssot, [], null, KONFIG_STANDARD).gruende).toEqual([]);
+  });
+});
