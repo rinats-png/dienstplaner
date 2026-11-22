@@ -36,7 +36,7 @@ export function Testablauf({ mandant, darfEinrichten }) {
   const rand = ton === "danger" ? C.danger : C.warn;
 
   return (
-    <div role="status" style={{ padding: "14px 18px", borderRadius: 12, marginBottom: 20,
+    <div role="status" style={{ padding: "14px 18px", borderRadius: "var(--v4-r-mittel)", marginBottom: 20,
       background: grund, border: `1px solid ${rand}33`,
       display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
       <div style={{ flex: 1, minWidth: 260 }}>

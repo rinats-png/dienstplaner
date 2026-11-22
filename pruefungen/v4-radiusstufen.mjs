@@ -2,7 +2,7 @@
    Prüfungen je Hauptansicht (v4-3b-plan.test.js, v4-3b-personal.test.js, v4-3b-zeit.test.js,
    v4-3b-einstellungen.test.js, v4-3b-lage.test.js, v4-3b-betreiber.test.js, v4-3b-import.test.js, v4-3b-telefonschale.test.js,
    v4-3b-einstieg.test.js, v4-3b-speicherlage.test.js, v4-3b-branchenmodule.test.js, v4-3b-querschnitt-1.test.js,
-   v4-3b-querschnitt-2.test.js) und den
+   v4-3b-querschnitt-2.test.js, v4-3b-selbsttest.test.js) und den
    Erzeuger der Basis-Fixture
    (werkzeug/v4-radiusstufen-basis.mjs). Nur für Tests;
    keine Laufzeitwirkung.
@@ -63,6 +63,7 @@ export const SCHNITTE = {
      Die Fixture jedes Teils enthält alle Dateien der Zeile. */
   "Querschnitt/Bausteine (Teil 1)": "63a3469b115139e0046459e92e4c1695caecbe3c",
   "Querschnitt/Bausteine (Teil 2)": "a9e524e56f5f50ca7f1ea53e32ee78979f6cfef2",
+  Selbsttest: "fd9dea357091659345e5b53e5f9d1604bc453055",
 };
 
 /** Hauptansicht (Zeile des Inventars) eines Schnitts: Schlüssel ohne den Zusatz „ (Teil n)“. */
