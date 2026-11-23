@@ -1,10 +1,10 @@
 {
-  "epoche": 23,
-  "halter": "hauptchat-e23",
-  "uebernommen_am": "2026-11-19T12:01:36.788Z",
-  "erneuert_am": "2026-11-23T10:19:14.554Z",
-  "gueltig_bis": "2026-11-23T13:19:14.554Z",
-  "uebergabe": "Hauptchat 19.11.: Epoche 22 abgelaufen 11:16Z, leerlauf Exit 5, kein anderer Koordinator, Kopf 1d8aacce, keine offenen Agenten, keine Integrations-PRs offen",
-  "vorgaenger": "hauptchat-e22",
+  "epoche": 24,
+  "halter": "nachtlauf-1123-ccr",
+  "uebernommen_am": "2026-11-23T13:33:31.024Z",
+  "erneuert_am": "2026-11-23T13:33:31.024Z",
+  "gueltig_bis": "2026-11-23T15:03:31.024Z",
+  "uebergabe": "Nachtlauf 23.11.: Epoche 23 hauptchat-e23 seit 13:19Z abgelaufen ohne Freigabe, leerlauf Exit 5, Kopf 09688acc, letzte Aktivitaet 12:48Z, keine anderen Koordinatoren erkennbar",
+  "vorgaenger": "hauptchat-e23",
   "freigegeben_am": null
 }
