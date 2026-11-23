@@ -212,7 +212,12 @@ beforeAll(async () => {
 });
 afterAll(async () => {
   vi.useRealTimers();
-  if (wurzel) await rm(wurzel, { recursive: true, force: true });
+  if (wurzel) {
+    await rm(wurzel, { recursive: true, force: true });
+    /* Zustandsverzeichnis: Vorgabe <CENTRIC_DATEN>-zustand (Geschwister, server/lib/schluesselepoche.mjs) — sonst
+       bliebe je Lauf ein Ordner im Temp-Verzeichnis zurück (Review #494, H3). */
+    await rm(`${wurzel}-zustand`, { recursive: true, force: true });
+  }
 });
 
 /* ---- Erwartungswerte (erhoben auf ec9d5605). Aktualisieren NUR durch den PR eines Nachbarpakets mit Begründung —

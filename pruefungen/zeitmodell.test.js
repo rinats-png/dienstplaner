@@ -70,7 +70,7 @@ const MODELL_FAELLE = [
   ["true", { zeitmodell: true }, UNBEKANNT],
   ["leerer Text", { zeitmodell: "" }, UNBEKANNT],
   ["BigInt 2n", { zeitmodell: 2n }, UNBEKANNT],
-  ["Zahl-Objekt new Number(2)", { zeitmodell: new Number(2) }, UNBEKANNT], // eslint-disable-line no-new-wrappers
+  ["Zahl-Objekt Object(2)", { zeitmodell: Object(2) }, UNBEKANNT],
 ];
 
 function modellTests() {

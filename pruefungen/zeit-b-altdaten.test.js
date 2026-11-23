@@ -9,9 +9,11 @@
        Stempel erfinden, Korrektur-Grund ändern) — nur Entscheidung und Schlüssel, nicht der Wortlaut des Grundes;
      - stempelBeiWiederherstellung (Ergebnis-Hashes, Zahl behaltener Stempel);
      - Exporte geschlossener Monate: Zeilen-Prüfsumme der Lohnausgabe (exportZeilenFuer → datevAusFreeze,
-       datevZeilenAbdruck), SHA-256 der Freeze-Zeilen, SHA-256 der Lohnausgabe-/Zuschläge-Datei (datevCSV),
-       Zuschlagsstunden aus dem Freeze (T-ZS-1: Sa 21:30 → So 07:15, 24.→25.12., 31.10.→1.11., beide
-       Umstellungsnächte) und lohnexportVergleich des bestätigten Oktobers.
+       datevZeilenAbdruck), SHA-256 der Freeze-Zeilen, SHA-256 der Lohnausgabe-Datei (datevCSV),
+       Zuschlagsstunden (zuschlagStunden, im geschlossenen Monat aus dem Freeze) NUR der Person b3, die alle
+       Zuschlagsfälle trägt (T-ZS-1: Sa 21:30 → So 07:15, 24.→25.12., 31.10.→1.11., beide Umstellungsnächte);
+       die Zuschläge der übrigen Personen sind nur über die Datei-/Zeilen-Prüfsummen gedeckt. Dazu
+       lohnexportVergleich des bestätigten Oktobers.
    Prozesszonen: UTC (CI), Europe/Berlin, Pacific/Kiritimati, America/Los_Angeles — Ergebnis überall gleich.
 
    REGEL TEIL A: Diese Werte ändern sich NIE — auch nicht durch andere Pakete. Eine nötige Änderung ist ein Befund
