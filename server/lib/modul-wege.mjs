@@ -30,11 +30,12 @@ import { bereitschaftZusammen } from "./modul-bereitschaftsdienst.mjs";
 import { funktionsZusammen } from "./modul-funktionsdienst.mjs";
 import { rotationZusammen } from "./modul-rotation.mjs";
 import { pflegeZusammen, pflegeQualAenderung } from "./modul-pflegequal.mjs";
-import { BRANCHENMODULE, modulAktiv } from "./branchenmodule.mjs";
+import { BRANCHENMODULE, modulAktiv, gleich } from "./branchenmodule.mjs";
 import { betriebstag } from "./betriebszeit.mjs";
 
 const istObjekt = (x) => !!x && typeof x === "object" && !Array.isArray(x);
-const gleich = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+/* AU-3 (Review #491): `gleich` ist unabhängig von der Schlüsselreihenfolge — ein unverändert, nur umsortiert gesendetes
+   Feld gilt nicht als geändert (sonst Abweisung des ganzen Speicherns, etwa bei Modul „geplant“). */
 const geaendert = (altM, neuM, f) => !gleich(istObjekt(altM) ? altM[f] : undefined, istObjekt(neuM) ? neuM[f] : undefined);
 const leer = (w) => w === undefined || w === null || (Array.isArray(w) ? !w.length : istObjekt(w) ? !Object.keys(w).length : false);
 

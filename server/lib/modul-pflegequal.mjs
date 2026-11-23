@@ -28,6 +28,10 @@
    Rein: keine Ablage, keine Uhr.
    ========================================================================== */
 
+/* AU-3 (Review #491): Vergleich „unverändert“ unabhängig von der Schlüsselreihenfolge (kein Duplikat; rein, kein Zyklus:
+   branchenmodule.mjs importiert dieses Modul nicht). */
+import { gleich } from "./branchenmodule.mjs";
+
 export const PFLEGE_GRUPPEN = Object.freeze(["fachkraft", "assistenz", "betreuung", "sonstige"]);
 export const PFLEGE_VERSORGUNG = Object.freeze([null, "vollstationaer", "ambulant", "beides"]);
 export const PFLEGE_GRENZEN = Object.freeze({ niveaus: 40, qualifikationen: 50, nameMax: 60 });
@@ -115,11 +119,11 @@ export function pruefePflegeNiveaus(niveaus, qualifikationen = [], gespeichert =
   return null;
 }
 
-/** Steht das Niveau unverändert (gleiche Kennung, gleicher Inhalt) im gespeicherten Stand? */
+/** Steht das Niveau unverändert (gleiche Kennung, gleicher Inhalt; Schlüsselreihenfolge egal, AU-3) im gespeicherten Stand? */
 function unveraendert(n, gespeichert) {
   if (!Array.isArray(gespeichert)) return false;
   const alt = gespeichert.find((x) => istObjekt(x) && x.id === n.id);
-  return !!alt && JSON.stringify(alt) === JSON.stringify(n);
+  return !!alt && gleich(alt, n);
 }
 
 /**
@@ -212,7 +216,7 @@ export function pflegeQualAenderung(neuM, altM) {
   const finde = (liste, id) => liste.find((x) => istObjekt(x) && x.id === id);
   for (const q of neuQ) {
     if (!istObjekt(q) || !Object.prototype.hasOwnProperty.call(q, "fachkraft") || typeof q.fachkraft === "boolean") continue;
-    if (JSON.stringify(q) === JSON.stringify(finde(altQ, q.id))) continue;
+    if (gleich(q, finde(altQ, q.id))) continue;
     return { grund: `Qualifikation „${String(q.name || q.id || "").slice(0, 40)}“: fachkraft ist true oder false (H-1).` };
   }
   const niveaus = Array.isArray(neuM.pflegeNiveaus) ? neuM.pflegeNiveaus.filter((n) => istObjekt(n) && Array.isArray(n.qualifikationen)) : [];
@@ -223,7 +227,7 @@ export function pflegeQualAenderung(neuM, altM) {
     for (const id of n.qualifikationen) {
       const neu = finde(neuQ, id);
       const alt = finde(altQ, id);
-      if (JSON.stringify(neu) === JSON.stringify(alt)) continue;
+      if (gleich(neu, alt)) continue;
       const istNeu = istBetreuungsQualifikation(neu), istAlt = istBetreuungsQualifikation(alt);
       if (istNeu && istAlt) continue;
       const wo = `Niveau „${String(n.name || n.id || "").slice(0, 40)}“ (Gruppe ${String(n.gruppe).slice(0, 20)})`;
