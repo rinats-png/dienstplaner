@@ -2,7 +2,7 @@
 import { describe, it, expect } from "vitest";
 import { kompakt, trifftText } from "../werkzeug/ssot-zuordnung.mjs";
 import { anwenden, ssotPrBelege } from "../werkzeug/ssot-belege.mjs";
-import { abgleich, argWert } from "../werkzeug/ssot-abgleich.mjs";
+import { abgleich, argWert, optionenPruefen } from "../werkzeug/ssot-abgleich.mjs";
 import { readFileSync, writeFileSync, mkdtempSync, mkdirSync, copyFileSync, rmSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
@@ -329,6 +329,92 @@ describe("CLI: unbekannte Optionen → Rückgabe 2, kein stiller Netzfallback (Q
         const r = u.lauf("ssot-nach-integration.mjs", ...args);
         expect(r.status, `${JSON.stringify(args)}: ${r.stdout}${r.stderr}`).toBe(2);
         expect(r.stdout + r.stderr, JSON.stringify(args)).toMatch(muster);
+        expect(r.stdout + r.stderr, JSON.stringify(args)).not.toMatch(/nicht in integration|gh:|HTTP/i);
+      }
+      expect(readFileSync(join(u.d, "ssot.json"), "utf8")).toBe(u.ssotText);
+    } finally { u.weg(); }
+  }, 120000);
+});
+
+/* Review #501 H2: Eine doppelte Option (`--datei F --datei G`, `--prs a --prs b`) wurde in optionenPruefen übersprungen und von argWert
+   (indexOf) still auf den ersten Wert reduziert. Jetzt Fehler (fail-closed): Rückgabe 2, Meldung „Option … doppelt angegeben“, bevor gh oder
+   eine Datei berührt wird. Gilt im gemeinsamen Helfer optionenPruefen (ssot-abgleich.mjs) für alle drei Werkzeuge, auch für Schalter. */
+describe("optionenPruefen: doppelte Option ist ein Fehler (Review #501 H2)", () => {
+  const av = (...a) => ["node", "skript", ...a];
+  const OPT = { flags: ["--json", "--anwenden"], werte: ["--datei", "--prs"] };
+  it("doppelte Option mit Wert oder doppelter Schalter → Fehler mit Namen der Option", () => {
+    const faelle = [
+      [["--datei", "F", "--datei", "G"], "--datei"],
+      [["--prs", "a", "--prs", "b"], "--prs"],
+      [["--datei", "F", "--prs", "a", "--datei", "F"], "--datei"],   // auch mit gleichem Wert
+      [["--json", "--datei", "F", "--json"], "--json"],
+      [["--anwenden", "--anwenden"], "--anwenden"],
+    ];
+    for (const [a, name] of faelle)
+      expect(() => optionenPruefen(av(...a), OPT), JSON.stringify(a)).toThrow(`Option ${name} doppelt angegeben`);
+  });
+  it("Gegenprobe: jede Option einmal → kein Fehler; Positionsargumente unverändert", () => {
+    expect(optionenPruefen(av("--datei", "F", "--prs", "G", "--json", "--anwenden"), OPT)).toEqual([]);
+    expect(optionenPruefen(av("315", "--datei", "F", "x"), OPT)).toEqual(["315", "x"]);
+    expect(optionenPruefen(av(), OPT)).toEqual([]);
+  });
+});
+
+describe("CLI: doppelte Option → Rückgabe 2, SSOT byte-gleich (Review #501 H2)", () => {
+  const WERKZEUGE = ["ssot-belege.mjs", "gh-rest.mjs", "ssot-zuordnung.mjs", "ssot-abgleich.mjs", "acc45-backlog.mjs", "ssot-nach-integration.mjs"];
+  const aufbauen = () => {
+    const d = mkdtempSync(join(tmpdir(), "ssot-doppelt-cli-"));
+    mkdirSync(join(d, "werkzeug"));
+    for (const f of WERKZEUGE) copyFileSync(join(WURZEL, "werkzeug", f), join(d, "werkzeug", f));
+    const git = (...a) => execFileSync("git", a, { cwd: d, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+    git("init", "-q");
+    git("config", "user.email", "pruefung@example.org");
+    git("config", "user.name", "Pruefung");
+    git("config", "commit.gpgsign", "false");
+    git("commit", "-q", "--allow-empty", "-m", "start");
+    git("update-ref", "refs/remotes/origin/integration/release-v4", "HEAD");
+    const ssotText = '{"pakete":[{"id":"WP-1","titel":"t","strang":"acc45","prio":"P2","status":"INTEGRATED","pr":[],"stufen":{}}]}';
+    writeFileSync(join(d, "ssot.json"), ssotText);
+    writeFileSync(join(d, "ssot2.json"), ssotText);
+    writeFileSync(join(d, "prs.json"), "[]");
+    writeFileSync(join(d, "prs2.json"), "[]");
+    const lauf = (werkzeug, ...args) => spawnSync(process.execPath, [join(d, "werkzeug", werkzeug), ...args],
+      { cwd: d, encoding: "utf8", env: { ...process.env, TMP: d, TEMP: d, TMPDIR: d }, timeout: 60000 });
+    return { d, ssotText, lauf, weg: () => rmSync(d, { recursive: true, force: true }) };
+  };
+
+  it("abgleich und belege: `--datei F --datei G`, `--prs a --prs b`, doppelter Schalter → Rückgabe 2 vor jedem Lesen", () => {
+    const u = aufbauen();
+    try {
+      const s1 = join(u.d, "ssot.json"), s2 = join(u.d, "ssot2.json"), p1 = join(u.d, "prs.json"), p2 = join(u.d, "prs2.json");
+      for (const [w, schalter] of [["ssot-abgleich.mjs", "--json"], ["ssot-belege.mjs", "--anwenden"]]) {
+        expect(u.lauf(w, "--datei", s1, "--prs", p1).status, `${w} Gegenprobe`).toBe(0);
+        const faelle = [
+          [["--datei", s1, "--prs", p1, "--datei", s2], "--datei"],
+          [["--datei", s1, "--prs", p1, "--prs", p2], "--prs"],
+          [["--datei", s1, "--datei", s1, "--prs", p1], "--datei"],
+          [["--datei", s1, "--prs", p1, schalter, schalter], schalter],
+        ];
+        for (const [args, name] of faelle) {
+          const r = u.lauf(w, ...args);
+          expect(r.status, `${w} ${JSON.stringify(args)}: ${r.stdout}${r.stderr}`).toBe(2);
+          expect(r.stderr, `${w} ${JSON.stringify(args)}`).toContain(`Option ${name} doppelt angegeben`);
+          expect(r.stdout, `${w} ${JSON.stringify(args)}`).not.toMatch(/SSOT-(Abgleich|Belege)|Nachweise ergänzt/);
+        }
+      }
+      expect(readFileSync(join(u.d, "ssot.json"), "utf8")).toBe(u.ssotText);
+      expect(readFileSync(join(u.d, "ssot2.json"), "utf8")).toBe(u.ssotText);
+    } finally { u.weg(); }
+  }, 120000);
+
+  it("nach-integration: `--datei F --datei G` und `--schreibe --schreibe` → Rückgabe 2 vor jedem gh-Aufruf", () => {
+    const u = aufbauen();
+    try {
+      const s1 = join(u.d, "ssot.json"), s2 = join(u.d, "ssot2.json");
+      for (const [args, name] of [[["315", "--datei", s1, "--datei", s2], "--datei"], [["315", "--schreibe", "--datei", s1, "--schreibe"], "--schreibe"]]) {
+        const r = u.lauf("ssot-nach-integration.mjs", ...args);
+        expect(r.status, `${JSON.stringify(args)}: ${r.stdout}${r.stderr}`).toBe(2);
+        expect(r.stdout + r.stderr, JSON.stringify(args)).toContain(`Option ${name} doppelt angegeben`);
         expect(r.stdout + r.stderr, JSON.stringify(args)).not.toMatch(/nicht in integration|gh:|HTTP/i);
       }
       expect(readFileSync(join(u.d, "ssot.json"), "utf8")).toBe(u.ssotText);
