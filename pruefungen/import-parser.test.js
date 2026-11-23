@@ -1346,10 +1346,34 @@ describe("Review 561dd32 (imp-2-fix6): Verzeichnisbaum, Sektorketten, Workbook-A
     const t1 = Date.now();
     const { wert: r } = await rssZuwachs(() => parseDatei({ buffer: buf, name: "k2.xls" }));
     expect(r).toMatchObject({ ok: false, code: "BESCHAEDIGT" });
-    console.log(`[Messung 561dd32] K2 parseDatei: ${Date.now() - t1} ms, RSS-Zuwachs Server-Prozess ${rssZuwachs.letzter} MB`);
-    expect(Date.now() - t1).toBeLessThan(3000);
+    const erstMs = Date.now() - t1;
+    console.log(`[Messung 561dd32] K2 parseDatei: ${erstMs} ms, RSS-Zuwachs Server-Prozess ${rssZuwachs.letzter} MB`);
     expect(rssZuwachs.letzter).toBeLessThan(200);
-  });
+    /* QS-2, Restpaket: statt der Einzelmessung „< 3000 ms“ (unter 4 Busy-Loops 3155 bis 7094 ms, in 1 bis 5 von 10 Läufen rot; auch ein Minimum aus
+       drei Läufen half nicht, weil der Start des Kindprozesses die Zeit bestimmt) ein Verhältnis in DEMSELBEN Lauf. Absicht des Tests: Die Datei
+       darf nicht lange rechnen und nicht hängen (vor der Korrektur K2 etwa 10 s und 2 GB, danach ok:true). Referenz ist eine kleine gültige XLS,
+       die dieselben Fixkosten trägt (Kindprozess, Laden der Bibliothek). Gemessen abwechselnd (K2 und Referenz im Wechsel, Reihenfolge je Runde
+       gedreht), Minimum aus 5 Runden je Seite; die Last des Rechners kürzt sich heraus.
+       Gemessen (Rechner ohne Last): K2 270 bis 290 ms, Referenz 265 bis 310 ms (Verhältnis etwa 1). Mit 4 Busy-Loops: K2 1360 bis 2620 ms,
+       Referenz 780 bis 1170 ms (Verhältnis etwa 1,5). Grenze: K2 <= 2,5 × Referenz + 500 ms. Ein Mutant mit etwa 10 s (alte Lage) liegt beim
+       Faktor über 10. Grobgrenze: höchstens 15 s (Produktgrenze ZEITLIMIT ist 20 s und würde schon am Ergebniscode scheitern; mit 5 Busy-Loops gemessen
+       Minimum 2,1 bis 2,5 s, also etwa 6-facher Vorrat; mehr ist unter der Produktgrenze nicht möglich).
+       Reichweite: Eine Verlangsamung von weniger als etwa 1 s (ohne Last) bis 2 s (mit Last) bleibt unerkannt; das Verhältnis ist hier kein
+       Beleg für die Rechenzeit der Vorprüfung selbst (die prüft der Test oben mit Minimum aus 3 Läufen und 1000 ms). */
+    const mess = async (buffer) => { const ta = performance.now(); const e = await parseDatei({ buffer, name: "k2.xls" }); return { ms: performance.now() - ta, e }; };
+    const referenz = mappe({ S: [["a", "b"], [1, 2]] }, "xls");
+    let k2Min = erstMs, refMin = Infinity;
+    for (let i = 0; i < 5; i++) {
+      const reihenfolge = i % 2 === 0 ? ["k2", "ref"] : ["ref", "k2"];
+      for (const art of reihenfolge) {
+        if (art === "k2") { const m = await mess(buf); expect(m.e).toMatchObject({ ok: false, code: "BESCHAEDIGT" }); k2Min = Math.min(k2Min, m.ms); }
+        else { const m = await mess(referenz); expect(m.e.ok, JSON.stringify(m.e)).toBe(true); refMin = Math.min(refMin, m.ms); }
+      }
+    }
+    console.log(`[Messung QS-2] K2 parseDatei Minimum ${k2Min.toFixed(0)} ms, Referenz Minimum ${refMin.toFixed(0)} ms, Verhältnis ${(k2Min / refMin).toFixed(2)}`);
+    expect(k2Min, "K2 im Verhältnis zur Referenz begrenzt").toBeLessThanOrEqual(2.5 * refMin + 500);
+    expect(k2Min, "K2 Grobgrenze").toBeLessThan(15000);
+  }, 120000);
   it("K2 Gegenprobe: gültige XLS mit großem Füllstrom und große XLS (3000 Zeilen) sind nicht betroffen", async () => {
     const pad = cfbDatei([{ pfad: "/Workbook", daten: workbookStrom(mappe({ S: OK_DATEN }, "xls")) }, { pfad: "/Pad", daten: Buffer.alloc(2735 * 512, 1) }]);
     const r = await parseDatei({ buffer: pad, name: "pad.xls" });

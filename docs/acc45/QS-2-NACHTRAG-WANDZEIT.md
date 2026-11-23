@@ -92,19 +92,19 @@ Abstand zum Normalwert.
 | `intelligence-gateway-review3.test.js:160` | < 2000 ms | niedrig | Zeitüberschreitung | offen (Risiko niedrig, nicht angefasst) |
 | `intelligence-gateway-kern.test.js:231`, `:243` | < 1200 / < 900 ms | mittel | Frist 40 ms, Gesamtfrist 1500 ms (:231) | **gehärtet** (Mittelpaket: Fake-Uhr) |
 | `import-schichtmodell-vorschau-imp6.test.js:316`, `:376` | < 500 ms | hoch | Abweisung vor der Rechnung, Einzelmessung | **gehärtet** (Zähler + Verhältnis) |
-| `import-schichtmodell-vorschau-imp6.test.js:250, 329, 337, 344` | < 5000 / 2000 ms | niedrig | Rechenlast, großer Abstand | **teilweise** (Mittelpaket; jetzt `:250` / `:341` / `:349` / `:356`: Wandzeit bleibt Vertrag, Minimum aus 3 Läufen, Messwerte im Kommentar, Vorrat 17- bis 68-fach) |
+| `import-schichtmodell-vorschau-imp6.test.js:250, 329, 337, 344` | < 5000 / 2000 ms | niedrig | Rechenlast, großer Abstand | **teilweise** (Mittelpaket; jetzt `:250` / `:341` / `:349` / `:356`; Präzisierung Restpaket: `:250` unverändert, nur Kommentar mit Messwert und Vorrat 68-fach; `:341` / `:349` / `:356` Minimum aus 3 Läufen, Grenze 2000 ms bleibt, Vorrat 17- bis 36-fach; Wandzeit bleibt bei allen vier Vertrag) |
 | `intelligence-nachtrag.test.js:282`, `:289` | < 500 ms | hoch | Leckprüfung, reine Rechenzeit | **gehärtet** (Test F9: abwechselnde Skalierung gleicher Gesamtlänge, Grenze 2, Grobgrenze 2000 ms) |
 | `dsgvo-server.test.js:201` | < 50 ms | mittel | Aufruf kostet Mikrosekunden; ein GC-Stillstand über 50 ms ist selten, aber möglich. Ein Aufrufzähler belegt „keine Schleife“ besser | **gehärtet** (Mittelpaket: Aufrufzähler `Date.UTC`) |
 | `gesund.test.js:158`, `:164` | < 5000 ms | niedrig | Zeitgrenze der Zustandsprüfung | offen (niedrig) |
-| `import-parser.test.js:326, 356, 455, 737, 1131, 1198, 1300, 1306, 1339, 1346, 1443` | 1000 bis 20000 ms | niedrig, `:1339` (1000 ms) mittel | Größenprüfungen des Parsers | `:1339` **teilweise** (Mittelpaket: Minimum aus 3 Läufen, Grenze 1000 ms bleibt, gemessen 7 ms); übrige offen (niedrig) |
+| `import-parser.test.js:326, 356, 455, 737, 1131, 1198, 1300, 1306, 1339, 1346, 1443` | 1000 bis 20000 ms | niedrig; `:1339` (1000 ms) mittel; **`:1346` / `:1350` (K2-PoC `parseDatei`, 3000 ms) hoch, nicht niedrig** (unter 4 Busy-Loops in 1 bis 5 von 10 Läufen rot, gemessen 3155 bis 7094 ms) | Größenprüfungen des Parsers | `:1339` **teilweise** (Mittelpaket: Minimum aus 3 Läufen, Grenze 1000 ms bleibt, gemessen 7 ms); `:1346` / `:1350` **gehärtet** (Restpaket, jetzt `:1346` bis `:1372`: Verhältnis zur Referenz im selben Lauf plus Grobgrenze 15 s); übrige offen (niedrig) |
 | `intelligence-planungsreife.test.js:215`, `intelligence-regelbaukasten.test.js:440` | < 1000 ms | mittel | Rechenzeit | **gehärtet** (Mittelpaket: abwechselnde Skalierung gleicher Gesamtgröße, Grenze 2, Grobgrenze) |
 | `post-smtp.test.js:199, 268, 328` | < 1500 ms | mittel | Zeitüberschreitung gegen Attrappe | **gehärtet** (Mittelpaket: Fake-Uhr mit Speicherverbindung; das echte Socket-Ergebnis bleibt ohne Wandzeit-Grenze geprüft) |
 | `schreibhalt.test.js:202` | < 1500 ms | niedrig | Haltefrist 2000 ms | offen (niedrig) |
-| `nachpruefung-wp11.test.js:469` | < 300 ms (nur mit `CI`) | mittel | 300 Personen; lokal nur Warnung, in CI hart | **offen** (Entscheidung nötig, siehe Mittelpaket) |
+| `nachpruefung-wp11.test.js:469` | < 300 ms (nur mit `CI`) | mittel | 300 Personen; lokal nur Warnung, in CI hart | **Vorrat belegt, Test unverändert** (Restpaket: CI-Messwerte 43 bis 85 ms, Vorrat mindestens 3,5-fach; Messwerte im Kommentar) |
 | `wp16c-korrekturrevision.test.js:742` | < 5 ms je Aufruf (Mittel aus 100) | mittel | | **teilweise** (Mittelpaket: Minimum aus 7 Blöcken, Grenze 5 ms bleibt, gemessen 0,001 ms) |
 | `engine-rechenkern.test.js:176` | < 30000 ms | niedrig | Richtwert, Normalwert Sekunden | offen (niedrig) |
 | `imp8-testmatrix.test.js:435`, `mail-push-anbieter.test.js:378, 389`, `monatsabschluss-nachtrag.test.js:189`, `passwoerter.test.js:194` | 5000 bis 120000 ms | niedrig | Obergrenzen gegen Hänger | offen (niedrig) |
-| `pruefungen/browser/bereiche.mjs:173` | > 3500 ms meldet „langsam“ | mittel | Browserlauf, nicht Vitest; Einzelmessung, nur Meldung | offen (Browserlauf) |
+| `pruefungen/browser/bereiche.mjs:173` | > 3500 ms meldet „langsam“ | mittel | Browserlauf, nicht Vitest; Einzelmessung, nur Meldung | offen (Browserlauf; Restpaket: geprüft, bewusst nicht geändert, siehe Abschnitt „Status-Nachtrag Restpaket“) |
 
 Nicht geändert (Mangel nicht nachgewiesen). Warteschleifen mit Obergrenze 30 bis 120 s in `abnahme-c-absturz`, `br-auswertung`,
 `dauerlauf-prozess` sind Zeitüberschreitungsgrenzen ohne Leistungsaussage.
@@ -160,7 +160,7 @@ Die Zeilen der Tabelle oben gelten für die Fassung vor diesem Paket; die Status
 | `import-schichtmodell-vorschau-imp6.test.js` `:341`, `:349`, `:356` | `< 2000 ms` Einzelmessung | Minimum aus 3 Läufen, Grenze bleibt (gemessen 115 / 79 / 55 ms) | Vertrag mit Vorrat |
 | `import-schichtmodell-vorschau-imp6.test.js` `:250` | `< 5000 ms` | unverändert; Messwert 74 ms und Vorrat 68-fach im Kommentar | Vertrag mit Vorrat |
 
-**Offen:** `nachpruefung-wp11.test.js` (300 Personen, `< 300 ms`, nur mit `CI` hart). Lokal (belastete Maschine, mit `CI=1` erzwungen)
+**Offen (Stand Mittelpaket; `nachpruefung-wp11` und der K2-PoC sind durch den Abschnitt „Status-Nachtrag Restpaket“ unten überholt):** `nachpruefung-wp11.test.js` (300 Personen, `< 300 ms`, nur mit `CI` hart). Lokal (belastete Maschine, mit `CI=1` erzwungen)
 gemessen warm 349 bis 442 ms; der Vorrat zur Grenze ist hier unter 1, auf CI unbekannt. Ein Vorrat von mindestens 10 ist nicht belegbar.
 Eine Ersetzung (Zähler plus Skalierung, grobe Wandzeit-Grenze) schwächt den Vertrag „unter 300 ms“ und braucht eine Entscheidung. Nicht angefasst.
 Neuer Befund aus dem Lasttest: `import-parser.test.js` K2-PoC, `parseDatei` über die Schnittstelle (Grenze `< 3000 ms`, `:1346` vor dem Paket,
@@ -187,3 +187,75 @@ Ebenfalls offen: `pruefungen/browser/bereiche.mjs:173` (Browserlauf), alle Stell
 - `minusMonate`: Eine Schleife ohne Date-Aufruf bleibt unerkannt (der Zähler sieht nur `Date.UTC`); die Endlosschleife mit `Infinity` wird nicht rot, sondern hängt.
 - Fake-Uhr-Tests ersetzen die Zeitgeber von Vitest (in `post-smtp` nur `Date`, `setTimeout`, `clearTimeout`); sie prüfen, dass die Frist nach der eingestellten Uhrzeit greift, nicht, wie lange der Code real rechnet. Eine Frist, die über andere Uhren läuft, wäre davon nicht erfasst.
 - Minimum aus mehreren Läufen (wp16c, parser, imp6) filtert einen einzelnen Stillstand, nicht einen dauerhaft gestörten Runner.
+
+## Status-Nachtrag Restpaket (2026-11-23, Branch `acc45/test/wandzeit-grenzen-rest`)
+
+Rest aus dem Review #500 (Opus). Geändert: Testdateien, drei Werkzeuge in `werkzeug/` und diese Datei; kein Produktcode (`server/`, `src/`), keine
+Workflows, kein `deploy/`. Der Release-Kandidat `release/rc-2026-11-22` (517993ca, PR #489) bleibt unverändert; dieses Paket gehört zum nächsten Kandidaten.
+Die Zeilen der Tabellen oben gelten für die Fassung vor diesem Paket.
+
+| Stelle | alt | neu | Methode |
+|---|---|---|---|
+| `import-parser.test.js` K2-PoC `parseDatei` (`:1346` / `:1350` vor dem Paket) | `< 3000 ms` Einzelmessung; Doku führte „Risiko niedrig“ (falsch: unter 4 Busy-Loops in 1 bis 5 von 10 Läufen rot, 3155 bis 7094 ms) | Risiko **hoch**, gehärtet: K2-Datei und kleine gültige XLS im Wechsel (Reihenfolge je Runde gedreht), Minimum aus 6 Messungen für K2 (die erste mit Speichermessung plus 5 im Wechsel) und 5 für die Referenz; K2 `<=` 2,5 × Referenz + 500 ms; Grobgrenze 15 s; Ergebniscode `BESCHAEDIGT` (nicht `ZEITLIMIT`) bei jeder Messung | Verhältnis im selben Lauf + Grobgrenze |
+| `nachpruefung-wp11.test.js:469` (300 Personen) | `< 300 ms`, nur mit `CI` hart, Vorrat unbelegt | unverändert; Vorrat auf dem CI-Runner belegt (siehe unten) | Vertrag mit belegtem Vorrat |
+| `dsgvo-server.test.js` „M5: eigene Bremse“ | Zeitgrenze 60 s; unter Last Zeitüberschreitung | Zeitgrenze 600 s, Ursache belegt (siehe unten); Absicht unverändert (31 echte Anfragen) | Ursache + Zeitgrenze |
+| `pruefungen/browser/bereiche.mjs:173` | `> 3500 ms` meldet „langsam“, Einzelmessung | geprüft, **nicht geändert** (siehe unten) | nur dokumentiert |
+| `werkzeug/ssot-abgleich.mjs`, `ssot-belege.mjs`, `ssot-nach-integration.mjs` | unbekannte Option (`--prs=F`, `--pr F`) still ignoriert, Rückfall auf gh (Netz); `--datei` in `ssot-nach-integration` ohne Prüfung | unbekannte Option oder `--datei` ohne Wert: Rückgabe 2 vor jedem gh-Aufruf; gültige Aufrufe unverändert | Aufrufprüfung (`optionenPruefen`) |
+
+**K2-PoC `parseDatei`.** Absicht: Eine Datei mit absteigend verketteten freien Sektoren darf über die Schnittstelle weder lange rechnen noch hängen
+(vor der Korrektur K2 etwa 10 s und 2 GB, danach `ok:true`). Die Wandzeit besteht fast nur aus Fixkosten (Start des Kindprozesses, Laden der
+Bibliothek): ohne Last 270 bis 290 ms für K2 und 265 bis 310 ms für eine kleine gültige XLS; mit 4 Busy-Loops 1360 bis 2620 ms gegen 780 bis 1170 ms.
+Eine feste Grenze gegen die Wandzeit misst deshalb den Rechner. Die neue Zusicherung vergleicht beide Seiten im selben Lauf; die Last kürzt sich heraus.
+Ein Aufrufzähler ist hier nicht möglich (die Rechnung läuft im Kindprozess; die Vorprüfung im eigenen Prozess prüft der Test davor mit Minimum aus 3 Läufen).
+
+**nachpruefung-wp11, CI-Messwerte.** Quelle: Logs von 10 erfolgreichen Läufen des Workflows Prüfung auf `integration/release-v4` und PR-Köpfen (2026-11-23,
+`gh run view <id> --log`, Schritt „Eine Schutzprüfung“, Zeile „Nachrechnung 300 Personen … warm“; Läufe 45103969316, 45106676319, 45107126067, 45112524638,
+45112576924, 45112667118, 45116214633, 45116788443, 45116810675, 45118540056). Werte für `warm` (Minimum aus 3, ms): 84,7 / 64,4 / 65,5 / 69,9 / 74,5 / 57,3 /
+76,3 / 43,3 / 84,5 / 78,0. Maximum 84,7 ms, Median etwa 70 ms; kalt 98 bis 171 ms. Vorrat zur Grenze 300 ms: mindestens 3,5-fach, im Median etwa 4,3-fach
+(Anforderung: mindestens 3-fach). Deshalb bleibt der Vertrag „unter 300 ms“ unverändert; die Messwerte stehen als Kommentar im Test. Die lokalen Werte
+(349 bis 442 ms, belasteter Rechner, mit `CI=1` erzwungen) bleiben eine Warnung. Grenze der Aussage: 10 Läufe aus einem Tag; ein langsamerer Runner-Typ ist nicht
+ausgeschlossen. Fällt der Vorrat unter 3-fach (Messwert über 100 ms), ist die Stelle neu zu bewerten.
+
+**dsgvo-server M5, Ursache.** Jede `GET /api/auskunft` macht etwa 80 Dateizugriffe der Ablage (`FSREQPROMISE`, 79 je Anfrage) und 13 Dateigriffe mit `fsync`, nacheinander
+(Zählung mit `async_hooks`, 2026-11-23). Ohne Last kostet eine Anfrage etwa 80 ms (alle 31 Anfragen: 2,6 s). Mit voll belegten Kernen wartet jeder dieser Zugriffe auf eine
+Zeitscheibe (etwa 15 ms unter Windows): 1 bis 3,8 s je Anfrage; mit 4 Busy-Loops 44 bis 60 s je Test, mit 5 Busy-Loops 74 bis 91 s (10 Läufe). Das ist Langsamkeit durch
+Zugriffszahl mal Zeitscheibe, keine Schleife und kein Hänger. Die Absicht (30 Auskünfte gehen durch, die 31. gibt 429, andere Personen bleiben frei) bleibt unverändert mit
+31 echten Anfragen; nur die Zeitgrenze des Tests steigt auf 600 s (6,6-facher Vorrat zum schlechtesten Wert). Ein Hänger endet weiter an dieser Grenze. Nicht geändert: die
+Zahl der Zugriffe je Anfrage (Produktcode, nicht Teil dieses Pakets).
+
+**bereiche.mjs:173, geprüft und nicht geändert.** Die Zeile misst den Klick auf einen Reiter einmal (`click` bis bedienbar) und meldet bei mehr als 3500 ms einen Befund
+(Rückgabe 1 des Browserlaufs). Ein Minimum aus 3 Messungen verlangt, denselben Reiter dreimal neu zu laden oder nacheinander anzuklicken. Ein zweiter Klick auf einen schon
+aktiven Reiter misst nichts, und ein Wechsel hin und zurück ändert die Navigationsfolge, auf der die folgenden Messungen (`messen`, Wartezeiten) aufbauen. Das ist weder klein
+noch sicher. Risiko bleibt mittel (Einzelmessung, Normalwert auf CI nicht belegt). Vorschlag für später: Wiederholung nur bei einem Treffer (zweiter Klick nach Wechsel
+auf einen anderen Reiter und zurück) und Meldung nur, wenn beide Messungen über der Grenze liegen.
+
+**Werkzeuge.** `optionenPruefen` (in `ssot-abgleich.mjs`) prüft alle Optionen gegen eine Liste. `--prs=F`, `--datei=F`, `--pr F` und Tippfehler ergeben Rückgabe 2 und
+„Unbekannte Option …“, bevor `gh` oder eine Datei berührt wird. In `ssot-nach-integration.mjs` prüft `argWert` jetzt `--datei` (kein Wert, leerer Wert oder Option als Wert:
+Rückgabe 2); die PR-Nummer kommt nur noch aus den Argumenten ohne Option (die Zahl hinter `--datei` zählt nicht mehr), ein fremdes Argument ist ein Fehler (Rückgabe 2).
+Gültige Aufrufe bleiben unverändert (Gegenproben in `pruefungen/ssot-belege.test.js`, Wegwerf-Kopie wie bei den früheren CLI-Tests, Zeitlimit 120000 je Test).
+Grenze: Argumente ohne Option bleiben bei `ssot-abgleich.mjs` und `ssot-belege.mjs` wie bisher ohne Wirkung.
+
+**Nachweis (Mutation, eigene Messung).**
+- K2-PoC: Kindskript `parser-worker.mjs` um 4 s Wartezeit für Eingaben über 1 MB ergänzt (nur K2 betroffen, wirkt in der Messschleife): mit 4 Busy-Loops Verhältnis 5,1,
+  Zusicherung „K2 im Verhältnis zur Referenz begrenzt“ rot (5566 ms gegen Grenze 3227 ms). Danach per `git checkout` zurückgesetzt. Die alte Fassung (`< 3000 ms`) war
+  an diesem Mutanten ebenfalls rot, aber auch ohne Mutant unter Last.
+- M5: Bremsgrenze `auskunft` in `server/lib/schutz.mjs` von 30 auf 3000 Versuche gesetzt: der Test ist rot („expected 200 to be 429“, 31. Anfrage). Danach per `git checkout` zurückgesetzt.
+- Werkzeuge: die neuen Tests auf der alten Fassung der drei Werkzeuge: beide Tests rot (`--prs=F` lief bis zum Abgleich mit gh weiter, `--pr 316` bis zum PR-Abruf);
+  auf der neuen Fassung grün.
+- nachpruefung-wp11: nur Kommentar, keine Mutation nötig.
+
+**Nachweis (Last und Zeitzone).**
+- 5 parallele Busy-Loops (Node, 100 % je Kern auf 4 Kernen): K2-PoC 11 von 11 Läufen grün (Minimum K2 2110 bis 2736 ms, Referenz 1448 bis 1897 ms, Verhältnis 1,11 bis 1,77
+  gegen Grenze 2,5 × Referenz + 500); M5 10 von 10 grün (74 bis 91 s); die neuen CLI-Tests 10 von 10 grün. Danach alle Busy-Loops beendet.
+- `TZ=UTC` und `TZ=Europe/Berlin`: `import-parser`, `dsgvo-server`, `ssot-belege`, `ssot-nach-integration`, `nachpruefung-wp11` je gesamt grün (siehe Bericht).
+- Testanzahl: `import-parser.test.js` 139 (vorher 139), `dsgvo-server.test.js` 29 (29), `ssot-belege.test.js` 21 (19), `nachpruefung-wp11.test.js` unverändert; kein `.skip`, kein `.todo`.
+
+**Reichweite (was NICHT erkannt wird).**
+- K2-PoC: Eine Verlangsamung unter etwa 1 s (ohne Last) bis 2 s (mit Last) bleibt unerkannt; das Verhältnis zur Referenz ist kein Beleg für die Rechenzeit der Vorprüfung selbst.
+  Die Grobgrenze 15 s hat nur etwa 6-fachen Vorrat zum Wert unter 5 Busy-Loops (2,1 bis 2,7 s); mehr ist nicht möglich, weil die Produktgrenze ZEITLIMIT bei 20 s liegt.
+  Die Verhältnisbasis ist die Zeit einer kleinen gültigen XLS; ein Kindprozess, der nur für große Eingaben langsamer startet, würde als „K2 langsam“ gelten (Fehlalarm möglich).
+- nachpruefung-wp11: 10 Läufe auf dem Runner-Typ von heute; eine Verlangsamung des Runners um mehr als 3,5-fach macht die Stelle rot.
+- M5: Die Zeitgrenze 600 s erkennt keinen langsamen, aber endlichen Zugriffspfad. Dafür gibt es hier keine Leistungszusicherung; sie war auch vorher nicht der Zweck des Tests.
+- Werkzeuge: Eine neue Option eines Werkzeugs muss in die Liste von `optionenPruefen` aufgenommen werden, sonst lehnt das Werkzeug sie ab (gewollt, fail-closed).
+
+**Weiter offen:** `bereiche.mjs:173`, alle Stellen mit Risiko niedrig (Grenzen ab 2000 ms, Timeouts, Warteschleifen), die Zugriffszahl je Auskunftsanfrage (Produktcode).

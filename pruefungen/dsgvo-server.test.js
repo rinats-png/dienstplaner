@@ -175,7 +175,13 @@ describe("Art. 15: GET /api/auskunft", () => {
     /* M5-Rest: Eine Person sperrt nicht den Betrieb. */
     const b = await anfrage("/api/auskunft", { token: await sitzung(R, "b1", "mitarbeiter", "m1") });
     expect(b.status, JSON.stringify(b).slice(0, 200)).toBe(200);
-  }, 60000);
+    /* QS-2, Restpaket: Zeitgrenze 60 s auf 600 s. Ursache des Timeouts unter Last (4 Busy-Loops: Test 44 bis 60 s, Datei 204 s statt 18 s,
+       einmal Zeitüberschreitung; mit 5 Busy-Loops 10 Läufe zu 74 bis 91 s, die alte Grenze wäre in allen 10 rot gewesen): Jede Auskunft macht rund 80 Dateizugriffe der Ablage (FSREQPROMISE) und 13 Dateigriffe mit fsync, nacheinander
+       (async_hooks-Zählung je Anfrage). Ohne Last kostet eine Anfrage etwa 80 ms (Test 2,6 s), bei voll belegten Kernen wartet jeder Zugriff
+       auf eine Zeitscheibe (etwa 15 ms): 1 bis 3,8 s je Anfrage. Das ist Langsamkeit, kein Hänger und keine Schleife; die Absicht (30 Auskünfte
+       gehen durch, die 31. gibt 429, andere Personen bleiben frei) bleibt unverändert mit 31 echten Anfragen. Vorrat jetzt etwa 6,6-fach zum
+       schlechtesten gemessenen Wert (91 s). Ein echter Hänger endet weiterhin an dieser Grenze. */
+  }, 600000);
 });
 
 describe("H1: Fristen — gültig gespeichert, nie ein hängender Lauf", () => {

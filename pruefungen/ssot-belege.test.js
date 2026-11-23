@@ -265,3 +265,73 @@ describe("CLI ssot-abgleich und ssot-belege: Fehler statt stillem Netzfallback, 
     } finally { u.weg(); }
   });
 });
+
+/* QS-2 Restpaket (Review #500): unbekannte Optionen (`--prs=F`, `--pr F`, `--datei=F`, Tippfehler) wurden still ignoriert; das Werkzeug fiel dann auf gh (Netz)
+   oder den Standardpfad zurück. Jetzt Rückgabe 2 mit „Unbekannte Option“, bevor gh oder eine Datei berührt wird. ssot-nach-integration.mjs: `--datei` ohne Wert
+   und die PR-Nummer aus dem Wert von `--datei` sind ebenfalls Fehler. Gültige Aufrufe bleiben unverändert (siehe Gegenproben oben). */
+describe("CLI: unbekannte Optionen → Rückgabe 2, kein stiller Netzfallback (QS-2 Restpaket)", () => {
+  const WERKZEUGE = ["ssot-belege.mjs", "gh-rest.mjs", "ssot-zuordnung.mjs", "ssot-abgleich.mjs", "acc45-backlog.mjs", "ssot-nach-integration.mjs"];
+  const aufbauen = () => {
+    const d = mkdtempSync(join(tmpdir(), "ssot-opt-cli-"));
+    mkdirSync(join(d, "werkzeug"));
+    for (const f of WERKZEUGE) copyFileSync(join(WURZEL, "werkzeug", f), join(d, "werkzeug", f));
+    const git = (...a) => execFileSync("git", a, { cwd: d, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+    git("init", "-q");
+    git("config", "user.email", "pruefung@example.org");
+    git("config", "user.name", "Pruefung");
+    git("config", "commit.gpgsign", "false");
+    git("commit", "-q", "--allow-empty", "-m", "start");
+    git("update-ref", "refs/remotes/origin/integration/release-v4", "HEAD");
+    const ssotText = '{"pakete":[{"id":"WP-1","titel":"t","strang":"acc45","prio":"P2","status":"INTEGRATED","pr":[],"stufen":{}}]}';
+    writeFileSync(join(d, "ssot.json"), ssotText);
+    writeFileSync(join(d, "prs.json"), "[]");
+    const lauf = (werkzeug, ...args) => spawnSync(process.execPath, [join(d, "werkzeug", werkzeug), ...args],
+      { cwd: d, encoding: "utf8", env: { ...process.env, TMP: d, TEMP: d, TMPDIR: d }, timeout: 60000 });
+    return { d, ssotText, lauf, weg: () => rmSync(d, { recursive: true, force: true }) };
+  };
+
+  it("abgleich und belege: `--prs=F`, `--pr F`, `--datei=F`, Tippfehler → Rückgabe 2, Meldung „Unbekannte Option“, SSOT byte-gleich; gültiger Aufruf Rückgabe 0", () => {
+    const u = aufbauen();
+    try {
+      const gut = ["--datei", join(u.d, "ssot.json"), "--prs", join(u.d, "prs.json")];
+      for (const w of ["ssot-abgleich.mjs", "ssot-belege.mjs"]) {
+        expect(u.lauf(w, ...gut).status, `${w} Gegenprobe`).toBe(0);
+        const faelle = [["--prs=" + join(u.d, "prs.json")], ["--pr", join(u.d, "prs.json")], ["--datei=" + join(u.d, "ssot.json")], ["--json=1"], ["--anwende"], ["-x"]];
+        for (const f of faelle) {
+          const r = u.lauf(w, ...gut, ...f);
+          expect(r.status, `${w} ${JSON.stringify(f)}: ${r.stdout}${r.stderr}`).toBe(2);
+          expect(r.stderr, `${w} ${JSON.stringify(f)}`).toContain(`Unbekannte Option ${f[0]}`);
+          expect(r.stdout, `${w} ${JSON.stringify(f)}`).not.toMatch(/SSOT-(Abgleich|Belege)/);
+        }
+        // nur die unbekannte Option, ohne gültige Quelle: kein Rückfall auf gh oder den Standardpfad
+        const nur = u.lauf(w, "--prs=" + join(u.d, "prs.json"));
+        expect(nur.status, `${w}: ${nur.stdout}${nur.stderr}`).toBe(2);
+        expect(nur.stderr).toContain("Unbekannte Option --prs=");
+      }
+      expect(readFileSync(join(u.d, "ssot.json"), "utf8")).toBe(u.ssotText);
+    } finally { u.weg(); }
+  }, 120000);
+
+  it("nach-integration: unbekannte Option, `--datei` ohne Wert, fremdes Argument → Rückgabe 2 vor jedem gh-Aufruf; ohne PR-Nummer Aufrufhinweis", () => {
+    const u = aufbauen();
+    try {
+      const faelle = [
+        [["315", "--pr", "316"], /Unbekannte Option --pr/],
+        [["315", "--schreibe", "--datei=" + join(u.d, "ssot.json")], /Unbekannte Option --datei=/],
+        [["315", "--datei"], /--datei verlangt einen Wert/],
+        [["315", "--datei", "--schreibe"], /--datei verlangt einen Wert/],
+        [["315", "--datei", ""], /--datei verlangt einen Wert/],
+        [["315", "abc"], /Unerwartetes Argument abc/],
+        [["--datei", "315"], /Aufruf: node werkzeug\/ssot-nach-integration\.mjs/],   // 315 ist der Wert von --datei, nicht die PR-Nummer
+        [[], /Aufruf: node werkzeug\/ssot-nach-integration\.mjs/],
+      ];
+      for (const [args, muster] of faelle) {
+        const r = u.lauf("ssot-nach-integration.mjs", ...args);
+        expect(r.status, `${JSON.stringify(args)}: ${r.stdout}${r.stderr}`).toBe(2);
+        expect(r.stdout + r.stderr, JSON.stringify(args)).toMatch(muster);
+        expect(r.stdout + r.stderr, JSON.stringify(args)).not.toMatch(/nicht in integration|gh:|HTTP/i);
+      }
+      expect(readFileSync(join(u.d, "ssot.json"), "utf8")).toBe(u.ssotText);
+    } finally { u.weg(); }
+  }, 120000);
+});
