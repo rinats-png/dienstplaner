@@ -251,7 +251,7 @@ Grenze: Argumente ohne Option bleiben bei `ssot-abgleich.mjs` und `ssot-belege.m
 - Testanzahl: `import-parser.test.js` 139 (vorher 139), `dsgvo-server.test.js` 29 (29), `ssot-belege.test.js` 21 (19), `nachpruefung-wp11.test.js` unverändert; kein `.skip`, kein `.todo`.
 
 **Reichweite (was NICHT erkannt wird).**
-- K2-PoC: Eine Verlangsamung unter etwa 1 s (ohne Last) bis 2 s (mit Last) bleibt unerkannt; das Verhältnis zur Referenz ist kein Beleg für die Rechenzeit der Vorprüfung selbst.
+- K2-PoC (Präzisierung aus Review #501, Auflage A1): „Eine Verlangsamung unter etwa 1 s (ohne Last) bis 2 s (mit Last) bleibt unerkannt“ gilt nur für eine Verlangsamung, die allein K2 (Eingaben über 1 MB) trifft. Eine gleichmäßige Verlangsamung von Kindprozess und Bibliothek (für alle Eingaben, auch für die Referenz) bleibt bei jeder Größe unerkannt, bis zur Grobgrenze 15 s bzw. zum Testlimit 120 s, weil das Verhältnis zur Referenz gleich bleibt. Belege (Mutanten, Review #501): „+1 s für alle Eingaben“ ergibt Verhältnis 1,00, der Test bleibt grün; Mutant A „nur K2 +3 s“ ergibt Verhältnis 12,6, rot; Mutant C „nur K2 +1 s“ ergibt 1267 gegen 1146 ms Grenze, rot. Das Verhältnis zur Referenz ist kein Beleg für die Rechenzeit der Vorprüfung selbst.
   Die Grobgrenze 15 s hat nur etwa 6-fachen Vorrat zum Wert unter 5 Busy-Loops (2,1 bis 2,7 s); mehr ist nicht möglich, weil die Produktgrenze ZEITLIMIT bei 20 s liegt.
   Die Verhältnisbasis ist die Zeit einer kleinen gültigen XLS; ein Kindprozess, der nur für große Eingaben langsamer startet, würde als „K2 langsam“ gelten (Fehlalarm möglich).
 - nachpruefung-wp11: 10 Läufe auf dem Runner-Typ von heute; eine Verlangsamung des Runners um mehr als 3,5-fach macht die Stelle rot.
@@ -259,3 +259,8 @@ Grenze: Argumente ohne Option bleiben bei `ssot-abgleich.mjs` und `ssot-belege.m
 - Werkzeuge: Eine neue Option eines Werkzeugs muss in die Liste von `optionenPruefen` aufgenommen werden, sonst lehnt das Werkzeug sie ab (gewollt, fail-closed).
 
 **Weiter offen:** `bereiche.mjs:173`, alle Stellen mit Risiko niedrig (Grenzen ab 2000 ms, Timeouts, Warteschleifen), die Zugriffszahl je Auskunftsanfrage (Produktcode).
+
+**Offene Folgepunkte (Nachtrag 2026-11-23, aus Review #501; nur Text, kein Code):**
+- H1: `pruefungen/dsgvo-server.test.js:184` hat das Zeitlimit 600000 ms. Hängt der Test wirklich, kostet das bis zu 10 Minuten. Das Job-Limit `pruefen` liegt bei 40 Minuten, die Dauer bei 27 bis 30 Minuten. Der Vorrat ist klein.
+- H2: Eine doppelte Option (`--datei F --datei G`) wird in `optionenPruefen` und `argWert` still auf den ersten Wert reduziert. Später als Fehler werten (fail-closed).
+- H4: `bereiche.mjs:173` bleibt eine Einzelmessung. Risiko mittel, offen.
