@@ -6615,7 +6615,7 @@
       "akzeptanz": "Formstufe „ohne V4-Form“ (werkzeug/v4-inventar.mjs) für sichtbare Kundendateien leer oder begründet; Branchenmodule mit Bildnachweis im Demo-Betrieb mit Paket; 2FA- und Verlustweg unverändert sicher (Gate 6)",
       "tests": "Unit, E2E",
       "dateien": "src/module, src/ansichten, src/*.jsx",
-      "notiz": "Übernommen (Review #418), V4-IST 2026-11-20 (35 sichtbare Dateien ohne V4-Form); PT sind Schätzung. Ersetzt einen Teil des früheren V4-3."
+      "notiz": "Übernommen (Review #418), V4-IST 2026-11-20 (35 sichtbare Dateien ohne V4-Form); PT sind Schätzung. Ersetzt einen Teil des früheren V4-3. Schnitt Branchenmodule (2026-11-23, Branch acc45/v4/v4-3c-branchenmodule): BLOCKIERT, keine Moduldatei geändert. Die fünf Branchenmodul-Dateien ohne eigene Form sind bereichsplan, geteilterdienst, kontimodelle, maschinenqual und pflegequal (src/module/*.jsx; kein Form- und kein Farbliteral, Listen und Definitionslisten im Rahmen von kern.jsx). Alle fünf sind in pruefungen/fixtures/v4-radiusstufen-basis.json byte-gepinnt (SHA-256, Schnitt Branchenmodule, V4-3b); eine Änderung braucht eine neue Basis-Festlegung. Eine Hebung auf Bausteine ist zudem eine Gestaltungsentscheidung (Baustein, sichtbare Form) und hängt an den offenen Entscheidungen V4-3d. Empfehlung: erst Betreiberentscheidung V4-3d, dann Hebung samt neuer Basis-Festlegung und Bildnachweis hell/dunkel; bis dahin bleibt die Zeile Branchenmodule bei Form 8/13. Test: pruefungen/v4-3c-branchenmodule.test.js (Befund, Pin, Notiz). Kein Statuswechsel, keine Stufe belegt."
     },
     {
       "id": "V4-3d",
