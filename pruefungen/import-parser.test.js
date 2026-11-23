@@ -1356,7 +1356,7 @@ describe("Review 561dd32 (imp-2-fix6): Verzeichnisbaum, Sektorketten, Workbook-A
        gedreht), Minimum aus 5 Runden je Seite; die Last des Rechners kürzt sich heraus.
        Gemessen (Rechner ohne Last): K2 270 bis 290 ms, Referenz 265 bis 310 ms (Verhältnis etwa 1). Mit 4 Busy-Loops: K2 1360 bis 2620 ms,
        Referenz 780 bis 1170 ms (Verhältnis etwa 1,5). Grenze: K2 <= 2,5 × Referenz + 500 ms. Ein Mutant mit etwa 10 s (alte Lage) liegt beim
-       Faktor über 10. Grobgrenze: höchstens 15 s (Produktgrenze ZEITLIMIT ist 20 s und würde schon am Ergebniscode scheitern; mit 5 Busy-Loops gemessen
+       Faktor über 10 (ohne Last; unter Last ist der Faktor kleiner). Grobgrenze: höchstens 15 s (Produktgrenze ZEITLIMIT ist 20 s und würde schon am Ergebniscode scheitern; mit 5 Busy-Loops gemessen
        Minimum 2,1 bis 2,5 s, also etwa 6-facher Vorrat; mehr ist unter der Produktgrenze nicht möglich).
        Reichweite: Eine Verlangsamung von weniger als etwa 1 s (ohne Last) bis 2 s (mit Last) bleibt unerkannt; das Verhältnis ist hier kein
        Beleg für die Rechenzeit der Vorprüfung selbst (die prüft der Test oben mit Minimum aus 3 Läufen und 1000 ms). */
