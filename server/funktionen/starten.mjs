@@ -6,6 +6,7 @@ import { kontoSchreiben } from "../lib/konten.mjs";
 import { testbetriebAnlegen } from "../lib/provisionierung.mjs";
 import { TESTTAGE } from "../lib/aufraeumen.mjs";
 import { erstleitungVermerk } from "../lib/erstleitung.mjs";
+import { zuTief, zuTiefRumpf } from "../lib/rumpftiefe.mjs";
 
 /* ==========================================================================
    SELBST STARTEN
@@ -84,7 +85,9 @@ export default async (req) => {
       return zuVielAntwort(b.wartet);
     }
 
-    const { name, branche, email, rollen, land } = await req.json();
+    const rumpf = await req.json();
+    if (zuTief(rumpf)) return antwort(zuTiefRumpf(), 400);   /* WP-19.5 Nachtrag (Review #505 A1): Tiefendeckel vor jeder Verwendung des Rumpfs. */
+    const { name, branche, email, rollen, land } = rumpf;
     if (!name || String(name).trim().length < 3)
       return antwort({ fehler: "Bitte einen Betriebsnamen mit mindestens drei Zeichen." }, 400);
     if (String(name).length > 80)
