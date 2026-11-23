@@ -44,15 +44,19 @@ export function argWert(name, argv = process.argv) {
  * Prüft alle Optionen der Befehlszeile gegen eine Liste (QS-2 Restpaket, Review #500). Eine unbekannte Option (z. B. `--prs=F` statt
  * `--prs F`, `--pr F`) ist ein Fehler. Vorher wurde sie still ignoriert, und das Werkzeug fiel auf gh (Netz) bzw. den Standardpfad zurück.
  * `flags` sind Schalter ohne Wert, `werte` Optionen mit Wert (der Wert selbst wird übersprungen; ihn prüft argWert).
+ * Review #501 H2: Eine doppelte Option (`--datei F --datei G`, auch ein doppelter Schalter) ist ein Fehler. Vorher nahm argWert still
+ * den ersten Wert. So gilt für argWert immer: höchstens ein Vorkommen.
  * Rückgabe: die Argumente ohne Option (Positionsargumente).
  */
 export function optionenPruefen(argv = process.argv, { flags = [], werte = [] } = {}) {
   const rest = argv.slice(2);
   const positionen = [];
+  const gesehen = new Set();
+  const einmal = (a) => { if (gesehen.has(a)) throw new Error(`Option ${a} doppelt angegeben (höchstens einmal erlaubt)`); gesehen.add(a); };
   for (let i = 0; i < rest.length; i++) {
     const a = rest[i];
-    if (werte.includes(a)) { i++; continue; }
-    if (flags.includes(a)) continue;
+    if (werte.includes(a)) { einmal(a); i++; continue; }
+    if (flags.includes(a)) { einmal(a); continue; }
     if (a.startsWith("-") && a !== "-") throw new Error(`Unbekannte Option ${a}`);
     positionen.push(a);
   }
