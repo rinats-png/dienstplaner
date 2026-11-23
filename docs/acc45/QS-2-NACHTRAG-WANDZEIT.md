@@ -88,20 +88,20 @@ Abstand zum Normalwert.
 | `intelligence-gateway-anbieter.test.js:84` | < 600 ms | mittel | wie oben | **gehärtet** (Fake-Uhr) |
 | `intelligence-gateway-review.test.js:182` | < 450 ms | hoch | Gateway-Test mit Zeitgrenze | **gehärtet** (Fake-Uhr) |
 | `intelligence-gateway-review2.test.js:211` | < 400 ms | hoch | Gateway-Test mit Zeitgrenze | **gehärtet** (Fake-Uhr) |
-| `intelligence-gateway-review2.test.js:215`, `:229` | < 1500 / < 1000 ms | mittel | Gateway-Test mit Zeitgrenze | offen (jetzt `:224` / `:238`; bewusst nicht angefasst) |
+| `intelligence-gateway-review2.test.js:215`, `:229` | < 1500 / < 1000 ms | mittel | Gateway-Test mit Zeitgrenze | **gehärtet** (Mittelpaket; jetzt `:224` / `:238`: Fake-Uhr) |
 | `intelligence-gateway-review3.test.js:160` | < 2000 ms | niedrig | Zeitüberschreitung | offen (Risiko niedrig, nicht angefasst) |
-| `intelligence-gateway-kern.test.js:231`, `:243` | < 1200 / < 900 ms | mittel | Frist 40 ms, Gesamtfrist 1500 ms (:231) | offen (bewusst nicht angefasst) |
+| `intelligence-gateway-kern.test.js:231`, `:243` | < 1200 / < 900 ms | mittel | Frist 40 ms, Gesamtfrist 1500 ms (:231) | **gehärtet** (Mittelpaket: Fake-Uhr) |
 | `import-schichtmodell-vorschau-imp6.test.js:316`, `:376` | < 500 ms | hoch | Abweisung vor der Rechnung, Einzelmessung | **gehärtet** (Zähler + Verhältnis) |
-| `import-schichtmodell-vorschau-imp6.test.js:250, 329, 337, 344` | < 5000 / 2000 ms | niedrig | Rechenlast, großer Abstand | offen (jetzt `:250` / `:341` / `:349` / `:356`; Risiko niedrig, nicht angefasst) |
+| `import-schichtmodell-vorschau-imp6.test.js:250, 329, 337, 344` | < 5000 / 2000 ms | niedrig | Rechenlast, großer Abstand | **teilweise** (Mittelpaket; jetzt `:250` / `:341` / `:349` / `:356`: Wandzeit bleibt Vertrag, Minimum aus 3 Läufen, Messwerte im Kommentar, Vorrat 17- bis 68-fach) |
 | `intelligence-nachtrag.test.js:282`, `:289` | < 500 ms | hoch | Leckprüfung, reine Rechenzeit | **gehärtet** (Test F9: abwechselnde Skalierung gleicher Gesamtlänge, Grenze 2, Grobgrenze 2000 ms) |
-| `dsgvo-server.test.js:201` | < 50 ms | mittel | Aufruf kostet Mikrosekunden; ein GC-Stillstand über 50 ms ist selten, aber möglich. Ein Aufrufzähler belegt „keine Schleife“ besser | offen (bewusst nicht angefasst) |
+| `dsgvo-server.test.js:201` | < 50 ms | mittel | Aufruf kostet Mikrosekunden; ein GC-Stillstand über 50 ms ist selten, aber möglich. Ein Aufrufzähler belegt „keine Schleife“ besser | **gehärtet** (Mittelpaket: Aufrufzähler `Date.UTC`) |
 | `gesund.test.js:158`, `:164` | < 5000 ms | niedrig | Zeitgrenze der Zustandsprüfung | offen (niedrig) |
-| `import-parser.test.js:326, 356, 455, 737, 1131, 1198, 1300, 1306, 1339, 1346, 1443` | 1000 bis 20000 ms | niedrig, `:1339` (1000 ms) mittel | Größenprüfungen des Parsers | offen (niedrig, `:1339` mittel) |
-| `intelligence-planungsreife.test.js:215`, `intelligence-regelbaukasten.test.js:440` | < 1000 ms | mittel | Rechenzeit | offen (bewusst nicht angefasst) |
-| `post-smtp.test.js:199, 268, 328` | < 1500 ms | mittel | Zeitüberschreitung gegen Attrappe | offen (bewusst nicht angefasst) |
+| `import-parser.test.js:326, 356, 455, 737, 1131, 1198, 1300, 1306, 1339, 1346, 1443` | 1000 bis 20000 ms | niedrig, `:1339` (1000 ms) mittel | Größenprüfungen des Parsers | `:1339` **teilweise** (Mittelpaket: Minimum aus 3 Läufen, Grenze 1000 ms bleibt, gemessen 7 ms); übrige offen (niedrig) |
+| `intelligence-planungsreife.test.js:215`, `intelligence-regelbaukasten.test.js:440` | < 1000 ms | mittel | Rechenzeit | **gehärtet** (Mittelpaket: abwechselnde Skalierung gleicher Gesamtgröße, Grenze 2, Grobgrenze) |
+| `post-smtp.test.js:199, 268, 328` | < 1500 ms | mittel | Zeitüberschreitung gegen Attrappe | **gehärtet** (Mittelpaket: Fake-Uhr mit Speicherverbindung; das echte Socket-Ergebnis bleibt ohne Wandzeit-Grenze geprüft) |
 | `schreibhalt.test.js:202` | < 1500 ms | niedrig | Haltefrist 2000 ms | offen (niedrig) |
-| `nachpruefung-wp11.test.js:469` | < 300 ms (nur mit `CI`) | mittel | 300 Personen; lokal nur Warnung, in CI hart | offen |
-| `wp16c-korrekturrevision.test.js:742` | < 5 ms je Aufruf (Mittel aus 100) | mittel | | offen (bewusst nicht angefasst) |
+| `nachpruefung-wp11.test.js:469` | < 300 ms (nur mit `CI`) | mittel | 300 Personen; lokal nur Warnung, in CI hart | **offen** (Entscheidung nötig, siehe Mittelpaket) |
+| `wp16c-korrekturrevision.test.js:742` | < 5 ms je Aufruf (Mittel aus 100) | mittel | | **teilweise** (Mittelpaket: Minimum aus 7 Blöcken, Grenze 5 ms bleibt, gemessen 0,001 ms) |
 | `engine-rechenkern.test.js:176` | < 30000 ms | niedrig | Richtwert, Normalwert Sekunden | offen (niedrig) |
 | `imp8-testmatrix.test.js:435`, `mail-push-anbieter.test.js:378, 389`, `monatsabschluss-nachtrag.test.js:189`, `passwoerter.test.js:194` | 5000 bis 120000 ms | niedrig | Obergrenzen gegen Hänger | offen (niedrig) |
 | `pruefungen/browser/bereiche.mjs:173` | > 3500 ms meldet „langsam“ | mittel | Browserlauf, nicht Vitest; Einzelmessung, nur Meldung | offen (Browserlauf) |
@@ -139,3 +139,51 @@ Zähler/Skalierung umstellen“ bleibt für diese Stellen offen.
   sind unter Last unzuverlässig, weil der Scheduler ungleich lange Läufe ungleich stört. Der Erstansatz mit größerem Längenfaktor schlug
   unter Last in 14 von 30 Läufen fehl (Verhältnis 8 bis 9 statt 3,7).
 - Nachweis: 30 Läufe unter 6 Busy-Loops, 0 Rotfälle (i23 und nachtrag).
+
+## Status-Nachtrag Mittelpaket (2026-11-23, Branch `acc45/test/wandzeit-grenzen-mittel`)
+
+Nur Testdateien und diese Datei geändert; kein Produktcode, keine Workflows. Der Release-Kandidat `release/rc-2026-11-22` bleibt unverändert.
+Die Zeilen der Tabelle oben gelten für die Fassung vor diesem Paket; die Statusspalte nennt den Stand jetzt.
+
+| Stelle | alt | neu | Methode |
+|---|---|---|---|
+| `intelligence-gateway-review2.test.js` (Zählerspeicher hängt) | `< 1500 ms` Wandzeit bei Frist 30 ms | Fake-Uhr: bei 29 ms nicht fertig, bei 100 ms `KI_LIMIT` | Fake-Uhr |
+| `intelligence-gateway-review2.test.js` (Notschalter bricht Aufruf ab) | `< 1000 ms` Wandzeit bei Takt 15 ms | Fake-Uhr: Aufruf läuft bei Schalter „an“, nach Umschalten und 100 ms `KI_AUS`, Stufenfrist 10 s | Fake-Uhr |
+| `intelligence-gateway-kern.test.js` (Zeitüberschreitung, Stufe 40 ms) | `< 1200 ms` | Fake-Uhr: bei 39 ms nicht fertig, bei 100 ms fertig (Gesamtfrist 1500 ms) | Fake-Uhr |
+| `intelligence-gateway-kern.test.js` (Adapter ignoriert Abbruch, Stufe 30 ms) | `< 900 ms` | Fake-Uhr: bei 29 ms nicht fertig, bei 100 ms fertig (Gesamtfrist 600 ms) | Fake-Uhr |
+| `intelligence-planungsreife.test.js` (200 Läufe, 40 Personen) | `< 1000 ms` | abwechselnd 1 Lauf zu 160 Personen gegen 4 Läufe zu 40 (gleiche Gesamtgröße), Verhältnis höchstens 2 (plus 4 ms), Grobgrenze 2000 ms (gemessen 46 bis 58 ms) | Skalierung |
+| `intelligence-regelbaukasten.test.js` (31 Tage × 40 Personen) | `< 1000 ms` | wie oben mit 160 gegen 4 × 40 Personen, Grobgrenze 1000 ms je Durchgang (gemessen 6,6 bis 8,3 ms, Vorrat über 100-fach) | Skalierung |
+| `post-smtp.test.js` (Zeitüberschreitung, Flutung, 6 Mails bei hängendem Server) | `< 1500 ms` Wandzeit | Fake-Uhr mit Verbindung im Speicher: Frist 150 ms nicht verkürzt (149 ms offen, 200 ms fertig); Flutung endet vor 1000 ms Uhrzeit bei Frist 5000 ms; 6 Mails (2 Plätze, 4 Wartende) bei 399 ms offen, bei 450 ms alle fertig | Fake-Uhr |
+| `dsgvo-server.test.js` (`minusMonate`) | `< 50 ms` Wandzeit | Aufrufzähler: `Date.UTC`-Aufrufe je Rechnung gleich für 12, 12000 und 1 000 000 Monate (1 Aufruf) | Zähler |
+| `wp16c-korrekturrevision.test.js` (`hatLaufendeKorrektur`) | `< 5 ms` Mittel eines Blocks | Minimum der Mittel aus 7 Blöcken zu 100 Aufrufen, Grenze 5 ms bleibt (gemessen 0,001 ms) | Vertrag mit Vorrat |
+| `import-parser.test.js` `:1339` (Prüfung der Sektorketten) | `< 1000 ms` Einzelmessung | Minimum aus 3 Läufen, Grenze 1000 ms bleibt (gemessen 7 ms) | Vertrag mit Vorrat |
+| `import-schichtmodell-vorschau-imp6.test.js` `:341`, `:349`, `:356` | `< 2000 ms` Einzelmessung | Minimum aus 3 Läufen, Grenze bleibt (gemessen 115 / 79 / 55 ms) | Vertrag mit Vorrat |
+| `import-schichtmodell-vorschau-imp6.test.js` `:250` | `< 5000 ms` | unverändert; Messwert 74 ms und Vorrat 68-fach im Kommentar | Vertrag mit Vorrat |
+
+**Offen:** `nachpruefung-wp11.test.js` (300 Personen, `< 300 ms`, nur mit `CI` hart). Lokal (belastete Maschine, mit `CI=1` erzwungen)
+gemessen warm 349 bis 442 ms; der Vorrat zur Grenze ist hier unter 1, auf CI unbekannt. Ein Vorrat von mindestens 10 ist nicht belegbar.
+Eine Ersetzung (Zähler plus Skalierung, grobe Wandzeit-Grenze) schwächt den Vertrag „unter 300 ms“ und braucht eine Entscheidung. Nicht angefasst.
+Neuer Befund aus dem Lasttest: `import-parser.test.js` K2-PoC, `parseDatei` über die Schnittstelle (Grenze `< 3000 ms`, `:1346` vor dem Paket,
+Risiko niedrig, nicht angefasst): unter 4 Busy-Loops in 5 von 10 Läufen rot (3155 bis 3852 ms; auch das Minimum aus drei Läufen lag bei 3155 bis 3662 ms,
+ein Minimum hilft hier also nicht). Ohne Last grün. Der Vorrat unter Last ist etwa 1. Die Stelle braucht eine eigene Härtung (Zähler oder Verhältnis zu einer
+Vergleichsarbeit) und bleibt offen; die zuvor gehärtete Vorprüfung `pruefeCfb` (`:1339`) war in allen 10 Lastläufen grün.
+Ebenfalls offen: `pruefungen/browser/bereiche.mjs:173` (Browserlauf), alle Stellen mit Risiko niedrig (Grenzen ab 2000 ms, Timeouts, Warteschleifen).
+
+**Nachweis (Mutation, eigene Messung):** gesichertes Verhalten im Produktcode absichtlich verändert, Test rot, danach per `git checkout` zurückgesetzt:
+- Zählerfrist `zaehlerMs` mal 100 (`gateway.mjs`): review2 Test „9 hängender Zählerspeicher“ rot.
+- Notschalter-Takt mal 1000: review2 Test „10 Der Notschalter bricht …“ rot.
+- Stufenfrist mal 20 (`zeitJeVersuchMs` und Stufen-Deadline): kern „Zeitüberschreitung …“ und „Adapter … blockiert nicht“ rot.
+- Planungsreife: zusätzliche Schleife über alle Personenpaare (n²): Verhältnis 3,56 gegen Grenze 2, rot.
+- Regelbaukasten: zusätzlicher Quadratanteil in `verteilungsregel`: Verhältnis 2,43 gegen Grenze 2, rot.
+- `post-smtp`: Hauptfrist mal 10: Zeitüberschreitung, 6 Mails und weitere Tests rot; Wartezeit nicht zur Frist gezählt (Warteschlangen-Zeitgeber mal 10 und volle Frist nach dem Warten): „6 Mails“ rot; Puffer-, Zeilenlänge- und Zeilenzahl-Grenze ausgeschaltet: „Flutung“ rot (beide Muster).
+- `minusMonate` mit monatsweiser Schleife und `Date.UTC`: Zähler `[2, 1001, 4168]` statt gleich, rot.
+- Nicht erfasst durch einen Mutanten: wp16c, import-parser `:1339`, imp6 (Wandzeit-Verträge mit Vorrat; Mutanten lägen im Bereich Faktor 100 und mehr).
+
+**Reichweite (was NICHT erkannt wird):**
+- Planungsreife und Regelbaukasten: Quadratanteile unter der Schwelle (Verhältnis 2,43 war nur knapp rot) und n log n bleiben unerkannt;
+  eine gleichmäßige Verlangsamung erkennt nur die Grobgrenze (planungsreife: bis etwa 35-fach grün, vorher bis etwa 18-fach).
+- `post-smtp` mit Verbindung im Speicher prüft die Fristlogik, nicht das Verhalten eines echten Sockets; die echten Socket-Tests bleiben und prüfen das
+  Ergebnis ohne Wandzeit-Grenze. Einzelne Puffer-/Zeilen-Grenzen sind redundant: ein Mutant, der nur eine davon abschaltet, bleibt grün.
+- `minusMonate`: Eine Schleife ohne Date-Aufruf bleibt unerkannt (der Zähler sieht nur `Date.UTC`); die Endlosschleife mit `Infinity` wird nicht rot, sondern hängt.
+- Fake-Uhr-Tests ersetzen die Zeitgeber von Vitest (in `post-smtp` nur `Date`, `setTimeout`, `clearTimeout`); sie prüfen, dass die Frist nach der eingestellten Uhrzeit greift, nicht, wie lange der Code real rechnet. Eine Frist, die über andere Uhren läuft, wäre davon nicht erfasst.
+- Minimum aus mehreren Läufen (wp16c, parser, imp6) filtert einen einzelnen Stillstand, nicht einen dauerhaft gestörten Runner.
