@@ -22,7 +22,10 @@
                  exakter Duplikatvergleich; ein ungültiger Verweis bricht vor
                  jeder Änderung ab (Rückgabe 1, Quelle unverändert; Review #483 H4).
 
-   Exit: 0 ok · 1 Prüfung fehlgeschlagen · 3 Sperre belegt
+   Option mit Wert (--datei, --prs) ohne Wert, ungültiger Eintrag im SSOT-Feld pr oder PR-Liste nicht ermittelbar:
+   Abbruch vor jeder Änderung, Rückgabe 2 (Review #490 N1/N2; kein stiller Rückfall auf gh oder Standardpfad).
+
+   Exit: 0 ok · 1 Prüfung fehlgeschlagen · 2 abgebrochen · 3 Sperre belegt
    ========================================================================== */
 import { execFileSync } from "node:child_process";
 import { prAnsicht } from "./gh-rest.mjs";
@@ -31,7 +34,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { trifftText, ERLEDIGT, brauchtPrBeleg } from "./ssot-zuordnung.mjs";
-import { gemergteUndPrs, abgleich, ssotLesen } from "./ssot-abgleich.mjs";
+import { gemergteUndPrs, abgleich, argWert } from "./ssot-abgleich.mjs";
 // Review #483 H4: eine Quelle für das PR-Format (kein Zyklus: acc45-backlog.mjs importiert nur node:*).
 import { PR_MUSTER } from "./acc45-backlog.mjs";
 
@@ -166,13 +169,22 @@ export function anwenden(ssot, zeilen) {
 
 function main() {
   const wirken = process.argv.includes("--anwenden");
-  const datei = process.argv.includes("--datei") ? process.argv[process.argv.indexOf("--datei") + 1] : null;
-  /* Die Quelle ist die Arbeitsdatei, sonst überschreibt --anwenden die eigenen Änderungen mit dem Integrationsstand. */
-  const quelle = datei ? path.resolve(datei) : path.join(WURZEL, "docs", "acc45", "work-packages.json");
-  /* --prs F: PR-Liste aus Datei statt gh (wie ssot-abgleich.mjs; für Prüfungen ohne Netz, Review #486 H-d). */
-  const prsDatei = process.argv.includes("--prs") ? process.argv[process.argv.indexOf("--prs") + 1] : null;
-  const ssot = JSON.parse(readFileSync(quelle, "utf8"));
-  const zeilen = ebenen(ssot, gemergteUndPrs(prsDatei), commitBetreffs(), dateienImBasisstand());
+  let quelle, ssot, zeilen;
+  try {
+    /* Review #490 N2: --datei und --prs verlangen einen Wert; kein stiller Rückfall auf Standardpfad oder gh (Netz). */
+    const datei = argWert("--datei");
+    /* --prs F: PR-Liste aus Datei statt gh (wie ssot-abgleich.mjs; für Prüfungen ohne Netz, Review #486 H-d). */
+    const prsDatei = argWert("--prs");
+    /* Die Quelle ist die Arbeitsdatei, sonst überschreibt --anwenden die eigenen Änderungen mit dem Integrationsstand. */
+    quelle = datei ? path.resolve(datei) : path.join(WURZEL, "docs", "acc45", "work-packages.json");
+    ssot = JSON.parse(readFileSync(quelle, "utf8"));
+    zeilen = ebenen(ssot, gemergteUndPrs(prsDatei), commitBetreffs(), dateienImBasisstand());
+  } catch (e) {
+    // Review #490 N1/N2: Fehlbedienung oder ungültiges SSOT-Feld pr bricht vor jeder Änderung ab (wie ssot-abgleich.mjs).
+    console.error("SSOT-Belege ABGEBROCHEN: " + String(e.message || e).split("\n")[0]);
+    process.exitCode = 2;
+    return;
+  }
   const zaehl = {};
   for (const z of zeilen) zaehl[z.klasse] = (zaehl[z.klasse] || 0) + 1;
   console.log("SSOT-Belege (implementiert / integriert / freigabebereit):", JSON.stringify(zaehl));
