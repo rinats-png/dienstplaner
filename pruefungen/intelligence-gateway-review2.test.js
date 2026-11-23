@@ -219,9 +219,18 @@ describe("Gateway-Befunde", () => {
       await dauer;
     } finally { vi.useRealTimers(); }
     const t = bauen({ limits: new Limits({ betriebKontingentIE: 700, gesamtTagesIE: 1000, gesamtHartTagesIE: 2000, senke: haengt, parallelJeBetrieb: 5 }), zeiten: { zaehlerMs: 30 } });
-    const t1 = Date.now();
-    expect(await code(t.gw.ausfuehren(S.leitung, { funktion: "F1", eingabe: { zeitraum: ZR } }))).toBe("KI_LIMIT");
-    expect(Date.now() - t1).toBeLessThan(1500);
+    /* Vorgetäuschte Uhr statt Wandzeit (QS-2, Mittelpaket; frühere Grenze „< 1500 ms“ bei einer Frist von 30 ms):
+       Die Zählerfrist (30 ms Uhrzeit) wird nicht verkürzt, und danach kommt KI_LIMIT, ohne auf den hängenden Speicher zu warten. */
+    vi.useFakeTimers();
+    try {
+      let antwort = null;
+      const lauf = code(t.gw.ausfuehren(S.leitung, { funktion: "F1", eingabe: { zeitraum: ZR } })).then((c) => { antwort = c; });
+      await vi.advanceTimersByTimeAsync(29);
+      expect(antwort).toBeNull();                          // die Frist wird nicht verkürzt
+      await vi.advanceTimersByTimeAsync(71);               // 100 ms Uhrzeit, weit unter der Gesamtfrist
+      expect(antwort).toBe("KI_LIMIT");
+      await lauf;
+    } finally { vi.useRealTimers(); }
     expect(t.anbieter.aufrufe.length).toBe(0);
     expect((await t.gw.ausfuehren(S.leitung, anf())).status).toBe("fertig");
   });
@@ -229,13 +238,20 @@ describe("Gateway-Befunde", () => {
   it("10 Der Notschalter bricht einen laufenden Anbieteraufruf ab (zyklische Prüfung, AbortSignal)", async () => {
     let an = true;
     const t = bauen({ attrappe: "zeitueberschreitung", schalter: { prozess: () => (an ? "an" : "aus"), laufzeit: () => "an" }, zeiten: { stufeMs: 10_000, deadlineMs: 30_000, schalterTaktMs: 15 }, ohneSpeicher: true });
-    const lauf = t.gw.ausfuehren(S.leitung, anf());
-    await new Promise((r) => setTimeout(r, 60));
-    expect(t.anbieter.aufrufe.length).toBe(1);
-    an = false;
-    const t0 = Date.now();
-    expect(await code(lauf)).toBe("KI_AUS");
-    expect(Date.now() - t0).toBeLessThan(1000);
+    /* Vorgetäuschte Uhr statt Wandzeit (QS-2, Mittelpaket; frühere Grenze „< 1000 ms“ bei Takt 15 ms):
+       Nach dem Umschalten bricht die zyklische Prüfung (Takt 15 ms Uhrzeit) den Aufruf ab, lange vor der Stufenfrist (10 s). */
+    vi.useFakeTimers();
+    try {
+      let antwort = null;
+      const lauf = code(t.gw.ausfuehren(S.leitung, anf())).then((c) => { antwort = c; });
+      await vi.advanceTimersByTimeAsync(60);
+      expect(t.anbieter.aufrufe.length).toBe(1);
+      expect(antwort).toBeNull();                          // solange der Schalter an ist, läuft der Aufruf
+      an = false;
+      await vi.advanceTimersByTimeAsync(100);              // mehr als ein Takt, weit unter der Stufenfrist von 10 000 ms
+      expect(antwort).toBe("KI_AUS");
+      await lauf;
+    } finally { vi.useRealTimers(); }
     expect(t.anbieter.aufrufe[0].signal.aborted).toBe(true);
     expect(t.anbieter.aufrufe.length).toBe(1);                       // keine weitere Stufe
     expect(t.limits.stand("raum-a|0").laufend).toBe(0);

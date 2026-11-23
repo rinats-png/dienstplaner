@@ -196,9 +196,20 @@ describe("H1: Fristen — gültig gespeichert, nie ein hängender Lauf", () => {
 
   it("minusMonate rechnet ohne Schleife: Infinity wirft sofort, große Werte enden sofort", () => {
     expect(() => A.minusMonate("2026-11-02", Infinity)).toThrow();
-    const t0 = Date.now();
+    /* QS-2, Mittelpaket: statt der Wandzeit-Grenze „< 50 ms“ (ein Aufruf kostet Mikrosekunden; ein Stillstand über 50 ms ist selten,
+       aber möglich) ein Aufrufzähler: Die Zahl der Date.UTC-Aufrufe je Rechnung ist von der Größe der Frist unabhängig (ein Aufruf
+       für 12, 12000 und 1 000 000 Monate). Eine monatsweise Schleife mit Datumsbildung je Monat zählt linear mit der Frist.
+       Reichweite: Eine Schleife ohne Aufruf (nur Zahlenrechnung) bleibt unerkannt; gegen die Endlosschleife mit Infinity hilft
+       die Prüfung oben (sie würde hängen, nicht rot werden). */
     expect(A.minusMonate("2026-11-02", 12000)).toBe("1026-11-02");
-    expect(Date.now() - t0).toBeLessThan(50);
+    const utc = vi.spyOn(Date, "UTC");
+    try {
+      const zaehle = (monate) => { utc.mockClear(); A.minusMonate("2026-11-02", monate); return utc.mock.calls.length; };
+      const aufrufe = [12, 12000, 1_000_000].map(zaehle);
+      expect(aufrufe[0]).toBeGreaterThan(0);                                   // der Zähler sieht die Rechnung überhaupt
+      expect(aufrufe[0]).toBeLessThanOrEqual(2);
+      expect(aufrufe).toEqual([aufrufe[0], aufrufe[0], aufrufe[0]]);           // unabhängig von der Größe der Frist
+    } finally { utc.mockRestore(); }
   });
 
   it("ein Betrieb mit ungültiger Frist in der Ablage wird übersprungen und gemeldet, der Lauf endet", async () => {

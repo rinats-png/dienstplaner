@@ -1336,7 +1336,11 @@ describe("Review 561dd32 (imp-2-fix6): Verzeichnisbaum, Sektorketten, Workbook-A
     const t0 = Date.now();
     expect(() => kern.pruefeCfb(buf, STANDARD_GRENZEN)).toThrow(/Sektorketten/);
     const m1 = process.memoryUsage();
-    expect(Date.now() - t0).toBeLessThan(1000);
+    /* QS-2, Mittelpaket: Minimum aus drei Läufen statt einer Einzelmessung (ein Scheduler- oder GC-Stillstand trifft selten alle drei);
+       Grenze 1000 ms bleibt (gemessen 7 ms, Vorrat etwa 140-fach). */
+    let dauerMin = Date.now() - t0;
+    for (let i = 0; i < 2; i++) { const ta = Date.now(); expect(() => kern.pruefeCfb(buf, STANDARD_GRENZEN)).toThrow(/Sektorketten/); dauerMin = Math.min(dauerMin, Date.now() - ta); }
+    expect(dauerMin).toBeLessThan(1000);
     expect(m1.arrayBuffers - m0.arrayBuffers).toBeLessThan(32 * 1024 * 1024);
     /* über die Schnittstelle: Server-Prozess wächst nicht (vorher: ca. 2 GB im Server-Prozess, ok:true nach ca. 10 s) */
     const t1 = Date.now();

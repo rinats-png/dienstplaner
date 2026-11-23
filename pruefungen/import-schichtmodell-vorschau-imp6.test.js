@@ -247,6 +247,8 @@ describe("IMP-6 Vorschau: feindliche Eingaben", { timeout: 120000 }, () => {
     const up = await hochladen(t.LT, mappe({ Modelle: zeilen }));
     const t0 = Date.now();
     const an = await schritt(t.LT, "analyse", { vorgang: up.vorgang });
+    /* QS-2, Mittelpaket: Wandzeit bleibt hier Vertrag (Abweisung ohne Rechnung, Endpunkt mit Upload). Gemessen 74 ms, Grenze 5000 ms,
+       Vorrat etwa 68-fach (mindestens 10-fach verlangt). Ohne frühe Abweisung rechnet der Endpunkt 500 Zyklen zu je 999999 Tagen. */
     expect(Date.now() - t0).toBeLessThan(5000);
     expect(an).toMatchObject({ status: 422, code: "PRUEFUMFANG_ZU_GROSS" });
     expect(an.zyklen).toBeUndefined();
@@ -333,8 +335,11 @@ describe("IMP-6 Vorschau: Last und Obergrenzen (kein Absturz durch große Tabell
   });
   it("Obergrenze voll ausgeschöpft: gleiche Person und gleicher Beginn in jeder Zeile — schnell und ohne Speicherexplosion", () => {
     const gleich = Array.from({ length: GRENZEN.zeilenMax }, () => ["1001", "A", "2026-06-01", 0]);
-    const { r, ms, heapMb } = messen(() => schichtVorschau({ mandant, modellZeilen: MODELL,
-      zuordnungZeilen: [["Personalnummer", "Modell", "Beginn", "Versatz"], ...gleich] }));
+    const lauf = () => schichtVorschau({ mandant, modellZeilen: MODELL, zuordnungZeilen: [["Personalnummer", "Modell", "Beginn", "Versatz"], ...gleich] });
+    const { r, ms: ms1, heapMb } = messen(lauf);
+    /* QS-2, Mittelpaket: Minimum aus drei Läufen statt einer Einzelmessung (ein Scheduler- oder GC-Stillstand trifft selten alle drei);
+       Grenze 2000 ms bleibt (gemessen 115 ms, Vorrat etwa 17-fach). */
+    const ms = Math.min(ms1, minMs(lauf, 2));
     expect(r.ok).toBe(true);
     expect(r.zuordnungen.konflikte.find((k) => k.art === "zuordnung-doppelt").anzahl).toBe(GRENZEN.zeilenMax);
     expect(r.zuordnungen.konflikte[0].datensaetze.length).toBeLessThanOrEqual(GRENZEN.zeilenJeEintrag);
@@ -343,14 +348,18 @@ describe("IMP-6 Vorschau: Last und Obergrenzen (kein Absturz durch große Tabell
   });
   it("Obergrenze voll ausgeschöpft: lauter Konfliktzeilen (unbekannte Person, unbekanntes Modell)", () => {
     const zeilen = Array.from({ length: GRENZEN.zeilenMax }, (_, i) => [String(5000 + i), "Gibtsnicht", "2026-06-01", 0]);
-    const { r, ms } = messen(() => schichtVorschau({ mandant, modellZeilen: MODELL, zuordnungZeilen: [["Personalnummer", "Modell", "Beginn", "Versatz"], ...zeilen] }));
+    const lauf = () => schichtVorschau({ mandant, modellZeilen: MODELL, zuordnungZeilen: [["Personalnummer", "Modell", "Beginn", "Versatz"], ...zeilen] });
+    const { r, ms: ms1 } = messen(lauf);
+    const ms = Math.min(ms1, minMs(lauf, 2));          // Minimum aus drei Läufen; Grenze 2000 ms bleibt (gemessen 79 ms, Vorrat etwa 25-fach)
     expect(r.ok).toBe(true);
     expect(r.zuordnungen.mitKonflikt).toBe(GRENZEN.zeilenMax);
     expect(ms).toBeLessThan(2000);
   });
   it("Obergrenze voll ausgeschöpft: alle Modellzeilen am selben Tag", () => {
     const zeilen = [MODELL[0], ...Array.from({ length: GRENZEN.zeilenMax }, () => ["A", 1, "F"])];
-    const { r, ms } = messen(() => schichtVorschau({ mandant, modellZeilen: zeilen }));
+    const lauf = () => schichtVorschau({ mandant, modellZeilen: zeilen });
+    const { r, ms: ms1 } = messen(lauf);
+    const ms = Math.min(ms1, minMs(lauf, 2));          // Minimum aus drei Läufen; Grenze 2000 ms bleibt (gemessen 55 ms, Vorrat etwa 36-fach)
     expect(r.ok).toBe(true);
     expect(r.zyklen[0].konflikte.map((k) => k.art)).toContain("tag-doppelt");
     expect(ms).toBeLessThan(2000);

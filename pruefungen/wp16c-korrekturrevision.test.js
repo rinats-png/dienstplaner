@@ -737,9 +737,17 @@ describe("Letzte Review-Runde: Fingerabdruck, Verwerfen, Basis des Schreibers, S
     const ohne = await schreibe(false, 1), mit = await schreibe(true, 2);
     expect(mit).toEqual(ohne);
     const g = beginnen(m).mandant;
-    const t0 = performance.now();
-    for (let i = 0; i < 100; i++) hatLaufendeKorrektur(m);
-    expect((performance.now() - t0) / 100).toBeLessThan(5);
+    /* QS-2, Mittelpaket: Der Vertrag „< 5 ms je Aufruf“ bleibt, aber als Minimum der Mittel aus 7 Blöcken zu je 100 Aufrufen statt als
+       Mittel eines einzigen Blocks: Ein Scheduler- oder GC-Stillstand müsste alle 7 Blöcke treffen. Gemessen etwa 0,001 ms je Aufruf (Vorrat etwa 5000-fach)
+       (die Prüfung ist ein Durchlauf über wenige Monatseinträge). Reichweite: Ein Aufwand unter 5 ms je Aufruf bleibt unerkannt;
+       die Absicht „keine Fingerabdruck- oder Differenzrechnung im Schnellpfad“ sichert zusätzlich der Zugriffszähler oben. */
+    let besteMs = Infinity;
+    for (let block = 0; block < 7; block++) {
+      const t0 = performance.now();
+      for (let i = 0; i < 100; i++) hatLaufendeKorrektur(m);
+      besteMs = Math.min(besteMs, (performance.now() - t0) / 100);
+    }
+    expect(besteMs).toBeLessThan(5);
     expect(hatLaufendeKorrektur(g)).toBe(true);
     expect(hatLaufendeKorrektur(m)).toBe(false);
     void korrekturVerwerfen;
