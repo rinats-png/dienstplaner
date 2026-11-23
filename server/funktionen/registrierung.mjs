@@ -2,6 +2,7 @@ import { getStore } from "../lib/ablage.mjs";
 import { bremse, kennung, herkunftErlaubt, zuVielAntwort, protokoll } from "../lib/schutz.mjs";
 import { accountSchluessel } from "../lib/accounts.mjs";
 import { mailNormieren } from "../lib/adressen.mjs";
+import { zuTief, zuTiefRumpf } from "../lib/rumpftiefe.mjs";
 import {
   registrierungStarten, emailVerifizieren, passwortMitNachweisSetzen,
   HINWEIS_GENERISCH, HINWEISE_PROFIL,
@@ -115,6 +116,8 @@ async function rumpfLesen(req) {
     const daten = JSON.parse(text);
     if (!daten || typeof daten !== "object" || Array.isArray(daten))
       return { ok: false, antwort: antwort({ ok: false, fehler: "kein-objekt" }, 400) };
+    /* WP-19.5 Nachtrag (Review #505 A1): Tiefendeckel direkt nach dem Parsen, vor jeder Verwendung. */
+    if (zuTief(daten)) return { ok: false, antwort: antwort(zuTiefRumpf(), 400) };
     return { ok: true, daten };
   } catch {
     return { ok: false, antwort: antwort({ ok: false, fehler: "kaputtes-json" }, 400) };

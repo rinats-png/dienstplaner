@@ -8,6 +8,7 @@ import { heuteBerlin } from "../lib/zeiterfassung.mjs";
 import { aktivePerson } from "../lib/personengueltig.mjs";
 import { feedTermine } from "../lib/kalenderfeed.mjs";
 import { feedHerkunftAus, feedHerkunftGilt } from "../lib/feedherkunft.mjs";
+import { zuTief, zuTiefRumpf } from "../lib/rumpftiefe.mjs";
 
 /* ==========================================================================
    KALENDER-FEED
@@ -187,6 +188,8 @@ async function rumpfLesen(req) {
     const daten = JSON.parse(text || "{}");
     if (!daten || typeof daten !== "object" || Array.isArray(daten))
       return { antwort: antwort({ fehler: "Der Rumpf muss ein JSON-Objekt sein." }, 400) };
+    /* WP-19.5 Nachtrag (Review #505 A1): Tiefendeckel direkt nach dem Parsen, vor jeder Verwendung. */
+    if (zuTief(daten)) return { antwort: antwort(zuTiefRumpf(), 400) };
     return { daten };
   } catch {
     return { antwort: antwort({ fehler: "Der Rumpf ist kein gültiges JSON." }, 400) };

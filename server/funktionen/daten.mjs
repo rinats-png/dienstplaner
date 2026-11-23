@@ -4,7 +4,7 @@ import { bremse, lastbremse, entlasten, vermerkeZuruecknehmen, kennung, kennungP
   protokoll, notbremse, notentlasten, lesenGrenze, gueltigeDurchlassen, sperrversuchZaehlen,
   sperrAuswertungBeginnen, sperrAuswertungenAbwarten } from "../lib/schutz.mjs";
 import { ereignis } from "../lib/gesund-zaehler.mjs";
-import { zuTief, RUMPF_TIEFE_MAX } from "../lib/rumpftiefe.mjs";
+import { zuTief, zuTiefRumpf } from "../lib/rumpftiefe.mjs";
 import { bestandFuerRolle, bestandFuerAntwort, zusammenfuehren, schreibumfang, absageText, rolleVergebbar, sitzungsRolleBekannt,
   wirksameRolle, SCHREIBEN_NEIN, SCHREIBEN_VOLL, eigenerMandant, darf, fachpruefungOffen, sammelAnzahlSetzen, einwilligungsAenderungen, freigabeRuecknahmen, abschlussRecht } from "../lib/rechte.mjs";
 import { schutzKonfliktMitteilungen, schutzEntferntAnzahl } from "../lib/bestaetigungen.mjs";
@@ -192,9 +192,7 @@ async function rumpfLesen(req) {
     if (!daten || typeof daten !== "object")
       return { ok: false, antwort: antwort({ fehler: "Der Rumpf muss ein JSON-Objekt sein." }, 400) };
     /* WP-19.5 (Review #502 H1): Tiefendeckel vor jeder rekursiven Funktion (gleich, JSON.stringify, Schreibwege). */
-    if (zuTief(daten))
-      return { ok: false, antwort: antwort({ fehler: "Der Rumpf ist zu tief verschachtelt.",
-        text: `Höchstens ${RUMPF_TIEFE_MAX} Ebenen sind vorgesehen.` }, 400) };
+    if (zuTief(daten)) return { ok: false, antwort: antwort(zuTiefRumpf(), 400) };
     return { ok: true, daten };
   } catch {
     return { ok: false, antwort: antwort({ fehler: "Der Rumpf ist kein gültiges JSON." }, 400) };

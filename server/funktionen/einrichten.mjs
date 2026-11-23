@@ -12,6 +12,7 @@ import { bestandLesen } from "../lib/bestand.mjs";
 import { ROLLEN_VERGEBBAR, rolleVergebbar } from "../lib/rechte.mjs";
 import { betriebFuerNeuenCode, bindungsVorschau } from "../lib/erstbefuellung.mjs";
 import { raumLage, ersteinrichtungVermerken, neueZugaengeErlaubt, KUNDENRAUM_TEXT } from "../lib/kundenraumschutz.mjs";
+import { zuTief, zuTiefRumpf } from "../lib/rumpftiefe.mjs";
 import { erstleitungAusstellen, erstleitungVermerk, erstleitungEingerichtet, erstleitungRegimeVermerken }
   from "../lib/erstleitung.mjs";
 import { verwalterPruefen, verwalterAnlegen, verwalterListe, verwalterSperren, verwalterAktiv,
@@ -58,6 +59,8 @@ export default async (req) => {
 
   let body;
   try { body = req.method === "GET" ? {} : await req.json(); } catch { body = {}; }
+  /* WP-19.5 Nachtrag (Review #505 A1): Tiefendeckel vor jeder Verwendung des Rumpfs. */
+  if (zuTief(body)) return antwort(zuTiefRumpf(), 400);
   const { name, bestand, rolle, person, betrieb, hinweis, demo, gruppe } = body || {};
 
   /* Der Schlüssel darf im Rumpf stehen (wie bisher) oder im Kopf. GET kennt

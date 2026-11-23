@@ -24,6 +24,15 @@
 /** Höchste Verschachtelungstiefe eines Rumpfs (Objekte und Listen zählen je eine Ebene). */
 export const RUMPF_TIEFE_MAX = 64;
 
+/* Nachtrag (Review #505 A1): Alle Rumpfleser nutzen dieselbe Prüfung und denselben Antwortrumpf (Status 400):
+   daten.mjs, import.mjs, kalender.mjs, einladung.mjs, anmeldung.mjs, registrierung.mjs, zustellung.mjs,
+   hilfe.mjs, einrichten.mjs, starten.mjs. Jeder Leser prüft direkt nach JSON.parse bzw. req.json() und vor
+   jeder Verwendung des Rumpfs. Messung und Begründung der Grenze je Leser: docs/acc45/TIEFENDECKEL-RUMPFLESER.md. */
+
+/** Einheitlicher Antwortrumpf (Status 400) für einen zu tief verschachtelten Rumpf. */
+export const zuTiefRumpf = () => ({ fehler: "Der Rumpf ist zu tief verschachtelt.",
+  text: `Höchstens ${RUMPF_TIEFE_MAX} Ebenen sind vorgesehen.` });
+
 /**
  * Ist `wert` tiefer verschachtelt als `grenze`? Iterativ, ohne Rekursion; bricht beim ersten Treffer ab.
  * Tiefe: ein Wert ohne Objekt/Liste hat 0, `{}` und `[]` haben 1, jede weitere Schachtel zählt eins dazu.
@@ -32,13 +41,22 @@ export const RUMPF_TIEFE_MAX = 64;
  */
 export function zuTief(wert, grenze = RUMPF_TIEFE_MAX) {
   if (!wert || typeof wert !== "object") return false;
-  /** @type {Array<[any, number]>} */
-  const stapel = [[wert, 1]];
-  while (stapel.length) {
-    const [x, t] = /** @type {[any, number]} */ (stapel.pop());
+  /* Review #505 H1: zwei parallele Stapel statt Paar-Listen und for-in statt Object.values — keine
+     Zwischenlisten je Knoten. Für Werte aus JSON.parse dasselbe Ergebnis: nur eigene, aufzählbare
+     Zeichenketten-Schlüssel (JSON.parse legt nie geerbte aufzählbare Schlüssel an). */
+  /** @type {any[]} */
+  const werte = [wert];
+  /** @type {number[]} */
+  const tiefen = [1];
+  while (werte.length) {
+    const x = werte.pop();
+    const t = /** @type {number} */ (tiefen.pop());
     if (t > grenze) return true;
-    const kinder = Array.isArray(x) ? x : Object.values(x);
-    for (const k of kinder) if (k && typeof k === "object") stapel.push([k, t + 1]);
+    if (Array.isArray(x)) {
+      for (let i = 0; i < x.length; i++) { const k = x[i]; if (k && typeof k === "object") { werte.push(k); tiefen.push(t + 1); } }
+    } else {
+      for (const s in x) { const k = x[s]; if (k && typeof k === "object") { werte.push(k); tiefen.push(t + 1); } }
+    }
   }
   return false;
 }

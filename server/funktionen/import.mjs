@@ -47,6 +47,7 @@ import { besitzAus, vorgangAnlegen, vorgangFuellen, vorgangHolen, vorgangEntfern
   parserPlatzBelegen, _pruefhaken as _importPruefhaken } from "../lib/import/vorgaenge.mjs";
 import { uebernehmen, erledigteAufraeumen } from "../lib/import/uebernahme.mjs";
 import { schichtVorschauMitSpeicher, blaetterErkennen, HINWEIS_NUR_VORSCHAU } from "../lib/import/schichtvorschau.mjs";
+import { zuTief, zuTiefRumpf } from "../lib/rumpftiefe.mjs";
 
 const laden = () => getStore({ name: "centric", consistency: "strong" });
 const ARTEN = ["personal", "schichtzyklus"];
@@ -61,12 +62,19 @@ const NICHT_GEFUNDEN = () => fehlerAntwort(404, "NICHT_GEFUNDEN", "Importvorgang
 const parserBelegt = (fehler) => new Response(JSON.stringify({ fehler, code: "ZU_VIEL_GLEICHZEITIG" }), { status: 503,
   headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "retry-after": "5", "x-content-type-options": "nosniff" } });
 
+/** Kennzeichen von jsonLesen: Rumpf gültig, aber zu tief verschachtelt (Antwort 400 mit zuTiefRumpf). */
+const ZU_TIEF = Symbol("zu tief");
+
 async function jsonLesen(req) {
   if (Number(req.headers.get("content-length") || 0) > JSON_MAX) return null;
   let t;
   try { t = await req.text(); } catch { return null; }
   if (t.length > JSON_MAX) return null;
-  try { const d = JSON.parse(t || "{}"); return d && typeof d === "object" && !Array.isArray(d) ? d : null; } catch { return null; }
+  let d;
+  try { d = JSON.parse(t || "{}"); } catch { return null; }
+  if (!d || typeof d !== "object" || Array.isArray(d)) return null;
+  /* WP-19.5 Nachtrag (Review #505 A1): vor eingabeHash (JSON.stringify der Zuordnung) und jeder anderen Verwendung. */
+  return zuTief(d) ? ZU_TIEF : d;
 }
 
 /** Nur eigene Schlüssel mit erlaubten Werten übernehmen (keine Prototyp-Spielereien, keine Fremdwerte). */
@@ -194,6 +202,7 @@ export default async (req) => {
     }
 
     const rumpf = await jsonLesen(req);
+    if (rumpf === ZU_TIEF) return antwort({ ...zuTiefRumpf(), code: "RUMPF_ZU_TIEF" }, 400);
     if (!rumpf) return fehlerAntwort(400, "RUMPF_UNGUELTIG", "Die Anfrage ist ungültig.");
     const v = vorgangHolen(rumpf.vorgang, besitz);
     if (!v) return NICHT_GEFUNDEN();

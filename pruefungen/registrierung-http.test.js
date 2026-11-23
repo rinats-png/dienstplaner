@@ -554,6 +554,9 @@ describe("Routing und Protokoll", () => {
       "protokoll aus ../lib/schutz.mjs",
       "registrierungStarten aus ../lib/registrierung.mjs",
       "zuVielAntwort aus ../lib/schutz.mjs",
+      /* WP-19.5 Nachtrag (Review #505 A1): Tiefendeckel des Rumpfs, keine Registrierungslogik. */
+      "zuTief aus ../lib/rumpftiefe.mjs",
+      "zuTiefRumpf aus ../lib/rumpftiefe.mjs",
     ].sort());
     /* Kein Kryptomodul, kein nachgeladener Import. */
     expect(quelle).not.toMatch(/node:crypto/);

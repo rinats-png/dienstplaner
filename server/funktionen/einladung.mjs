@@ -5,6 +5,7 @@ import { bestandLesenStreng } from "../lib/bestand.mjs";
 import { wirksameRolle } from "../lib/rechte.mjs";
 import { rollenSitzungOhneFaktor } from "../lib/betreiber-zweifaktor.mjs";
 import { sitzungBeenden, merkmalAus } from "../lib/sitzungen.mjs";
+import { zuTief, zuTiefRumpf } from "../lib/rumpftiefe.mjs";
 import { einladungAusstellen, einladungEinloesen, einladungenListe, einladungWiderrufen, frischeBestaetigung,
   einladungRechtePruefen } from "../lib/einladungen.mjs";
 
@@ -54,6 +55,8 @@ async function rumpfLesen(req) {
     const daten = JSON.parse(text || "{}");
     if (!daten || typeof daten !== "object" || Array.isArray(daten))
       return { antwort: antwort({ fehler: "Der Rumpf muss ein JSON-Objekt sein." }, 400) };
+    /* WP-19.5 Nachtrag (Review #505 A1): Tiefendeckel direkt nach dem Parsen, vor jeder Verwendung. */
+    if (zuTief(daten)) return { antwort: antwort(zuTiefRumpf(), 400) };
     return { daten };
   } catch {
     return { antwort: antwort({ fehler: "Der Rumpf ist kein gültiges JSON." }, 400) };
