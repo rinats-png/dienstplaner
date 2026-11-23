@@ -40,8 +40,9 @@ export const BEFUND = Object.freeze({
   ZEITZONENVERLAUF_UNBEKANNT: "ZEITZONENVERLAUF_UNBEKANNT",             // fail-closed (zoneZum, Stufe 1)
 });
 
+/** Typwächter: ein Datensatz (Objekt, kein Array, nicht null). @param {unknown} e @returns {e is Record<string, any>} */
 const istDatensatz = (e) => e !== null && typeof e === "object" && !Array.isArray(e);
-/** Eigenes Feld mit einem Wert ungleich undefined. */
+/** Eigenes Feld mit einem Wert ungleich undefined. @param {Record<string, any>} o @param {string} k */
 const hat = (o, k) => Object.hasOwn(o, k) && o[k] !== undefined;
 
 /**
@@ -56,7 +57,7 @@ export function zeitmodellVon(e) {
 
 /**
  * Vollständige Signatur (Plan § 10 N2): Feldpräsenz, unabhängig vom Wert von zeitmodell.
- * @param {unknown} e @returns {boolean}
+ * @param {unknown} e @returns {e is Record<string, any>}
  */
 export function signaturVollstaendig(e) {
   if (!istDatensatz(e)) return false;
@@ -96,9 +97,13 @@ export function zoneVon(e) {
   return { zone: r.zone, befunde: r.befunde };
 }
 
-const hatEnde = (e) => hat(e, "ende") || hat(e, "endeAm") || (Object.hasOwn(e, "endeDatum") && e.endeDatum !== null && e.endeDatum !== undefined);
+/** Trägt der Datensatz ein Ende? Wie der bestehende Code (offen = `start && !ende`: monatsabschluss.mjs,
+    selbstauskunft.mjs, daten.mjs) zählt nur ein truthy `ende` oder `endeAm`; null, "", 0, undefined = kein Ende
+    (Plan § 10 D6). @param {Record<string, any>} e */
+const hatEnde = (e) => (Object.hasOwn(e, "ende") && Boolean(e.ende)) || (Object.hasOwn(e, "endeAm") && Boolean(e.endeAm));
 
-/** Ende nach Modell-1-Regel: endeDatum ?? Schlüsseltag (nie aus endeAm). undefined = unechter Kalendertag. */
+/** Ende nach Modell-1-Regel: endeDatum ?? Schlüsseltag (nie aus endeAm). undefined = unechter Kalendertag.
+    @param {Record<string, any>} e @param {string} schluesselTag @returns {string|undefined} */
 function endeModellEins(e, schluesselTag) {
   const d = e.endeDatum;
   if (d === null || d === undefined || !Object.hasOwn(e, "endeDatum")) return schluesselTag;
@@ -118,23 +123,25 @@ export function stempelLesen(e, schluesselTag) {
     start: null, ende: null, befunde });
   if (r.regel === null) return zu(r.befunde);
   if (!kalendertagEcht(schluesselTag)) return zu([BEFUND.KALENDERTAG_UNGUELTIG]);
+  /* regel 1 oder 2 setzt einen Datensatz voraus (einordnen: kein Datensatz → UNBEKANNT → regel null). */
+  const d = /** @type {Record<string, any>} */ (e);
   const befunde = [...r.befunde];
   let start, ende = null;
   if (r.regel === 2) {
-    start = e.startKalendertag;
+    start = d.startKalendertag;
     if (!kalendertagEcht(start)) return zu([BEFUND.KALENDERTAG_UNGUELTIG]);
-    if (hat(e, "endeKalendertag")) {
-      ende = e.endeKalendertag;
+    if (hat(d, "endeKalendertag")) {
+      ende = d.endeKalendertag;
       if (!kalendertagEcht(ende)) return zu([BEFUND.KALENDERTAG_UNGUELTIG]);
-    } else if (hatEnde(e)) {
-      ende = endeModellEins(e, schluesselTag);
+    } else if (hatEnde(d)) {
+      ende = endeModellEins(d, schluesselTag);
       if (ende === undefined) return zu([BEFUND.KALENDERTAG_UNGUELTIG]);
       befunde.push(BEFUND.ZEITMODELL_ENDE_ALT);
     }
   } else {
     start = schluesselTag;
-    if (hatEnde(e)) {
-      ende = endeModellEins(e, schluesselTag);
+    if (hatEnde(d)) {
+      ende = endeModellEins(d, schluesselTag);
       if (ende === undefined) return zu([BEFUND.KALENDERTAG_UNGUELTIG]);
     }
   }

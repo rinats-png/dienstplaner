@@ -172,6 +172,23 @@ function kalendertagTests() {
     expect(kalendertageVon({ start: "21:30", startAm: "2026-10-03T19:30:00.000Z" }, "2026-10-03").ende).toBe(null);
     expect(kalendertageVon({ start: "21:30", endeAm: "2026-10-04T05:15:00.000Z" }, "2026-10-03").ende).toBe("2026-10-03");
   });
+  it("Ende nur bei truthy ende/endeAm (wie der bestehende Code: offen = start && !ende) — null, \"\", 0, undefined = offen", () => {
+    for (const leer of [null, "", 0, undefined, false]) {
+      const s = JSON.stringify(leer) ?? "undefined";
+      expect(kalendertageVon({ start: "06:00", ende: leer }, "2026-11-10"), `Modell 1 ende ${s}`)
+        .toEqual({ start: "2026-11-10", ende: null, befunde: [] });
+      expect(kalendertageVon({ start: "06:00", ende: leer, endeAm: leer }, "2026-11-10").ende, `Modell 1 endeAm ${s}`).toBe(null);
+      /* Modell 2 ohne endeKalendertag mit leerem Ende ist offen, nicht gemischt (kein ZEITMODELL_ENDE_ALT). */
+      expect(kalendertageVon(m2({ ende: leer, endeAm: leer }), "2026-11-10"), `Modell 2 ${s}`)
+        .toEqual({ start: "2026-11-10", ende: null, befunde: [] });
+    }
+    /* endeDatum allein ist kein Ende (der bestehende Code wertet nur ende). */
+    expect(kalendertageVon({ start: "21:30", endeDatum: "2026-11-11" }, "2026-11-10").ende).toBe(null);
+    /* Gültige Werte: ende oder endeAm genügt. */
+    expect(kalendertageVon({ start: "06:00", ende: "14:00" }, "2026-11-10").ende).toBe("2026-11-10");
+    expect(kalendertageVon({ start: "06:00", ende: "", endeAm: "2026-11-10T13:00:00.000Z" }, "2026-11-10").ende).toBe("2026-11-10");
+    expect(kalendertageVon(m2({ ende: "14:00" }), "2026-11-10").befunde).toEqual([BEFUND.ZEITMODELL_ENDE_ALT]);
+  });
   it("Umstellungsnächte: Modell 1 nach Schlüssel, Modell 2 nach gespeicherten Werten (nie neu berechnet)", () => {
     /* Frühjahrsnacht 2026-03-29: Beginn 28.03. 22:00 MEZ, Ende 29.03. 06:00 MESZ. */
     const f1 = { start: "22:00", startAm: "2026-03-28T21:00:00.000Z", ende: "06:00", endeAm: "2026-03-29T04:00:00.000Z", endeDatum: "2026-03-29" };

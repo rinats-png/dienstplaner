@@ -362,6 +362,11 @@ Gegenmittel: Schritt 3 gäbe 409 an einem Altdatensatz; R-S2 schriebe ein Modell
   Datensätze ab dem Stichtag mit `zeitmodellVon(e) === "UNBEKANNT"`. **Nie 409** für `zeitmodell: 2` ohne
   vollständige Signatur (§ 10 N3), auch nicht ab dem Stichtag: Der Leser liest ihn nach der Modell-1-Regel, die Zone
   wird nicht geprüft (§ 2.5, Zeile N3).
+- **Bedingung für Schritt 3 (Review Schritt 2, A2):** Für den Rückfall „R-S2 behandelt ihn als Modell 1“ bei einem
+  Datensatz mit `zeitmodellVon(e) === "UNBEKANNT"` ohne vollständige Signatur vor dem Stichtag liefert der Lesekern
+  `stempelLesen` bewusst `lesbar: false` und keine Kalendertage (fail-closed). Schritt 3 braucht dafür eine eigene,
+  getestete Modell-1-Lesung (Kalendertage nach Modell-1-Regel, Zone `BETRIEBSZONE`, Befund bleibt), die nur unter
+  den Bedingungen dieser Rückfallregel gilt; der Lesekern selbst wird dafür nicht aufgeweicht.
 
 ---
 
@@ -576,10 +581,11 @@ Ergebnis: `modell`, `signatur`, `regel`, `lesbar`, `zone`, `start`, `ende`, `bef
 Produktionscode bindet das Modul ein (Wächter im Test; Schritt 3 ändert diesen Wächter bewusst). Beleg:
 `pruefungen/zeitmodell.test.js`, verdrahtet in `pruefung:zeiterfassung`; vier Prozesszonen; Mutationen (Totalität
 entfernt, Zonenprüfung auch bei Modell 1, N3-Zweig entfernt, I6 verletzt, Signatur ohne `eingegangenAm`, gemischt
-ohne Befund, Aufrufer im Produktcode) je rot. Teil A und Teil B unverändert grün. Entscheidungen (technisch [P],
+ohne Befund, alte Ende-Regel, Aufrufer im Produktcode) je rot. Teil A und Teil B unverändert grün. Entscheidungen (technisch [P],
 Review Schritt 2 bestätigt oder verwirft sie):
 
-- **D1 Ort von `zoneZum`:** in `zeitmodell.mjs`, nicht in `betriebszeit.mjs` (Abweichung von 2.4 und 4). Grund:
+- **D1 Ort von `zoneZum`:** in `zeitmodell.mjs`, nicht in `betriebszeit.mjs` (ursprünglicher Plantext in 2.4 und 4;
+  beide Stellen sind angepasst). Grund:
   `betriebszeit.mjs` hat Aufrufer in Server und Oberfläche; Schritt 2 bleibt so eine einzige neue Datei ohne Aufrufer.
 - **D2 Zonenprüfung und N3 (Auflage A1 aus dem Review von Schritt 1):** Die Zone wird nur bei `zeitmodellVon(e) === 2`
   **und** vollständiger Signatur geprüft und gelesen. Ein Datensatz mit `zeitmodell: 2` ohne vollständige Signatur
@@ -596,5 +602,7 @@ Review Schritt 2 bestätigt oder verwirft sie):
   implizit: true }` für jeden Zeitpunkt. Ein gespeicherter Verlauf (gleich welcher Form) kann Stufe 1 nicht deuten →
   `ZEITZONENVERLAUF_UNBEKANNT`, keine Zone (fail-closed). Der Zeitpunkt ist Pflicht (keine echte Uhr; ungültig →
   `RangeError`).
-- **D6 Offenes Ende:** `ende` ist `null`, wenn der Datensatz kein Ende trägt (kein `ende`, `endeAm`, `endeDatum`);
-  sonst gilt die Regel aus 2.5.
+- **D6 Offenes Ende:** Ein Ende liegt nur vor, wenn `ende` oder `endeAm` **truthy** ist — wie der bestehende Code
+  (offen = `start && !ende`, `monatsabschluss.mjs`, `selbstauskunft.mjs`, `daten.mjs`). `null`, `""`, `0`,
+  `undefined` und ein `endeDatum` allein sind kein Ende; dann ist `ende` `null` (bei Modell 2 auch kein
+  `ZEITMODELL_ENDE_ALT`). Sonst gilt die Regel aus 2.5.
