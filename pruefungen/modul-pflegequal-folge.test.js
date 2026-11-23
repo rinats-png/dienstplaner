@@ -22,7 +22,10 @@
    ========================================================================== */
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { pflegeVerteilung, pflegeQualAenderung, pruefePflegeNiveaus, istBetreuungsQualifikation } from "../server/lib/modul-pflegequal.mjs";
-import { modulVon } from "../server/lib/branchenmodule.mjs";
+import { modulVon, gleich } from "../server/lib/branchenmodule.mjs";
+import { createElement as h } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { PflegeVerteilung } from "../src/module/pflegequal.jsx";
 import { branchenbestand, schreibeAls, vorlaeufigListe, schalterAn } from "./hilfen/branchenbetrieb.mjs";
 
 const FEST = "2026-11-06T10:00:00.000Z";
@@ -225,5 +228,101 @@ describe("H-1: Typprüfung fachkraft (true, false oder fehlt) nur für neue oder
     expect(ok.mandanten[0].qualifikationen.find((q) => q.id === "alt").fachkraft).toBe(1);
     const unv = schreibeAls(g, "LT", (m) => { m.einstellungen = { ...m.einstellungen, ruhezeit: 12 }; });
     expect(abgewiesen(unv), unv && unv.verweigert).toBe(false);
+  });
+});
+
+/* ------------------------------------------------------------------ AU-3 (Review #491) */
+/* Der Vergleich „unverändert“ hing von der Schlüsselreihenfolge ab (JSON.stringify): ein unveränderter Altbestand-Eintrag,
+   nur in anderer Reihenfolge gesendet, galt als geändert und wurde abgewiesen — für das ganze Speichern. Jetzt der stabile
+   Vergleich `gleich` aus branchenmodule.mjs (Schlüssel sortiert, Listen in Reihenfolge). */
+const umgedreht = (o) => Object.fromEntries(Object.entries(o).reverse());
+
+describe("AU-3: Vergleich unabhängig von der Schlüsselreihenfolge (Altbestand bleibt speicherbar)", () => {
+  it("gleich: Schlüsselreihenfolge egal, auch verschachtelt; Listenreihenfolge und Werte zählen; total für JSON-Typen", () => {
+    expect(gleich({ a: 1, b: { c: [1, { d: 2, e: 3 }] } }, { b: { c: [1, { e: 3, d: 2 }] }, a: 1 })).toBe(true);
+    expect(gleich([1, 2], [2, 1])).toBe(false);
+    expect(gleich({ a: 1 }, { a: "1" })).toBe(false);
+    expect(gleich({ a: null }, { a: false })).toBe(false);
+    expect(gleich({ a: 1 }, { a: 1, b: 2 })).toBe(false);
+    for (const w of [null, true, false, 0, -1.5, "", "x", [], {}, [null], { a: [] }]) {
+      expect(gleich(w, kopie(w)), JSON.stringify(w)).toBe(true);
+      expect(gleich(w, { anders: true }), JSON.stringify(w)).toBe(false);
+    }
+    expect(gleich(undefined, undefined)).toBe(true);
+    expect(gleich(undefined, null)).toBe(false);
+  });
+  for (const fachkraft of [1, null]) {
+    it(`pflegeQualAenderung: Altbestand fachkraft ${fachkraft}, nur Schlüsselreihenfolge anders — nicht geändert, keine Abweisung`, () => {
+      const alt = [...kopie(QUALS), { id: "x", name: "Alt", fachkraft }];
+      const neu = [...kopie(QUALS), umgedreht({ id: "x", name: "Alt", fachkraft })];
+      expect(Object.keys(neu[neu.length - 1])).toEqual(["fachkraft", "name", "id"]);
+      expect(pflegeQualAenderung({ qualifikationen: neu }, { qualifikationen: alt })).toEqual({});
+      /* zusammen mit einer echten Änderung an einer anderen Qualifikation */
+      expect(pflegeQualAenderung({ qualifikationen: aendere(neu, "eh", { name: "EH" }) }, { qualifikationen: alt })).toEqual({});
+    });
+  }
+  it("pflegeQualAenderung: ein wirklich geänderter Eintrag mit fachkraft nicht boolesch bleibt abgewiesen (auch umsortiert)", () => {
+    const alt = [...kopie(QUALS), { id: "x", name: "Alt", fachkraft: 1 }];
+    const neu = [...kopie(QUALS), umgedreht({ id: "x", name: "Alt neu", fachkraft: 1 })];
+    expect(pflegeQualAenderung({ qualifikationen: neu }, { qualifikationen: alt }).grund).toMatch(/fachkraft ist true oder false \(H-1\)/);
+  });
+  it("pflegeQualAenderung: Betreuungsqualifikation im Altniveau nur umsortiert — keine Abweisung; Einordnungswechsel weiter abgewiesen", () => {
+    const altM = mit(QUALS, [N_FK, N_PA, ALT]);
+    const neuQ = QUALS.map((q) => (q.id === "bk" ? umgedreht(q) : q));
+    expect(pflegeQualAenderung(mit(neuQ, [N_FK, N_PA, ALT]), altM)).toEqual({});
+    const r = pflegeQualAenderung(mit(aendere(neuQ, "bk", { name: "Pflegehelferin" }), [N_FK, N_PA, ALT]), altM);
+    expect(r.grund).toMatch(/Betreuungsqualifikation/);
+  });
+  it("pruefePflegeNiveaus: unverändertes Altniveau (Betreuung in assistenz) nur umsortiert — weiter speicherbar; geändert — abgewiesen", () => {
+    expect(pruefePflegeNiveaus([N_FK, umgedreht(ALT)], QUALS, [N_FK, ALT])).toBeNull();
+    expect(pruefePflegeNiveaus([N_FK, umgedreht({ ...ALT, name: "Assistenz neu" })], QUALS, [N_FK, ALT])).toMatch(/Betreuungsqualifikation/);
+  });
+  it("echter Schreibweg (Registry „geplant“): Altbestand fachkraft 1 nur umsortiert gesendet — gespeichert, kein 403", () => {
+    const g = branchenbestand({ pakete: [], branche: "sonstiges" });
+    g.mandanten[0].qualifikationen = [{ id: "alt", name: "Alt", fachkraft: 1 }, { id: "nul", name: "Null", fachkraft: null }];
+    const r = schreibeAls(g, "LT", (m) => { m.qualifikationen = m.qualifikationen.map(umgedreht); });
+    expect(abgewiesen(r), r && r.verweigert).toBe(false);
+    const ok = schreibeAls(g, "LT", (m) => { m.qualifikationen = [...m.qualifikationen.map(umgedreht), { id: "neu", name: "Neu", fachkraft: true }]; });
+    expect(abgewiesen(ok), ok && ok.verweigert).toBe(false);
+    expect(ok.mandanten[0].qualifikationen.find((q) => q.id === "alt").fachkraft).toBe(1);
+    const nein = schreibeAls(g, "LT", (m) => { m.qualifikationen = m.qualifikationen.map((q) => (q.id === "alt" ? umgedreht({ ...q, name: "Alt 2" }) : q)); });
+    expect(abgewiesen(nein)).toBe(true);
+    expect(nein.verweigert).toMatch(/fachkraft ist true oder false/);
+  });
+  it("echter Schreibweg (Registry „geplant“): gespeicherte Niveaus nur umsortiert gesendet — keine Abweisung „wirkt nicht“; geändert — abgewiesen", () => {
+    expect(modulVon("pflegequal").status).toBe("geplant");
+    const g = betrieb([N_FK, ALT]);
+    const r = schreibeAls(g, "LT", (m) => { m.pflegeNiveaus = m.pflegeNiveaus.map(umgedreht); m.einstellungen = { ...m.einstellungen, ruhezeit: 12 }; });
+    expect(abgewiesen(r), r && r.verweigert).toBe(false);
+    expect(r.mandanten[0].einstellungen.ruhezeit).toBe(12);
+    const nein = schreibeAls(g, "LT", (m) => { m.pflegeNiveaus = m.pflegeNiveaus.map((n) => (n.id === "n-fk" ? { ...n, name: "FK" } : n)); });
+    expect(abgewiesen(nein)).toBe(true);
+    expect(nein.verweigert).toMatch(/wirkt in diesem Betrieb nicht/);
+  });
+});
+
+/* ------------------------------------------------------------------ HI-1 (Review #491) — OFFEN */
+/* src/module/pflegequal.jsx nutzt `niveau` als React-Key. Die Datei ist byte-gepinnt (V4-3b, pruefungen/v4-3b-branchenmodule.test.js:
+   Rückrechnung auf den Basis-Quelltext), daher hier nicht geändert. Belegt wird der Befund auf Datenebene: zwei Hinweise
+   mit demselben Niveau; beide werden gerendert (kein Hinweis verschluckt). Fix (Key `${niveau}-${art||"fehl"}`) erst mit
+   einer Neufestlegung der V4-3b-Basis. */
+describe("HI-1 (offen, Datei gepinnt): ein Niveau mit beiden Hinweisarten", () => {
+  /* Altbestand: Gruppe „sonstige“ mit einer Betreuungsqualifikation (Fehlzuordnung) und einer Qualifikation mit
+     Fachkraft-Flag und Betreuungsnamen (Hinweisart fachkraftflag) — zwei Hinweise mit demselben Niveau. */
+  const Q = [{ id: "bk", name: "Betreuungskraft § 43b", fachkraft: false }, { id: "fk", name: "Betreuungskraft § 43b Leitung", fachkraft: true }];
+  const N = { id: "n-so", name: "Sonstige", gruppe: "sonstige", versorgung: null, qualifikationen: ["bk", "fk"] };
+  const m = { qualifikationen: Q, pflegeNiveaus: [N] };
+  it("die Verteilung liefert zwei Hinweise mit gleichem Niveau (beide sichtbar)", () => {
+    const v = V(m, []);
+    expect(v.hinweise.map((x) => [x.niveau, x.art])).toEqual([["n-so", undefined], ["n-so", "fachkraftflag"]]);
+  });
+  it("Komponente: beide Hinweise erscheinen (keiner verschluckt); die Keys sind heute gleich (Befund HI-1 offen)", () => {
+    const el = PflegeVerteilung({ m, personenImDienst: [], qualGueltig: () => true, heute: "2026-11-06" });
+    const kinder = [el.props.children].flat(3).filter((k) => k && k.props && k.props.role === "note");
+    expect(kinder).toHaveLength(2);
+    /* Stolperdraht: wird der Key berichtigt, schlägt diese Zeile an — dann hier auf eindeutige Keys umstellen. */
+    expect(new Set(kinder.map((k) => k.key)).size).toBe(1);
+    const html = renderToStaticMarkup(h(PflegeVerteilung, { m, personenImDienst: [], qualGueltig: () => true, heute: "2026-11-06" }));
+    expect(html.match(/role="note"/g)).toHaveLength(2);
   });
 });

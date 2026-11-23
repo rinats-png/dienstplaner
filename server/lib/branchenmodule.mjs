@@ -669,10 +669,13 @@ export function bestandOhneModuleinstellungen(b) {
   return mandanten.every((m, i) => m === b.mandanten[i]) ? b : { ...b, mandanten };
 }
 
-/* Vergleich unabhängig von der Reihenfolge der Schlüssel — ein Client darf sie anders senden. */
+/* Vergleich unabhängig von der Reihenfolge der Schlüssel — ein Client darf sie anders senden. Listen zählen in ihrer
+   Reihenfolge. Für JSON-Werte total (wie JSON.stringify: undefined-Felder fallen weg); auch genutzt von modul-wege.mjs
+   und modul-pflegequal.mjs (AU-3, Review #491). */
 const stabil = (x) => (Array.isArray(x) ? x.map(stabil) : istObjekt(x)
   ? Object.fromEntries(Object.keys(x).sort().map((k) => [k, stabil(x[k])])) : x);
-const gleich = (a, b) => JSON.stringify(stabil(a)) === JSON.stringify(stabil(b));
+/** Inhaltsgleich, unabhängig von der Schlüsselreihenfolge. @param {any} a @param {any} b @returns {boolean} */
+export const gleich = (a, b) => JSON.stringify(stabil(a)) === JSON.stringify(stabil(b));
 const ohne = (o, felder) => Object.fromEntries(Object.entries(istObjekt(o) ? o : {}).filter(([k]) => !felder.includes(k)));
 
 /**
