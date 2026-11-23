@@ -34,7 +34,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { trifftText, ERLEDIGT, brauchtPrBeleg } from "./ssot-zuordnung.mjs";
-import { gemergteUndPrs, abgleich, argWert } from "./ssot-abgleich.mjs";
+import { gemergteUndPrs, abgleich, argWert, optionenPruefen } from "./ssot-abgleich.mjs";
 // Review #483 H4: eine Quelle für das PR-Format (kein Zyklus: acc45-backlog.mjs importiert nur node:*).
 import { PR_MUSTER } from "./acc45-backlog.mjs";
 
@@ -172,6 +172,7 @@ function main() {
   let quelle, ssot, zeilen;
   try {
     /* Review #490 N2: --datei und --prs verlangen einen Wert; kein stiller Rückfall auf Standardpfad oder gh (Netz). */
+    optionenPruefen(process.argv, { flags: ["--anwenden"], werte: ["--datei", "--prs"] });   // unbekannte Option: Abbruch (Rückgabe 2), kein Netzfallback
     const datei = argWert("--datei");
     /* --prs F: PR-Liste aus Datei statt gh (wie ssot-abgleich.mjs; für Prüfungen ohne Netz, Review #486 H-d). */
     const prsDatei = argWert("--prs");

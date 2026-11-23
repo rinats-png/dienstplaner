@@ -40,6 +40,25 @@ export function argWert(name, argv = process.argv) {
   return wert;
 }
 
+/**
+ * Prüft alle Optionen der Befehlszeile gegen eine Liste (QS-2 Restpaket, Review #500). Eine unbekannte Option (z. B. `--prs=F` statt
+ * `--prs F`, `--pr F`) ist ein Fehler. Vorher wurde sie still ignoriert, und das Werkzeug fiel auf gh (Netz) bzw. den Standardpfad zurück.
+ * `flags` sind Schalter ohne Wert, `werte` Optionen mit Wert (der Wert selbst wird übersprungen; ihn prüft argWert).
+ * Rückgabe: die Argumente ohne Option (Positionsargumente).
+ */
+export function optionenPruefen(argv = process.argv, { flags = [], werte = [] } = {}) {
+  const rest = argv.slice(2);
+  const positionen = [];
+  for (let i = 0; i < rest.length; i++) {
+    const a = rest[i];
+    if (werte.includes(a)) { i++; continue; }
+    if (flags.includes(a)) continue;
+    if (a.startsWith("-") && a !== "-") throw new Error(`Unbekannte Option ${a}`);
+    positionen.push(a);
+  }
+  return positionen;
+}
+
 /** SSOT aus Datei oder aus dem Integrationsbranch (nie aus dem Arbeitsbaum). */
 export function ssotLesen(datei) {
   if (datei) return JSON.parse(readFileSync(datei, "utf8"));
@@ -142,6 +161,7 @@ const istHaupt = process.argv[1] && path.resolve(process.argv[1]) === fileURLToP
 if (istHaupt) {
   let zeilen;
   try {
+    optionenPruefen(process.argv, { flags: ["--json", "--pruefe"], werte: ["--datei", "--prs"] });   // unbekannte Option: Abbruch vor allem anderen
     const datei = argWert("--datei");
     const prsDatei = argWert("--prs");   // beide Optionen zuerst prüfen: kein Lesen, kein gh-Aufruf bei Fehlbedienung
     zeilen = abgleich(ssotLesen(datei), gemergteUndPrs(prsDatei));
