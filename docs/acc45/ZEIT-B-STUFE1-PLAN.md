@@ -145,7 +145,7 @@ zeitEnde:  { … wie zeitStart … }
 | Regel | Inhalt | Bezug |
 |---|---|---|
 | R-S1 Anlage | Neue Felder nur in dem Schreibvorgang, der Beginn bzw. Ende anlegt (wie `ereignisEnde`, `daten.mjs:2327-2329`). Nie an bestehenden Datensätzen nachtragen | Vertrag § 6.1, § 6.3 |
-| R-S2 Ende folgt Beginn | Das Modell eines Endes bestimmt der gespeicherte Beginn, nicht der Schalter: Beginn Modell 1 → Ende Modell 1 (T-LEG-3). Beginn Modell 2 → Ende Modell 2, **auch wenn der Schalter inzwischen AUS ist** (Rückweg „Schalter auf 1“ erzeugt so keine gemischten Datensätze) [P]. „Beginn Modell 2“ heißt **vollständige Signatur**: `zeitmodell === 2` (Zahl), `zeitzone` erlaubt, `startKalendertag` und `zeitStart.eingegangenAm` vorhanden. Ein Beginn mit einzelnen, vagabundierenden Feldern (A5, 3.6) ist kein Modell-2-Beginn | Vertrag § 6.3, § 10 Rollout |
+| R-S2 Ende folgt Beginn | Das Modell eines Endes bestimmt der gespeicherte Beginn, nicht der Schalter: Beginn Modell 1 → Ende Modell 1 (T-LEG-3). Beginn Modell 2 → Ende Modell 2, **auch wenn der Schalter inzwischen AUS ist** (Rückweg „Schalter auf 1“ erzeugt so keine gemischten Datensätze) [P]. „Beginn Modell 2“ heißt **vollständige Signatur** (Feldpräsenz, § 10 N2) **und** `zeitmodell === 2` (Zahl) **und** `zeitzone` erlaubt. Ein Beginn mit einzelnen, vagabundierenden Feldern (A5, 3.6) ist kein Modell-2-Beginn | Vertrag § 6.3, § 10 Rollout |
 | R-S3 Ende ohne Beginn | Neuer Datensatz (`START_FEHLT`, `daten.mjs:2304-2305`; F1 `zeiterfassung.mjs:296-297`) folgt dem Schalter; Zone zum Ereigniszeitpunkt des Endes | Vertrag § 4.2 |
 | R-S4 Zone eines Datensatzes | Ende nutzt `zeitzone` des Beginns. In Stufe 1 immer `Europe/Berlin` | Vertrag § 4.2, E1 |
 | R-S5 Konflikt-Kennzeichen | B6.3 setzt am alten Vorgang nur `markierungen`/`konfliktGrund` (`daten.mjs:2403-2411`), keine Zeitmodellfelder | R-S1 |
@@ -278,7 +278,7 @@ Ergebnis muss in allen Zonen gleich sein.
 
 | Bild | Lesen | Ende an Modell-2-Beginn | PUT (Speichern) | Bewertung |
 |---|---|---|---|---|
-| Kandidat `517993ca` (erstes Integrationsbild, wahrscheinliches `vorherig`) | liest `start/ende/startAm/endeAm/endeDatum`, ignoriert Zusatzfelder [A, T-RB-1] | `{ ...alt, ende, endeAm, … }` (`517993ca:server/funktionen/daten.mjs:2320`) → Beginn-Felder Modell 2 bleiben, Ende ohne `endeKalendertag`/`zeitEnde` | generischer Vergleich akzeptiert gleiche Werte (`stempelintegritaet.mjs:222-223`, gleich in `517993ca`) [A, T-RB-1] | richtig gerechnet (Zone Berlin); Datensatz gemischt, beim Vorwärtsgehen Befund `ZEITMODELL_ENDE_ALT` |
+| Kandidat `517993ca` (erstes Integrationsbild; nach Schalter AN wegen L3 **nie** `aktiv`/`vorherig`, nur noch Lückenszenario `.env.vor-deploy-*`/S-5, § 10 N1) | liest `start/ende/startAm/endeAm/endeDatum`, ignoriert Zusatzfelder [A, T-RB-1] | `{ ...alt, ende, endeAm, … }` (`517993ca:server/funktionen/daten.mjs:2320`) → Beginn-Felder Modell 2 bleiben, Ende ohne `endeKalendertag`/`zeitEnde` | generischer Vergleich akzeptiert gleiche Werte (`stempelintegritaet.mjs:222-223`, gleich in `517993ca`) [A, T-RB-1] | richtig gerechnet (Zone Berlin); Datensatz gemischt, beim Vorwärtsgehen Befund `ZEITMODELL_ENDE_ALT` |
 | `274bfa0` (heute Produktion, `deploy/FREIGEGEBENE-IMAGES.md:37`) | ohne Stempelintegrität, Tag vom Gerät (1.3) | spreizt `alt` wie oben, ohne `endeAm` | ohne Feldprüfung | schon **ohne** ZEIT-B kein zulässiges Rücksprungziel nach dem ersten Wechsel (PRODUKTIONSWEG § 3.3, § 3.3a: kein 2FA, `gesperrt` spätestens T0+24 h). ZEIT-B ändert daran nichts |
 
 ### 3.5 Rücksprungsperre: wie Modell-2-Daten nicht in Modell-1-Code laufen
@@ -362,7 +362,7 @@ Gegenmittel: Schritt 3 gäbe 409 an einem Altdatensatz; R-S2 schriebe ein Modell
 | **2** | **Lesekern**: `server/lib/zeitmodell.mjs` (2.5), `zoneZum` in `betriebszeit.mjs` (2.4); keine Aufrufer | neu `zeitmodell.mjs`, `betriebszeit.mjs`, neuer Test | keine (kein Aufrufer) | keine | 1 |
 | **3** | **Fail-closed-Wächter** (3.6) in Schreibwegen; Kollisionsscan-Werkzeug | `zeiterfassung.mjs`, `daten.mjs` (nur Abweisung), `stempelintegritaet.mjs`, `korrekturworkflow.mjs`, `selbstauskunft.mjs`, `werkzeug/` | keine für bestehende Daten **[A]**, Nachweis über Kollisionsscan (3.6) oder Rückfallregel; Teil A/B unverändert | `daten.mjs`, `zeiterfassung.mjs`, `stempelintegritaet.mjs` | 2 |
 | **4** | **Schreiber hinter Schalter**: `zeitmodellZwei()` in `schalter.mjs`; reine Funktion `zeitmodell2Felder(...)` in `zeitmodell.mjs`; Aufruf in `daten.mjs:2317-2329`; `quelle` aus `stempelEreignis`; `RELEASE-SCHALTER.json` + `RELEASE-UNFERTIG.json` | `schalter.mjs`, `zeitmodell.mjs`, `zeiterfassung.mjs`, `daten.mjs`, 2 JSON | AUS: Teil B gleich Basis-Commit, solange kein Modell-2-Beginn existiert; danach R-S2; AN: neue Felder an neuen Stempeln | `daten.mjs`, `zeiterfassung.mjs` | 3 |
-| **5** | **Rücksprung-Nachweis** T-RB-1/T-RB-3: Altcode `517993ca` per `git archive` (Muster `ABNAHME-V4-EM6-ROLLBACK-CODES.md` § 5) gegen Bestand mit Modell-2-Stempeln; Ergebnisbericht | neu Werkzeug/Test unter `werkzeug/` bzw. `pruefungen/`, Nachweis `docs/acc45/` | keine (nur Test/Nachweis) | keine | 4 |
+| **5** | **Rücksprung-Nachweis** T-RB-1/T-RB-3 (Zuschnitt nach § 10 N1: (a) gegen das als `vorherig` gelistete Bild ≥ Schritt 4, (b) `517993ca` nur als Lückenszenario): Altcode per `git archive` (Muster `ABNAHME-V4-EM6-ROLLBACK-CODES.md` § 5) gegen Bestand mit Modell-2-Stempeln; Ergebnisbericht | neu Werkzeug/Test unter `werkzeug/` bzw. `pruefungen/`, Nachweis `docs/acc45/` | keine (nur Test/Nachweis) | keine | 4 |
 
 **Wirkungsfrei unabhängig vom Schalter:** Schritte 1, 2, 5 (nur Test, Modul ohne Aufrufer, Nachweis). Schritt 3 nur
 unter der Annahme ohne Feldkollisionen (3.6). Schritt 4 hat bei Schalter AN eine Datenwirkung **und** über R-S2 auch
@@ -396,7 +396,7 @@ Lokal: `--maxWorkers=1 --testTimeout=60000`.
 | 2 | T-LEG-1, T-LEG-2 (Leser leitet nie aus `startAm` ab, Gerätetag-Schlüssel bleibt). `zeitmodellVon` mit festen Erwartungen: Schlüssel fehlt → `1`; `undefined` → `1`; `2` → `2`; `"2"` → `"UNBEKANNT"`; `null` → `"UNBEKANNT"`; `1` → `"UNBEKANNT"`; `3` → `"UNBEKANNT"`; `2.5` → `"UNBEKANNT"`. Modell-1-Datensatz mit vagabundierendem `zeitzone: "America/New_York"` → `zoneVon` = Berlin, kein Befund; Modell 2 mit dieser Zone → `ZONE_UNBEKANNT`. Gemischter Datensatz → `ZEITMODELL_ENDE_ALT`; `zoneZum` implizit; `kalendertageVon` an Mitternacht (23:59:59 / 00:00:01 Berlin) und in beiden DST-Nächten | ja (Modul fehlt) |
 | 3 | T-RB-2 neu gefasst: Datensatz mit vollständiger Signatur und `zeitmodell: 3` → Ende, Korrektur, Antrag, Selbstauskunft 409 `ZEITMODELL_UNBEKANNT`, Protokoll „abgewiesen“, Bestand unverändert (SHA-256); Modell 2 mit `zeitzone: "America/New_York"` → ebenso; Rückfallregel (3.6): Altdatensatz mit einzelnem Kollisionsfeld → Befund, kein 409, Ende als Modell 1. Teil A unverändert; Teil B AUS-neutral gegen den Basis-Commit | ja |
 | 4 | Schalter: unset/`1`/`true`/` 2`/`2 ` → Teil B gleich dem Basis-Commit; nur genau `2` → Modell 2. `quelle` je Zweig der Tabelle 2.1 einschließlich `"geraet_ungeprueft"` (`zeiterfassung.mjs:464`) und `aufBeginnBegrenzt` (`daten.mjs:2216-2223`). T-INV-1…6 über Zufallsabläufe mit festem Startwert inkl. DST-Nächten; T-INV-7 (Parallelrechnung: gleicher Ablauf mit AUS und AN, Modell-1-Felder bitgleich); T-LEG-3 (Ende an Modell-1-Beginn bei AN bleibt Modell 1); R-S2 (Ende an Modell-2-Beginn bei AUS bleibt Modell 2); T-MN-1/2; T-DST-F1/F2/H1/H2 (Kalendertage, `endeKalendertag` D+1); B6.3 und F1 (I4); Offline: `quelle` je Zweig `zeiterfassung.mjs:463-470`, `zeitX` = Kopie von `offlineX`, `eingegangenAm ≥ startAm` (I5); T-ABS-1 (geschlossener Monat: 409, `istAbdruck` unverändert, Vermerk unverändert); T-IDEM-1 (Wiederholung: Antwort des ersten, kein Zusatzfeld); PUT gleiche Kopie eines Modell-2-Stempels → kein 403, geändertes `endeKalendertag` → 403; Art.-15-Auskunft enthält die Felder nur für die eigene Person; T-PRIV-1-Teil: BR/SV/MA sehen fremde `zeitStart` nicht (vorhandene Sichttests erweitern, `sicht.mjs:713`, `:1069`) | ja |
-| 5 | **T-RB-1** (Bestand mit Modell-2-Stempeln: geschlossener Monat, offener Monat, Nachtdienst offen über Mitternacht): (1) `istAbdruck(alter Code 517993ca, Daten) === istAbdruck(neuer Code, Daten)` für **jeden** Monat mit Modell-2-Stempeln, **in beide Richtungen**: Monat unter neuem Bild geschlossen, unter altem Bild `korrekturBeginnen` (sonst 409 `ABDRUCK_ABWEICHEND`, `monatsabschluss.mjs:718`); und umgekehrt unter altem Bild geschlossen, unter neuem Bild Korrektur begonnen. (2) `lohnexportVergleich` (`monatsabschluss.mjs:348`) meldet in beiden Richtungen „gleich“. (3) Unter altem Code: lesen, Ende stempeln, PUT ohne Änderung → kein 403, gleiche Konten (Ist-Stunden je Person) wie unter neuem Code. **T-RB-3** (neu): zurück auf den neuen Stand → gemischter Datensatz gelesen, Befund `ZEITMODELL_ENDE_ALT`, Konten und Abdruck gleich | ja (Werkzeug fehlt) |
+| 5 | **Zuschnitt nach § 10 N1 (Bedingung im Schritt-5-PR):** T-RB-1 läuft (a) gegen das als `vorherig` gelistete Bild (≥ Schritt 4) als operativer Nachweis und (b) gegen `517993ca` nur als Lückenszenario (gemischter Datensatz + `ZEITMODELL_ENDE_ALT` erwartet). Wo unten „alter Code 517993ca“ steht, gilt das für (b); für (a) zusätzlich: keine gemischten Datensätze, R-S2 bei AUS. **T-RB-1** (Bestand mit Modell-2-Stempeln: geschlossener Monat, offener Monat, Nachtdienst offen über Mitternacht): (1) `istAbdruck(alter Code 517993ca, Daten) === istAbdruck(neuer Code, Daten)` für **jeden** Monat mit Modell-2-Stempeln, **in beide Richtungen**: Monat unter neuem Bild geschlossen, unter altem Bild `korrekturBeginnen` (sonst 409 `ABDRUCK_ABWEICHEND`, `monatsabschluss.mjs:718`); und umgekehrt unter altem Bild geschlossen, unter neuem Bild Korrektur begonnen. (2) `lohnexportVergleich` (`monatsabschluss.mjs:348`) meldet in beiden Richtungen „gleich“. (3) Unter altem Code: lesen, Ende stempeln, PUT ohne Änderung → kein 403, gleiche Konten (Ist-Stunden je Person) wie unter neuem Code. **T-RB-3** (neu): zurück auf den neuen Stand → gemischter Datensatz gelesen, Befund `ZEITMODELL_ENDE_ALT`, Konten und Abdruck gleich | ja (Werkzeug fehlt) |
 
 **CI-Hinweis:** Schritt 5 braucht die Objekte von `517993ca` im Klon [A: Tiefe des CI-Checkouts prüfen; sonst
 gezielter `git fetch` im Test oder lokaler Nachweis mit Bericht]. Änderungen an `.github/workflows/*` sind nicht Teil
@@ -453,7 +453,7 @@ dieses Plans; ein neuer CI-Schritt wird, falls nötig, im jeweiligen PR begründ
 - `RELEASE-SCHALTER.json`: Eintrag im **selben PR** wie der Name im Code (Schritt 4), sonst G3 NO-GO
   (`release-pruefung.mjs` sucht jeden `CENTRIC_…`-Namen). Klasse `schalter-aus`, `sicherWerte: ["1"]`.
 - `RELEASE-UNFERTIG.json`: Funktion `zeitmodell-2`, `variablen: ["CENTRIC_ZEITMODELL"]`, `ssotPakete: ["WP-ZEIT"]`,
-  `vorbedingungen`: Schritte 1–5 gemergt; T-RB-1 grün gegen das dann `vorherig` gelistete Bild; L3 als dauerhafte
+  `vorbedingungen`: Schritte 1–5 gemergt; T-RB-1 grün gegen das dann `vorherig` gelistete Bild (≥ Schritt 4, § 10 N1); L3 als dauerhafte
   Invariante (Text aus 3.5, inkl. `.env.vor-deploy-*` und S-5); Kollisionsscan oder Rückfallregel (3.6); unabhängiges
   Opus-Review Schritt 4 MERGE-OK; Auskunftserläuterung; Staging-Lauf mit `2`; Betreiberfreigabe. Hinweis: Das Feld
   ist Freitext und wird nicht maschinell geprüft (3.5, Lücke 1).
@@ -510,3 +510,51 @@ implementierende Agent gibt sein Review nie als unabhängig aus.
 | Playwright-Zonenprojekte, Serverlauf mit verschobener Uhr (T-E2E-TZ, T-SRV-TZ) | ZEIT-F |
 | `TZ` im Container | P2-37 (Betriebsfrage) |
 | Geteilter Dienst (zwei Paare je Schichttag) | außerhalb WP-ZEIT (Vertrag § 8.1) |
+
+---
+
+## 10. Delta-Review-Nachtrag 2026-11-23
+
+Befunde N1–N4 aus dem Delta-Review des Plans. Nur Text; der Code folgt im genannten Schritt-PR. Dazu der Stand von
+Schritt 1.
+
+**N1 (mittel) — T-RB-1 gegen das richtige Bild.** L3 (3.5) verlangt: Nach Schalter AN ist `517993ca` nie `aktiv` und
+nie `vorherig`. 3.4 nannte es noch „wahrscheinliches `vorherig`“, Schritt 5 prüfte nur `517993ca`. Festlegung:
+T-RB-1 läuft
+- (a) gegen das tatsächlich als `vorherig` gelistete Bild (≥ Schritt 4) als **operativer Nachweis**: keine gemischten
+  Datensätze, R-S2 bei AUS, Abdruck und `lohnexportVergleich` in beide Richtungen;
+- (b) gegen `517993ca` **nur als Lückenszenario** (manuell zurückgelegtes `.env.vor-deploy-*`, S-5; Lücken 3 und 4 in
+  3.5): gemischter Datensatz und Befund `ZEITMODELL_ENDE_ALT` werden **erwartet**, Konten und Abdruck bleiben gleich.
+3.4, 4 (Schritt 5), 5 (Schritt 5) und 6.4 sind angepasst. **Bedingung im Schritt-5-PR**; die Vorbedingung in
+`RELEASE-UNFERTIG.json` (6.4) nennt das Bild aus (a).
+
+**N2 (niedrig) — „vollständige Signatur“ über Feldpräsenz.** R-S2 band die Signatur an `zeitmodell === 2`; die
+Rückfallregel (3.6) und T-RB-2 (Schritt 3) sprechen von „vollständiger Signatur mit `zeitmodell: 3`“. Festlegung:
+**Vollständige Signatur** = die Schlüssel `zeitmodell`, `zeitzone`, `startKalendertag` und `zeitStart` sind vorhanden
+und `zeitStart.eingegangenAm` ist vorhanden — **unabhängig vom Wert** von `zeitmodell`. „Beginn Modell 2“ (R-S2) =
+vollständige Signatur **und** `zeitmodellVon(e) === 2` **und** Zone erlaubt. Vollständige Signatur mit anderem Wert
+(z. B. `3`) = fail-closed (L4, T-RB-2). **Bedingung im Schritt-2-PR** (Lesekern: eine Funktion für die Signatur,
+Tests je Fall) und im Schritt-3-PR (Wächter und Rückfallregel nutzen dieselbe Funktion).
+
+**N3 (niedrig) — `zeitmodell: 2` ohne vollständige Signatur.** `zeitmodellVon` (2.5) liefert `2` auch dann, wenn
+`startKalendertag` oder `zeitStart` fehlen. Festlegung für die Leser: Befund (Hinweis, z. B.
+`ZEITMODELL_SIGNATUR_UNVOLLSTAENDIG`), **Kalendertage nach der Modell-1-Regel** (Beginn = Schlüsseltag, Ende =
+`endeDatum ?? Schlüsseltag`, nie aus `startAm`), kein 409. R-S2 behandelt einen solchen Beginn als Modell 1 (N2).
+**Bedingung im Schritt-2-PR** (Test) und im Schritt-3-PR (kein Wächter-409 für diesen Fall).
+
+**N4 (niedrig) — Stichtag der Rückfallregel.** „Merge-Datum von Schritt 4“ (3.6) ist nur eine Näherung. Festlegung:
+Stichtag = **erster Start eines Bildes mit `CENTRIC_ZEITMODELL=2`** (entspricht L3 „können existieren“). Ablage
+(Empfehlung, Entscheidung im Schritt-3-PR): Betriebsvariable `CENTRIC_ZEITMODELL_SEIT=JJJJ-MM-TT`, vom Betreiber im
+selben Schritt wie das erste AN in `.env` gesetzt und in der Release-Checkliste vermerkt; der Code liest sie nur
+(kein neuer Startschreiber, 3.5 „Bezug zu W-1…W-9“). Fehlt sie, hatte nach Freigabeweg kein Bild je `2`, und die
+Rückfallregel gilt für alle Datensätze ohne vollständige Signatur; Datensätze mit vollständiger Signatur bleiben
+unberührt (Ablehnung nur bei unbekanntem Wert). Fehlt sie bei `CENTRIC_ZEITMODELL=2`: Hinweis in der
+Gesundheitsprüfung. **Bedingung im Schritt-3-PR** (Ablage festlegen, Test) und in `RELEASE-UNFERTIG.json`
+`vorbedingungen` (Schritt 4).
+
+**Schritt 1 umgesetzt (Golden-Anker, nur Test).** Teil A: `pruefungen/zeit-b-altdaten.test.js` mit statischer
+Fixture `pruefungen/fixtures/zeit-b-altdaten.json` (Herkunft `pruefungen/hilfen/zeit-b-altdaten-erzeugen.mjs`, Stand
+`ec9d5605`). Teil B: `pruefungen/zeit-b-handler.test.js`; Aktualisierungsregel als Kommentar im Kopf. Beide Teile in
+vier Prozesszonen; Teil B zusätzlich mit allen AUS-Werten des Schalters. Verdrahtung abweichend von Schritt 1 in 4
+(`pruefung:zeit-b`): Die Dateien stehen im vorhandenen Skript `pruefung:zeiterfassung`, das der CI-Workflow schon
+ausführt (`.github/workflows/pruefung.yml` bleibt unverändert, Muster #487).
