@@ -169,19 +169,23 @@ Betreiberinformation zur Freigabe von Schalter AN (6.4), damit die Freigabe in K
 Der Vertrag (§ 4.1) schreibt beim ersten Zeitmodell-2-Stempel einen Anlage-Eintrag. Stufe 1 schreibt ihn **nicht**:
 Unter E1 gibt es genau eine Zone und keinen Serverweg. Ein gespeicherter Verlauf bräuchte schon jetzt den Schutz
 gegen PUT (Muster `offlineSchalterZusammen`), die Regel beim Wiederherstellen (Vertrag § 5.3) und Sichtregeln —
-neue Schreib- und Konfliktfläche ohne Nutzen. Stattdessen: `zoneZum(m, zeitpunkt)` (neu in `betriebszeit.mjs`)
+neue Schreib- und Konfliktfläche ohne Nutzen. Stattdessen: `zoneZum(m, zeitpunkt)` (neu in `server/lib/zeitmodell.mjs`,
+nicht in `betriebszeit.mjs`; Entscheidung Schritt 2, § 10 D1)
 liefert bei fehlendem Verlauf die implizite Version `{ version: 1, zone: "Europe/Berlin" }` (Vertrag § 4.1 Absatz 2).
 Die Stempel tragen `zeitzonenVersion: 1`. Stufe 2 legt den Verlauf mit dem Serverweg an; die implizite Version 1
 bleibt dann der erste Eintrag. Abweichung vom Vertrag § 4.1 — das Review von Schritt 4 bestätigt sie oder lehnt sie ab.
 
 ### 2.5 Leser beider Modelle (neues Modul `server/lib/zeitmodell.mjs`)
 
+**Vorrang:** Bei Widerspruch zwischen §§ 2–6 und dem Nachtrag § 10 (N1–N4, Entscheidungen D1–D6 zu Schritt 2) gilt
+§ 10.
+
 **`zeitmodellVon(e)` ist total** [P]:
 
 | Wert von `e.zeitmodell` | Ergebnis |
 |---|---|
-| Schlüssel fehlt (`!("zeitmodell" in e)`) oder `undefined` | `1` |
-| Zahl `2` | `2` (Zonen- und Signaturprüfung folgt, siehe unten) |
+| Schlüssel fehlt (kein eigenes Feld `zeitmodell`) oder `undefined` | `1` |
+| Zahl `2` | `2`. Die Regel Modell 2 (Zone, gespeicherte Kalendertage) gilt erst mit vollständiger Signatur (§ 10 N2) und erlaubter Zone; ohne vollständige Signatur gilt die Zeile N3 in der Tabelle unten |
 | alles andere: `null`, `1`, `3`, `"2"`, `2.5`, Objekt, … | `"UNBEKANNT"` → fail-closed |
 
 Begründung und Abweichung vom Vertrag § 6.2 („`e.zeitmodell === 2 ? 2 : 1`“): Die Vertragsregel deutet jeden
@@ -192,10 +196,12 @@ inneren Widerspruch des Vertrags zugunsten von fail-closed auf. Das Review von S
 
 | Funktion | Modell 1 | Modell 2 |
 |---|---|---|
-| `zoneVon(e)` | `BETRIEBSZONE`; ein vorhandenes Feld `zeitzone` an einem Modell-1-Datensatz wird **nicht** geprüft und nicht gelesen (sonst blockierte ein vagabundierendes Feld einen Altdatensatz) | `e.zeitzone`; nicht in `ERLAUBTE_ZONEN` → Befund `ZONE_UNBEKANNT`, fail-closed. Geprüft nur bei `zeitmodellVon(e) === 2` |
+| `zoneVon(e)` | `BETRIEBSZONE`; ein vorhandenes Feld `zeitzone` an einem Modell-1-Datensatz wird **nicht** geprüft und nicht gelesen (sonst blockierte ein vagabundierendes Feld einen Altdatensatz) | `e.zeitzone`; nicht in `ERLAUBTE_ZONEN` → Befund `ZONE_UNBEKANNT`, fail-closed. Geprüft nur bei `zeitmodellVon(e) === 2` **und** vollständiger Signatur (§ 10 N2) |
 | `kalendertageVon(e, schluesselTag)` | Beginn = Schlüsseltag; Ende = `endeDatum ?? Schlüsseltag`; **nie** aus `startAm` abgeleitet (I6, T-LEG-1/2) | gespeicherte Werte |
-| gemischt (Modell 2 mit `ende`, ohne `endeKalendertag`) | — | Ende nach Modell-1-Regel; Befund `ZEITMODELL_ENDE_ALT` (Hinweis, rechnet weiter) — entsteht nur durch Altschreiber nach Rücksprung (§ 3.4) |
+| `zeitmodell: 2` **ohne** vollständige Signatur (§ 10 N3) | — | wie Modell 1: Zone `BETRIEBSZONE`, `zeitzone` weder geprüft noch gelesen; Kalendertage nach Modell-1-Regel (`endeKalendertag` wird nicht gelesen); Befund `ZEITMODELL_SIGNATUR_UNVOLLSTAENDIG` (Hinweis, rechnet weiter); **kein 409**, auch nicht ab dem Stichtag (§ 3.6). R-S2 behandelt ihn als Modell-1-Beginn |
+| gemischt (Modell 2 mit vollständiger Signatur, mit `ende`, ohne `endeKalendertag`) | — | Ende nach Modell-1-Regel; Befund `ZEITMODELL_ENDE_ALT` (Hinweis, rechnet weiter) — entsteht nur durch Altschreiber nach Rücksprung (§ 3.4) |
 | `zeitmodellVon(e) === "UNBEKANNT"` | — | fail-closed: Befund `ZEITMODELL_UNBEKANNT`; Schreibwege lehnen ab (§ 3.6, mit Rückfallregel A5) |
+| gespeicherter Kalendertag (Schlüssel, `endeDatum`, `startKalendertag`, `endeKalendertag`) gibt es nicht (`kalendertagEcht`) | fail-closed: Befund `KALENDERTAG_UNGUELTIG`, nie gerollt (P2-12) | ebenso |
 
 Die Leser schreiben nie zurück. Konto, Lohn, Zuschläge und Abschluss rechnen weiter aus `erfassung` und Freeze
 (`server/lib/istdaten.mjs:243-262`, `isteinfrieren.mjs`), die in Stufe 1 unverändert bleiben. Darum ändert sich in
@@ -327,8 +333,9 @@ Schritt 4 ist durch L3 ausgeschlossen, solange Modell-2-Daten existieren können
 ### 3.6 Fail-closed bei unbekanntem Modell (Schritt 3)
 
 Rechnung über `erfassung` ist vom Stempelmodell unabhängig (2.5). Gefährlich sind nur **Schreibwege**, die an
-einen Stempel anhängen. Diese lehnen bei `zeitmodellVon(e) === "UNBEKANNT"` oder (nur bei Modell 2) unbekannter
-Zone mit 409 `ZEITMODELL_UNBEKANNT` ab und protokollieren „abgewiesen“:
+einen Stempel anhängen. Diese lehnen bei `zeitmodellVon(e) === "UNBEKANNT"` oder (nur bei Modell 2 mit
+vollständiger Signatur, § 10 N2/N3) unbekannter Zone mit 409 `ZEITMODELL_UNBEKANNT` ab und protokollieren
+„abgewiesen“ (Ausnahmen: Rückfallregel unten):
 
 - Ende an offenen Beginn: `stempelZiel` (`zeiterfassung.mjs:271-309`) bzw. `daten.mjs:2277-2292`;
 - Korrektur: `korrekturAnhaengen` (`stempelintegritaet.mjs:459`);
@@ -347,10 +354,19 @@ Gegenmittel: Schritt 3 gäbe 409 an einem Altdatensatz; R-S2 schriebe ein Modell
   Produktionsbestands, nur lesend, durch Betreiber oder Betriebsagent (zulässig nach Betreiberentscheidung
   2026-11-14, Erkennungslauf auf Sicherungskopie). Ergebnis: Anzahl Stempel je Feldname, ohne Personenbezug, als
   Nachweis im PR. Ein Werkzeug für den Scan ist Teil von Schritt 3.
-- **Rückfallregel, falls der Scan fehlt oder Treffer zeigt:** Die Wächter melden bei Datensätzen mit Kollisionsfeldern
-  nur den Befund und lehnen nicht ab, wenn der Datensatz keine vollständige Modell-2-Signatur trägt (R-S2) **und**
-  sein Schlüsseltag vor dem Merge-Datum von Schritt 4 liegt; R-S2 behandelt ihn als Modell 1. Ablehnung bleibt für
-  vollständige Signaturen mit unbekanntem Wert und für Datensätze nach diesem Stichtag.
+- **Rückfallregel, falls der Scan fehlt oder Treffer zeigt** (Begriffe nach § 10 N2–N4; § 10 hat Vorrang): Die
+  Wächter melden bei Datensätzen mit Kollisionsfeldern nur den Befund und lehnen nicht ab, wenn der Datensatz keine
+  vollständige Signatur (§ 10 N2: Feldpräsenz, unabhängig vom Wert) trägt **und** sein Schlüsseltag vor dem Stichtag
+  liegt (§ 10 N4: erster Start eines Bildes mit `CENTRIC_ZEITMODELL=2`; nicht das Merge-Datum von Schritt 4); R-S2
+  behandelt ihn als Modell 1. Ablehnung (409) bleibt für (a) vollständige Signaturen mit unbekanntem Wert und (b)
+  Datensätze ab dem Stichtag mit `zeitmodellVon(e) === "UNBEKANNT"`. **Nie 409** für `zeitmodell: 2` ohne
+  vollständige Signatur (§ 10 N3), auch nicht ab dem Stichtag: Der Leser liest ihn nach der Modell-1-Regel, die Zone
+  wird nicht geprüft (§ 2.5, Zeile N3).
+- **Bedingung für Schritt 3 (Review Schritt 2, A2):** Für den Rückfall „R-S2 behandelt ihn als Modell 1“ bei einem
+  Datensatz mit `zeitmodellVon(e) === "UNBEKANNT"` ohne vollständige Signatur vor dem Stichtag liefert der Lesekern
+  `stempelLesen` bewusst `lesbar: false` und keine Kalendertage (fail-closed). Schritt 3 braucht dafür eine eigene,
+  getestete Modell-1-Lesung (Kalendertage nach Modell-1-Regel, Zone `BETRIEBSZONE`, Befund bleibt), die nur unter
+  den Bedingungen dieser Rückfallregel gilt; der Lesekern selbst wird dafür nicht aufgeweicht.
 
 ---
 
@@ -359,7 +375,7 @@ Gegenmittel: Schritt 3 gäbe 409 an einem Altdatensatz; R-S2 schriebe ein Modell
 | # | Schnitt | Dateien | Wirkung | Konfliktzonen | Abhängig |
 |---|---|---|---|---|---|
 | **1** | **Golden-Anker** (3.2, Teil A und B) | neu `pruefungen/zeit-b-altdaten.test.js`, `pruefungen/zeit-b-handler.test.js`; `package.json` (Skript `pruefung:zeit-b`, Kette `pruefung`) | keine (nur Test) | `package.json` | — |
-| **2** | **Lesekern**: `server/lib/zeitmodell.mjs` (2.5), `zoneZum` in `betriebszeit.mjs` (2.4); keine Aufrufer | neu `zeitmodell.mjs`, `betriebszeit.mjs`, neuer Test | keine (kein Aufrufer) | keine | 1 |
+| **2** | **Lesekern**: `server/lib/zeitmodell.mjs` (2.5) mit `zoneZum` (2.4; § 10 D1: nicht in `betriebszeit.mjs`); keine Aufrufer | neu `zeitmodell.mjs`, neuer Test, `package.json` (Verdrahtung) | keine (kein Aufrufer) | keine | 1 |
 | **3** | **Fail-closed-Wächter** (3.6) in Schreibwegen; Kollisionsscan-Werkzeug | `zeiterfassung.mjs`, `daten.mjs` (nur Abweisung), `stempelintegritaet.mjs`, `korrekturworkflow.mjs`, `selbstauskunft.mjs`, `werkzeug/` | keine für bestehende Daten **[A]**, Nachweis über Kollisionsscan (3.6) oder Rückfallregel; Teil A/B unverändert | `daten.mjs`, `zeiterfassung.mjs`, `stempelintegritaet.mjs` | 2 |
 | **4** | **Schreiber hinter Schalter**: `zeitmodellZwei()` in `schalter.mjs`; reine Funktion `zeitmodell2Felder(...)` in `zeitmodell.mjs`; Aufruf in `daten.mjs:2317-2329`; `quelle` aus `stempelEreignis`; `RELEASE-SCHALTER.json` + `RELEASE-UNFERTIG.json` | `schalter.mjs`, `zeitmodell.mjs`, `zeiterfassung.mjs`, `daten.mjs`, 2 JSON | AUS: Teil B gleich Basis-Commit, solange kein Modell-2-Beginn existiert; danach R-S2; AN: neue Felder an neuen Stempeln | `daten.mjs`, `zeiterfassung.mjs` | 3 |
 | **5** | **Rücksprung-Nachweis** T-RB-1/T-RB-3 (Zuschnitt nach § 10 N1: (a) gegen das als `vorherig` gelistete Bild ≥ Schritt 4, (b) `517993ca` nur als Lückenszenario): Altcode per `git archive` (Muster `ABNAHME-V4-EM6-ROLLBACK-CODES.md` § 5) gegen Bestand mit Modell-2-Stempeln; Ergebnisbericht | neu Werkzeug/Test unter `werkzeug/` bzw. `pruefungen/`, Nachweis `docs/acc45/` | keine (nur Test/Nachweis) | keine | 4 |
@@ -558,3 +574,35 @@ Fixture `pruefungen/fixtures/zeit-b-altdaten.json` (Herkunft `pruefungen/hilfen/
 vier Prozesszonen; Teil B zusätzlich mit allen AUS-Werten des Schalters. Verdrahtung abweichend von Schritt 1 in 4
 (`pruefung:zeit-b`): Die Dateien stehen im vorhandenen Skript `pruefung:zeiterfassung`, das der CI-Workflow schon
 ausführt (`.github/workflows/pruefung.yml` bleibt unverändert, Muster #487).
+
+**Schritt 2 umgesetzt (Lesekern, ohne Aufrufer).** Neues Modul `server/lib/zeitmodell.mjs` mit `zeitmodellVon`,
+`signaturVollstaendig` (N2), `beginnModellZwei` (R-S2), `zoneVon`, `kalendertageVon`, `stempelLesen` (alles in einem
+Ergebnis: `modell`, `signatur`, `regel`, `lesbar`, `zone`, `start`, `ende`, `befunde`) und `zoneZum`. Kein
+Produktionscode bindet das Modul ein (Wächter im Test; Schritt 3 ändert diesen Wächter bewusst). Beleg:
+`pruefungen/zeitmodell.test.js`, verdrahtet in `pruefung:zeiterfassung`; vier Prozesszonen; Mutationen (Totalität
+entfernt, Zonenprüfung auch bei Modell 1, N3-Zweig entfernt, I6 verletzt, Signatur ohne `eingegangenAm`, gemischt
+ohne Befund, alte Ende-Regel, Aufrufer im Produktcode) je rot. Teil A und Teil B unverändert grün. Entscheidungen (technisch [P],
+Review Schritt 2 bestätigt oder verwirft sie):
+
+- **D1 Ort von `zoneZum`:** in `zeitmodell.mjs`, nicht in `betriebszeit.mjs` (ursprünglicher Plantext in 2.4 und 4;
+  beide Stellen sind angepasst). Grund:
+  `betriebszeit.mjs` hat Aufrufer in Server und Oberfläche; Schritt 2 bleibt so eine einzige neue Datei ohne Aufrufer.
+- **D2 Zonenprüfung und N3 (Auflage A1 aus dem Review von Schritt 1):** Die Zone wird nur bei `zeitmodellVon(e) === 2`
+  **und** vollständiger Signatur geprüft und gelesen. Ein Datensatz mit `zeitmodell: 2` ohne vollständige Signatur
+  gilt für Zone und Kalendertage als Modell 1 (Befund `ZEITMODELL_SIGNATUR_UNVOLLSTAENDIG`); die Zonenprüfung aus
+  2.5 trifft ihn nicht. Folge für Schritt 3: kein 409 für diesen Fall, auch nicht ab dem Stichtag (3.6 neu gefasst).
+  Ein solcher Datensatz entsteht durch keinen Schreiber (Schritt 4 schreibt immer die volle Signatur); er ist ein
+  Kollisionsfall, und unter E1 ist die Modell-1-Lesung (Berlin) richtig.
+- **D3 Eingaben:** Kein Datensatz (`null`, `undefined`, Text, Zahl, Array) → `"UNBEKANNT"`, nie still Modell 1
+  (Abweichung von Vertrag § 6.2 „`e && …`“). Es zählen nur eigene Felder; ein Feld mit Wert `undefined` gilt als
+  fehlend (JSON speichert es nie) — für `zeitmodellVon` und für die Signatur gleich.
+- **D4 Unechte Kalendertage** (Schlüssel, `endeDatum`, `startKalendertag`, `endeKalendertag`): fail-closed mit
+  `KALENDERTAG_UNGUELTIG`, nie gerollt (P2-12, Variante B).
+- **D5 `zoneZum(m, zeitpunkt)`:** ohne gespeicherten `m.zeitzonenVerlauf` → `{ version: 1, zone: "Europe/Berlin",
+  implizit: true }` für jeden Zeitpunkt. Ein gespeicherter Verlauf (gleich welcher Form) kann Stufe 1 nicht deuten →
+  `ZEITZONENVERLAUF_UNBEKANNT`, keine Zone (fail-closed). Der Zeitpunkt ist Pflicht (keine echte Uhr; ungültig →
+  `RangeError`).
+- **D6 Offenes Ende:** Ein Ende liegt nur vor, wenn `ende` oder `endeAm` **truthy** ist — wie der bestehende Code
+  (offen = `start && !ende`, `monatsabschluss.mjs`, `selbstauskunft.mjs`, `daten.mjs`). `null`, `""`, `0`,
+  `undefined` und ein `endeDatum` allein sind kein Ende; dann ist `ende` `null` (bei Modell 2 auch kein
+  `ZEITMODELL_ENDE_ALT`). Sonst gilt die Regel aus 2.5.
