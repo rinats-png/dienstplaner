@@ -25,7 +25,7 @@ import { pflegeVerteilung, pflegeQualAenderung, pruefePflegeNiveaus, istBetreuun
 import { modulVon, gleich } from "../server/lib/branchenmodule.mjs";
 import { createElement as h } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { PflegeVerteilung, hinweisKey } from "../src/module/pflegequal.jsx";
+import { PflegeVerteilung } from "../src/module/pflegequal.jsx";
 import { branchenbestand, schreibeAls, vorlaeufigListe, schalterAn } from "./hilfen/branchenbetrieb.mjs";
 
 const FEST = "2026-11-06T10:00:00.000Z";
@@ -301,8 +301,12 @@ describe("AU-3: Vergleich unabhängig von der Schlüsselreihenfolge (Altbestand 
   });
 });
 
-/* ------------------------------------------------------------------ HI-1 (Review #491) */
-describe("HI-1: eindeutige React-Keys der Hinweise, auch wenn ein Niveau beide Hinweisarten hat", () => {
+/* ------------------------------------------------------------------ HI-1 (Review #491) — OFFEN */
+/* src/module/pflegequal.jsx nutzt `niveau` als React-Key. Die Datei ist byte-gepinnt (V4-3b, pruefungen/v4-3b-branchenmodule.test.js:
+   Rückrechnung auf den Basis-Quelltext), daher hier nicht geändert. Belegt wird der Befund auf Datenebene: zwei Hinweise
+   mit demselben Niveau; beide werden gerendert (kein Hinweis verschluckt). Fix (Key `${niveau}-${art||"fehl"}`) erst mit
+   einer Neufestlegung der V4-3b-Basis. */
+describe("HI-1 (offen, Datei gepinnt): ein Niveau mit beiden Hinweisarten", () => {
   /* Altbestand: Gruppe „sonstige“ mit einer Betreuungsqualifikation (Fehlzuordnung) und einer Qualifikation mit
      Fachkraft-Flag und Betreuungsnamen (Hinweisart fachkraftflag) — zwei Hinweise mit demselben Niveau. */
   const Q = [{ id: "bk", name: "Betreuungskraft § 43b", fachkraft: false }, { id: "fk", name: "Betreuungskraft § 43b Leitung", fachkraft: true }];
@@ -312,16 +316,12 @@ describe("HI-1: eindeutige React-Keys der Hinweise, auch wenn ein Niveau beide H
     const v = V(m, []);
     expect(v.hinweise.map((x) => [x.niveau, x.art])).toEqual([["n-so", undefined], ["n-so", "fachkraftflag"]]);
   });
-  it("hinweisKey: je Hinweis eindeutig (Niveau und Art)", () => {
-    const keys = V(m, []).hinweise.map(hinweisKey);
-    expect(keys).toEqual(["n-so-fehl", "n-so-fachkraftflag"]);
-  });
-  it("Komponente: die Hinweis-Elemente tragen eindeutige Keys; beide Texte erscheinen", () => {
+  it("Komponente: beide Hinweise erscheinen (keiner verschluckt); die Keys sind heute gleich (Befund HI-1 offen)", () => {
     const el = PflegeVerteilung({ m, personenImDienst: [], qualGueltig: () => true, heute: "2026-11-06" });
     const kinder = [el.props.children].flat(3).filter((k) => k && k.props && k.props.role === "note");
     expect(kinder).toHaveLength(2);
-    const keys = kinder.map((k) => k.key);
-    expect(new Set(keys).size).toBe(2);
+    /* Stolperdraht: wird der Key berichtigt, schlägt diese Zeile an — dann hier auf eindeutige Keys umstellen. */
+    expect(new Set(kinder.map((k) => k.key)).size).toBe(1);
     const html = renderToStaticMarkup(h(PflegeVerteilung, { m, personenImDienst: [], qualGueltig: () => true, heute: "2026-11-06" }));
     expect(html.match(/role="note"/g)).toHaveLength(2);
   });

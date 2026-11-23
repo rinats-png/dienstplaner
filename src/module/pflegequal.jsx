@@ -9,13 +9,6 @@
 import { pflegeVerteilung } from "../../server/lib/modul-pflegequal.mjs";
 
 /**
- * Key eines Hinweises: ein Niveau kann beide Hinweisarten haben (Fehlzuordnung und Fachkraft-Flag), daher Niveau und
- * Art (HI-1, Review #491).
- * @param {{ niveau: string, art?: string }} x
- */
-export const hinweisKey = (x) => `${x.niveau}-${x.art || "fehl"}`;
-
-/**
  * @param {{ m: any, personenImDienst: any[], qualGueltig: (m: any, p: any, qid: string, heute: string) => boolean, heute: string }} props
  */
 export function PflegeVerteilung({ m, personenImDienst, qualGueltig, heute }) {
@@ -32,6 +25,6 @@ export function PflegeVerteilung({ m, personenImDienst, qualGueltig, heute }) {
           <li key={n.id}>{n.name}: {n.anzahl}</li>))}
       </ul>
       {v.ohneNiveau > 0 && <p style={{ margin: 0 }}>Ohne zugeordnetes Niveau: {v.ohneNiveau}</p>}
-      {(v.hinweise || []).map((x) => <p key={hinweisKey(x)} role="note" style={{ margin: 0 }}>Hinweis: {x.text}</p>)}
+      {(v.hinweise || []).map((x) => <p key={x.niveau} role="note" style={{ margin: 0 }}>Hinweis: {x.text}</p>)}
     </section>);
 }
