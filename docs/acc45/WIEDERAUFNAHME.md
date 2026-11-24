@@ -5,6 +5,14 @@
 > Halter und Epoche stehen nie verlässlich in diesem Dokument: maßgeblich ist allein `node werkzeug/koordination.mjs status`
 > (dazu `leerlauf`). Epochenangaben in den Nachträgen unten sind historisch. Betriebsregeln: Abschnitt „Koordinationsregel“.
 
+## Nachtrag 2026-11-24 (b) (Nachtlauf 12:32Z, nur lesende Prüfung und Statuspflege, Branch `ccr-a5d550e1-s0fj15`)
+
+- **Integrationskopf:** `integration/release-v4` `c61a6db` (Merge #512, ZEIT-F Rest). Seit `4eae5d8` integriert: #508 (Doku), #509 (Test `RUMPF_ZU_TIEF`), #510 (ZEIT-F Zonenprojekte), #511 (Nachtrag ZEIT-F), #512 (ZEIT-F Rest, nur Tests/Doku). Branch vor Arbeitsbeginn auf `origin/integration/release-v4` gesetzt.
+- **Lease:** Epoche 25 (`hauptchat-e25`), erneuert 12:08Z, gültig bis 15:08Z: aktiver Koordinator. Dieser Lauf übernimmt keine Lease und ändert keinen Code.
+- **Offene PRs:** neu seit dem Nachtrag 23.11.: #513 (WEBSITE-W1, Quellsicherung), #514 (Draft, CI-Pilot „nicht mergen“); sonst unverändert. #489 bleibt Draft, Merge nach `main` nur mit Betreiberfreigabe.
+- **Hintergrundausführung (belegt):** Routine `trig_0144efYeRu3BMqUGbXuGTDRB` aktiv, stündlich `32 * * * *`, nächster Lauf 13:32Z. Kein zusätzlicher Zeitplan.
+- Keine neu abgeschlossenen PT behauptet; keine neue Betreiberentscheidung nötig.
+
 ## Nachtrag 2026-11-24 (Nachtlauf, nur lesende Prüfung und Statuspflege, Branch `ccr-a5d550e1-wkkibk`)
 
 - **Integrationskopf:** `integration/release-v4` `4eae5d8` (Merge #506, Doku). Davor #507 (`eb88621`): Tiefendeckel an allen Rumpflesern (WP-19.5, Review #505 A1), Tests in `modul-tiefendeckel-leser.test.js`. Branch vor Arbeitsbeginn auf `origin/integration/release-v4` gesetzt.
