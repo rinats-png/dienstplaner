@@ -9,12 +9,13 @@ import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import { deflateRawSync } from "node:zlib";
 import {
   KONFIG_STANDARD, auswerten, sammeln, freigabelisteLesen, g1Ci, g2Review, g3Schalter, g4Bild, g5Migration,
   g6Sicherung, g7Rueckweg, g8Blocker, g9Befunde, g10Freigabe, migrationsbericht, reviewNachweiseLesen,
   codeNamenFinden, vorlageLesen, wertAufloesen, abweichend, bildAngabenLesen, prsAusCommits, commitsOhnePr,
   argumenteLesen, ssotReviewBelege, freigabeSchema, basisPruefen, ausfuehrOptionen, ausfuehren, vorlageUnlesbar,
-  vorlagenStandErmitteln, kurzfassung, urteilPositiv, REL_AUSNAHME_IDS,
+  vorlagenStandErmitteln, kurzfassung, urteilPositiv, REL_AUSNAHME_IDS, nachholPruefen, nachholSammeln, zipEntpacken,
 } from "../werkzeug/release-pruefung.mjs";
 
 const WURZEL = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -2543,5 +2544,597 @@ describe("Gate-Härtung Review #486 H-b: REL-Ausnahme in G9 nur für bekannte RE
     const rel = ssot.pakete.map((p) => p.id).filter((id) => id.startsWith("REL-"));
     expect([...rel].sort()).toEqual([...REL_AUSNAHME_IDS].sort());
     expect(g9Befunde(ssot, null, KONFIG_STANDARD).gruende.join(" ")).not.toMatch(/REL_AUSNAHME_IDS/);
+  });
+});
+
+/* ======================================================================================================================
+   GATE-EW1/EW2 (Gate-Entwurf 2026-11-24 v2, A.4–A.8; SPEZ-UMSETZUNG §2.6): einmalige Erstwechsel-Ausnahme der
+   Widerrufbuch-Probe in G6 (nur v4-r1, nur vor T0, bis 2026-12-31), Bedingungen E1–E15, Nachhol-Modus --nachhol und
+   Folge-Release-Rückhalt. Tests T-P1…T-P3, T-N1…T-N17, Konfig-Bindung. Feste Uhr (JETZT), kein Netz, nur Testdaten.
+   ==================================================================================================================== */
+describe("GATE-EW1/EW2: Erstwechsel-Ausnahme der Widerrufbuch-Probe (G6) und Nachhol-Modus", () => {
+  const EW = JSON.parse(readFileSync(join(WURZEL, "pruefungen/fixtures/erstwechsel-gueltig.json"), "utf8"));
+  const C = KONFIG_STANDARD.erstwechselAusnahme.widerrufbuchProbe;
+  const C274 = "274bfa0baca5681f383eea334aab69875f31d5c1";
+  const D274 = "sha256:0b1929273a79d6c010c9a0303b0d624a8e61e3555df77c08773bd573dd3e452f";
+  const M = K;                    // Kandidat = Merge-Commit auf main (Bild-Commit)
+  const S = EW.schnittCommit;     // Schnitt release/rc-<id> = 2. Elter von M
+  const BAUM = EW.erstwechsel.baeume.kandidat;
+  const NACHWEIS = "docs/acc45/releases/v4-r1/nachweise/staging-widerrufbuch.json";
+  const SKRIPT = "deploy/sicherung/ci/widerrufbuch-ende-zu-ende.sh";
+  const FREIGABE_PFAD = "docs/acc45/releases/v4-r1.freigabe.json";
+  const ABLAGE = "docs/acc45/releases/v4-r1/nachhol/";
+  const sha = (b) => createHash("sha256").update(b).digest("hex");
+  const roh = (rel) => readFileSync(join(w, rel));
+  const kopie = (x) => JSON.parse(JSON.stringify(x));
+  const QUITTUNG = (rid = "v4-r1") => `Ich nehme die einmalige Erstwechsel-Ausnahme der Widerrufbuch-Probe für ${rid} an (Kandidat ${M}, `
+    + `Schnitt ${S}, Digest ${D}, Basis ${C274}). Die Probe wird binnen 24 h nach T0 durchgeführt und lokal verifiziert; `
+    + "der Nachweis kommt binnen 48 h ins Repository. Bei jeder Abbruchbedingung gilt die Abbruchtabelle A.8. Nach einem "
+    + "Abbruch gibt es keine neue Ausnahme. Die Ausnahme gilt bis 2026-12-31 und nie für einen weiteren Release.";
+  const LISTE_EW = (extra = []) => liste([
+    zeileListe(D, M, "aktiv", "Kandidat"),
+    zeileListe(D274, C274, "vorherig", "bis T0+24 h"),
+    zeileListe("sha256:f03a8514db6f07db5617e6818edd6505f0607d52ffcf5f985c862cfefc9c5a79", "64d08a4957c5374e1f04c17be2b75162c07573d2", "gesperrt", "P0-0"),
+    zeileListe("sha256:0861adee", "1a56988d3c406aff99281f96c2d7da1dc24d7af7", "gesperrt", "alt"),
+    ...extra,
+  ]);
+  const STAGING = (skriptSha = sha(roh(SKRIPT))) => ({
+    digest: D, commit: M, laufCommit: S, baum: BAUM, lauf: "4242-1", ergebnis: "success", erstellt: "2026-11-19T12:00:00Z",
+    widerrufbuch: { art: "widerrufbuch-staging-funktionstest", proben: { S1: "ok", S2: "ok", S3: "ok", S4: "ok", S5: "ok", S6: "ok" }, skriptSha256: skriptSha },
+  });
+
+  /** Schreibt Liste, Skript, CODEOWNERS, Staging-Nachweis und Freigabedatei (mit Ausnahme) nach w; liefert die Fixture. */
+  function aufbauen({ nachweis = {}, ausnahme = {}, freigabe = {}, ohneNachweis = false, listeExtra = [] } = {}) {
+    datei("deploy/FREIGEGEBENE-IMAGES.md", LISTE_EW(listeExtra));
+    datei(SKRIPT, "#!/usr/bin/env bash\n# synthetisch (Test GATE-EW1)\n");
+    datei(".github/CODEOWNERS", "# Release-Pfade (F9, E14 b)\n" + C.codeOwnerPfade.map((p) => `/${p} @rinats-png`).join("\n") + "\n");
+    if (!ohneNachweis) datei(NACHWEIS, { ...STAGING(), ...nachweis });
+    const nachweisRoh = ohneNachweis ? Buffer.from("") : roh(NACHWEIS);
+    const a = {
+      releaseId: "v4-r1", basisCommit: C274, kandidatCommit: M, schnittCommit: S, digest: D, nachholFristStunden: 24,
+      repoFristStunden: 48, gueltigBis: "2026-12-31", staging: { lauf: "4242-1", nachweis: NACHWEIS, sha256: sha(nachweisRoh) },
+      abbruchBedingungen: [...C.abbruchBedingungen], nachholAblage: ABLAGE, quittung: QUITTUNG(), ...ausnahme,
+    };
+    datei(FREIGABE_PFAD, {
+      ...FREIGABE, basisCommit: C274, schnittCommit: S, migration: { ...FREIGABE.migration, basisCommit: C274 },
+      vorlagenHashes: hashesIn(w, [".env.example", "deploy/compose.yml", "Dockerfile"]), erstwechselAusnahme: { widerrufbuchProbe: a }, ...freigabe,
+    });
+    const fx = JSON.parse(JSON.stringify(fixtureGo()).replaceAll("b".repeat(40), C274));
+    delete fx.nachweise.widerrufbuchProbe; // vor T0 gibt es keine Probe (E10)
+    fx.erstwechsel = { ...kopie(EW.erstwechsel), stagingArtefakt: [Buffer.from("axe").toString("base64"), nachweisRoh.toString("base64")] };
+    fx.nachhol = kopie(EW.nachhol);
+    return fx;
+  }
+  const g6 = (fx, opt) => gateVon(pruefe(fx, opt), "G6");
+  /** G6 NO-GO und genau ein Grund trägt die Bedingung id (E1 … E15). */
+  function erwarte(fx, id, opt) {
+    const g = g6(fx, opt);
+    expect(g.ergebnis, id).toBe("NO-GO");
+    expect(g.gruende.filter((x) => x.includes(` ${id}: `)), `${id} in ${g.gruende.join(" | ")}`).toHaveLength(1);
+    return g;
+  }
+  const mitEw = (fx, aendern) => { aendern(fx.erstwechsel); return fx; };
+
+  describe("Konfiguration (Bindung, F2/F3/F5)", () => {
+    it("Werte wie Gate-Entwurf A.4; Standard fail-closed; tief eingefroren", () => {
+      expect(C.releaseIds).toEqual(["v4-r1"]);
+      expect(C.basisCommit).toBe(C274);
+      expect(KONFIG_STANDARD.ohneRevisionslabel.some((o) => o.commit === C.basisCommit)).toBe(true);
+      expect([C.nachholFristStunden, C.repoFristStunden, C.gueltigBis]).toEqual([24, 48, "2026-12-31"]);
+      expect([...C.abbruchBedingungen].sort()).toEqual(["A-ABLAUF", "A-ABN", "A-BILD", "A-BUCH", "A-DATEN", "A-FRIST", "A-HOST",
+        "A-PROBE", "A-PROBE-W", "A-REPO", "A-SICH", "A-SICHER", "A-START", "A-STG", "A-VIER", "A-VOR"]);
+      expect(C.stagingProben).toEqual(["S1", "S2", "S3", "S4", "S5", "S6"]);
+      expect(KONFIG_STANDARD.sicherung.widerrufbuchProbePflicht).toBe(true);
+      const tief = (o) => Object.isFrozen(o) && Object.values(o).every((v) => v === null || typeof v !== "object" || tief(v));
+      expect(tief(KONFIG_STANDARD.erstwechselAusnahme)).toBe(true);
+      expect(Object.isFrozen(KONFIG_STANDARD.sicherung)).toBe(true);
+      expect(() => C.releaseIds.push("v4-r2")).toThrow();
+    });
+    it("kein CLI-Schalter für die Ausnahme; --konfig-zeigen zeigt sie", () => {
+      for (const a of ["--erstwechsel", "--ausnahme", "--widerrufbuch-probe-pflicht", "--konfig"]) expect(() => argumenteLesen([a]), a).toThrow(/unbekannte Option/);
+      const r = spawnSync(process.execPath, [WERKZEUG, "--konfig-zeigen"], { encoding: "utf8" });
+      expect(r.status).toBe(0);
+      expect(JSON.parse(r.stdout).erstwechselAusnahme.widerrufbuchProbe.gueltigBis).toBe("2026-12-31");
+    }, 60_000);
+  });
+
+  describe("Commit-Bindung: zwischen Endprüfung und Auslieferung nur Liste und Freigabedateien (G10)", () => {
+    it("jede andere Änderung seit dem Kandidaten ⇒ G10 NO-GO; erlaubt nur docs/acc45/releases/ und die Freigabeliste", () => {
+      expect(KONFIG_STANDARD.erlaubtNachKandidat).toEqual(["docs/acc45/releases/", "deploy/FREIGEGEBENE-IMAGES.md"]);
+      const fall = (p) => g10Freigabe({ releaseId: "v4-r1", freigabe: FREIGABE, commitet: true, kandidat: K, digest: D, basis: B,
+        stand: { kandidatIstVorfahr: true, headGepusht: true, geaendertSeitKandidat: ["deploy/FREIGEGEBENE-IMAGES.md", p] } }, KONFIG_STANDARD).ergebnis;
+      for (const p of ["deploy/deploy.sh", "deploy/digest-pruefen.sh", "deploy/freigabe-lib.sh", ".github/workflows/deploy.yml", ".github/CODEOWNERS",
+        "werkzeug/release-pruefung.mjs", "Dockerfile", "server.mjs", "docs/acc45/releases-x/a.json", "docs/acc45/RELEASE-PROZESS.md",
+        "deploy/FREIGEGEBENE-IMAGES.md.neu", "docs/acc45/release/v4-r1.freigabe.json"]) expect(fall(p), p).toBe("NO-GO");
+      for (const p of ["docs/acc45/releases/v4-r1.freigabe.json", "docs/acc45/releases/v4-r1/nachweise/staging-widerrufbuch.json"]) expect(fall(p), p).toBe("GO");
+    });
+  });
+
+  describe("positiv", () => {
+    it("T-P1: gültige Ausnahme → G6 GO mit Belegzeile und Auflage; offline Exit 3, online (Stub) Exit 0", () => {
+      const fx = aufbauen();
+      const r = pruefe(fx);
+      expect(r.gates.map((g) => [g.id, g.ergebnis, g.gruende])).toEqual(r.gates.map((g) => [g.id, "GO", []]));
+      expect(gateVon(r, "G6").belege.join(" ")).toMatch(/ERSTWECHSEL-AUSNAHME v4-r1 .*Probe NICHT geprüft/);
+      expect(r.auflagen).toEqual([{ art: "nachholpruefung-widerrufbuch", releaseId: "v4-r1", fristStunden: 24, repoFristStunden: 48,
+        ablage: ABLAGE, abbruchBedingungen: [...C.abbruchBedingungen] }]);
+      expect([r.gesamt, r.exitCode]).toEqual(["GO", 3]);
+      expect(kurzfassung(r)).toMatch(/AUFLAGE nachholpruefung-widerrufbuch v4-r1: Probe bis T0\+24 h, Nachweis bis T0\+48 h/);
+      expect(r.freigabeSha256).toBe(sha(roh(FREIGABE_PFAD)));
+      const e = sammeln({ wurzel: w, offline: true, fixture: fx, releaseId: "v4-r1", digest: D, jetztMs: JETZT_MS });
+      const online = auswerten({ ...e, modus: "online", jetztUeberschrieben: false });
+      expect([online.gesamt, online.exitCode]).toEqual(["GO", 0]);
+      const datei_ = join(w, "fixture-ew.json");
+      writeFileSync(datei_, JSON.stringify(fx));
+      const cli = spawnSync(process.execPath, [WERKZEUG, "--offline", "--fixture", datei_, "--wurzel", w, "--release-id", "v4-r1", "--digest", D, "--jetzt", JETZT], { encoding: "utf8" });
+      expect(cli.status, cli.stderr).toBe(3);
+      expect(JSON.parse(cli.stdout).auflagen).toHaveLength(1);
+    }, 60_000);
+
+    it("T-P2: ohne Ausnahmefeld, mit echter Probe-Datei → G6 wie bisher; keine Auflage; g6Sicherung byte-gleich", () => {
+      const r = pruefe();
+      expect(gateVon(r, "G6").ergebnis).toBe("GO");
+      expect(gateVon(r, "G6").belege.join(" ")).not.toMatch(/ERSTWECHSEL/);
+      expect(r.auflagen).toEqual([]);
+      const varianten = [NACHWEISE, { ...NACHWEISE, widerrufbuchProbe: null }, { ...NACHWEISE, sicherung: undefined }, undefined];
+      for (const n of varianten) {
+        const alt = g6Sicherung(n, JETZT_MS, KONFIG_STANDARD);
+        const neu = g6Sicherung(n, JETZT_MS, KONFIG_STANDARD, { freigabe: FREIGABE, freigabeRoh: FREIGABE, releaseId: "v4-r1", rueckhalt: [] });
+        expect(JSON.stringify(neu)).toBe(JSON.stringify(alt));
+      }
+    });
+  });
+
+  describe("negativ (je Bedingung E1–E15)", () => {
+    it("T-N1: v4-r2 mit Ausnahme → NO-GO E1 (Wiederverwendung)", () => {
+      erwarte(aufbauen({ ausnahme: { releaseId: "v4-r2" } }), "E1");
+      const fx = aufbauen({ ausnahme: { releaseId: "v4-r2", quittung: QUITTUNG("v4-r2") }, freigabe: { releaseId: "v4-r2" } });
+      datei("docs/acc45/releases/v4-r2.freigabe.json", JSON.parse(roh(FREIGABE_PFAD)));
+      rmSync(join(w, FREIGABE_PFAD));
+      const g = erwarte(fx, "E1", { releaseId: "v4-r2" });
+      expect(g.gruende.join(" ")).toMatch(/v4-r2/);
+    });
+    it("T-N2: V4-R1, „v4-r1 “ und Unicode-Bindestrich → NO-GO E1 (exakt, ohne Normalisierung)", () => {
+      for (const id of ["V4-R1", "v4-r1 ", "v4‐r1"]) erwarte(aufbauen({ ausnahme: { releaseId: id } }), "E1");
+    });
+    it("T-N3: Basis = M oder ein anderer Commit → NO-GO E2", () => {
+      erwarte(aufbauen({ ausnahme: { basisCommit: M } }), "E2");
+      const fx = aufbauen();
+      fx.basisCommit = "9".repeat(40);
+      erwarte(fx, "E2");
+      erwarte(aufbauen({ freigabe: { basisCommit: "9".repeat(40) } }), "E2");
+    });
+    it("T-N4: zusätzliche Zeile mit V4-Commit (aktiv, vorherig, gesperrt) → NO-GO E4", () => {
+      for (const status of ["aktiv", "vorherig", "gesperrt"]) {
+        erwarte(aufbauen({ listeExtra: [zeileListe("sha256:" + "9".repeat(64), "9".repeat(40), status, "früherer V4-Start")] }), "E4");
+      }
+      const fx = aufbauen();
+      datei("deploy/FREIGEGEBENE-IMAGES.md", liste([zeileListe(D, M, "aktiv", "Kandidat")])); // Basis fehlt als vorherig
+      erwarte(fx, "E4");
+    });
+    it("T-N5: Basisbaum mit Widerrufbuch-Modul; M ohne Probe-Skript; nicht ermittelbar → NO-GO E3", () => {
+      erwarte(mitEw(aufbauen(), (x) => { x.basisDateien["server/lib/widerrufbuch.mjs"] = true; }), "E3");
+      erwarte(mitEw(aufbauen(), (x) => { x.kandidatDateien["deploy/sicherung/widerrufbuch-probe.sh"] = false; }), "E3");
+      erwarte(mitEw(aufbauen(), (x) => { delete x.basisDateien["server/lib/kontowiderrufbuch.mjs"]; }), "E3");
+      erwarte(mitEw(aufbauen(), (x) => { delete x.kandidatDateien; }), "E3");
+    });
+    it("T-N6: Commit-Bindung: 1 Elter, 2. Elter ≠ S, Baum(M) ≠ Baum(S), S kein Vorfahr; --kandidat = S bei Label M → NO-GO E13 (und G4)", () => {
+      erwarte(mitEw(aufbauen(), (x) => { x.kandidatEltern = [x.kandidatEltern[0]]; }), "E13");
+      erwarte(mitEw(aufbauen(), (x) => { x.kandidatEltern = [x.kandidatEltern[0], "9".repeat(40)]; }), "E13");
+      erwarte(mitEw(aufbauen(), (x) => { x.kandidatEltern = [...x.kandidatEltern, "9".repeat(40)]; }), "E13");
+      erwarte(mitEw(aufbauen(), (x) => { x.baeume.schnitt = "9".repeat(40); }), "E13");
+      erwarte(mitEw(aufbauen(), (x) => { x.schnittIstVorfahr = false; }), "E13");
+      erwarte(mitEw(aufbauen(), (x) => { delete x.baeume; }), "E13");
+      const fx = mitEw(aufbauen(), (x) => { x.kandidatEltern = ["2".repeat(40)]; }); // Eltern von S
+      fx.kandidatCommit = S;
+      const r = pruefe(fx);
+      expect(gateVon(r, "G6").gruende.some((x) => x.includes(" E13: "))).toBe(true);
+      expect(gateVon(r, "G4").gruende.join(" ")).toMatch(/Revisionslabel .* ≠ Kandidat/);
+    });
+    it("T-N7: Staging-Nachweis fehlt, rot, anderer Digest/Commit/Baum, > 7 d, Zukunft, S5 fehlt, Hash falsch → NO-GO E6", () => {
+      erwarte(aufbauen({ ohneNachweis: true }), "E6");
+      for (const n of [{ ergebnis: "failure" }, { ergebnis: "ok" }, { digest: D_ALT }, { commit: S }, { baum: "9".repeat(40) },
+        { erstellt: "2026-11-12T11:00:00Z" }, { erstellt: "2026-11-21T12:00:00Z" }, { lauf: "4242-2" }, { laufCommit: "9".repeat(40) }]) {
+        erwarte(aufbauen({ nachweis: n }), "E6");
+      }
+      datei(SKRIPT, "#!/usr/bin/env bash\n# synthetisch (Test GATE-EW1)\n");
+      const wb = (x) => ({ widerrufbuch: { ...STAGING().widerrufbuch, ...x } });
+      erwarte(aufbauen({ nachweis: wb({ proben: { S1: "ok", S2: "ok", S3: "ok", S4: "ok", S6: "ok" } }) }), "E6");
+      erwarte(aufbauen({ nachweis: wb({ proben: { S1: "ok", S2: "ok", S3: "ok", S4: "ok", S5: "fehler", S6: "ok" } }) }), "E6");
+      erwarte(aufbauen({ nachweis: wb({ art: "staging-nachweis" }) }), "E6");
+      erwarte(aufbauen({ nachweis: wb({ skriptSha256: "1".repeat(64) }) }), "E6");
+      erwarte(aufbauen({ ausnahme: { staging: { lauf: "4242-1", nachweis: NACHWEIS, sha256: "1".repeat(64) } } }), "E6");
+      erwarte(aufbauen({ ausnahme: { staging: { lauf: "4242-1", nachweis: "docs/acc45/releases/v4-r1/staging.json", sha256: "1".repeat(64) } } }), "E6");
+      const g = erwarte(aufbauen(), "E6", { jetztMs: Date.parse("2026-11-26T12:00:01Z") }); // 7 d + 1 s nach erstellt
+      expect(g.gruende.join(" ")).toMatch(/E6: .*zu alt/);
+    });
+    it("T-N8: Lauf-API: anderer Pfad, Ereignis, head_sha, conclusion, Versuch; Artefakt-Bytes anders; API weg → NO-GO E7", () => {
+      for (const [k, v] of [["path", ".github/workflows/deploy.yml"], ["event", "push"], ["head_sha", "9".repeat(40)], ["conclusion", "failure"],
+        ["status", "in_progress"], ["run_attempt", 2], ["id", 4243]]) {
+        erwarte(mitEw(aufbauen(), (x) => { x.stagingLauf[k] = v; }), "E7");
+      }
+      erwarte(mitEw(aufbauen(), (x) => { x.stagingLauf.head_sha = M; }), "E7"); // ≠ laufCommit S des Nachweises
+      erwarte(mitEw(aufbauen(), (x) => { x.stagingArtefakt = [Buffer.from("anders").toString("base64")]; }), "E7");
+      erwarte(mitEw(aufbauen(), (x) => { x.stagingArtefakt = null; }), "E7");
+      erwarte(mitEw(aufbauen(), (x) => { x.stagingLauf = null; }), "E7");
+    });
+    it("T-N9: Fristen 25/0/24.5, Repo-Frist 49, Abbruchliste ohne A-FRIST, mit Zusatz oder doppelt → NO-GO E8; \"24\" → Schemafehler", () => {
+      for (const a of [{ nachholFristStunden: 25 }, { nachholFristStunden: 0 }, { nachholFristStunden: 24.5 }, { repoFristStunden: 49 },
+        { abbruchBedingungen: C.abbruchBedingungen.filter((x) => x !== "A-FRIST") }, { abbruchBedingungen: [...C.abbruchBedingungen, "A-NEU"] },
+        { abbruchBedingungen: [...C.abbruchBedingungen.filter((x) => x !== "A-FRIST"), "A-VOR"] }, { gueltigBis: "2027-01-31" },
+        { nachholAblage: "docs/acc45/releases/v4-r1/" }]) {
+        erwarte(aufbauen({ ausnahme: a }), "E8");
+      }
+      const r = pruefe(aufbauen({ ausnahme: { nachholFristStunden: "24" } }));
+      expect(gateVon(r, "G10").gruende.join(" ")).toMatch(/erstwechselAusnahme/);
+      expect(gateVon(r, "G6").gruende.join(" ")).toMatch(/Freigabedatei ungültig/);
+    });
+    it("T-N10: Quittung um ein Zeichen anders → E8; Platzhalter (<Name>, TODO, 0{40}) → E12", () => {
+      erwarte(aufbauen({ ausnahme: { quittung: QUITTUNG().replace("24 h", "25 h") } }), "E8");
+      erwarte(aufbauen({ ausnahme: { quittung: QUITTUNG().slice(0, -1) } }), "E8");
+      erwarte(aufbauen({ ausnahme: { quittung: QUITTUNG() + " <Name>" } }), "E12");
+      erwarte(aufbauen({ ausnahme: { quittung: "TODO" } }), "E12");
+      erwarte(aufbauen({ ausnahme: { schnittCommit: "0".repeat(40) }, freigabe: { schnittCommit: "0".repeat(40) } }), "E12");
+      erwarte(aufbauen({ ausnahme: { staging: { lauf: "4242-1", nachweis: "docs/acc45/releases/v4-r1/nachweise/beispiel.json", sha256: "1".repeat(64) } } }), "E12");
+    });
+    it("T-N11: jetzt nach gueltigBis → NO-GO E9; der letzte Tag gilt noch", () => {
+      erwarte(aufbauen(), "E9", { jetztMs: Date.parse("2027-01-01T00:00:00Z") });
+      const g = g6(aufbauen(), { jetztMs: Date.parse("2026-12-31T23:59:59Z") });
+      expect(g.gruende.filter((x) => x.includes(" E9: "))).toEqual([]);
+    });
+    it("T-N12: Ausnahme und widerrufbuch-probe-status.json zugleich → NO-GO E10 (widersprüchlich)", () => {
+      const fx = aufbauen();
+      fx.nachweise.widerrufbuchProbe = NACHWEISE.widerrufbuchProbe;
+      expect(erwarte(fx, "E10").gruende.join(" ")).toMatch(/widersprüchlich/);
+      const fx2 = aufbauen();
+      datei("docs/acc45/releases/v4-r1/nachweise/widerrufbuch-probe-status.json", NACHWEISE.widerrufbuchProbe);
+      erwarte(fx2, "E10");
+    });
+    it("T-N13: Ausnahme gültig, Sicherung oder Restore-Probe fehlt → G6 NO-GO (E11 unverändert Pflicht)", () => {
+      const fx = aufbauen();
+      delete fx.nachweise.sicherung;
+      expect(g6(fx).gruende).toEqual(["Sicherung außer Haus (letzte-erfolgreiche.json): Nachweis fehlt"]);
+      const fx2 = aufbauen();
+      fx2.nachweise.restoreProbe = { ...fx2.nachweise.restoreProbe, abweichend: 1 };
+      expect(g6(fx2).ergebnis).toBe("NO-GO");
+    });
+    it("T-N14: unbekannter oder fehlender Schlüssel, schnittCommit fehlt → Freigabedatei ungültig (G10 NO-GO, G6 NO-GO)", () => {
+      const faelle = [
+        { ausnahme: { zusatz: 1 } }, { ausnahme: { staging: { lauf: "4242-1", nachweis: NACHWEIS, sha256: "1".repeat(64), x: 1 } } },
+        { ausnahme: { quittung: undefined } }, { freigabe: { schnittCommit: undefined } }, { freigabe: { schnittCommit: "3333" } },
+        { freigabe: { erstwechselAusnahme: { widerrufbuchProbe: {}, andere: {} } } }, { ausnahme: { abbruchBedingungen: "A-VOR" } },
+        { ausnahme: { staging: { lauf: "x", nachweis: NACHWEIS, sha256: "1".repeat(64) } } },
+      ];
+      for (const fall of faelle) {
+        const r = pruefe(aufbauen(fall));
+        expect(gateVon(r, "G10").ergebnis, JSON.stringify(fall)).toBe("NO-GO");
+        expect(gateVon(r, "G6").gruende.join(" "), JSON.stringify(fall)).toMatch(/Erstwechsel-Ausnahme: Freigabedatei ungültig/);
+      }
+      expect(freigabeSchema({ ...FREIGABE, schnittCommit: S })).toEqual([]);
+      expect(freigabeSchema({ ...FREIGABE, nachholAbweichung: { releaseId: "v4-r1", grund: "x", mehr: 1 } }).join()).toMatch(/nachholAbweichung/);
+    });
+    it("T-N15: Vier-Augen: Regel fehlt, main ohne update, CODEOWNERS lückenhaft, Review vom Autor, kein Review, alter Kopf, API-Fehler → NO-GO E14", () => {
+      const va = (f) => (x) => f(x.vierAugen);
+      for (const f of [
+        (v) => { v.regeln.main[0].parameters.require_code_owner_review = false; },
+        (v) => { v.regeln["integration/release-v4"] = []; },
+        (v) => { v.regeln.main = v.regeln.main.filter((r) => r.type !== "update"); },
+        (v) => { delete v.regeln; },
+        (v) => { v.prs["701"].autor = "rinats-png"; },
+        (v) => { v.prs["700"].reviews = []; },
+        (v) => { v.prs["700"].reviews[0].state = "COMMENTED"; },
+        (v) => { v.prs["700"].reviews[0].autor = "maschinenkonto"; },
+        (v) => { v.prs["701"].reviews[0].commit = "9".repeat(40); },
+        (v) => { v.prs["701"].gemergt = false; },
+        (v) => { v.freigabePr = null; },
+        (v) => { delete v.paketPrs["GATE-EW2"]; },
+        (v) => { v.paketPrs["GATE-EW1"] = []; },
+        (v) => { v.fehler = ["GET rules/branches/main: 403"]; },
+      ]) erwarte(mitEw(aufbauen(), va(f)), "E14");
+      erwarte(mitEw(aufbauen(), (x) => { delete x.vierAugen; }), "E14");
+      const fx = aufbauen();
+      datei(".github/CODEOWNERS", C.codeOwnerPfade.slice(1).map((p) => `/${p} @rinats-png`).join("\n") + "\n");
+      erwarte(fx, "E14");
+      datei(".github/CODEOWNERS", C.codeOwnerPfade.map((p) => `/${p} @rinats-png`).join("\n") + "\n* @maschinenkonto\n");
+      erwarte(fx, "E14");
+      rmSync(join(w, ".github/CODEOWNERS"));
+      erwarte(fx, "E14");
+    });
+    it("T-N16: t0.json oder abbruch-*.json in HEAD → NO-GO E15 (keine zweite Nutzung, F10)", () => {
+      const fx = aufbauen();
+      datei(ABLAGE + "t0.json", { releaseId: "v4-r1", digest: D, kandidat: M, t0: "2026-11-21T10:00:00Z" });
+      erwarte(fx, "E15");
+      rmSync(join(w, ABLAGE), { recursive: true });
+      datei("docs/acc45/releases/v4-r1/abbruch-A-SICH.json", { id: "A-SICH" });
+      expect(erwarte(fx, "E15").gruende.join(" ")).toMatch(/reguläre Probe Pflicht/);
+    });
+  });
+
+  /* ------------------------------------------- F10 (Betreiberentscheidung 24.11.): Verbrauch erst ab V4-Start */
+  describe("F10: Abbruch vor dem V4-Start (A-VOR) verbraucht die Ausnahme nicht; Start oder unklar ⇒ NO-GO", () => {
+    const AVOR = "docs/acc45/releases/v4-r1/abbruch-A-VOR.json";
+    const ALT = "c".repeat(40); // abgebrochener Kandidat (Codeursache ⇒ neuer Kandidat)
+    const avor = (x = {}, z = {}) => ({ id: "A-VOR", releaseId: "v4-r1", kandidat: M, digest: D, zeit: "2026-11-19T20:00:00Z", deployExit: 1,
+      startzustand: { zugangWiderrufe: "fehlt", kontoWiderrufe: "fehlt", v4Startzeilen: 0, protokollSha256: "4".repeat(64), ...z }, ...x });
+    it("Abbruch vor Start nachweislich (gleicher Kandidat) ⇒ Ausnahme bleibt verfügbar (G6 GO)", () => {
+      const fx = aufbauen();
+      datei(AVOR, avor());
+      const g = g6(fx);
+      expect([g.ergebnis, g.gruende]).toEqual(["GO", []]);
+    });
+    it("Abbruch vor Start mit Codeursache ⇒ neuer Kandidat; alter steht gesperrt mit Grund A-VOR ⇒ GO, sonst E4", () => {
+      const fx = aufbauen({ listeExtra: [zeileListe("sha256:" + "e".repeat(64), ALT, "gesperrt", "A-VOR Codeursache")] });
+      datei(AVOR, avor({ kandidat: ALT }));
+      expect(g6(fx).gruende).toEqual([]);
+      const ohne = aufbauen();
+      datei(AVOR, avor({ kandidat: ALT }));
+      erwarte(ohne, "E4");
+      const andererGrund = aufbauen({ listeExtra: [zeileListe("sha256:" + "e".repeat(64), ALT, "gesperrt", "Sicherheitsbefund")] });
+      datei(AVOR, avor({ kandidat: ALT }));
+      erwarte(andererGrund, "E4");
+    });
+    it("Start erfolgt (Buch vorhanden oder Startzeile) ⇒ verbraucht ⇒ zweite Nutzung NO-GO E15", () => {
+      for (const z of [{ zugangWiderrufe: "vorhanden" }, { kontoWiderrufe: "vorhanden" }, { v4Startzeilen: 1 }]) {
+        const fx = aufbauen();
+        datei(AVOR, avor({}, z));
+        expect(erwarte(fx, "E15").gruende.join(" ")).toMatch(/verbraucht/);
+      }
+    });
+    it("Startzustand unklar oder Nachweis fehlerhaft ⇒ NO-GO E15 (fail-closed)", () => {
+      for (const [x, z] of [[{}, { v4Startzeilen: "0" }], [{}, { zugangWiderrufe: "unbekannt" }], [{}, { protokollSha256: "kurz" }],
+        [{ deployExit: 0 }, {}], [{ releaseId: "v4-r2" }, {}], [{ zeit: "2026-11-21T12:00:00Z" }, {}], [{ zusatz: 1 }, {}], [{ id: "A-START" }, {}]]) {
+        const fx = aufbauen();
+        datei(AVOR, avor(x, z));
+        expect(erwarte(fx, "E15").gruende.join(" "), JSON.stringify([x, z])).toMatch(/unklar/);
+      }
+      const fx = aufbauen();
+      datei(AVOR, "{ kaputt");
+      erwarte(fx, "E15");
+    });
+    it("Verbrauch nicht durch Löschen oder Ändern der Nachweise umgehbar (Geschichte von HEAD)", () => {
+      erwarte(mitEw(aufbauen(), (x) => { x.releaseHistorie = [ABLAGE + "t0.json", ABLAGE + "t0.json"]; }), "E15");          // t0.json gelöscht
+      erwarte(mitEw(aufbauen(), (x) => { x.releaseHistorie = ["docs/acc45/releases/v4-r1/abbruch-A-BUCH.json"]; }), "E15");
+      erwarte(mitEw(aufbauen(), (x) => { x.releaseHistorie = [AVOR]; }), "E15");                                              // A-VOR gelöscht
+      const geaendert = mitEw(aufbauen(), (x) => { x.releaseHistorie = [AVOR, AVOR]; });
+      datei(AVOR, avor());
+      expect(erwarte(geaendert, "E15").gruende.join(" ")).toMatch(/nachträglich geändert/);
+      erwarte(mitEw(aufbauen(), (x) => { delete x.releaseHistorie; x.releaseHistorie = null; }), "E15");                     // nicht ermittelbar
+    });
+    it("A-VOR-Nachweis stört die Nachholprüfung nicht (Start danach mit demselben Release)", () => {
+      const fx = nachholAnlegen();
+      datei(AVOR, avor());
+      expect(nachhol(fx).ergebnis).toBe("NACHHOL-GO");
+    });
+  });
+
+  /* ------------------------------------------------------------------ Nachhol-Modus (GATE-EW2) */
+  const T0 = "2026-11-21T10:00:00Z";
+  const T0_MS = Date.parse(T0);
+  const um = (stunden) => new Date(T0_MS + stunden * 3600_000).toISOString().replace(".000Z", "Z");
+  const PROBE = (x = {}) => ({ art: "widerrufbuch-probe", zeit: um(4), ergebnis: "ok", schritt: "fertig", code: 0, snapshots: 3,
+    neuester: "abcdef01", vergleich: "abcdef00", live_fehlend: 0, gegenprobe: "erkannt", gegenprobe_fehlend: 2,
+    pruefsummen: `zugang-widerrufe.json=${"1".repeat(64)};konto-widerrufe.json=${"2".repeat(64)}`, dauer_s: 9, bild: D, ...x });
+  /** Legt die Nachhol-Ablage an (Dateien wie N4) und liefert die Fixture; ohneDatei: Name, der fehlen soll. */
+  function nachholAnlegen({ probe = {}, verifikation = {}, status = {}, t0 = {}, endpruefung = {}, ohneDatei = null, mergedAt } = {}) {
+    const fx = aufbauen();
+    rmSync(join(w, ABLAGE), { recursive: true, force: true });
+    const schreib = (name, inhalt) => { if (name !== ohneDatei) datei(ABLAGE + name, inhalt); };
+    schreib("t0.json", { releaseId: "v4-r1", digest: D, kandidat: M, t0: T0, ...t0 });
+    schreib("widerrufbuch-status.json", { art: "widerrufbuch", zeit: um(3.3), ergebnis: "ok", code: 0, snapshots: 3, bild: D, ...status });
+    schreib("widerrufbuch-probe-status.json", PROBE(probe));
+    const probeRoh = ohneDatei === "widerrufbuch-probe-status.json" ? Buffer.from("") : roh(ABLAGE + "widerrufbuch-probe-status.json");
+    schreib("verifikation.json", { sha256: sha(probeRoh), verifiziertAm: um(4.2), exit: 0, ...verifikation });
+    schreib("endpruefung.json", { werkzeug: "release-pruefung", gesamt: "GO", exitCode: 0, modus: "online", uebersteuert: false,
+      releaseId: "v4-r1", kandidat: M, digest: D, freigabeSha256: sha(roh(FREIGABE_PFAD)), ...endpruefung });
+    if (mergedAt) fx.nachhol["v4-r1"].mergedAt = mergedAt;
+    return fx;
+  }
+  const nachhol = (fx) => nachholPruefen(nachholSammeln(w, "v4-r1", { offline: true, fixture: fx }));
+  /** NACHHOL-NO-GO mit der Abbruch-ID id. */
+  function nachholNein(fx, id) {
+    const r = nachhol(fx);
+    expect(r.ergebnis, id).toBe("NACHHOL-NO-GO");
+    expect(r.abbruchIds, `${id} in ${r.gruende.join(" | ")}`).toContain(id);
+    return r;
+  }
+
+  describe("Nachhol-Modus --nachhol (A.7)", () => {
+    it("T-P3: gültige Nachholung → NACHHOL-GO; auch „nicht-aussagekraeftig“ mit gleichen Prüfsummen und S5 ok; 24-h-Grenze exakt", () => {
+      expect(nachhol(nachholAnlegen())).toEqual({ ergebnis: "NACHHOL-GO", gruende: [], abbruchIds: [], verspaetet: false });
+      const p = PROBE().pruefsummen;
+      expect(nachhol(nachholAnlegen({ probe: { gegenprobe: "nicht-aussagekraeftig", gegenprobe_fehlend: 0 }, verifikation: { pruefsummenVergleich: p } })).ergebnis)
+        .toBe("NACHHOL-GO");
+      // Fristgrenze eingeschlossen (M7): Probe, Verifikation und Sicherungsstatus genau bei T0 + 24 h, Merge genau bei T0 + 48 h
+      expect(nachhol(nachholAnlegen({ probe: { zeit: um(24) }, verifikation: { verifiziertAm: um(24) }, status: { zeit: um(24) },
+        mergedAt: [um(48)] })).ergebnis).toBe("NACHHOL-GO");
+    });
+    it("T-N17: bild ≠ Digest, zeit > T0+24 h, snapshots 1, code 3, nicht-moeglich, F4 ohne Beleg, Verifikation spät, Merge > T0+48 h → NACHHOL-NO-GO mit Abbruch-ID", () => {
+      nachholNein(nachholAnlegen({ probe: { bild: D_ALT } }), "A-BILD");
+      nachholNein(nachholAnlegen({ probe: { zeit: um(24.01) }, verifikation: { verifiziertAm: um(24.02) } }), "A-FRIST");
+      nachholNein(nachholAnlegen({ probe: { zeit: um(-0.5) } }), "A-FRIST");
+      nachholNein(nachholAnlegen({ probe: { snapshots: 1 } }), "A-PROBE-W");
+      nachholNein(nachholAnlegen({ probe: { code: 3, ergebnis: "ruecksprung" } }), "A-PROBE");
+      nachholNein(nachholAnlegen({ probe: { live_fehlend: 2 } }), "A-PROBE");
+      nachholNein(nachholAnlegen({ probe: { code: 4, ergebnis: "fehler" } }), "A-PROBE-W");
+      nachholNein(nachholAnlegen({ probe: { gegenprobe: "nicht-moeglich" } }), "A-PROBE-W");
+      nachholNein(nachholAnlegen({ probe: { gegenprobe: "nicht-aussagekraeftig" } }), "A-PROBE-W");
+      nachholNein(nachholAnlegen({ probe: { gegenprobe: "nicht-aussagekraeftig" }, verifikation: { pruefsummenVergleich: "zugang-widerrufe.json=" + "3".repeat(64) } }), "A-PROBE-W");
+      const s5 = nachholAnlegen({ probe: { gegenprobe: "nicht-aussagekraeftig" }, verifikation: { pruefsummenVergleich: PROBE().pruefsummen } });
+      datei(NACHWEIS, { ...STAGING(), widerrufbuch: { ...STAGING().widerrufbuch, proben: { ...STAGING().widerrufbuch.proben, S5: "fehler" } } });
+      nachholNein(s5, "A-PROBE-W"); // S5 nicht bestanden (F4)
+      nachholNein(nachholAnlegen({ verifikation: { verifiziertAm: um(24.5) } }), "A-FRIST");
+      nachholNein(nachholAnlegen({ verifikation: { sha256: "1".repeat(64) } }), "A-FRIST");
+      nachholNein(nachholAnlegen({ ohneDatei: "verifikation.json" }), "A-FRIST");
+      nachholNein(nachholAnlegen({ ohneDatei: "widerrufbuch-probe-status.json" }), "A-FRIST");
+      nachholNein(nachholAnlegen({ ohneDatei: "t0.json" }), "A-FRIST");
+      nachholNein(nachholAnlegen({ t0: { digest: D_ALT } }), "A-BILD");
+      nachholNein(nachholAnlegen({ status: { ergebnis: "fehler", code: 1 } }), "A-SICH");
+      nachholNein(nachholAnlegen({ status: { zeit: um(30) } }), "A-SICH");
+      const spaet = nachholNein(nachholAnlegen({ mergedAt: [um(1), um(48.1)] }), "A-REPO");
+      expect(spaet.verspaetet).toBe(true);
+      nachholNein(nachholAnlegen({ mergedAt: [] }), "A-REPO");
+      nachholNein(nachholAnlegen({ endpruefung: { freigabeSha256: "1".repeat(64) } }), "A-FRIST");
+      nachholNein(nachholAnlegen({ endpruefung: { exitCode: 3, modus: "offline-fixture" } }), "A-FRIST");
+      const mitAbbruch = nachholAnlegen();
+      datei("docs/acc45/releases/v4-r1/abbruch-A-BUCH.json", { id: "A-BUCH" });
+      nachholNein(mitAbbruch, "A-BUCH");
+    });
+    it("--nachhol CLI: nur mit --release-id; offline Exit 3 bei NACHHOL-GO, 1 bei NO-GO; Aufruffehler Exit 2", () => {
+      const fx = nachholAnlegen();
+      const datei_ = join(w, "fixture-nachhol.json");
+      writeFileSync(datei_, JSON.stringify(fx));
+      const lauf = (args) => spawnSync(process.execPath, [WERKZEUG, ...args], { encoding: "utf8" });
+      const go = lauf(["--nachhol", "--release-id", "v4-r1", "--offline", "--fixture", datei_, "--wurzel", w]);
+      expect(go.status, go.stderr).toBe(3);
+      expect(JSON.parse(go.stdout)).toMatchObject({ ergebnis: "NACHHOL-GO", abbruchIds: [], modus: "offline-fixture", exitCode: 3 });
+      rmSync(join(w, ABLAGE, "verifikation.json"));
+      const nein = lauf(["--nachhol", "--release-id", "v4-r1", "--offline", "--fixture", datei_, "--wurzel", w]);
+      expect(nein.status).toBe(1);
+      expect(JSON.parse(nein.stdout).abbruchIds).toContain("A-FRIST");
+      for (const args of [["--nachhol"], ["--nachhol", "--release-id", "v4-r1", "--kandidat", "HEAD"], ["--nachhol", "--release-id", "../x"],
+        ["--nachhol", "--release-id", "v4-r1", "--jetzt", JETZT], ["--nachhol", "--release-id", "v4-r1", "--offline"],
+        ["--nachhol", "--release-id", "v4-r1", "--digest", D]]) {
+        expect(lauf(args).status, JSON.stringify(args)).toBe(2);
+      }
+    }, 60_000);
+    it("--nachhol online liest nur aus HEAD (temporäres Git-Repo): Arbeitsbaum und Index unverändert", () => {
+      const repo = mkdtempSync(join(tmpdir(), "ew-nachhol-"));
+      try {
+        const g = (...args) => spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false", ...args], { cwd: repo, encoding: "utf8" });
+        g("init", "-q");
+        mkdirSync(join(repo, "docs/acc45/releases/v4-r1/nachhol"), { recursive: true });
+        writeFileSync(join(repo, "docs/acc45/releases/v4-r1.freigabe.json"), "{}\n");
+        g("add", "-A"); g("commit", "-q", "-m", "Freigabe");
+        writeFileSync(join(repo, "docs/acc45/releases/v4-r1/nachhol/t0.json"), "{}\n"); // nur Arbeitsstand, nie gelesen
+        const stand = () => [g("--no-optional-locks", "status", "--porcelain").stdout, sha(readFileSync(join(repo, ".git/index")))];
+        const vorher = stand();
+        const r = spawnSync(process.execPath, [WERKZEUG, "--nachhol", "--release-id", "v4-r1", "--wurzel", repo], { encoding: "utf8" });
+        expect(r.status, r.stderr).toBe(1);
+        expect(JSON.parse(r.stdout).ergebnis).toBe("NACHHOL-NO-GO");
+        expect(stand()).toEqual(vorher);
+      } finally { rmSync(repo, { recursive: true, force: true }); }
+    }, 60_000);
+  });
+
+  describe("Folge-Release-Rückhalt (A.7, SPEZ §3.3)", () => {
+    const K2 = "9".repeat(40);
+    /** Folge-Release v4-r2 mit Basis = M (Kandidat von v4-r1); G6 sonst GO (reguläre Probe vorhanden). */
+    function folge(fx, freigabe = {}) {
+      datei("docs/acc45/releases/v4-r2.freigabe.json", { ...FREIGABE, releaseId: "v4-r2", kandidatCommit: K2, basisCommit: M, ...freigabe });
+      const fx2 = fixtureGo();
+      fx2.kandidatCommit = K2;
+      fx2.basisCommit = M;
+      fx2.nachhol = fx.nachhol;
+      return g6(fx2, { releaseId: "v4-r2" });
+    }
+    it("T-N16: Folge-Release ohne gültige Nachholung → G6 NO-GO „Ausnahme v4-r1 nicht abgeschlossen“", () => {
+      const g = folge(aufbauen());
+      expect(g.ergebnis).toBe("NO-GO");
+      expect(g.gruende.join(" ")).toMatch(/Ausnahme v4-r1 nicht abgeschlossen/);
+    });
+    it("Folge-Release mit NACHHOL-GO → kein Rückhalt (Probe bleibt regulär Pflicht)", () => {
+      const g = folge(nachholAnlegen());
+      expect([g.ergebnis, g.gruende]).toEqual(["GO", []]);
+      expect(g.belege.join(" ")).toMatch(/v4-r1 abgeschlossen \(NACHHOL-GO\)/);
+    });
+    it("W-REPO: nur A-REPO und nachholAbweichung im Folge-Release → Belegzeile; ohne Abweichung oder mit weiterem Abbruch → NO-GO", () => {
+      const spaet = nachholAnlegen({ mergedAt: [um(50)] });
+      expect(folge(spaet).ergebnis).toBe("NO-GO");
+      const abw = { nachholAbweichung: { releaseId: "v4-r1", grund: "Nachweis 2 h zu spät gemergt (Vorfall)" } };
+      const g = folge(spaet, abw);
+      expect(g.ergebnis).toBe("GO");
+      expect(g.belege.join(" ")).toMatch(/W-REPO/);
+      expect(folge(nachholAnlegen({ mergedAt: [um(50)], probe: { bild: D_ALT } }), abw).ergebnis).toBe("NO-GO");
+      expect(folge(spaet, { nachholAbweichung: { releaseId: "v4-r0", grund: "x" } }).ergebnis).toBe("NO-GO");
+    });
+    it("unlesbare Freigabedatei eines anderen Release in HEAD → G6 NO-GO (fail-closed)", () => {
+      datei("docs/acc45/releases/v4-r0.freigabe.json", "{ kaputt");
+      expect(g6(fixtureGo()).gruende.join(" ")).toMatch(/v4-r0\.freigabe\.json/);
+    });
+  });
+
+  describe("ZIP des Staging-Artefakts (E7, im Speicher) und Online-Pfad", () => {
+    function zipBauen(eintraege) {
+      const teile = []; const zentral = []; let ofs = 0;
+      eintraege.forEach((e, i) => {
+        const name = Buffer.from(e.name); const methode = i % 2 ? 8 : 0;
+        const daten = methode ? deflateRawSync(e.daten) : e.daten;
+        const l = Buffer.alloc(30);
+        l.writeUInt32LE(0x04034b50, 0); l.writeUInt16LE(20, 4); l.writeUInt16LE(8, 6); l.writeUInt16LE(methode, 8); l.writeUInt16LE(name.length, 26);
+        const z = Buffer.alloc(46);
+        z.writeUInt32LE(0x02014b50, 0); z.writeUInt16LE(20, 6); z.writeUInt16LE(methode, 10); z.writeUInt32LE(daten.length, 20);
+        z.writeUInt32LE(e.daten.length, 24); z.writeUInt16LE(name.length, 28); z.writeUInt32LE(ofs, 42);
+        teile.push(l, name, daten); zentral.push(z, name); ofs += 30 + name.length + daten.length;
+      });
+      const zd = Buffer.concat(zentral); const ende = Buffer.alloc(22);
+      ende.writeUInt32LE(0x06054b50, 0); ende.writeUInt16LE(eintraege.length, 8); ende.writeUInt16LE(eintraege.length, 10);
+      ende.writeUInt32LE(zd.length, 12); ende.writeUInt32LE(ofs, 16);
+      return Buffer.concat([...teile, zd, ende]);
+    }
+    it("liest gespeicherte und komprimierte Einträge (Größen aus dem Zentralverzeichnis); kaputtes ZIP wirft", () => {
+      const a = Buffer.from('{"digest":"x"}\n'); const b = Buffer.from("axe ".repeat(100));
+      expect(zipEntpacken(zipBauen([{ name: "staging-nachweis/staging-nachweis.json", daten: a }, { name: "e2e/axe.json", daten: b }])))
+        .toEqual([{ name: "staging-nachweis/staging-nachweis.json", daten: a }, { name: "e2e/axe.json", daten: b }]);
+      expect(() => zipEntpacken(Buffer.from("kein zip"))).toThrow();
+    });
+    it("online: Git-Angaben (Eltern, Bäume, Dateien, Vorfahr) und gh-GET (Lauf, Artefakt, Regeln, PRs) werden gelesen (temporäres Git-Repo)", () => {
+      const repo = mkdtempSync(join(tmpdir(), "ew-online-"));
+      try {
+        const g = (...args) => {
+          const r = spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false", "-c", "init.defaultBranch=main", "-c", "core.autocrlf=false", ...args], { cwd: repo, encoding: "utf8" });
+          if (r.status !== 0) throw new Error(args.join(" ") + ": " + r.stderr);
+          return r.stdout.trim();
+        };
+        const schreib = (rel, inhalt) => { mkdirSync(join(repo, rel, ".."), { recursive: true }); writeFileSync(join(repo, rel), typeof inhalt === "string" ? inhalt : JSON.stringify(inhalt)); };
+        g("init", "-q");
+        schreib("server.mjs", "// Basis\n"); g("add", "-A"); g("commit", "-q", "-m", "Basis");
+        const basis = g("rev-parse", "HEAD");
+        g("checkout", "-q", "-b", "release/rc-test");
+        for (const p of C.kandidatMitDateien) schreib(p, `// ${p}\n`);
+        schreib(".github/CODEOWNERS", C.codeOwnerPfade.map((p) => `/${p} @rinats-png`).join("\n") + "\n");
+        g("add", "-A"); g("commit", "-q", "-m", "Schnitt");
+        const s = g("rev-parse", "HEAD");
+        g("checkout", "-q", "main");
+        g("merge", "-q", "--no-ff", "release/rc-test", "-m", "Merge pull request #690 from x/release/rc-test");
+        const m = g("rev-parse", "HEAD");
+        const nachweis = { ...STAGING(sha(readFileSync(join(repo, SKRIPT)))), commit: m, laufCommit: s, baum: g("rev-parse", `${m}^{tree}`) };
+        schreib(NACHWEIS, nachweis);
+        const nachweisRoh = readFileSync(join(repo, NACHWEIS));
+        schreib(FREIGABE_PFAD, { ...FREIGABE, kandidatCommit: m, basisCommit: basis, schnittCommit: s, erstwechselAusnahme: { widerrufbuchProbe: {
+          releaseId: "v4-r1", basisCommit: basis, kandidatCommit: m, schnittCommit: s, digest: D, nachholFristStunden: 24, repoFristStunden: 48,
+          gueltigBis: "2026-12-31", staging: { lauf: "4242-1", nachweis: NACHWEIS, sha256: sha(nachweisRoh) }, abbruchBedingungen: [...C.abbruchBedingungen],
+          nachholAblage: ABLAGE, quittung: "q" } } });
+        g("add", "-A"); g("commit", "-q", "-m", "Freigabe und Nachweis");
+        const freigabeCommit = g("rev-parse", "HEAD");
+        const ZIP = zipBauen([{ name: "e2e/ergebnis.json", daten: Buffer.from("{}") }, { name: "staging-nachweis/staging-nachweis.json", daten: nachweisRoh }]);
+        const R = "repos/rinats-png/dienstplaner/";
+        const pr = (n, kopf) => ({ number: n, merged_at: "2026-11-20T00:00:00Z", base: { ref: "main" }, user: { login: "maschinenkonto" }, head: { sha: kopf } });
+        const antworten = {
+          [`${R}actions/runs/4242`]: { id: 4242, run_attempt: 1, path: ".github/workflows/staging-gate.yml", event: "workflow_dispatch", status: "completed", conclusion: "success", head_sha: s },
+          [`${R}actions/runs/4242/artifacts?per_page=100`]: { artifacts: [{ id: 5, name: "staging-nachweis", expired: false }] },
+          [`${R}rules/branches/main`]: [{ type: "pull_request", parameters: { require_code_owner_review: true } }, { type: "update" }],
+          [`${R}rules/branches/integration%2Frelease-v4`]: [{ type: "pull_request", parameters: { require_code_owner_review: true } }],
+          [`${R}commits/${freigabeCommit}/pulls`]: [pr(701, "8".repeat(40))],
+          [`${R}pulls/701`]: pr(701, "8".repeat(40)),
+          [`${R}pulls/701/reviews?per_page=100`]: [[{ state: "APPROVED", user: { login: "rinats-png" }, commit_id: "8".repeat(40) }]],
+        };
+        const gh = (pfad) => { if (pfad in antworten) return antworten[pfad]; throw new Error("kein Netz: " + pfad); };
+        const ghRoh = (pfad) => { if (pfad === `${R}actions/artifacts/5/zip`) return ZIP; throw new Error("kein Netz: " + pfad); };
+        const e = sammeln({ wurzel: repo, offline: false, kandidatSha: m, basisSha: basis, releaseId: "v4-r1", digest: D, jetztMs: JETZT_MS, gh, ghRoh });
+        const x = e.erstwechsel;
+        expect(x.kandidatEltern).toEqual([basis, s]);
+        expect(x.baeume.kandidat).toBe(x.baeume.schnitt);
+        expect(x.schnittIstVorfahr).toBe(true);
+        expect(Object.values(x.basisDateien)).toEqual([false, false]);
+        expect(Object.values(x.kandidatDateien).every((v) => v === true)).toBe(true);
+        expect(x.stagingArtefakt.some((b) => Buffer.from(b).equals(nachweisRoh))).toBe(true);
+        expect(x.vierAugen.freigabePr).toBe(701);
+        expect(x.vierAugen.prs[701]).toMatchObject({ autor: "maschinenkonto", gemergt: true, kopf: "8".repeat(40) });
+        const gruende = gateVon(auswerten(e), "G6").gruende.join(" | ");
+        for (const id of ["E3", "E6", "E7", "E13"]) expect(gruende, id).not.toMatch(new RegExp(` ${id}: `));
+        expect(gruende).toMatch(/ E2: /);            // Basis des Test-Repos ist nicht 274bfa0
+        expect(gruende).toMatch(/ E14: .*GATE-EW1/); // SSOT ohne GATE-EW1 → fail-closed
+      } finally { rmSync(repo, { recursive: true, force: true }); }
+    }, 120_000);
   });
 });

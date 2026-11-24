@@ -34,7 +34,11 @@
          und SLSA-Provenienz = Kandidat, Freigabeliste gültig, Zeile `aktiv`
      G5  Migration: Startschreibvorgänge W-1…W-9 und Startblock gegen die Basis
          (Migrationsbericht); geändert oder neu ⇒ NO-GO bis Betreiberfreigabe
-     G6  Sicherung, Restore-Probe, Widerrufbuch-Probe: vollständig und aktuell
+     G6  Sicherung, Restore-Probe, Widerrufbuch-Probe: vollständig und aktuell. Einzige Ausnahme (GATE-EW1, Gate-Entwurf
+         2026-11-24 v2 A.4–A.8): erstwechselAusnahme.widerrufbuchProbe in der Freigabedatei, nur Release v4-r1, nur
+         vor T0, bis 2026-12-31; Bedingungen E1–E15 (alle UND), sonst NO-GO; Sicherung und Restore-Probe bleiben
+         Pflicht; Ergebnis: Belegzeile + Auflage (auflagen). Folge-Release mit Basis = Kandidat einer Ausnahme: NO-GO,
+         solange deren Nachhol-Ablage nicht NACHHOL-GO ist (GATE-EW2; einzige Abweichung A-REPO + nachholAbweichung)
      G7  Rückweg: Zeile `vorherig` oder dokumentierte Entscheidung O-1/O-2;
          `ruecksprung` NO-GO, wenn Basis oder Zeile `vorherig` ein Bild ohne
          Revisionslabel ist (ohneRevisionslabel: 274bfa0) oder die Basis fehlt
@@ -61,6 +65,10 @@
      node werkzeug/release-pruefung.mjs --offline --fixture <datei.json> --wurzel <verz>
          [--jetzt <ISO-Zeit>] [...]   (Beispiel: pruefungen/fixtures/release-pruefung-beispiel.json)
      node werkzeug/release-pruefung.mjs --konfig-zeigen
+     node werkzeug/release-pruefung.mjs --nachhol --release-id <id> [--wurzel <repo>]
+         [--offline --fixture <datei.json> [--jetzt <ISO-Zeit>]]   (GATE-EW2: Nachholprüfung nach T0, nur
+         lesend aus HEAD; JSON { ergebnis NACHHOL-GO | NACHHOL-NO-GO, gruende, abbruchIds, verspaetet };
+         Exit 0 nur online bei NACHHOL-GO, 3 offline bei NACHHOL-GO, 1 NO-GO, 2 Aufruffehler)
 
    Die Konfiguration steht nur in dieser Datei (KONFIG_STANDARD); Änderungen
    nur per PR mit Review. Es gibt bewusst kein --konfig.
@@ -75,6 +83,7 @@ import { readFileSync, existsSync, readdirSync, lstatSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import { inflateRawSync } from "node:zlib";
 import { fileURLToPath } from "node:url";
 
 export const VERSION = 2;
@@ -100,6 +109,46 @@ export const ID_MUSTER = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 export const REL_AUSNAHME_IDS = Object.freeze(["REL-0", "REL-0c", "REL-1", "REL-2", "REL-3", "REL-4"]);
 /** Präfix der Release-Prozess-Pakete (exakt, ohne Normalisierung; „rel-1“ ist kein REL-Paket). */
 export const REL_PRAEFIX = "REL-";
+
+const tiefFrieren = (o) => { Object.values(o).forEach((v) => { if (v && typeof v === "object") tiefFrieren(v); }); return Object.freeze(o); };
+/** GATE-EW1 (Gate-Entwurf 2026-11-24 v2, A.4; Betreiberentscheidungen F1–F10): einmalige Erstwechsel-Ausnahme der
+ *  Widerrufbuch-Probe. Nur über die Freigabedatei (kein CLI-Schalter, keine Umgebung), tief eingefroren, per Test
+ *  gebunden. Kein Eintrag für spätere Releases; Rückbau nach NACHHOL-GO (GATE-EW6). */
+const ERSTWECHSEL_AUSNAHME = tiefFrieren({
+  widerrufbuchProbe: {
+    releaseIds: ["v4-r1"],                                                    // F3; exakt, ohne Normalisierung (E1)
+    basisCommit: "274bfa0baca5681f383eea334aab69875f31d5c1",                  // muss in ohneRevisionslabel stehen (E2)
+    basisOhneDateien: ["server/lib/widerrufbuch.mjs", "server/lib/kontowiderrufbuch.mjs"],
+    kandidatMitDateien: ["server/lib/widerrufbuch.mjs", "server/lib/kontowiderrufbuch.mjs",
+      "deploy/sicherung/widerrufbuch-sicherung.sh", "deploy/sicherung/widerrufbuch-probe.sh",
+      "deploy/sicherung/ci/widerrufbuch-ende-zu-ende.sh"],
+    vorV4Commits: ["274bfa0baca5681f383eea334aab69875f31d5c1",
+      "64d08a4957c5374e1f04c17be2b75162c07573d2", "1a56988d3c406aff99281f96c2d7da1dc24d7af7"],
+    nachholFristStunden: 24,                                                  // F5: Probe + lokale Verifikation
+    repoFristStunden: 48,                                                     // F5: Merge des Nachhol-PR
+    erstlaufFristStunden: 2,                                                  // A-SICH
+    stagingMaxTage: 7,
+    stagingProben: ["S1", "S2", "S3", "S4", "S5", "S6"],                      // F1
+    gueltigBis: "2026-12-31",                                                 // F2; Ende des Tages UTC; keine Verlängerung
+    abbruchBedingungen: ["A-VOR", "A-STG", "A-START", "A-ABN", "A-SICHER", "A-DATEN", "A-BUCH",
+      "A-SICH", "A-PROBE", "A-PROBE-W", "A-BILD", "A-FRIST", "A-REPO", "A-ABLAUF", "A-VIER", "A-HOST"],
+    codeOwnerPfade: [".github/", "deploy/", "werkzeug/release-pruefung.mjs", "docs/acc45/releases/",
+      "pruefungen/release-pruefung.test.js"],                                // E14 (b)
+    quittungVorlage: "Ich nehme die einmalige Erstwechsel-Ausnahme der Widerrufbuch-Probe für {releaseId} an "
+      + "(Kandidat {kandidat}, Schnitt {schnitt}, Digest {digest}, Basis {basis}). Die Probe wird binnen {frist} h nach "
+      + "T0 durchgeführt und lokal verifiziert; der Nachweis kommt binnen {repoFrist} h ins Repository. Bei jeder "
+      + "Abbruchbedingung gilt die Abbruchtabelle A.8. Nach einem Abbruch gibt es keine neue Ausnahme. Die Ausnahme "
+      + "gilt bis {gueltigBis} und nie für einen weiteren Release.",
+    // Herkunft des Staging-Nachweises (E6, E7; staging-gate.yml mit Patch GATE-EW3)
+    stagingWorkflow: ".github/workflows/staging-gate.yml",
+    stagingArtefakt: "staging-nachweis",
+    stagingArt: "widerrufbuch-staging-funktionstest",
+    stagingSkript: "deploy/sicherung/ci/widerrufbuch-ende-zu-ende.sh",
+    // Vier-Augen (E14, F9): Rulesets dieser Zweige; PRs dieser SSOT-Pakete und der Freigabedatei brauchen ein Review
+    vierAugenZweige: ["main", "integration/release-v4"],
+    vierAugenPakete: ["GATE-EW1", "GATE-EW2"],
+  },
+});
 
 export const KONFIG_STANDARD = Object.freeze({
   repo: "rinats-png/dienstplaner",
@@ -169,7 +218,8 @@ export const KONFIG_STANDARD = Object.freeze({
     { id: "W-9", was: "Speicherkern: Standvermerke beim Schreiben", quellen: ["server/lib/scherben.mjs", "server/lib/bestand.mjs", "server/lib/ablage.mjs"] },
   ],
   startblockQuellen: ["server.mjs"],
-  sicherung: { sicherungMaxStunden: 26, restoreProbeMaxTage: 35, widerrufbuchProbeMaxTage: 35, widerrufbuchProbePflicht: true },
+  sicherung: Object.freeze({ sicherungMaxStunden: 26, restoreProbeMaxTage: 35, widerrufbuchProbeMaxTage: 35, widerrufbuchProbePflicht: true }),
+  erstwechselAusnahme: ERSTWECHSEL_AUSNAHME,
   ssot: "docs/acc45/work-packages.json",
   // G8 und G9 (Endurteil #427 A1): blockierend ist jeder Status, der NICHT in `erledigt` steht — auch CI_FAILED und
   // jeder unbekannte oder fehlende Status (fail-closed). Beide Gates teilen dieselbe Liste (ERLEDIGT_STATUS).
@@ -953,12 +1003,19 @@ function probePruefen(g, name, status, jetzt, maxMs, art) {
   return zeitPruefen(g, name, status, jetzt, maxMs);
 }
 
-export function g6Sicherung(nachweise, jetztMs, konfig) {
+/**
+ * kontext (optional, aus auswerten): { freigabe (Schema gültig oder null), freigabeRoh, schemaFehler, releaseId, basis,
+ * kandidat, digest, liste, erstwechsel, releaseDateien, rueckhalt }. Ohne Ausnahmefeld und ohne Rückhalt-Eintrag ist
+ * das Ergebnis byte-gleich zum Aufruf ohne kontext (T-P2).
+ */
+export function g6Sicherung(nachweise, jetztMs, konfig, kontext = null) {
   const g = gate("G6", "Sicherung und Restore-Nachweis aktuell");
   const s = konfig.sicherung;
   const n = istObjekt(nachweise) ? nachweise : {};
+  const k = istObjekt(kontext) ? kontext : {};
   const sich = n.sicherung;
   const sName = "Sicherung außer Haus (letzte-erfolgreiche.json)";
+  // E11: Sicherung und Restore-Probe laufen immer, auch mit Erstwechsel-Ausnahme
   if (!istObjekt(sich)) nogo(g, `${sName}: Nachweis fehlt`);
   else if (typeof sich.snapshot_id !== "string" || !sich.snapshot_id.trim()) nogo(g, `${sName}: snapshot_id fehlt`);
   else if (!(Number(sich.dateien) > 0)) nogo(g, `${sName}: keine Dateien`);
@@ -967,9 +1024,394 @@ export function g6Sicherung(nachweise, jetztMs, konfig) {
   const r = n.restoreProbe;
   if (istObjekt(r) && (Number(r.abweichend) !== 0 || Number(r.fehlend) !== 0)) nogo(g, `Restore-Probe: abweichend ${r.abweichend}, fehlend ${r.fehlend}`);
   if (s.widerrufbuchProbePflicht) {
-    probePruefen(g, "Widerrufbuch-Probe (widerrufbuch-probe-status.json)", n.widerrufbuchProbe, jetztMs, s.widerrufbuchProbeMaxTage * 86400_000, "widerrufbuch-probe");
+    if (istObjekt(k.freigabeRoh) && k.freigabeRoh.erstwechselAusnahme !== undefined) {
+      // GATE-EW1: nur mit gültiger Freigabedatei; jede verletzte Bedingung E1–E15 ist ein eigener Grund
+      if (!k.freigabe) nogo(g, `Widerrufbuch-Probe: Erstwechsel-Ausnahme: Freigabedatei ungültig (${(k.schemaFehler || []).join("; ")}) — Ausnahme nicht anwendbar`);
+      else {
+        const e = erstwechselPruefen({ ...k, nachweise: n, jetztMs }, konfig);
+        for (const x of e.gruende) nogo(g, `Widerrufbuch-Probe: ${x}`);
+        if (!e.gruende.length) { g.belege.push(...e.belege); g.auflagen = e.auflagen; }
+      }
+    } else {
+      probePruefen(g, "Widerrufbuch-Probe (widerrufbuch-probe-status.json)", n.widerrufbuchProbe, jetztMs, s.widerrufbuchProbeMaxTage * 86400_000, "widerrufbuch-probe");
+    }
   }
+  rueckhaltPruefen(g, k, konfig);
   return g;
+}
+
+/* ------------------------------------- G6 — Erstwechsel-Ausnahme (GATE-EW1) */
+
+const HEX64 = /^[0-9a-f]{64}$/;
+const hex40 = (x) => typeof x === "string" && HEX40.test(x);
+const sha256 = (b) => createHash("sha256").update(b).digest("hex");
+const AUSNAHME_FELDER = ["releaseId", "basisCommit", "kandidatCommit", "schnittCommit", "digest", "nachholFristStunden",
+  "repoFristStunden", "gueltigBis", "staging", "abbruchBedingungen", "nachholAblage", "quittung"];
+/** Genau diese Schlüssel (keine fehlenden, keine unbekannten). */
+const genauSchluessel = (o, felder) => istObjekt(o) && Object.keys(o).length === felder.length && felder.every((x) => Object.hasOwn(o, x));
+// E12: Platzhalter in jedem Text der Ausnahme (Gate-Entwurf A.6)
+const PLATZHALTER = [/[<>…]/, /todo/i, /beispiel/i, /platzhalter/i, /x{4,}/i, /^0{40}$/, /0{64}/];
+const stunden = (h) => h * 3600_000;
+const tagesEnde = (datum) => Date.parse(`${datum}T00:00:00Z`) + 86400_000;
+
+/** Strenge Schemaprüfung von schnittCommit, erstwechselAusnahme und nachholAbweichung (Gate-Entwurf A.5, SPEZ §2.2). */
+function ausnahmeSchema(f) {
+  const fe = [];
+  if (f.schnittCommit !== undefined && !hex40(f.schnittCommit)) fe.push("schnittCommit: nicht 40 Hex");
+  if (f.nachholAbweichung !== undefined && !(genauSchluessel(f.nachholAbweichung, ["releaseId", "grund"]) &&
+    typeof f.nachholAbweichung.releaseId === "string" && typeof f.nachholAbweichung.grund === "string" && f.nachholAbweichung.grund.trim())) {
+    fe.push("nachholAbweichung: genau { releaseId, grund } mit Text");
+  }
+  if (f.erstwechselAusnahme === undefined) return fe;
+  if (!hex40(f.schnittCommit)) fe.push("schnittCommit: Pflicht bei erstwechselAusnahme");
+  if (!genauSchluessel(f.erstwechselAusnahme, ["widerrufbuchProbe"])) return [...fe, "erstwechselAusnahme: genau der Schlüssel widerrufbuchProbe"];
+  const a = f.erstwechselAusnahme.widerrufbuchProbe;
+  if (!genauSchluessel(a, AUSNAHME_FELDER)) return [...fe, `erstwechselAusnahme.widerrufbuchProbe: genau die Schlüssel ${AUSNAHME_FELDER.join(", ")}`];
+  const typ = (name, ok) => { if (!ok) fe.push(`erstwechselAusnahme.widerrufbuchProbe.${name}: falscher Typ`); };
+  for (const x of ["releaseId", "nachholAblage", "quittung"]) typ(x, typeof a[x] === "string" && a[x] !== "");
+  for (const x of ["basisCommit", "kandidatCommit", "schnittCommit"]) typ(x, hex40(a[x]));
+  typ("digest", typeof a.digest === "string" && DIGEST.test(a.digest));
+  typ("nachholFristStunden", typeof a.nachholFristStunden === "number");
+  typ("repoFristStunden", typeof a.repoFristStunden === "number");
+  typ("gueltigBis", typeof a.gueltigBis === "string" && DATUM.test(a.gueltigBis));
+  typ("abbruchBedingungen", Array.isArray(a.abbruchBedingungen) && a.abbruchBedingungen.every((x) => typeof x === "string"));
+  const st = a.staging;
+  typ("staging", genauSchluessel(st, ["lauf", "nachweis", "sha256"]) && typeof st.lauf === "string" && /^[1-9]\d{0,19}-[1-9]\d{0,3}$/.test(st.lauf) &&
+    typeof st.nachweis === "string" && typeof st.sha256 === "string" && HEX64.test(st.sha256));
+  return fe;
+}
+
+/** Quittung im festen Wortlaut (E8): Vorlage mit den Werten der Konfiguration und der Ausnahme. */
+function quittungText(c, a) {
+  const werte = { releaseId: a.releaseId, kandidat: a.kandidatCommit, schnitt: a.schnittCommit, digest: a.digest, basis: c.basisCommit,
+    frist: c.nachholFristStunden, repoFrist: c.repoFristStunden, gueltigBis: c.gueltigBis };
+  return c.quittungVorlage.replace(/\{(\w+)\}/g, (_, x) => String(werte[x]));
+}
+
+const ABBRUCH_VOR_FELDER = ["id", "releaseId", "kandidat", "digest", "zeit", "deployExit", "startzustand"];
+const STARTZUSTAND_FELDER = ["zugangWiderrufe", "kontoWiderrufe", "v4Startzeilen", "protokollSha256"];
+/**
+ * F10 (OFFEN-1): Startzustand aus einem Abbruchnachweis A-VOR (Runbook Erstwechsel, Formular abbruch-A-VOR.json).
+ * Belegbare Kriterien: Widerrufbücher zugang-widerrufe.json / konto-widerrufe.json in zustand/ (entstehen erst beim
+ * V4-Start, W-4/W-5), Zahl der V4-Startzeilen im betrieb-protokoll.log (mit SHA-256 des Protokolls), Exit-Code von
+ * deploy.sh ≠ 0. „erfolgt“: ein Buch vorhanden oder ≥ 1 Startzeile; „nicht-erfolgt“: beide Bücher fehlen und 0
+ * Startzeilen; jede andere Angabe oder Struktur: „unklar“ (fail-closed).
+ */
+export function startzustandLesen(roh, releaseId, jetztMs) {
+  let x;
+  try { x = JSON.parse(Buffer.from(roh).toString("utf8")); } catch { return { zustand: "unklar", grund: "kein JSON" }; }
+  if (!genauSchluessel(x, ABBRUCH_VOR_FELDER) || !genauSchluessel(x.startzustand, STARTZUSTAND_FELDER)) return { zustand: "unklar", grund: "Felder" };
+  const z = x.startzustand;
+  if (x.id !== "A-VOR" || x.releaseId !== releaseId || !hex40(x.kandidat) || typeof x.digest !== "string" || !DIGEST.test(x.digest) ||
+    !Number.isInteger(x.deployExit) || x.deployExit === 0 || !(Date.parse(x.zeit) <= jetztMs) ||
+    typeof z.protokollSha256 !== "string" || !HEX64.test(z.protokollSha256)) return { zustand: "unklar", grund: "Kopfangaben" };
+  const buecher = [z.zugangWiderrufe, z.kontoWiderrufe];
+  if (buecher.includes("vorhanden") || (Number.isInteger(z.v4Startzeilen) && z.v4Startzeilen > 0)) return { zustand: "erfolgt", kandidat: x.kandidat };
+  if (buecher.every((b) => b === "fehlt") && z.v4Startzeilen === 0) return { zustand: "nicht-erfolgt", kandidat: x.kandidat };
+  return { zustand: "unklar", grund: "Werte" };
+}
+
+/** Liest CODEOWNERS: Regeln { muster, besitzer[] } ohne Kommentare und Leerzeilen. */
+function codeownersLesen(text) {
+  return String(text).split(/\r?\n/).map((z) => z.trim()).filter((z) => z && !z.startsWith("#"))
+    .map((z) => { const [muster, ...besitzer] = z.split(/\s+/); return { muster, besitzer }; });
+}
+
+/**
+ * GATE-EW1: Bedingungen E1–E15 der Erstwechsel-Ausnahme (Gate-Entwurf 2026-11-24 v2, A.6). E11 (Sicherung und Restore-
+ * Probe) prüft g6Sicherung immer selbst. Reihenfolge nach SPEZ §2.4; jede verletzte Bedingung ergibt genau einen Grund
+ * „E<n>: …“. Liefert { gruende, belege, auflagen }.
+ */
+export function erstwechselPruefen(k, konfig = KONFIG_STANDARD) {
+  const c = konfig.erstwechselAusnahme.widerrufbuchProbe;
+  const f = k.freigabe;
+  const a = f.erstwechselAusnahme.widerrufbuchProbe;
+  const ew = istObjekt(k.erstwechsel) ? k.erstwechsel : {};
+  const gruende = [];
+  const pruef = (id, fehler) => { const fe = fehler.filter(Boolean); if (fe.length) gruende.push(`${id}: ${fe.join("; ")}`); };
+  const wenn = (bedingung, text) => (bedingung ? null : text);
+  const verz = konfig.freigabeVerzeichnis;
+  const relVerz = `${verz}/${k.releaseId}/`;
+  const releaseDateien = Array.isArray(k.releaseDateien) ? k.releaseDateien : null;
+
+  pruef("E1", [
+    wenn(f.releaseId === k.releaseId && a.releaseId === k.releaseId, `releaseId (Freigabe ${f.releaseId}, Ausnahme ${a.releaseId}) ≠ --release-id ${k.releaseId}`),
+    wenn(c.releaseIds.includes(a.releaseId), `Release ${a.releaseId} hat keine Erstwechsel-Ausnahme (nur ${c.releaseIds.join(", ")}, exakt)`),
+  ]);
+  pruef("E2", [
+    wenn(k.basis === c.basisCommit && f.basisCommit === c.basisCommit && a.basisCommit === c.basisCommit,
+      `Basis (--basis ${k.basis}, Freigabe ${f.basisCommit}, Ausnahme ${a.basisCommit}) ≠ ${c.basisCommit}`),
+    wenn(konfig.ohneRevisionslabel.some((o) => o.commit === c.basisCommit), "Basis steht nicht in ohneRevisionslabel"),
+  ]);
+  pruef("E5", [
+    wenn(a.kandidatCommit === k.kandidat && f.kandidatCommit === k.kandidat, `kandidatCommit der Ausnahme ${a.kandidatCommit} ≠ Kandidat ${k.kandidat}`),
+    wenn(a.schnittCommit === f.schnittCommit && a.schnittCommit !== k.kandidat, `schnittCommit der Ausnahme ${a.schnittCommit} ≠ schnittCommit ${f.schnittCommit} (oder = Kandidat)`),
+    wenn(a.digest === k.digest && f.digest === k.digest, `digest der Ausnahme ${a.digest} ≠ ${k.digest}`),
+  ]);
+  const eltern = ew.kandidatEltern;
+  const baeume = istObjekt(ew.baeume) ? ew.baeume : {};
+  pruef("E13", [
+    wenn(Array.isArray(eltern) && eltern.length === 2, `Kandidat hat ${Array.isArray(eltern) ? eltern.length : "unbekannt viele"} Eltern, erwartet 2 (Merge-Commit)`),
+    wenn(Array.isArray(eltern) && eltern[1] === a.schnittCommit, `2. Elter des Kandidaten ≠ schnittCommit ${a.schnittCommit}`),
+    wenn(hex40(baeume.kandidat) && baeume.kandidat === baeume.schnitt, "Baum(Kandidat) ≠ Baum(Schnitt) oder nicht ermittelbar"),
+    wenn(ew.schnittIstVorfahr === true, "Schnitt ist kein Vorfahr von HEAD (oder nicht ermittelbar)"),
+  ]);
+  const dateien = (map, soll) => (p) => wenn(istObjekt(map) && map[p] === soll,
+    `${p} ${!istObjekt(map) || typeof map[p] !== "boolean" ? "nicht ermittelbar" : soll ? "fehlt im Kandidaten" : "liegt schon in der Basis"}`);
+  pruef("E3", [...c.basisOhneDateien.map(dateien(ew.basisDateien, false)), ...c.kandidatMitDateien.map(dateien(ew.kandidatDateien, true))]);
+  // F10 (Betreiberentscheidung 24.11., OFFEN-1): Abbrüche vor dem V4-Start (A-VOR) mit maschinell belegtem Startzustand
+  const historie = Array.isArray(ew.releaseHistorie) && releaseDateien ? ew.releaseHistorie : null;
+  const avor = Object.entries(istObjekt(ew.abbruchVor) ? ew.abbruchVor : {})
+    .map(([pfad, b]) => ({ pfad, ...(b ? startzustandLesen(b, k.releaseId, k.jetztMs) : { zustand: "unklar", grund: "unlesbar" }) }));
+  const vorStartKandidaten = new Set(avor.filter((x) => x.zustand === "nicht-erfolgt" && x.kandidat !== k.kandidat).map((x) => x.kandidat));
+  const basisDigest = konfig.ohneRevisionslabel.find((o) => o.commit === c.basisCommit)?.digest;
+  const zeilen = istObjekt(k.liste) && Array.isArray(k.liste.zeilen) ? k.liste.zeilen : [];
+  const avorZeile = (z) => z.status === "gesperrt" && vorStartKandidaten.has(z.commit) && /^A-VOR\b/.test(z.grund);
+  const zulaessig = (z) => (z.status === "aktiv" && z.commit === k.kandidat && z.digest === k.digest) ||
+    (z.status === "vorherig" && z.commit === c.basisCommit && z.digest === basisDigest) ||
+    (z.status === "gesperrt" && c.vorV4Commits.includes(z.commit)) || avorZeile(z);
+  pruef("E4", [
+    wenn(istObjekt(k.liste) && Array.isArray(k.liste.fehler) && k.liste.fehler.length === 0, "Freigabeliste ungültig"),
+    wenn(zeilen.some((z) => z.status === "aktiv" && z.commit === k.kandidat), "keine Zeile aktiv für den Kandidaten"),
+    wenn(zeilen.some((z) => z.status === "vorherig" && z.commit === c.basisCommit), `keine Zeile vorherig für die Basis ${c.basisCommit.slice(0, 7)}`),
+    ...zeilen.filter((z) => !zulaessig(z)).map((z) => `weitere Zeile ${z.status} ${String(z.commit).slice(0, 12)} — V4-Bild schon in der Liste (früherer V4-Start oder weiterer Release)`),
+    ...[...vorStartKandidaten].filter((x) => !zeilen.some((z) => z.commit === x && avorZeile(z)))
+      .map((x) => `abgebrochener Kandidat ${x.slice(0, 12)} (A-VOR) steht nicht als gesperrt mit Grund A-VOR in der Liste`),
+  ]);
+  const abbruch = Array.isArray(a.abbruchBedingungen) ? a.abbruchBedingungen : [];
+  pruef("E8", [
+    wenn(a.nachholFristStunden === c.nachholFristStunden, `nachholFristStunden ${JSON.stringify(a.nachholFristStunden)} ≠ ${c.nachholFristStunden}`),
+    wenn(a.repoFristStunden === c.repoFristStunden, `repoFristStunden ${JSON.stringify(a.repoFristStunden)} ≠ ${c.repoFristStunden}`),
+    wenn(a.gueltigBis === c.gueltigBis, `gueltigBis ${a.gueltigBis} ≠ ${c.gueltigBis}`),
+    wenn(abbruch.length === c.abbruchBedingungen.length && new Set(abbruch).size === abbruch.length && abbruch.every((x) => c.abbruchBedingungen.includes(x)),
+      "abbruchBedingungen ≠ Menge der Abbruchtabelle A.8"),
+    wenn(a.nachholAblage === `${relVerz}nachhol/`, `nachholAblage ≠ ${relVerz}nachhol/`),
+    wenn(a.quittung === quittungText(c, a), "quittung weicht vom festen Wortlaut ab"),
+  ]);
+  pruef("E9", [wenn(Number.isFinite(k.jetztMs) && k.jetztMs < tagesEnde(c.gueltigBis), `Ausnahme abgelaufen (gültig bis ${c.gueltigBis} 23:59:59 UTC, A-ABLAUF)`)]);
+  const texte = [f.schnittCommit, ...tiefSuchen(a, (_, v) => (typeof v === "string" ? v : undefined))];
+  pruef("E12", texte.filter((t) => PLATZHALTER.some((m) => m.test(t))).map((t) => `Platzhalter: ${String(t).slice(0, 40)}`));
+  // E15 (F10): verbraucht ab dem ersten tatsächlichen V4-Start. Geprüft werden HEAD UND die Geschichte von HEAD (Löschen
+  // hebt den Verbrauch nicht auf): jede Datei der Nachhol-Ablage (t0.json …) und jede Abbruchdatei außer A-VOR = Start
+  // erfolgt. A-VOR verbraucht nur nicht, wenn der Nachweis maschinell „kein Start“ belegt, unverändert und noch vorhanden ist.
+  const anzahl = (p) => historie.filter((x) => x === p).length;
+  pruef("E15", historie === null ? ["Dateien des Release in HEAD oder ihre Geschichte nicht ermittelbar (fail-closed)"] : [
+    ...[...new Set([...releaseDateien, ...historie])].filter((p) => p.startsWith(relVerz)).map((p) => {
+      const rest = p.slice(relVerz.length);
+      const verbraucht = `${p}: V4-Start erfolgt oder Abbruch nach T0 — Ausnahme verbraucht; reguläre Probe Pflicht (F10)`;
+      if (rest.startsWith("nachhol/") || (/^abbruch-[^/]*\.json$/.test(rest) && !ABBRUCH_VOR.test(rest))) return verbraucht;
+      if (!ABBRUCH_VOR.test(rest)) return null;
+      if (!releaseDateien.includes(p)) return `${p} wurde gelöscht — Startzustand unklar (fail-closed)`;
+      if (anzahl(p) > 1) return `${p} wurde nachträglich geändert — Startzustand unklar (fail-closed)`;
+      const x = avor.find((y) => y.pfad === p);
+      if (!x || x.zustand === "unklar") return `${p}: Startzustand unklar (${x?.grund ?? "fehlt"}) — NO-GO (fail-closed)`;
+      return x.zustand === "erfolgt" ? verbraucht : null;
+    }),
+  ]);
+  pruef("E10", [wenn(k.nachweise?.widerrufbuchProbe == null && !(releaseDateien || []).includes(`${relVerz}nachweise/widerrufbuch-probe-status.json`),
+    "Ausnahme und widerrufbuch-probe-status.json zugleich — widersprüchlich")]);
+
+  // E6: Staging-Nachweis in HEAD, Bytes per SHA-256 gebunden
+  const nachweisPfad = a.staging.nachweis;
+  const praefix = `${relVerz}nachweise/`;
+  const rohN = ew.stagingRoh ? Buffer.from(ew.stagingRoh) : null;
+  let nw = null;
+  const e6 = [];
+  if (!nachweisPfad.startsWith(praefix) || !/^[A-Za-z0-9][A-Za-z0-9._-]*\.json$/.test(nachweisPfad.slice(praefix.length))) e6.push(`staging.nachweis nicht unter ${praefix}`);
+  else if (!rohN) e6.push(`${nachweisPfad} fehlt in HEAD`);
+  else if (sha256(rohN) !== a.staging.sha256) e6.push("SHA-256 des Nachweises ≠ staging.sha256");
+  else {
+    try { nw = JSON.parse(rohN.toString("utf8")); } catch { nw = null; }
+    if (!istObjekt(nw)) e6.push("Nachweis ist kein JSON-Objekt");
+  }
+  if (istObjekt(nw)) {
+    const wb = istObjekt(nw.widerrufbuch) ? nw.widerrufbuch : {};
+    const proben = istObjekt(wb.proben) ? wb.proben : {};
+    const erstellt = Date.parse(nw.erstellt || "");
+    const skript = ew.skriptRoh ? sha256(Buffer.from(ew.skriptRoh)) : null;
+    e6.push(
+      wenn(nw.ergebnis === "success", `ergebnis '${nw.ergebnis}', erwartet success`),
+      wenn(nw.digest === k.digest, `digest ${nw.digest} ≠ ${k.digest}`),
+      wenn(nw.commit === k.kandidat, `commit ${nw.commit} ≠ Kandidat`),
+      wenn(hex40(nw.baum) && nw.baum === baeume.kandidat, "baum ≠ Baum(Kandidat)"),
+      wenn(nw.lauf === a.staging.lauf, `lauf ${nw.lauf} ≠ ${a.staging.lauf}`),
+      wenn(nw.laufCommit === k.kandidat || nw.laufCommit === a.schnittCommit, "laufCommit ist weder Kandidat noch Schnitt"),
+      wenn(wb.art === c.stagingArt, `widerrufbuch.art '${wb.art}' ≠ ${c.stagingArt}`),
+      wenn(Object.keys(proben).length === c.stagingProben.length && c.stagingProben.every((p) => proben[p] === "ok"), `Proben ${c.stagingProben.join("–")} nicht alle ok`),
+      wenn(skript !== null && wb.skriptSha256 === skript, `skriptSha256 ≠ SHA-256 von ${c.stagingSkript} im Kandidaten`),
+      wenn(Number.isFinite(erstellt) && erstellt <= k.jetztMs + 5 * 60_000, "erstellt fehlt oder liegt in der Zukunft"),
+      wenn(!Number.isFinite(erstellt) || k.jetztMs - erstellt <= c.stagingMaxTage * 86400_000, `zu alt (erstellt ${nw.erstellt}, höchstens ${c.stagingMaxTage} Tage)`),
+    );
+  }
+  pruef("E6", e6);
+
+  // E7: Lauf-API (GET actions/runs/<id>) und Artefakt-Bytes
+  const lauf = ew.stagingLauf;
+  const [laufId, versuch] = a.staging.lauf.split("-").map(Number);
+  pruef("E7", !istObjekt(lauf) ? ["Lauf-API nicht lesbar (fail-closed)"] : [
+    wenn(lauf.id === laufId && lauf.run_attempt === versuch, `Lauf ${lauf.id}-${lauf.run_attempt} ≠ ${a.staging.lauf}`),
+    wenn(lauf.path === c.stagingWorkflow, `path ${lauf.path} ≠ ${c.stagingWorkflow}`),
+    wenn(lauf.event === "workflow_dispatch", `event ${lauf.event} ≠ workflow_dispatch`),
+    wenn(lauf.status === "completed" && lauf.conclusion === "success", `Lauf ${lauf.status}/${lauf.conclusion}, erwartet completed/success`),
+    wenn(lauf.head_sha === k.kandidat || lauf.head_sha === a.schnittCommit, `head_sha ${lauf.head_sha} ist weder Kandidat noch Schnitt`),
+    wenn(!istObjekt(nw) || nw.laufCommit === lauf.head_sha, "head_sha ≠ laufCommit des Nachweises"),
+    wenn(rohN !== null && Array.isArray(ew.stagingArtefakt) && ew.stagingArtefakt.some((b) => Buffer.from(b).equals(rohN)),
+      `Artefakt ${c.stagingArtefakt} enthält keine Datei mit den Bytes des Nachweises (oder nicht lesbar)`),
+  ]);
+
+  // E14: Vier-Augen (Rulesets, CODEOWNERS, Code-Owner-Review ≠ Autor auf dem letzten Kopf)
+  const inhaber = konfig.repo.split("/")[0];
+  const va = istObjekt(ew.vierAugen) ? ew.vierAugen : {};
+  const regeln = istObjekt(va.regeln) ? va.regeln : {};
+  const hat = (zweig, typ, pruefe = () => true) => Array.isArray(regeln[zweig]) && regeln[zweig].some((r) => istObjekt(r) && r.type === typ && pruefe(r));
+  const ownerReview = (r) => r.parameters?.require_code_owner_review === true;
+  const co = typeof ew.codeowners === "string" ? codeownersLesen(ew.codeowners) : null;
+  const prs = istObjekt(va.prs) ? va.prs : {};
+  const freigegeben = (nr) => {
+    const p = prs[nr];
+    return istObjekt(p) && p.gemergt === true && typeof p.autor === "string" && hex40(p.kopf) && Array.isArray(p.reviews) &&
+      p.reviews.some((r) => istObjekt(r) && r.state === "APPROVED" && r.autor === inhaber && r.autor !== p.autor && r.commit === p.kopf);
+  };
+  const paketPrs = istObjekt(va.paketPrs) ? va.paketPrs : {};
+  pruef("E14", [
+    wenn(Array.isArray(va.fehler) && va.fehler.length === 0, `GitHub-Abfrage gescheitert (fail-closed): ${Array.isArray(va.fehler) ? va.fehler.join("; ") : "keine Angaben"}`),
+    ...c.vierAugenZweige.map((z) => wenn(hat(z, "pull_request", ownerReview), `Ruleset ${z}: pull_request mit require_code_owner_review fehlt`)),
+    wenn(hat("main", "update"), "Ruleset main: update (Merge-Sperre Maschinenkonto) fehlt"),
+    wenn(co !== null, ".github/CODEOWNERS fehlt im Kandidaten"),
+    ...(co || []).filter((r) => !(r.besitzer.length === 1 && r.besitzer[0] === `@${inhaber}`)).map((r) => `CODEOWNERS-Regel ${r.muster} nicht allein @${inhaber}`),
+    ...(co ? c.codeOwnerPfade.filter((p) => !co.some((r) => r.muster === p || r.muster === `/${p}`)) : []).map((p) => `CODEOWNERS deckt ${p} nicht ab`),
+    wenn(Number.isInteger(va.freigabePr) && freigegeben(va.freigabePr), `PR der Freigabedatei ohne Code-Owner-Freigabe (≠ Autor, letzter Kopf): ${va.freigabePr ?? "unbekannt"}`),
+    ...c.vierAugenPakete.map((id) => wenn(Array.isArray(paketPrs[id]) && paketPrs[id].length > 0 && paketPrs[id].every(freigegeben),
+      `${id}: PR ohne Code-Owner-Freigabe (≠ Autor, letzter Kopf) oder unbekannt`)),
+  ]);
+
+  if (gruende.length) return { gruende, belege: [], auflagen: [] };
+  return {
+    gruende,
+    belege: [`Widerrufbuch-Probe: ERSTWECHSEL-AUSNAHME ${a.releaseId} (Basis ${c.basisCommit.slice(0, 7)} ohne Widerrufbücher, Schnitt ${a.schnittCommit}, `
+      + `Staging-Lauf ${a.staging.lauf}, Digest ${a.digest}) — Probe NICHT geprüft; Nachholprüfung bis T0+${c.nachholFristStunden} h, `
+      + `Nachweis bis T0+${c.repoFristStunden} h Pflicht`],
+    auflagen: [{ art: "nachholpruefung-widerrufbuch", releaseId: a.releaseId, fristStunden: c.nachholFristStunden,
+      repoFristStunden: c.repoFristStunden, ablage: a.nachholAblage, abbruchBedingungen: [...c.abbruchBedingungen] }],
+  };
+}
+
+/* ------------------------------------------ Nachhol-Modus (GATE-EW2, A.7) */
+
+/** Dateien der Nachhol-Ablage (Runbook N4; endpruefung.json = JSON der Endprüfung mit freigabeSha256). */
+export const NACHHOL_DATEIEN = Object.freeze(["t0.json", "widerrufbuch-status.json", "widerrufbuch-probe-status.json", "verifikation.json", "endpruefung.json"]);
+
+/**
+ * GATE-EW2: Nachholprüfung nach T0 (Gate-Entwurf A.7). d = { releaseId, freigabe, freigabeRoh, dateien: {name: Bytes},
+ * stagingRoh, liste, releaseDateien, mergedAt[] }. Jede Verletzung nennt ihre Abbruch-ID (A.8).
+ */
+export function nachholPruefen(d, konfig = KONFIG_STANDARD) {
+  const c = konfig.erstwechselAusnahme.widerrufbuchProbe;
+  const gruende = [];
+  const ids = new Set();
+  const nein = (id, text) => { ids.add(id); gruende.push(`${id}: ${text}`); };
+  const ende = () => ({ ergebnis: gruende.length ? "NACHHOL-NO-GO" : "NACHHOL-GO", gruende, abbruchIds: [...ids], verspaetet: ids.has("A-REPO") });
+  const f = istObjekt(d) ? d.freigabe : null;
+  const a = f?.erstwechselAusnahme?.widerrufbuchProbe;
+  if (!istObjekt(a) || freigabeSchema(f).length || f.releaseId !== d.releaseId || a.releaseId !== d.releaseId) {
+    nein("A-FRIST", `Freigabedatei ${d?.releaseId} ohne gültige Erstwechsel-Ausnahme`);
+    return ende();
+  }
+  const relVerz = `${konfig.freigabeVerzeichnis}/${d.releaseId}/`;
+  for (const p of Array.isArray(d.releaseDateien) ? d.releaseDateien : []) {
+    const m = p.startsWith(relVerz) && !ABBRUCH_VOR.test(p.slice(relVerz.length)) ? /^abbruch-([^/]*)\.json$/.exec(p.slice(relVerz.length)) : null;
+    if (m) nein(c.abbruchBedingungen.includes(m[1]) ? m[1] : "A-FRIST", `Abbruchdatei ${p} in HEAD`);
+  }
+  const bytes = (name) => (d.dateien?.[name] ? Buffer.from(d.dateien[name]) : null);
+  const json = (name) => { try { const v = JSON.parse(bytes(name).toString("utf8")); return istObjekt(v) ? v : null; } catch { return null; } };
+  const t0d = json("t0.json");
+  const t0 = Date.parse(t0d?.t0 ?? "");
+  if (!t0d || !Number.isFinite(t0)) { nein("A-FRIST", "t0.json fehlt oder T0 unlesbar"); return ende(); }
+  const frist = t0 + stunden(c.nachholFristStunden);
+  const imFenster = (t, von, bis) => Number.isFinite(t) && t >= von && t <= bis;
+  if (t0d.releaseId !== d.releaseId || t0d.digest !== a.digest || t0d.kandidat !== a.kandidatCommit) nein("A-BILD", "t0.json passt nicht zur Freigabe (releaseId, digest, kandidat)");
+  const zeilen = istObjekt(d.liste) && Array.isArray(d.liste.zeilen) ? d.liste.zeilen : [];
+  if (!istObjekt(d.liste) || d.liste.fehler?.length || !zeilen.some((z) => z.status === "aktiv" && z.commit === a.kandidatCommit && z.digest === a.digest)) {
+    nein("A-SICHER", "Kandidat steht in der Freigabeliste (HEAD) nicht als aktiv");
+  }
+  const p = json("widerrufbuch-probe-status.json");
+  const pt = Date.parse(p?.zeit ?? "");
+  const v = json("verifikation.json");
+  if (!p) nein("A-FRIST", "widerrufbuch-probe-status.json fehlt oder unlesbar");
+  else {
+    if (p.code === 3 || p.ergebnis === "ruecksprung" || p.live_fehlend !== 0) nein("A-PROBE", `Rücksprung im laufenden Buch (code ${p.code}, live_fehlend ${p.live_fehlend})`);
+    else if (p.art !== "widerrufbuch-probe" || p.ergebnis !== "ok" || p.code !== 0) nein("A-PROBE-W", `Probe art ${p.art}, ergebnis ${p.ergebnis}, code ${p.code}`);
+    if (!(Number.isInteger(p.snapshots) && p.snapshots >= 2)) nein("A-PROBE-W", `snapshots ${p.snapshots}, mindestens 2`);
+    if (p.bild !== a.digest) nein("A-BILD", `bild der Probe ${p.bild} ≠ ${a.digest}`);
+    if (!imFenster(pt, t0, frist)) nein("A-FRIST", `Probe-Zeit ${p.zeit} nicht in [T0, T0+${c.nachholFristStunden} h]`);
+    if (p.gegenprobe !== "erkannt") {
+      // F4: „nicht-aussagekraeftig“ nur mit Beleg (Prüfsummen beider Stände gleich) und bestandener Staging-Probe S5
+      let s5 = false;
+      try {
+        const st = Buffer.from(d.stagingRoh);
+        s5 = sha256(st) === a.staging.sha256 && JSON.parse(st.toString("utf8")).widerrufbuch.proben.S5 === "ok";
+      } catch { s5 = false; }
+      const beleg = typeof p.pruefsummen === "string" && p.pruefsummen !== "" && v?.pruefsummenVergleich === p.pruefsummen;
+      if (!(p.gegenprobe === "nicht-aussagekraeftig" && beleg && s5)) nein("A-PROBE-W", `gegenprobe ${p.gegenprobe} ohne Beleg nach F4 (Prüfsummen gleich und Staging S5 ok)`);
+    }
+  }
+  const probeRoh = bytes("widerrufbuch-probe-status.json");
+  if (!v || !probeRoh || v.sha256 !== sha256(probeRoh) || v.exit !== 0 || !imFenster(Date.parse(v.verifiziertAm ?? ""), pt, frist)) {
+    nein("A-FRIST", `lokale Verifikation fehlt, passt nicht zur Statusdatei oder liegt nicht in [Probe, T0+${c.nachholFristStunden} h] (F5)`);
+  }
+  const s = json("widerrufbuch-status.json");
+  if (!s || s.art !== "widerrufbuch" || s.ergebnis !== "ok" || s.code !== 0 || !imFenster(Date.parse(s.zeit ?? ""), t0, frist)) {
+    nein("A-SICH", `widerrufbuch-status.json fehlt, nicht ok oder nicht in [T0, T0+${c.nachholFristStunden} h]`);
+  } else if (s.bild !== a.digest) nein("A-BILD", `bild der Sicherung ${s.bild} ≠ ${a.digest}`);
+  const ep = json("endpruefung.json");
+  if (!ep || ep.gesamt !== "GO" || ep.exitCode !== 0 || ep.modus !== "online" || ep.uebersteuert !== false || ep.releaseId !== d.releaseId ||
+    ep.kandidat !== a.kandidatCommit || ep.digest !== a.digest || !d.freigabeRoh || ep.freigabeSha256 !== sha256(Buffer.from(d.freigabeRoh))) {
+    nein("A-FRIST", "endpruefung.json fehlt, ist keine Endprüfung GO (online, Exit 0) dieses Kandidaten, oder die Freigabedatei ist seit der Endprüfung verändert");
+  }
+  const merges = Array.isArray(d.mergedAt) ? d.mergedAt : [];
+  if (!merges.length || merges.some((m) => !imFenster(Date.parse(m), t0, t0 + stunden(c.repoFristStunden)))) {
+    nein("A-REPO", `Nachhol-Dateien nicht bis T0+${c.repoFristStunden} h nach main gemergt (merged_at ${merges.join(", ") || "unbekannt"})`);
+  }
+  return ende();
+}
+
+/** Folge-Release-Rückhalt (SPEZ §3.3): eine Ausnahme, deren Kandidat die Basis ist, muss NACHHOL-GO sein. */
+function rueckhaltPruefen(g, k, konfig) {
+  for (const r of Array.isArray(k.rueckhalt) ? k.rueckhalt : []) {
+    if (!r.daten) { nogo(g, `Erstwechsel-Ausnahme: ${r.datei} nicht lesbar (${r.fehler}) — Rückhalt nicht prüfbar (fail-closed)`); continue; }
+    const n = nachholPruefen(r.daten, konfig);
+    if (n.ergebnis === "NACHHOL-GO") { g.belege.push(`Erstwechsel-Ausnahme ${r.releaseId} abgeschlossen (NACHHOL-GO)`); continue; }
+    const abw = k.freigabe?.nachholAbweichung;
+    if (n.abbruchIds.length === 1 && n.abbruchIds[0] === "A-REPO" && istObjekt(abw) && abw.releaseId === r.releaseId) {
+      g.belege.push(`Erstwechsel-Ausnahme ${r.releaseId}: Nachweis verspätet (A-REPO), W-REPO mit nachholAbweichung: ${abw.grund}`);
+      continue;
+    }
+    nogo(g, `Ausnahme ${r.releaseId} nicht abgeschlossen (Basis = deren Kandidat): ${n.gruende.join("; ")}`);
+  }
+}
+
+/** Einträge eines ZIP-Archivs (Artefakt-Download), nur im Speicher; Größen aus dem Zentralverzeichnis. Wirft bei Fehlern. */
+export function zipEntpacken(buf) {
+  const b = Buffer.from(buf);
+  let e = -1;
+  for (let i = b.length - 22; i >= 0 && i >= b.length - 22 - 65535; i--) if (b.readUInt32LE(i) === 0x06054b50) { e = i; break; }
+  if (e < 0) throw new Error("kein ZIP (Endsatz fehlt)");
+  const aus = [];
+  let p = b.readUInt32LE(e + 16);
+  for (let n = b.readUInt16LE(e + 10); n > 0; n--) {
+    if (b.readUInt32LE(p) !== 0x02014b50) throw new Error("ZIP-Verzeichnis unlesbar");
+    const methode = b.readUInt16LE(p + 10);
+    const groesse = b.readUInt32LE(p + 20);
+    const lName = b.readUInt16LE(p + 28);
+    const ofs = b.readUInt32LE(p + 42);
+    if (groesse === 0xffffffff || ofs === 0xffffffff || ![0, 8].includes(methode)) throw new Error("ZIP64 oder Methode nicht unterstützt");
+    if (b.readUInt32LE(ofs) !== 0x04034b50) throw new Error("ZIP-Eintrag unlesbar");
+    const start = ofs + 30 + b.readUInt16LE(ofs + 26) + b.readUInt16LE(ofs + 28);
+    const daten = b.subarray(start, start + groesse);
+    aus.push({ name: b.subarray(p + 46, p + 46 + lName).toString("utf8"), daten: methode === 8 ? inflateRawSync(daten) : Buffer.from(daten) });
+    p += 46 + lName + b.readUInt16LE(p + 30) + b.readUInt16LE(p + 32);
+  }
+  return aus;
 }
 
 /* ---------------------------------------------------------- G7 — Rückweg */
@@ -1193,6 +1635,7 @@ export function freigabeSchema(f) {
     if (!istObjekt(f.migration)) fe.push("migration: kein Objekt");
     else if (f.migration.abgedeckt !== undefined && (!Array.isArray(f.migration.abgedeckt) || !f.migration.abgedeckt.every((x) => typeof x === "string"))) fe.push("migration.abgedeckt: falsche Struktur");
   }
+  fe.push(...ausnahmeSchema(f)); // GATE-EW1: schnittCommit, erstwechselAusnahme, nachholAbweichung streng
   return fe;
 }
 
@@ -1250,7 +1693,9 @@ export function auswerten(e, konfig = KONFIG_STANDARD) {
     g3Schalter({ codeNamen: e.codeNamen, klassen: e.klassen, vorlagen: e.vorlagen || [], unfertig: e.unfertig, quelltexte: e.quelltexte, freigabe, composeDateien: e.composeDateien, vorlagenStand: e.vorlagenStand ?? null }, konfig),
     g4Bild({ digest: e.digest, kandidat: e.kandidat, bild: bildAngabenLesen(e.bildRoh), liste, berichtVorhanden: e.berichtVorhanden, jetztMs: e.jetztMs }, konfig),
     g5Migration(bericht, freigabe, liste),
-    g6Sicherung(e.nachweise, e.jetztMs, konfig),
+    g6Sicherung(e.nachweise, e.jetztMs, konfig, { freigabe, freigabeRoh: roheFreigabe, schemaFehler: roheFreigabe ? freigabeSchema(roheFreigabe) : [],
+      releaseId: e.releaseId, basis: e.basis, kandidat: e.kandidat, digest: e.digest, liste, erstwechsel: e.erstwechsel,
+      releaseDateien: e.releaseDateien, rueckhalt: e.rueckhalt }),
     g7Rueckweg({ liste, kandidat: e.kandidat, digest: e.digest, basis: e.basis }, freigabe, konfig),
     g8Blocker(e.ssot, prs, freigabe, konfig, e.unfertig, e.klassen),
     g9Befunde(e.ssot, freigabe, konfig),
@@ -1274,6 +1719,9 @@ export function auswerten(e, konfig = KONFIG_STANDARD) {
       .every((g) => g.ergebnis === "GO" || (g.id === "G3" && g.gruende.every((x) => (g.bindung || []).includes(x)))),
     nogo: gates.filter((g) => g.ergebnis !== "GO").map((g) => g.id),
     manuelleBestaetigungen: gates.flatMap((g) => g.manuell.map((m) => `${g.id}: ${m}`)),
+    // GATE-EW1: Pflichtauflagen (Nachholprüfung); GATE-EW2: SHA-256 der Freigabedatei für die Byte-Gleichheit nach T0
+    auflagen: gates.flatMap((g) => g.auflagen || []),
+    freigabeSha256: e.freigabeSha256 || null,
     migrationsbericht: bericht,
     gates,
     konfiguration: konfig,
@@ -1431,6 +1879,125 @@ function nachweiseLesen(verz) {
   return { sicherung: l("letzte-erfolgreiche.json"), restoreProbe: l("probe-status.json"), widerrufbuchProbe: l("widerrufbuch-probe-status.json") };
 }
 
+/** Relativer Repo-Pfad ohne „..“, „.“, leere Teile oder Sonderzeichen (Pfade aus der Freigabedatei). */
+const pfadSicher = (p) => typeof p === "string" && /^[A-Za-z0-9._/-]+$/.test(p) && p.split("/").every((x) => x && x !== "." && x !== "..");
+/** Nachweise eines Abbruchs vor dem V4-Start (F10, OFFEN-1): docs/acc45/releases/<id>/abbruch-A-VOR[-n].json */
+const ABBRUCH_VOR = /^abbruch-A-VOR(?:-[1-9]\d{0,2})?\.json$/;
+
+/** GATE-EW1: Angaben für E3, E6, E7, E13, E14, E15. Offline: Git/Netz aus fixture.erstwechsel, Dateien aus --wurzel. */
+function erstwechselSammeln(e, kq, hq, { online, wurzel: w, gh, ghRoh, fx }, konfig) {
+  const c = konfig.erstwechselAusnahme.widerrufbuchProbe;
+  const a = istObjekt(e.freigabe.erstwechselAusnahme?.widerrufbuchProbe) ? e.freigabe.erstwechselAusnahme.widerrufbuchProbe : {};
+  const relVerz = `${konfig.freigabeVerzeichnis}/${e.releaseId}/`;
+  const ew = {
+    stagingRoh: pfadSicher(a.staging?.nachweis) ? hq.lesenRoh(a.staging.nachweis) : null,
+    skriptRoh: kq.lesenRoh(c.stagingSkript),
+    codeowners: kq.lesen(".github/CODEOWNERS"),
+    abbruchVor: Object.fromEntries((e.releaseDateien || []).filter((p) => p.startsWith(relVerz) && ABBRUCH_VOR.test(p.slice(relVerz.length)))
+      .map((p) => [p, hq.lesenRoh(p)])),
+  };
+  if (!online) {
+    const x = istObjekt(fx.erstwechsel) ? fx.erstwechsel : {};
+    return { releaseHistorie: [], ...x, ...ew, stagingArtefakt: Array.isArray(x.stagingArtefakt) ? x.stagingArtefakt.map((b) => Buffer.from(String(b), "base64")) : null };
+  }
+  const versuch = (f) => { try { return f(); } catch { return null; } };
+  const M = e.kandidat;
+  const S = hex40(a.schnittCommit) ? a.schnittCommit : null;
+  ew.kandidatEltern = versuch(() => git(w, ["rev-list", "--parents", "-n", "1", M]).split(" ").slice(1));
+  ew.baeume = S ? versuch(() => ({ kandidat: git(w, ["rev-parse", `${M}^{tree}`]), schnitt: git(w, ["rev-parse", `${S}^{tree}`]) })) : null;
+  ew.schnittIstVorfahr = S ? versuch(() => { git(w, ["merge-base", "--is-ancestor", S, "HEAD"]); return true; }) === true : false;
+  const menge = (rev, pfade) => versuch(() => {
+    const da = new Set(git(w, ["ls-tree", "-r", "-z", "--name-only", rev, "--", ...pfade]).split("\0").filter(Boolean));
+    return Object.fromEntries(pfade.map((p) => [p, da.has(p)]));
+  });
+  ew.basisDateien = hex40(e.basis) ? menge(e.basis, c.basisOhneDateien) : null;
+  ew.kandidatDateien = menge(M, c.kandidatMitDateien);
+  // F10: jeder Pfad, der in der Geschichte von HEAD je unter docs/acc45/releases/<id>/ lag (Löschen hebt den Verbrauch nicht auf)
+  ew.releaseHistorie = versuch(() => git(w, ["log", "--format=", "--name-only", "HEAD", "--", relVerz]).split("\n").filter(Boolean));
+  const [laufId] = String(a.staging?.lauf || "").split("-");
+  if (/^[1-9]\d*$/.test(laufId)) {
+    ew.stagingLauf = versuch(() => gh(`repos/${konfig.repo}/actions/runs/${laufId}`));
+    ew.stagingArtefakt = versuch(() => {
+      const art = (gh(`repos/${konfig.repo}/actions/runs/${laufId}/artifacts?per_page=100`).artifacts || []).filter((x) => x.name === c.stagingArtefakt && !x.expired);
+      if (art.length !== 1 || !Number.isInteger(art[0].id)) return null;
+      return zipEntpacken(ghRoh(`repos/${konfig.repo}/actions/artifacts/${art[0].id}/zip`)).map((x) => x.daten);
+    });
+  }
+  // E14: Rulesets, PR der Freigabedatei, PRs der Pakete GATE-EW1/EW2 (SSOT des Kandidaten); jeder Fehler wird gemeldet
+  const va = { regeln: {}, freigabePr: null, paketPrs: {}, prs: {}, fehler: [] };
+  const abfrage = (was, f) => { try { return f(); } catch (err) { va.fehler.push(`${was}: ${String(err?.message || err).split("\n")[0]}`); return null; } };
+  for (const z of c.vierAugenZweige) va.regeln[z] = abfrage(`GET rules/branches/${z}`, () => gh(`repos/${konfig.repo}/rules/branches/${encodeURIComponent(z)}`));
+  const gemergt = (sha) => gh(`repos/${konfig.repo}/commits/${sha}/pulls`).filter((p) => p.merged_at && konfig.freigabeZweige.includes(p.base?.ref));
+  va.freigabePr = abfrage("PR der Freigabedatei", () => {
+    const l = gemergt(git(w, ["log", "-1", "--format=%H", "HEAD", "--", `${konfig.freigabeVerzeichnis}/${e.releaseId}.freigabe.json`]));
+    if (l.length !== 1) throw new Error(`${l.length} nach main gemergte PRs`);
+    return l[0].number;
+  });
+  for (const id of c.vierAugenPakete) {
+    const p = Array.isArray(e.ssot?.pakete) ? e.ssot.pakete.find((x) => istObjekt(x) && x.id === id) : null;
+    const l = prListeLesen(p?.pr);
+    if (!p || l.fehler) { va.fehler.push(`${id}: nicht in der SSOT des Kandidaten oder pr ungültig`); continue; }
+    va.paketPrs[id] = l.nummern;
+  }
+  for (const nr of new Set([va.freigabePr, ...Object.values(va.paketPrs).flat()].filter(Number.isInteger))) {
+    va.prs[nr] = abfrage(`GET pulls/${nr}`, () => {
+      const p = gh(`repos/${konfig.repo}/pulls/${nr}`);
+      const r = gh(`repos/${konfig.repo}/pulls/${nr}/reviews?per_page=100`, ["--paginate", "--slurp"]).flat();
+      return { autor: p.user?.login ?? null, kopf: p.head?.sha ?? null, gemergt: !!p.merged_at,
+        reviews: r.map((x) => ({ state: x.state, autor: x.user?.login ?? null, commit: x.commit_id ?? null })) };
+    });
+  }
+  ew.vierAugen = va;
+  return ew;
+}
+
+/** GATE-EW2: Angaben der Nachhol-Ablage aus HEAD (online) bzw. --wurzel (offline; merged_at aus fixture.nachhol[id]). */
+function nachholDaten(q, releaseId, { online, wurzel: w, gh, fx }, konfig) {
+  const verz = konfig.freigabeVerzeichnis;
+  const freigabeRoh = q.lesenRoh(`${verz}/${releaseId}.freigabe.json`);
+  const freigabe = jsonLesen(freigabeRoh ? Buffer.from(freigabeRoh).toString("utf8") : null).wert;
+  const ablage = `${verz}/${releaseId}/nachhol/`;
+  const dateien = Object.fromEntries(NACHHOL_DATEIEN.map((n) => [n, q.lesenRoh(ablage + n)]));
+  const nachweis = freigabe?.erstwechselAusnahme?.widerrufbuchProbe?.staging?.nachweis;
+  const d = { releaseId, freigabe, freigabeRoh, dateien, liste: freigabelisteLesen(q.lesen(konfig.freigabeListe), konfig.gesperrtEingebaut),
+    releaseDateien: q.dateien([`${verz}/${releaseId}`]), stagingRoh: pfadSicher(nachweis) ? q.lesenRoh(nachweis) : null, mergedAt: null };
+  if (!online) { d.mergedAt = istObjekt(fx?.nachhol?.[releaseId]) ? fx.nachhol[releaseId].mergedAt : null; return d; }
+  if (!istObjekt(freigabe?.erstwechselAusnahme)) return d; // nichts zu prüfen, keine Netzabfrage
+  try {
+    // Repo-Frist (F5): merged_at des PR, der den heutigen Stand jeder Datei nach main brachte (letzter Commit der Datei)
+    d.mergedAt = NACHHOL_DATEIEN.filter((n) => dateien[n]).map((n) => {
+      const sha = git(w, ["log", "-1", "--format=%H", "HEAD", "--", ablage + n]);
+      const l = gh(`repos/${konfig.repo}/commits/${sha}/pulls`).filter((p) => p.merged_at && konfig.freigabeZweige.includes(p.base?.ref));
+      if (!l.length) throw new Error(`${n}: kein nach main gemergter PR`);
+      return l.map((p) => p.merged_at).sort()[0];
+    });
+  } catch { d.mergedAt = null; }
+  return d;
+}
+
+/** GATE-EW2: Nachhol-Angaben lesen (für --nachhol). Online nur aus HEAD, nie aus dem Arbeitsstand. */
+export function nachholSammeln(wurzel, releaseId, opt = {}, konfig = KONFIG_STANDARD) {
+  const online = !opt.offline;
+  const gh = typeof opt.gh === "function" ? opt.gh : (pfad, extra) => ghApi(wurzel, pfad, extra);
+  return nachholDaten(quelle(wurzel, online ? "HEAD" : null), releaseId, { online, wurzel, gh, fx: istObjekt(opt.fixture) ? opt.fixture : {} }, konfig);
+}
+
+/** Folge-Release-Rückhalt: Freigabedateien anderer Releases in HEAD mit Ausnahme, deren Kandidat die Basis ist. */
+function rueckhaltSammeln(e, hq, ctx, konfig) {
+  const verz = konfig.freigabeVerzeichnis;
+  const aus = [];
+  for (const p of e.releaseDateien) {
+    const name = p.slice(verz.length + 1);
+    if (!p.startsWith(`${verz}/`) || name.includes("/") || !name.endsWith(".freigabe.json") || name === `${e.releaseId}.freigabe.json`) continue;
+    const j = jsonLesen(hq.lesen(p));
+    if (!istObjekt(j.wert)) { aus.push({ datei: p, fehler: j.fehler || "kein Objekt" }); continue; }
+    if (j.wert.erstwechselAusnahme === undefined || j.wert.kandidatCommit !== e.basis) continue;
+    const releaseId = name.slice(0, -".freigabe.json".length);
+    aus.push({ datei: p, releaseId, daten: nachholDaten(hq, releaseId, ctx, konfig) });
+  }
+  return aus;
+}
+
 /** Sammelt alle Angaben. Offline kommen Git- und Netzangaben ausschließlich aus der Fixture. */
 export function sammeln(opt, konfig = KONFIG_STANDARD) {
   const w = opt.wurzel;
@@ -1470,6 +2037,8 @@ export function sammeln(opt, konfig = KONFIG_STANDARD) {
   if (opt.releaseId && RELEASE_ID.test(opt.releaseId)) {
     const rel = `${konfig.freigabeVerzeichnis}/${opt.releaseId}.freigabe.json`;
     const j = jsonLesen(hq.lesen(rel));
+    const freigabeRoh = hq.lesenRoh(rel);
+    if (freigabeRoh) e.freigabeSha256 = sha256(Buffer.from(freigabeRoh)); // GATE-EW2: Byte-Gleichheit nach T0
     e.freigabe = istObjekt(j.wert) ? j.wert : null;
     e.freigabeFehler = j.fehler ? `${rel}: ${j.fehler}` : (j.wert && !istObjekt(j.wert) ? `${rel}: kein Objekt` : null);
     if (!online) e.freigabeCommitet = fx.freigabeCommitet === true;
@@ -1487,6 +2056,13 @@ export function sammeln(opt, konfig = KONFIG_STANDARD) {
   e.nachweise = !online
     ? (fx.nachweise ? fx.nachweise : nachweiseLesen(opt.nachweise))
     : (opt.nachweise ? nachweiseAusQuelle(hq, opt.nachweise) : {});
+
+  // GATE-EW1/EW2: Release-Dateien in HEAD (E10, E15), Angaben zur Erstwechsel-Ausnahme, Folge-Release-Rückhalt
+  const ghRoh = typeof opt.ghRoh === "function" ? opt.ghRoh : (pfad) => ausfuehren.exec("gh", ["api", pfad], ausfuehrOptionen(w, { encoding: "buffer" }));
+  const ctx = { online, wurzel: w, gh, ghRoh, fx };
+  e.releaseDateien = hq.dateien([konfig.freigabeVerzeichnis]);
+  if (istObjekt(e.freigabe) && e.freigabe.erstwechselAusnahme !== undefined) e.erstwechsel = erstwechselSammeln(e, kq, hq, ctx, konfig);
+  e.rueckhalt = rueckhaltSammeln(e, hq, ctx, konfig);
 
   if (!online) {
     e.checkRuns = fx.checkRuns;
@@ -1592,6 +2168,7 @@ export function argumenteLesen(argv) {
     else if (a === "--kurz") o.kurz = true;
     else if (a === "--konfig-zeigen") o.konfigZeigen = true;
     else if (a === "--vorlagen-hashes") o.vorlagenHashes = true;
+    else if (a === "--nachhol") o.nachhol = true;
     else throw new Error(`unbekannte Option: ${a}`);
   }
   return o;
@@ -1604,15 +2181,45 @@ export function kurzfassung(r) {
     for (const x of g.gruende.slice(0, 8)) z.push(`        - ${x}`);
     if (g.gruende.length > 8) z.push(`        … ${g.gruende.length - 8} weitere`);
   }
+  for (const a of r.auflagen || []) z.push(`AUFLAGE ${a.art} ${a.releaseId}: Probe bis T0+${a.fristStunden} h, Nachweis bis T0+${a.repoFristStunden} h`);
   return z.join("\n");
 }
 
 /** stderr-Ausgabe der CLI: Aufrufwerte und Fehlertexte können fremde Zeichen tragen (Delta-Check #437). */
 const ausgabeFehler = (s) => console.error(sicher(s));
 
+/** --nachhol (GATE-EW2): nur lesend; online aus HEAD; Exit 0 nur online bei NACHHOL-GO, 3 offline, 1 NO-GO, 2 Aufruf. */
+function nachholHaupt(o) {
+  const erlaubt = ["nachhol", "releaseId", "wurzel", "offline", "fixture", "jetzt"];
+  if (Object.keys(o).some((x) => !erlaubt.includes(x)) || !o.releaseId || !RELEASE_ID.test(o.releaseId) ||
+    !!o.offline !== !!o.fixture || (o.jetzt && !o.offline)) {
+    ausgabeFehler("Aufruf: --nachhol --release-id <id> [--wurzel <repo>] [--offline --fixture <datei.json> [--jetzt <ISO-Zeit>]]");
+    return 2;
+  }
+  let fixture = {};
+  if (o.offline) {
+    const j = jsonLesen(lesenPfad(o.fixture));
+    if (!istObjekt(j.wert)) { ausgabeFehler(`Fixture ${o.fixture}: ${j.fehler || "kein Objekt"}`); return 2; }
+    if (o.jetzt && !Number.isFinite(Date.parse(o.jetzt))) { ausgabeFehler("Aufruf: --jetzt ist keine Zeit"); return 2; }
+    fixture = j.wert;
+  }
+  const wurzel = resolve(o.wurzel || fileURLToPath(new URL("..", import.meta.url)));
+  let r;
+  try { r = nachholPruefen(nachholSammeln(wurzel, o.releaseId, { offline: !!o.offline, fixture })); } catch (err) {
+    ausgabeFehler("Struktur- oder Lesefehler: " + (err && err.message));
+    return 2;
+  }
+  const exitCode = r.ergebnis !== "NACHHOL-GO" ? 1 : o.offline ? 3 : 0;
+  console.log(JSON.stringify(tiefSicher({ werkzeug: "release-pruefung", version: VERSION, modus: o.offline ? "offline-fixture" : "online",
+    releaseId: o.releaseId, ...r, exitCode }), null, 2));
+  ausgabeFehler(`Nachholprüfung ${o.releaseId}: ${r.ergebnis}${r.abbruchIds.length ? " (" + r.abbruchIds.join(", ") + ")" : ""} · Exit ${exitCode}`);
+  return exitCode;
+}
+
 function main(argv) {
   let o;
   try { o = argumenteLesen(argv); } catch (err) { ausgabeFehler("Aufruf: " + err.message); return 2; }
+  if (o.nachhol) return nachholHaupt(o);
   if (o.vorlagenHashes) {
     // Hilfe für die Freigabedatei: SHA-256 der Vorlagen des Kandidaten (offline: Arbeitsstand unter --wurzel).
     const w = resolve(o.wurzel || fileURLToPath(new URL("..", import.meta.url)));
