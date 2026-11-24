@@ -116,6 +116,11 @@ describe("Aufteilung der Prüfung (Pilot f1)", () => {
       .flatMap((f) => Object.entries(lesen(f)?.jobs || {}).map(([id, j]) => (typeof j?.name === "string" ? j.name : id))));
     expect(pflicht.filter((p) => !alleJobs.has(p))).toEqual([]);
     expect(new Set(pflicht).size).toBe(pflicht.length);
+    // Übergangsregel: Form NEU sind genau die Teile dieses Workflows; Form ALT ist kein Job mehr (nur ältere Kandidaten).
+    const ue = KONFIG_STANDARD.uebergangPruefen;
+    expect(ue.neu).toEqual(TEILE);
+    expect(ue.neu.filter((n) => !pflicht.includes(n))).toEqual([]);
+    expect(ue.alt.filter((n) => Object.keys(WF.jobs).includes(n) || pflicht.includes(n))).toEqual([]);
   });
 });
 
