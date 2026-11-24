@@ -89,11 +89,57 @@ describe("naechstes-paket --parallel: Auswahl", () => {
   });
 });
 
+describe("naechstes-paket --parallel: Pfad-Aliase, nackte Namen, Glob, Freitext", () => {
+  /* Paarungen, die NIE zusammen vorgeschlagen werden dürfen: [dateien A, Zonen A, dateien B, Zonen B]. */
+  const paare = [
+    ["./src/App.jsx", [], "src/App.jsx", []],
+    ["src/app.jsx", [], "src/App.jsx", []],
+    ["/src/App.jsx", [], "src/App.jsx", []],
+    ["src//App.jsx", [], "src/App.jsx", []],
+    ["src/./App.jsx", [], "src/App.jsx", []],
+    ["src\\App.jsx", [], "src/App.jsx", []],
+    ["daten.mjs", [], "x/y.mjs", ["daten.mjs"]],
+    ["daten.mjs", [], "server/funktionen/daten.mjs", []],
+    ["App.jsx", [], "x/y.mjs", ["App.jsx"]],
+    ["pruefung.yml", [], ".github/workflows/pruefung.yml", []],
+    ["zeiterfassung.mjs, sicht.mjs", [], "server/lib/sicht.mjs", []],
+    ["server/lib/import/schicht*.mjs", [], "server/lib/import/schichtplan.mjs", []],
+    ["server/lib/a.mjs, Tests", [], "server/lib/b.mjs, Tests", []],
+    ["x/a.js", ["package.json"], "y/b.js, Tests", []],
+  ];
+  it.each(paare)("nie zusammen: %s %j gegen %s %j", (da, za, db, zb) => {
+    const r = NP.parallelWaehlen(bau(T("A", "P0", da, "READY", [], za), T("B", "P0", db, "READY", [], zb)), 3);
+    expect(ids(r)).toEqual(["A"]);
+    expect(r.ausgeschlossen).toHaveLength(1);
+    expect(r.ausgeschlossen[0].grund).toMatch(/^Konflikt mit A in Zone /);
+  });
+
+  it("verschiedene Dateien, Verzeichnisse und Globs bleiben frei", () => {
+    const l = bau(T("A", "P0", "bar.mjs"), T("B", "P0", "x/baz.mjs"), T("C", "P0", "server/lib/import/schicht*.mjs"), T("D", "P0", "server/lib/import/andere.mjs"));
+    expect(ids(NP.parallelWaehlen(l, 3))).toEqual(["A", "B", "C"]);
+  });
+
+  it("Pfad mit .. oder gemischtes dateien (Pfad plus Freitext) ist Zone unbekannt und läuft nur einzeln", () => {
+    for (const d of ["src/x.jsx, siehe Plan", "../src/x.jsx", "siehe Plan, src/x.jsx"]) {
+      expect(NP.zonenAnspruch(bau(T("M", "P0", d))[0])).toBeNull();
+      expect(ids(NP.parallelWaehlen(bau(T("M", "P0", d), T("N", "P1", "q/r.js")), 3))).toEqual(["M"]);
+      const spaet = NP.parallelWaehlen(bau(T("N", "P0", "q/r.js"), T("M", "P1", d)), 3);
+      expect(ids(spaet)).toEqual(["N"]);
+      expect(spaet.ausgeschlossen).toEqual([{ id: "M", grund: "Zone unbekannt (nur einzeln)" }]);
+    }
+  });
+
+  it("Tests zählt als Anspruch auf package.json (scripts)", () => {
+    expect(NP.zonenAnspruch(bau(T("A", "P0", "x/a.js, Tests"))[0]).map((c) => c.label)).toEqual(["x/a.js", "package.json (scripts)"]);
+    expect(NP.zonenAnspruch(bau(T("A", "P0", "Tests"))[0]).map((c) => c.label)).toEqual(["package.json (scripts)"]);
+  });
+});
+
 describe("naechstes-paket --parallel: Aufruf und Ausgabe", () => {
   const l = () => bau(T("A", "P0", "a/a.js"), T("B", "P0", "a/a.js"), T("C", "P1", "c/c.js"));
 
   it("n > 3, n = 0, fehlender Wert, Mischung mit --anzahl: Exit 2", () => {
-    for (const a of [["--parallel", "4"], ["--parallel", "0"], ["--parallel"], ["--parallel", "x"], ["--parallel", "2", "--anzahl", "2"]]) {
+    for (const a of [["--parallel", "4"], ["--parallel", "0"], ["--parallel"], ["--parallel", "x"], ["--parallel", "2", "--anzahl", "2"], ["--parallel", "2", "--parallel", "9"], ["--parallel", "03"], ["--parallel", "2", "--parallel", "2"]]) {
       const s = sammeln();
       expect(NP.main(a, s.say, l())).toBe(2);
       expect(s.text()).toMatch(/Aufruf/);

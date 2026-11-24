@@ -15,9 +15,9 @@
    Konfliktzonen (Hinweis: ein Schreiber zur Zeit, docs/acc45/AGENTS.md).
 
    --parallel <n>: Vorschlag (keine Zuweisung) für bis zu n Pakete, die
-   untereinander konfliktfrei sind. Greedy in der Rangfolge oben. Zonen aus
-   den SSOT-Feldern konfliktzonen und dateien (Dateibesitz-Tabelle in
-   docs/acc45/AGENTS.md, KONFLIKTZONEN in acc45-backlog.mjs). Ohne belegbare
+   untereinander konfliktfrei sind. Greedy in der Rangfolge oben. Zonen nur
+   aus den SSOT-Feldern konfliktzonen und dateien (7 Namen aus KONFLIKTZONEN
+   in acc45-backlog.mjs; Regeln beim Block "Konfliktzonen" unten). Ohne belegbare
    Zone gilt ein Paket als „Zone unbekannt“ und wird nur einzeln vorgeschlagen.
    Hartgrenze 3 (schreibende Agenten, AGENTS.md); n > 3 wird abgelehnt.
    --parallel 1 gibt dasselbe aus wie --anzahl 1.
@@ -49,9 +49,19 @@ export function naechste(pakete, n = 5) {
 }
 
 /* ---- Konfliktzonen für --parallel ------------------------------------------
-   Quelle: Dateibesitz-Tabelle in docs/acc45/AGENTS.md und KONFLIKTZONEN in
-   acc45-backlog.mjs. Namen aus dem SSOT-Feld konfliktzonen werden auf ihren
-   Pfad abgebildet; das SSOT-Feld dateien liefert weitere Pfade. */
+   Das Werkzeug liest nur die SSOT-Felder konfliktzonen und dateien. Die sieben
+   Namen aus KONFLIKTZONEN (acc45-backlog.mjs) werden auf feste Pfade
+   abgebildet. Nicht modelliert: die übrigen Zeilen der Dateibesitz-Tabelle
+   in docs/acc45/AGENTS.md, die V4-3b-Byte-Pins und der Pin NACHTRAG_QS2
+   (src/pruefung.jsx); sie wirken nur, wenn ein Paket die Datei in dateien
+   nennt. Regeln (fail-closed):
+   - Pfade werden kanonisiert: Backslash zu /, führendes ./ und /, // und /./
+     zusammengefasst, Groß-/Kleinschreibung ignoriert; ".." gilt als unbekannt.
+   - Ein Token ohne / (nackter Dateiname wie "daten.mjs") hat keinen
+     belegten Ort. Er überlappt mit jedem Anspruch gleichen Dateinamens
+     (Basename-Vergleich), in jedem Verzeichnis.
+   - "Tests" im Feld dateien zählt als Anspruch auf package.json (scripts,
+     Zone aus AGENTS.md); ein Test-Skript steht in derselben Datei. */
 export const MAX_PARALLEL = 3;
 const ZONE_PFAD = Object.freeze({
   "App.jsx": "src/App.jsx", "daten.mjs": "server/funktionen/daten.mjs", "rechte.mjs": "server/lib/rechte.mjs",
@@ -59,29 +69,39 @@ const ZONE_PFAD = Object.freeze({
   "stempelintegritaet.mjs": "server/lib/stempelintegritaet.mjs", "src/ansichten": "src/ansichten/",
 });
 const VERZEICHNIS = /^(src|docs|e2e|deploy|server|werkzeug|pruefungen|public)$/;
-const pfadToken = (t) => /^[\w.\-*/]+$/.test(t) && (t.includes("/") || /\.\w+$/.test(t) || VERZEICHNIS.test(t));
+const pfadToken = (t) => /^[\w.\-*/\\]+$/.test(t) && (t.includes("/") || t.includes("\\") || /\.\w+$/.test(t) || VERZEICHNIS.test(t));
 
-/** Ansprüche eines Pakets: [{pfad, label}] oder null (Zone unbekannt). Fail-closed. */
+/** Kanonische Form eines Pfads; null bei "..". */
+export function kanon(t) {
+  let x = String(t).trim().replace(/\\/g, "/").toLowerCase();
+  x = x.replace(/\/+/g, "/");
+  while (x.includes("/./")) x = x.replace("/./", "/");
+  x = x.replace(/^(\.\/)+/, "").replace(/^\/+/, "").replace(/\/\.$/, "").replace(/\/+$/, "");
+  return x.split("/").includes("..") || x === "" || x === "." ? null : x;
+}
+
+/** Ansprüche eines Pakets: [{pfad (kanonisch), label}] oder null (Zone unbekannt). Fail-closed. */
 export function zonenAnspruch(p) {
   const out = [];
-  for (const z of p.konfliktzonen || []) {
-    if (!ZONE_PFAD[z]) return null;
-    out.push({ pfad: ZONE_PFAD[z], label: z });
-  }
-  const tokens = String(p.dateien ?? "").split(/[,;]/).map((t) => t.trim()).filter((t) => t && t.toLowerCase() !== "tests");
-  for (const t of tokens) {
-    if (!pfadToken(t)) return null;
-    out.push({ pfad: t, label: t });
+  const add = (pfad, label) => { const k = kanon(pfad); if (k === null) return false; out.push({ pfad: k, label }); return true; };
+  for (const z of p.konfliktzonen || []) if (!ZONE_PFAD[z] || !add(ZONE_PFAD[z], z)) return null;
+  for (const t of String(p.dateien ?? "").split(/[,;]/).map((x) => x.trim()).filter(Boolean)) {
+    if (t.toLowerCase() === "tests") { add("package.json", "package.json (scripts)"); continue; }
+    if (!pfadToken(t) || !add(t, t)) return null;
   }
   return out.length ? out : null;
 }
 
 const norm = (x) => x.split("*")[0].replace(/\/+$/, "");
-/** Zwei Pfade überlappen: gleich, Verzeichnis-Präfix oder gleiches Glob-Präfix. */
-const ueberlappt = (a, b) => {
+const basis = (x) => x.slice(x.lastIndexOf("/") + 1);
+const nackt = (x) => !x.includes("/") && !VERZEICHNIS.test(x);
+/** Gleich, Verzeichnis-Präfix oder gleiches Glob-Präfix (kanonische Pfade). */
+const gleichartig = (a, b) => {
   const x = norm(a), y = norm(b);
   return x === y || x.startsWith(`${y}/`) || y.startsWith(`${x}/`) || (a.includes("*") && y.startsWith(x)) || (b.includes("*") && x.startsWith(y));
 };
+/** Zwei kanonische Pfade überlappen; nackte Dateinamen vergleichen per Basename. */
+const ueberlappt = (a, b) => (nackt(a) || nackt(b) ? gleichartig(nackt(a) ? a : basis(a), nackt(b) ? b : basis(b)) : gleichartig(a, b));
 function konflikt(a, b) {
   for (const x of a) for (const y of b) if (ueberlappt(x.pfad, y.pfad)) return x.label !== x.pfad ? x.label : y.label;
   return null;
@@ -115,7 +135,7 @@ export function main(argv, say = (s) => console.log(s), pakete = null) {
   if (unbekannt.length) { say(`Unbekannte Option: ${unbekannt[0]}`); return 2; }
   if (pi >= 0) {
     const wert = argv[pi + 1] ?? "";
-    if (i >= 0 || !/^\d+$/.test(wert) || Number(wert) < 1 || Number(wert) > MAX_PARALLEL) {
+    if (i >= 0 || argv.indexOf("--parallel", pi + 1) >= 0 || !/^[1-9]\d*$/.test(wert) || Number(wert) > MAX_PARALLEL) {
       say(`Aufruf: node werkzeug/naechstes-paket.mjs [--json] --parallel <n> (n = 1 bis ${MAX_PARALLEL}, nicht mit --anzahl)`);
       return 2;
     }
