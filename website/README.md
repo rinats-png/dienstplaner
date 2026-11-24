@@ -43,11 +43,11 @@ CRLF und muessen es behalten.
 
 `DIST-SHA256` hat das Format `<sha256>  <pfad>` (zwei Leerzeichen, sortiert).
 Stand W4 (2026-11-24): erzeugt aus dem Bau dieser Quelle nach der Umstellung der
-Branchenpakete auf "In Vorbereitung" (siehe unten). Sieben Dateien haben sich gegenueber
+Branchenpakete auf "In Vorbereitung" (siehe unten). Acht Dateien haben sich gegenueber
 dem Stand W1 geaendert: `index.html`, `branchen.html`, `preise.html`, `funktionen.html`,
-`faq.html`, `ueber-uns.html` (Paketpreise, Paketschalter und "enthalten"-Aussagen entfernt,
+`faq.html`, `ueber-uns.html`, `wissen.html` (Paketpreise, Paketschalter und "enthalten"-Aussagen entfernt,
 "In Vorbereitung" ergaenzt) und `assets/style.css` (eine Zeile: Status im Branchenband
-bricht unter den Text um). Alle anderen 25 Dateien sind unveraendert. Der Stand W1
+bricht unter den Text um). Alle anderen 24 Dateien sind unveraendert. Der Stand W1
 (2026-11-24, vor W4) war byte-gleich zu:
 
 - dem bisherigen lokalen `dist/` (32 von 32 Dateien),
@@ -55,7 +55,7 @@ bricht unter den Text um). Alle anderen 25 Dateien sind unveraendert. Der Stand 
 - der Live-Auslieferung (15 von 15 stichprobenartig gepruefte oeffentliche Dateien).
 
 Die Live-Seite (V3) ist die Referenz und bleibt bis zu einer Auslieferung unveraendert; die
-sechs Seiten und `style.css` weichen seit W4 bewusst von ihr ab. Eine Auslieferung ist ein
+sieben Seiten und `style.css` weichen seit W4 bewusst von ihr ab. Eine Auslieferung ist ein
 eigener Freigabeschritt (Entscheidung P2-44).
 
 Die Archiv-Summe `69f51e70...84c8` (`SHA256SUMS` auf `website/dist`) gilt fuer das

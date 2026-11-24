@@ -170,13 +170,13 @@ def mehrzahl(n, eins, viele):
 
 PAKETE = [
     dict(id="sicherheit", name="Sicherheitsdienst", zielpreis=79, band="Posten, § 34a, Wachbuch",
-         kurz="Objektbezogene Posten, Sachkundenachweis mit harter Sperre, Wachbuch, "
+         kurz="Objektbezogene Posten, Sachkundenachweis mit Warnung vor und nach Ablauf, Wachbuch, "
               "Standortprüfung beim Stempeln.",
          punkte=["Posten je Objekt statt Dienste je Einheit",
-                 "§ 34a-Sachkunde als harte Sperre — ohne Nachweis kein Einsatz",
+                 "§ 34a-Sachkunde: Warnung vor und nach Ablauf, mit Bestätigungsprotokoll",
                  "Wachbuch mit Übergabe und Vorkommnissen",
                  "Standortprüfung beim Stempeln (Geofence)",
-                 "Objektbericht und Leistungsnachweis für den Auftraggeber"]),
+                 "Objektbericht für den Auftraggeber"]),
     dict(id="pflege", name="Pflege", zielpreis=89, band="Fachkraftquote je Dienst",
          kurz="Fachkraftquote je Dienst, Übergabeprotokoll, Wohnbereichsplanung, "
               "Betreuungskräfte nach § 43b.",
@@ -198,7 +198,6 @@ PAKETE = [
          punkte=["Personen an Anlagen statt an Räume binden",
                  "Maschinenqualifikationen als Einsatzvoraussetzung",
                  "Kontischichtmodelle mit Stufenversatz",
-                 "Vier-, Fünf- und Sechsgruppenmodelle als Vorlage",
                  "Anlagenbezogene Mindestbesetzung"]),
 ]
 
@@ -728,14 +727,15 @@ seiten["index.html"] = dict(
 {sect(kopfzeile("Funktionen", "Alles, was ein Schichtbetrieb täglich braucht") +
       karten([
           dict(icon="rotation", h="Rotationsmodelle",
-               t="Vier-, Fünf- und Sechsgruppenmodelle als Vorlage — oder ein "
+               t="Drei-, Vier- und Fünfgruppenmodelle sowie Vollkonti-Vorlagen — oder ein "
                  "eigener Zyklus über beliebig viele Wochen."),
           dict(icon="schild", h="Arbeitszeitprüfung",
                t="Ruhezeit, Höchstarbeitszeit, Dienste und Nachtdienste in Folge werden beim "
                  "Eintragen geprüft, nicht am Monatsende."),
           dict(icon="haken", h="Qualifikationen mit Ablauf",
-               t="Nachweise laufen ab. CENTRIC warnt vorher. Eine harte Sperre nach Ablauf "
-                 "gehört zu den Branchenpaketen (in Vorbereitung, noch nicht buchbar)."),
+               t="Nachweise laufen ab. CENTRIC warnt vor und nach Ablauf, mit "
+                 "Bestätigungsprotokoll. Branchenspezifische Prüfungen gehören zu den "
+                 "Branchenpaketen (in Vorbereitung, noch nicht buchbar)."),
           dict(icon="tausch", h="Anträge und Tauschbörse",
                t="Urlaub, Freiwünsche und Tausch laufen über einen Weg. Vor der Entscheidung "
                  "zeigt CENTRIC, welche Lücke entsteht."),
@@ -862,11 +862,11 @@ seiten["funktionen.html"] = dict(
       karten([
           dict(icon="rotation", h="Zyklus und Versatz",
                t="Das Herzstück. Je Gruppe werden Zyklus und Startpunkt gespeichert.",
-               punkte=["Zyklen über beliebig viele Wochen", "Vorlagen für 3-, 4-, 5- und "
-                       "6-Gruppenmodelle", "Rückwärts wie vorwärts ohne Grenze",
+               punkte=["Zyklen über beliebig viele Wochen", "Vorlagen für 3-, 4- und "
+                       "5-Gruppenmodelle sowie Vollkonti", "Rückwärts wie vorwärts ohne Grenze",
                        "Modelländerung wirkt in beide Richtungen"]),
           dict(icon="kalender", h="Dienstarten",
-               t="Früh, Spät, Nacht, Zwischendienste, Bereitschaft, Posten.",
+               t="Früh, Spät, Nacht, Zwischendienste, Bereitschaft.",
                punkte=["Ende vor Start bedeutet Folgetag", "Pausen, Faktor und Anrechnung",
                        "Ruhezeitneutrale Dienste", "Mindestbesetzung je Wochentag"]),
           dict(icon="personen", h="Abweichungen",
@@ -890,8 +890,8 @@ seiten["funktionen.html"] = dict(
       der bewussten Ausnahme</span></div>
     <div><strong>Fehlende Qualifikation</strong><span>Zahl der erforderlichen Nachweise je
       Dienst, nicht je Schicht</span></div>
-    <div><strong>Abgelaufener Nachweis</strong><span>Warnung vorher; eine Sperre danach
-      gehört zu den Branchenpaketen (in Vorbereitung)</span></div>
+    <div><strong>Abgelaufener Nachweis</strong><span>Warnung vor und nach Ablauf, mit
+      Bestätigungsprotokoll</span></div>
     <div><strong>Dienst trotz Abwesenheit</strong><span>Wird abgelehnt statt stillschweigend
       angenommen</span></div>
   </div>
@@ -932,7 +932,7 @@ seiten["funktionen.html"] = dict(
                t="Ein Klick zur Lohnbuchhaltung. Stunden, Zuschlagsarten und Abwesenheiten "
                  "in der Struktur, die das Lohnprogramm erwartet."),
           dict(icon="schild", h="Leistungsnachweis",
-               t="Für Auftraggeber im Objektgeschäft: geleistete Posten je Objekt und "
+               t="Für Auftraggeber im Objektgeschäft: geleistete Dienste je Einheit und "
                  "Zeitraum, aus denselben Daten wie der Plan."),
       ], "grid-4"), "sect-hell")}
 
@@ -1341,9 +1341,9 @@ ARTIKEL = [
      "Der Unterschied klingt nach einer Feinheit und entscheidet über das Ergebnis der "
      "Heimaufsicht. Wie die Quote richtig geprüft wird (Branchenpaket in Vorbereitung).", "6 Minuten"),
     ("branchen.html#sicherheit", "Sicherheitsdienst",
-     "§ 34a: warum eine Warnung nicht reicht",
-     "Ein abgelaufener Sachkundenachweis ist kein Hinweis, sondern ein Einsatzverbot. "
-     "Wie eine harte Sperre in der Planung aussieht (Branchenpaket in Vorbereitung).", "5 Minuten"),
+     "§ 34a: Nachweise vor und nach Ablauf im Blick",
+     "CENTRIC warnt vor und nach Ablauf eines Sachkundenachweises und hält die "
+     "Bestätigung im Protokoll fest. Wie das in der Planung aussieht (Branchenpaket in Vorbereitung).", "5 Minuten"),
     ("preise.html", "Betriebswirtschaft",
      "Kopfpauschale oder Planer-Preis?",
      "Warum Betriebe mit vielen Beschäftigten bei Kopfpreisen strukturell verlieren — "
@@ -1477,7 +1477,7 @@ seiten["faq.html"] = dict(
      "und Zugangsarten lassen sich im selben Durchgang zuordnen."),
     ("Müssen wir unser Rotationsmodell ändern?",
      "Nein. Sie tragen das Modell ein, das Sie fahren. CENTRIC bringt Vorlagen für gängige "
-     "Vier-, Fünf- und Sechsgruppenmodelle mit, aber jeder eigene Zyklus über "
+     "Drei-, Vier- und Fünfgruppenmodelle sowie Vollkonti-Vorlagen mit, aber jeder eigene Zyklus über "
      "beliebig viele Wochen ist möglich."),
     ("Laufen wir eine Zeit lang parallel?",
      "Das empfehlen wir für einen Monat. Ab der ersten Freigabe hält CENTRIC den Stand fest, "
@@ -1491,9 +1491,9 @@ seiten["faq.html"] = dict(
      "Werktag nicht überschritten werden oder erhebliche Bereitschaftsanteile vorliegen. "
      "CENTRIC weist auf diese Bedingung hin und rechnet den Ausgleich mit."),
     ("Was passiert bei einem abgelaufenen Nachweis?",
-     "Vor Ablauf wird gewarnt. Eine harte Sperre nach Ablauf ist Teil der Branchenpakete, "
-     "etwa beim Sachkundenachweis im Sicherheitsdienst. Diese Pakete sind in Vorbereitung "
-     "und noch nicht buchbar."),
+     "Vor und nach Ablauf wird gewarnt; die Bestätigung steht im Protokoll. Branchenspezifische "
+     "Prüfungen, etwa beim Sachkundenachweis im Sicherheitsdienst, gehören zu den "
+     "Branchenpaketen. Diese sind in Vorbereitung und noch nicht buchbar."),
     ("Wie findet CENTRIC Ersatz?",
      "Es schlägt Personen vor, geordnet nach Eignung. Wer nicht kann, steht unten mit "
      "Begründung. Vor dem Eintragen werden die Folgen gezeigt: Ruhezeit, Wochenstunden, "

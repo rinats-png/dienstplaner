@@ -174,6 +174,19 @@ function paketSpuren(wurzel, { id, name }) {
   }
   return gefunden;
 }
+/** Inhaltliche Prüfung: Sätze (Blockgrenze oder Satzende) und Meta-Beschreibungen, in denen „Paket…“ zusammen mit „€“ oder „Euro“ steht. */
+function paketPreisSaetze(wurzel) {
+  const aus = [];
+  for (const [f, html] of Object.entries(htmlSeiten(wurzel))) {
+    const metas = [...html.matchAll(/<meta[^>]*\bcontent="([^"]*)"/g)].map((m) => m[1]);
+    const text = html.replace(/<(script|style)[\s\S]*?<\/\1>/g, " ")
+      .replace(/<\/?(p|li|h[1-6]|div|article|section|td|th|tr|dd|dt|br|figcaption|blockquote|label|legend|summary|details)\b[^>]*>/g, "\n")
+      .replace(/<[^>]*>/g, " ").replace(/&nbsp;|&#160;|&#8239;/g, " ").replace(/&amp;/g, "&");
+    const saetze = [...text.split("\n"), ...metas].flatMap((z) => z.split(/(?<=[.!?])\s+/)).map((z) => z.replace(/\s+/g, " ").trim());
+    for (const z of saetze) if (/paket/i.test(z) && /€|euro/i.test(z)) aus.push(`${f}: ${z}`);
+  }
+  return aus;
+}
 function bauenMitQuelle(aenderung) {
   const q = tmp("web-w4q-");
   const o = tmp("web-w4o-");
@@ -274,8 +287,30 @@ describe("website-quelle W4: Pakete unter Zustand 5 ohne Preis und Schalter, fai
       }
       for (const f of ["index.html", "branchen.html", "preise.html"]) expect(VORB.test(klartext(seiten[f])), `${f}: In Vorbereitung`).toBe(true);
       expect(klartext(seiten["preise.html"])).toContain("Branchenpakete: In Vorbereitung – noch nicht buchbar");
+      expect(paketPreisSaetze(a), "kein Satz mit „Paket“ und „€“ oder „Euro“").toEqual([]);
     } finally {
       rmSync(a, { recursive: true, force: true });
+    }
+  });
+
+  /* Mutanten der INHALTLICHEN Prüfung (nicht nur des Byte-Pins): ein frei getippter Preissatz zu Paketen wird gefunden. */
+  bauprobe("Mutation: frei getippte Paketpreise in Fließtext oder Meta-Beschreibung machen die inhaltliche Prüfung rot", () => {
+    const faelle = [
+      ["Branchenpakete sind in Vorbereitung und noch nicht Teil der Rechnung.", "Branchenpakete kosten 59 bis 129 Euro im Monat."],
+      ["else \"Die Branchenpakete sind in Vorbereitung und noch nicht buchbar. \"", "else \"Es kommt als Paket ab 59 € im Monat. \""],
+      ['desc="Branchenpakete für Sicherheitsdienst, Pflege, Klinik sowie Industrie und Anlagen "', 'desc="Branchenpakete ab 59 € für Sicherheitsdienst, Pflege, Klinik sowie Industrie und Anlagen "'],
+    ];
+    for (const [alt, neu] of faelle) {
+      const r = bauenMitQuelle((roh) => {
+        const q = roh.replace(alt, neu);
+        expect(q, `Mutationsstelle fehlt: ${alt.slice(0, 40)}`).not.toBe(roh);
+        return q;
+      });
+      try {
+        expect(paketPreisSaetze(r.wurzel).length, neu).toBeGreaterThan(0);
+      } finally {
+        r.aufraeumen();
+      }
     }
   });
 
