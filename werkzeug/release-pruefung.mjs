@@ -1201,10 +1201,9 @@ export function erstwechselPruefen(k, konfig = KONFIG_STANDARD) {
       const verbraucht = `${p}: V4-Start erfolgt oder Abbruch nach T0 — Ausnahme verbraucht; reguläre Probe Pflicht (F10)`;
       if (rest.startsWith("nachhol/") || (/^abbruch-[^/]*\.json$/.test(rest) && !ABBRUCH_VOR.test(rest))) return verbraucht;
       if (!ABBRUCH_VOR.test(rest)) return null;
-      if (!releaseDateien.includes(p)) return `${p} wurde gelöscht — Startzustand unklar (fail-closed)`;
       if (anzahl(p) > 1) return `${p} wurde nachträglich geändert — Startzustand unklar (fail-closed)`;
-      const x = avor.find((y) => y.pfad === p);
-      if (!x || x.zustand === "unklar") return `${p}: Startzustand unklar (${x?.grund ?? "fehlt"}) — NO-GO (fail-closed)`;
+      const x = avor.find((y) => y.pfad === p); // fehlt x, wurde der Nachweis aus HEAD gelöscht
+      if (!x || x.zustand === "unklar") return `${p}: Startzustand unklar (${x?.grund ?? "Nachweis gelöscht"}) — NO-GO (fail-closed)`;
       return x.zustand === "erfolgt" ? verbraucht : null;
     }),
   ]);
