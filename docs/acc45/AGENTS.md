@@ -129,6 +129,10 @@ Drei Repo-Werkzeuge beschleunigen die Arbeit, ohne neue Software, Hooks oder glo
 | `… fortschritt` | Kurzstatus: Zählung, kritischer Pfad, was läuft, was bereit ist |
 | `… lokal WP-23 agentId=… letzterCheckpoint=… abbruch=…` | lokale Felder. Sie stehen nur in der Datei aus `ACC45_LOKAL`, und diese muss außerhalb des Repos liegen (sonst Abbruch). Sie kommen nie ins öffentliche JSON (`schreiben` bricht ab, falls doch). `fortschritt` zeigt sie, wenn die Variable gesetzt ist. |
 
+**`werkzeug/naechstes-paket.mjs --parallel <n>`** (n = 1 bis 3): schlägt bis zu n Pakete vor, die untereinander konfliktfrei sind. Es ist ein Vorschlag, keine Zuweisung; Lease und Epoche prüft das Werkzeug nicht.
+- Auswahl in der Rangfolge P0 bis P3, nur bereite Pakete (nie BLOCKED, Abhängigkeiten erfüllt). Zonen kommen aus den SSOT-Feldern `konfliktzonen` und `dateien` (Dateibesitz-Tabelle oben); Verzeichnis-Präfixe überlappen.
+- Ein Paket ohne belegbare Zone (`dateien` ohne Pfade, z. B. „siehe Plan“) ist „Zone unbekannt“ und wird nur einzeln vorgeschlagen. Die Ausgabe nennt ausgeschlossene Pakete mit Grund („Konflikt mit <ID> in Zone <Z>“). n > 3 wird abgelehnt (Grenze schreibender Agenten). Ohne die Option bleibt die Ausgabe unverändert. Prinzip nach KORDANT `src/scheduler.mjs` (MIT), eigene Umsetzung.
+
 **`werkzeug/vorpruefung.mjs`**: vor der Abgabe eines Pakets.
 
     node werkzeug/vorpruefung.mjs --paket WP-23 [--basis origin/integration/centric-complete] [--ohne-lint]
