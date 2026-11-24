@@ -4,7 +4,7 @@ Erzeugt von `werkzeug/acc45-backlog.mjs` aus `docs/acc45/work-packages.json` (ni
 
 **Kritischer Pfad gemeinsam** (offener Entwicklungsaufwand, ohne extern): WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **50–90 PT**
 **Ohne Intelligence:** WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 → WP-42a → WP-42 = **22,5–35 PT**
-**Offener Entwicklungsaufwand:** 353–603,35 PT in 116 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
+**Offener Entwicklungsaufwand:** 353,8–604,75 PT in 116 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
 
 WP-09 ist nur Livegang-Reihenfolge und zählt im Pfad nicht als Abhängigkeit. Der Graph zeigt nur offene Pakete.
 
@@ -44,7 +44,6 @@ flowchart LR
     WP_ST1["WP-ST1<br/>BLOCKED"]
     ABN_A2["ABN-A2<br/>BLOCKED"]
     ABN_A3["ABN-A3<br/>BLOCKED"]
-    ABN_A4["ABN-A4<br/>REVIEW"]
     ABN_S2["ABN-S2<br/>BLOCKED"]
     ABN_C1["ABN-C1<br/>BLOCKED"]
     WP_ZEIT["WP-ZEIT<br/>IN_PROGRESS"]
@@ -106,6 +105,7 @@ flowchart LR
     WP_28b["WP-28b<br/>IN_PROGRESS"]
     WP_07b["WP-07b<br/>REVIEW"]
     WP_PILOT["WP-PILOT<br/>IN_PROGRESS"]
+    RB_P217["RB-P217<br/>BLOCKED"]
     V4_1["V4-1<br/>IN_PROGRESS"]
     V4_3["V4-3<br/>BLOCKED"]
     V4_3a["V4-3a<br/>REVIEW"]
@@ -123,7 +123,7 @@ flowchart LR
     REL_2["REL-2<br/>BLOCKED"]
     REL_3["REL-3<br/>BLOCKED"]
     REL_4["REL-4<br/>BLOCKED"]
-    RST_1["RST-1<br/>BLOCKED"]
+    RST_1["RST-1<br/>READY"]
     RST_2["RST-2<br/>READY"]
     RST_3["RST-3<br/>READY"]
     RST_4["RST-4<br/>BLOCKED"]
@@ -346,10 +346,10 @@ flowchart LR
   REL_3 --> REL_4
   E_7 --> REL_4
   E_8 --> REL_4
-  RST_9 --> RST_1
   RST_2 --> RST_4
   RST_5 --> RST_6
   REL_2 --> RST_6
+  WEBSITE_W3b --> WEBSITE_W4
 ```
 
 | Paket | Strang | Prio | PT | Rest-PT | hängt ab von | Konfliktzonen | Modell | Status |
@@ -564,7 +564,8 @@ flowchart LR
 | QS-5 | acc45 | P3 | 0,25–0,5 | 0 | – | – | sonnet | INTEGRATED |
 | ABN-A2 | acc45 | P1 | 1–3 | 1–3 | – | – | opus | BLOCKED |
 | ABN-A3 | acc45 | P2 | 1–3 | 1–3 | – | – | opus | BLOCKED |
-| ABN-A4 | acc45 | P2 | 1–3 | 0,2–0,6 | – | – | opus | REVIEW |
+| ABN-A4 | acc45 | P2 | 1–3 | 0 | – | – | opus | INTEGRATED |
+| RB-P217 | folge | P1 | 1–2 | 1–2 | – | – | sonnet + opus | BLOCKED |
 | ABN-S2 | acc45 | P1 | 1–3 | 1–3 | – | – | opus | BLOCKED |
 | ABN-C1 | acc45 | P3 | 0,5–1 | 0,5–1 | – | – | opus | BLOCKED |
 | ABN-B3 | acc45 | P3 | 0,25–0,5 | 0 | – | – | opus | INTEGRATED |
@@ -601,7 +602,7 @@ flowchart LR
 | REL-3 | folge | P1 | 1–2 | 1–2 | REL-1, WP-09 | – | opus | BLOCKED |
 | REL-4 | folge | P1 | 1–1,5 | 1–1,5 | REL-3, E-7, E-8 | – | sonnet | BLOCKED |
 | DRIFT-D1-D3 | acc45 | P3 | 0,5–1 | 0 | – | – | sonnet | INTEGRATED |
-| RST-1 | folge | P2 | 0,5–1 | 0,5–1 | RST-9 | – | sonnet (Text) + opus (Gegenlesen) | BLOCKED |
+| RST-1 | folge | P2 | 0,5–1 | 0,5–1 | – | – | sonnet (Text) + opus (Gegenlesen) | READY |
 | RST-2 | folge | P2 | 2–3 | 2–3 | – | – | opus | READY |
 | RST-3 | folge | P1 | 1–2 | 1–2 | – | – | sonnet | READY |
 | RST-4 | folge | P3 | 1 | 1 | RST-2 | – | sonnet | BLOCKED |
@@ -611,7 +612,7 @@ flowchart LR
 | RST-8 | folge | P3 | 1,5 | 1,5 | – | – | opus | BLOCKED |
 | RST-9 | folge | P3 | 1–1,5 | 1–1,5 | – | – | sonnet | READY |
 | FREIGABE-S2 | folge | P2 | 0,5–1 | 0,5–1 | – | – | sonnet | READY |
-| WEBSITE-W4 | acc45 | P1 | 0,5–1 | 0,5–1 | – | – | sonnet | BLOCKED |
-| WEBSITE-W3b | acc45 | P2 | 0,5 | 0,5 | – | – | sonnet | READY |
+| WEBSITE-W4 | acc45 | P1 | 0,5–1 | 0,5–1 | WEBSITE-W3b | – | sonnet | BLOCKED |
+| WEBSITE-W3b | acc45 | P1 | 0,5 | 0,5 | – | – | sonnet | READY |
 | WEBSITE-W5 | acc45 | P2 | 3–5 | 3–5 | – | – | sonnet | BLOCKED |
 | WEBSITE-W6 | acc45 | P2 | 0,5–1 | 0,5–1 | – | – | opus | BLOCKED |
