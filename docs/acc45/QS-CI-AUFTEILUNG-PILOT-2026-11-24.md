@@ -1,6 +1,9 @@
 # QS-CI: Aufteilung des Prüf-Jobs (Pilot f1), 2026-11-24
 
-Status: **Pilot, Entwurfs-PR, nicht mergen.** Über den Merge entscheidet der Auftraggeber nach Auswertung.
+Status: **Pilot ausgewertet, Entwurfs-PR.** Entscheidung des Auftraggebers (2026-11-24): f1 + G1 werden nach einem
+unabhängigen Opus-Review gemergt. E2E_WORKERS 4 wird NICHT übernommen (gemessen, dann per `git revert` als eigener
+Commit zurückgenommen). Der Kandidat `release/rc-2026-11-22` ist ein fester älterer Commit mit eigenem Werkzeug und vom
+Merge nicht betroffen.
 Grundlage: CI-Analyse vom 24.11. (Hebel f1), Masterprompt V6 §4/§8 (CI-Optimierung, kleine gezielte Änderungen;
 der Release-Kandidat besteht weiter ALLE Prüfungen). Kandidat `release/rc-2026-11-22` (517993ca, PR #489) bleibt unverändert.
 
@@ -12,7 +15,9 @@ der Release-Kandidat besteht weiter ALLE Prüfungen). Kandidat `release/rc-2026-
 | 2 | `.github/workflows/pruefung.yml`: Job `pruefen` wird `pruefen-a`, `pruefen-b`, `pruefen-c` |
 | 3 | G1 (`werkzeug/release-pruefung.mjs`): Pflicht-Checks `pruefen-a`, `pruefen-b`, `pruefen-c` statt `pruefen`; Tests, Fixture, BETREIBER-BRANCHSCHUTZ.md |
 | 4 | dieses Dokument |
-| später | `E2E_WORKERS: 4` für `browser-abnahme` (eigener Commit, getrennt revertierbar) |
+| cd3f0ec7 | `E2E_WORKERS: 4` für `browser-abnahme` (nur Messung, eigener Commit) |
+| ee017fa7 | Revert von cd3f0ec7: E2E_WORKERS 4 nicht übernommen (Grund: Abschnitt 6) |
+| 483051b4 | Merge von `origin/integration/release-v4` (4ce5d395) ohne Konflikt |
 
 Aufteilung: zusammenhängende Abschnitte der alten Schrittfolge, Schnitte nach gemessener Schrittdauer (Median je Schritt
 aus 5 Läufen vom 24.11.: 45367341524, 45375789676, 45375843119, 45380803903, 45380816980). Erzeugt mit einem Einmal-Skript
@@ -108,7 +113,7 @@ Auswertung (gemessen, getrennt von der Schätzung):
 ## 5. Rückbau
 
 - Alles: `git revert` des Merge-Commits (ein Revert). Danach wieder ein Job `pruefen`, G1 wieder `pruefen`.
-- Nur E2E_WORKERS: Revert des Commits „CI-Pilot f3: E2E_WORKERS 4 …“ (getrennt).
+- E2E_WORKERS 4 ist im Endstand bereits zurückgenommen (ee017fa7); `browser-abnahme` ist wieder wie vor dem Pilot.
 - G1 und Workflow gehören zusammen: nie nur einen der beiden zurücknehmen (der Test `ci-aufteilung` wird sonst rot).
 
 ## 6. Empfehlung
@@ -117,5 +122,12 @@ Auswertung (gemessen, getrennt von der Schätzung):
   Kopf, 12 von 12 Läufen grün, alle Prüfungen unverändert vorhanden.
 - Zeitpunkt: NACH dem laufenden Release v4-r1 (Kandidat 517993ca prüft mit seinem eigenen Werkzeug weiter; kein Kandidat
   mischt Alt und Neu).
-- E2E_WORKERS 4: **heute nein** (kein Wandgewinn). Erst zusammen mit einer Teilung in 4 Prüf-Jobs neu bewerten. Der
-  Commit steht noch im Zweig; vor einem Merge zurücknehmen (Revert dieses einen Commits), wenn der Auftraggeber so entscheidet.
+- E2E_WORKERS 4: **gemessen, nicht übernommen.** Grund: Der Browser-Job wird ca. 35 % schneller, die Wand aber nicht,
+  denn nach f1 bestimmen die Prüf-Teile die Wand (Median 689 s ohne, 650 s mit; Streuung je Teil bis ca. 150 s, also im
+  Rauschen). Mehr CPU-Druck ohne messbaren Nutzen. Zurückgenommen mit ee017fa7. Neu bewerten erst mit einer Teilung in
+  4 Prüf-Jobs. Die Messzahlen oben bleiben als Beleg unverändert.
+- Befund außerhalb des Pilots: In BETREIBER-BRANCHSCHUTZ.md fehlt `browser-abnahme` in der Liste der späteren
+  Pflichtchecks (G1 führt ihn als Pflicht). Nicht geändert; vor dem Einrichten des Branch-Schutzes ergänzen.
+- Pflege: Jeder neue Schritt der Prüfung muss genau einem Teil zugeordnet werden (sonst rot: ci-abdeckung bzw.
+  ci-aufteilung). Die Teile driften mit neuen Schritten auseinander; bei mehr als ca. 2 min Unterschied zwischen den
+  Teilen die Schnitte neu messen und nachziehen.
