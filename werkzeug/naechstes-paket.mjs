@@ -54,14 +54,21 @@ export function naechste(pakete, n = 5) {
    abgebildet. Nicht modelliert: die übrigen Zeilen der Dateibesitz-Tabelle
    in docs/acc45/AGENTS.md, die V4-3b-Byte-Pins und der Pin NACHTRAG_QS2
    (src/pruefung.jsx); sie wirken nur, wenn ein Paket die Datei in dateien
-   nennt. Regeln (fail-closed):
-   - Pfade werden kanonisiert: Backslash zu /, führendes ./ und /, // und /./
-     zusammengefasst, Groß-/Kleinschreibung ignoriert; ".." gilt als unbekannt.
-   - Ein Token ohne / (nackter Dateiname wie "daten.mjs") hat keinen
-     belegten Ort. Er überlappt mit jedem Anspruch gleichen Dateinamens
-     (Basename-Vergleich), in jedem Verzeichnis.
-   - "Tests" im Feld dateien zählt als Anspruch auf package.json (scripts,
-     Zone aus AGENTS.md); ein Test-Skript steht in derselben Datei. */
+   nennt. Regeln (fail-closed, lieber "unbekannt" als clevere Logik):
+   - Kanonisierung: Backslash zu /, Kleinschreibung, leere und "."-Segmente
+     weg (linear), Punkte/Leerzeichen am Segmentende weg (NTFS), "..",
+     UNC-Pfade (\\\\host\\...) und Laufwerke (C:) gelten als unbekannt.
+     package-lock.json zählt als package.json.
+   - Zwei Pfade überlappen, wenn die Segmentfolge des einen im anderen
+     vorkommt (gleich, Verzeichnis darüber, Teilpfad wie lib/rechte.mjs gegen
+     server/lib/rechte.mjs). Ein Schrägstrich am Ende (design/) ist ein
+     Verzeichnisanspruch und deckt jede Datei darunter ab.
+   - Ein nackter Dateiname (kein /, mit Endung, z. B. daten.mjs) hat keinen
+     belegten Ort und überlappt per Basename mit jedem Anspruch gleichen Namens.
+   - Alles andere (kein /, keine Endung, nicht in VERZEICHNIS; Freitext; ".github")
+     ist "Zone unbekannt" und läuft nur einzeln.
+   - "Tests" in dateien zählt als Anspruch auf package.json (scripts).
+   Aufwand: |A|·|B| Vergleiche je Paarung; die Eingabe ist die vertrauenswürdige SSOT. */
 export const MAX_PARALLEL = 3;
 const ZONE_PFAD = Object.freeze({
   "App.jsx": "src/App.jsx", "daten.mjs": "server/funktionen/daten.mjs", "rechte.mjs": "server/lib/rechte.mjs",
@@ -69,21 +76,29 @@ const ZONE_PFAD = Object.freeze({
   "stempelintegritaet.mjs": "server/lib/stempelintegritaet.mjs", "src/ansichten": "src/ansichten/",
 });
 const VERZEICHNIS = /^(src|docs|e2e|deploy|server|werkzeug|pruefungen|public)$/;
-const pfadToken = (t) => /^[\w.\-*/\\]+$/.test(t) && (t.includes("/") || t.includes("\\") || /\.\w+$/.test(t) || VERZEICHNIS.test(t));
+const DATEI = /^[^./\\][^/\\]*\.\w+$/;
+const pfadToken = (t) => /^[\w.\-*/\\]+$/.test(t) && !t.startsWith("\\\\") && (t.includes("/") || t.includes("\\") || DATEI.test(t) || VERZEICHNIS.test(t));
 
-/** Kanonische Form eines Pfads; null bei "..". */
+/** Kanonische Form eines Pfads; null bei "..", UNC oder leerem Ergebnis. */
 export function kanon(t) {
-  let x = String(t).trim().replace(/\\/g, "/").toLowerCase();
-  x = x.replace(/\/+/g, "/");
-  while (x.includes("/./")) x = x.replace("/./", "/");
-  x = x.replace(/^(\.\/)+/, "").replace(/^\/+/, "").replace(/\/\.$/, "").replace(/\/+$/, "");
-  return x.split("/").includes("..") || x === "" || x === "." ? null : x;
+  const roh = String(t).trim();
+  if (roh.startsWith("\\\\")) return null;
+  const teile = roh.replace(/\\/g, "/").toLowerCase().split("/").filter((s) => s !== "" && s !== ".");
+  if (teile.includes("..")) return null;
+  const sauber = teile.map((s) => s.replace(/[. ]+$/, ""));
+  if (!sauber.length || sauber.includes("")) return null;
+  return sauber.join("/").replace(/(^|\/)package-lock\.json$/, "$1package.json");
 }
 
-/** Ansprüche eines Pakets: [{pfad (kanonisch), label}] oder null (Zone unbekannt). Fail-closed. */
+/** Ansprüche eines Pakets: [{pfad (kanonisch), label, nackt}] oder null (Zone unbekannt). Fail-closed. */
 export function zonenAnspruch(p) {
   const out = [];
-  const add = (pfad, label) => { const k = kanon(pfad); if (k === null) return false; out.push({ pfad: k, label }); return true; };
+  const add = (roh, label) => {
+    const k = kanon(roh);
+    if (k === null) return false;
+    out.push({ pfad: k, label, nackt: !/[/\\]/.test(roh) && DATEI.test(roh) });
+    return true;
+  };
   for (const z of p.konfliktzonen || []) if (!ZONE_PFAD[z] || !add(ZONE_PFAD[z], z)) return null;
   for (const t of String(p.dateien ?? "").split(/[,;]/).map((x) => x.trim()).filter(Boolean)) {
     if (t.toLowerCase() === "tests") { add("package.json", "package.json (scripts)"); continue; }
@@ -92,18 +107,18 @@ export function zonenAnspruch(p) {
   return out.length ? out : null;
 }
 
-const norm = (x) => x.split("*")[0].replace(/\/+$/, "");
 const basis = (x) => x.slice(x.lastIndexOf("/") + 1);
-const nackt = (x) => !x.includes("/") && !VERZEICHNIS.test(x);
-/** Gleich, Verzeichnis-Präfix oder gleiches Glob-Präfix (kanonische Pfade). */
-const gleichartig = (a, b) => {
-  const x = norm(a), y = norm(b);
-  return x === y || x.startsWith(`${y}/`) || y.startsWith(`${x}/`) || (a.includes("*") && y.startsWith(x)) || (b.includes("*") && x.startsWith(y));
+const enthalten = (a, b) => `/${a}/`.includes(`/${b}/`);
+/** Glob: Überlappung, wenn der feste Anfang (vor *) des einen im anderen steckt. */
+const globGleich = (a, b) => {
+  const x = a.split("*")[0], y = b.split("*")[0];
+  return (a.includes("*") && y.startsWith(x)) || (b.includes("*") && x.startsWith(y));
 };
-/** Zwei kanonische Pfade überlappen; nackte Dateinamen vergleichen per Basename. */
-const ueberlappt = (a, b) => (nackt(a) || nackt(b) ? gleichartig(nackt(a) ? a : basis(a), nackt(b) ? b : basis(b)) : gleichartig(a, b));
+const gleichartig = (a, b) => enthalten(a, b) || enthalten(b, a) || globGleich(a, b);
+/** Zwei Ansprüche überlappen; nackte Dateinamen vergleichen per Basename. */
+const ueberlappt = (a, b) => (a.nackt || b.nackt ? gleichartig(a.nackt ? a.pfad : basis(a.pfad), b.nackt ? b.pfad : basis(b.pfad)) : gleichartig(a.pfad, b.pfad));
 function konflikt(a, b) {
-  for (const x of a) for (const y of b) if (ueberlappt(x.pfad, y.pfad)) return x.label !== x.pfad ? x.label : y.label;
+  for (const x of a) for (const y of b) if (ueberlappt(x, y)) return x.label !== x.pfad ? x.label : y.label;
   return null;
 }
 

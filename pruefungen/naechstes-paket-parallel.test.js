@@ -106,6 +106,25 @@ describe("naechstes-paket --parallel: Pfad-Aliase, nackte Namen, Glob, Freitext"
     ["server/lib/import/schicht*.mjs", [], "server/lib/import/schichtplan.mjs", []],
     ["server/lib/a.mjs, Tests", [], "server/lib/b.mjs, Tests", []],
     ["x/a.js", ["package.json"], "y/b.js, Tests", []],
+    /* Verzeichnisansprüche außerhalb der festen Liste */
+    ["design/", [], "design/logo.svg", []],
+    ["website/", [], "website/index.html", []],
+    ["vendor/", [], "vendor/sheetjs/xlsx.mjs", []],
+    ["marketing/", [], "marketing/a.md", []],
+    ["rechtliches/", [], "rechtliches/b.md", []],
+    ["centric-website/", [], "centric-website/c.html", []],
+    [".github/", [], ".github/workflows/deploy.yml", []],
+    [".github/workflows", [], ".github/workflows/deploy.yml", []],
+    /* Teilpfade */
+    ["lib/rechte.mjs", [], "x/y.mjs", ["rechte.mjs"]],
+    ["funktionen/daten.mjs", [], "server/funktionen/daten.mjs", []],
+    ["ansichten/x.jsx", [], "src/ansichten/x.jsx", []],
+    ["workflows/pruefung.yml", [], ".github/workflows/pruefung.yml", []],
+    ["ansichten/", [], "src/ansichten/y.jsx", []],
+    ["schicht*.mjs", [], "server/lib/import/schichtplan.mjs", []],
+    /* NTFS-Punkt am Ende, Sperrdatei */
+    ["src/App.jsx.", [], "src/App.jsx", []],
+    ["package-lock.json", [], "package.json", []],
   ];
   it.each(paare)("nie zusammen: %s %j gegen %s %j", (da, za, db, zb) => {
     const r = NP.parallelWaehlen(bau(T("A", "P0", da, "READY", [], za), T("B", "P0", db, "READY", [], zb)), 3);
@@ -117,6 +136,25 @@ describe("naechstes-paket --parallel: Pfad-Aliase, nackte Namen, Glob, Freitext"
   it("verschiedene Dateien, Verzeichnisse und Globs bleiben frei", () => {
     const l = bau(T("A", "P0", "bar.mjs"), T("B", "P0", "x/baz.mjs"), T("C", "P0", "server/lib/import/schicht*.mjs"), T("D", "P0", "server/lib/import/andere.mjs"));
     expect(ids(NP.parallelWaehlen(l, 3))).toEqual(["A", "B", "C"]);
+  });
+
+  it("UNC, Laufwerk, nackter Verzeichnisname und .github ohne Schrägstrich sind Zone unbekannt", () => {
+    for (const d of ["\\\\server\\share\\src\\App.jsx", "C:\\src\\App.jsx", "design", ".github", "lib"]) {
+      expect(NP.zonenAnspruch(bau(T("M", "P0", d))[0]), d).toBeNull();
+    }
+  });
+
+  it("kanon: UNC und .. ergeben null, Aliase gleiche Form", () => {
+    expect(NP.kanon("\\\\server\\share\\src\\App.jsx")).toBeNull();
+    expect(NP.kanon("src/../x.js")).toBeNull();
+    expect(NP.kanon(".\\Src\\.\\App.jsx.")).toBe("src/app.jsx");
+  });
+
+  it("lange /./-Ketten werden linear verarbeitet", () => {
+    const lang = `src${"/.".repeat(200000)}/App.jsx`;
+    const t0 = performance.now();
+    expect(NP.kanon(lang)).toBe("src/app.jsx");
+    expect(performance.now() - t0).toBeLessThan(1000);
   });
 
   it("Pfad mit .. oder gemischtes dateien (Pfad plus Freitext) ist Zone unbekannt und läuft nur einzeln", () => {
