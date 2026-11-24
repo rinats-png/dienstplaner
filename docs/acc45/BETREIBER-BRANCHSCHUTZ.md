@@ -80,7 +80,10 @@ bei jedem Pull Request und bei jedem Push (`.github/workflows/*.yml`: `pull_requ
 
 | Check | Workflow |
 |---|---|
-| `pruefen` | Prüfung |
+| `pruefen-a` | Prüfung (Pilot f1: früher ein Job `pruefen`, siehe QS-CI-AUFTEILUNG-PILOT-2026-11-24.md) |
+| `pruefen-b` | Prüfung |
+| `pruefen-c` | Prüfung |
+| `browser-abnahme` | Prüfung (fehlte hier bis 2026-11-24; G1 führt ihn schon als Pflicht) |
 | `abhaengigkeiten` | Sicherheit |
 | `geheimnisse` | Sicherheit |
 | `interne-pruefung` | Sicherheit |
@@ -115,7 +118,10 @@ gh api -X POST repos/rinats-png/dienstplaner/rulesets --input - <<'JSON'
     { "type": "required_status_checks", "parameters": {
         "strict_required_status_checks_policy": false,
         "required_status_checks": [
-          { "context": "pruefen",          "integration_id": 15368 },
+          { "context": "pruefen-a",        "integration_id": 15368 },
+          { "context": "pruefen-b",        "integration_id": 15368 },
+          { "context": "pruefen-c",        "integration_id": 15368 },
+          { "context": "browser-abnahme",  "integration_id": 15368 },
           { "context": "abhaengigkeiten",  "integration_id": 15368 },
           { "context": "geheimnisse",      "integration_id": 15368 },
           { "context": "interne-pruefung", "integration_id": 15368 },
@@ -162,7 +168,7 @@ Wegwerf-Branches unter `schutztest/`. Ein Fehlschlag kann nichts zerstören.
    git push origin :refs/heads/schutztest/probe                        # erwartet: abgelehnt (GH013)
    ```
 2. **PR-Pflicht und Checks (Form der Integration/main):** Drittes Ruleset `schutztest-pr`, Target `schutztest-pr/*`,
-   Regeln `pull_request` (0 Freigaben) und `required_status_checks` mit `pruefen`.
+   Regeln `pull_request` (0 Freigaben) und `required_status_checks` mit `pruefen-a`.
    `git push origin HEAD:refs/heads/schutztest-pr/probe` **erwartet: abgelehnt** (Änderung nur per Pull Request).
 3. **Aufräumen:** beide Test-Rulesets auf *Disabled* stellen, Branches löschen
    (`git push origin :refs/heads/schutztest/probe`), Test-Rulesets löschen.

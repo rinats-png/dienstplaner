@@ -5,7 +5,21 @@
   "checkRuns": [
     {
       "id": 1,
-      "name": "pruefen",
+      "name": "pruefen-a",
+      "status": "completed",
+      "conclusion": "success",
+      "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "id": 12,
+      "name": "pruefen-b",
+      "status": "completed",
+      "conclusion": "success",
+      "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "id": 13,
+      "name": "pruefen-c",
       "status": "completed",
       "conclusion": "success",
       "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"

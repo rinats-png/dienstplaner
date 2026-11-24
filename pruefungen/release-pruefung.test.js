@@ -176,9 +176,104 @@ describe("G1 CI", () => {
     expect(g.gruende.join()).toMatch(/bild-scan/);
   });
   it("laufender, fehlgeschlagener oder übersprungener Pflicht-Check → NO-GO", () => {
-    for (const ueber of [{ status: "in_progress", conclusion: null }, { conclusion: "failure" }, { conclusion: "skipped" }, { conclusion: "neutral" }]) {
-      expect(g1(checks({ pruefen: ueber })).ergebnis, JSON.stringify(ueber)).toBe("NO-GO");
+    for (const teil of ["pruefen-a", "pruefen-b", "pruefen-c", "browser-abnahme"]) {
+      for (const ueber of [{ status: "in_progress", conclusion: null }, { conclusion: "failure" }, { conclusion: "skipped" }, { conclusion: "neutral" }]) {
+        const g = g1(checks({ [teil]: ueber }));
+        expect(g.ergebnis, `${teil} ${JSON.stringify(ueber)}`).toBe("NO-GO");
+        expect(g.gruende.join(), teil).toContain(`Pflicht-Check ${teil}:`);
+      }
     }
+  });
+  it("Pilot f1: jeder Teil der Prüfung (pruefen-a, pruefen-b, pruefen-c) ist einzeln Pflicht; fehlt einer → NO-GO", () => {
+    expect(PFLICHT).toEqual(expect.arrayContaining(["pruefen-a", "pruefen-b", "pruefen-c", "browser-abnahme"]));
+    expect(g1(checks()).ergebnis).toBe("GO");
+    for (const teil of ["pruefen-a", "pruefen-b", "pruefen-c"]) {
+      const g = g1(checks().filter((c) => c.name !== teil));
+      expect(g.ergebnis, teil).toBe("NO-GO");
+      expect(g.gruende, teil).toContain(`Pflicht-Check fehlt: ${teil}`);
+    }
+  });
+  /* Übergangsregel (Review #514, A2): G1 nimmt GENAU zwei vollständige Formen der Prüfung an.
+     Form NEU: pruefen-a, pruefen-b, pruefen-c. Form ALT: pruefen (Kandidaten vor #514, z. B. 517993ca).
+     Die übrigen Pflicht-Checks gelten in beiden Formen. Ist ein Teil der Form NEU vorhanden, muss Form NEU vollständig
+     sein (keine Mischform). Jeder Lauf eines Namens beider Formen muss completed/success sein. Rückbau der Form ALT
+     nach Release v4-r1 (sobald kein Kandidat mehr den alten Workflow hat). */
+  describe("Übergangsregel Form ALT / Form NEU", () => {
+    const NEU = ["pruefen-a", "pruefen-b", "pruefen-c"];
+    const lauf = (id, name, u = {}) => ({ id, name, status: "completed", conclusion: "success", head_sha: K, ...u });
+    const gemeinsam = () => checks().filter((c) => !NEU.includes(c.name));
+    const formAlt = (u = {}) => [...gemeinsam(), lauf(77, "pruefen", u)];
+    const formNeu = (u = {}) => checks(u);
+    it("Konfiguration: Form NEU = Teile in pflichtChecks, Form ALT = pruefen; ALT ist kein Pflicht-Check der Form NEU", () => {
+      expect(KONFIG_STANDARD.uebergangPruefen.neu).toEqual(NEU);
+      expect(KONFIG_STANDARD.uebergangPruefen.alt).toEqual(["pruefen"]);
+      expect(PFLICHT).toEqual(expect.arrayContaining(NEU));
+      expect(PFLICHT).not.toContain("pruefen");
+      expect(String(KONFIG_STANDARD.uebergangPruefen.rueckbau)).toMatch(/v4-r1/);
+    });
+    it("Form ALT grün → GO (Beleg nennt Form ALT); Form NEU grün → GO (Beleg nennt Form NEU)", () => {
+      const a = g1(formAlt());
+      expect(a.ergebnis, a.gruende.join()).toBe("GO");
+      expect(a.belege.join(" ")).toMatch(/Form ALT/);
+      const n = g1(formNeu());
+      expect(n.ergebnis, n.gruende.join()).toBe("GO");
+      expect(n.belege.join(" ")).toMatch(/Form NEU/);
+    });
+    it("Form ALT mit rotem, laufendem, übersprungenem, neutralem oder abgebrochenem `pruefen` → NO-GO", () => {
+      for (const u of [{ conclusion: "failure" }, { status: "in_progress", conclusion: null }, { conclusion: "skipped" }, { conclusion: "neutral" }, { conclusion: "cancelled" }]) {
+        const g = g1(formAlt(u));
+        expect(g.ergebnis, JSON.stringify(u)).toBe("NO-GO");
+        expect(g.gruende.join(), JSON.stringify(u)).toContain("Pflicht-Check pruefen:");
+      }
+    });
+    it("Form NEU: ein Teil cancelled → NO-GO (neutral/skipped/in_progress/failure prüft der Test oben)", () => {
+      for (const t of NEU) expect(g1(formNeu({ [t]: { conclusion: "cancelled" } })).ergebnis, t).toBe("NO-GO");
+    });
+    it("Form NEU mit fehlendem Teil (ohne `pruefen`) → NO-GO", () => {
+      const g = g1(formNeu().filter((c) => c.name !== "pruefen-c"));
+      expect(g.ergebnis).toBe("NO-GO");
+      expect(g.gruende).toContain("Pflicht-Check fehlt: pruefen-c");
+    });
+    it("Mischform: `pruefen` grün + `pruefen-a` grün ohne b und c → NO-GO (Form NEU angefangen, unvollständig)", () => {
+      const g = g1([...formAlt(), lauf(78, "pruefen-a")]);
+      expect(g.ergebnis).toBe("NO-GO");
+      expect(g.gruende.join()).toMatch(/Mischform/);
+      expect(g.gruende).toContain("Pflicht-Check fehlt: pruefen-b");
+      expect(g.gruende).toContain("Pflicht-Check fehlt: pruefen-c");
+    });
+    it("nur `pruefen-a` (kein `pruefen`, kein b/c) → NO-GO", () => {
+      expect(g1([...gemeinsam(), lauf(78, "pruefen-a")]).ergebnis).toBe("NO-GO");
+    });
+    it("keine der beiden Formen → NO-GO, Meldung nennt beide Formen", () => {
+      const g = g1(gemeinsam());
+      expect(g.ergebnis).toBe("NO-GO");
+      const m = g.gruende.join(" ");
+      expect(m).toMatch(/Form NEU \(pruefen-a, pruefen-b, pruefen-c\)/);
+      expect(m).toMatch(/Form ALT \(pruefen\)/);
+    });
+    it("beide Formen vollständig: alle grün → GO; `pruefen` rot neben vollständiger Form NEU → NO-GO", () => {
+      expect(g1([...formNeu(), lauf(77, "pruefen")]).ergebnis).toBe("GO");
+      const g = g1([...formNeu(), lauf(77, "pruefen", { conclusion: "failure" })]);
+      expect(g.ergebnis).toBe("NO-GO");
+      expect(g.gruende.join()).toContain("Pflicht-Check pruefen: failure");
+      expect(g1([...formNeu(), lauf(77, "pruefen", { conclusion: "skipped" })]).ergebnis).toBe("NO-GO");
+    });
+    it("alter roter Lauf neben neuem grünem Lauf desselben Namens → NO-GO (Form ALT und Form NEU)", () => {
+      expect(g1([lauf(1, "pruefen", { conclusion: "failure" }), ...formAlt()]).ergebnis).toBe("NO-GO");
+      expect(g1([lauf(1, "pruefen-a", { conclusion: "failure" }), ...formNeu()]).ergebnis).toBe("NO-GO");
+    });
+    it("Form ALT ohne einen gemeinsamen Pflicht-Check → NO-GO", () => {
+      for (const n of ["browser-abnahme", "bild-scan"]) {
+        const g = g1(formAlt().filter((c) => c.name !== n));
+        expect(g.ergebnis, n).toBe("NO-GO");
+        expect(g.gruende, n).toContain(`Pflicht-Check fehlt: ${n}`);
+      }
+    });
+    it("Mutation: ohne Übergangsregel in der Konfiguration ist Form ALT NO-GO (die Regel trägt den ALT-Fall)", () => {
+      const ohne = { ...KONFIG_STANDARD, uebergangPruefen: undefined };
+      expect(g1Ci(formAlt(), K, ohne).ergebnis).toBe("NO-GO");
+      expect(g1Ci(formNeu(), K, ohne).ergebnis).toBe("GO");
+    });
   });
   it("Check eines anderen Commits oder ohne head_sha → NO-GO; keine Check-Runs → NO-GO", () => {
     expect(g1(checks({ muster: { head_sha: B } })).ergebnis).toBe("NO-GO");
@@ -187,8 +282,9 @@ describe("G1 CI", () => {
     expect(g1(null).ergebnis).toBe("NO-GO");
   });
   it("ein fehlgeschlagener Lauf auf demselben Kopf bleibt NO-GO, auch wenn ein späterer Lauf grün ist", () => {
-    const alt = { id: 99, name: "pruefen", status: "completed", conclusion: "failure", head_sha: K };
+    const alt = { id: 99, name: "pruefen-b", status: "completed", conclusion: "failure", head_sha: K };
     expect(g1([...checks(), alt]).ergebnis).toBe("NO-GO");
+    expect(g1([...checks(), alt]).gruende.join()).toMatch(/Pflicht-Check pruefen-b: failure/);
   });
   it("Nicht-Pflicht-Check: fehlgeschlagen oder nicht abgeschlossen → NO-GO; übersprungen → GO", () => {
     const x = (u) => ({ id: 50, name: "extra", status: "completed", conclusion: "success", head_sha: K, ...u });
@@ -2125,12 +2221,12 @@ describe("Endurteil #427 Auflage A1: G8 fail-closed — blockierend ist jeder St
 
 describe("Endurteil #427 Auflage A2: G1 — jeder Lauf zählt, auch ein älterer roter vor einem neueren grünen", () => {
   it("alter roter Lauf (niedrige id, zuerst in der Liste), neuer grüner Lauf derselben Prüfung → NO-GO", () => {
-    const gruen = checks().map((c) => ({ ...c, id: c.id + 100 })); // ids 101..111, später gestartet
-    const alt = { id: 1, name: "pruefen", status: "completed", conclusion: "failure", head_sha: K };
+    const gruen = checks().map((c) => ({ ...c, id: c.id + 100 })); // ids ab 101, später gestartet
+    const alt = { id: 1, name: "pruefen-c", status: "completed", conclusion: "failure", head_sha: K };
     for (const runs of [[alt, ...gruen], [...gruen.slice(0, 1), alt, ...gruen.slice(1)]]) {
       const g = g1Ci(runs, K, KONFIG_STANDARD);
       expect(g.ergebnis).toBe("NO-GO");
-      expect(g.gruende.join(" ")).toMatch(/Pflicht-Check pruefen: failure/);
+      expect(g.gruende.join(" ")).toMatch(/Pflicht-Check pruefen-c: failure/);
     }
     // Gegenprobe: ohne den roten Lauf GO
     expect(g1Ci(gruen, K, KONFIG_STANDARD).ergebnis).toBe("GO");

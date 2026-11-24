@@ -104,10 +104,22 @@ export const REL_PRAEFIX = "REL-";
 export const KONFIG_STANDARD = Object.freeze({
   repo: "rinats-png/dienstplaner",
   // Check-Runs der Workflows Prüfung, Sicherheit, Lieferkette und Betrieb: Deploy-Skripte (Stand 2026-11-20).
+  // Pilot f1 (2026-11-24): der frühere Job `pruefen` heißt pruefen-a, pruefen-b, pruefen-c; jeder Teil ist Pflicht.
+  // pruefungen/ci-aufteilung.test.js bindet die Liste an die Jobs von pruefung.yml (jeder Job ist hier eingetragen,
+  // jeder Eintrag ist ein Job eines Workflows).
   pflichtChecks: [
-    "pruefen", "browser-abnahme", "abhaengigkeiten", "geheimnisse", "interne-pruefung", "muster",
+    "pruefen-a", "pruefen-b", "pruefen-c", "browser-abnahme", "abhaengigkeiten", "geheimnisse", "interne-pruefung", "muster",
     "shellcheck", "compose", "caddy-vorlage", "skripte", "bild-scan",
   ],
+  // Übergangsregel (Review #514, A2): G1 nimmt GENAU zwei vollständige Formen der Prüfung an. Form NEU = `neu` (steht in
+  // pflichtChecks); Form ALT = pflichtChecks ohne `neu`, dafür `alt` (Kandidaten vor #514, z. B. 517993ca). Ist ein Name
+  // aus `neu` vorhanden, muss Form NEU vollständig sein (keine Mischform). Jeder Lauf eines Namens aus `neu` oder `alt`
+  // muss completed/success sein. Ohne diesen Eintrag gilt nur Form NEU.
+  uebergangPruefen: {
+    neu: ["pruefen-a", "pruefen-b", "pruefen-c"],
+    alt: ["pruefen"],
+    rueckbau: "Form ALT entfernen nach Release v4-r1, sobald kein Kandidat mehr den alten Workflow (Job pruefen) hat",
+  },
   // Für Nicht-Pflicht-Check-Runs sind diese Abschlüsse unschädlich (Pflicht-Checks: nur success).
   ciUnschaedlich: ["success", "skipped", "neutral"],
   // Eigene Jobs des Release-Gates (RELEASE-PROZESS Anhang A.2) zählen in G1 nicht mit.
@@ -296,15 +308,38 @@ export function g1Ci(checkRuns, kandidat, konfig) {
   // Jeder Lauf zählt: ein roter oder laufender Lauf auf demselben Kopf bleibt NO-GO.
   const jeName = new Map();
   for (const c of runs) jeName.set(c.name, [...(jeName.get(c.name) || []), c]);
-  for (const name of konfig.pflichtChecks) {
+  const pflichtPruefen = (name) => {
     const l = jeName.get(name);
-    if (!l) { nogo(g, `Pflicht-Check fehlt: ${name}`); continue; }
+    if (!l) { nogo(g, `Pflicht-Check fehlt: ${name}`); return; }
     const schlecht = l.filter((c) => c.status !== "completed" || c.conclusion !== "success");
     if (schlecht.length) nogo(g, `Pflicht-Check ${name}: ${schlecht.map((c) => c.status !== "completed" ? c.status : c.conclusion).join(", ")}`);
     else g.belege.push(`${name}: success (${l.length} Lauf/Läufe)`);
+  };
+  const ue = konfig.uebergangPruefen;
+  const neu = ue && Array.isArray(ue.neu) ? ue.neu : [];
+  const alt = ue && Array.isArray(ue.alt) ? ue.alt : [];
+  const streng = new Set([...konfig.pflichtChecks, ...alt]);
+  for (const name of konfig.pflichtChecks) if (!neu.includes(name)) pflichtPruefen(name);
+  if (!ue) {
+    for (const name of neu) pflichtPruefen(name);
+  } else {
+    const neuDa = neu.filter((n) => jeName.has(n));
+    const altVoll = alt.length > 0 && alt.every((n) => jeName.has(n));
+    if (neuDa.length > 0) {
+      // Form NEU angefangen: sie muss vollständig sein, auch wenn Form ALT daneben vollständig ist (keine Mischform).
+      if (neuDa.length < neu.length && altVoll) nogo(g, `Mischform der Prüfung: Form NEU (${neu.join(", ")}) nur teilweise, daneben Form ALT (${alt.join(", ")})`);
+      for (const name of neu) pflichtPruefen(name);
+      if (neuDa.length === neu.length) g.belege.push(`Prüfung in Form NEU (${neu.join(", ")})`);
+      for (const name of alt) if (jeName.has(name)) pflichtPruefen(name); // vorhandene ALT-Läufe zählen streng mit
+    } else if (altVoll) {
+      for (const name of alt) pflichtPruefen(name);
+      g.belege.push(`Prüfung in Form ALT (${alt.join(", ")}), Übergangsregel: ${ue.rueckbau}`);
+    } else {
+      nogo(g, `Prüfung fehlt: weder Form NEU (${neu.join(", ")}) noch Form ALT (${alt.join(", ")}) vollständig vorhanden`);
+    }
   }
   for (const [name, l] of jeName) {
-    if (konfig.pflichtChecks.includes(name)) continue;
+    if (streng.has(name)) continue;
     for (const c of l) {
       if (c.status !== "completed") nogo(g, `Check ${name} läuft noch (${c.status})`);
       else if (!konfig.ciUnschaedlich.includes(c.conclusion)) nogo(g, `Check ${name}: ${c.conclusion}`);

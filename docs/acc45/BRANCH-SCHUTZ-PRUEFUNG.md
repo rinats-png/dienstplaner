@@ -84,7 +84,7 @@ gh api repos/rinats-png/dienstplaner/rules/branches/main --jq '[.[] | select(.ty
 gh api repos/rinats-png/dienstplaner/rules/branches/integration%2Frelease-v4 --jq '[.[] | select(.type=="required_status_checks") | .parameters.required_status_checks[].context]'
 
 # E. Existieren die Check-Namen noch in den Workflows? (Umbenennung würde jeden PR blockieren)
-grep -nE '^  (pruefen|abhaengigkeiten|geheimnisse|interne-pruefung|muster|bild-scan|caddy-vorlage|shellcheck|compose|skripte):' .github/workflows/*.yml
+grep -nE '^  (pruefen-a|pruefen-b|pruefen-c|browser-abnahme|abhaengigkeiten|geheimnisse|interne-pruefung|muster|bild-scan|caddy-vorlage|shellcheck|compose|skripte):' .github/workflows/*.yml
 
 # F. Lease-Zustand lesen (Halter und Epoche notieren, vor und nach der Einrichtung)
 node werkzeug/koordination.mjs status
