@@ -47,7 +47,13 @@ Jeder Teil: checkout (ohne Token), setup-node 22 mit npm-Cache, `npm ci`. `env B
 
 ## 3. Messung
 
-(siehe Abschnitt „Ergebnisse“ unten, wird nach den Läufen gefüllt)
+Gemessen (GitHub-API, `gh run view --json jobs`; Wand = Lauf erstellt bis letzter Job fertig; Queue = Lauf erstellt bis erster Job startet):
+
+| Kopf | Lauf | Ereignis | Ergebnis | Queue | Wand | pruefen-a | pruefen-b | pruefen-c | browser-abnahme |
+|---|---|---|---|---|---|---|---|---|---|
+| Basis c61a6dba (vorher, ein Job `pruefen`) | 45386093245 | push | success | 2 s | 1884 s (31,4 min) | `pruefen` 1882 s | | | 535 s |
+| 96b85820 (Lauf 1) | 45389767483 | push | success | 2 s | 686 s (11,4 min) | 492 s | 513 s | 683 s | 568 s |
+| 96b85820 (Lauf 1) | 45389821787 | pull_request | success | 34 s | 704 s (11,7 min) | 595 s | 537 s | 536 s | 657 s |
 
 ## 4. Risiken
 
