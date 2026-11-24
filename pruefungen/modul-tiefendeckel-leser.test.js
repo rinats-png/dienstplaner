@@ -161,6 +161,19 @@ describe("Jeder Rumpfleser: zu tiefer Rumpf → 400 (nie 500), Grenze 64/65", { 
     expect(a.text).toBe(`Höchstens ${RUMPF_TIEFE_MAX} Ebenen sind vorgesehen.`);
   });
 
+  /* Review #507 A1: der Import hängt wie alle seine Fehler `code` an (IMPORT-VERTRAG §9a). */
+  it.each(["analyse", "vorschau", "uebernahme", "verwerfen"])("Import %s: zu tiefer Rumpf trägt code RUMPF_ZU_TIEF", async (schritt) => {
+    const a = await senden("imp", `/api/import/${schritt}`, roh({ vorgang, zuordnung: "__TIEF__" }, 5000), LT);
+    expect(a.status, a.roh).toBe(400);
+    expect(a.fehler, a.roh).toBe(TIEF_TEXT);
+    expect(a.code, a.roh).toBe("RUMPF_ZU_TIEF");
+  });
+  it("Andere Leser hängen keinen code an (nur der Import)", async () => {
+    const a = await senden("sta", "/starten", roh({ name: "__TIEF__", branche: "pflege" }, 5000), null);
+    expect(a.status, a.roh).toBe(400);
+    expect(a.code).toBeUndefined();
+  });
+
   it.each(FAELLE().map((f, i) => [`${f.leser} · ${f.weg}`, i]))("%s: 64 Ebenen gesamt → keine Tiefenabweisung; 65 → 400", async (_n, i) => {
     const f = FAELLE()[i];
     /* Feld `polster` auf oberster Ebene: Rumpf mit 1 + 63 = 64 Ebenen bzw. 1 + 64 = 65. Kein Leser liest `polster`. */
@@ -171,6 +184,7 @@ describe("Jeder Rumpfleser: zu tiefer Rumpf → 400 (nie 500), Grenze 64/65", { 
     const a65 = await senden(f.h, f.weg, roh({ polster: "__TIEF__", ...ohne }, 64), f.token);
     expect(a65.status, a65.roh).toBe(400);
     expect(a65.fehler, a65.roh).toBe(TIEF_TEXT);
+    if (f.h === "imp") expect(a65.code, a65.roh).toBe("RUMPF_ZU_TIEF");
   });
 });
 
