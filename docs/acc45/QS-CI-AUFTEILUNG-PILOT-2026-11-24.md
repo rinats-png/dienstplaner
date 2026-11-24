@@ -90,11 +90,19 @@ Auswertung (gemessen, getrennt von der Schätzung):
 
 ## 4. Risiken
 
-- **G1 (Release-Gate):** `pflichtChecks` nennt jetzt `pruefen-a/b/c` statt `pruefen`. Ein Kandidat VOR der Aufteilung
-  (z. B. 517993ca) ist mit dem NEUEN Werkzeug G1-NO-GO („Pflicht-Check fehlt: pruefen-a“). Das ist die sichere Richtung
-  (fail-closed). Das Release-Gate läuft auf `main` mit dem Werkzeug des Kandidaten (G10: seit dem Kandidaten nur Liste und
-  Freigabe); Werkzeug und Workflow stammen also aus demselben Commit. Wer von Hand mit einem neueren Werkzeug einen älteren
-  Kandidaten prüft, bekommt NO-GO. Ein Test bindet die Liste an die Jobs von `pruefung.yml`. Unabhängiges Opus-Review nötig.
+- **G1 (Release-Gate):** `pflichtChecks` nennt jetzt `pruefen-a/b/c` statt `pruefen`. Review #514 (Auflage A2) sah ein
+  Fehlblockade-Risiko: Startet jemand das Werkzeug aus einem neueren Stand als dem Kandidaten, wäre ein Kandidat vor der
+  Aufteilung (z. B. 517993ca) fälschlich G1-NO-GO. Zwei Maßnahmen:
+  (a) RELEASE-PROZESS.md §4: Werkzeug aus dem Kandidaten-Commit starten (`git worktree add <Pfad> <kandidat>`).
+  (b) **Übergangsregel in G1** (`uebergangPruefen`): G1 nimmt GENAU zwei vollständige Formen an, Form NEU
+  (`pruefen-a`, `pruefen-b`, `pruefen-c`) oder Form ALT (`pruefen`); die übrigen Pflicht-Checks gelten in beiden. Ist ein Teil
+  der Form NEU vorhanden, muss Form NEU vollständig sein (keine Mischform). Jeder Lauf eines Namens beider Formen muss
+  `success` sein (auch `skipped`/`neutral` sind NO-GO). Fehlt beides, nennt NO-GO beide Formen. Tests zuerst (6 rot auf
+  444b1d1e), dazu 2 Code-Mutationen: Form ALT entfernt → 2 Tests rot; Vollständigkeit gelockert → 4 Tests rot.
+  Ein Test bindet `uebergangPruefen.neu` an die Jobs von `pruefung.yml`.
+
+**Offener Punkt (nach Release v4-r1):** Form ALT der Übergangsregel zurückbauen (`uebergangPruefen.alt` und den Zweig in
+`g1Ci` entfernen, Tests der Form ALT auf NO-GO umstellen), sobald kein Kandidat mehr den alten Workflow (Job `pruefen`) hat.
 - **Reihenfolge/Zustand:** Die Teile sind zusammenhängende Abschnitte der alten Folge. Ein Schritt in b oder c kann sich
   nicht mehr auf Seiteneffekte früherer Teile verlassen (z. B. Dateien, die ein früherer Schritt erzeugt). In 12 grünen
   Läufen trat das nicht auf. Port 3000, `$BILD`, Container-Skript und `GITHUB_ENV`-Nachweis liegen nur in `pruefen-c`
@@ -126,8 +134,9 @@ Auswertung (gemessen, getrennt von der Schätzung):
   denn nach f1 bestimmen die Prüf-Teile die Wand (Median 689 s ohne, 650 s mit; Streuung je Teil bis ca. 150 s, also im
   Rauschen). Mehr CPU-Druck ohne messbaren Nutzen. Zurückgenommen mit ee017fa7. Neu bewerten erst mit einer Teilung in
   4 Prüf-Jobs. Die Messzahlen oben bleiben als Beleg unverändert.
-- Befund außerhalb des Pilots: In BETREIBER-BRANCHSCHUTZ.md fehlt `browser-abnahme` in der Liste der späteren
-  Pflichtchecks (G1 führt ihn als Pflicht). Nicht geändert; vor dem Einrichten des Branch-Schutzes ergänzen.
+- Befund (Review #514, Auflage A1, erledigt): In BETREIBER-BRANCHSCHUTZ.md fehlte `browser-abnahme` in Tabelle und
+  `gh api`-JSON, und der JSON-Block nannte noch `pruefen`. Jetzt stehen dort `pruefen-a`, `pruefen-b`, `pruefen-c` und
+  `browser-abnahme`; ebenso im Prüfbefehl E in BRANCH-SCHUTZ-PRUEFUNG.md.
 - Pflege: Jeder neue Schritt der Prüfung muss genau einem Teil zugeordnet werden (sonst rot: ci-abdeckung bzw.
   ci-aufteilung). Die Teile driften mit neuen Schritten auseinander; bei mehr als ca. 2 min Unterschied zwischen den
   Teilen die Schnitte neu messen und nachziehen.
