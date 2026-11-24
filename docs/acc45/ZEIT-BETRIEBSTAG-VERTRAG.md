@@ -544,23 +544,23 @@ Umfang: nur Tests, keine Änderung an Zeitlogik in `server/` oder `src/`, an `.g
 | Kennung | Stand | Beleg / Grund |
 |---|---|---|
 | T-DST-F1 | belegt | `zeit-f-serveruhr.test.js` F (HTTP, 3 Prozesszonen), `zeit-b-handler.test.js`; verwandt `serverdatum.test.js` (Frühjahr 01:30–03:10 mit Pause) |
-| T-DST-F2 | teilweise | Nacht 28.→29.03. in `betriebstag.test.js`, `regelwerk.test.js`; Nachtzuschlag 7 h nicht als eigener Fall gefunden |
+| T-DST-F2 | belegt | `zeit-matrix-schliessen.test.js` (Stempel über `daten()` mit fester Serveruhr: Schichttag 28.03., `endeDatum` 29.03., Ist 7 h gemessen; Zuschläge: Nachtfenster 22–06 = 7 h, Sa 2 h, So 5 h); verwandt `betriebstag.test.js`, `regelwerk.test.js` |
 | T-DST-F3 | offen | Korrektur „02:30“ in der Lücke: Auflösung nicht festgeschrieben (Z22 [A], § 10.1 „Offen“) |
 | T-DST-H1 | belegt | `zeit-e-zuschlaege-dst.test.js` (Sonntag 7 h, Z47) |
 | T-DST-H2 | belegt | `serverdatum.test.js` (Herbst 02:30/02:20), `zeit-f-serveruhr.test.js` H (HTTP) |
 | T-MN-1 | belegt | `betriebstag.test.js`, `zeit-b-handler.test.js`, `zeit-f-serveruhr.test.js` M |
 | T-MN-2 | belegt (Modell 1) | `serverdatum.test.js` (Nachtdienst, `endeDatum`), `zeit-f-serveruhr.test.js` M; `endeKalendertag` offen (Schritt 4) |
 | T-GZ-UTC/-NY/-TYO/-KIR | belegt | VC: `betriebstag.test.js`; PW: `e2e/zeit-f-zonen.spec.mjs`, `e2e/zeit-f-abnahme-b-zonen.spec.mjs` (UTC, New York, Tokio, Pago Pago; Kiritimati nur VC) |
-| T-UHR-P1/-M1/-T1 | teilweise | `serverdatum.test.js`, `zeiterfassung.test.js` (`GERAETEDATUM_ABWEICHEND`, Gerätedatum gestern/morgen); ±1 h online nicht als eigener Fall gefunden |
-| T-UHR-O1 | teilweise (Modell 1) | `offline-stempeln.test.js` (Uhr ±1 h, `GERAETEZEIT_ABWEICHEND`); `quelle`/`VERSATZ`/`ZUKUNFT` offen (Schritt 4, ZEIT-D) |
-| T-OFF-3T | teilweise | `offline-stempeln.test.js` (Flugmodus, > 48 h, Nachtdienst offline), B7 im Browser; drei Tage am Stück mit `eingegangenAm` offen (Schritt 4) |
+| T-UHR-P1/-M1/-T1 | belegt (online) | `zeit-matrix-schliessen.test.js` (Gerätedatum einer Uhr +1 h, −1 h, +1 Tag, jeweils mittags, um 22:30/23:30 und 00:30/01:30 Berlin, Toleranz 2 min um Mitternacht, beide Umstellungstage: Tag und Uhrzeit vom Server, Markierung genau bei Tagesabweichung, nie eine Absage); verwandt `serverdatum.test.js` |
+| T-UHR-O1 | teilweise (Modell 1) | `offline-stempeln.test.js` (Uhr ±1 h, `GERAETEZEIT_ABWEICHEND`); Grund für „nicht geschlossen“: `quelle: geraet_berichtigt`, `VERSATZ` und `ZUKUNFT` gibt es im Code nicht (Suche in `server/` und `src/`: kein Treffer); sie entstehen mit Schritt 4 bzw. ZEIT-D. Ein Test dafür wäre eine erfundene Abdeckung |
+| T-OFF-3T | teilweise | `offline-stempeln.test.js` (Flugmodus, > 48 h, Nachtdienst offline), B7 im Browser; Grund für „nicht geschlossen“: `eingegangenAm` (nur in `zeitmodell.mjs` als Lesefeld, nie geschrieben) und `SEHR_ALT` fehlen im Schreibweg (Schritt 4); die Matrixzeile verlangt beide |
 | T-OFF-KONTAKT / T-OFF-SPRUNG | offen | `VOR_KONTAKT`/`UHRSPRUNG` gibt es noch nicht (ZEIT-D) |
 | T-IDEM-1 | belegt | `offline-stempeln.test.js` (Idempotenz, zwei Reiter), `abnahme-b-wiederholung.test.js` K1 |
 | T-IDEM-2 | offen | Zonenwechsel nicht in Release 1 (E1) |
-| T-ABS-1 | teilweise | Abschlusssperre und `abgewiesen` in `monatsabschluss-*.test.js`; `zeitzonenVersion` offen (Schritt 4) |
+| T-ABS-1 | teilweise | Abschlusssperre und `abgewiesen` in `monatsabschluss-*.test.js`; Grund für „nicht geschlossen“: `abgewiesen` trägt keine `zeitzonenVersion` (Feld entsteht mit Schritt 4; heute nur `zeitAm`/`ereignis`, `daten.mjs` `abgewiesenVermerken`) |
 | T-ZS-1 | belegt | `zeit-e-zuschlaege-dst.test.js`, `zeit-b-altdaten.test.js` |
 | T-EXP-1 | belegt | `zeit-b-altdaten.test.js` (Golden-Anker Teil A) |
-| T-PAUSE-1 | teilweise | `serverdatum.test.js`, `pausenerfassung.test.js` (Pause an beiden Umstellungstagen); über Mitternacht nicht als eigener Fall gefunden |
+| T-PAUSE-1 | belegt | `zeit-matrix-schliessen.test.js` (Nachtdienst 22–06 mit 30 min Pause über Mitternacht: gewöhnliche Nacht Ist 7,5 h, Frühjahrsnacht 6,5 h, Herbstnacht 8,5 h; Planpause ohne Angabe); verwandt `serverdatum.test.js`, `pausenerfassung.test.js` |
 | T-INV-1..6, T-INV-7 | offen | brauchen Zeitmodell-2-Schreiber (Schritt 4) |
 | T-ZW-1..5, T-HIST-1/2 | offen | Zonenwechsel/Verlauf nicht in Release 1 (E1, Plan § 2.4) |
 | T-LEG-1, T-LEG-2 | belegt | `zeitmodell.test.js` (Schritt 2) |
@@ -573,4 +573,6 @@ Umfang: nur Tests, keine Änderung an Zeitlogik in `server/` oder `src/`, an `.g
 | T-E2E-TZ | belegt | `e2e/zeit-f-zonen.spec.mjs` (#510), `e2e/zeit-f-abnahme-b-zonen.spec.mjs` (B7 nur Pago Pago, siehe (1)) |
 | T-SRV-TZ | belegt | `pruefungen/zeit-f-zonen.mjs` (#510), `pruefungen/zeit-f-serveruhr.test.js` (Tage, Abschluss, `seit`); Qualifikationsgültigkeit nur in Prüfdateien |
 
-**Offen nach ZEIT-F Rest:** T-RB-1/T-RB-3 (Schritt 5 nach Schritt 4), alle Zeilen „offen“ oben mit ihrem Grund, die „teilweise“-Zeilen T-DST-F2, T-UHR-P1/-M1/-T1, T-PAUSE-1 (technisch ohne Betreiberentscheidung machbar, eigener kleiner Test-PR), ZEIT-G Reviews. Keine Betreiberfrage: kein zonenabhängiger Befund, keine Workflow-Änderung nötig.
+**Matrix schließen (2026-11-24, Branch `acc45/zeit/matrix-teilweise`, nur Test und Doku).** Neue Datei `pruefungen/zeit-matrix-schliessen.test.js` (12 Tests, in `pruefung:zeit-e`; Handler `daten()` mit fester Serveruhr, keine freie Uhr). Geschlossen: T-DST-F2, T-UHR-P1/-M1/-T1, T-PAUSE-1. Läuft grün unter TZ=UTC, Pacific/Kiritimati, Pacific/Pago_Pago, Europe/Berlin, America/Los_Angeles. Mutationen (nur Wegwerfkopie, zurückgesetzt): `betriebstag()` auf Prozesstag rot (UTC 1, Kiritimati 6, Pago Pago 8 Fälle; Berlin grün, erwartet); Zuschlag-Rechenstand 2 rot; Nachtanteil ohne Umstellungsversatz rot; `uhrversatz` = 0 rot (4 Fälle); Gerätedatum-Regel auf „ungleich heute“ rot (Toleranz-Test); `uhrzeitBerlin` auf Prozesszeit rot (11 Fälle). Befund: kein zonen- oder uhrabhängiges Fehlverhalten in `server/` oder `src/`. Hinweis zur Methode: unter Git Bash wird `TZ` nicht an Node weitergegeben (Node meldet Europe/Berlin); Zonenläufe daher aus PowerShell (`$env:TZ`). Nicht geschlossen und Grund: T-UHR-O1, T-OFF-3T, T-ABS-1 (Felder und Codes fehlen bis ZEIT-B Schritt 4/ZEIT-D, siehe Tabelle); T-RB-1 blockiert (Schritte 3/4).
+
+**Offen nach ZEIT-F Rest:** T-RB-1/T-RB-3 (Schritt 5 nach Schritt 4), alle Zeilen „offen“ oben mit ihrem Grund, die „teilweise“-Zeilen T-UHR-O1, T-OFF-3T, T-ABS-1 (hängen an Schritt 4/ZEIT-D; T-DST-F2, T-UHR-P1/-M1/-T1, T-PAUSE-1 sind seit „Matrix schließen“ belegt), ZEIT-G Reviews. Keine Betreiberfrage: kein zonenabhängiger Befund, keine Workflow-Änderung nötig.
