@@ -54,9 +54,16 @@ Die Release-Prüfung läuft **zweimal**: als Vorprüfung vor Phase 1 (G4, G6, G7
 vorigen Releases. Online prüft das Werkzeug vor jedem Netzaufruf: Basis ist echter Vorfahr des Kandidaten, nicht gleich, Bereich nicht leer, Commit einer Zeile `aktiv` oder `vorherig` der Freigabeliste (eine Zeile `gesperrt` ist nie Basis); sonst Exit 2. Gemeint ist die Zeile `aktiv` vor dem Listen-PR; nach dem Listen-PR steht sie als `vorherig`. Folge für Option b (Produktionsweg §3.3a, altes Bild sofort `gesperrt`): Die Endprüfung muss laufen, solange die alte Zeile noch `vorherig` ist; die Sperre folgt in einem eigenen Listen-PR nach dem Wechsel. Zusätzlich bindet der Betreiber die Basis in der Freigabedatei (`basisCommit`); ohne diese Bindung ist G10 NO-GO. Das Werkzeug leitet die Basis bewusst nicht aus der Liste ab,
 weil die Zeile des Kandidaten sie nach dem Listen-PR überdeckt und ein gesperrtes Altbild keine Basis sein darf.
 
-**Werkzeug aus dem Kandidaten-Commit starten** (Vor- und Endprüfung), z. B. `git worktree add <Pfad> <kandidat>` und
-dort `node werkzeug/release-pruefung.mjs …`. Dann passen die Pflicht-Checks in G1 zum Workflow des Kandidaten. Für
+**Vorprüfung: Werkzeug aus dem Kandidaten-Commit starten**, z. B. `git worktree add <Pfad> <kandidat>` und dort
+`node werkzeug/release-pruefung.mjs …`. Dann passen die Pflicht-Checks in G1 zum Workflow des Kandidaten. Für
 Kandidaten vor #514 (Job `pruefen`, z. B. 517993ca) gilt zusätzlich die Übergangsregel in G1 (Abschnitt 6).
+
+**Endprüfung: nicht im Kandidaten-Worktree, sondern auf `main`-HEAD.** Das Werkzeug liest Freigabeliste
+(`deploy/FREIGEGEBENE-IMAGES.md`), Abnahmebericht und Freigabedatei aus HEAD (`werkzeug/release-pruefung.mjs`, Kopfkommentar
+Z. 20 bis 23); G10 verlangt Stand HEAD = Kandidat plus nur Listen- und Freigabepfade (Z. 54 bis 55, Z. 184 `erlaubtNachKandidat`,
+Z. 1200 bis 1206). In einem Worktree auf dem Kandidaten fehlen Liste und Freigabedatei: G4 und G10 wären NO-GO. Weil G10
+nach dem Kandidaten nur `docs/acc45/releases/` und `deploy/FREIGEGEBENE-IMAGES.md` zulässt, entspricht das Werkzeug auf
+`main`-HEAD dem Werkzeug des Kandidaten: G10 erzwingt es.
 
 | Phase | Was | Wer | Beleg | Verweis |
 |---|---|---|---|---|

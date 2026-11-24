@@ -153,8 +153,10 @@ SSOT-Werkzeuge schreiben auf PR-Branches).
 | Bypass-Liste | leer oder nur der genannte Admin-Eintrag im Modus *pull request* |
 
 Claude merkt **nie** nach `main` (verbindliche Vorgabe). Claude braucht hier kein Recht außer Lesen. Ältere
-Empfehlung für `main` und `integration/centric-complete`: `docs/BRANCH-SCHUTZ.md` (klassischer Schutz, gleiche
-Check-Liste; diese Datei hat Vorrang, wo sie abweicht, weil `interne-pruefung` dort noch fehlt).
+Empfehlung für `main` und `integration/centric-complete`: `docs/BRANCH-SCHUTZ.md` (klassischer Schutz). Ihre
+Check-Liste ist nach #514 auf denselben Stand gezogen (`pruefen-a/-b/-c`, `browser-abnahme`, `interne-pruefung`);
+diese Datei hat Vorrang, wo sie abweicht. Wer ein älteres JSON mit dem Check `pruefen` setzt, lässt jeden PR
+dauerhaft auf einen Check warten, den es nicht mehr gibt.
 
 ## 6. Gefahrlos testen (nie gegen die echten Branches)
 Wegwerf-Branches unter `schutztest/`. Ein Fehlschlag kann nichts zerstören.

@@ -8,6 +8,11 @@ Erstellung dieses Dokuments ergab
 
 Gilt für `main` und `integration/centric-complete`.
 
+**Maßgeblich für Check-Namen und Setzen:** `docs/acc45/BETREIBER-BRANCHSCHUTZ.md` (Rulesets, aktuelle Liste).
+Diese Datei ist die ältere Empfehlung (klassischer Schutz). Ihre Check-Liste ist auf den Stand
+nach #514 nachgezogen (Job `pruefen` ist in `pruefen-a`, `pruefen-b`, `pruefen-c` aufgeteilt; `browser-abnahme`
+und `interne-pruefung` sind ergänzt). Bei Abweichung gilt `BETREIBER-BRANCHSCHUTZ.md`.
+
 ## Regeln
 
 | Regel | Wert | Warum |
@@ -30,9 +35,13 @@ Commit-Status gleichen Namens sie nicht erfüllt.
 
 | Check | Workflow | Datei |
 |---|---|---|
-| `pruefen` | Prüfung | `.github/workflows/pruefung.yml` |
+| `pruefen-a` | Prüfung | `.github/workflows/pruefung.yml` |
+| `pruefen-b` | Prüfung | `.github/workflows/pruefung.yml` |
+| `pruefen-c` | Prüfung | `.github/workflows/pruefung.yml` |
+| `browser-abnahme` | Prüfung | `.github/workflows/pruefung.yml` |
 | `abhaengigkeiten` | Sicherheit | `.github/workflows/sicherheit.yml` |
 | `geheimnisse` | Sicherheit | `.github/workflows/sicherheit.yml` |
+| `interne-pruefung` | Sicherheit | `.github/workflows/sicherheit.yml` |
 | `muster` | Sicherheit | `.github/workflows/sicherheit.yml` |
 | `bild-scan` | Lieferkette | `.github/workflows/lieferkette.yml` |
 | `caddy-vorlage` | Lieferkette | `.github/workflows/lieferkette.yml` |
@@ -70,9 +79,13 @@ gh api -X PUT "repos/rinats-png/dienstplaner/branches/${ZWEIG}/protection" \
   "required_status_checks": {
     "strict": true,
     "checks": [
-      { "context": "pruefen",          "app_id": 15368 },
+      { "context": "pruefen-a",        "app_id": 15368 },
+      { "context": "pruefen-b",        "app_id": 15368 },
+      { "context": "pruefen-c",        "app_id": 15368 },
+      { "context": "browser-abnahme",  "app_id": 15368 },
       { "context": "abhaengigkeiten",  "app_id": 15368 },
       { "context": "geheimnisse",      "app_id": 15368 },
+      { "context": "interne-pruefung", "app_id": 15368 },
       { "context": "muster",           "app_id": 15368 },
       { "context": "bild-scan",        "app_id": 15368 },
       { "context": "caddy-vorlage",    "app_id": 15368 },

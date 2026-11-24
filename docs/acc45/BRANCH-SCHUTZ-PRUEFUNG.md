@@ -44,7 +44,7 @@ Gemeinsam für alle drei Branches: Löschen sperren, Force-Push sperren, Bypass-
 | 2 | Restrict deletions | an | an | an |
 | 3 | Block force pushes (non_fast_forward) | an | an | an |
 | 4 | Pull-Request-Pflicht | **aus** (Lease wird absichtlich direkt ohne Force gepusht) | an, 0 Freigaben | an; 0 Freigaben, oder 1 mit Bypass nur für Administratoren im Modus „pull request“ |
-| 5 | Pflicht-Checks | **keine** (auf dem Branch läuft keine CI) | `pruefen`, `abhaengigkeiten`, `geheimnisse`, `interne-pruefung`, `muster`, `bild-scan`, `caddy-vorlage`, `shellcheck`, `compose`, `skripte` (GitHub-Actions-App, `integration_id` 15368) | wie `integration/release-v4` |
+| 5 | Pflicht-Checks | **keine** (auf dem Branch läuft keine CI) | `pruefen-a`, `pruefen-b`, `pruefen-c`, `browser-abnahme`, `abhaengigkeiten`, `geheimnisse`, `interne-pruefung`, `muster`, `bild-scan`, `caddy-vorlage`, `shellcheck`, `compose`, `skripte` (GitHub-Actions-App, `integration_id` 15368) | wie `integration/release-v4` |
 | 6 | „Branch muss aktuell sein“ (strict) | – | aus | aus (laut `BETREIBER-BRANCHSCHUTZ.md`); die ältere Empfehlung `BRANCH-SCHUTZ.md` nennt `strict: true`, Abweichung bewusst entscheiden |
 | 7 | Bypass-Liste | leer | leer | leer oder nur der genannte Admin-Eintrag |
 | 8 | Nicht aktivieren | PR-Pflicht, Statuschecks, Signaturpflicht, Restrict updates, Merge-Queue | Linear history, Signaturpflicht, Restrict creations/updates, Merge-Queue | wie `integration/release-v4` |

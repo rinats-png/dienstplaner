@@ -271,6 +271,8 @@ Nachtrag 2026-11-22 (Sammel-Doku, Branch `acc45/doku/sammel-2026-11-22-abend`): 
 
 Nachtrag 2026-11-24 (Website-Entscheidungen, Branch `acc45/doku/website-entscheidungen`): Neu P2-39 bis P2-46 (Website: Paketpreise gegen G9, Dunkel/Hell, WebGL-Halle, Live-Rechtstexte, DNS und Archiv-Branch, Auslieferungszeitpunkt, Mobilnummer im Impressum, Ablageort der Quelle). Alle sind **Vorschläge, keine Entscheidungen**; keine Rechtsbewertung; Nummerierung ab hier P2-47. Nur Dokumentation, kein Statuswechsel im SSOT.
 
+Nachtrag 2026-11-24 (CI-Aufteilung, Branch `acc45/doku/nachtrag-ci-aufteilung`): **Technische Nachverfolgung, keine Betreiberentscheidung, keine Nummer.** Rückbau der G1-Form ALT (`uebergangPruefen.alt` und der Zweig in `g1Ci` in `werkzeug/release-pruefung.mjs`; Tests der Form ALT in `pruefungen/release-pruefung.test.js` auf NO-GO umstellen) nach Release v4-r1, sobald kein Kandidat mehr den alten Workflow (Job `pruefen`) hat. Auslöser: Review #514. Beschreibung: `QS-CI-AUFTEILUNG-PILOT-2026-11-24.md` Abschnitt 4 ("Offener Punkt"). Kein Statuswechsel im SSOT.
+
 ## E. Vorlagen für G8-Annahmetexte (Textvorschlag, keine Betreiberentscheidung)
 
 Zweck: Die Freigabedatei des Betreibers kann ein offenes Paket im Kandidaten über `akzeptiertePakete` mit einem `grund` annehmen (G8, `werkzeug/release-pruefung.mjs`). Die Texte unten sind **nur Vorschläge für das Feld `akzeptiertePakete.grund`**. Sie sind keine Betreiberentscheidung, tragen keine Annahme ein und ersetzen weder Abnahme noch Fachfreigabe. Der Betreiber entscheidet, ob er ein Paket annimmt, und darf den Wortlaut ändern. Der Status der Pakete bleibt unverändert (WP-14c REVIEW, WP-19.5 und WP-19.6 BLOCKED).

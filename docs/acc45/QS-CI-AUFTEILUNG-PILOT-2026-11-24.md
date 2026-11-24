@@ -93,22 +93,19 @@ Auswertung (gemessen, getrennt von der Schätzung):
 - **G1 (Release-Gate):** `pflichtChecks` nennt jetzt `pruefen-a/b/c` statt `pruefen`. Review #514 (Auflage A2) sah ein
   Fehlblockade-Risiko: Startet jemand das Werkzeug aus einem neueren Stand als dem Kandidaten, wäre ein Kandidat vor der
   Aufteilung (z. B. 517993ca) fälschlich G1-NO-GO. Zwei Maßnahmen:
-  (a) RELEASE-PROZESS.md §4: Werkzeug aus dem Kandidaten-Commit starten (`git worktree add <Pfad> <kandidat>`).
+  (a) RELEASE-PROZESS.md §4: für die Vorprüfung das Werkzeug aus dem Kandidaten-Commit starten (`git worktree add <Pfad> <kandidat>`); die Endprüfung läuft auf `main`-HEAD (G10 erzwingt dort das Werkzeug des Kandidaten).
   (b) **Übergangsregel in G1** (`uebergangPruefen`): G1 nimmt GENAU zwei vollständige Formen an, Form NEU
   (`pruefen-a`, `pruefen-b`, `pruefen-c`) oder Form ALT (`pruefen`); die übrigen Pflicht-Checks gelten in beiden. Ist ein Teil
   der Form NEU vorhanden, muss Form NEU vollständig sein (keine Mischform). Jeder Lauf eines Namens beider Formen muss
   `success` sein (auch `skipped`/`neutral` sind NO-GO). Fehlt beides, nennt NO-GO beide Formen. Tests zuerst (6 rot auf
   444b1d1e), dazu 2 Code-Mutationen: Form ALT entfernt → 2 Tests rot; Vollständigkeit gelockert → 4 Tests rot.
   Ein Test bindet `uebergangPruefen.neu` an die Jobs von `pruefung.yml`.
-
-**Offener Punkt (nach Release v4-r1):** Form ALT der Übergangsregel zurückbauen (`uebergangPruefen.alt` und den Zweig in
-`g1Ci` entfernen, Tests der Form ALT auf NO-GO umstellen), sobald kein Kandidat mehr den alten Workflow (Job `pruefen`) hat.
 - **Reihenfolge/Zustand:** Die Teile sind zusammenhängende Abschnitte der alten Folge. Ein Schritt in b oder c kann sich
   nicht mehr auf Seiteneffekte früherer Teile verlassen (z. B. Dateien, die ein früherer Schritt erzeugt). In 12 grünen
   Läufen trat das nicht auf. Port 3000, `$BILD`, Container-Skript und `GITHUB_ENV`-Nachweis liegen nur in `pruefen-c`
   (Test). Feste Ports kollidieren nicht über Jobs (eigene Runner).
 - **Pflichtchecks später (Branch-Schutz):** heute keiner (API 404). Beim Einrichten die drei Namen eintragen
-  (BETREIBER-BRANCHSCHUTZ.md angepasst). Dort fehlt unabhängig vom Pilot `browser-abnahme` (Befund, nicht geändert).
+  (BETREIBER-BRANCHSCHUTZ.md angepasst; `browser-abnahme` und `interne-pruefung` stehen dort ebenfalls in der Liste). `docs/BRANCH-SCHUTZ.md` und `docs/CI-LIEFERKETTE.md` sind nachgezogen (Review #514, Auflage A3).
 - **Neuer Schritt künftig:** Wer einen Schritt anhängt, wählt einen Teil. Die Sammelkette prüft weiter
   `pruefung:ci-abdeckung`; Schritte außerhalb der Kette prüft die feste Liste in `ci-aufteilung.test.js` nur für die
   heutigen Pflichtschritte. Die Teile driften mit der Zeit auseinander (neu messen, Schnitte nachziehen).
@@ -118,6 +115,10 @@ Auswertung (gemessen, getrennt von der Schätzung):
   sie als Nicht-Pflicht-Checks, sie müssen success/skipped/neutral sein, unverändert). `betrieb-*.yml`, `sicherheit.yml`,
   `lieferkette.yml`, `lasttest.yml`, `staging-gate.yml` hängen nicht an den Jobnamen (nur Kommentare).
 
+**Offener Punkt (nach Release v4-r1):** Form ALT der Übergangsregel zurückbauen (`uebergangPruefen.alt` und den Zweig in
+`g1Ci` entfernen, Tests der Form ALT auf NO-GO umstellen), sobald kein Kandidat mehr den alten Workflow (Job `pruefen`) hat.
+Nachverfolgung: `docs/acc45/ENTSCHEIDUNGSLISTE.md` Abschnitt D (technischer Nachtrag, keine Betreiberentscheidung).
+
 ## 5. Rückbau
 
 - Alles: `git revert` des Merge-Commits (ein Revert). Danach wieder ein Job `pruefen`, G1 wieder `pruefen`.
@@ -126,8 +127,8 @@ Auswertung (gemessen, getrennt von der Schätzung):
 
 ## 6. Empfehlung
 
-- f1 (Aufteilung + G1): **mergen: ja**, nach unabhängigem Opus-Review von G1 und Vollständigkeit. Gewinn ca. 20 min Wand je
-  Kopf, 12 von 12 Läufen grün, alle Prüfungen unverändert vorhanden.
+- f1 (Aufteilung + G1): **mergen: ja**, nach unabhängigem Opus-Review von G1 und Vollständigkeit. Gewinn 13 bis 20 min Wand je
+  Kopf (gemessen 31,4 auf 10,8 bis 17,7 min je Kopf; Streuung durch Runner-Wartezeit bei gleichzeitigen Workflows), 12 von 12 Läufen grün, alle Prüfungen unverändert vorhanden.
 - Zeitpunkt: NACH dem laufenden Release v4-r1 (Kandidat 517993ca prüft mit seinem eigenen Werkzeug weiter; kein Kandidat
   mischt Alt und Neu).
 - E2E_WORKERS 4: **gemessen, nicht übernommen.** Grund: Der Browser-Job wird ca. 35 % schneller, die Wand aber nicht,
