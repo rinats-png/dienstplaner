@@ -1,5 +1,5 @@
 import { getStore } from "../lib/ablage.mjs";
-import { bremse, kennung, herkunftErlaubt, zuVielAntwort, protokoll } from "../lib/schutz.mjs";
+import { bremse, kennung, kennungPerson, herkunftErlaubt, zuVielAntwort, protokoll } from "../lib/schutz.mjs";
 import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
 import { bestandLesenStreng } from "../lib/bestand.mjs";
 import { wirksameRolle } from "../lib/rechte.mjs";
@@ -29,8 +29,9 @@ import { einladungAusstellen, einladungEinloesen, einladungenListe, einladungWid
    Pflicht mit der WIRKSAMEN Rolle (M1), Bremse, Protokoll.
    Genaue Pfade schlagen das Präfix /api/* von daten.mjs (server.mjs, routeFuer).
 
-   Bremsen: Ausstellen zählt gegen `zugaenge` (10 je 10 Minuten je Sitzung und
-   Herkunft, steigend). Wer viele Personen auf einmal einlädt — etwa beim
+   Bremsen: Ausstellen zählt vor der Rollenprüfung nur gegen `schreiben` je
+   Person (Lastgrenze); erst nach der Rollenprüfung gegen `zugaenge` (10 je
+   10 Minuten je Raum, steigend; ABN-A2). Wer viele Personen auf einmal einlädt — etwa beim
    Start eines Betriebs —, läuft nach zehn Einladungen in die Sperre (N4):
    Bedienhinweis im Nachweis; für Sammeleinladungen bleibt der Weg über den
    Betreiber (/api/zugaenge, bis zu 20 je Aufruf). Dazu kommt die
@@ -72,11 +73,11 @@ const SITZUNGSWEGE = new Set(["/api/einladung", "/api/einladung/liste", "/api/ei
  * Sitzung, Bremse, Bestand und M1 für die Wege der Leitung.
  * @returns {Promise<{antwort: Response}|{s: any, k: string, bestand: any, wer: object}>}
  */
-async function leitungSitzung(req, ablage, art, bremsArt) {
+async function leitungSitzung(req, ablage, art, bremsArt, jePerson = false) {
   const s = (await arbeitssitzungLesen(req, { store: ablage })).sitzung;
   if (!s) return { antwort: antwort({ fehler: "Nicht angemeldet." }, 401) };
   const k = kennung(req, s);
-  const b = await bremse(bremsArt, k);
+  const b = await bremse(bremsArt, jePerson ? kennungPerson(s) : k);
   if (!b.frei) { await protokoll("einladung", k, "gebremst", b.grund); return { antwort: zuVielAntwort(b.wartet) }; }
   let gelesen;
   try { gelesen = s.rolle === "betreiber" ? null : await bestandLesenStreng(ablage, s.bestand); }
@@ -107,8 +108,10 @@ export default async (req) => {
 
   try {
     if (SITZUNGSWEGE.has(pfad)) {
-      const bremsArt = pfad === "/api/einladung" ? "zugaenge" : pfad === "/api/einladung/liste" ? "lesen" : "schreiben";
-      const l = await leitungSitzung(req, ablage, pfad.slice(5), bremsArt);
+      /* ABN-A2 (docs/acc45/SICHERHEITSBEWERTUNG-ABN-A2-S2.md): Ausstellen zählt VOR der Rollenprüfung nur gegen
+         `schreiben` je PERSON (Lastgrenze, keine Gesamtgrenze) — wer ohne Recht hämmert, bremst nur sich selbst. */
+      const bremsArt = pfad === "/api/einladung" ? "schreiben" : pfad === "/api/einladung/liste" ? "lesen" : "schreiben";
+      const l = await leitungSitzung(req, ablage, pfad.slice(5), bremsArt, pfad === "/api/einladung");
       if ("antwort" in l) return l.antwort;
       const { s, k, bestand, wer } = l;
 
@@ -121,6 +124,13 @@ export default async (req) => {
           await protokoll("einladung", k, "abgewiesen", v.grund, wer);
           return antwort({ fehler: v.fehler }, v.status);
         }
+        /* ABN-A2: Die Einladungsbremse `zugaenge` (je Raum, 10/600 s, Sperre 1800 s steigend, fail-closed, dazu
+           WEITERE.zugaenge 40/600 s installationsweit) zählt erst NACH der Rollenprüfung — Zahlen unverändert. Vorher
+           füllten Absagen an Beschäftigte, SV, Betriebsrat, Demo und Betreiber den Raumzähler und die Gesamtgrenze
+           (Aussperren der Leitung, mandantenübergreifend auch Zurückziehen und Betreiberwege). Vor der Rollenprüfung
+           wird kein Geheimnis verglichen (N-1); der Rateschutz für Nachweise bleibt derselbe Zähler. */
+        const bz = await bremse("zugaenge", k);
+        if (!bz.frei) { await protokoll("einladung", k, "gebremst", bz.grund); return zuVielAntwort(bz.wartet); }
         /* B1: frische Bestätigung — erst, wenn die Sitzung überhaupt ausstellen dürfte. */
         const f = await frischeBestaetigung(ablage, { sitzung: s, bestaetigung: rumpf.bestaetigung, k });
         if (!f.ok) {

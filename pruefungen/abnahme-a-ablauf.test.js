@@ -239,7 +239,7 @@ describe("Strang A: Betreiber → Leitung → Personal → Schichtmodell → Pla
 
   it("2.3 Einladungen: zweiter Zugang je Person 409; Betriebsrat, Beschäftigte und SV laden nicht ein (403)", async () => {
     /* Budget: Die Einladungsbremse zählt je Raum (schutz.mjs „zugaenge“: 10 Versuche je 10 min). 2.2/2.2b haben 6
-       verbraucht; hier genau vier weitere, damit jede Absage eine Rollenabsage ist und keine Bremse (Befund A-2).
+       verbraucht; hier zählt nur der Aufruf der Leitung (seit ABN-A2 zählen Rollenabsagen nicht mehr, 2.4).
        Falsche Rolle und falsche Bestätigung prüft pruefungen/einladungen.test.js. */
     expect((await anfrage("/api/einladung", { methode: "POST", token: T.leitung, rumpf: { personId: "a1", bestaetigung: { zugangscode: CODE.leitung } } })).status).toBe(409);
     for (const k of ["r1", "a1", "s1"]) {
@@ -249,9 +249,21 @@ describe("Strang A: Betreiber → Leitung → Personal → Schichtmodell → Pla
     }
   });
 
-  it("2.4 Befund A-2: Nach zehn Einladungsversuchen im Raum ist auch die Leitung gesperrt (429) — auch durch Absagen anderer Rollen verbraucht", async () => {
-    const e = await anfrage("/api/einladung", { methode: "POST", token: T.leitung, rumpf: { personId: "a2", bestaetigung: { zugangscode: CODE.leitung } } });
-    expect(e.status).toBe(429);
+  it("2.4 Befund A-2 behoben (ABN-A2): Absagen anderer Rollen verbrauchen nichts; erst die eigenen zehn Versuche der Leitung im Raum sperren (429)", async () => {
+    /* Vorher (Befund A-2) war die Leitung hier schon gesperrt: Die drei Rollenabsagen aus 2.3 zählten im Raumzähler mit. */
+    for (const k of ["r1", "a1", "s1"]) {
+      for (let i = 0; i < 12; i++) {
+        const e = await anfrage("/api/einladung", { methode: "POST", token: T[k], rumpf: { personId: "a2", bestaetigung: { zugangscode: CODE[k] } } });
+        expect(e.status, `${k}: Rollenabsage, keine Bremse`).toBe(403);
+      }
+    }
+    /* Die Leitung hat 7 von 10 verbraucht (2.2/2.2b: 6, 2.3: 1). a1 hat schon einen Zugang (409, nichts angelegt). */
+    const st = [];
+    for (let i = 0; i < 5; i++) {
+      st.push((await anfrage("/api/einladung", { methode: "POST", token: T.leitung, rumpf: { personId: "a1", bestaetigung: { zugangscode: CODE.leitung } } })).status);
+    }
+    expect(st[0], `Leitung nach den Rollenabsagen nicht gesperrt: ${st}`).toBe(409);
+    expect(st, "nach den eigenen zehn Versuchen 429 (Bremse zugaenge je Raum, unverändert)").toContain(429);
   });
 
   /* ---------------- Bereich 4: Schichtmodelle zuordnen (IMP-6, nur API) ---------------- */
