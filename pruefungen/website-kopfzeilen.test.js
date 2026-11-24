@@ -65,6 +65,10 @@ describe("Site-Datei: Aufbau", () => {
   it("die Seite ist statisch: file_server, root unter aktuell, keine Proxy- oder Weiterleitung zur App", () => {
     expect(HAUPT).toMatch(/^\s*root \* \/srv\/centric-website\/aktuell\s*$/m);
     expect(HAUPT).toMatch(/^\s*file_server\s*$/m);
+    // Review #519 H1: `file_server browse` (Verzeichnisliste) wuerde das zweite file_server in handle_errors nicht stoeren
+    // und die Zeile oben weiter erfuellen; deshalb eine eigene Negativpruefung auf den ganzen Code.
+    expect(CODE).not.toMatch(/\bbrowse\b/);
+    expect(CODE).not.toMatch(/^[ \t]*file_server[ \t]+\S/m);
     expect(CODE).not.toMatch(/reverse_proxy/);
     expect(CODE).not.toMatch(/app\.centric-dienstplanung\.de/);
   });

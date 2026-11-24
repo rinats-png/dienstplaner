@@ -99,6 +99,9 @@ tar -xzf "$ARCHIV" -C "$ZIEL" --no-same-owner || ende "Entpacken fehlgeschlagen.
 ANZAHL="$(find "$ZIEL" -type f | wc -l | tr -d ' ')"
 
 # --- c) Zusammenfassung und Bestaetigung
+# Die Rueckfrage kommt von einem Terminal (stdin). Das schuetzt vor einem versehentlichen Pipe- oder Skriptaufruf
+# (`echo JA | bash website-konsole.sh`); es ist keine Rechtegrenze: wer root ist, kann die Skripte ohnehin direkt starten.
+[ -t 0 ] || ende "Die Rueckfrage (JA) braucht ein Terminal: stdin ist keins (Pipe, Umleitung oder Skript). Das Skript direkt in der Konsole starten."
 SITES="${SITES_DIR_HOST:-/opt/proxy/sites}"
 echo ""
 echo "Zusammenfassung:"
