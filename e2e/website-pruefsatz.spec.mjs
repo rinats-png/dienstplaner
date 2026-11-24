@@ -231,20 +231,19 @@ test.describe("Website-Prüfsatz: Links, Pflichtseiten, Preise", () => {
     expect(TESTTAGE).toBe(30);
   });
 
-  /* BEKANNTE ABWEICHUNG F1 (offen, Betreiberentscheidung): Die Website nennt für alle vier Branchenpakete einen Preis und
-     kein „in Vorbereitung“. Nach G9 bewirbt und berechnet die App nur Pakete im Zustand 5 (buchbar); aktuell ist keines
-     buchbar (server/lib/paketstand.mjs, PAKET_FREIGABEN = {}). Dieser Test hält den Ist-Zustand fest. Er wird rot, sobald
-     F1 umgesetzt wird (Website zeigt „in Vorbereitung“ / nennt keinen Preis) oder sich ein Preis oder der Paketstand ändert.
-     Dann ist das eine bewusste Anpassung dieses Tests, kein Zufall. */
-  test("Preise: Branchenpakete, bekannte Abweichung F1 offen (Website nennt Preise, App führt kein Paket buchbar)", () => {
+  /* WEBSITE-W4 (Betreiberentscheidung 2026-11-24, P2-39 Option A; Befund F1 erledigt): Nach G9 bewirbt und berechnet die App
+     nur Pakete im Zustand 5 (buchbar); aktuell ist keines buchbar (server/lib/paketstand.mjs, PAKET_FREIGABEN = {}). Die Website
+     nennt für ein Paket unter Zustand 5 weder Preis noch Schalter und sagt „In Vorbereitung“. Wird ein Paket freigegeben, muss die
+     Website bewusst nachziehen: dieser Test wird dann rot und verlangt Preis und Schalter = Zielpreis der App. */
+  test("Preise: Branchenpakete folgen dem Paketzustand der App (unter Zustand 5: kein Preis, kein Schalter, „In Vorbereitung“)", () => {
     const w = websitePreise(wurzel);
     const ziele = Object.fromEntries(PAKETE_ROH.filter((p) => !p.pflicht).map((p) => [p.id, p.aufpreis]));
-    expect(w.pakete, "Paketpreise der Website = Zielpreise der App").toEqual(ziele);
-    expect(w.rechner.paketPreise, "Paketpreise im Rechner = Zielpreise der App").toEqual(ziele);
     const buchbar = paketeAngebot().filter((p) => p.buchbar).map((p) => p.id);
-    const ist = { buchbarInApp: buchbar, websiteNenntPreise: Object.keys(w.pakete).length === 4, websiteSagtInVorbereitung: w.paketeInVorbereitung };
-    expect(ist, "F1 offen: Widerspruch Website/App besteht noch; bei Änderung diesen Test bewusst anpassen").toEqual(
-      { buchbarInApp: [], websiteNenntPreise: true, websiteSagtInVorbereitung: false });
+    const erwartet = Object.fromEntries(buchbar.map((id) => [id, ziele[id]]));
+    expect(w.pakete, "Paketpreise der Website nur für buchbare Pakete, = Zielpreis der App").toEqual(erwartet);
+    expect(w.rechner.paketPreise, "Rechner-Schalter nur für buchbare Pakete, = Zielpreis der App").toEqual(erwartet);
+    expect(buchbar, "heute ist kein Paket buchbar (PAKET_FREIGABEN leer)").toEqual([]);
+    expect(w.paketeInVorbereitung, "preise.html sagt „In Vorbereitung“").toBe(true);
   });
 });
 
