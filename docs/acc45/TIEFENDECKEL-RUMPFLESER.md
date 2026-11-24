@@ -88,3 +88,7 @@ Die Angriffsrümpfe der neuen Prüfung liefen in diesem Lauf nicht mit (Datei au
 ## Lokale Läufe
 
 - Die 56 Handler-Suiten (mit aktiver Prüfung): 1634 von 1639 grün. Die 5 roten Tests sind nicht durch diese Änderung verursacht: `registrierung-http` (Importliste des Handlers) und `import-abweichungen-imp11` (Fehlerschlüssel in IMPORT-VERTRAG §9a) sind angepasst, danach grün; `sicherheit-intern` DEP-1 liest `node_modules/web-push` (lokal über die Verknüpfung 3.6.7, Lockdatei 4.0.0, Umgebungsartefakt); `einladungen` „zwei Node-Prozesse …“ und `sicherung-ablage` „… nie als Erfolg ohne Gegenprobe“ sind auf der Basis 09688acc lokal ebenso rot (gleicher Lauf mit den alten Dateien unter `server/`). Maßgeblich ist die CI.
+
+## Offener Hinweis (Review #507 H2, kosmetisch)
+
+Bei `/einrichten` kommt die Abweisung eines zu tiefen Rumpfs nach `bremse("einrichten")` und vor dem Schlüsselvergleich. Es gibt dort keine 400-ms-Pause und keinen Protokolleintrag „abgewiesen“, anders als bei einem falschen Verwalterschlüssel. Das ist kein Sicherheitsproblem (die Bremse zählt den Versuch, der Rumpf wird nicht verwendet); nicht geändert, offen.

@@ -43,7 +43,9 @@ export function zuTief(wert, grenze = RUMPF_TIEFE_MAX) {
   if (!wert || typeof wert !== "object") return false;
   /* Review #505 H1: zwei parallele Stapel statt Paar-Listen und for-in statt Object.values — keine
      Zwischenlisten je Knoten. Für Werte aus JSON.parse dasselbe Ergebnis: nur eigene, aufzählbare
-     Zeichenketten-Schlüssel (JSON.parse legt nie geerbte aufzählbare Schlüssel an). */
+     Zeichenketten-Schlüssel (JSON.parse legt nie geerbte aufzählbare Schlüssel an).
+     Hinweis Review #507 H1: `for…in` durchläuft auch geerbte aufzählbare Schlüssel; für Werte aus
+     JSON.parse ist das folgenlos, weil es dort keine gibt. Nur Kommentar, kein Code. */
   /** @type {any[]} */
   const werte = [wert];
   /** @type {number[]} */
