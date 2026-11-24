@@ -60,7 +60,10 @@ import { REGELN_BRANCHEN } from "../server/lib/branchenkatalog.mjs";
    hier unverändert weitergereicht. */
 export { PRUEFSTATUS, FOLGEN, gilt, wirkung };
 
-/** Regelarten. Die ersten vier rechnet der Regelbaukasten heute; die übrigen sind geplant (PLAN, 5.2). */
+/** Regelarten. Die ersten vier rechnet der Regelbaukasten (server/lib/regelbaukasten.mjs). Muster-, Block-,
+ *  Verteilungs- und Wunschregel rechnet server/lib/regelbaukasten-erweitert.mjs (`pruefeRegel`, WP-I3); die
+ *  Vorgaben-Verwaltung (server/lib/vorgaben.mjs, Testlauf) nutzt sie, aber keine Planungsfunktion wendet sie an
+ *  (WP-I5 offen). Plan 5.2. */
 export const REGELARTEN = {
   zaehlregel: "Zählregel",
   grenzregel: "Grenzregel",
