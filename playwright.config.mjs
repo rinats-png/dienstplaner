@@ -5,6 +5,7 @@
 import { defineConfig } from "@playwright/test";
 import { BASIS, VIEWPORTS, RAEUME_HOECHSTENS } from "./e2e/umgebung.mjs";
 import { ZONEN_PROJEKTE, ZONEN_SPEC, ZONEN_VIEWPORT } from "./e2e/zonen.mjs";
+import { WEBSITE_SPEC } from "./e2e/website.mjs";
 
 export default defineConfig({
   testDir: "./e2e",
@@ -42,7 +43,7 @@ export default defineConfig({
   projects: [
     ...VIEWPORTS.map((v) => ({
       name: v.id,
-      testIgnore: ZONEN_SPEC,
+      testIgnore: [ZONEN_SPEC, WEBSITE_SPEC],
       use: { browserName: "chromium", viewport: { width: v.w, height: v.h }, hasTouch: v.w < 1000 },
     })),
     ...ZONEN_PROJEKTE.map((z) => ({
@@ -50,5 +51,7 @@ export default defineConfig({
       testMatch: ZONEN_SPEC,
       use: { browserName: "chromium", viewport: { ...ZONEN_VIEWPORT }, hasTouch: true, timezoneId: z.timezoneId },
     })),
+    /* WEBSITE-W2: Prüfsatz der statisch gebauten Website (e2e/website-pruefsatz.spec.mjs); die Breiten setzt die Spec selbst. */
+    { name: "website", testMatch: WEBSITE_SPEC, use: { browserName: "chromium", viewport: { width: 1280, height: 800 } } },
   ],
 });
