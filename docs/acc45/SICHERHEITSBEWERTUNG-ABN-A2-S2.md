@@ -6,7 +6,8 @@ Stand: 2026-11-24 · Umfangsklasse SICHERHEIT-QUALITAET · Bewertung und Vorschl
 |---|---|
 | Basis | `integration/release-v4` @ `09ca5a2c` |
 | Kandidat | `release/rc-2026-11-22` @ `517993ca` (PR #489) — in diesem Paket **unverändert** |
-| Produktion (Repo-Stand) | `main` @ `a5b49709` |
+| `main` (Repo-Stand) | `a5b49709` — Bremsverhalten wie der Kandidat |
+| Produktion (deployt) | `274bfa0` (Stand laut Betreiberbericht; Digest hier nicht geprüft) — **anderer Code**, siehe §1.3 |
 | Vorarbeit | `ABNAHME-V4-A2-RISIKOBEWERTUNG.md` (#282, Stand 2026-11-13, Basis `ca45a0a2`, Vergleich mit PR #277) |
 | Neue Prüfungen | `pruefungen/abn-a2-s2-sicherheit.test.js` (echte Handler, echte Grenzwerte, feste Uhr, nur Testdaten) |
 | Behebung in diesem Paket | ABN-A2 Kernfehler: eigener Commit, nur `server/funktionen/einladung.mjs` (Reihenfolge Rolle → Zähler; **keine** Grenzwertänderung) |
@@ -26,7 +27,9 @@ Zeilenangaben beziehen sich auf den Kopf dieses Branches. Wo der Kandidat abweic
 | Angreifer | jede angemeldete Person, auch Beschäftigte, SV, Betriebsrat, Demo | jeder, ohne Konto; ≈ 45 bzw. ≈ 134 Herkunftsgruppen (IPv4-Adresse oder IPv6-/64) |
 | Wirkung | eigener Betrieb: Einladen **und** Zurückziehen 30 min (steigend) gesperrt; mit 4 Betrieben: installationsweit Einladen, Zurückziehen und Betreiberwege ≤ 10 min, erneuerbar | Stufe 1: Betreiber-Neuanmeldung und Einlösen 429; Stufe 2: zusätzlich jede Zugangscode-Anmeldung; je ≤ 5 min, erneuerbar |
 | Vertraulichkeit/Integrität | nicht betroffen | nicht betroffen (getestet: kein Zugang, kein Orakel) |
-| Kandidat `517993ca` / Produktion `a5b49709` | Fehler vorhanden (gleicher Code) | Befund vorhanden (gleicher Code) |
+| Kandidat `517993ca` / `main` `a5b49709` | Fehler vorhanden (gleicher Code) | Befund vorhanden (gleicher Code) |
+| Produktion `274bfa0` (§1.3) | nicht vorhanden (`server/funktionen/einladung.mjs` gibt es dort nicht) | **vorhanden und schwerer**: schon Stufe 1 sperrt jede Zugangscode-Anmeldung, auch gültige Leitungscodes |
+| Geltung der Annahme | Kandidat bzw. Release v4 | **nur** Kandidat bzw. Release v4, nicht der deployte Stand |
 | Schweregrad (vorher) | **Mittel** | **Mittel** |
 | Wahrscheinlichkeit | Mittel (Innentäter mit niedrigster Rolle genügt) | Niedrig bis mittel (Herkunftspool nötig; IPv6 billig) |
 | Ergebnis dieses Pakets | **BEHOBEN** im Kern (Commit 2); Restrisiko R-A2-1 (Niedrig) und R-A2-2 (Bedienung) bleiben | **nicht behoben**; minimaler Fix beschrieben (S2-b, S2-a) |
@@ -52,6 +55,17 @@ Zeilenangaben beziehen sich auf den Kopf dieses Branches. Wo der Kandidat abweic
 - SI-P7-Durchlass: Ein nutzbarer Code (kein Betreiber) geht an Herkunftssperre, Betriebs- und Gesamtgrenze vorbei (`daten.mjs:964-986`), solange der Dienst-Deckel nicht gerissen ist (`gueltigeDurchlassen`, `schutz.mjs:1558-1562`). Betreibercodes nie (`daten.mjs:972`, `eintragV.rolle !== "betreiber"`).
 - Kein Ratenlimit vor dem Dienst im Repo (`deploy/` enthält keine Proxy-Ratenbegrenzung; `git grep -i "rate_limit\|limit_req" -- deploy` leer).
 
+### 1.3 Deployter Produktionsstand `274bfa0` (Korrektur nach Review #534, A1)
+
+Geprüft mit `git show 274bfa0:…`:
+
+- ABN-A2: `server/funktionen/einladung.mjs` existiert dort nicht. Der Befund besteht in Produktion nicht.
+- ABN-S2: vorhanden und **schwerer** als im Kandidaten:
+  - `bremse("anmelden", k, zielRaum)` läuft vor jeder Codeprüfung (`daten.mjs:556` auf `274bfa0`). Es gibt keinen SI-P7-Durchlass, keine Sperrversuche, keinen Dienst-Deckel und kein `failClosed` (`schutz.mjs:170`, `:221` auf `274bfa0`: 8/300 s je Herkunft, Gesamt 400/300 s).
+  - Herkunft = erster Eintrag von `X-Forwarded-For` (`schutz.mjs:254` auf `274bfa0`), IPv6 nicht je /64 gruppiert, keine Vertrauensliste.
+  - Folge: Schon Stufe 1 (≈ 45 Herkünfte × 9) sperrt **jede** Zugangscode-Anmeldung, auch einen gültigen Leitungscode. Mit IPv6 genügt dafür vermutlich ein einziger Host. Ob Caddy `X-Forwarded-For` überschreibt, ist im Repo auf `274bfa0` nicht prüfbar; wenn nicht, reicht ein gefälschter Kopf.
+- Die Bewertung, die Tests und die Annahmetexte dieses Dokuments gelten deshalb **nur für den Kandidaten bzw. Release v4**. Für den deployten Stand ist ABN-S2 vorhanden und schwerer; Release v4 verbessert ihn.
+
 ---
 
 ## 2. Bedrohungsmodell
@@ -65,6 +79,10 @@ Zeilenangaben beziehen sich auf den Kopf dieses Branches. Wo der Kandidat abweic
 Schutzgüter: Verfügbarkeit von Einladen, **Zurückziehen eines Zugangs** (Reaktion auf einen kompromittierten Code), Betreiber-Neuanmeldung, Einlösen. Nicht betroffen: Vertraulichkeit und Integrität der Betriebsdaten (kein Weg erteilt Zugang oder verrät Codes; Abschnitt 6).
 
 Annahmen: ein Prozess je Ablage (`prozesssperre.mjs`), Zähler in der Ablage bzw. im Prozessspeicher; kein Reverse-Proxy-Ratenlimit.
+
+**Voraussetzung für alle Herkunftszahlen (Review #534, A2 d):** `CENTRIC_VERTRAUTE_PROXYS` ist gesetzt (nur Caddys feste Adresse). Ist sie leer, sieht der Dienst nur die Proxy-Adresse: Alle Nutzer teilen sich eine Herkunft, und schon 9 Fehlversuche einer einzigen Person sperren Betreiber-Neuanmeldung und Einlösen. `deploy/deploy.sh:170-171` bricht deshalb ab, wenn der Wert leer ist.
+
+**IPv6 (A2 c):** Wer ein Präfix /56 oder größer hat, verfügt über ≥ 256 getrennt gezählte /64-Gruppen. Ist der Dienst über IPv6 erreichbar, erreicht ein solcher Angreifer Stufe 2 (≥ 134 Gruppen) von einer Maschine aus.
 
 ---
 
@@ -120,7 +138,7 @@ Keine Sitzung, keine Rolle, kein Wissen über Codes. Nur Herkunftsgruppen.
 | Leitung/Beschäftigte mit gültigem Zugangscode | 200 (SI-P7) | **429** |
 | Einladung einlösen (gültiges Token) | **429** | **429** |
 | bestehende Sitzungen (Lesen) | 200 | 200 |
-| Kontoanmeldung (E-Mail/Passwort, eigene Art `anmelden-konto`, `schutz.mjs:421`, 493) | frei (anderer Zähler; nicht in diesem Paket erneut geprüft) | frei (dto.) |
+| Kontoanmeldung (E-Mail/Passwort, eigene Art `anmelden-konto`, `schutz.mjs:421`, 493) | nach Code frei (anderer Zähler); **nicht geprüft** | dto. |
 | Zurückziehen eines Zugangs | nur mit Sitzung < 20 min (`daten.mjs:208`, 579) | dto. |
 | Nach Fensterende | alles frei, Einladung nicht verbraucht | alles frei |
 
@@ -166,8 +184,9 @@ Echte Grenzwerte (die Datei hebt nichts an; der erste Test prüft die Zahlen). F
 | Grenzwerte | Zahlen in Abschnitt 1 stimmen | grün | grün |
 | A2-1 | Beschäftigte, Planung, Betriebsrat je 12× → nur 403; Leitung desselben Betriebs lädt ein (200) und zieht zurück (≠ 429) | **rot** (429 ab dem 11. Aufruf) | grün |
 | A2-2 | Beschäftigte in 4 Räumen je 12× → fremde Leitung lädt ein und zieht zurück, Betreiber zieht zurück | **rot** | grün |
-| A2-3 | Rateschutz unverändert: Leitung mit älterer Anmeldung, falscher Code → 403 bis zur Sperre, dann 429 mit Retry-After > 1700 s; richtiger Code während der Sperre 429 | grün | grün |
+| A2-3 | Rateschutz unverändert: Leitung mit älterer Anmeldung, Rückfrage + falscher Code: genau 9 × 403, dann 429 (exakt, fällt bei Grenzwert 10 → 11 auf; H2) mit Retry-After > 1700 s; richtiger Code während der Sperre 429 | grün | grün |
 | A2-4 | ohne Sitzung (401), gefälschtes Merkmal (401), Demo-Leitung (403) je 12× → echte Leitung lädt ein | **rot** (Demo füllte den Raumzähler) | grün |
+| A2-6 | Vorbremse: Beschäftigte 120 Aufrufe in 60 s → 403, Aufruf 121 → 429 (`schreiben` je Person); die Leitung bleibt frei. Mutation „Vorbremse weg“ macht ihn rot (Review #534, H1) | rot (429 schon ab Aufruf 11, Raumzähler) | grün |
 | A2-5 | Restrisiko R-A2-1 festgehalten: Leitungen in 4 Räumen → fremde Leitung und Betreiber 429; nach dem Fenster frei | grün | grün |
 | S2-1 | eine Herkunft, 80 Fehlversuche: 8 × 401, Rest 429, kein Token; Betreiber und Leitung von anderswo 200 | grün | grün |
 | S2-2 | Stufe 1 (45 × 9): kein Token, ein Fehlertext; Betreiber 429, Einlösen 429 (Ist), Leitung 200, Sitzung liest; nach Fensterende Betreiber 200, Einlösen 200 | grün | grün |
@@ -183,7 +202,7 @@ Lücken aus #282 §3.4: **G4 ist jetzt geschlossen** (S2-2, S2-3). G1, G2, G3, G
 
 1. **ABN-A2: BEHEBEN.** Commit 2 dieses PR mergen (nach unabhängigem Sicherheitsreview). Danach bleibt R-A2-1 (Niedrig). Der Koordinator kann den SSOT-Status nach Review nachziehen; bis zu einer Entscheidung über #277/X-Z bleibt ein Restrisiko, das G9 nur über eine Annahme freigibt.
 2. **ABN-S2: TEILWEISE.** Für den Pilot Form I (wenige, bekannte Betriebe, synthetische Daten) mit Auflagen annehmen: Betriebsregel S2-e (Betreiber meldet sich vor Eingriffen an und hält eine frische Sitzung) und S2-d (Alarm auf `anmelden · gebremst (gesamt)`, wenn möglich Proxy-Ratenbegrenzung). S2-b als kleiner Folge-PR vor Pilot Form II; S2-a als eigenes Paket.
-3. #277 nicht in der heutigen Form mergen (Basis `ca45a0a2` veraltet). Wenn der Betreiber R-A2-2 beheben will: neu aufsetzen auf diesem Fix, mit X1 und G1/G3/G5.
+3. #277 nicht in der heutigen Form mergen (Basis `ca45a0a2` veraltet; Konflikt mit #534 in `einladung.mjs` und `package.json`). Wenn der Betreiber R-A2-2 beheben will: neu aufsetzen auf diesem Fix, mit X1 und G1/G3/G5.
 
 ### 7.1 Annahmetext-Vorschläge für die Freigabedatei (G9, `akzeptierteBefunde`) — NUR VORSCHLAG
 
@@ -194,7 +213,7 @@ Der Betreiber entscheidet und darf den Wortlaut ändern. Dieser PR trägt nichts
 ```
 
 ```json
-{ "id": "ABN-S2", "grund": "Vorbestehend, in Produktion gleich. Angenommen für den Pilot Form I: Eine Flut falscher Zugangscodes aus etwa 45 (Stufe 1) bzw. 134 (Stufe 2) Herkünften verzögert für je bis zu 5 min die Betreiber-Neuanmeldung und das Einlösen, ab Stufe 2 auch Code-Anmeldungen; bestehende Sitzungen, Kontoanmeldung, Daten nicht betroffen (Negativtests S2-1 bis S2-3). Auflagen: Betriebsregel frische Betreibersitzung vor Eingriffen (S2-e), Alarm auf 'anmelden · gebremst (gesamt)' (S2-d); S2-b vor Pilot Form II." }
+{ "id": "ABN-S2", "grund": "Vorbestehend; in Produktion 274bfa0 vorhanden und schwerer (dort sperrt schon Stufe 1 jede Zugangscode-Anmeldung); die Annahme gilt nur für den Kandidaten bzw. Release v4. Angenommen für den Pilot Form I: Eine Flut falscher Zugangscodes aus etwa 45 (Stufe 1) bzw. 134 (Stufe 2) Herkünften verzögert für je bis zu 5 min die Betreiber-Neuanmeldung und das Einlösen, ab Stufe 2 auch Code-Anmeldungen. Ein Angreifer mit IPv6-Präfix /56 oder größer erreicht Stufe 2 von einer Maschine aus, falls der Dienst über IPv6 erreichbar ist. Die Zahlen setzen eine gesetzte CENTRIC_VERTRAUTE_PROXYS voraus; ist sie leer, sperren schon 9 Fehlversuche einer Person Betreiber-Neuanmeldung und Einlösen (deploy.sh erzwingt den Wert). Bestehende Sitzungen und Daten nicht betroffen (Negativtests S2-1 bis S2-3); Kontoanmeldung nach Code nicht betroffen (eigener Zähler), in diesem Paket nicht geprüft. Auflagen: Betriebsregel frische Betreibersitzung vor Eingriffen (S2-e), Alarm auf 'anmelden · gebremst (gesamt)' (S2-d); S2-b vor Pilot Form II." }
 ```
 
 ---
@@ -204,6 +223,6 @@ Der Betreiber entscheidet und darf den Wortlaut ändern. Dieser PR trägt nichts
 1. Commit 2 (ABN-A2-Fix) annehmen — ja/nein.
 2. ABN-A2 nach dem Fix: Restrisiko R-A2-1 annehmen oder X-Z beauftragen.
 3. ABN-S2: Annahme für Pilot Form I mit Auflagen S2-e/S2-d — ja/nein; S2-b-Grenzwert (Vorschlag: je Herkunft wie `anmelden`, Gesamt 200 je 300 s) beauftragen.
-4. #277: schließen oder auf diesem Fix neu aufsetzen.
+4. #277: schließen oder auf diesem Fix neu aufsetzen. #277 konfligiert mit #534 in `server/funktionen/einladung.mjs` und `package.json` (Review #534, H6). Die Bewertung empfiehlt Neuaufsetzen (§7 Nr. 3); die Wahl ist eine Betreiberfrage.
 
-Unabhängiges Sicherheitsreview dieses PR: steht aus (frischer Opus).
+Unabhängiges Sicherheitsreview #534 (Opus, Kopf `06c23e9c`): FREIGEGEBEN MIT AUFLAGEN, kein Blocker am Code. Auflagen A1, A2, H1, H2, H6 im Folgecommit umgesetzt.

@@ -188,9 +188,9 @@ describe("ABN-A2: Einladungsbremse — Rollen ohne Rollenvergabe sperren niemand
     for (let i = 0; i < 10; i++) {
       st.push((await einladen(leitung.token, { personId: "z1", bestaetigung: { zugangscode: `FALS-CHXX-${String(i).padStart(4, "0")}` } })).status);
     }
-    /* Die Rückfrage oben zählt mit (Ist-Stand): Spätestens der 10. Fehlversuch ist gebremst. */
-    expect(st.filter((s) => s === 403).length).toBeGreaterThanOrEqual(9);
-    expect(st.every((s) => s === 403 || s === 429)).toBe(true);
+    /* Die Rückfrage oben zählt mit (Ist-Stand): Aufruf 11 ist der 10. Fehlversuch und wird gebremst. Exakt, damit
+       auch eine Grenzwertänderung (10 → 11) hier auffällt (Review #534, H2). */
+    expect(st).toEqual([...Array(9).fill(403), 429]);
     const gesperrt = await einladen(leitung.token, { personId: "z1", bestaetigung: { zugangscode: "FALS-CHXX-9999" } });
     expect(gesperrt.status).toBe(429);
     expect(Number(gesperrt.retryAfter)).toBeGreaterThan(1700);
@@ -211,6 +211,26 @@ describe("ABN-A2: Einladungsbremse — Rollen ohne Rollenvergabe sperren niemand
     }
     const e = await einladen(leitung.token, { personId: "z2" });
     expect(e.status, e.roh).toBe(200);
+  });
+
+  it("A2-6 Vorbremse: eine Rolle ohne Rollenvergabe bekommt nach 120 Aufrufen in 60 s 429 (schreiben je Person) — nur sie, die Leitung bleibt frei (Review #534, H1)", async () => {
+    const raum = "abn-a2-vorbremse";
+    await raumAnlegen(raum);
+    const leitung = await sitzung(raum, "leitung", "l1");
+    const s = await sitzung(raum, "mitarbeiter", "m1");
+    /* Uhr je Aufruf auf denselben 60-s-Abschnitt zurückstellen: neuesFenster() steht 1 s nach einem 600-s-Beginn,
+       also auch nach einem 60-s-Beginn. So liegen alle 121 Aufrufe sicher in einem Fenster der Art schreiben. */
+    const t0 = Date.now();
+    const st = [];
+    for (let i = 0; i < 121; i++) {
+      vi.setSystemTime(t0 + i * 10);
+      st.push((await einladen(s.token, { personId: "z1" })).status);
+    }
+    expect(st.slice(0, 120).every((x) => x === 403), "die ersten 120 sind Rollenabsagen").toBe(true);
+    expect(st[120], "Aufruf 121: Vorbremse schreiben je Person").toBe(429);
+    vi.setSystemTime(t0 + 2000);
+    const e = await einladen(leitung.token, { personId: "z1" });
+    expect(e.status, `Leitung frei: ${e.roh}`).toBe(200);
   });
 
   it("A2-5 Restrisiko R-A2-1 (Ist-Verhalten, festgehalten): Leitungen aus vier Räumen füllen die Gesamtgrenze — eine fremde Leitung und der Betreiber warten bis zum Fensterende", async () => {
