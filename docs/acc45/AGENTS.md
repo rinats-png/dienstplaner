@@ -183,3 +183,16 @@ Drei Repo-Werkzeuge beschleunigen die Arbeit, ohne neue Software, Hooks oder glo
   - Übernommen wird eine verwaiste Sperre: eines toten Prozesses, älter als 2 Stunden, oder leer bzw. unlesbar und
     älter als 2 Minuten. Die Übernahme ist atomar (umbenennen, vergleichen).
 - `ACC45_LOKAL` wird über den echten Pfad geprüft; ein Link oder eine Junction ins Repo wird abgelehnt.
+
+**`werkzeug/skill-pruefen.mjs`**: Vorfilter für fremde Skills, Plugins und Agentenanweisungen. Pflicht vor der Übernahme.
+
+    node werkzeug/skill-pruefen.mjs <Verzeichnis oder Datei> [--sperre <skill.lock.json> [--sperre-schreiben]] [--json]
+
+- Nur lesend: Dateiliste, SHA-256 je Datei und gesamt (LF-normalisiert), Textmuster mit `Datei:Zeile` (Netz, Prozesse,
+  Geheimnisse, Konfiguration/Rechte, Hinweise auf Anweisungen an Agenten). Kein Netz, kein Ausführen, Symlinks werden
+  abgelehnt. Grenzen: 2000 Dateien, 5 MB je Datei, Tiefe 20.
+- Das Urteil ist immer „MENSCHLICHE PRÜFUNG ERFORDERLICH“. Keine Funde heißt nicht sicher; Prompt-Injection im Fließtext
+  ist nicht zuverlässig erkennbar. Das Werkzeug ersetzt keine menschliche Prüfung. Rückgabe 0 heißt nur: Lauf ok.
+- `--sperre-schreiben` legt die Sperrdatei neu an (nie überschreibend); `--sperre` prüft gegen sie (Abweichung: Rückgabe 1).
+  Prüfung: `pruefungen/skill-pruefen.test.js` (`npm run pruefung:acc45-werkzeuge`, im CI-Gate). Muster nach dem Prinzip
+  von Kordant (MIT), eigene Umsetzung.
