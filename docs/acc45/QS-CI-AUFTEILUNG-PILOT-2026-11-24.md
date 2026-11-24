@@ -62,15 +62,60 @@ Gemessen (GitHub-API, `gh run view --json jobs`; Wand = Lauf erstellt bis letzte
 | cd3f0ec7 (E2E_WORKERS 4, Lauf 1) | 45395838371 | pull_request | success | 39 s | 638 s (10,6 min) | 527 s | 590 s | 591 s | 386 s |
 | 93797b37 (E2E_WORKERS 4, Lauf 2) | 45397761713 | push | success | 2 s | 640 s (10,7 min) | 477 s | 568 s | 638 s | 475 s |
 | 93797b37 (E2E_WORKERS 4, Lauf 2) | 45397770110 | pull_request | success | 13 s | 716 s (11,9 min) | 588 s | 665 s | 653 s | 367 s |
+| e9a5ce81 (E2E_WORKERS 4, Lauf 3) | 45399840458 | push | success | 3 s | 659 s (11,0 min) | 513 s | 656 s | 652 s | 503 s |
+| e9a5ce81 (E2E_WORKERS 4, Lauf 3) | 45399850052 | pull_request | success | 14 s | 639 s (10,7 min) | 589 s | 549 s | 511 s | 380 s |
+
+Auswertung (gemessen, getrennt von der Schätzung):
+
+| Größe | vorher (gemessen) | f1 allein (6 Läufe, gemessen) | f1 + E2E_WORKERS 4 (Läufe siehe Tabelle, gemessen) | Schätzung vorab |
+|---|---|---|---|---|
+| Wand je Lauf | 1884 s (c61a6dba); Analyse: 24,5 bis 31 min | 628 bis 706 s, Median 689 s (11,5 min) | 638 bis 716 s, Median 650 s (10,8 min) | ca. 11 min |
+| längster Prüf-Teil | `pruefen` 1485 bis 1882 s | 586 bis 704 s | 589 bis 680 s | 583 s + 15 s Einstieg |
+| browser-abnahme | 535 bis 674 s | 560 bis 680 s | 367 bis 503 s | 2 bis 4 min weniger (Hypothese) |
+| Queue | 2 s | 2 bis 34 s | 2 bis 39 s | 0 bis 3 s |
+| Ergebnis | grün | 6 von 6 grün | 6 von 6 grün | |
+
+- f1 senkt die Wand von ca. 31 min auf ca. 11,5 min (gemessen). Die Runner-Zeit steigt um ca. 2 x (Einstieg ca. 15 s) plus
+  Streuung; Summe der Prüf-Teile 1600 bis 1830 s gegen 1882 s vorher (ein Job lief länger als die Summe der Teile).
+- Streuung je Teil: bis ca. 150 s zwischen Läufen (Bildbau 10 bis 57 s, Gate-Proben 100 bis 125 s, BE-2 A1 213 bis 232 s).
+- E2E_WORKERS 4: Browser-Job ca. 35 % schneller (Playwright 8,5 min auf 5,9 bis 6,0 min, gleiche Zahl: 752 Tests,
+  218 bestanden, 534 übersprungen, kein „flaky“, `retries: 0`). Die Wand sinkt dadurch NICHT: Nach f1 bestimmen die
+  Prüf-Teile die Wand (ca. 10,5 bis 12 min). Nutzen erst mit einer Teilung in 4 Prüf-Jobs.
+- Flakes: in allen Läufen des Pilots kein roter Schritt. Keine Wiederholung, kein Re-run.
 
 ## 4. Risiken
 
-(wird nach den Läufen gefüllt)
+- **G1 (Release-Gate):** `pflichtChecks` nennt jetzt `pruefen-a/b/c` statt `pruefen`. Ein Kandidat VOR der Aufteilung
+  (z. B. 517993ca) ist mit dem NEUEN Werkzeug G1-NO-GO („Pflicht-Check fehlt: pruefen-a“). Das ist die sichere Richtung
+  (fail-closed). Das Release-Gate läuft auf `main` mit dem Werkzeug des Kandidaten (G10: seit dem Kandidaten nur Liste und
+  Freigabe); Werkzeug und Workflow stammen also aus demselben Commit. Wer von Hand mit einem neueren Werkzeug einen älteren
+  Kandidaten prüft, bekommt NO-GO. Ein Test bindet die Liste an die Jobs von `pruefung.yml`. Unabhängiges Opus-Review nötig.
+- **Reihenfolge/Zustand:** Die Teile sind zusammenhängende Abschnitte der alten Folge. Ein Schritt in b oder c kann sich
+  nicht mehr auf Seiteneffekte früherer Teile verlassen (z. B. Dateien, die ein früherer Schritt erzeugt). In 12 grünen
+  Läufen trat das nicht auf. Port 3000, `$BILD`, Container-Skript und `GITHUB_ENV`-Nachweis liegen nur in `pruefen-c`
+  (Test). Feste Ports kollidieren nicht über Jobs (eigene Runner).
+- **Pflichtchecks später (Branch-Schutz):** heute keiner (API 404). Beim Einrichten die drei Namen eintragen
+  (BETREIBER-BRANCHSCHUTZ.md angepasst). Dort fehlt unabhängig vom Pilot `browser-abnahme` (Befund, nicht geändert).
+- **Neuer Schritt künftig:** Wer einen Schritt anhängt, wählt einen Teil. Die Sammelkette prüft weiter
+  `pruefung:ci-abdeckung`; Schritte außerhalb der Kette prüft die feste Liste in `ci-aufteilung.test.js` nur für die
+  heutigen Pflichtschritte. Die Teile driften mit der Zeit auseinander (neu messen, Schnitte nachziehen).
+- **Parallelität:** 4 statt 2 gleichzeitige Jobs je Lauf (Grenze 20). Bei push + pull_request je Kopf 8 Jobs.
+- **Andere Workflows:** `deploy.yml` ruft `pruefung.yml` per `workflow_call`; `needs: [pruefung]` wartet auf alle Jobs
+  des Aufrufs, also auf alle drei Teile: keine Änderung nötig. Check-Run-Namen dort: „pruefung / pruefen-a“ usw. (G1 zählt
+  sie als Nicht-Pflicht-Checks, sie müssen success/skipped/neutral sein, unverändert). `betrieb-*.yml`, `sicherheit.yml`,
+  `lieferkette.yml`, `lasttest.yml`, `staging-gate.yml` hängen nicht an den Jobnamen (nur Kommentare).
 
 ## 5. Rückbau
 
-(wird nach den Läufen gefüllt)
+- Alles: `git revert` des Merge-Commits (ein Revert). Danach wieder ein Job `pruefen`, G1 wieder `pruefen`.
+- Nur E2E_WORKERS: Revert des Commits „CI-Pilot f3: E2E_WORKERS 4 …“ (getrennt).
+- G1 und Workflow gehören zusammen: nie nur einen der beiden zurücknehmen (der Test `ci-aufteilung` wird sonst rot).
 
 ## 6. Empfehlung
 
-(wird nach den Läufen gefüllt)
+- f1 (Aufteilung + G1): **mergen: ja**, nach unabhängigem Opus-Review von G1 und Vollständigkeit. Gewinn ca. 20 min Wand je
+  Kopf, 12 von 12 Läufen grün, alle Prüfungen unverändert vorhanden.
+- Zeitpunkt: NACH dem laufenden Release v4-r1 (Kandidat 517993ca prüft mit seinem eigenen Werkzeug weiter; kein Kandidat
+  mischt Alt und Neu).
+- E2E_WORKERS 4: **heute nein** (kein Wandgewinn). Erst zusammen mit einer Teilung in 4 Prüf-Jobs neu bewerten. Der
+  Commit steht noch im Zweig; vor einem Merge zurücknehmen (Revert dieses einen Commits), wenn der Auftraggeber so entscheidet.
