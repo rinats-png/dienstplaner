@@ -337,6 +337,8 @@ describe("R-A2-1 behoben: Leitungen anderer Betriebe sperren weder Einladen noch
     const mit = await einladen(o.alt.token, { personId: "z1", bestaetigung: nachweis(o.alt) });
     expect(mit.status, "Rategrenze für Nachweise (40/600 s) voll — Restrisiko, Bewertung §3.5").toBe(429);
     expect(Number(mit.retryAfter)).toBeLessThanOrEqual(600);
+    /* Das Opfer versucht es während der Wartezeit noch zehnmal: Das darf seinen eigenen Raumzähler nicht füllen. */
+    for (let i = 0; i < 10; i++) expect((await einladen(o.alt.token, { personId: "z1", bestaetigung: nachweis(o.alt) })).status).toBe(429);
     const jung = await sitzung("abn-r1-c-opfer", "leitung", "l1");
     const ohne = await einladen(jung.token, { personId: "z2" });
     expect(ohne.status, `ohne Nachweis (junge Anmeldung) frei: ${ohne.roh}`).toBe(200);

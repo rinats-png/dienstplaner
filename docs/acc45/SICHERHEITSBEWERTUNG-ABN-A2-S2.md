@@ -11,6 +11,7 @@ Stand: 2026-11-24 · Umfangsklasse SICHERHEIT-QUALITAET · Bewertung und Vorschl
 | Vorarbeit | `ABNAHME-V4-A2-RISIKOBEWERTUNG.md` (#282, Stand 2026-11-13, Basis `ca45a0a2`, Vergleich mit PR #277) |
 | Neue Prüfungen | `pruefungen/abn-a2-s2-sicherheit.test.js` (echte Handler, echte Grenzwerte, feste Uhr, nur Testdaten) |
 | Behebung in diesem Paket | ABN-A2 Kernfehler: eigener Commit, nur `server/funktionen/einladung.mjs` (Reihenfolge Rolle → Zähler; **keine** Grenzwertänderung) |
+| Nachtrag 2026-11-24 | R-A2-1 behoben (Branch `acc45/sicherheit/abn-a2-r-a2-1`, Basis `84e93879`): eigene Zähler für Einladen und Zurückziehen, **keine** neuen Grenzwerte — §3.5 |
 | Gate-Wirkung | G9 (`werkzeug/release-pruefung.mjs`, `g9Befunde`): ABN-A2 und ABN-S2 bleiben P1/BLOCKED, bis der Koordinator den SSOT-Status ändert oder der Betreiber sie in `akzeptierteBefunde` mit `grund` annimmt |
 
 Die Anforderungen aus P1-6 sind: (a) konkrete Grenzwerte, (b) Angriffsbedingungen, (c) Auswirkung, (d) Alternativen, (e) Negativtests. Abschnitt 3 und 4 decken (a) bis (c), Abschnitt 5 (d), Abschnitt 6 (e).
@@ -32,8 +33,8 @@ Zeilenangaben beziehen sich auf den Kopf dieses Branches. Wo der Kandidat abweic
 | Geltung der Annahme | Kandidat bzw. Release v4 | **nur** Kandidat bzw. Release v4, nicht der deployte Stand |
 | Schweregrad (vorher) | **Mittel** | **Mittel** |
 | Wahrscheinlichkeit | Mittel (Innentäter mit niedrigster Rolle genügt) | Niedrig bis mittel (Herkunftspool nötig; IPv6 billig) |
-| Ergebnis dieses Pakets | **BEHOBEN** im Kern (Commit 2); Restrisiko R-A2-1 (Niedrig) und R-A2-2 (Bedienung) bleiben | **nicht behoben**; minimaler Fix beschrieben (S2-b, S2-a) |
-| Empfehlung | **BEHEBEN** (dieser PR) + Restrisiko annehmen bis zur Entscheidung über #277/X1 | **TEILWEISE**: für den Pilot Form I mit Auflagen annehmen; S2-b als kleiner Folge-PR, S2-a als eigenes Paket |
+| Ergebnis dieses Pakets | **BEHOBEN** im Kern (Commit 2); R-A2-1 **behoben** (Nachtrag §3.5) bis auf den Rest R-A2-1R (Sehr niedrig); R-A2-2 (Bedienung) bleibt | **nicht behoben**; minimaler Fix beschrieben (S2-b, S2-a) |
+| Empfehlung | **BEHEBEN** (#534 + Nachtrag §3.5); Rest R-A2-1R bis zur Entscheidung über X1 | **TEILWEISE**: für den Pilot Form I mit Auflagen annehmen; S2-b als kleiner Folge-PR, S2-a als eigenes Paket |
 
 ---
 
@@ -107,16 +108,46 @@ Belegt durch die neuen Prüfungen A2-1, A2-2, A2-4 (rot auf `09ca5a2c`, Abschnit
 
 | # | Restrisiko | Bedingung | Wirkung | Schwere |
 |---|---|---|---|---|
-| R-A2-1 | Leitungen aus ≥ 4 Räumen füllen `zugaenge:gesamt` | T2: Leitungssitzungen in 4 Betrieben (je ≤ 11 Beiträge); Betriebe legt nur der Betreiber an, Selbstregistrierung ist aus | wie 3.1 Nr. 2: Einladen, Zurückziehen, Betreiberwege ≤ 600 s, erneuerbar; namentlich protokolliert | **Niedrig** (Prüfung A2-5 hält es fest) |
+| R-A2-1 | Leitungen aus ≥ 4 Räumen füllen `zugaenge:gesamt` | T2: Leitungssitzungen in 4 Betrieben (je ≤ 11 Beiträge); Betriebe legt nur der Betreiber an, Selbstregistrierung ist aus | wie 3.1 Nr. 2: Einladen, Zurückziehen, Betreiberwege ≤ 600 s, erneuerbar; namentlich protokolliert | **BEHOBEN** (§3.5); Rest R-A2-1R |
 | R-A2-2 | Die Leitung sperrt sich selbst nach 10 eigenen Aufrufen je Raum und 10 min (mit Rückfrage etwa 5 Einladungen) | Bedienung, kein Angriff | Einrichten eines Betriebs langsam; Umweg Betreiber `/api/zugaenge` (bis 20 je Aufruf) | Bedienung (Test 2.4) |
 | R-A2-3 | Eine übernommene Leitung sperrt durch eigene Aufrufe Einladen und Zurückziehen des **eigenen** Raums | T2 in einem Betrieb | eigener Betrieb 1800 s steigend; Betreiber kann zurückziehen, solange R-A2-1 nicht zugleich läuft | Niedrig (wie vorher, keine Verschlechterung) |
 
-R-A2-1 und R-A2-2 sind genau der Gegenstand von #277 und X1 (Abschnitt 5). Die Behebung macht beides nicht schlechter.
+R-A2-1 und R-A2-2 sind genau der Gegenstand von #277 und X1 (Abschnitt 5). Die Behebung macht beides nicht schlechter. R-A2-1 ist seit dem Nachtrag behoben (§3.5). R-A2-3 ist gemildert: Einladen und Zurückziehen haben getrennte Zähler, eigene Einladungen sperren das Zurückziehen nicht mehr (A2-5d).
 
 ### 3.4 Einstufung
 
 - Vorher: **Mittel** — Verfügbarkeit einer Sicherheitsfunktion (Zurückziehen), mandantenübergreifend, schon mit der niedrigsten Rolle.
-- Nachher: **Niedrig** (R-A2-1) — braucht Leitungsrechte in 4 Betrieben.
+- Nach #534: **Niedrig** (R-A2-1) — braucht Leitungsrechte in 4 Betrieben.
+- Nach dem Nachtrag (§3.5): **Sehr niedrig** (R-A2-1R) — Zurückziehen und Betreiberwege sind von anderen Betrieben unabhängig; installationsweit wartet nur noch das Ausstellen **mit** Nachweis, und nur bei absichtlich falschen Nachweisen aus ≥ 4 Betrieben.
+
+### 3.5 Nachtrag 2026-11-24: Behebung R-A2-1 (Betreiberentscheidung 24.11.: keine dauerhafte Risikoannahme)
+
+**Aufwand (Prüfung vor der Umsetzung).** Vollständige Behebung ohne neue Grenzwerte und ohne Änderung der Gesamtgrenze möglich: rund 60 geänderte Zeilen Code in 3 Dateien, dazu Tests und Doku; Schätzung ≤ 1 PT. Damit unter dem Richtwert (≤ 1,5 PT, ≤ 400 Zeilen): umgesetzt.
+
+**Ursache.** Drei Wege teilten eine Art und damit eine installationsweite Grenze `WEITERE.zugaenge.gesamt` (40/600 s): (1) Ausstellen einer Einladung durch die Leitung (`einladung.mjs`), (2) Zurückziehen durch die Leitung (`daten.mjs`, `zugang-sperren`), (3) Betreiberwege (`/api/zugaenge`, Raumweg, Übersicht, Zurückziehen durch den Betreiber). Leitungen aus vier Betrieben füllten (3) über (1) und (2), auch mit gelungenen Einladungen.
+
+**Änderung (`server/lib/schutz.mjs`, `server/funktionen/einladung.mjs`, `server/funktionen/daten.mjs`).** Getrennte Zähler, alle mit genau den Zahlen von `zugaenge` (10/600 s, Sperre 1800 s steigend bis 86 400 s, fail-closed; Prüfung „Grenzwerte“):
+
+| Zähler (Art) | Schlüssel | Wer zählt | installationsweit |
+|---|---|---|---|
+| `zugaenge` (unverändert) | Betreiberraum | nur noch Betreiberwege und Zurückziehen durch den Betreiber | 40/600 s, wie bisher |
+| `zugang-sperren` (neu, X-Z aus #277) | Betrieb (`kennungBetrieb`, aus #277) | Zurückziehen durch die Leitung, nach Rolle und frischer Anmeldung | **keine** |
+| `einladung` (neu) | Raum | jeder Aufruf zum Ausstellen nach der Rollenprüfung (wie bisher `zugaenge`) | **keine** |
+| `einladung-nachweis` (neu) | Raum | nur Aufrufe **mit** Nachweis (Zugangscode, Passwort, Code aus der App; jede nicht leere Zeichenkette) | 40/600 s, derselbe Wert wie bisher, eigener Zähler |
+
+Regeln für `einladung-nachweis`: gezählt **vor** dem Vergleich (kein Rennfenster). Stimmt der Nachweis, nimmt der Aufruf nur seinen eigenen Gesamtvermerk zurück (`vermerkeZuruecknehmen`, kein Zurücksetzen von Zählern). Prallt der Aufruf an der eigenen Raumsperre ab, wurde nichts verglichen: Vermerk ebenfalls zurück. Falsche Nachweise bleiben überall gezählt. `einladung-nachweis` läuft **vor** `einladung`: Eine volle Gesamtgrenze verbraucht so nicht den Raumzähler des Opfers (wie bisher prüft `bremse()` die Gesamtgrenze vor dem eigenen Zähler).
+
+**Was gleich bleibt.** Rolle vor Zähler (#534, N-1). Rateschutz je Raum: dieselbe Zahl, dieselbe Folge (A2-3 exakt `[9 × 403, 429]`, Sperre > 1700 s, richtiger Code wartet). Die Rückfrage ohne Nachweis zählt je Raum weiter mit. Gesamtgrenze für Nachweisversuche: weiter 40/600 s. Faktorzähler `zweifaktor`, Lastbremse `schreiben` je Person, Einlösen (`anmelden`): unverändert. Betreiber: unverändert `zugaenge` mit Gesamtgrenze.
+
+**Was sich ändert (bewusst).** Zurückziehen zählt je Betrieb statt je Raum (bei einem Betrieb je Raum gleich). Einladen und Zurückziehen derselben Leitung teilen keinen Zähler mehr (R-A2-3 gemildert). Gelungene Einladungen, Rückfragen und Aufrufe ohne Nachweis erreichen keine installationsweite Grenze mehr. Betreiberwege teilen ihre Gesamtgrenze nicht mehr mit Leitungen; für Rateschutz gegen Fehlversuche ist das keine Lockerung, weil Nachweisversuche weiter installationsweit gedeckelt sind.
+
+**Restrisiko R-A2-1R (Sehr niedrig, Ist in A2-5c festgehalten).** Leitungen aus ≥ 4 Betrieben schicken absichtlich je 10 falsche Nachweise ⇒ `einladung-nachweis:gesamt` voll ⇒ in anderen Betrieben wartet **nur das Ausstellen mit Nachweis** bis Fensterende (≤ 600 s). Nicht betroffen: Ausstellen mit junger Anmeldung (≤ 5 min), Zurückziehen (Leitung und Betreiber), alle Betreiberwege, Anmelden, Einlösen. Kosten: je Betrieb danach eigene Sperre 1800 s steigend; erneuern nur mit weiteren Betrieben. Spur: `einladung · abgewiesen` mit Rolle und Person. Entspricht S-1 aus #277. Vollständig entfiele es nur mit X1 (Gesamtgrenze für Nachweise streichen) oder einer Gewichtung je Betrieb — beides ist eine **Betreiberentscheidung** (§8), hier nicht umgesetzt.
+
+**Restschlupf Gleichzeitigkeit (unverändert gegenüber vorher).** Ziel- und Gesamtgrenze zählen in `bremse()` über `await` getrennt; ein gleichzeitiger Schwarm einer Kennung kann mehr als 10 Vermerke in die Gesamtgrenze bringen. Das galt vorher genauso für `zugaenge:gesamt` (dort mit Wirkung auf Zurückziehen und Betreiberwege); jetzt trifft es nur noch das Ausstellen mit Nachweis. Die Abdichtung (`GLEICHZEITIG_DICHT` aus #277) gehört zum Folgepaket (§8).
+
+**Nachweis.** Prüfungen A2-5a, A2-5b, A2-5c, A2-5d, A2-5e und „Grenzwerte“ in `pruefungen/abn-a2-s2-sicherheit.test.js`: rot auf `84e93879` (6 von 15), grün mit der Änderung (15 von 15). Mutationen: siehe PR-Beschreibung.
+
+**Aus PR #277 übernommen / nicht übernommen.** Übernommen: X-Z (`zugang-sperren` je Betrieb ohne Gesamtgrenze), `kennungBetrieb`, gelungene Einladungen nicht mehr in `WEITERE.zugaenge`, die Nachweis-Erkennung (`mitNachweis`). Nicht übernommen (Folgepaket, Grenzwerte = Betreiberentscheidung): Rateschutz je **Person** (`einladung-nachweis` 10 je Person, Raum 25), Kontingente `einladung-ausstellen` 30 je Person und `einladung-betrieb` 40 je Betrieb (R-A2-2), Entlastung des Personenzählers, `GLEICHZEITIG_DICHT`, X1, G1/G3/G5.
 
 ---
 
@@ -169,7 +200,7 @@ Kein Fix ist klein **und** ohne neue Grenzwertentscheidung:
 | A2-Fix | Rolle vor Zähler (dieser PR) | T1 entfällt vollständig | R-A2-1/-2 bleiben | klein (umgesetzt) |
 | #277 | Zähler je Person, eigene Grenzen für Ausstellen und Nachweise, `zugang-sperren` je Betrieb | zusätzlich R-A2-2 behoben; Zurückziehen unabhängig von Einladungen | lockert Grenzen; S-1 (Nachweis-Gesamtgrenze) neu; Basis veraltet (`ca45a0a2`), muss neu aufgesetzt werden | mittel |
 | X1 | in #277: Gesamtgrenze für Nachweise streichen | S-1 entfällt | keine installationsweite Summe für Fehlversuche | klein (auf #277) |
-| X-Z | `zugang-sperren` aus der Gesamtgrenze `zugaenge` herauslösen (eigene Art je Betrieb, Zahlen wie heute) | R-A2-1 trifft das Zurückziehen nicht mehr | Entscheidung über Grenzwerte nötig | klein |
+| X-Z | `zugang-sperren` aus der Gesamtgrenze `zugaenge` herauslösen (eigene Art je Betrieb, Zahlen wie heute) | R-A2-1 trifft das Zurückziehen nicht mehr | keine neuen Grenzwerte nötig (Zahlen von `zugaenge`) | klein — **umgesetzt** (§3.5), zusammen mit eigenen Zählern fürs Ausstellen |
 | X5 / S2-d | Alarm und Proxy-Ratenbegrenzung | Erkennung in Minuten | verhindert nichts im Fenster | klein (Betrieb) |
 | S2-a, S2-b, S2-c, S2-e | siehe 4.5 und `ABNAHME-V4-A2-RISIKOBEWERTUNG.md` §1.2 | | | |
 
@@ -187,7 +218,12 @@ Echte Grenzwerte (die Datei hebt nichts an; der erste Test prüft die Zahlen). F
 | A2-3 | Rateschutz unverändert: Leitung mit älterer Anmeldung, Rückfrage + falscher Code: genau 9 × 403, dann 429 (exakt, fällt bei Grenzwert 10 → 11 auf; H2) mit Retry-After > 1700 s; richtiger Code während der Sperre 429 | grün | grün |
 | A2-4 | ohne Sitzung (401), gefälschtes Merkmal (401), Demo-Leitung (403) je 12× → echte Leitung lädt ein | **rot** (Demo füllte den Raumzähler) | grün |
 | A2-6 | Vorbremse: Beschäftigte 120 Aufrufe in 60 s → 403, Aufruf 121 → 429 (`schreiben` je Person); die Leitung bleibt frei. Mutation „Vorbremse weg“ macht ihn rot (Review #534, H1) | rot (429 schon ab Aufruf 11, Raumzähler) | grün |
-| A2-5 | Restrisiko R-A2-1 festgehalten: Leitungen in 4 Räumen → fremde Leitung und Betreiber 429; nach dem Fenster frei | grün | grün |
+| A2-5 (bis Nachtrag) | Restrisiko R-A2-1 festgehalten: Leitungen in 4 Räumen → fremde Leitung und Betreiber 429 | grün | ersetzt durch A2-5a…e |
+| A2-5a (Nachtrag) | 4 Leitungen laden je 12× ein und ziehen je 12× zurück → fremde Leitung lädt ein (mit/ohne Nachweis) und zieht zurück, Betreiber zieht zurück | **rot** (`84e93879`) | grün |
+| A2-5b (Nachtrag) | 4 Leitungen je 10 Einladungen mit richtigem Nachweis → fremde Leitung mit Nachweis 200 | **rot** | grün |
+| A2-5c (Nachtrag, Rest R-A2-1R) | 4 Leitungen je 10 falsche Nachweise → fremde Leitung mit Nachweis 429 (≤ 600 s), ohne Nachweis 200, Zurückziehen und Betreiber frei; 10 weitere Versuche des Opfers verbrauchen seinen Raumzähler nicht | **rot** | grün |
+| A2-5d (Nachtrag) | Zurückziehen je Betrieb: 11. Aufruf 429, anderer Betrieb frei; eigene Sperre beim Zurückziehen sperrt das Einladen nicht | **rot** | grün |
+| A2-5e (Nachtrag) | Rückfragen ohne Nachweis und Nachweise, die an der eigenen Raumsperre abprallen, füllen die Rategrenze nicht | **rot** | grün |
 | S2-1 | eine Herkunft, 80 Fehlversuche: 8 × 401, Rest 429, kein Token; Betreiber und Leitung von anderswo 200 | grün | grün |
 | S2-2 | Stufe 1 (45 × 9): kein Token, ein Fehlertext; Betreiber 429, Einlösen 429 (Ist), Leitung 200, Sitzung liest; nach Fensterende Betreiber 200, Einlösen 200 | grün | grün |
 | S2-3 | Stufe 2 (Dienst-Deckel gerissen UND `anmelden:gesamt` voll): 90 Herkünfte je 9 Sperrversuche direkt (810, Leitung noch 200), dann 45 Herkünfte × 17 über HTTP (405 in der Gesamtgrenze, 1215 Sperrversuche): Deckel gerissen, kein Token, Leitung 429 (Ist), Sitzung liest; nach Fensterende 200 | grün | grün |
@@ -209,7 +245,7 @@ Lücken aus #282 §3.4: **G4 ist jetzt geschlossen** (S2-2, S2-3). G1, G2, G3, G
 Der Betreiber entscheidet und darf den Wortlaut ändern. Dieser PR trägt nichts in die Freigabedatei ein.
 
 ```json
-{ "id": "ABN-A2", "grund": "Kernfehler behoben (PR acc45/sicherheit/abn-a2-s2-bewertung: Rollenprüfung vor der Einladungsbremse, Grenzwerte unverändert, Negativtests A2-1 bis A2-5). Angenommenes Restrisiko R-A2-1 (Niedrig): Leitungen aus mindestens vier Betrieben können die installationsweite Grenze zugaenge (40/10 min) füllen und Einladen, Zurückziehen und Betreiberwege anderer Betriebe bis zu 10 min verzögern; protokolliert, Betriebe legt nur der Betreiber an. Bedienrestrisiko R-A2-2 (Leitung nach 10 Aufrufen je 10 min gebremst; Umweg Betreiber). Folgeentscheidung #277/X-Z offen." }
+{ "id": "ABN-A2", "grund": "Kernfehler behoben (#534: Rollenprüfung vor der Einladungsbremse) und R-A2-1 behoben (Nachtrag acc45/sicherheit/abn-a2-r-a2-1: eigene Zähler für Einladen und Zurückziehen, Grenzwerte unverändert, Negativtests A2-1 bis A2-6, A2-5a bis A2-5e). Angenommenes Restrisiko R-A2-1R (Sehr niedrig): Leitungen aus mindestens vier Betrieben können mit absichtlich falschen Nachweisen die Rategrenze für Nachweise (40/10 min) füllen; dann wartet in anderen Betrieben nur das Ausstellen mit Nachweis bis zu 10 min; Zurückziehen, Betreiberwege und Ausstellen mit junger Anmeldung bleiben frei; protokolliert. Bedienrestrisiko R-A2-2 (Leitung nach 10 Aufrufen je 10 min gebremst; Umweg Betreiber). Folgepaket ABN-A2-Folge (#277-Rest, X1) offen." }
 ```
 
 ```json
@@ -221,7 +257,8 @@ Der Betreiber entscheidet und darf den Wortlaut ändern. Dieser PR trägt nichts
 ## 8. Offen für den Betreiber
 
 1. Commit 2 (ABN-A2-Fix) annehmen — ja/nein.
-2. ABN-A2 nach dem Fix: Restrisiko R-A2-1 annehmen oder X-Z beauftragen.
+2. ABN-A2 nach dem Fix: ~~Restrisiko R-A2-1 annehmen oder X-Z beauftragen~~ — entschieden 24.11. (keine dauerhafte Risikoannahme), R-A2-1 behoben (§3.5). Offen: Rest R-A2-1R — X1 (Gesamtgrenze für Nachweise streichen) oder Gewichtung je Betrieb, oder Rest annehmen. Empfehlung: annehmen bis zum Folgepaket (Sehr niedrig, nur Ausstellen mit Nachweis, nur durch absichtliche Fehlversuche aus ≥ 4 Betrieben).
+2a. Folgepaket „ABN-A2-Folge“ (nicht in diesem Nachtrag, Grenzwerte = Betreiberentscheidung, Vorschläge aus #277, **vorläufig**): Rateschutz je Person (`einladung-nachweis` 10 je Person, Raum 25, Gesamt 40), Kontingente `einladung-ausstellen` 30 je Person und `einladung-betrieb` 40 je Betrieb (R-A2-2: Leitung lädt 25 in Folge ein), `GLEICHZEITIG_DICHT`, X1, G1/G3/G5. Nutzungsszenario für die Entscheidung: Eine Leitung richtet einen Betrieb mit 25 Personen in einer Sitzung ein (25 Einladungen in ≤ 10 min); heute schafft sie 10 je 10 min (mit Rückfrage etwa 5), danach 30 min Sperre. Mit 30/40 schafft sie 25 in Folge; bei 5 gleichzeitig einrichtenden Betrieben je 25 entsteht keine installationsweite Wirkung, weil gelungene Einladungen seit diesem Nachtrag keine Gesamtgrenze mehr erreichen.
 3. ABN-S2: Annahme für Pilot Form I mit Auflagen S2-e/S2-d — ja/nein; S2-b-Grenzwert (Vorschlag: je Herkunft wie `anmelden`, Gesamt 200 je 300 s) beauftragen.
 4. #277: schließen oder auf diesem Fix neu aufsetzen. #277 konfligiert mit #534 in `server/funktionen/einladung.mjs` und `package.json` (Review #534, H6). Die Bewertung empfiehlt Neuaufsetzen (§7 Nr. 3); die Wahl ist eine Betreiberfrage.
 
