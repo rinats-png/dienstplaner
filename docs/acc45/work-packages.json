@@ -6755,7 +6755,7 @@
       "akzeptanz": "Website mit V4-Logo und V4-Palette; Quelle liegt lokal ohne Remote (centric-website bd7d155); Veröffentlichung nur auf Freigabe; zeitlich nach dem Hauptauftrag laut Betreiberentscheidung 2026-11-04 (v4-entscheidungen)",
       "tests": "Unit, E2E",
       "dateien": "centric-website/",
-      "notiz": "Analyse 2026-11-20 (V4-Integrationsstand); PT sind Schätzung der Analyse, nicht belegt."
+      "notiz": "Analyse 2026-11-20 (V4-Integrationsstand); PT sind Schätzung der Analyse, nicht belegt. 2026-11-24 W1: Quelle gesichert unter website/ (build.py, assets, DIST-SHA256, Test pruefungen/website-quelle.test.js); Bau byte-gleich zu lokalem dist, Archiv website/dist und Live (15 Dateien). Umstellung auf V4 steht weiter aus."
     },
     {
       "id": "V4-6",
