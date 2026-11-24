@@ -4,6 +4,7 @@
    docs/acc45/WP-33-PLAYWRIGHT-AXE.md. Aufruf: npm run e2e (vorher einmal: npx playwright install chromium). */
 import { defineConfig } from "@playwright/test";
 import { BASIS, VIEWPORTS, RAEUME_HOECHSTENS } from "./e2e/umgebung.mjs";
+import { ZONEN_PROJEKTE, ZONEN_SPEC, ZONEN_VIEWPORT } from "./e2e/zonen.mjs";
 
 export default defineConfig({
   testDir: "./e2e",
@@ -36,8 +37,18 @@ export default defineConfig({
     video: "off",
     screenshot: "off",
   },
-  projects: VIEWPORTS.map((v) => ({
-    name: v.id,
-    use: { browserName: "chromium", viewport: { width: v.w, height: v.h }, hasTouch: v.w < 1000 },
-  })),
+  /* ZEIT-F (T-E2E-TZ): Die acht Viewport-Projekte laufen in der Zeitzone des Rechners (CI: UTC) und lassen die Zonen-Spec
+     aus; die Zonenprojekte (e2e/zonen.mjs) fahren nur sie, mit festgelegter Browser-Zeitzone. */
+  projects: [
+    ...VIEWPORTS.map((v) => ({
+      name: v.id,
+      testIgnore: ZONEN_SPEC,
+      use: { browserName: "chromium", viewport: { width: v.w, height: v.h }, hasTouch: v.w < 1000 },
+    })),
+    ...ZONEN_PROJEKTE.map((z) => ({
+      name: z.name,
+      testMatch: ZONEN_SPEC,
+      use: { browserName: "chromium", viewport: { ...ZONEN_VIEWPORT }, hasTouch: true, timezoneId: z.timezoneId },
+    })),
+  ],
 });
