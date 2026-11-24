@@ -1,9 +1,11 @@
 // WEBSITE-W1: Die Quelle der oeffentlichen Website (website/) baut ohne Netz,
 // deterministisch und byte-gleich zur Pruefsummenliste website/DIST-SHA256.
 // Gebaut wird nur in Temp-Verzeichnisse (CENTRIC_OUT), nie in den Repo-Baum.
-// Ohne Python 3 auf dem Rechner laufen die Bauproben als skip (in der CI ist
-// Python vorhanden); die Dateiproben laufen immer.
+// Ohne Python 3 laufen die Bauproben lokal als skip (Hinweis: WEBSITE_PYTHON); in der CI
+// (Umgebungsvariable CI gesetzt) ist fehlendes Python ein Fehler, kein stilles Ueberspringen
+// (e2e/website.mjs, bauModus). Die Dateiproben laufen immer.
 import { describe, it, expect } from "vitest";
+import { pythonFinden, bauModus, PYTHON_FEHLT_TEXT } from "../e2e/website.mjs";
 import { spawnSync } from "node:child_process";
 import {
   cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync,
@@ -16,16 +18,12 @@ const WURZEL = resolve(import.meta.dirname, "..");
 const WEB = join(WURZEL, "website");
 const LISTE = join(WEB, "DIST-SHA256");
 
-function python() {
-  const kandidaten = [process.env.WEBSITE_PYTHON, "python3", "python", "py"].filter(Boolean);
-  for (const k of kandidaten) {
-    const r = spawnSync(k, ["--version"], { encoding: "utf8" });
-    if (r.status === 0 && /^Python 3/.test(`${r.stdout}${r.stderr}`)) return k;
-  }
-  return null;
-}
-const PY = python();
-const bauprobe = PY ? it : it.skip;
+const PY = pythonFinden();
+const MODUS = bauModus(PY);
+/* lauf: normal; fehler (kein Python in der CI): jede Bauprobe schlägt mit klarem Text fehl; skip: lokal übersprungen. */
+const bauprobe = MODUS === "lauf" ? it
+  : MODUS === "fehler" ? (name) => it(name, () => { throw new Error(PYTHON_FEHLT_TEXT); })
+    : it.skip;
 
 function dateien(wurzel) {
   const aus = [];

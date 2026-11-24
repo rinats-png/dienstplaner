@@ -52,10 +52,27 @@ Die Archiv-Summe `69f51e70...84c8` (`SHA256SUMS` auf `website/dist`) gilt fuer d
 tgz als Ganzes. Der tar-Container ist nicht Teil dieser Liste.
 
 Pruefung im Repo: `pruefungen/website-quelle.test.js` (Teil von
-`npm run pruefung:wcag-wp40`). Der Test baut zweimal in Temp-Ordner, vergleicht
+`npm run pruefung:smoke-tageswechsel`). Der Test baut zweimal in Temp-Ordner, vergleicht
 jede Datei mit `DIST-SHA256` und stellt sicher, dass nichts im Repo-Baum entsteht.
-Ohne Python 3 auf dem Rechner laeuft der Bau-Teil als `skip`; Umgebungsvariable
-`WEBSITE_PYTHON` nennt dann den Interpreter.
+Ohne Python 3 auf dem Rechner laeuft der Bau-Teil lokal als `skip`; Umgebungsvariable
+`WEBSITE_PYTHON` nennt dann den Interpreter. In der CI (Umgebungsvariable `CI`
+gesetzt) ist fehlendes Python ein Fehler, kein stilles Ueberspringen.
+
+## Pruefsatz (Paket W2)
+
+`e2e/website-pruefsatz.spec.mjs` (Projekt `website` in `playwright.config.mjs`, laeuft
+in `npm run e2e`; lokal `npx playwright test --project=website`, `WEBSITE_PYTHON`
+setzen). Er baut diese Quelle in einen Temp-Ordner, bedient ihn auf 127.0.0.1 und
+prueft alle 15 Seiten bei 320, 390, 768 und 1280 px: kein Seitenscroll, keine
+Konsolenfehler und keine fremden Anfragen, axe (WCAG 2.x A/AA, hell und dunkel),
+interne Links, `mailto:`-Format, Pflichtseiten im Footer, Preise gegen
+`src/stufen.js` und `src/standorte.js`.
+
+Bestehende Verstoesse der V3-Seite stehen in `e2e/website-axe-ausnahmen.json`
+(Grund "V3-Bestand", Behebung in W5); die ausgelieferten Bytes aendert der
+Pruefsatz nicht. Neue Verstoesse oder mehr betroffene Knoten schlagen fehl. Die
+vier Branchenpaket-Preise sind die benannte Abweichung F1 (siehe Offen): der Test
+haelt den Ist-Zustand fest und wird bei Umsetzung von F1 absichtlich rot.
 
 Eine bewusste Aenderung an `build.py` oder an `assets/` aendert die Bytes. Dann
 erzeugt man `DIST-SHA256` neu und nennt den Grund im PR:
@@ -79,4 +96,4 @@ eine Freigabe-Kategorie und braucht den Betreiber.
   `src/stufen.js`. Die Website nennt alle vier Paketpreise; die App bewirbt nach
   G9 nur Paketzustand 5. Entscheidung des Betreibers noetig (W4).
 - V4-Gestaltung (Logo, Tokens, hell/dunkel): SSOT-Paket V4-5.
-- Pruefsatz (axe, 320 px, Links, Header): Paket W2.
+- Kopfzeilen (Caddy-Site-Datei) und Auslieferung: Paket W3; der Pruefsatz W2 liegt in `e2e/website-pruefsatz.spec.mjs`.

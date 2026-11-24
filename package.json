@@ -236,7 +236,7 @@
     "pruefung:rb4-krankmeldung-benachrichtigung": "vitest run pruefungen/rb4-krankmeldung-benachrichtigung.test.js --testTimeout=120000",
     "pruefung:rb5-klaerung": "vitest run pruefungen/rb5-klaerung.test.js --testTimeout=120000",
     "pruefung:betreiber-passwortfelder": "vitest run pruefungen/betreiber-passwortfelder.test.js",
-    "pruefung:smoke-tageswechsel": "vitest run pruefungen/smoke-tageswechsel.test.js pruefungen/website-quelle.test.js",
+    "pruefung:smoke-tageswechsel": "vitest run pruefungen/smoke-tageswechsel.test.js pruefungen/website-quelle.test.js pruefungen/website-pruefsatz.test.js",
     "pruefung:import-schalter": "vitest run pruefungen/import-schalter.test.js --testTimeout=120000",
     "pruefung:modul-altwege-oberflaeche": "vitest run pruefungen/modul-altwege-oberflaeche.test.js --testTimeout=120000",
     "pruefung:modulabnahme": "vitest run pruefungen/modul-abnahme.test.js pruefungen/modul-abnahme-oberflaeche.test.js --testTimeout=120000",
