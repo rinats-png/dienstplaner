@@ -1,6 +1,6 @@
 #!/bin/bash
 # Prueft die ECHTE Site-Datei der Hauptwebsite (deploy/website/centric-dienstplanung.de.caddy) mit dem echten
-# Caddy-Bild. Kein Netz zu Dritten, keine Zertifikate. Aufruf (CI, Linux mit Docker):
+# Caddy-Bild. Kein Netz zu Dritten, keine Zertifikate. Aufruf (von Hand, Linux mit Docker; in der CI NICHT verdrahtet, Review #519 A1):
 #   CADDY_BILD='caddy:2-alpine@sha256:...' bash pruefungen/website-caddy.sh
 #
 # 1. validate + adapt der Gesamtkonfiguration "import sites/*.caddy" mit der Site-Datei (aus der Vorlage gebaut

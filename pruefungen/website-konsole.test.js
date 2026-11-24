@@ -6,6 +6,9 @@
    prueft website-ausliefern.test.js). Ein gefaelschtes `curl` im PATH ersetzt den
    Download. Geprueft wird die Ablauflogik: Pruefsumme, https, Archiv-Inhalt,
    Bestaetigung JA, Abbruch ohne Aufruf von ausliefern, Wiederholung.
+   Die Rueckfrage verlangt ein Terminal (`[ -t 0 ]`, Review #519 A2). Der Test startet das Skript deshalb in einem
+   Pseudo-Terminal (`script -qec`, util-linux) und schreibt die Antwort darauf; eine Test-Umgebungsvariable, die
+   die Pruefung im Skript aufweicht, gibt es bewusst nicht.
    Unter Windows uebersprungen (Linux-CI fuehrt aus).
    ========================================================================== */
 
@@ -24,6 +27,9 @@ const QUELLE = resolve("deploy/website");
 const dl = process.platform === "win32" ? describe.skip : describe;
 const sh = (p) => p.replace(/\\/g, "/").replace(/^([A-Za-z]):/, (_, d) => "/" + d.toLowerCase());
 const STANDARD = "/root/centric-website-dist.tgz";
+// Pseudo-Terminal fuer die Rueckfrage: `script` (util-linux). Fehlt es, schlaegt der Lauf mit klarer Meldung fehl.
+const HAT_SCRIPT = process.platform !== "win32" && spawnSync("script", ["--version"], { encoding: "utf8" }).status === 0;
+const q = (t) => "'" + String(t).replace(/'/g, "'\\''") + "'";
 
 const VORPRUEFUNG = `#!/bin/bash
 echo "vorpruefung" >> "$FAKE_LOG"
@@ -77,15 +83,23 @@ function archivBauen(name, mod) {
 }
 const sollSetzen = (summe) => writeFileSync(join(skripte, "DIST-SHA256.txt"), `# Test\n${summe}\n`);
 
-function lauf({ args = [], stdin = "JA\n", env = {}, archiv } = {}) {
+function lauf({ args = [], stdin = "JA\n", env = {}, archiv, pty = true } = {}) {
   const e = {
     ...process.env, FAKE_LOG: sh(log), TMPDIR: sh(arbeit),
     ...(archiv ? { FAKE_ARCHIV: sh(archiv) } : {}),
     PATH: sh(join(wurzel, "bin")) + ":" + process.env.PATH,
     ...env,
   };
-  const r = spawnSync("bash", [sh(join(skripte, "website-konsole.sh")), ...args], { env: e, input: stdin, encoding: "utf8", timeout: 60000 });
-  return { code: r.status, aus: (r.stdout || "") + (r.stderr || ""), log: existsSync(log) ? readFileSync(log, "utf8") : "" };
+  const bashArgs = [sh(join(skripte, "website-konsole.sh")), ...args];
+  let r;
+  if (pty) {
+    if (!HAT_SCRIPT) throw new Error("`script` (util-linux) fehlt: die Rueckfrage braucht ein Pseudo-Terminal");
+    r = spawnSync("script", ["-qec", ["bash", ...bashArgs].map(q).join(" "), "/dev/null"], { env: e, input: stdin, encoding: "utf8", timeout: 60000 });
+  } else {
+    r = spawnSync("bash", bashArgs, { env: e, input: stdin, encoding: "utf8", timeout: 60000 });
+  }
+  // Im Pseudo-Terminal sind stdout und stderr eins, Zeilen enden mit \r\n.
+  return { code: r.status, aus: ((r.stdout || "") + (r.stderr || "")).replace(/\r/g, ""), log: existsSync(log) ? readFileSync(log, "utf8") : "" };
 }
 
 beforeEach(() => {
@@ -161,6 +175,21 @@ dl("website-konsole.sh: lokales Archiv", () => {
       expect(r.aus).toContain("Keine Bestaetigung");
       expect(r.log).not.toContain("ausliefern");
     }
+  });
+
+  it("Rueckfrage nur vom Terminal (A2): `echo JA | bash website-konsole.sh` bricht ab, ausliefern nie aufgerufen", () => {
+    const a = archivBauen("ok"); sollSetzen(sha(a));
+    const r = lauf({ args: [sh(a)], stdin: "JA\n", pty: false });
+    expect(r.code, r.aus).toBe(1);
+    expect(r.aus).toContain("braucht ein Terminal");
+    expect(r.aus).toContain("Nichts wurde geaendert");
+    expect(r.log).not.toContain("ausliefern");
+  });
+
+  it("das Skript kennt keine Test-Umgebungsvariable, die die Terminalpruefung umgeht", () => {
+    const text = readFileSync(join(QUELLE, "website-konsole.sh"), "utf8");
+    expect(text).toMatch(/\[ -t 0 \] \|\| ende /);
+    expect(text).not.toMatch(/\$\{?[A-Z_]*(TEST|PTY|TTY|BATCH|NONINTERACTIVE|YES)[A-Z_]*[:}-]/);
   });
 
   it("es gibt keine Option --ja zum Ueberspringen der Bestaetigung", () => {
