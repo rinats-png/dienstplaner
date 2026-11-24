@@ -10,7 +10,9 @@ Code:
 |---|---|
 | `src/regelregister.js` | Metadaten aller Regeln (Registry Light), Prüfstatus, Gültigkeit, Stufenbegrenzung |
 | `server/lib/regelbaukasten.mjs` | Rechnet neue Regeln: Zählregel, Grenzregel, Besetzungsregel, Paarregel — für Oberfläche und Server (seit WP-19; `src/regelbaukasten.js` reicht weiter und löst Kennungen über das ganze Register auf) |
+| `server/lib/regelbaukasten-erweitert.mjs` | Rechnet Muster-, Block-, Verteilungs- und Wunschregel mit denselben Bausteinen (WP-I3); `pruefeRegel` wertet alle acht Regelarten aus, `testlauf` fährt Fälle gegen eine Regel; `src/regelbaukasten.js` reicht die Funktionen weiter |
 | `server/lib/regelgeltung.mjs` | Prüfstatus, Folgen, Geltung, Wirkung, Stufendeckel — eine Fassung, das Register reicht sie weiter (WP-19) |
+| `server/lib/regelstatus.mjs` | Eine kanonische Darstellung des Prüfstatus (`geprueft`, `vorlaeufig`, `abgelaufen`, `zurueckgezogen`) und die Abbildung der Status je Herkunft (WP-19.0) |
 | `server/lib/branchenkatalog.mjs`, `server/lib/branchenbefunde.mjs` | Branchenregeln (vorläufig, höchstens Hinweis) und ihre Befunde in `einteilungsBefunde` — nur aktive Module, Befundart `branche` sperrt nie (WP-19) |
 | `src/beschaeftigung.js` | Beschäftigungsmodelle, an die sich Regeln binden |
 | `src/regelwerk.js` | Bestand: Konstanten, `REGELSTAND`, Besetzungsprüfungen; reicht die Schutzprüfung weiter |
@@ -40,7 +42,7 @@ Der Plan sieht einen Regelbaukasten vor, nicht mehrere Prüfmaschinen. Eine zwei
 | `grenzregel` | ja | höchstens 20 Wochenstunden |
 | `besetzungsregel` | ja | mindestens N Personen; mindestens N mit Qualifikation; mindestens x % mit Qualifikation; höchstens x % Hilfskräfte; Verhältnis A:B |
 | `paarregel` | ja | A nur zusammen mit B |
-| `musterregel`, `blockregel`, `verteilungsregel`, `wunschregel` | nein, geplant (Plan 5.2) | Folge-/Blockmuster, Verteilung, Wünsche |
+| `musterregel`, `blockregel`, `verteilungsregel`, `wunschregel` | ja, gerechnet in `server/lib/regelbaukasten-erweitert.mjs` (WP-I3, Plan 5.2). Ob eine Regel dieser Art im Betrieb wirkt, hängt an Prüfstatus, Geltung und Modulstatus (`geplant`, `vorlaeufig`, `freigegeben`; `server/lib/branchenmodule.mjs`) und bleibt davon unberührt | Folge-/Blockmuster, Verteilung, Wünsche |
 | `bestandsregel` und Bestandseinträge mit Art von oben | vom Bestandscode | die bisherigen Prüfungen |
 
 Zeiträume der Zählregel: rollierend in Tagen, Wochen, Monaten (endet am Stichtag, der Stichtag zählt mit), Kalendermonat, Kalenderjahr. Zwei Ereignisse am selben Tag sind eines. Monatsrechnung folgt dem Kalender (Zwölf Monate bis 31.03.2026 beginnen am 01.04.2025; Schaltjahr und Monatsenden sind getestet).
@@ -187,7 +189,7 @@ Ein Rechtsverstoß heißt: „das Gesetz wird gebrochen" und löst Bestätigung,
 ## Anhang D — Begriffe
 
 - „Verstoßregel" kommt weder im Plan, noch im Code, noch in E-19 bis E-21 vor. Kein Handlungsbedarf; im Code und in den Entscheidungen heißen die Bewertungen Hinweis, Achtung, Rechtsverstoß.
-- „Blockregel" (Plan 5.2) meint einen Block zusammengehöriger Tage („Samstag und Sonntag dieselbe Dienstart"), nicht Blockieren. Seit E-19 sperrt CENTRIC nichts; der Name kann trotzdem missverstanden werden (etwa als „Regel, die blockiert"). **Spätere Namensentscheidung**, z. B. „Tagesblockregel" oder „Zusammenhangsregel". In diesem Schritt wird nichts umbenannt; die Regelart `blockregel` im Register ist reserviert und wird nicht gerechnet.
+- „Blockregel" (Plan 5.2) meint einen Block zusammengehöriger Tage („Samstag und Sonntag dieselbe Dienstart"), nicht Blockieren. Seit E-19 sperrt CENTRIC nichts; der Name kann trotzdem missverstanden werden (etwa als „Regel, die blockiert"). **Spätere Namensentscheidung**, z. B. „Tagesblockregel" oder „Zusammenhangsregel". In diesem Schritt wird nichts umbenannt; die Regelart `blockregel` wird in `server/lib/regelbaukasten-erweitert.mjs` gerechnet (WP-I3).
 
 ## Anhang E — Prüfstatus der Quelle und Laufzeit eines Bestandsrechners
 
