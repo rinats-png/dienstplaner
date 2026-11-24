@@ -176,9 +176,28 @@ describe("G1 CI", () => {
     expect(g.gruende.join()).toMatch(/bild-scan/);
   });
   it("laufender, fehlgeschlagener oder übersprungener Pflicht-Check → NO-GO", () => {
-    for (const ueber of [{ status: "in_progress", conclusion: null }, { conclusion: "failure" }, { conclusion: "skipped" }, { conclusion: "neutral" }]) {
-      expect(g1(checks({ pruefen: ueber })).ergebnis, JSON.stringify(ueber)).toBe("NO-GO");
+    for (const teil of ["pruefen-a", "pruefen-b", "pruefen-c", "browser-abnahme"]) {
+      for (const ueber of [{ status: "in_progress", conclusion: null }, { conclusion: "failure" }, { conclusion: "skipped" }, { conclusion: "neutral" }]) {
+        const g = g1(checks({ [teil]: ueber }));
+        expect(g.ergebnis, `${teil} ${JSON.stringify(ueber)}`).toBe("NO-GO");
+        expect(g.gruende.join(), teil).toContain(`Pflicht-Check ${teil}:`);
+      }
     }
+  });
+  it("Pilot f1: jeder Teil der Prüfung (pruefen-a, pruefen-b, pruefen-c) ist einzeln Pflicht; fehlt einer → NO-GO", () => {
+    expect(PFLICHT).toEqual(expect.arrayContaining(["pruefen-a", "pruefen-b", "pruefen-c", "browser-abnahme"]));
+    expect(g1(checks()).ergebnis).toBe("GO");
+    for (const teil of ["pruefen-a", "pruefen-b", "pruefen-c"]) {
+      const g = g1(checks().filter((c) => c.name !== teil));
+      expect(g.ergebnis, teil).toBe("NO-GO");
+      expect(g.gruende, teil).toContain(`Pflicht-Check fehlt: ${teil}`);
+    }
+  });
+  it("Pilot f1: nur der alte Einzeljob `pruefen` grün (Kandidat vor der Aufteilung) ersetzt die Teile nicht → NO-GO", () => {
+    const alt = checks().filter((c) => !/^pruefen-/.test(c.name));
+    const g = g1([...alt, { id: 77, name: "pruefen", status: "completed", conclusion: "success", head_sha: K }]);
+    expect(g.ergebnis).toBe("NO-GO");
+    expect(g.gruende.filter((x) => /^Pflicht-Check fehlt: pruefen-[abc]$/.test(x))).toHaveLength(3);
   });
   it("Check eines anderen Commits oder ohne head_sha → NO-GO; keine Check-Runs → NO-GO", () => {
     expect(g1(checks({ muster: { head_sha: B } })).ergebnis).toBe("NO-GO");
@@ -187,8 +206,9 @@ describe("G1 CI", () => {
     expect(g1(null).ergebnis).toBe("NO-GO");
   });
   it("ein fehlgeschlagener Lauf auf demselben Kopf bleibt NO-GO, auch wenn ein späterer Lauf grün ist", () => {
-    const alt = { id: 99, name: "pruefen", status: "completed", conclusion: "failure", head_sha: K };
+    const alt = { id: 99, name: "pruefen-b", status: "completed", conclusion: "failure", head_sha: K };
     expect(g1([...checks(), alt]).ergebnis).toBe("NO-GO");
+    expect(g1([...checks(), alt]).gruende.join()).toMatch(/Pflicht-Check pruefen-b: failure/);
   });
   it("Nicht-Pflicht-Check: fehlgeschlagen oder nicht abgeschlossen → NO-GO; übersprungen → GO", () => {
     const x = (u) => ({ id: 50, name: "extra", status: "completed", conclusion: "success", head_sha: K, ...u });
@@ -2125,12 +2145,12 @@ describe("Endurteil #427 Auflage A1: G8 fail-closed — blockierend ist jeder St
 
 describe("Endurteil #427 Auflage A2: G1 — jeder Lauf zählt, auch ein älterer roter vor einem neueren grünen", () => {
   it("alter roter Lauf (niedrige id, zuerst in der Liste), neuer grüner Lauf derselben Prüfung → NO-GO", () => {
-    const gruen = checks().map((c) => ({ ...c, id: c.id + 100 })); // ids 101..111, später gestartet
-    const alt = { id: 1, name: "pruefen", status: "completed", conclusion: "failure", head_sha: K };
+    const gruen = checks().map((c) => ({ ...c, id: c.id + 100 })); // ids ab 101, später gestartet
+    const alt = { id: 1, name: "pruefen-c", status: "completed", conclusion: "failure", head_sha: K };
     for (const runs of [[alt, ...gruen], [...gruen.slice(0, 1), alt, ...gruen.slice(1)]]) {
       const g = g1Ci(runs, K, KONFIG_STANDARD);
       expect(g.ergebnis).toBe("NO-GO");
-      expect(g.gruende.join(" ")).toMatch(/Pflicht-Check pruefen: failure/);
+      expect(g.gruende.join(" ")).toMatch(/Pflicht-Check pruefen-c: failure/);
     }
     // Gegenprobe: ohne den roten Lauf GO
     expect(g1Ci(gruen, K, KONFIG_STANDARD).ergebnis).toBe("GO");

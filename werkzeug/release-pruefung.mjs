@@ -104,8 +104,11 @@ export const REL_PRAEFIX = "REL-";
 export const KONFIG_STANDARD = Object.freeze({
   repo: "rinats-png/dienstplaner",
   // Check-Runs der Workflows Prüfung, Sicherheit, Lieferkette und Betrieb: Deploy-Skripte (Stand 2026-11-20).
+  // Pilot f1 (2026-11-24): der frühere Job `pruefen` heißt pruefen-a, pruefen-b, pruefen-c; jeder Teil ist Pflicht.
+  // pruefungen/ci-aufteilung.test.js bindet die Liste an die Jobs von pruefung.yml (jeder Job ist hier eingetragen,
+  // jeder Eintrag ist ein Job eines Workflows).
   pflichtChecks: [
-    "pruefen", "browser-abnahme", "abhaengigkeiten", "geheimnisse", "interne-pruefung", "muster",
+    "pruefen-a", "pruefen-b", "pruefen-c", "browser-abnahme", "abhaengigkeiten", "geheimnisse", "interne-pruefung", "muster",
     "shellcheck", "compose", "caddy-vorlage", "skripte", "bild-scan",
   ],
   // Für Nicht-Pflicht-Check-Runs sind diese Abschlüsse unschädlich (Pflicht-Checks: nur success).
