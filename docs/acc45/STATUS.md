@@ -18,17 +18,17 @@ oder `"teilweise"`, jeweils mit Beleg (PR, Commit, Nachweis). „Geplant“, „
 <!-- AUTO:BEGIN -->
 Erzeugt aus `docs/acc45/work-packages.json` (Schema 2) mit `node werkzeug/acc45-backlog.mjs status-schreiben` — nicht von Hand ändern.
 
-**Pakete gesamt:** 247 · BLOCKED 91 · READY 16 · IN_PROGRESS 19 · REVIEW 11 · INTEGRATED 107 · DONE 3
+**Pakete gesamt:** 261 · BLOCKED 98 · READY 23 · IN_PROGRESS 19 · REVIEW 11 · INTEGRATED 107 · DONE 3
 
 | Strang | Pakete | BLOCKED | READY | IN_PROGRESS | REVIEW | INTEGRATED | DONE | offener Aufwand PT |
 |---|---|---|---|---|---|---|---|---|
-| ACC45 | 123 | 28 | 0 | 7 | 4 | 82 | 2 | 61,8–105,75 |
+| ACC45 | 127 | 31 | 1 | 7 | 4 | 82 | 2 | 66,3–113,25 |
 | WP-19-Module | 15 | 13 | 0 | 1 | 0 | 1 | 0 | 64,5–100,5 |
 | Intelligence | 40 | 20 | 0 | 7 | 0 | 13 | 0 | 181–320 |
-| Folgepakete | 34 | 12 | 0 | 4 | 7 | 11 | 0 | 27,2–49,6 |
+| Folgepakete | 44 | 16 | 6 | 4 | 7 | 11 | 0 | 41,2–69,6 |
 | Extern/Entscheidungen | 35 | 18 | 16 | 0 | 0 | 0 | 1 | 20,35–46,1 |
 
-Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **334,5–575,85 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
+Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **353–603,35 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
 
 **Kritische Pfade** (offener Aufwand, Mitte der Spanne maßgeblich):
 
@@ -74,9 +74,9 @@ Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **334,5–575,
 | DEP-2 Abhängigkeit: Vitest 5 Migration | REVIEW | `acc45/dep/dep-2-vitest-5` | Quelle: Bewertung offener Dependabot-PRs #400 bis #407 vom 2026-11-20 (nur lesend erhoben, Basis integration/release-v4 @ 105f6c83); Aufwand ist eine SCHÄTZUNG der Bewertung, nicht belegt. Der Dependabot-PR wird nicht geschlossen; Schließen entscheidet der Betreiber. Vitest 5 entfernt die sequential-Optionen (zugunsten von concurrent); der Lauf von PR #405 scheitert mit describe.sequential is not a function in abnahme-a-ablauf.test.js:115, die rund 190 Folgeschritte wurden übersprungen (der Lauf belegt nichts über den Rest der Suite). Betroffen: 12 Stellen in 6 Dateien (abnahme-a-ablauf, erstleitung-abbruch, erstleitung-betreiber-put, erstleitung-entscheidungen, erstleitung, konto-parallel). Node 22 und Vite 6.4.5 passen. Aufwand SCHÄTZUNG 0,5 bis 1 PT. Opus-Review Pflicht (Prüfwerkzeug, kritischer Pfad). Dependabot-PR #405, nicht mergen. |
 | REL-1 Release-Automatisierung Stufe 1: Release-Gates (Werkzeug), Lückenanalyse, Release-Richtlinie | REVIEW | `acc45/release/rel-1-gates` | Betreiberauftrag Release-Automatisierung 2026-11-20 (Zielablauf Entwicklung → Review → CI → Integration → Release-Prüfung → Deployment → Live-Abnahme). Kein VPS, kein Workflow-Start, keine Workflow-Änderung. Aufwand SCHÄTZUNG. Nachtrag 2026-11-22: Endurteil #427 MIT AUFLAGEN (A1–A5), Nachweis docs/acc45/REVIEW-NACHWEIS-2026-11-22.md; Auflagen A1/A2/A4/A5 umgesetzt im Branch acc45/release/rel1-auflagen (A3: #473); Stufe reviewt bleibt false bis zum Delta-Review. Nachtrag 2026-11-22 (Gate-Härtung, Branch acc45/release/gate-haertung-prio-pr): Review-Befunde #477 H3 und #473 H1/H2/H4/H5 fail-closed umgesetzt (G8/G9: unbekannte oder fehlende prio blockiert, ungültiges pr eines offenen Blocker-Pakets NO-GO; ssotPrs nur mit ssotPakete, nur "#123", nur sichere Ganzzahlen, jeder Eintrag im pr eines genannten Pakets; acc45-backlog pruefen lehnt ungültige prio und pr ab). Keine Verhaltensänderung für die heutigen Daten. Stufe reviewt unverändert. Nachtrag 2026-11-22 (Gate-Härtung G9 Strang/ID, Branch acc45/release/gate-haertung-g9-strang): Folgebefunde aus Review #483 H2/H3/H4 fail-closed umgesetzt (G9: Befund per strang folge oder ID-Präfix ABN-/V4- nach NFKC, Groß-/Kleinschreibung, Unicode-Bindestrich; offenes P0/P1-Paket mit fehlendem/unbekanntem strang oder ID außerhalb ^[A-Za-z0-9][A-Za-z0-9._-]*$ NO-GO; G8/G9: Paket ohne Objektform NO-GO; acc45-backlog pruefen: strang Pflicht ohne Standardwert, ID-Format; ssot-belege: PR_MUSTER aus acc45-backlog, exakter Duplikatvergleich, ungültiger Verweis Rückgabe 1 ohne Datenänderung). Alle 246 Pakete geprüft: G8/G9 auf heutigen Daten unverändert. Stufe reviewt unverändert. Nachtrag 2026-11-22 (Review #486, nur Text, Beleg docs/acc45/RELEASE-PROZESS.md G9): H-a: Die NFKC- und Bindestrich-Normalisierung in idNormal ist wirkungslos, weil ID_MUSTER vorher jede ID außerhalb von ASCII ablehnt (solche IDs: NO-GO „ID ungültig“, nicht „Befund-Paket erkannt“); die Doku sagt das jetzt. H-b (offen, vorbestehend): jede ID mit dem exakten Präfix REL- wird als Ausnahme behandelt, z. B. REL-ABN-1 mit strang acc45 und prio P1 ergibt G9 GO; Folgepaket vorgeschlagen: REL-Ausnahme nur für bekannte REL-IDs. H-d: main()-Exitcode-Test für ssot-belege nur als Folgepaket genannt. Kein Code geändert. Nachtrag 2026-11-23 (Gate-Härtung REL-Ausnahme, Branch acc45/release/gate-haertung-rel-ausnahme, für den nächsten Kandidaten; release/rc-2026-11-22 unverändert): H-b fail-closed umgesetzt: die G9-Ausnahme gilt nur für die bekannten REL-Pakete (REL_AUSNAHME_IDS: REL-0, REL-0c, REL-1, REL-2, REL-3, REL-4); jedes andere offene P0/P1-Paket mit exaktem Präfix REL- (z. B. REL-ABN-1, jeder strang) ist NO-GO, auch mit Annahme; ein Test bindet die Liste an die REL-Pakete der SSOT. H-d: Test ruft ssot-belege --anwenden als Prozess auf einer Wegwerf-Kopie auf (neue Option --prs, PR-Liste aus Datei), ungültiger Verweis: Rückgabe 1, SSOT-Datei byte-gleich. H-e: ssotPrBelege liest pr genau nach PR_MUSTER. G9 auf dem Repository-Stand vorher/nachher byte-gleich (Befund-Paketsatz und Blocker identisch). Stufe reviewt unverändert. Nachtrag 2026-11-23 (Review #490 N1/N2, Branch acc45/werkzeug/ssot-abgleich-n1-n2, für den nächsten Kandidaten; release/rc-2026-11-22 unverändert): N1: abgleich() in ssot-abgleich.mjs liest das SSOT-Feld pr genau nach PR_MUSTER (gemeinsame Quelle acc45-backlog.mjs, kein Duplikat); ein ungültiger Eintrag („#0“, „#012“, „#12a“, Zahl, kein Array) bricht ab (fail-closed, Rückgabe 2 in ssot-abgleich und ssot-belege, SSOT-Datei unverändert). Gültige Daten: Ausgabe von ssot-abgleich (JSON und Text) auf allen pr-Einträgen des Repository-Stands byte-gleich zu vorher. N2: Option mit Wert (--prs, --datei) ohne Wert, mit leerem Wert oder mit einer Option als Wert ergibt Fehler und Rückgabe 2 in beiden Werkzeugen, kein stiller Rückfall auf gh (Netz) oder Standardpfad; ssot-belege meldet Abbruch jetzt mit Rückgabe 2 (Rückgaben 0/1/2/3). Tests: pruefungen/ssot-belege.test.js (CLI als Prozess auf Wegwerf-Kopie), Mutationen je Regel rot. Stufe reviewt unverändert. |
 
-### Bereit zum Start (0)
+### Bereit zum Start (7)
 
-–
+RST-2 (folge, 2–3 PT) · RST-3 (folge, 1–2 PT) · RST-5 (folge, 2,5–4 PT) · RST-7 (folge, 2–3 PT) · RST-9 (folge, 1–1,5 PT) · FREIGABE-S2 (folge, 0,5–1 PT) · WEBSITE-W3b (acc45, 0,5 PT)
 
 ### In Arbeit, fortsetzbar (14)
 
@@ -198,7 +198,7 @@ WP-40 (acc45, 1,5–2,25 PT offen) · WP-28b (folge, 0,5–1 PT offen) · WP-I4 
 
 ✓ belegt · T teilweise (z. B. nur Server-Teilumfang) · – nicht erreicht oder nicht belegt. „Staging“, „Freigabe“ und
 „prod.“ stehen nur mit Beleg auf ✓. Gezeigt sind alle Pakete mit mindestens einer erreichten Stufe; alle übrigen
-62 offenen Entwicklungspakete stehen auf allen Stufen auf „–“.
+76 offenen Entwicklungspakete stehen auf allen Stufen auf „–“.
 
 | Paket | Status | impl. | lokal | Review | integr. | Staging | Freigabe | prod. |
 |---|---|---|---|---|---|---|---|---|
