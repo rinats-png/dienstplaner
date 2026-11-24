@@ -142,3 +142,62 @@ describe("SI-P9 Stand im Repository", () => {
     expect(fehler).toEqual({});
   });
 });
+
+// Cache-Export (type=gha): ein 504 des GitHub-Cache-Backends beim Schreiben
+// ("error writing layer blob ... 504") darf den Bildbau nicht scheitern lassen.
+// Docker-Doku (Cache-Backend gha): cache-to kennt ignore-error (Standard false).
+// Nur cache-to; cache-from und echte Build-/Push-Fehler bleiben unverändert.
+function cacheSchritte(wf) {
+  const aus = [];
+  for (const [job, def] of Object.entries(wf.jobs ?? {})) {
+    for (const [i, s] of (def.steps ?? []).entries()) {
+      const w = s.with ?? {};
+      if (w["cache-to"] !== undefined || w["cache-from"] !== undefined) {
+        aus.push({ ort: `${job}[${i}]`, from: w["cache-from"], to: w["cache-to"] });
+      }
+    }
+  }
+  return aus;
+}
+
+function cacheExportPruefen(wf) {
+  const befunde = [];
+  for (const s of cacheSchritte(wf)) {
+    if (s.from !== undefined && String(s.from).trim() !== "type=gha") befunde.push(`${s.ort}: cache-from verändert (${s.from})`);
+    if (s.to === undefined) continue;
+    const teile = String(s.to).split(",").map((t) => t.trim());
+    if (teile[0] === "type=gha" && !teile.includes("ignore-error=true")) {
+      befunde.push(`${s.ort}: cache-to type=gha ohne ignore-error=true`);
+    }
+  }
+  return befunde;
+}
+
+describe("Cache-Export type=gha: ignore-error=true", () => {
+  const probe = (to) =>
+    yaml.load(`jobs:\n  a:\n    steps:\n      - uses: x\n        with:\n          cache-from: type=gha\n          cache-to: ${to}\n`);
+  it("lässt cache-to mit ignore-error=true durch", () => {
+    expect(cacheExportPruefen(probe("type=gha,mode=max,ignore-error=true"))).toEqual([]);
+  });
+  it("meldet cache-to type=gha ohne ignore-error=true", () => {
+    expect(cacheExportPruefen(probe("type=gha,mode=max"))).toHaveLength(1);
+    expect(cacheExportPruefen(probe("type=gha,mode=max,ignore-error=false"))).toHaveLength(1);
+  });
+  it("meldet veränderten cache-from", () => {
+    const wf = probe("type=gha,mode=max,ignore-error=true");
+    wf.jobs.a.steps[0].with["cache-from"] = "type=gha,ignore-error=true";
+    expect(cacheExportPruefen(wf)).toHaveLength(1);
+  });
+  it("alle Workflows im Repository: cache-to trägt ignore-error=true, cache-from unverändert", () => {
+    const fehler = {};
+    let gesehen = 0;
+    for (const f of alleWorkflows()) {
+      const wf = yaml.load(readFileSync(path.join(ORDNER, f), "utf8"));
+      gesehen += cacheSchritte(wf).length;
+      const b = cacheExportPruefen(wf);
+      if (b.length) fehler[f] = b;
+    }
+    expect(gesehen).toBeGreaterThan(0);
+    expect(fehler).toEqual({});
+  });
+});

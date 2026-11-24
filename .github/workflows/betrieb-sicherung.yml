@@ -89,7 +89,7 @@ jobs:
           load: true
           tags: ${{ env.BILD }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-to: type=gha,mode=max,ignore-error=true
 
       - name: Ende-zu-Ende-Nachweis
         run: deploy/sicherung/ci/ende-zu-ende.sh
