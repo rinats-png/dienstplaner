@@ -42,11 +42,21 @@ CRLF und muessen es behalten.
 ## Pruefsummen
 
 `DIST-SHA256` hat das Format `<sha256>  <pfad>` (zwei Leerzeichen, sortiert).
-Es wurde am 2026-11-24 aus dem Bau dieser Quelle erzeugt. Es ist byte-gleich zu:
+Stand W4 (2026-11-24): erzeugt aus dem Bau dieser Quelle nach der Umstellung der
+Branchenpakete auf "In Vorbereitung" (siehe unten). Acht Dateien haben sich gegenueber
+dem Stand W1 geaendert: `index.html`, `branchen.html`, `preise.html`, `funktionen.html`,
+`faq.html`, `ueber-uns.html`, `wissen.html` (Paketpreise, Paketschalter und "enthalten"-Aussagen entfernt,
+"In Vorbereitung" ergaenzt) und `assets/style.css` (eine Zeile: Status im Branchenband
+bricht unter den Text um). Alle anderen 24 Dateien sind unveraendert. Der Stand W1
+(2026-11-24, vor W4) war byte-gleich zu:
 
 - dem bisherigen lokalen `dist/` (32 von 32 Dateien),
 - dem Archiv `centric-website-dist.tgz` auf `origin/website/dist` (32 von 32 Dateien),
 - der Live-Auslieferung (15 von 15 stichprobenartig gepruefte oeffentliche Dateien).
+
+Die Live-Seite (V3) ist die Referenz und bleibt bis zu einer Auslieferung unveraendert; die
+sieben Seiten und `style.css` weichen seit W4 bewusst von ihr ab. Eine Auslieferung ist ein
+eigener Freigabeschritt (Entscheidung P2-44).
 
 Die Archiv-Summe `69f51e70...84c8` (`SHA256SUMS` auf `website/dist`) gilt fuer das
 tgz als Ganzes. Der tar-Container ist nicht Teil dieser Liste.
@@ -71,8 +81,9 @@ interne Links, `mailto:`-Format, Pflichtseiten im Footer, Preise gegen
 Bestehende Verstoesse der V3-Seite stehen in `e2e/website-axe-ausnahmen.json`
 (Grund "V3-Bestand", Behebung in W5); die ausgelieferten Bytes aendert der
 Pruefsatz nicht. Neue Verstoesse oder mehr betroffene Knoten schlagen fehl. Die
-vier Branchenpaket-Preise sind die benannte Abweichung F1 (siehe Offen): der Test
-haelt den Ist-Zustand fest und wird bei Umsetzung von F1 absichtlich rot.
+Branchenpakete folgen seit W4 dem Paketzustand der Anwendung (siehe unten): kein Preis
+und kein Schalter fuer ein Paket unter Zustand 5; der Test wird rot, sobald ein Paket
+freigegeben wird und die Website nicht bewusst nachzieht.
 
 Eine bewusste Aenderung an `build.py` oder an `assets/` aendert die Bytes. Dann
 erzeugt man `DIST-SHA256` neu und nennt den Grund im PR:
@@ -90,10 +101,24 @@ Nicht Teil dieses Pakets. Der Weg liegt auf den Zweigen
 `integration/release-v4` und nicht in `main`. Auslieferung nach Produktion ist
 eine Freigabe-Kategorie und braucht den Betreiber.
 
-## Offen (nicht in W1)
+## Branchenpakete: "In Vorbereitung" (Paket W4)
 
-- Preise und Pakete: die Zahlen in `build.py` sind eine zweite Fassung neben
-  `src/stufen.js`. Die Website nennt alle vier Paketpreise; die App bewirbt nach
-  G9 nur Paketzustand 5. Entscheidung des Betreibers noetig (W4).
+Betreiberentscheidung 2026-11-24 (P2-39, Option A): Nicht verfuegbare oder nicht
+buchbare Module und Tarife sind als "In Vorbereitung" gekennzeichnet. In `build.py`
+steht die Tabelle `PAKET_ZUSTAND` (Paket -> Zustand 1 bis 5, wie `paketZustand` in
+`server/lib/paketstand.mjs`). Nur Zustand 5 zeigt einen Preis, einen Schalter im
+Preisrechner und die Aussage "Zwei Branchenpakete enthalten". Alles andere, auch ein
+Paket ohne Eintrag oder mit ungueltigem Wert, ist "In Vorbereitung - noch nicht
+buchbar" (fail-closed). Preisrechner, Tabellen, Karten und Texte werden aus dieser
+Tabelle erzeugt; die Zielpreise (`zielpreis`) werden nur ueber `paket_preis()` gedruckt.
+Wird ein Paket in der Anwendung freigegeben (`PAKET_FREIGABEN`), aendert man bewusst
+nur diese Tabelle; `pruefungen/website-quelle.test.js` (Block W4) und der
+Pruefsatz W2 verlangen dann Preis und Schalter gleich dem Zielpreis der Anwendung.
+
+## Offen
+
+- Preise: die Tarifzahlen in `build.py` sind eine zweite Fassung neben
+  `src/stufen.js` (App-seitig test-fixiert). Die Paketpreise erscheinen erst wieder,
+  wenn ein Paket Zustand 5 hat.
 - V4-Gestaltung (Logo, Tokens, hell/dunkel): SSOT-Paket V4-5.
 - Kopfzeilen (Caddy-Site-Datei) und Auslieferung: Paket W3; der Pruefsatz W2 liegt in `e2e/website-pruefsatz.spec.mjs`.

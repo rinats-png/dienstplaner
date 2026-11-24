@@ -113,8 +113,10 @@ export function websitePreise(wurzel) {
     .map(([name, id]) => [id, zahl(new RegExp(`${name} (\\d+) € je Monat`), `Stufe ${name}`)]));
   const baender = [...text.matchAll(/(bis 14 Personen kostenlos|(\d+) – (\d+) Personen \+ (\d+) €|über 150 Personen \+ (\d+) €)/g)]
     .map((m) => (m[2] ? { bis: Number(m[3]), zuschlag: Number(m[4]) } : m[5] ? { bis: null, zuschlag: Number(m[5]) } : { bis: 14, zuschlag: 0 }));
+  /* Nur Pakete, bei denen die Website einen Preis nennt (WEBSITE-W4: Pakete unter Zustand 5 haben keinen Preis, also keinen Eintrag). */
   const pakete = Object.fromEntries([["sicherheit", "Sicherheitsdienst"], ["pflege", "Pflege"], ["klinik", "Klinik"], ["industrie", "Industrie und Anlagen"]]
-    .map(([id, name]) => [id, zahl(new RegExp(`${name} \\+ ?(\\d+) €`), `Paket ${name}`)]));
+    .map(([id, name]) => [id, new RegExp(`${name} \\+ ?(\\d+) €`).exec(text)])
+    .filter(([, m]) => m).map(([id, m]) => [id, Number(m[1])]));
   const zusatzPlaner = zahl(/Planer-Zugang kostet (\d+) € im Monat/, "Zusatz-Planer");
   const rechnerStufen = /var STUFEN = (\[[^\n]*\]);/.exec(js);
   const rechnerBaender = /var BAENDER = (\[[^\n]*\]);/.exec(js);
