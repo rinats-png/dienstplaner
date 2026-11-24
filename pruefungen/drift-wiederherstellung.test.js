@@ -300,7 +300,7 @@ const PAARE = [
 /* { id, grund }: Abweichung mit offener Richtung. Die Prüfung verlangt, dass sie besteht. Heute leer. */
 const bekannteAbweichung = [];
 
-const MINDEST_PAARE = 55;
+const MINDEST_PAARE = 61;
 
 describe("Wiederherstellungs- und Löschdoku gegen Skripte und Konstanten: gebundene Aussagen", () => {
   it("Mindestanzahl gebundener Paare (die Prüfung schweigt nie bei 0)", () => {
