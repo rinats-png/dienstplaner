@@ -1382,9 +1382,6 @@ jobs:
 
       - name: Browserabnahme (Playwright, axe, 8 Viewports)
         run: npm run e2e
-        # Pilot f3 (QS-CI-AUFTEILUNG-PILOT-2026-11-24.md): 4 Arbeiter statt 2 (höchstens RAEUME_HOECHSTENS = 4, je Arbeiter ein Raum).
-        env:
-          E2E_WORKERS: "4"
 
       # Vollständige axe-Befunde je Fläche und Viewport (alle Schweregrade) und der JSON-Bericht.
       # Keine Bildschirmfotos, Spuren oder Videos (playwright.config.mjs).
