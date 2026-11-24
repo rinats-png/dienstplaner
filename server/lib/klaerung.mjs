@@ -151,7 +151,7 @@ export const klaerungGekuerzt = (m) => istObj(m) && liste(m.krankmeldungen).filt
  * @param {any} m  der Betrieb in der Sicht von Planung oder Leitung (mit `klaerung`)
  * @param {{ fallId?: string, max?: number }} [wahl]  nur die Dienste dieses Falls; höchstens `max` Dienste
  * @returns {{ fallId: string, personId: any, datum: string, dienstId: string, hinweis: string,
- *   besetzung: { soll: number, jetzt: number, ohne: number, fehlt: number, qualFehlt: string[] },
+ *   besetzung: { soll: number, jetzt: number, ohne: number, fehlt: number, qualFehlt: string[], bedarfOffen?: boolean },
  *   direkt: { personId: string, punkte: number }[], nahe: any[], andere: number }[]}
  */
 export function ersatzVorbereiten(m, wahl = {}) {
@@ -173,8 +173,11 @@ export function ersatzVorbereiten(m, wahl = {}) {
       if (!vor || !nach) continue;
       const kand = ersatzKandidaten(gedacht, k.datum, k.dienstId);
       aus.push({ fallId: k.fallId, personId: k.personId, datum: k.datum, dienstId: k.dienstId, hinweis: VORSCHLAG_HINWEIS,
-        besetzung: { soll: nach.soll, jetzt: vor.anzahl, ohne: nach.anzahl, fehlt: Math.max(0, nach.soll - nach.anzahl),
-          qualFehlt: (nach.qual || []).filter((q) => !q.ok).map((q) => String(q.qid)) },
+        besetzung: { soll: nach.soll, jetzt: vor.anzahl, ohne: nach.anzahl,
+          /* ABN-A4: Bedarf nicht festgelegt (Dienstart ohne gültiges mindest): kein Fehlbetrag erfunden (nie NaN). */
+          fehlt: nach.bedarfOffen === true ? 0 : Math.max(0, nach.soll - nach.anzahl),
+          qualFehlt: (nach.qual || []).filter((q) => !q.ok).map((q) => String(q.qid)),
+          ...(nach.bedarfOffen === true ? { bedarfOffen: true } : {}) },
         direkt: kand.direkt.slice(0, KANDIDATEN_MAX), nahe: kand.nahe.slice(0, KANDIDATEN_MAX), andere: kand.andere });
     } catch { /* nicht rechenbar: kein Vorschlag (nichts geraten) */ }
   }
