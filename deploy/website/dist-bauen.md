@@ -1,7 +1,8 @@
 # Website bauen und auf den VPS bringen
 
-Quelle: das Website-Repository (`build.py`, `assets/`; liegt nur auf dem Laptop des Betreibers). Gebaut wird
-auf dem Windows-Laptop. Es wird nichts ausgeliefert, was nicht unter `dist/` liegt.
+Quelle: Ordner `website/` in diesem Repository (`build.py`, `assets/`; vorher nur auf dem Laptop des Betreibers).
+Gebaut wird auf dem Laptop oder in einem Temp-Ordner: `CENTRIC_OUT=<Temp-Ordner> python build.py` schreibt `dist/` dorthin.
+`website/DIST-SHA256` listet die Pruefsumme jeder gebauten Datei; sie ist nicht die Summe des Archivs (`DIST-SHA256.txt`). Es wird nichts ausgeliefert, was nicht unter `dist/` liegt.
 
 ## 1. Bauen (Laptop, im Website-Ordner)
 

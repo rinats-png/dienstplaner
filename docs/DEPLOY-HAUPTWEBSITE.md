@@ -1,5 +1,13 @@
 # Hauptwebsite ausliefern (centric-dienstplanung.de) - Variante B
 
+> **Stand der Uebernahme (Paket W3, 2026-11-24):** Diese Anleitung und `deploy/website/` stammen vom Zweig
+> `deploy/hauptwebsite-auflagen` (Kopf 39f1d48e). Die Website-Quelle liegt seit Paket W1 im Ordner `website/` dieses
+> Repositories (Bau: `CENTRIC_OUT=<Temp-Ordner> python build.py`; `website/DIST-SHA256` listet die Pruefsumme jeder
+> gebauten Datei). Offen, Betreiberentscheidung: (1) Der Klonbefehl unten nennt noch den Zweig `deploy/hauptwebsite-docker`;
+> er muss auf den Zweig zeigen, der diese Dateien traegt (nach dem Zusammenfuehren: der freigegebene Stand), und
+> `<KOPF>` muss danach neu gesetzt werden. (2) Cache-Control: die Site-Datei setzt keines (Befund CC-1, Live ebenso).
+> (3) Eine Auslieferung gibt es nur nach ausdruecklicher Freigabe des Betreibers.
+
 Statische Website im vorhandenen Caddy-Container, neben der App. Kein neuer Mount, kein Container-Neustart,
 nur `caddy reload`. Bestaetigter Stand (Betreiber, direkt am Server): Container `caddy`; Mounts
 `/opt/proxy/config`->`/config` rw, `/opt/proxy/data`->`/data` rw, `/opt/proxy/Caddyfile`->`/etc/caddy/Caddyfile` ro,
@@ -61,7 +69,7 @@ Danach, unabhaengig davon:
 - **Validierung vor Reload:** `docker exec caddy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile` prueft die Gesamtkonfiguration einschliesslich der importierten `sites/*.caddy` (Import-Pfade gelten relativ zum Caddyfile); danach `caddy adapt` zum Beleg, dass die Hauptdomain darin steht. Bei Fehler wird die neue Datei **vor** dem Reload zurueckgenommen - Caddy wurde nie neu geladen und lief durchgehend mit der alten Konfiguration.
 - **Reload:** `docker exec caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile`. Das ist ein Konfigurationswechsel im laufenden Prozess (Sekundenbruchteile bis wenige Sekunden); bestehende Verbindungen werden nicht getrennt, auch die App bleibt erreichbar. Scheitert die Gegenprobe, folgt Rollback mit erneutem validate und Reload.
 - **Sicherungen** liegen unter `/opt/proxy/sites/centric-website/sicherung/<stempel>/` (auch `sites/*.caddy`-Kopien). Der Import `sites/*.caddy` erfasst nur direkte Kinder von `sites/`, diese tieferen Kopien werden nicht geladen (Test mit Attrappe). Deshalb darf `centric-website` nie auf `.caddy` enden (das Skript verweigert es). Alte Fassungen (`releases/`, je ca. 2 MB) und Sicherungen werden nicht automatisch geloescht.
-- Test ohne Server: `npm run pruefung:website` (Attrappen fuer docker, curl, df; Linux-CI). Er ersetzt nicht die Gegenprobe auf dem VPS. Zusaetzlich prueft die CI die echte Site-Datei mit dem echten Caddy-Bild (per Digest gepinnt): `pruefungen/website-caddy.sh` macht `caddy validate`/`adapt` mit und ohne www-Block und einen Rauchtest (200, 404-Seite samt Kopfzeilen, 301 fuer www) gegen ein Dummy-dist.
+- Test ohne Server: `npm run pruefung:smoke-tageswechsel` (enthaelt `website-ausliefern.test.js`, `website-konsole.test.js` und `website-kopfzeilen.test.js`; Attrappen fuer docker, curl, df; Linux-CI). Er ersetzt nicht die Gegenprobe auf dem VPS. Zusaetzlich prueft die CI die echte Site-Datei mit dem echten Caddy-Bild (per Digest gepinnt): `pruefungen/website-caddy.sh` macht `caddy validate`/`adapt` mit und ohne www-Block und einen Rauchtest (200, 404-Seite samt Kopfzeilen, 301 fuer www) gegen ein Dummy-dist.
 
 ## Rueckfall Variante A (nur nach gesonderter Freigabe)
 
