@@ -200,7 +200,7 @@
     "pruefung:nachtdienst-ohne-einstempeln": "vitest run pruefungen/nachtdienst-ohne-einstempeln.test.js --testTimeout=120000",
     "pruefung:geraete-ablaeufe-browser": "node pruefungen/browser/geraete-wp21-ablaeufe.mjs",
     "pruefung:verdrahtung": "node werkzeug/verdrahtung-pruefen.mjs && vitest run pruefungen/verdrahtung.test.js",
-    "pruefung:ci-abdeckung": "node werkzeug/ci-abdeckung.mjs && vitest run pruefungen/ci-abdeckung.test.js",
+    "pruefung:ci-abdeckung": "node werkzeug/ci-abdeckung.mjs && vitest run pruefungen/ci-abdeckung.test.js pruefungen/ci-aufteilung.test.js",
     "pruefung:sammelpruefung": "node werkzeug/sammelpruefung.mjs --trocken && vitest run pruefungen/sammelpruefung.test.js",
     "sammelpruefung": "node werkzeug/sammelpruefung.mjs",
     "pruefung:app-aufbau": "vitest run pruefungen/wp39-app-aufbau.test.js --testTimeout=60000",
