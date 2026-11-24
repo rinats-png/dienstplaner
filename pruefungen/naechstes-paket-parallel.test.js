@@ -63,11 +63,11 @@ describe("naechstes-paket --parallel: Auswahl", () => {
     const l = bau(T("A", "P0", "a/a.js"), T("B", "P0", "b/b.js", "BLOCKED"), T("C", "P0", "c/c.js", "READY", ["X"]),
       T("X", "P3", "x/x.js", "IN_PROGRESS", ["Y"]), T("Y", "P3", "y/y.js", "READY", ["X"]), T("D", "P1", "d/d.js"));
     const r = NP.parallelWaehlen(l, 3);
-    expect(ids(r)).not.toContain("B");
-    expect(ids(r)).not.toContain("C");
+    expect(ids(r).includes("B")).toBe(false);
+    expect(ids(r).includes("C")).toBe(false);
     const l2 = l.map((p) => (p.id === "D" ? { ...p, strang: "extern" } : p.id === "A" ? { ...p, bedingt: true } : p));
-    expect(ids(NP.parallelWaehlen(l2, 3))).not.toContain("A");
-    expect(ids(NP.parallelWaehlen(l2, 3))).not.toContain("D");
+    expect(ids(NP.parallelWaehlen(l2, 3)).includes("A")).toBe(false);
+    expect(ids(NP.parallelWaehlen(l2, 3)).includes("D")).toBe(false);
   });
 
   it("Reihenfolge nach Priorität, höchstens n, Hartgrenze 3", () => {
