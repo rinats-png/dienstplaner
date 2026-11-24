@@ -16,8 +16,11 @@
 | #487 | Opus (Review und Delta-Review 2026-11-22/23, nicht Autor) | NICHT MERGEN → Delta MERGEBAR | gemergt |
 | #488 | Sonnet (Review 2026-11-22/23, nicht Autor) | MERGE-OK | gemergt |
 | #490 | Opus (Review 2026-11-22/23, nicht Autor) | MERGE-OK | gemergt |
+| #530 | Opus (unabhängiger Review Datenschutz/Rechte, nicht Autor) | MERGE-OK | gemergt |
 
-Zuordnung der Urteile: In den Berichten steht „FREIGABE“. Das Vokabular von `urteilPositiv` kennt dieses Wort nicht; es ist hier als `MERGE-OK` geschrieben (gleiche Bedeutung, ohne Auflagen). Merge-Commits: #473 16b4cdfb, #475 748099a2, #474 6969a54b, #477 a1c8eafa (Urteil über den Inhalt), #481 03bc00de, #482 2c8c4098, #484 acd7ce85, #485 3309574c, #486 82f3d2d5, #487 517993ca, #488 6718e42e, #490 b6d1f35e.
+Zuordnung der Urteile: In den Berichten steht „FREIGABE“. Das Vokabular von `urteilPositiv` kennt dieses Wort nicht; es ist hier als `MERGE-OK` geschrieben (gleiche Bedeutung, ohne Auflagen). Merge-Commits: #473 16b4cdfb, #475 748099a2, #474 6969a54b, #477 a1c8eafa (Urteil über den Inhalt), #481 03bc00de, #482 2c8c4098, #484 acd7ce85, #485 3309574c, #486 82f3d2d5, #487 517993ca, #488 6718e42e, #530 09ca5a2c, #490 b6d1f35e.
+
+Zeile #530: Unabhängiger Opus-Review (Datenschutz/Rechte) auf Kopf dc2f132b73cfab69702722519ec2dce3c98b8322, Urteil FREIGEGEBEN (hier als `MERGE-OK` geschrieben). Hinweise des Reviews, keine Auflagen: H-1 und H-2 (NaN-Ampel bei fehlendem Tagesfeld in `mindest`, P2-17, siehe ENTSCHEIDUNGSLISTE Nachtrag 2026-11-24) und H-3 (Schlüsselnamen im Gestalt-Protokoll). Selbstauskunft des Prüfers wie bei den anderen Zeilen; der Rohbericht liegt nicht im Repository.
 
 Verlauf der Zeilen mit Delta: #484 hatte im ersten Review den Blocker B1 (NICHT FREIGEGEBEN); das Delta-Review (Opus) gab FREIGABE. #487 hatte im ersten Review eine rote CI (NICHT FREIGEGEBEN); das Delta-Review gab FREIGABE. #485 hatte FREIGABE MIT AUFLAGEN; das Delta-Review (Opus) gab FREIGABE. Die Form entspricht der Zeile #359 in `REVIEW-NACHWEIS-2026-11-23.md`.
 
