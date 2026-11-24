@@ -10,7 +10,7 @@
              Nachtzuschlag 7 h bei Nachtfenster 22–06, Schichttag 28.03. (Beginn), Ende-Kalendertag 29.03.
    T-UHR-*   Geräteuhr +1 h, −1 h, +1 Tag, online: Der Server bestimmt Tag und Uhrzeit; das Gerätedatum wird nur
              verglichen, GERAETEDATUM_ABWEICHEND steht nur, wenn der Gerätetag vom Betriebstag abweicht.
-   T-PAUSE-1 Pause über Mitternacht und in beiden Umstellungsnächten (Frühjahr 28.→29.03., Herbst 24.→25.10.).
+   T-PAUSE-1 Pause über Mitternacht und in beiden Umstellungsnächten (Frühjahr 28.→29.03., Herbst 24.→25.10.). Die Lage einer Pause wird nicht gespeichert (nur Minuten): geprüft ist Nachtdienst über Mitternacht mit Pause.
    ========================================================================== */
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -68,7 +68,11 @@ beforeAll(async () => {
 }, 120000);
 afterAll(async () => {
   vi.useRealTimers();
-  if (wurzel) await rm(wurzel, { recursive: true, force: true });
+  if (wurzel) {
+    await rm(wurzel, { recursive: true, force: true });
+    /* Geschwisterordner, den server/lib/schluesselepoche.mjs (zustandsVerzeichnis) neben der Ablage anlegt. */
+    await rm(`${wurzel}-zustand`, { recursive: true, force: true });
+  }
 });
 
 /** Kalendertag, den ein Gerät in Berlin zeigt, dessen Uhr `versatzMs` vor- (+) oder nachgeht (−). */
@@ -132,9 +136,18 @@ describe("T-UHR-P1 / -M1 / -T1: Geräteuhr +1 h, −1 h, +1 Tag, online — die 
     await fall("mx-p1-2230", "2026-11-02T21:30:00Z", +STUNDE, "2026-11-02", "22:30", false);
     await fall("mx-p1-2330", "2026-11-02T22:30:00Z", +STUNDE, "2026-11-02", "23:30", true);
   });
-  it("Uhr um Minuten falsch um Mitternacht: Serverzeit ±2 min noch im Folgetag → keine Markierung; ≥ 2 min davor → markiert", async () => {
+  it("Uhr um Minuten falsch um Mitternacht: Toleranz GERAETE_TOLERANZ_MS = 2 min an der SERVERzeit; genau 2 min nicht markiert, mehr als 2 min markiert", async () => {
     await fall("mx-tol-nah", "2026-11-02T22:59:30Z", 60000, "2026-11-02", "23:59", false, true);      // Server 23:59:30, Gerät 00:00:30 (Folgetag)
     await fall("mx-tol-fern", "2026-11-02T22:57:00Z", 180000, "2026-11-02", "23:57", true, true);     // Server 23:57:00, Gerät 00:00:00 (Folgetag)
+  });
+  it("Grenzfälle der Toleranz (Regel: Gerätetag = Berliner Tag von Serverzeit −2 min oder +2 min → nicht markiert)", async () => {
+    const TAG = 24 * 3600000;
+    /* Server kurz vor Mitternacht, Gerät schon im Folgetag: 23:58:00 liegt genau 2 min davor (+2 min = 00:00:00 = Folgetag). */
+    await fall("mx-g-2358-00", "2026-11-02T22:58:00Z", TAG, "2026-11-02", "23:58", false, true);
+    await fall("mx-g-2357-59", "2026-11-02T22:57:59Z", TAG, "2026-11-02", "23:57", true, true);
+    /* Gegenseite: Server kurz nach Mitternacht, Gerät noch im Vortag: 00:01:59 −2 min = 23:59:59 Vortag; 00:02:00 −2 min = 00:00:00 selber Tag. */
+    await fall("mx-g-0001-59", "2026-11-02T23:01:59Z", -TAG, "2026-11-03", "00:01", false, true);
+    await fall("mx-g-0002-00", "2026-11-02T23:02:00Z", -TAG, "2026-11-03", "00:02", true, true);
   });
   it("M1 (−1 h): mittags derselbe Tag — keine Markierung; 01:30 Berlin noch derselbe Tag; 00:30 Berlin zeigt das Gerät den Vortag — dann markiert", async () => {
     await fall("mx-m1-mittag", "2026-11-02T09:00:00Z", -STUNDE, "2026-11-02", "10:00", false);
@@ -157,7 +170,9 @@ describe("T-UHR-P1 / -M1 / -T1: Geräteuhr +1 h, −1 h, +1 Tag, online — die 
 
 describe("T-PAUSE-1: Pause über Mitternacht und in beiden Umstellungsnächten", () => {
   /* Nachtdienst 22:00 → 06:00 mit 30 min Pause (zwei Stunden nach Beginn bis nach Mitternacht liegt die Pause im Dienst).
-     Die Pause gehört zum Ende-Stempel; abgezogen wird von der WIRKLICHEN Anwesenheit (Abstand der Zeitpunkte). */
+     Die Pause gehört zum Ende-Stempel; gespeichert werden nur die Minuten, nicht ihre Lage. Geprüft wird also „Nachtdienst über
+     Mitternacht mit Pause“, nicht eine Pause an der Mitternacht. istZeitFuer rechnet mit dauerAm (Wanduhr plus uhrversatz,
+     server/lib/istdaten.mjs), nicht mit startAm/endeAm; in den Umstellungsnächten ergibt das die wirkliche Dauer. */
   const nacht = async (raum, tag, startZ, endeZ, pause) => {
     await raumAnlegen(raum, ["a1"], { [`a1|${tag}`]: "N30" });
     zeitAuf(startZ);
