@@ -144,11 +144,13 @@ async function monatsSchritt(page, knopf, erwartet, eintrag, testInfo) {
 test.describe("Abnahme B — Abläufe mit Schreibwirkung (einmal je Lauf)", () => {
   /* Drei Anmeldungen und mehrere Serverwege je Ablauf: großzügiger als die 90 s der Suite. */
   test.describe.configure({ timeout: 300_000 });
-  /* QS-6: Die Oberfläche rechnet „heute“ in der Ortszeit des Geräts (src/lib/datum.js → engine/zeit.mjs), der Server
-     stempelt nach Europe/Berlin (zeiterfassung.mjs, heuteBerlin). Ein Runner in UTC zeigte zwischen 23 und 24 Uhr UTC
-     (Winterzeit; Sommerzeit 22–24 Uhr) den Vortag: Der Stempel landete auf dem Berliner Tag, die Stempeluhr suchte ihn
-     am Vortag und bot nach dem Neuladen wieder „Einstempeln“ statt „Ausstempeln“ an. Darum hier, wie bei der
-     Stempeluhr unten, die Zeitzone des Betriebs. */
+  /* QS-6: Vor ZEIT-C rechnete die Oberfläche „heute“ in der Ortszeit des Geräts, der Server stempelte nach
+     Europe/Berlin. Ein Runner in UTC zeigte zwischen 23 und 24 Uhr UTC (Winterzeit; Sommerzeit 22–24 Uhr) den Vortag:
+     Der Stempel landete auf dem Berliner Tag, die Stempeluhr suchte ihn am Vortag und bot nach dem Neuladen wieder
+     „Einstempeln“ statt „Ausstempeln“ an. Seit ZEIT-C kommt „heute“ aus der Serverlogik und der Zeitbasis (Betriebstag
+     Europe/Berlin, server/lib/engine/zeit.mjs heute()); der Server stempelt ebenfalls nach Europe/Berlin
+     (zeiterfassung.mjs, heuteBerlin). Die feste Zone des Betriebs bleibt hier, wie bei der Stempeluhr unten, nur als
+     Vorsicht (Vertrag § 9.3: der Pin bleibt). Dieselben Abläufe in fremden Zonen: e2e/zeit-f-abnahme-b-zonen.spec.mjs. */
   test.use({ timezoneId: "Europe/Berlin" });
   test.beforeEach(async ({ page }, testInfo) => { neuerTest(); if (!testInfo.title.startsWith("B7")) await seiteVerfolgen(page); });
   test("B7 Stempeln ohne Netz, vorläufig auf dem Gerät, nach dem Netz genau ein Stempel", async ({ page, context }, testInfo) => {

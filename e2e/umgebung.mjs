@@ -21,6 +21,11 @@ export const ZUSATZ_ZUGAENGE = Object.freeze(["stempeluhr-ein", "stempeluhr-aus"
 export const OEFFNEN_ZUGAENGE = Object.freeze([["oeffnen-planer", "planer", 1], ["oeffnen-subplaner", "subplaner", 1],
   ["oeffnen-mitarbeiter", "mitarbeiter", 3]]);
 
+/** ZEIT-F Rest (e2e/zeit-f-abnahme-b-zonen.spec.mjs): eine eigene Beschäftigte für B7 im Zonenprojekt. B7 stempelt ein
+ *  UND aus; mit der Person der Rolle „mitarbeiter“ (B7 in 390x844) oder einem Stempeluhr-Zugang lägen zwei schreibende
+ *  Abläufe auf demselben Stempel, je nach Reihenfolge der Projekte. Gleiche Form wie OEFFNEN_ZUGAENGE. */
+export const ZONEN_ZUGAENGE = Object.freeze([["b7-zone", "mitarbeiter", 4]]);
+
 /** Weitere Codes je Rolle für dieselbe Person (Pool). Befund CI #423 (2026-11-20): Der Server deckelt gelungene
  *  Anmeldungen je CODE auf 20 in 5 Minuten (Lastbremse „anmelden-code“, server/lib/schutz.mjs). Die Suite meldet die
  *  Planung an acht Viewports rund acht Mal je Viewport an; läuft sie zügig, überschreitet EIN Code die Grenze (429,
