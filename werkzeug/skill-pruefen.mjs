@@ -43,15 +43,20 @@ export const GRENZEN = Object.freeze({
   zeilenLaenge: 20000,
   fundeJeDatei: 200,
   fundeGesamt: 2000,
-  kommentarLaenge: 4000,
+  kommentarLaenge: 200000,
 });
 
 export const GRENZEN_TEXT = Object.freeze([
   "Keine Funde heißt nicht sicher. Prompt-Injection im Fließtext ist nicht zuverlässig erkennbar.",
   "Es sind einfache Textmuster. Wer sie kennt, umgeht sie (Umschreibung, Aufteilung, andere Sprache, Kodierung).",
-  "Binärdateien (auch UTF-16) werden nur gehasht, nicht durchsucht.",
-  `Zeilen über ${GRENZEN.zeilenLaenge} Zeichen werden nur gekürzt geprüft und gemeldet.`,
+  "Echte Binärdateien werden nur gehasht, nicht durchsucht. Eine Datei mit Textendung oder UTF-16-Kopf, die als binär erkannt wird, wird gemeldet (auffaellig) und nur nach Entfernen der NUL-Bytes durchsucht (unsicher).",
+  `Zeilen über ${GRENZEN.zeilenLaenge} Zeichen werden nur gekürzt geprüft und gemeldet. HTML-Kommentare werden bis ${GRENZEN.kommentarLaenge} Zeichen Inhalt geprüft.`,
+  "Wortregeln (token, credentials, api key, system prompt) ergeben je Datei einen Fund mit Anzahl der Zeilen.",
+  "Werden Funde unterdrückt (Grenze je Datei oder gesamt), meldet das Werkzeug UNVOLLSTÄNDIG und gibt 1 zurück. Auffällige Funde bleiben vor Hinweisen erhalten.",
   "Es wird nichts ausgeführt und nichts aus dem Netz gelesen. Quelle, Version und Lizenz prüft ein Mensch.",
+  "Abhängigkeiten (npm-/pip-Pakete, Downloads), die der Skill erst nachlädt, werden NICHT geprüft.",
+  "Die Sperrdatei sichert Pfad und Inhalt, nicht Dateirechte oder Exec-Bit.",
+  "Zwischen Dateiliste und Lesen kann ein gleichzeitiger lokaler Schreibzugriff den Inhalt ändern (TOCTOU). Auf einer privaten Kopie prüfen.",
   "Ein Treffer ist ein Hinweis, kein Beweis. Ein Hash zeigt nur Gleichheit, nicht Harmlosigkeit.",
 ]);
 
@@ -60,20 +65,43 @@ export const GRENZEN_TEXT = Object.freeze([
 const LF = (s) => s.replace(/\r\n/g, "\n");
 const sha = (buf) => createHash("sha256").update(buf).digest("hex");
 const nulImKopf = (buf) => buf.subarray(0, 8192).includes(0);
+const utf16Kopf = (buf) => (buf[0] === 0xff && buf[1] === 0xfe) || (buf[0] === 0xfe && buf[1] === 0xff);
+/* Endungen, hinter denen ein Mensch Text erwartet. Ein NUL-Byte darin ist ein Verdachtsmoment. */
+const TEXT_ENDUNG = /\.(?:md|markdown|txt|json|jsonc|ya?ml|toml|ini|cfg|conf|js|mjs|cjs|ts|tsx|jsx|sh|bash|zsh|ps1|psm1|bat|cmd|py|rb|pl|php|html?|css|xml|svg|csv|rst|lock)$/i;
 
-function gesamtHash(dateien) {
+const nachPfad = (a, b) => (a.pfad < b.pfad ? -1 : a.pfad > b.pfad ? 1 : 0);
+
+export function gesamtHash(dateien) {
   const h = createHash("sha256");
-  const sortiert = [...dateien].sort((a, b) => (a.pfad < b.pfad ? -1 : a.pfad > b.pfad ? 1 : 0));
+  const sortiert = [...dateien].sort(nachPfad);
   for (const d of sortiert) h.update(`${d.pfad}\0${d.sha256}\n`);
   return h.digest("hex");
 }
 
 /* ---------- Maskierung und Ausschnitt ---------- */
-const STEUER = /[\u202A-\u202E\u2066-\u2069\u200B-\u200D\u2060\u180E\uFEFF]|[\u{E0000}-\u{E007F}]/gu;
-const STEUER_PRUEF = /[\u202A-\u202E\u2066-\u2069\u200B-\u200D\u2060\u180E\uFEFF]|[\u{E0000}-\u{E007F}]/u;
+/* Formatierungszeichen, die Text umdrehen oder verstecken (Bidi, Zero-Width, weicher Trennstrich usw.). */
+const VERDECKT_KLASSE = "\\u202A-\\u202E\\u2066-\\u2069\\u200B-\\u200F\\u2060\\u180E\\uFEFF\\u061C\\u00AD\\u034F\\u3164\\u2028\\u2029";
+/* Steuerzeichen C0 (ohne Tab und Zeilenvorschub), DEL und C1: ESC, CR, CSI usw. */
+const STEUER_C0C1 = "\\u0000-\\u0008\\u000B-\\u001F\\u007F-\\u009F";
+const TAGS = "[\\u{E0000}-\\u{E007F}]";
+// eslint-disable-next-line no-misleading-character-class -- Absicht: einzelne Formatierungszeichen suchen
+const STEUER_PRUEF = new RegExp(`[${VERDECKT_KLASSE}]|${TAGS}`, "u");
+const STEUER_C0C1_PRUEF = new RegExp(`[${STEUER_C0C1}]`);
+/* Anzeige: zusaetzlich Zeilenvorschub (in Namen), damit nichts die Ausgabe umbricht oder ueberschreibt. */
+// eslint-disable-next-line no-misleading-character-class -- Absicht: einzelne Formatierungszeichen suchen
+const STEUER = new RegExp(`[${VERDECKT_KLASSE}\\u0000-\\u0008\\u000A-\\u001F\\u007F-\\u009F]|${TAGS}`, "gu");
 
-function sichtbar(s) {
-  return s.replace(STEUER, (z) => `<U+${z.codePointAt(0).toString(16).toUpperCase().padStart(4, "0")}>`);
+/** Ersetzt alle Zeichen, die die Anzeige verfaelschen koennten, durch <U+XXXX>. Gilt fuer Ausschnitte, Namen und Pfade. */
+export function sichtbar(s) {
+  return String(s).replace(STEUER, (z) => `<U+${z.codePointAt(0).toString(16).toUpperCase().padStart(4, "0")}>`);
+}
+
+/** Wendet sichtbar() auf alle Texte eines Ergebnisobjekts an (Ausgabe, nie die Sperrdatei). */
+export function bereinigt(x) {
+  if (typeof x === "string") return sichtbar(x);
+  if (Array.isArray(x)) return x.map(bereinigt);
+  if (x && typeof x === "object") return Object.fromEntries(Object.entries(x).map(([k, v]) => [k, bereinigt(v)]));
+  return x;
 }
 
 /** Werte hinter token=/key=/secret=/password=, Bearer, bekannte Token-Formen, URL-Zugangsdaten, lange Blöcke. */
@@ -82,6 +110,7 @@ export function maskieren(s) {
     .replace(/(\/\/)([^/\s:@]{1,100}):([^/\s@]{1,200})@/g, "$1$2:***@")
     .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{6,}/gi, "$1 ***")
     .replace(/(token|key|secret|passw(?:or)?d|passwort|authorization|credential)(s?["']?\s*[:=]\s*["']?)([^\s"'`,;)}\]]{3,})/gi, "$1$2***")
+    .replace(/(--?(?:token|api[_-]?key|access[_-]?key|key|secret|passw(?:or)?d|passwort)\s+|\bset\s+\w*(?:token|key|secret|passw\w*)\s+|\b(?:password|passwd|passwort|token|secret|api[_-]?key)\s+)([^\s"'`,;)}\]-][^\s"'`,;)}\]]{2,})/gi, "$1***")
     .replace(/\b(?:gh[pousr]_|github_pat_|AKIA|ASIA|sk-|xox[abprs]-|AIza)[A-Za-z0-9_-]{8,}/g, (m) => `${m.slice(0, 4)}***`)
     .replace(/[A-Za-z0-9+/_-]{32,}/g, (m) => `${m.slice(0, 6)}…[maskiert ${m.length}]`);
 }
@@ -162,6 +191,7 @@ export const MUSTER = Object.freeze([
   R("exfiltration", "injektion", "auffaellig", /\bexfiltrat\w*/i),
   R("heimlich", "injektion", "hinweis", /\b(?:secretly|silently|covertly|without (?:asking|telling|informing|notifying))\b|\bheimlich\b/i),
   R("verdeckte-zeichen", "injektion", "auffaellig", STEUER_PRUEF),
+  R("steuerzeichen-ansi", "injektion", "auffaellig", STEUER_C0C1_PRUEF),
   R("langer-base64-block", "injektion", "auffaellig", /[A-Za-z0-9+/]{200,}={0,2}/),
 ]);
 
@@ -206,7 +236,7 @@ function einlesen(wurzelEingabe, ohne) {
         if (ohne.has(name)) { ausgeschlossen.push(rel ? `${rel}/${name}` : name); continue; }
         const relName = rel ? `${rel}/${name}` : name;
         if (++zaehler > GRENZEN.eintraege) { verletzungen.push(`Mehr als ${GRENZEN.eintraege} Einträge (Grenze)`); abbruch = true; break; }
-        if (tiefe + 1 > GRENZEN.tiefe) { verletzungen.push(`Tiefe über${GRENZEN.tiefe} (Grenze): ${relName}`); abbruch = true; break; }
+        if (tiefe + 1 > GRENZEN.tiefe) { verletzungen.push(`Tiefe über ${GRENZEN.tiefe} (Grenze): ${relName}`); abbruch = true; break; }
         const absName = path.join(abs, name);
         let s;
         try { s = lstatSync(absName); } catch { verletzungen.push(`Eintrag nicht lesbar: ${relName}`); continue; }
@@ -226,30 +256,47 @@ function einlesen(wurzelEingabe, ohne) {
 }
 
 /* ---------- Textsuche ---------- */
+/* Wortregeln: je Datei ein Fund mit Anzahl der Zeilen (sonst füllen normale Texte die Fundgrenze). */
+const SAMMELN = new Set(["token-wort", "credentials-wort", "api-key-wort", "system-prompt"]);
+
 function textFunde(rel, text, muster, kopie) {
-  const funde = [];
-  let unterdrueckt = 0;
+  /* Auffällige Funde haben eigene Liste und Vorrang. Die Ausschnitte entstehen erst für behaltene Funde. */
+  const auff = [];
+  const hinw = [];
+  let ueberlauf = 0;
   const merke = (f) => {
-    if (funde.length >= GRENZEN.fundeJeDatei) { unterdrueckt++; return; }
-    funde.push(f);
+    const liste = f.schwere === "auffaellig" ? auff : hinw;
+    if (liste.length >= GRENZEN.fundeJeDatei) { ueberlauf++; return; }
+    liste.push(f);
   };
   for (const r of PFAD_REGELN) {
-    if (muster.some((m) => m.kategorie === r.kategorie)) {
-      if (r.re.test(rel)) merke({ kategorie: r.kategorie, schwere: r.schwere, regel: r.id, datei: rel, zeile: 1, ausschnitt: ausschnitt(rel, null) });
+    if (muster.some((m) => m.kategorie === r.kategorie) && r.re.test(rel)) {
+      merke({ kategorie: r.kategorie, schwere: r.schwere, regel: r.id, datei: rel, zeile: 1, quelle: rel, re: null });
     }
   }
   const skript = istSkript(rel, text);
+  const gesammelt = new Map();
   const zeilen = text.split("\n");
   for (let i = 0; i < zeilen.length; i++) {
     let z = zeilen[i];
     if (i === 0 && z.charCodeAt(0) === 0xfeff) z = z.slice(1);
     let zuLang = false;
     if (z.length > GRENZEN.zeilenLaenge) { z = z.slice(0, GRENZEN.zeilenLaenge); zuLang = true; }
-    if (zuLang) merke({ kategorie: "injektion", schwere: "hinweis", regel: "zeile-zu-lang", datei: rel, zeile: i + 1, ausschnitt: ausschnitt(z, null) });
+    if (zuLang) merke({ kategorie: "injektion", schwere: "hinweis", regel: "zeile-zu-lang", datei: rel, zeile: i + 1, quelle: z, re: null });
     for (const r of muster) {
       if (r.nur === "skript" && !skript) continue;
-      if (r.re.test(z)) merke({ kategorie: r.kategorie, schwere: r.schwere, regel: r.id, datei: rel, zeile: i + 1, ausschnitt: ausschnitt(z, r.re) });
+      if (!r.re.test(z)) continue;
+      if (SAMMELN.has(r.id)) {
+        const g = gesammelt.get(r.id);
+        if (g) g.anzahl++;
+        else gesammelt.set(r.id, { r, zeile: i + 1, quelle: z, anzahl: 1 });
+      } else {
+        merke({ kategorie: r.kategorie, schwere: r.schwere, regel: r.id, datei: rel, zeile: i + 1, quelle: z, re: r.re });
+      }
     }
+  }
+  for (const g of gesammelt.values()) {
+    merke({ kategorie: g.r.kategorie, schwere: g.r.schwere, regel: g.r.id, datei: rel, zeile: g.zeile, quelle: g.quelle, re: g.r.re, anzahl: g.anzahl });
   }
   /* HTML-Kommentare über mehrere Zeilen: nur mit anweisungsähnlichem Inhalt. */
   if (muster.some((m) => m.kategorie === "injektion")) {
@@ -267,13 +314,15 @@ function textFunde(rel, text, muster, kopie) {
       const inhalt = text.slice(a + 4, Math.min(e, a + 4 + GRENZEN.kommentarLaenge));
       if (HTML_ANWEISUNG.test(inhalt)) {
         const erste = text.slice(a, Math.min(e + 3, a + 400)).split("\n")[0];
-        merke({ kategorie: "injektion", schwere: "auffaellig", regel: "html-kommentar-anweisung", datei: rel, zeile, ausschnitt: ausschnitt(erste, null) });
+        merke({ kategorie: "injektion", schwere: "auffaellig", regel: "html-kommentar-anweisung", datei: rel, zeile, quelle: erste, re: null });
       }
       pos = e + 3;
     }
   }
-  if (kopie) kopie.unterdrueckt += unterdrueckt;
-  return funde;
+  const alle = [...auff, ...hinw];
+  const behalten = [...auff, ...hinw].slice(0, GRENZEN.fundeJeDatei);
+  if (kopie) kopie.unterdrueckt += ueberlauf + (alle.length - behalten.length);
+  return behalten.map(({ quelle, re, ...rest }) => ({ ...rest, ausschnitt: ausschnitt(quelle, re) }));
 }
 
 /* ---------- Hauptprüfung ---------- */
@@ -295,8 +344,14 @@ export function pruefen(ziel, optionen = {}) {
     let buf;
     try { buf = readFileSync(d.abs); } catch { fehler.push(`Datei nicht lesbar: ${d.rel}`); continue; }
     if (buf.length > GRENZEN.dateiBytes) { fehler.push(`Datei zu groß (${buf.length} Bytes, Grenze ${GRENZEN.dateiBytes}): ${d.rel}`); continue; }
-    if (nulImKopf(buf)) {
+    if (nulImKopf(buf) || utf16Kopf(buf)) {
       dateien.push({ pfad: d.rel, bytes: buf.length, art: "binaer", sha256: sha(buf) });
+      /* Eine Textdatei mit NUL-Byte darf nicht still aus der Suche fallen: melden und nach Entfernen der NUL-Bytes durchsuchen. */
+      if (TEXT_ENDUNG.test(d.rel) || utf16Kopf(buf)) {
+        funde.push({ kategorie: "abdeckung", schwere: "auffaellig", regel: "binaer-trotz-textendung", datei: d.rel, zeile: 1, ausschnitt: "als binär erkannt trotz Textendung oder UTF-16-Kopf: Suche nur nach Entfernen der NUL-Bytes, unsicher" });
+        const ohneNul = Buffer.from(LF(buf.toString("latin1").replace(/\0/g, "")), "latin1");
+        funde.push(...textFunde(d.rel, ohneNul.toString("utf8"), muster, stand));
+      }
       const kopf = buf.subarray(0, 4);
       const programm = (kopf[0] === 0x4d && kopf[1] === 0x5a) || (kopf[0] === 0x7f && kopf[1] === 0x45 && kopf[2] === 0x4c && kopf[3] === 0x46)
         || kopf.equals(Buffer.from([0xfe, 0xed, 0xfa, 0xce])) || kopf.equals(Buffer.from([0xfe, 0xed, 0xfa, 0xcf]))
@@ -313,16 +368,24 @@ export function pruefen(ziel, optionen = {}) {
   }
   if (fehler.length) return { schema: 1, urteil: URTEIL, warnung: WARNUNG, ziel, fehler, grenzen: [...GRENZEN_TEXT], funde: [] };
 
-  dateien.sort((a, b) => (a.pfad < b.pfad ? -1 : a.pfad > b.pfad ? 1 : 0));
+  dateien.sort(nachPfad);
   funde.sort((a, b) => (a.datei < b.datei ? -1 : a.datei > b.datei ? 1 : a.zeile - b.zeile || (a.kategorie < b.kategorie ? -1 : a.kategorie > b.kategorie ? 1 : a.regel < b.regel ? -1 : a.regel > b.regel ? 1 : 0)));
   let unterdrueckt = stand.unterdrueckt;
-  if (funde.length > GRENZEN.fundeGesamt) { unterdrueckt += funde.length - GRENZEN.fundeGesamt; funde.length = GRENZEN.fundeGesamt; }
+  if (funde.length > GRENZEN.fundeGesamt) {
+    /* Auch gesamt: auffällige zuerst behalten, dann wieder in Anzeigereihenfolge. */
+    const ranking = new Map(funde.map((f, i) => [f, (f.schwere === "auffaellig" ? 0 : funde.length) + i]));
+    const behalten = [...funde].sort((a, b) => ranking.get(a) - ranking.get(b)).slice(0, GRENZEN.fundeGesamt);
+    unterdrueckt += funde.length - behalten.length;
+    const behaltenMenge = new Set(behalten);
+    for (let i = funde.length - 1; i >= 0; i--) if (!behaltenMenge.has(funde[i])) funde.splice(i, 1);
+  }
   const auffaellig = funde.filter((f) => f.schwere === "auffaellig").length;
   return {
     schema: 1,
     urteil: URTEIL,
     warnung: WARNUNG,
     ziel,
+    vollstaendig: unterdrueckt === 0,
     dateien,
     gesamt: gesamtHash(dateien),
     funde,
@@ -343,7 +406,8 @@ export function pruefen(ziel, optionen = {}) {
 const HEX64 = /^[0-9a-f]{64}$/;
 
 export function sperreAus(ergebnis) {
-  const dateien = {};
+  /* Ohne Prototyp: Dateinamen wie __proto__ oder constructor sind sonst Sonderfälle. */
+  const dateien = Object.create(null);
   for (const d of ergebnis.dateien) dateien[d.pfad] = d.sha256;
   return { schema: 1, dateien, gesamt: ergebnis.gesamt };
 }
@@ -363,9 +427,10 @@ export function sperreLesen(inhalt) {
 export function sperreVergleichen(sperre, ergebnis) {
   const jetzt = sperreAus(ergebnis).dateien;
   const alt = sperre.dateien;
-  const hinzugefuegt = Object.keys(jetzt).filter((p) => !(p in alt)).sort();
-  const entfernt = Object.keys(alt).filter((p) => !(p in jetzt)).sort();
-  const geaendert = Object.keys(jetzt).filter((p) => p in alt && alt[p] !== jetzt[p]).sort();
+  const hat = (o, p) => Object.prototype.hasOwnProperty.call(o, p);
+  const hinzugefuegt = Object.keys(jetzt).filter((p) => !hat(alt, p)).sort();
+  const entfernt = Object.keys(alt).filter((p) => !hat(jetzt, p)).sort();
+  const geaendert = Object.keys(jetzt).filter((p) => hat(alt, p) && alt[p] !== jetzt[p]).sort();
   return { ok: !hinzugefuegt.length && !entfernt.length && !geaendert.length && sperre.gesamt === ergebnis.gesamt, hinzugefuegt, entfernt, geaendert };
 }
 
@@ -405,7 +470,8 @@ function textAusgabe(e) {
     z.push(`Gesamt-SHA-256: ${e.gesamt}`);
     if (e.ausgeschlossen && e.ausgeschlossen.length) z.push(`Ausgeschlossen (NICHT geprüft, auf Wunsch): ${e.ausgeschlossen.join(", ")}`);
     z.push(`Funde: ${e.funde.length} (auffaellig ${s.auffaellig}, hinweis ${s.hinweis}, unterdrückt ${s.unterdrueckt})`);
-    for (const f of e.funde) z.push(`  [${f.schwere}] ${f.kategorie} ${f.datei}:${f.zeile} ${f.regel} | ${f.ausschnitt}`);
+    if (e.vollstaendig === false) z.push(`UNVOLLSTÄNDIG: ${s.unterdrueckt} Funde unterdrückt (Grenze ${GRENZEN.fundeJeDatei} je Datei, ${GRENZEN.fundeGesamt} gesamt). Ergebnis nicht verwerten. Betroffene Dateien einzeln lesen. Rückgabe 1.`);
+    for (const f of e.funde) z.push(`  [${f.schwere}] ${f.kategorie} ${f.datei}:${f.zeile} ${f.regel}${f.anzahl ? ` [${f.anzahl} Zeilen]` : ""} | ${f.ausschnitt}`);
     if (e.sperre) {
       const p = e.sperre;
       if (p.geschrieben) z.push(`Sperre: geschrieben nach ${p.datei}`);
@@ -432,7 +498,11 @@ function textAusgabe(e) {
 export function lauf(argv) {
   const a = argumente(argv);
   const json = argv.includes("--json");
-  const ausgeben = (e, code) => ({ code, stdout: json ? `${JSON.stringify(e, null, 2)}\n` : textAusgabe(e) });
+  /* Alles, was ein Mensch liest, geht durch bereinigt(): Namen und Pfade des Prüfobjekts steuern die Anzeige nicht. */
+  const ausgeben = (e, code) => {
+    const b = bereinigt(e);
+    return { code, stdout: json ? `${JSON.stringify(b, null, 2)}\n` : textAusgabe(b) };
+  };
   if (a.fehler) {
     return ausgeben({ schema: 1, urteil: URTEIL, warnung: WARNUNG, ziel: argv.find((x) => !x.startsWith("--")) || "", fehler: [a.fehler], grenzen: [...GRENZEN_TEXT], funde: [] }, 1);
   }
@@ -444,7 +514,8 @@ export function lauf(argv) {
   }
   const e = pruefen(o.ziel, { ohne: o.ohne });
   if (e.fehler) return ausgeben(e, 1);
-  let code = 0;
+  /* Unterdrückte Funde: das Ergebnis ist unvollständig, also Rückgabe 1. */
+  let code = e.vollstaendig ? 0 : 1;
   if (o.sperre) {
     const datei = o.sperre;
     if (o.schreiben) {

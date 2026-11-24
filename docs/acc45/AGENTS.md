@@ -193,6 +193,16 @@ Drei Repo-Werkzeuge beschleunigen die Arbeit, ohne neue Software, Hooks oder glo
   abgelehnt. Grenzen: 2000 Dateien, 5 MB je Datei, Tiefe 20.
 - Das Urteil ist immer „MENSCHLICHE PRÜFUNG ERFORDERLICH“. Keine Funde heißt nicht sicher; Prompt-Injection im Fließtext
   ist nicht zuverlässig erkennbar. Das Werkzeug ersetzt keine menschliche Prüfung. Rückgabe 0 heißt nur: Lauf ok.
+- Rückgabe 1: Fehler, Grenzüberschreitung, Symlink, Aufruffehler, Abweichung von der Sperre **oder** UNVOLLSTÄNDIG
+  (Funde unterdrückt wegen der Grenze je Datei 200 / gesamt 2000; auffällige Funde bleiben vor Hinweisen erhalten).
+- Anzeige: Namen, Pfade und Ausschnitte laufen durch eine Bereinigung (ESC, CR, C0/C1, Bidi, Zero-Width, U+2028 werden
+  zu `<U+XXXX>`). Maskiert werden Werte hinter token=/key=/secret=/password=, `--token WERT`, `set NAME_KEY WERT`.
+- Eine Datei mit Textendung oder UTF-16-Kopf, die als binär erkannt wird, ist ein auffälliger Fund
+  („binaer-trotz-textendung“) und wird nur nach Entfernen der NUL-Bytes durchsucht. Wortregeln (token, credentials,
+  api key, system prompt) ergeben je Datei einen Fund mit Anzahl.
+- Nicht geprüft: Abhängigkeiten, die der Skill erst nachlädt (npm/pip/Downloads); Dateirechte und Exec-Bit (die Sperre
+  sichert nur Pfad und Inhalt); ein gleichzeitiger lokaler Schreibzugriff zwischen Dateiliste und Lesen (TOCTOU: auf
+  privater Kopie prüfen); HTML-Kommentare über 200000 Zeichen Inhalt.
 - `--sperre-schreiben` legt die Sperrdatei neu an (nie überschreibend); `--sperre` prüft gegen sie (Abweichung: Rückgabe 1).
   Prüfung: `pruefungen/skill-pruefen.test.js` (`npm run pruefung:acc45-werkzeuge`, im CI-Gate). Muster nach dem Prinzip
   von Kordant (MIT), eigene Umsetzung.
