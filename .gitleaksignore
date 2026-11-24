@@ -2,3 +2,8 @@
 # sondern erkennbare Platzhalter (…-nur-zum-pruefen-MARKEn), die prüfen, dass Werte nicht in /gesund erscheinen.
 d2aa9dd0b8d0c9f7a1a1ffee6d513ba41f169821:pruefungen/mail-push-produktion.test.js:generic-api-key:541
 d2aa9dd0b8d0c9f7a1a1ffee6d513ba41f169821:pruefungen/mail-push-produktion.test.js:generic-api-key:543
+# Attrappen in pruefungen/skill-pruefen.test.js im Commit deacc74b (Zeilen 188-190): erkennbare Platzhalter
+# (nur-zum-pruefen-…), prüfen die Maskierung des Werkzeugs. Spätere Fassung setzt sie zusammen; die Historie bleibt.
+deacc74b4490dbb345c5018f4d0a8f2f5a1a977e:pruefungen/skill-pruefen.test.js:generic-api-key:188
+deacc74b4490dbb345c5018f4d0a8f2f5a1a977e:pruefungen/skill-pruefen.test.js:generic-api-key:189
+deacc74b4490dbb345c5018f4d0a8f2f5a1a977e:pruefungen/skill-pruefen.test.js:generic-api-key:190
