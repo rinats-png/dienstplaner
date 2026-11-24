@@ -420,3 +420,44 @@ describe("F  Oberfläche: Markierung und Vorschlag nur für die erlaubten Rollen
     expect(html).not.toMatch(/krank|grippe|NOTIZ/i);
   });
 });
+
+/* ================== F  ABN-A4: Ersatzvorschlag bei nicht festgelegtem Bedarf ================== */
+describe("F  ABN-A4: Dienstart ohne festgelegten Bedarf zeigt in „Ersatz vorbereiten“ nie „x/0“ oder „NaN“", () => {
+  const ohneMindest = () => { const m = kopie(mitFall()); delete m.dienstarten[0].mindest; return m; };
+  const luecke = () => { const m = kopie(mitFall()); m.dienstarten[0].mindest = {}; return m; };
+  const sichtVon = (m) => antwort(m, SITZ.PL).mandanten[0];
+  const zeigeErsatz = (m) => {
+    const s = sichtVon(m);
+    const name = (pid) => { const p = s.personen.find((x) => x.id === pid); return p ? `${p.vorname} ${p.nachname}` : "Person"; };
+    return renderToStaticMarkup(h(ErsatzVorbereitet, { m: s, fallId: "km-a1", name, dienstName: (id) => id, oeffneTag: () => {} }));
+  };
+  it("fehlendes mindest: Server reicht bedarfOffen durch, Oberfläche zeigt „–“ und „Bedarf nicht festgelegt“", () => {
+    const v = ersatzVorbereiten(sichtVon(ohneMindest()), { fallId: "km-a1" });
+    expect(v.length).toBeGreaterThan(0);
+    for (const x of v) expect(x.besetzung.bedarfOffen).toBe(true);
+    const html = zeigeErsatz(ohneMindest());
+    expect(html).toContain("Bedarf nicht festgelegt");
+    expect(html).toContain("1/–");
+    expect(html).not.toMatch(/\/0\b|NaN|besetzt</);
+  });
+  it("unvollständiges mindest (Tagesfeld fehlt, soll NaN): kein „NaN“ in Anzeige und Rechnung", () => {
+    const v = ersatzVorbereiten(sichtVon(luecke()), { fallId: "km-a1" });
+    expect(v.length).toBeGreaterThan(0);
+    for (const x of v) {
+      expect(x.besetzung.bedarfOffen).toBe(true);
+      expect(Number.isNaN(x.besetzung.fehlt)).toBe(false);
+    }
+    expect(zeigeErsatz(luecke())).not.toMatch(/NaN/);
+  });
+  it("festgelegter Bedarf (auch ausdrücklich 0): unverändert, kein Kennzeichen bedarfOffen", () => {
+    for (const x of ersatzVorbereiten(sichtVon(mitFall()), { fallId: "km-a1" })) expect(x.besetzung).not.toHaveProperty("bedarfOffen");
+    const nullBedarf = kopie(mitFall()); nullBedarf.dienstarten[0].mindest = { mo_do: 0, fr: 0, sa: 0, so: 0 };
+    const html = zeigeErsatz(nullBedarf);
+    expect(html).toContain("1/0 · besetzt");
+    expect(html).not.toContain("Bedarf nicht festgelegt");
+  });
+  it("Sichtbarkeit unverändert: Beschäftigte und Betriebsrat bekommen auch hier keinen Vorschlag", () => {
+    expect(ersatzVorbereiten(antwort(ohneMindest(), SITZ.MA).mandanten[0])).toEqual([]);
+    expect(ersatzVorbereiten(antwort(ohneMindest(), SITZ.BR).mandanten[0])).toEqual([]);
+  });
+});

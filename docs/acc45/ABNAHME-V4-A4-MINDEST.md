@@ -226,8 +226,10 @@ Ausgabe bit-gleich (SHA-256 identisch). Prüfung: `oberflaeche-render.test.js` �
 
 Nicht entschieden und deshalb nicht gebaut: ob der fehlende Bedarf die Ampel, die Lückenlisten und den
 Unterschreitungsnachweis ändern soll — ENTSCHEIDUNGSLISTE **P2-17** (Voreinstellung: nur Kennzeichnung).
-Nicht angepasst (Basisverhalten, Restrisiken): `krankmeldungen-offen.jsx` (eigene Rechnung über
-`ersatzVorbereiten`, zeigt „x/0"); bei **unvollständigem** `mindest` ist `soll` an den betroffenen Tagen `NaN`, der
+Behoben (Paket ABN-A4, Fix x/0): `ersatzVorbereiten` (`server/lib/klaerung.mjs`) reicht `bedarfOffen` aus `besetzung` durch
+und rechnet dann keinen Fehlbetrag (nie `NaN`); „Ersatz vorbereiten" in `krankmeldungen-offen.jsx` zeigt „–" und „Bedarf nicht
+festgelegt" (`sollAnzeige`, `BEDARF_OFFEN_TEXT`). Prüfung: `rb5-klaerung.test.js` Block F. Festgelegter Bedarf (auch 0) bleibt
+unverändert. Nicht angepasst (Basisverhalten, Restrisiken): bei **unvollständigem** `mindest` ist `soll` an den betroffenen Tagen `NaN`, der
 Unterschreitungsnachweis (`unterschreitungsNachweis`) liefert dann eine Zeile mit `soll: NaN`, und die
 Prioritäten-Kachel „Besetzung heute" verschwindet ohne Hinweis (P2-17). Nur bei **fehlendem** `mindest` (`soll` 0)
 erscheint der Dienst gar nicht im Unterschreitungsnachweis.
