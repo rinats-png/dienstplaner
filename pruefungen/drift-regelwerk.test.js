@@ -37,16 +37,10 @@ const doku = lies(DOKU);
 const zeileVon = (text, index) => text.slice(0, index).split("\n").length;
 
 /* ---- bekannte Abweichungen --------------------------------------------- */
-/* Regelwerk-Dateien ohne Nennung in der Doku. Richtung offen: Die Doku (Zeile 43) nennt Muster-, Block-,
-   Verteilungs- und Wunschregel „geplant, nicht gerechnet“; `server/lib/regelbaukasten-erweitert.mjs` (WP-I3)
-   rechnet sie. Ob die Doku nachzuziehen oder die Datei noch nicht angeschlossen ist, hat niemand entschieden.
-   Stand 2026-11-24, gefunden von dieser Prüfung. */
-const bekannteAbweichung = [
-  { datei: "server/lib/regelbaukasten-erweitert.mjs",
-    grund: "Doku Zeile 43 nennt Muster-/Block-/Verteilungs-/Wunschregel noch „geplant“; Datei (WP-I3) existiert; Anschluss und Doku-Nachzug offen" },
-  { datei: "server/lib/regelstatus.mjs",
-    grund: "kanonische Darstellung des Prüfstatus (WP-19.0); in der Doku nirgends genannt; Doku-Nachzug offen" },
-];
+/* Regelwerk-Dateien ohne Nennung in der Doku. Leer seit dem Doku-Nachzug (D3, 2026-11-24): Die Doku nennt
+   `server/lib/regelbaukasten-erweitert.mjs` (WP-I3) und `server/lib/regelstatus.mjs` (WP-19.0). Käme eine neue
+   Abweichung mit offener Richtung, gehört sie hier mit Datei und Grund hinein. */
+const bekannteAbweichung = [];
 
 /* ---- Hilfen ------------------------------------------------------------ */
 

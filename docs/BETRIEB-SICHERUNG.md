@@ -400,7 +400,7 @@ Verwandte Meldungen derselben Ansicht:
 
 CI (`betrieb-sicherung.yml`, `deploy/sicherung/ci/ende-zu-ende.sh`) mit echtem Bild, Testdaten über die Anwendungsschicht und lokalem restic-Repository — Einzelheiten und Kennzahlen: [acc45/wp04-nachweis.md](acc45/wp04-nachweis.md).
 
-Offen und nicht Teil dieses Pakets: Ausdünnen der In-App-Sicherungen und der Spur (F-26, `server/lib/daten.mjs`, anderer Agent).
+Nicht Teil dieses Pakets: Ausdünnen der In-App-Sicherungen und der Spur. Es gehört zum Datenschutzlauf (F-26, `server/lib/datenschutzlauf.mjs`, [acc45/wp26-nachweis.md](acc45/wp26-nachweis.md)).
 
 ## 7. Sicherung der Widerrufbücher (BE-3)
 

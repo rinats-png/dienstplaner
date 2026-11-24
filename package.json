@@ -20,7 +20,7 @@
     "pruefung:codes": "node pruefungen/codes.mjs",
     "pruefung:zweifaktor": "vitest run pruefungen/zweifaktor.test.js",
     "pruefung:gesund": "vitest run pruefungen/gesund.test.js",
-    "pruefung:doku": "vitest run pruefungen/doku.test.js pruefungen/drift-sicherheit.test.js pruefungen/drift-regelwerk.test.js",
+    "pruefung:doku": "vitest run pruefungen/doku.test.js pruefungen/drift-sicherheit.test.js pruefungen/drift-regelwerk.test.js pruefungen/drift-wiederherstellung.test.js",
     "pruefung:herkunft": "vitest run pruefungen/herkunft-xff.test.js",
     "pruefung:betreiber-zweifaktor": "vitest run pruefungen/betreiber-zweifaktor.test.js pruefungen/rollen-zweifaktor.test.js pruefungen/rollen-zweifaktor-merken.test.js pruefungen/zugangscode-ersteinrichtung.test.js",
     "pruefung:ablage": "vitest run pruefungen/ablage.test.js",
