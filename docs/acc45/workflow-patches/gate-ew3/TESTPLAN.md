@@ -4,6 +4,17 @@ Der Betreiber löst die Läufe aus (Actions → *Staging-Gate* → **Run workflo
 lesend. Voraussetzung: Patch übernommen ([README.md](README.md)) und `STAGING_GATE_AKTIV = true` für die Dauer der
 Läufe (Aktivierungsentscheidung N-9, getrennt). Ohne die Variable wird der Job übersprungen (kein Lauf, kein Nachweis).
 
+**Pflicht vor der Aktivierung (N-9):** WT-1 (oder WT-2) muss grün sein, bevor `STAGING_GATE_AKTIV` dauerhaft gesetzt
+und ein Nachweis für die Freigabe verwendet wird. Der Docker-Teil von S1–S3 (echte Bilder, Bind-Mounts für Ablage und
+Zustand, `--user` des Runners) ist bis dahin **nicht** belegt — örtlich lief S1–S3 nur ohne Docker. Besonderes Risiko:
+die Regel „Startprotokoll ohne WARNUNG“ — mit Bind-Mounts statt tmpfs kann z. B. die Prüfung des Zustandsverzeichnisses
+anders ausfallen; jede WARNUNG ist ein Befund an Claude, nicht durch Lockern der Regel zu beheben.
+
+**S2 (angenommen, Review #537):** Code-Widerruf über die echte API, Kontosperre über die Anwendungsschicht des
+Digest-Bilds (keine HTTP-Route).
+
+**Frist:** Endprüfung binnen 7 Tagen nach dem Lauf (E6); das Artefakt (öffentlich, synthetisch) bleibt 30 Tage.
+
 **Wichtig:** Jeder rote Lauf bleibt als Check-Run auf seinem Commit. Ein roter Lauf auf S oder M macht G1 für diesen
 Kandidaten dauerhaft NO-GO (`werkzeug/release-pruefung.mjs`, G1). Rote Erwartungen (WT-3, WT-4) **nur** auf
 Wegwerf-Branches.

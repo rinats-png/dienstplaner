@@ -146,11 +146,14 @@ function befundeEW3(/** @type {string} */ text) {
     if (/** @type {any} */ (job).environment !== undefined) b.push(`Job ${name}: environment`);
   }
   const gate = wf.jobs.gate || {};
-  if (!String(gate.if || "").includes("vars.STAGING_GATE_AKTIV == 'true'")) b.push("Gate nicht an STAGING_GATE_AKTIV gebunden");
+  // A1 (Review #537): exakt dieser Ausdruck — jede Ergänzung (`|| true`, `always() ||`) ließe das Gate immer laufen
+  if (gate.if !== "${{ vars.STAGING_GATE_AKTIV == 'true' }}") b.push("Gate nicht exakt an STAGING_GATE_AKTIV gebunden");
+  if (gate["timeout-minutes"] !== 90) b.push("Job-Timeout nicht 90 min");
   const schritte = Array.isArray(gate.steps) ? gate.steps : [];
   for (const s of schritte) {
     if (typeof s.uses === "string" && !SHA_PIN.test(s.uses.trim())) b.push(`uses ohne 40-Zeichen-SHA: ${s.uses}`);
-    if (typeof s.run === "string" && /\$\{\{\s*(inputs\.|github\.event\.inputs|secrets\.)/.test(s.run)) b.push(`Ausdruck mit Eingabe/Secret direkt in run: ${s.name}`);
+    // H1: kein Ausdruck ${{ … }} in run: (Werte nur über env:, sonst Skript-Einschleusung, z. B. github.event.sender.login)
+    if (typeof s.run === "string" && /\$\{\{/.test(s.run)) b.push(`Ausdruck direkt in run: ${s.name}`);
   }
   b.push(...actionsPruefen(text, "staging-gate.yml").befunde.map((x) => `Pin: ${typeof x === "string" ? x : JSON.stringify(x)}`));
   const secrets = [...code.matchAll(/secrets\.([A-Za-z_][A-Za-z0-9_]*)/g)].map((m) => m[1]);
@@ -173,7 +176,13 @@ function befundeEW3(/** @type {string} */ text) {
     ['git merge-base --is-ancestor "$GITHUB_SHA" "$rev"', "Bindung: Vorfahr"],
     ['echo "BAUM=$(git rev-parse "$rev^{tree}")" >> "$GITHUB_ENV"', "Bindung: BAUM für den Nachweis"],
     ['docker pull "$BILD_REPO@$ALT_DIGEST"', "S1: Bild der Basis per Digest"],
+    ['echo "$gezogen" | grep -qx "$BILD_REPO@$DIGEST" || { echo "::error::', "Digest: gezogenes Bild nicht gegen den Digest geprüft"],
+    ['echo "$alt" | grep -qx "$BILD_REPO@$ALT_DIGEST" || { echo "::error::', "Digest: Basisbild nicht gegen den Digest geprüft"],
   ]) if (!zieh.includes(teil)) b.push(was);
+  // A2 (Review #537): B-3 schließt sicher ab — else-Zweig mit Fehlermeldung (B-3) UND exit 1, danach fi
+  if (!/\n\s*else\n\s*echo "::error::[^\n]*\(B-3\)[^\n]*"\n\s*exit 1\n\s*fi\n/.test(zieh)) b.push("Bindung: else-Zweig ohne ::error:: (B-3) und exit 1");
+  const eingabe = schritte.find((s) => /^Eingabe prüfen/.test(s.name || ""))?.run || "";
+  if (!eingabe.includes('[[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || {') || !/exit 1; \}/.test(eingabe)) b.push("Digest: Eingabeprüfung ^sha256: fehlt");
   if (wf.env?.ALT_DIGEST !== RP.KONFIG_STANDARD.ohneRevisionslabel.find((o) => o.commit === C274)?.digest) b.push("ALT_DIGEST ≠ Digest von 274bfa0 im Werkzeug");
   const sich = lesen(".github/workflows/betrieb-sicherung.yml");
   for (const n of ["RESTIC_VERSION", "RESTIC_SHA256"]) if (!restic(sich, n) || restic(text, n) !== restic(sich, n)) b.push(`${n} ≠ betrieb-sicherung.yml`);
@@ -181,9 +190,18 @@ function befundeEW3(/** @type {string} */ text) {
   const lauf = (/** @type {RegExp} */ r) => schritte.find((s) => r.test(s.run || ""));
   const s13 = lauf(/bash deploy\/sicherung\/ci\/widerrufbuch-staging\.sh/);
   if (!s13 || !/WB_PROBEN="\$RUNNER_TEMP\/wb-proben"/.test(s13.run) || s13.if !== undefined) b.push("S1–S3: Schritt fehlt oder ohne Probenordner");
+  for (const s of schritte) if (s["continue-on-error"] !== undefined) b.push(`continue-on-error an Schritt ${s.name || s.uses}`);
+  if (gate["continue-on-error"] !== undefined) b.push("continue-on-error am Job");
   const s46 = lauf(/BILD="\$BILD" bash deploy\/sicherung\/ci\/widerrufbuch-ende-zu-ende\.sh/);
   if (!s46) b.push("S4–S6: widerrufbuch-ende-zu-ende.sh nicht mit BILD=\"$BILD\" (Digest-Bild) aufgerufen");
-  else for (const p of ["S4", "S5", "S6"]) if (!s46.run.includes(`"$WB_PROBEN/${p}"`)) b.push(`${p}: keine Marke`);
+  else {
+    for (const p of ["S4", "S5", "S6"]) if (!s46.run.includes(`"$WB_PROBEN/${p}"`)) b.push(`${p}: keine Marke`);
+    // H1 (Review #537): Marke erst NACH ihrer Prüfung (S4 nach der W1–W11-Schleife, S5 nach grep W6, S6 nach grep W8)
+    const pos = (/** @type {string} */ x) => s46.run.indexOf(x);
+    for (const [marke, vorher] of [["S4", 'grep -q "^✔ W$n "'], ["S5", 'grep -q "^✔ W6 Rücksprung"'], ["S6", 'grep -q "^✔ W8 Erstlauf-Sperre"']]) {
+      if (pos(vorher) < 0 || pos(`echo ok >"$WB_PROBEN/${marke}"`) < pos(vorher)) b.push(`${marke}: Marke vor der Prüfung`);
+    }
+  }
   if (/docker build|build-push-action/.test(code)) b.push("Bild wird gebaut statt per Digest gezogen");
   const up = schritte.find((s) => typeof s.uses === "string" && s.uses.startsWith("actions/upload-artifact@"));
   if (!up || up.with?.name !== FELDER_535.artefakt || !String(up.with?.path || "").includes("staging-nachweis/staging-nachweis.json") || !String(up.if || "").includes("always()")) {
@@ -306,6 +324,37 @@ describe("GATE-EW3 Mutationsproben: jede Verletzung macht die Prüfung rot", () 
   it("M-TRIGGER: pull_request_target", () => {
     expect(mutiert("on:\n  workflow_dispatch:", "on:\n  pull_request_target:\n  workflow_dispatch:").join("\n")).toMatch(/Auslöser/);
   });
+  it("M-AKTIV-ODER: if mit `|| true` (Gate liefe immer)", () => {
+    expect(mutiert("if: ${{ vars.STAGING_GATE_AKTIV == 'true' }}", "if: ${{ vars.STAGING_GATE_AKTIV == 'true' || true }}").join("\n")).toMatch(/STAGING_GATE_AKTIV/);
+  });
+  it("M-AKTIV-ALWAYS: if mit `always() ||` (Gate liefe immer)", () => {
+    expect(mutiert("if: ${{ vars.STAGING_GATE_AKTIV == 'true' }}", "if: ${{ always() || vars.STAGING_GATE_AKTIV == 'true' }}").join("\n")).toMatch(/STAGING_GATE_AKTIV/);
+  });
+  it("M-B3-OFFEN: else-Zweig ohne exit 1 (Bindung schlösse nicht ab)", () => {
+    expect(mutiert("Workflow auf dem Commit des Bilds oder auf dem Schnitt starten.\"\n            exit 1\n", "Workflow auf dem Commit des Bilds oder auf dem Schnitt starten.\"\n            true\n").join("\n"))
+      .toMatch(/else-Zweig/);
+  });
+  it("M-TIMEOUT: Job-Timeout geändert", () => {
+    expect(mutiert("    timeout-minutes: 90\n", "    timeout-minutes: 360\n").join("\n")).toMatch(/Timeout/);
+  });
+  it("M-DIGEST: Digest-Vergleich nach dem Ziehen entfernt", () => {
+    expect(mutiert('echo "$gezogen" | grep -qx "$BILD_REPO@$DIGEST" || {', 'echo "$gezogen" | grep -q . || {').join("\n")).toMatch(/Digest/);
+  });
+  it("M-EINGABE-REGEX: Eingabeprüfung ^sha256: entfernt", () => {
+    expect(mutiert('[[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]', '[[ "$DIGEST" =~ . ]]').join("\n")).toMatch(/Eingabeprüfung/);
+  });
+  it("M-AUSDRUCK: beliebiger Ausdruck in run (github.event.sender.login)", () => {
+    expect(mutiert('WB_PROBEN="$RUNNER_TEMP/wb-proben" bash', 'echo "${{ github.event.sender.login }}"; WB_PROBEN="$RUNNER_TEMP/wb-proben" bash').join("\n"))
+      .toMatch(/Ausdruck direkt in run/);
+  });
+  it("M-WEITER: continue-on-error am Schritt S1–S3", () => {
+    expect(mutiert("        timeout-minutes: 15\n", "        timeout-minutes: 15\n        continue-on-error: true\n").join("\n")).toMatch(/continue-on-error/);
+  });
+  it("M-S5-VORHER: S5-Marke vor dem grep", () => {
+    const von = '          grep -q "^✔ W6 Rücksprung" "$LOG" || { echo "::error::S5 (W6 Rücksprung) nicht belegt"; exit 1; }\n          echo ok >"$WB_PROBEN/S5"\n';
+    const nach = '          echo ok >"$WB_PROBEN/S5"\n          grep -q "^✔ W6 Rücksprung" "$LOG" || { echo "::error::S5 (W6 Rücksprung) nicht belegt"; exit 1; }\n';
+    expect(mutiert(von, nach).join("\n")).toMatch(/S5: Marke vor der Prüfung/);
+  });
   it("M-EINGABE: Eingabe direkt in run", () => {
     expect(mutiert('[[ "$DIGEST" =~', '[[ "${{ inputs.digest }}" =~').join("\n")).toMatch(/direkt in run/);
   });
@@ -344,6 +393,18 @@ const FIXTURE_REL = "pruefungen/fixtures/erstwechsel-gueltig.json";
 const mit535 = !!KONFIG_EW;
 
 describe("GATE-EW3 × GATE-EW1 (#535)", () => {
+  /* H2 (Review #537): Die skipIf-Tests unten dürfen nach dem Merge von #535 nicht still übersprungen werden. Bedingung:
+     Sobald werkzeug/release-pruefung.mjs den Text „erstwechselAusnahme“ enthält, MUSS mit535 wahr sein, MUSS
+     erstwechselPruefen exportiert sein und MUSS die Fixture unter FIXTURE_REL liegen. Wird ein Schlüssel, die Funktion
+     oder der Fixture-Pfad umbenannt, ist dieser Test rot (statt dass die Abgleiche verschwinden). */
+  it("Marker: liegt #535 im Stand, laufen die Abgleiche wirklich (kein stilles Überspringen)", () => {
+    const quelle = lesen("werkzeug/release-pruefung.mjs");
+    if (!quelle.includes("erstwechselAusnahme")) { expect(mit535).toBe(false); return; }
+    expect(mit535, "KONFIG_STANDARD.erstwechselAusnahme.widerrufbuchProbe fehlt trotz #535").toBe(true);
+    expect(typeof (/** @type {any} */ (RP).erstwechselPruefen), "erstwechselPruefen nicht exportiert").toBe("function");
+    expect(existsSync(path.join(WURZEL, FIXTURE_REL)), `${FIXTURE_REL} fehlt trotz #535`).toBe(true);
+  });
+
   it.skipIf(!mit535)("Konfiguration des Werkzeugs = lokale Felderliste (Art, Proben, Artefakt, Workflow, Skript)", () => {
     expect(KONFIG_EW.stagingArt).toBe(FELDER_535.art);
     expect([...KONFIG_EW.stagingProben]).toEqual(FELDER_535.proben);

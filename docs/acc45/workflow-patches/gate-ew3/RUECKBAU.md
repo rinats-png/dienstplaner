@@ -22,8 +22,10 @@ Ein PR, der entfernt: `docs/acc45/workflow-patches/gate-ew3/`, `pruefungen/workf
 
 ## Nach WT-1 (geplanter Abschluss, kein Rückbau)
 
-Folge-PR (Claude, als Maschinenkonto): Patch und Vollfassung entfernen, `workflow-patch-ew3.test.js` auf die
-Workflow-Datei selbst umstellen (gleiche Regeln, ohne Anwenden). Die Skripte S1–S3 bleiben.
+Pflicht-Folge-PR (Claude, als Maschinenkonto): Patch und Vollfassung entfernen und **im selben PR**
+`workflow-patch-ew3.test.js` auf die Workflow-Datei selbst umstellen (gleiche Regeln, ohne Anwenden; der Test liest
+heute `PATCH_REL`, `VOLL_REL` und den Ordner per `readdirSync` — ohne Umstellung wird er rot). Die Skripte S1–S3
+bleiben.
 
 ## Was nie nötig ist
 

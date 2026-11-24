@@ -43,6 +43,17 @@ selbst (Datei = Vollfassung). Die Skripte, die der Patch aufruft, liegen schon i
 | S5 | Rücksprung: Probe Exit 3, Job Exit 3 (W6) | `S5` |
 | S6 | Erstlauf-Sperre, `--erster-lauf` mit neuem Repository (W8) | `S6` |
 
+**S2 — Abweichung, angenommen (Review #537):** Der Zugangscode wird über die echte API widerrufen; die **Kontosperre**
+läuft über die Anwendungsschicht des Digest-Bilds (`accounts.accountSperren`), weil es keine HTTP-Route zur
+Kontosperre gibt. Gate-Entwurf A.10 („über die API“) gilt damit für den Code, nicht für das Konto.
+
+**`ergebnis`:** Der Nachweis trägt `ergebnis: "success"` (`job.status`); genau das verlangt #535 (E6). Wo Gate-Entwurf
+A.6 / SPEZ T-N7 `ok` schreiben, gilt `success` (die Entwürfe liegen nicht im Repository).
+
+**Frist (E6):** Der Nachweis darf bei der Endprüfung höchstens **7 Tage** alt sein — die Endprüfung muss binnen
+7 Tagen nach dem Staging-Lauf erfolgen, sonst neuer Lauf am selben Digest. Das Artefakt bleibt 30 Tage und ist
+**öffentlich** (wie die Logs): nur synthetische Daten.
+
 Nur synthetische Daten (Adressen `@example.org`, Zufallscodes, Zufallspasswort, Zufallspfeffer); Codes, Passwort,
 Pfeffer und Verwalterschlüssel erscheinen nie im Log (die Logs und das Artefakt sind öffentlich). S1–S3 wurden ohne
 Docker örtlich gegen `node server.mjs` mit einem Altbestand aus den 274bfa0-Bibliotheken erprobt (alle Prüfungen
@@ -108,5 +119,6 @@ wegen Zeilenenden: `git apply --cached --check …`, `git apply --cached …`, d
 
 1. Testplan WT-0 … WT-5 ([TESTPLAN.md](TESTPLAN.md)); dafür muss `STAGING_GATE_AKTIV` für die Dauer der Läufe gesetzt
    sein — das ist die Aktivierungsentscheidung N-9 und **nicht** Teil der Übernahme.
-2. Folge-PR (Claude): Patch-Datei und Vollfassung entfernen, Test auf die Workflow-Datei umstellen (siehe
-   [RUECKBAU.md](RUECKBAU.md), „nach WT-1“).
+2. **Pflicht** Folge-PR (Claude): Patch-Datei und Vollfassung entfernen **und im selben PR**
+   `pruefungen/workflow-patch-ew3.test.js` auf die Workflow-Datei umstellen (der Test liest `PATCH_REL`/`VOLL_REL`
+   und den Ordner per `readdirSync`; ohne Umstellung wird er rot). Siehe [RUECKBAU.md](RUECKBAU.md), „nach WT-1“.
