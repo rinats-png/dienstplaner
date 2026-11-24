@@ -139,17 +139,27 @@ describe("G2 — nur org.edit schaltet, serverseitig erzwungen", () => {
     expect(rund.verweigert).toBeFalsy();
     expect(rund.mandanten[0].einstellungen.branchenmodule).toEqual(gespeichert);
   });
-  it("Leitung und Kundenrolle: Regelwert über den Schreibweg des Servers, Wann/Wer vom Server", () => {
+  it("Leitung und Kundenrolle: Regelwert zu einem Modul „geplant“ wird abgewiesen (L-2, Audit 24.11.)", () => {
     for (const r of ["LT", "KD"]) {
       const g = branchenbestand({ pakete: ["sicherheit"] });
       const v = schreibeAls(g, r, (m) => {
-        m.einstellungen.regelwerte = { "POSTEN-QUAL-01": { ...RW, geprueftVon: "gefaelscht", geprueftAm: "1999-01-01", geaendertVon: "x" } };
+        m.einstellungen.regelwerte = { "POSTEN-QUAL-01": { ...RW } };
       });
-      expect(v.verweigert, r).toBeFalsy();
-      const w = v.mandanten[0].einstellungen.regelwerte["POSTEN-QUAL-01"];
+      expect(v && v.verweigert, r).toMatch(/Modul der Regel wirkt in diesem Betrieb nicht/);
+    }
+  });
+  it("Leitung und Kundenrolle: Regelwert bei wirkendem Modul (Prüfregister), Wann/Wer vom Server", () => {
+    const AKTIV_POSTEN = BRANCHENMODULE.map((x) => (x.id === "posten" ? { ...x, status: "vorlaeufig" } : x));
+    for (const r of ["LT", "KD"]) {
+      const alt = branchenbestand({ pakete: ["sicherheit"], branchenmodule: { posten: { an: true } } }).mandanten[0];
+      const neu = { ...alt, einstellungen: { ...alt.einstellungen,
+        regelwerte: { "POSTEN-QUAL-01": { ...RW, geprueftVon: "gefaelscht", geprueftAm: "1999-01-01", geaendertVon: "x" } } } };
+      const v = BM.branchenmoduleZusammen(alt, neu, { person: SITZUNGEN[r].person }, true, AKTIV_POSTEN);
+      expect(v.grund, r).toBeUndefined();
+      const w = v.mandant.einstellungen.regelwerte["POSTEN-QUAL-01"];
       expect(w, r).toMatchObject({ ...RW, geprueftVon: SITZUNGEN[r].person, geaendertVon: SITZUNGEN[r].person });
       expect(w.geprueftAm, r).not.toBe("1999-01-01");
-      expect(v.mandanten[0].einstellungen.modulprotokoll, r).toEqual([
+      expect(v.mandant.einstellungen.modulprotokoll, r).toEqual([
         { art: "regelwert", regelId: "POSTEN-QUAL-01", am: w.geaendertAm, von: SITZUNGEN[r].person, stufe: "achtung", pruefstatus: "geprueft" }]);
     }
   });
@@ -396,7 +406,8 @@ describe("G4 — betrieblicher Regelwert: Aufwertung nur mit geprüfter Quelle, 
   });
   it("Zurückstufen auf ungeprüft löscht den Prüfvermerk; Entfernen mit null; beides protokolliert", () => {
     const a = mit({ ...RW });
-    const r = zus(a, mitE(a, { regelwerte: { "ANLAGEN-BESETZUNG-01": { ...RW, pruefstatus: "vorlaeufig", stufe: "hinweis" } } }));
+    /* Ein Wert lässt sich nur zu einem wirkenden Modul ändern (L-2): Prüfregister mit „anlagen“ vorläufig. */
+    const r = zus(a, mitE(a, { regelwerte: { "ANLAGEN-BESETZUNG-01": { ...RW, pruefstatus: "vorlaeufig", stufe: "hinweis" } } }), true, AKTIV);
     const w = r.mandant.einstellungen.regelwerte["ANLAGEN-BESETZUNG-01"];
     expect(w.geprueftAm).toBeUndefined();
     expect(w.geprueftVon).toBeUndefined();
