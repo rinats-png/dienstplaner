@@ -21,7 +21,7 @@ const ORDNER = path.join(WURZEL, ".github", "workflows");
 const lesen = (f) => yaml.load(readFileSync(path.join(ORDNER, f), "utf8"));
 
 export const TEILE = ["pruefen-a", "pruefen-b", "pruefen-c"];
-const CONTAINER = '"$RUNNER_TEMP/container-neu.sh"';
+const CONTAINER = "$RUNNER_TEMP/container-neu.sh"; // YAML: run: "$RUNNER_TEMP/container-neu.sh"
 // Schritte außerhalb der Sammelkette `pruefung` (ci-abdeckung sieht sie nicht): jeder genau einmal in den Teilen.
 export const PFLICHT_AUSSERHALB_KETTE = [
   "npm run build",
