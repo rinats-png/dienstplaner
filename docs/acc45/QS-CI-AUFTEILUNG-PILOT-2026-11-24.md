@@ -60,6 +60,8 @@ Gemessen (GitHub-API, `gh run view --json jobs`; Wand = Lauf erstellt bis letzte
 | 256cd979 (Lauf 3) | 45393788734 | pull_request | success | 2 s | 628 s (10,5 min) | 586 s | 496 s | 515 s | 626 s |
 | cd3f0ec7 (E2E_WORKERS 4, Lauf 1) | 45395819521 | push | success | 2 s | 682 s (11,4 min) | 585 s | 680 s | 635 s | 385 s |
 | cd3f0ec7 (E2E_WORKERS 4, Lauf 1) | 45395838371 | pull_request | success | 39 s | 638 s (10,6 min) | 527 s | 590 s | 591 s | 386 s |
+| 93797b37 (E2E_WORKERS 4, Lauf 2) | 45397761713 | push | success | 2 s | 640 s (10,7 min) | 477 s | 568 s | 638 s | 475 s |
+| 93797b37 (E2E_WORKERS 4, Lauf 2) | 45397770110 | pull_request | success | 13 s | 716 s (11,9 min) | 588 s | 665 s | 653 s | 367 s |
 
 ## 4. Risiken
 
