@@ -476,7 +476,7 @@ Die Entscheidungen ersetzen die Empfehlungen aus § 11 dort, wo sie abweichen.
 | ZEIT-B | offen — Zeitmodell 2, `eingegangenAm` immer, Zonenverlauf (E2), Schalter `CENTRIC_ZEITMODELL`, Rücksprungsperre. |
 | ZEIT-D | offen — Plausibilitätsgründe (E3–E5, E8), Informationstexte Beschäftigte/Betriebsrat (E5). |
 | ZEIT-E | **Z47 Zuschläge Zeitumstellung (E6) umgesetzt** (PR #303, `RECHEN_STAND` 3, § 10.1). Z57 Protokollzeiten und die Reste von Z56 (UTC-Tage in `rechte.mjs`, `bestaetigungen.mjs`, `provisionierung.mjs`, `leerbetrieb.mjs`) mit WP-ZEIT C/E-Rest (§ 13.2). Offen: ICS-Zone, Auskunftserläuterung. Z56 war mit T1 nicht ganz erledigt: `provisionierung.mjs` und die Schreibwege der Schichtverantwortung rechneten weiter mit dem UTC-Tag. |
-| ZEIT-F / ZEIT-G | ZEIT-F teilweise (2026-11-24, Branch `acc45/zeit/zeit-f-zonenprojekte`, § 13.3): Playwright-Zonenprojekte `tz-utc`, `tz-newyork`, `tz-tokyo`, `tz-pagopago` (T-E2E-TZ, Teil) und Prozesszonen-Lauf `pruefung:zeit-f-zonen` (T-SRV-TZ, Teil). Offen: B7 in fremden Zonen, Mitternacht mit verstellter Serveruhr, übrige Restmatrix § 9, T-RB-1; ZEIT-G Reviews. |
+| ZEIT-F / ZEIT-G | ZEIT-F teilweise (2026-11-24, Branch `acc45/zeit/zeit-f-zonenprojekte`, § 13.3): Playwright-Zonenprojekte `tz-utc`, `tz-newyork`, `tz-tokyo`, `tz-pagopago` (T-E2E-TZ, Teil) und Prozesszonen-Lauf `pruefung:zeit-f-zonen` (T-SRV-TZ, Teil). ZEIT-F Rest (Branch `acc45/zeit/zeit-f-rest`, § 13.3 „ZEIT-F Rest“): Abnahme B (Stempeluhr, B7) in fremden Zonen, Serverprozess mit verschobener Serveruhr (Mitternacht, beide Uhrsprünge, Abschluss, `seit`), Bestandsaufnahme der Matrix § 9. Offen: T-RB-1 (blockiert durch ZEIT-B Schritte 3/4), Matrixzeilen mit Zeitmodell 2, ZEIT-D oder Zonenwechsel; ZEIT-G Reviews. |
 
 ### Hinweise aus dem Review von T1 (2026-11-14)
 
@@ -515,4 +515,62 @@ Umfang: nur Tests, keine Änderung an Zeitlogik in `server/` oder `src/`, an `.g
 - **H3 (Begrüßung):** `new Date().getHours()` in `src/ansichten/mobil.jsx` und `src/ansichten/tagesstart.jsx` nutzt die Geräteuhr. Keine Betriebstagsaussage, kosmetisch, nicht geändert.
 - **H5 (echte Uhr):** Mit echter Uhr (Staging-Gate, Versatz 0) überspringt Z1 die Pago-Pago-Vorbedingung. Z1 und Z2 können scheitern, wenn Testtag und Tag der Oberfläche die Berliner Mitternacht überspannen. In der CI gilt eine feste Zeitbasis; dort ohne Wirkung.
 - **H4 (erledigt):** Der veraltete Kommentar in `e2e/abnahme-b-ablaeufe.spec.mjs` (Stempeluhr, „Der Browser rechnet heute in seiner Ortszeit“) ist korrigiert (nur Text).
-- **Weiter offen (technisch, ohne Betreiberentscheidung):** B7 und die Stempeltests der Abnahme B auch in Fremdzonen (B7 schreibt Daten: je Zone eigener Raum); Mitternacht bei verschobener Serveruhr (eigener Testserver mit anderem Versatz); Abschluss und Z56 im HTTP-Serverlauf; T-RB-1; Rest der Matrix § 9.
+- **Weiter offen (technisch, ohne Betreiberentscheidung):** B7 und die Stempeltests der Abnahme B auch in Fremdzonen (B7 schreibt Daten: je Zone eigener Raum); Mitternacht bei verschobener Serveruhr (eigener Testserver mit anderem Versatz); Abschluss und Z56 im HTTP-Serverlauf; T-RB-1; Rest der Matrix § 9. → bearbeitet in „ZEIT-F Rest“ unten.
+
+**ZEIT-F Rest (2026-11-24, Branch `acc45/zeit/zeit-f-rest`).** Umfang: nur Tests und Dokumentation. Keine Änderung an `server/`, `src/`, `.github/workflows/`, `deploy/*`, Registry oder Schaltern.
+
+- **(1) Abnahme B in fremder Zone** (`e2e/zeit-f-abnahme-b-zonen.spec.mjs`, nur in den Zonenprojekten; `ZONEN_SPEC` in `e2e/zonen.mjs` deckt jetzt beide Zonen-Specs, die acht Viewport-Projekte lassen beide aus):
+  - **ZS** Stempeluhr der Abnahme B (Beschäftigte mit Dienst am Berliner Tag, nicht gestempelt): „Heute“ zeigt den Betriebstag und „Einstempeln“, kein „Ausstempeln“ — in allen vier Zonen. Ohne axe (zonenunabhängig, läuft an den acht Viewports; die Ausnahmeliste kennt nur Viewport-Namen).
+  - **ZB7** B7 „Stempeln ohne Netz“ nur in `tz-pagopago` (`B7_ZONENPROJEKT`): offline einstempeln → vorläufig, nichts auf dem Server; Netz zurück → genau ein Stempel am Berliner Tag und keiner am Gerätetag; Netzwechsel und Neuladen → weiterhin einer; „Ausstempeln“ und Ende am selben Stempel. Eigene Beschäftigte `b7-zone` (`e2e/umgebung.mjs` `ZONEN_ZUGAENGE`, Demo-Index 4) im Raum des Arbeiters: B7 schreibt nur auf diesen Stempel; ein eigener Raum je Zone ist damit nicht nötig.
+  - **Wie viele Zusatzläufe:** 4 × ZS + 1 × ZB7. B7 in UTC, New York und Tokio wäre am festen Abnahmezeitpunkt (10:00 Berlin) derselbe Ablauf wie im Viewport-Projekt 390x844 (Gerätetag = Betriebstag, vgl. H1); dort übersprungen. Den Tageswechsel mit stempelndem Server deckt (2) ab.
+  - **Laufzeit:** CI (Lauf 45375789676 auf `5dc6807a`, Job `browser-abnahme`): ZS 2,1–2,3 s je Zone, ZB7 4,7 s, zusammen 13,5 s Testzeit (2 Arbeiter, rund 7 s Wanduhr); Job gesamt 9:01 min (Vergleich `202b412b`: 11:14 min, Streuung größer als der Zusatz). Lokal (Windows) ZS 5–11 s, ZB7 14 s.
+- **(2)+(3) Serverprozess mit verschobener Serveruhr** (`pruefungen/zeit-f-serveruhr.test.js`, `npm run pruefung:zeit-f-serveruhr`, verkettet in `pruefung:zeit-tagesformeln`, damit ohne Workflow-Änderung im CI-Job `pruefen`): `server.mjs` als eigener Prozess (Wegwerfablage, synthetische Personen), Prozesszone `TZ` = UTC, Pacific/Kiritimati (UTC+14), Etc/GMT+12 (UTC−12); Uhr über `e2e/uhr-vorlauf.mjs`; je Abschnitt Neustart auf derselben Ablage mit anderem Versatz, Anfragen über HTTP.
+  - M: Beginn 23:58 Sa 14.11., Ende 00:01 So 15.11. Berlin → Schichttag 14.11., `endeDatum` 15.11.; Beginn 00:01 → 15.11. (T-MN-1/2).
+  - F: 29.03.2026 Beginn 01:58 MEZ, Ende 03:01 MESZ → Wanduhr 01:58/03:01, kein `ZEITUMSTELLUNG` (T-DST-F1).
+  - H: 25.10.2026 Beginn 02:58 MESZ, Ende 02:01 MEZ → Schichttag 25.10., Prüffall `ZEITUMSTELLUNG` (T-DST-H2).
+  - A: 23:59 am 30.11. Berlin → November nicht abschließbar (422), leerer Betrieb `seit` 30.11.; 00:01 am 01.12. Berlin → November schließt (200), Dezember nicht (422), `seit` 01.12. In Kiritimati ist um 23:59 Berlin schon der 01.12., in UTC und Etc/GMT+12 um 00:01 Berlin noch der 30.11.
+  - Z56 im engeren Sinn ist über HTTP nicht vollständig erreichbar: Eintritt der Leitungsperson (`provisionierung.mjs`) entsteht nur über die Selbstregistrierung (Konto), die Qualifikationsgültigkeit (`engine/plan.mjs`) hat keinen eigenen Serverweg mit sichtbarem Tageswert. Beide bleiben in den Prüfdateien je Prozesszone (`zeit-c-e-rest-betriebstag.test.js` in `pruefung:zeit-f-zonen`). Im HTTP-Lauf stehen stellvertretend Abschluss und `seit` (§ 13.2 P3).
+  - Laufzeit: CI 11 s für drei Zonen (13 Tests, Job `pruefen`, Lauf 45375789676; Schritt „WP-ZEIT, Berlin-Tagesformeln“ 45 s statt 21 s auf `202b412b`); lokal (Windows) 47 s.
+- **(4) T-RB-1: blockiert.** Der Plan (`ZEIT-B-STUFE1-PLAN.md` § 4 Schritt 5, § 5 Zeile 5, § 10 N1) verlangt einen Bestand mit Modell-2-Stempeln, den nur der Schreiber aus Schritt 4 erzeugt, und läuft (a) gegen das als `vorherig` gelistete Bild ≥ Schritt 4, (b) gegen `517993ca` nur als Lückenszenario. Schritt 3 (Fail-closed-Wächter) und Schritt 4 (Schreiber) sind nicht gemergt. Ein von Hand gebauter Modell-2-Datensatz wäre eine Erfindung des Formats vor dem Review von Schritt 4. Darum hier kein T-RB-1-Teil. Abhängigkeit: Schritt 5 nach Schritt 4.
+- **(6) Kommentar** in `e2e/abnahme-b-ablaeufe.spec.mjs` (Block „Abläufe mit Schreibwirkung“, QS-6) korrigiert: „heute“ kommt seit ZEIT-C aus Serverlogik und Zeitbasis (`server/lib/engine/zeit.mjs` `heute()`); der Berliner Pin bleibt (§ 9.3). Nur Text; `pruefungen/zeit-f-zonenprojekte.test.js` prüft Pin und Text.
+- **Nachweis Mutation:**
+  - Browser (`E2E_DIST` mit gebautem Frontend, `heute()` auf Gerätetag, Server unverändert): 7 von 13 ausgeführten Zonentests rot — ZS und ZB7 in Pago Pago (ZB7 an „Ausstempeln nach dem Neuladen“: Stempel am Berliner Tag, Stempeluhr sucht am Gerätetag), Z1/Z2 wie in #510. ZS in UTC, New York, Tokio grün (dort kein Tagesunterschied, erwartet).
+  - Serverprozess: `betriebstag()` auf Prozesstag → 8 von 12 rot (M und A in allen drei Zonen, F und H in Etc/GMT+12). Nur der Abschluss mit Prozesstag (`daten.mjs`, Aufruf von `abschliessen`) → A rot in allen drei Zonen (UTC/Etc/GMT+12 „nach“, Kiritimati „vor“ Monatsende). Nur `seit` als UTC-Tag (`leerbetrieb.mjs`) → A rot in allen drei Zonen. Damit ist auch H2 aus #510 für den Serverprozess belegt: Die Mutation wirkt je Prozesszone verschieden (F/H nur in UTC−12).
+  - Verdrahtung: `pruefungen/zeit-f-zonenprojekte.test.js` rot mit dem alten Kommentar (vor der Korrektur), sonst grün.
+- **Befund:** kein zonenabhängiges Verhalten in `server/` oder `src/` gefunden. Die Karte „Nachtdienst von gestern ohne Einstempeln“ für `stempeluhr-ein` ist planbasiert (Demo-Plan: Nachtdienst am Vortag) und in jeder Zone gleich — kein Befund.
+
+**Bestandsaufnahme Matrix § 9 (Stand 2026-11-24).** „Belegt“ = Test mit dem beschriebenen Fall vorhanden (Datei genannt); „teilweise“ = verwandter Fall belegt, nicht der volle Fall der Zeile; „offen“ mit Grund. Zeilen mit Zeitmodell-2-Feldern (`zeitX`, Kalendertage, `zeitzonenVersion`, `plaus`) hängen an ZEIT-B Schritt 4 bzw. ZEIT-D; Zonenwechsel (T-ZW, T-HIST) ist nach E1 nicht Teil von Release 1 (Plan § 2.4, § 9).
+
+| Kennung | Stand | Beleg / Grund |
+|---|---|---|
+| T-DST-F1 | belegt | `zeit-f-serveruhr.test.js` F (HTTP, 3 Prozesszonen), `zeit-b-handler.test.js`; verwandt `serverdatum.test.js` (Frühjahr 01:30–03:10 mit Pause) |
+| T-DST-F2 | teilweise | Nacht 28.→29.03. in `betriebstag.test.js`, `regelwerk.test.js`; Nachtzuschlag 7 h nicht als eigener Fall gefunden |
+| T-DST-F3 | offen | Korrektur „02:30“ in der Lücke: Auflösung nicht festgeschrieben (Z22 [A], § 10.1 „Offen“) |
+| T-DST-H1 | belegt | `zeit-e-zuschlaege-dst.test.js` (Sonntag 7 h, Z47) |
+| T-DST-H2 | belegt | `serverdatum.test.js` (Herbst 02:30/02:20), `zeit-f-serveruhr.test.js` H (HTTP) |
+| T-MN-1 | belegt | `betriebstag.test.js`, `zeit-b-handler.test.js`, `zeit-f-serveruhr.test.js` M |
+| T-MN-2 | belegt (Modell 1) | `serverdatum.test.js` (Nachtdienst, `endeDatum`), `zeit-f-serveruhr.test.js` M; `endeKalendertag` offen (Schritt 4) |
+| T-GZ-UTC/-NY/-TYO/-KIR | belegt | VC: `betriebstag.test.js`; PW: `e2e/zeit-f-zonen.spec.mjs`, `e2e/zeit-f-abnahme-b-zonen.spec.mjs` (UTC, New York, Tokio, Pago Pago; Kiritimati nur VC) |
+| T-UHR-P1/-M1/-T1 | teilweise | `serverdatum.test.js`, `zeiterfassung.test.js` (`GERAETEDATUM_ABWEICHEND`, Gerätedatum gestern/morgen); ±1 h online nicht als eigener Fall gefunden |
+| T-UHR-O1 | teilweise (Modell 1) | `offline-stempeln.test.js` (Uhr ±1 h, `GERAETEZEIT_ABWEICHEND`); `quelle`/`VERSATZ`/`ZUKUNFT` offen (Schritt 4, ZEIT-D) |
+| T-OFF-3T | teilweise | `offline-stempeln.test.js` (Flugmodus, > 48 h, Nachtdienst offline), B7 im Browser; drei Tage am Stück mit `eingegangenAm` offen (Schritt 4) |
+| T-OFF-KONTAKT / T-OFF-SPRUNG | offen | `VOR_KONTAKT`/`UHRSPRUNG` gibt es noch nicht (ZEIT-D) |
+| T-IDEM-1 | belegt | `offline-stempeln.test.js` (Idempotenz, zwei Reiter), `abnahme-b-wiederholung.test.js` K1 |
+| T-IDEM-2 | offen | Zonenwechsel nicht in Release 1 (E1) |
+| T-ABS-1 | teilweise | Abschlusssperre und `abgewiesen` in `monatsabschluss-*.test.js`; `zeitzonenVersion` offen (Schritt 4) |
+| T-ZS-1 | belegt | `zeit-e-zuschlaege-dst.test.js`, `zeit-b-altdaten.test.js` |
+| T-EXP-1 | belegt | `zeit-b-altdaten.test.js` (Golden-Anker Teil A) |
+| T-PAUSE-1 | teilweise | `serverdatum.test.js`, `pausenerfassung.test.js` (Pause an beiden Umstellungstagen); über Mitternacht nicht als eigener Fall gefunden |
+| T-INV-1..6, T-INV-7 | offen | brauchen Zeitmodell-2-Schreiber (Schritt 4) |
+| T-ZW-1..5, T-HIST-1/2 | offen | Zonenwechsel/Verlauf nicht in Release 1 (E1, Plan § 2.4) |
+| T-LEG-1, T-LEG-2 | belegt | `zeitmodell.test.js` (Schritt 2) |
+| T-LEG-3 | offen | Schritt 4 |
+| T-EXP-2 | offen | Zonenwechsel (E1) |
+| T-RB-1 | **blockiert** | ZEIT-B Schritte 3/4 (siehe (4)) |
+| T-RB-2 | offen | Schritt 3 (neu gefasst, Plan § 5) |
+| T-PRIV-1 | offen | `plaus`/`zeitX` gibt es noch nicht (Schritt 4, ZEIT-D) |
+| T-CL-1 | belegt | `betriebstag.test.js` |
+| T-E2E-TZ | belegt | `e2e/zeit-f-zonen.spec.mjs` (#510), `e2e/zeit-f-abnahme-b-zonen.spec.mjs` (B7 nur Pago Pago, siehe (1)) |
+| T-SRV-TZ | belegt | `pruefungen/zeit-f-zonen.mjs` (#510), `pruefungen/zeit-f-serveruhr.test.js` (Tage, Abschluss, `seit`); Qualifikationsgültigkeit nur in Prüfdateien |
+
+**Offen nach ZEIT-F Rest:** T-RB-1/T-RB-3 (Schritt 5 nach Schritt 4), alle Zeilen „offen“ oben mit ihrem Grund, die „teilweise“-Zeilen T-DST-F2, T-UHR-P1/-M1/-T1, T-PAUSE-1 (technisch ohne Betreiberentscheidung machbar, eigener kleiner Test-PR), ZEIT-G Reviews. Keine Betreiberfrage: kein zonenabhängiger Befund, keine Workflow-Änderung nötig.

@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { istLoopback } from "../pruefungen/browser/abnahme-kern.mjs";
-import { BASIS, PORT, ROLLEN, ZUSATZ_ZUGAENGE, OEFFNEN_ZUGAENGE, ZUGAENGE_VAR, BETREIBER_VAR, ZUGANG_POOL,
+import { BASIS, PORT, ROLLEN, ZUSATZ_ZUGAENGE, OEFFNEN_ZUGAENGE, ZONEN_ZUGAENGE, ZUGAENGE_VAR, BETREIBER_VAR, ZUGANG_POOL,
   RAEUME_VAR, RAEUME_HOECHSTENS } from "./umgebung.mjs";
 import { ABNAHME_ZEITPUNKT, UHR_VERSATZ_VAR, uhrVersetzen, abnahmeHeute } from "./zeitbasis.mjs";
 
@@ -123,7 +123,8 @@ export default async function globalSetup(config) {
         schluessel.push(k);
       }
       /* WP-48-GB: frische Personen ohne Tourzustand nur für e2e/oeffnen-parallel.spec.mjs (umgebung.mjs). */
-      for (const [k, r, i] of OEFFNEN_ZUGAENGE) {
+      /* ZEIT-F Rest: eigene Beschäftigte für B7 im Zonenprojekt (umgebung.mjs ZONEN_ZUGAENGE), gleiche Form. */
+      for (const [k, r, i] of [...OEFFNEN_ZUGAENGE, ...ZONEN_ZUGAENGE]) {
         const p = aktiv(r)[i];
         if (!p) throw new Error(`Demo-Bestand ohne weitere aktive Person der Rolle ${r} für ${k}`);
         eintraege.push({ rolle: r, personId: p.id, name: "E2E " + k });

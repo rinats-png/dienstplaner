@@ -6,8 +6,8 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import konfiguration from "../playwright.config.mjs";
-import { ZONEN_PROJEKTE, ZONEN_SPEC, ZONEN_VIEWPORT } from "../e2e/zonen.mjs";
-import { VIEWPORTS } from "../e2e/umgebung.mjs";
+import { ZONEN_PROJEKTE, ZONEN_SPEC, ZONEN_VIEWPORT, B7_ZONENPROJEKT } from "../e2e/zonen.mjs";
+import { VIEWPORTS, ZUSATZ_ZUGAENGE, OEFFNEN_ZUGAENGE, ZONEN_ZUGAENGE } from "../e2e/umgebung.mjs";
 import { ABNAHME_ZEITPUNKT, tagPlus } from "../e2e/zeitbasis.mjs";
 import { betriebstag, zeitpunktAusWanduhr } from "../server/lib/betriebszeit.mjs";
 
@@ -41,8 +41,9 @@ describe("Zonenprojekte in playwright.config.mjs", () => {
       expect(p.testIgnore, z.name).toBeUndefined();
       expect(p.use).toEqual({ browserName: "chromium", viewport: { ...ZONEN_VIEWPORT }, hasTouch: true, timezoneId: z.timezoneId });
     }
-    expect(ZONEN_SPEC.test("e2e/zeit-f-zonen.spec.mjs")).toBe(true);
-    for (const andere of ["e2e/abnahme-b-ablaeufe.spec.mjs", "e2e/barrierefreiheit.spec.mjs", "e2e/zeit-f-zonen.spec.mjs.bak"])
+    for (const eigen of ["e2e/zeit-f-zonen.spec.mjs", "e2e/zeit-f-abnahme-b-zonen.spec.mjs"]) expect(ZONEN_SPEC.test(eigen), eigen).toBe(true);
+    for (const andere of ["e2e/abnahme-b-ablaeufe.spec.mjs", "e2e/barrierefreiheit.spec.mjs", "e2e/zeit-f-zonen.spec.mjs.bak",
+      "e2e/zeit-f-abnahme-b-zonen.spec.mjs.bak", "e2e/zeit-f-sonstwas-zonen.spec.mjs"])
       expect(ZONEN_SPEC.test(andere), andere).toBe(false);
   });
 
@@ -54,6 +55,46 @@ describe("Zonenprojekte in playwright.config.mjs", () => {
     expect(spec).toContain('from "./hilfen.mjs"');                 // Zeitbasis-Init-Skript, Herkunft je Test, axe-Streifen
     expect(spec).not.toMatch(/timezoneId\s*:/);                    // Zone kommt allein aus dem Projekt
     expect(spec).not.toMatch(/test\.only|\.skip\(/);
+  });
+});
+
+describe("ZEIT-F Rest: Abnahme B in fremder Zone (e2e/zeit-f-abnahme-b-zonen.spec.mjs)", () => {
+  const spec = readFileSync(new URL("../e2e/zeit-f-abnahme-b-zonen.spec.mjs", import.meta.url), "utf8");
+  const abnahmeB = readFileSync(new URL("../e2e/abnahme-b-ablaeufe.spec.mjs", import.meta.url), "utf8");
+
+  it("Stempeluhr (ZS) in jeder Zone, B7 (ZB7) nur im Zonenprojekt Pago Pago; die Zone kommt allein aus dem Projekt", () => {
+    expect(spec).toContain('test("ZS Stempeluhr: Dienst am Betriebstag, noch nicht gestempelt — „Einstempeln“ in jeder Zone"');
+    expect(spec).toContain('test("ZB7 Stempeln ohne Netz in Pago Pago: vorläufig, nach dem Netz genau ein Stempel am Berliner Tag"');
+    expect(spec).toContain("test.skip(testInfo.project.name !== B7_ZONENPROJEKT,");
+    expect(spec.match(/test\.skip\(/g), "genau zwei Auslassungen: B7 außerhalb Pago Pago, Wiederholungslauf").toHaveLength(2);
+    expect(spec).toContain("context.setOffline(true)");
+    expect(spec).toContain('from "./hilfen.mjs"');
+    expect(spec).not.toMatch(/timezoneId\s*:/);
+    expect(spec).not.toMatch(/test\.only|page\.clock/);
+    expect(B7_ZONENPROJEKT).toBe("tz-pagopago");
+    expect(ZONEN_PROJEKTE.map((z) => z.name)).toContain(B7_ZONENPROJEKT);
+  });
+
+  it("B7 im Zonenprojekt hat eine eigene Beschäftigte, die kein anderer Zugang nutzt; global-setup legt sie an", () => {
+    expect(ZONEN_ZUGAENGE).toEqual([["b7-zone", "mitarbeiter", 4]]);
+    /* Beschäftigte im Demo-Bestand: Index 0 Rollenzugang, 1 und 2 Stempeluhr (ZUSATZ_ZUGAENGE), 3 oeffnen-mitarbeiter. */
+    const belegt = [0, ...ZUSATZ_ZUGAENGE.map((_, i) => i + 1),
+      ...OEFFNEN_ZUGAENGE.filter(([, r]) => r === "mitarbeiter").map(([, , i]) => i)];
+    for (const [k, r, i] of ZONEN_ZUGAENGE) {
+      expect(r, k).toBe("mitarbeiter");
+      expect(belegt, `${k}: Index ${i} frei`).not.toContain(i);
+    }
+    const schluessel = [...ZUSATZ_ZUGAENGE, ...OEFFNEN_ZUGAENGE.map(([k]) => k), ...ZONEN_ZUGAENGE.map(([k]) => k)];
+    expect(new Set(schluessel).size).toBe(schluessel.length);
+    expect(readFileSync(new URL("../e2e/global-setup.mjs", import.meta.url), "utf8"))
+      .toContain("for (const [k, r, i] of [...OEFFNEN_ZUGAENGE, ...ZONEN_ZUGAENGE])");
+    expect(spec).toContain('apiAnmelden("b7-zone")');
+    expect(spec).toContain('anmelden(page, "b7-zone")');
+  });
+
+  it("§ 9.3: der Berliner Pin der Abnahme B bleibt (zusätzlich, nicht statt)", () => {
+    expect(abnahmeB.match(/test\.use\(\{ timezoneId: "Europe\/Berlin" \}\)/g)).toHaveLength(2);
+    expect(abnahmeB).not.toContain("rechnet „heute“ in der Ortszeit des Geräts");
   });
 });
 
