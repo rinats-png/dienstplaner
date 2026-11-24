@@ -1,0 +1,58 @@
+{
+  "_hinweis": "Ausnahmen vom axe-Gate des Website-Prüfsatzes (e2e/website-pruefsatz.spec.mjs, Paket W2). Nur Funde der ausgelieferten V3-Seite, die der erste Lauf (2026-11-24, axe-core 4.14.1, Tags wcag2a bis wcag22aa, hell und dunkel, 320/390/768/1280 px) gezeigt hat. Die ausgelieferten Bytes ändert W2 nicht; die Behebung gehört zur V4-Migration der Website (Paket W5, SSOT V4-5). Je Eintrag: regel (axe-Regel-ID), seite, optional modus (hell|dunkel) und breiten, knotenMax (höchste beobachtete Zahl betroffener Knoten, über alle Breiten und beide Lade-Arten; mehr Knoten schlagen fehl), grund (nennt V3-Bestand) und wp (immer W5). Andere Regeln, andere Seiten oder mehr Knoten schlagen fehl. Behobene Einträge streichen (der Lauf meldet sie nicht als ungenutzt, das ist Teil von W5).",
+  "scrollAusnahmen": [
+    {
+      "seite": "agb.html",
+      "breiten": [320, 390],
+      "scrollMax": 450,
+      "grund": "V3-Bestand, V4-Migration W5: Die Überschrift h1 „Allgemeine Geschäftsbedingungen“ bricht nicht um und ragt über den Rand (gemessen 429 px bei 320, 434 px bei 390; Obergrenze mit Spielraum für Schriftdarstellung). Echter Verstoß gegen WCAG 1.4.10 Reflow, nicht behoben, weil die ausgelieferten Bytes unverändert bleiben.",
+      "wp": "W5"
+    },
+    {
+      "seite": "datenschutz.html",
+      "breiten": [320, 390],
+      "scrollMax": 430,
+      "grund": "V3-Bestand, V4-Migration W5: Die Überschrift h1 „Datenschutzerklärung“ bricht nicht um und ragt über den Rand (gemessen 408 px bei 320, 412 px bei 390; Obergrenze mit Spielraum für Schriftdarstellung). Echter Verstoß gegen WCAG 1.4.10 Reflow, nicht behoben, weil die ausgelieferten Bytes unverändert bleiben.",
+      "wp": "W5"
+    }
+  ],
+  "ausnahmen": [
+    {
+      "regel": "color-contrast",
+      "seite": "index.html",
+      "knotenMax": 59,
+      "grund": "V3-Bestand, V4-Migration W5: Wochenend-Etiketten im Dienstplan-Ausschnitt der Startseite (.p-tag.we i und b, Akzent #278585 bei Deckkraft .85 auf Weiß, Kontrast 4,39 zu 4,5:1 bei 8,96 px). Die Zahl der Knoten hängt von der Breite beim Aufbau ab (15 bis 59).",
+      "wp": "W5"
+    },
+    {
+      "regel": "link-in-text-block",
+      "seite": "datenschutz.html",
+      "knotenMax": 1,
+      "grund": "V3-Bestand, V4-Migration W5: Mailadresse im Fließtext ohne Unterstreichung, Kontrast zum Umgebungstext 1,46 zu 3:1 (Link #017070, Text #3d4e55).",
+      "wp": "W5"
+    },
+    {
+      "regel": "link-in-text-block",
+      "seite": "barrierefreiheit.html",
+      "knotenMax": 1,
+      "grund": "V3-Bestand, V4-Migration W5: Mailadresse im Fließtext ohne Unterstreichung, Kontrast zum Umgebungstext 1,46 zu 3:1 (Link #017070, Text #3d4e55).",
+      "wp": "W5"
+    },
+    {
+      "regel": "scrollable-region-focusable",
+      "seite": "preise.html",
+      "breiten": [320, 390],
+      "knotenMax": 1,
+      "grund": "V3-Bestand, V4-Migration W5: Vergleichstabelle (.tabelle-w, min-width 580 px) scrollt bei schmaler Breite und ist nicht per Tastatur fokussierbar. Kein Seitenscroll, nur der Tabellenrahmen.",
+      "wp": "W5"
+    },
+    {
+      "regel": "scrollable-region-focusable",
+      "seite": "funktionen.html",
+      "breiten": [320, 390],
+      "knotenMax": 1,
+      "grund": "V3-Bestand, V4-Migration W5: Vergleichstabelle (.tabelle-w, min-width 580 px) scrollt bei schmaler Breite und ist nicht per Tastatur fokussierbar. Kein Seitenscroll, nur der Tabellenrahmen.",
+      "wp": "W5"
+    }
+  ]
+}
