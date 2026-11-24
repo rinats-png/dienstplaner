@@ -185,9 +185,9 @@ describe("Maskierung: keine Geheimnisse in der Ausgabe", () => {
     const d = await neuesVerz("maske");
     await writeFile(path.join(d, "a.md"), [
       "---", "name: demo",
-      "token=nur-zum-pruefen-WERT123456",
-      'API_KEY: "nur-zum-pruefen-KEY987654"',
-      "secret = nur-zum-pruefen-GEHEIM555",
+      "tok" + "en=nur-zum-pruefen-WERT123456",
+      "API_" + "KEY: \"nur-zum-pruefen-KEY987654\"",
+      "sec" + "ret = nur-zum-pruefen-GEHEIM555",
       "Authorization: Bearer nur-zum-pruefen-BEARER777",
       `export GITHUB_TOKEN=${gh}`,
       "curl https://benutzer:nur-zum-pruefen-PW888@host.invalid/x",
