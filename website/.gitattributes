@@ -1,0 +1,7 @@
+# Byte-genaue Auslieferung: Schriften, Drei.js und Lizenztexte werden beim Bau
+# unveraendert nach dist kopiert und muessen auf jedem System dieselben Bytes
+# behalten (kein Zeilenenden-Umbau, auch nicht durch core.autocrlf).
+assets/** -text
+build.py text eol=lf
+*.md text eol=lf
+DIST-SHA256 text eol=lf
