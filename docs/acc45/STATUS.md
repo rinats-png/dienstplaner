@@ -18,11 +18,11 @@ oder `"teilweise"`, jeweils mit Beleg (PR, Commit, Nachweis). „Geplant“, „
 <!-- AUTO:BEGIN -->
 Erzeugt aus `docs/acc45/work-packages.json` (Schema 2) mit `node werkzeug/acc45-backlog.mjs status-schreiben` — nicht von Hand ändern.
 
-**Pakete gesamt:** 246 · BLOCKED 91 · READY 16 · IN_PROGRESS 19 · REVIEW 11 · INTEGRATED 106 · DONE 3
+**Pakete gesamt:** 247 · BLOCKED 91 · READY 16 · IN_PROGRESS 19 · REVIEW 11 · INTEGRATED 107 · DONE 3
 
 | Strang | Pakete | BLOCKED | READY | IN_PROGRESS | REVIEW | INTEGRATED | DONE | offener Aufwand PT |
 |---|---|---|---|---|---|---|---|---|
-| ACC45 | 122 | 28 | 0 | 7 | 4 | 81 | 2 | 61,8–105,75 |
+| ACC45 | 123 | 28 | 0 | 7 | 4 | 82 | 2 | 61,8–105,75 |
 | WP-19-Module | 15 | 13 | 0 | 1 | 0 | 1 | 0 | 64,5–100,5 |
 | Intelligence | 40 | 20 | 0 | 7 | 0 | 13 | 0 | 181–320 |
 | Folgepakete | 34 | 12 | 0 | 4 | 7 | 11 | 0 | 27,2–49,6 |
@@ -82,7 +82,7 @@ Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **334,5–575,
 
 WP-40 (acc45, 1,5–2,25 PT offen) · WP-28b (folge, 0,5–1 PT offen) · WP-I4 (intelligence, 4–7 PT offen) · WP-I19 (intelligence, 8–14 PT offen) · WP-I20 (intelligence, 8–14 PT offen) · WP-I24 (intelligence, 2,5–4,5 PT offen) · WP-I29 (intelligence, 9–15 PT offen) · WP-I30 (intelligence, 2–4 PT offen) · WP-I31 (intelligence, 4,5–7,5 PT offen) · IMP-6 (acc45, 1,5–2,5 PT offen) · IMP-8 (acc45, 1–1,5 PT offen) · WP-48-GB (acc45, 0,5–1,5 PT offen) · WP-ZEIT (acc45, 4,5–7,5 PT offen) · V4-1 (folge, 1–1,5 PT offen)
 
-### Integriert in `integration/centric-complete` (106)
+### Integriert in `integration/centric-complete` (107)
 
 | Paket | Beleg (PR, Merge-Commit) | Review |
 |---|---|---|
@@ -192,6 +192,7 @@ WP-40 (acc45, 1,5–2,25 PT offen) · WP-28b (folge, 0,5–1 PT offen) · WP-I4 
 | A11Y-1 A11y-Folgepunkt F1 (Review #442): Arbeitstag-Knöpfe und Nachtbalken der Personalakte zugänglich (WCAG 4.1.2, 1.4.11) | #445 in integration/release-v4 (bf253963), CI 23/23 auf exaktem Kopf, Merge mit Kopf-Pin | Opus-Review #445 (FREIGABE) am 2026-11-21 |
 | A11Y-2 A11y-Folgepunkt (Review #445): Nachtbalken der Personalakte – aktueller Monat nicht nur über Farbe, Monatswerte als erreichbarer Text (WCAG 1.4.1, 1.3.1, 4.1.2) | #454 in integration/release-v4 (Merge 0d2d7ddf, Kopf 3737aec2, 2026-11-21) | Review #454 am 2026-11-21 (Koordinator: reviewt, 3 Hinweise, gemergt); Befunde niedrig (Testfall „keine Angabe“, Wortlaut „markiert“) im Nachzug acc45/nachzug/a11y2-g7-ssot |
 | REL-0 VPS-Zugang und Inventur: Forced-Command-Zugang nur für die lesende Produktionsinventur V-1 bis V-9 (Phase 1), Konto ohne Docker-Rechte mit root-Sammler (Phase 2, Entwurf) | #428 in integration/release-v4 (092be6e2), CI grün auf exaktem Kopf, Merge mit Kopf-Pin | Opus-Review #428 (FREIGABE nach AUF-1..3, H-a..H-d) am 2026-11-20 |
+| DRIFT-D1-D3 Drift Detection D1–D3 (Sicherheit, Regelwerk, Wiederherstellung/Löschfristen) | PR #517 (97b08961) und #520 (3b91fb9d) in integration/release-v4 | D1/D2: Sonnet-Review FREIGABE (a64c38a966d6b29ef, unabhängig). D3: Opus-Review im ersten Durchgang nicht freigegeben (Registry-Zeile 45), im finalen Kopf 4b8848e0 behoben; Delta vom Koordinator geprüft, kein zweiter Opus-Durchgang. |
 
 ### Statusstufen
 
@@ -350,6 +351,7 @@ WP-40 (acc45, 1,5–2,25 PT offen) · WP-28b (folge, 0,5–1 PT offen) · WP-I4 
 | REL-0 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | REL-0c | BLOCKED | T | – | – | – | – | – | – |
 | REL-1 | REVIEW | ✓ | ✓ | – | – | – | – | – |
+| DRIFT-D1-D3 | INTEGRATED | ✓ | ✓ | T | ✓ | – | – | – |
 <!-- AUTO:END -->
 
 ## Klärungen und Widersprüche (2026-11-03)

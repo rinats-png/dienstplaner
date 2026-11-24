@@ -1,18 +1,18 @@
 {
   "schema": 2,
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
-  "anzahl": 246,
+  "anzahl": 247,
   "statusZaehlung": {
     "BLOCKED": 91,
     "READY": 16,
     "IN_PROGRESS": 19,
     "REVIEW": 11,
-    "INTEGRATED": 106,
+    "INTEGRATED": 107,
     "DONE": 3
   },
   "jeStrang": {
     "acc45": {
-      "pakete": 122,
+      "pakete": 123,
       "offen": 39,
       "restPT": {
         "min": 61.8,
@@ -7064,6 +7064,34 @@
       "tests": "Smoke von außen, /gesund",
       "dateien": "docs/acc45/releases/, docs/BETRIEB-UEBERWACHUNG.md",
       "notiz": "Wartet auf das erste Release (REL-3) und auf E-7/E-8. Aufwand SCHÄTZUNG."
+    },
+    {
+      "id": "DRIFT-D1-D3",
+      "titel": "Drift Detection D1–D3 (Sicherheit, Regelwerk, Wiederherstellung/Löschfristen)",
+      "strang": "acc45",
+      "prio": "P3",
+      "aufwandPT": {"min":0.5,"max":1},
+      "abhaengigkeiten": [],
+      "status": "INTEGRATED",
+      "stufen": {
+        "implementiert": {"wert":true,"beleg":"PR #517 (97b08961) und #520 (3b91fb9d) in integration/release-v4"},
+        "lokalGetestet": {"wert":true,"beleg":"pruefungen/drift-sicherheit.test.js, drift-regelwerk.test.js, drift-wiederherstellung.test.js in PR #517 (97b08961) und #520 (3b91fb9d) in integration/release-v4"},
+        "reviewt": {"wert":"teilweise","beleg":"D1/D2: Sonnet-Review FREIGABE (a64c38a966d6b29ef, unabhängig). D3: Opus-Review im ersten Durchgang nicht freigegeben (Registry-Zeile 45), im finalen Kopf 4b8848e0 behoben; Delta vom Koordinator geprüft, kein zweiter Opus-Durchgang."},
+        "integriert": {"wert":true,"beleg":"PR #517 (97b08961) und #520 (3b91fb9d) in integration/release-v4"},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": "Hauptorchestrator",
+      "modell": "sonnet",
+      "konfliktzonen": [],
+      "pr": ["#517","#520"],
+      "nachweis": "pruefungen/drift-sicherheit.test.js, pruefungen/drift-regelwerk.test.js, pruefungen/drift-wiederherstellung.test.js",
+      "akzeptanz": "Doku-Code-Paare in Sicherheit, Regelwerk und Wiederherstellung/Löschfristen werden per Test gegen den Code geprüft; Abweichung bricht den Test",
+      "tests": "pruefungen/drift-sicherheit.test.js, drift-regelwerk.test.js, drift-wiederherstellung.test.js",
+      "dateien": "pruefungen/drift-*.test.js, SICHERHEIT.md, docs/REGELWERK-REGISTRY.md, docs/RESTORE-ANLEITUNG.md",
+      "notiz": "D1 drift-sicherheit.test.js: 22 Aussagen aus SICHERHEIT.md ↔ Code-Konstanten (Fund: SICHERHEIT.md:20 20 ms → 15 ms korrigiert); D2 drift-regelwerk.test.js: REGELWERK-REGISTRY.md ↔ Dateien/Skripte/Regelstand; D3 drift-wiederherstellung.test.js: 61 Paare RESTORE-ANLEITUNG/BETRIEB-SICHERUNG ↔ Skripte/ablage/Workflow + Löschfristen 30/90 Tage (aufraeumen.mjs:73-74) ↔ Doku; Registry-Nachzug regelbaukasten-erweitert.mjs/regelstatus.mjs. Nicht gebunden: Messwerte, Empfehlungen, Verhalten/Prosa, Rechtsbewertung. Offen: src/regelregister.js:63 Kommentar veraltet; D4+ (Abrechnung/Mandantentrennung: kein billig prüfbares Doku-Code-Paar). Aufwand SCHÄTZUNG, nachträglich angelegt."
     }
   ]
 }
