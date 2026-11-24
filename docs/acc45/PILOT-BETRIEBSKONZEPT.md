@@ -388,7 +388,7 @@ Hotfix verbreitert den Funktionsumfang nicht und ändert keine Produktentscheidu
 
    | Stufe | Wer | Wann |
    |---|---|---|
-   | 1 | CI (Pflicht-Checks aus `docs/BRANCH-SCHUTZ.md`: `pruefen`, Sicherheitsjobs, Lieferkette, Betriebsjobs) | immer |
+   | 1 | CI (Pflicht-Checks aus `docs/acc45/BETREIBER-BRANCHSCHUTZ.md`: `pruefen-a/-b/-c`, `browser-abnahme`, Sicherheitsjobs, Lieferkette, Betriebsjobs) | immer |
    | 2 | Review durch eine zweite Sicht (Rolle Review), die den Diff und den Test liest, nicht die Zusammenfassung | immer |
    | 3 | Fachliche Abnahme durch Pilotleitung und, bei Daten- oder Rechtefragen, Datenschutzansprechperson | P0 und alle Fehler mit Rechte-, Daten- oder Exportbezug |
    | 4 | Sicherheitsreview (zusätzlicher unabhängiger Prüfauftrag) | Rechteleck, Authentifizierung, Datenabfluss |

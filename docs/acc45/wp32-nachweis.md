@@ -52,7 +52,8 @@ wöchentlich montags 05:00 Europe/Berlin; Ziel `integration/centric-complete`.
 ## 4. Branch-Schutz
 
 Nicht gesetzt. `docs/BRANCH-SCHUTZ.md`: Regeln für `main` und
-`integration/centric-complete`, Pflicht-Checks namentlich (`pruefen`,
+`integration/centric-complete`, Pflicht-Checks namentlich (Stand WP-32; seit #514 heißt `pruefen` jetzt `pruefen-a/-b/-c`,
+siehe `BETREIBER-BRANCHSCHUTZ.md`: `pruefen`,
 `abhaengigkeiten`, `geheimnisse`, `muster`, `bild-scan`, `caddy-vorlage`, `shellcheck`,
 `compose`, `skripte`), fertiger `gh api`-Befehl, Prüf- und Rücknahmebefehl.
 Stand vorher: `main` ungeschützt (`404 Branch not protected`).

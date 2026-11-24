@@ -63,8 +63,8 @@ ghcr.io/aquasecurity/trivy:0.70.0@sha256:be1190afcb28352bfddc4ddeb71470835d16462
 ## Pflicht-Checks für den PR-Kopf
 
 Für Pull Requests gegen die geschützten Branches gelten die Checks aus
-`docs/BRANCH-SCHUTZ.md`: `pruefen`, `abhaengigkeiten`, `geheimnisse`,
-`muster`, `bild-scan`, `caddy-vorlage`, `shellcheck`, `compose`, `skripte`.
+`docs/acc45/BETREIBER-BRANCHSCHUTZ.md` (älter: `docs/BRANCH-SCHUTZ.md`): `pruefen-a`, `pruefen-b`,
+`pruefen-c`, `browser-abnahme`, `abhaengigkeiten`, `geheimnisse`, `interne-pruefung`, `muster`, `bild-scan`, `caddy-vorlage`, `shellcheck`, `compose`, `skripte`.
 Für diese Änderung ist `bild-scan` der entscheidende Check (Workflow
 `Lieferkette`).
 
