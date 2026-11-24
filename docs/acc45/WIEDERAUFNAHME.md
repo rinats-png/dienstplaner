@@ -5,6 +5,13 @@
 > Halter und Epoche stehen nie verlässlich in diesem Dokument: maßgeblich ist allein `node werkzeug/koordination.mjs status`
 > (dazu `leerlauf`). Epochenangaben in den Nachträgen unten sind historisch. Betriebsregeln: Abschnitt „Koordinationsregel“.
 
+## Nachtrag 2026-11-24 (Nachtlauf, nur lesende Prüfung und Statuspflege, Branch `ccr-a5d550e1-wkkibk`)
+
+- **Integrationskopf:** `integration/release-v4` `4eae5d8` (Merge #506, Doku). Davor #507 (`eb88621`): Tiefendeckel an allen Rumpflesern (WP-19.5, Review #505 A1), Tests in `modul-tiefendeckel-leser.test.js`. Branch vor Arbeitsbeginn auf `origin/integration/release-v4` gesetzt.
+- **Lease:** Epoche 24 kontrolliert freigegeben (13:34Z), `leerlauf` Exit 0, kein aktiver Koordinator; dieser Lauf hat keine Lease übernommen (nur lesend, keine Code-Änderung).
+- **Offene PRs:** unverändert zum Nachtrag vom 23.11. (Dependabot #496/#497/#498/#406/#407/#400, Doku #480, Drafts #479/#468/#327/#177/#489 `main` nur mit Freigabe). Keine neue Integration durch diesen Lauf; keine neu abgeschlossenen PT behauptet.
+- **Nicht begonnen:** Code-Pakete (kein `node_modules`, Vollregression über 9 Minuten, Opus-Review vor Merge Pflicht). Kein Betreiberentscheid neu nötig. Hintergrundausführung: stündliche Routine besteht weiter, siehe Nachtrag 23.11.
+
 ## Nachtrag 2026-11-23 (Nachtlauf, nur lesende Prüfung und Statuspflege, Branch `ccr-a5d550e1-6lda3d`)
 
 - **Integrationskopf:** `integration/release-v4` `09688acc` (Merge #505, Tiefendeckel und doppelte Option). Letzte Aktivität 12:48Z (Merge-Zeit 13:48 MEZ).
