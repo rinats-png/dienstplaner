@@ -41,6 +41,8 @@ nicht abgeschwächt; nur nachgewiesene Ausfälle werden behoben, alles Übrige b
   - Testcode: `abnahmeHeute()`/`jetzt()` statt `new Date()` (Abnahme A und B).
   - Kein `page.clock`: Dessen `install` ersetzt auch Zeitgeber und `performance.now`; der Versatz hält Zeitgeber, Netz und
     Wartezeiten echt und ist mit der Serveruhr identisch.
+    Ausnahme (ZEIT-F, 2026-11-24): `e2e/zeit-f-zonen.spec.mjs` Z2 stellt die Browseruhr mit `page.clock` auf 23:58/00:02
+    Berlin, nur lesend und nur für die Datumsanzeige; die Serveruhr bleibt auf der Zeitbasis (ZEIT-BETRIEBSTAG-VERTRAG.md § 13.3).
 - **Gegenprobe (neu, nicht abgeschwächt):** „B8 Gegenprobe“ trägt Abnahmetag + 4 Spätdienst und + 5 Frühdienst ein und
   erwartet 403 mit „Einteilung am … nicht möglich: Ruhezeit unter 11 Stunden.“ und unveränderte Abweichungen.
   `pruefungen/qs-b8-zeitbasis.test.js` (`npm run pruefung:qs-zeitbasis`) hält ohne Browser fest: Ursache (Basis 11-15
