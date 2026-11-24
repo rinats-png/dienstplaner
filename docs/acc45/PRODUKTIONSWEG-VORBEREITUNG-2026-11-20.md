@@ -228,7 +228,7 @@ Liste fehlender `.env`-Schlüssel, ob `zustand/` existiert, ob Sicherungen exist
 
 | Nr | Wer | Was | Womit |
 |---|---|---|---|
-| B-9 | Claude (nach Merge-Freigabe) | Kandidat nach `main` bringen (Gates R1–R3), Bild bauen (`deploy.yml`, nur `bauen`), Digest, Commit, Label und Provenienz prüfen | [RELEASE-GATES-R1-R2-R3.md](RELEASE-GATES-R1-R2-R3.md), `deploy.yml` Job `bild` |
+| B-9 | Claude (nach Merge-Freigabe); Bildbau löst der Betreiber aus | Kandidat nach `main` bringen (Gates R1–R3), Bildbau vorbereiten (Befehl für `deploy.yml`, nur `bauen`; der Betreiber startet ihn), danach Digest, Commit, Label und Provenienz prüfen. Quelle der strengeren Regel: `RELEASE-PROZESS.md` §3, `BETREIBER-ANLEITUNG-ERSTRELEASE.md`, `STAGING-PLAN-V4.md` V-2 | [RELEASE-GATES-R1-R2-R3.md](RELEASE-GATES-R1-R2-R3.md), `deploy.yml` Job `bild` |
 | B-10 | Betreiber + Claude | Staging-Abnahme des Kandidaten per Digest auf isolierter Umgebung | [STAGING-O2-VORBEREITUNG.md](STAGING-O2-VORBEREITUNG.md), [STAGING-PLAN-V4.md](STAGING-PLAN-V4.md) §4–5 |
 | B-11 | Betreiber | Restore-Probe auf Kopie nach Abschnitt 4 (inkl. Rücksprung- und Kompatibilitätsprobe) | Abschnitt 4 |
 | B-12 | Betreiber | Offene Entscheidungen in Abschnitt 6 treffen | Abschnitt 6 |
