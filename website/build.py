@@ -69,6 +69,61 @@ def schreibe(pfad, text):
 # Wer geplant wird, kostet nichts.
 # ════════════════════════════════════════════════════════════════════════════
 
+# ════════════════════════════════════════════════════════════════════════════
+# PAKETZUSTAND — die EINE Quelle dafür, was die Website über ein Branchenpaket sagt
+#
+# Betreiberentscheidung 2026-11-24 (P2-39, Option A) und G9 der Anwendung:
+# Nur ein Paket im Zustand 5 („buchbar und abrechenbar") darf mit Preis genannt,
+# als Schalter im Preisrechner angeboten und als „enthalten" beworben werden.
+# Zustand 1 bis 4: „In Vorbereitung – noch nicht buchbar", ohne Preis, ohne
+# Schalter. Preisrechner, Tabellen, Karten und Texte werden aus dieser Tabelle
+# erzeugt; es gibt keine zweite Liste.
+#
+# Fail-closed: Ein Paket, das hier nicht steht (neues Modul), hat Zustand 1.
+# Ein Wert außerhalb 1 bis 5 gilt ebenfalls als Zustand 1. Die Zielpreise stehen
+# als `zielpreis` in PAKETE; gedruckt werden sie nur über `paket_preis()`.
+# Quelle der Wahrheit in der Anwendung: server/lib/paketstand.mjs
+# (PAKET_FREIGABEN ist heute leer: kein Paket ist buchbar). Wird dort ein Paket
+# freigegeben, ändert sich hier genau diese Tabelle — bewusst, mit Prüfsatz.
+# ════════════════════════════════════════════════════════════════════════════
+PAKET_ZUSTAND = {
+    "sicherheit": 1,
+    "pflege": 1,
+    "klinik": 1,
+    "industrie": 1,
+}
+PAKET_BUCHBAR_AB = 5
+PAKET_VORB = "In Vorbereitung \u2013 noch nicht buchbar"
+
+
+def paket_zustand(pid):
+    z = PAKET_ZUSTAND.get(pid, 1)
+    return z if isinstance(z, int) and not isinstance(z, bool) and 1 <= z <= 5 else 1
+
+
+def paket_buchbar(p):
+    return paket_zustand(p["id"]) >= PAKET_BUCHBAR_AB
+
+
+def paket_preis(p):
+    """Der Zielpreis eines Pakets — nur bei Zustand 5, sonst None (kein Preis)."""
+    return p["zielpreis"] if paket_buchbar(p) else None
+
+
+def paket_status(p):
+    """Zeile unter einem Paketnamen: Preis (Zustand 5) oder der Hinweis „In Vorbereitung"."""
+    pr = paket_preis(p)
+    return f"+ {pr} \u20ac je Monat und Betrieb" if pr is not None else PAKET_VORB
+
+
+_PAKET_FREI = any(paket_zustand(i) >= PAKET_BUCHBAR_AB for i in PAKET_ZUSTAND)
+PAKET_ENTERPRISE_ZEILE = ("Zwei Branchenpakete enthalten" if _PAKET_FREI
+                          else "Branchenpakete: in Vorbereitung, noch nicht buchbar")
+PAKET_HINWEIS_ENTERPRISE = ("Im Tarif Enterprise sind zwei Branchenpakete enthalten." if _PAKET_FREI
+                            else "Die Branchenpakete sind in Vorbereitung und noch nicht buchbar. "
+                                 "Es gibt keinen Preis und keine Buchung, bis ein Paket freigegeben ist.")
+
+
 STUFEN = [
     dict(id="basis", name="Basis", grund=89, planer_inkl=1, standorte_inkl=1, pakete_frei=0,
          claim="Eine Planung, ein Standort. Für den Betrieb, der an einem Ort arbeitet.",
@@ -81,7 +136,7 @@ STUFEN = [
                      "Belastbarkeitsanalyse", "Lohnausgabe — ein Klick zur Lohnbuchhaltung"]),
     dict(id="enterprise", name="Enterprise", grund=279, planer_inkl=8, standorte_inkl=4, pakete_frei=2,
          claim="Verteilte Betriebe, Auftraggeber-Nachweise, Auftragsverarbeitung.",
-         leistungen=["Alles aus Business", "Zwei Branchenpakete enthalten",
+         leistungen=["Alles aus Business", PAKET_ENTERPRISE_ZEILE,
                      "Leistungsnachweis für Auftraggeber",
                      "Auftragsverarbeitung nach Artikel 28", "Bevorzugter Rückruf"]),
 ]
@@ -114,7 +169,7 @@ def mehrzahl(n, eins, viele):
     return f"{n} {eins if n == 1 else viele}"
 
 PAKETE = [
-    dict(id="sicherheit", name="Sicherheitsdienst", aufpreis=79,
+    dict(id="sicherheit", name="Sicherheitsdienst", zielpreis=79, band="Posten, § 34a, Wachbuch",
          kurz="Objektbezogene Posten, Sachkundenachweis mit harter Sperre, Wachbuch, "
               "Standortprüfung beim Stempeln.",
          punkte=["Posten je Objekt statt Dienste je Einheit",
@@ -122,7 +177,7 @@ PAKETE = [
                  "Wachbuch mit Übergabe und Vorkommnissen",
                  "Standortprüfung beim Stempeln (Geofence)",
                  "Objektbericht und Leistungsnachweis für den Auftraggeber"]),
-    dict(id="pflege", name="Pflege", aufpreis=89,
+    dict(id="pflege", name="Pflege", zielpreis=89, band="Fachkraftquote je Dienst",
          kurz="Fachkraftquote je Dienst, Übergabeprotokoll, Wohnbereichsplanung, "
               "Betreuungskräfte nach § 43b.",
          punkte=["Fachkraftquote wird je einzelnem Dienst geprüft, nicht je Schicht",
@@ -130,7 +185,7 @@ PAKETE = [
                  "Betreuungskräfte nach § 43b SGB XI",
                  "Übergabeprotokoll zwischen den Diensten",
                  "Pflegequalifikationen mit Ablaufdatum"]),
-    dict(id="klinik", name="Klinik", aufpreis=129,
+    dict(id="klinik", name="Klinik", zielpreis=129, band="Bereitschaft, geteilte Dienste",
          kurz="Bereitschaftsdienst und Rufbereitschaft mit eigener Anrechnung, "
               "geteilte Dienste, Funktionsdienste, Rotationen.",
          punkte=["Bereitschaftsdienst und Rufbereitschaft mit eigener Anrechnung",
@@ -138,7 +193,7 @@ PAKETE = [
                  "Funktionsdienste getrennt vom Stationsdienst",
                  "Rotationen über Abteilungen hinweg",
                  "Übergabe und Fachkraftquote inbegriffen"]),
-    dict(id="industrie", name="Industrie und Anlagen", aufpreis=59,
+    dict(id="industrie", name="Industrie und Anlagen", zielpreis=59, band="Anlagen, Kontimodelle",
          kurz="Anlagenbindung, Maschinenqualifikationen, Kontischichtmodelle mit Stufenversatz.",
          punkte=["Personen an Anlagen statt an Räume binden",
                  "Maschinenqualifikationen als Einsatzvoraussetzung",
@@ -541,16 +596,23 @@ def ring_felder():
 
 
 def paket_schalter():
-    """Branchenpakete als Schalter. Das Ankreuzfeld bleibt darunter liegen —
-    sichtbar ist der Schalter, bedienbar bleibt das Formularelement."""
+    """Branchenpakete als Schalter — nur Pakete im Zustand 5. Heute gibt es keinen:
+    dann steht an dieser Stelle der Hinweis „In Vorbereitung", kein Schalter, kein Preis.
+    Das Ankreuzfeld bleibt darunter liegen — sichtbar ist der Schalter, bedienbar
+    bleibt das Formularelement."""
     o = []
     for p in PAKETE:
+        if not paket_buchbar(p):
+            continue
         o.append(
             f'<label class="check"><input type="checkbox" name="paket" '
-            f'value="{p["id"]}" data-preis="{p["aufpreis"]}">'
+            f'value="{p["id"]}" data-preis="{paket_preis(p)}">'
             f'<span class="check-feld"><b>{p["name"]}</b>'
-            f'<em>+{p["aufpreis"]} \u20ac</em></span></label>')
-    return "".join(o)
+            f'<em>+{paket_preis(p)} \u20ac</em></span></label>')
+    if not o:
+        return (f'<p class="klein">Branchenpakete: {PAKET_VORB}. '
+                'Sie sind im Preisrechner nicht w\u00e4hlbar und nicht Teil der Rechnung.</p>')
+    return f'<div class="checks">{"".join(o)}</div>'
 
 
 seiten = {}
@@ -621,13 +683,10 @@ seiten["index.html"] = dict(
   </div>
 </div>
 
-{sect('''<p class="rail-lab">Fachwelten</p>
-  <ul class="branchen-band">
-    <li><b>Sicherheitsdienst</b><span>Posten, § 34a, Wachbuch</span><em>+79 €</em></li>
-    <li><b>Pflege</b><span>Fachkraftquote je Dienst</span><em>+89 €</em></li>
-    <li><b>Klinik</b><span>Bereitschaft, geteilte Dienste</span><em>+129 €</em></li>
-    <li><b>Industrie</b><span>Anlagen, Kontimodelle</span><em>+59 €</em></li>
-  </ul>''', "sect-band")}
+{sect('<p class="rail-lab">Fachwelten \u00b7 in Vorbereitung</p><ul class="branchen-band">' + "".join(
+      f'<li><b>{p["name"].split(" und ")[0]}</b><span>{p["band"]}</span>'
+      f'<em>{f"+{paket_preis(p)} €" if paket_buchbar(p) else "In Vorbereitung"}</em></li>'
+      for p in PAKETE) + '</ul>', "sect-band")}
 
 {sect(kopfzeile("Das Problem", "Schichtplanung scheitert selten am Planen",
                 "Sie scheitert an dem, was danach kommt: an der Krankmeldung um sechs Uhr "
@@ -669,14 +728,14 @@ seiten["index.html"] = dict(
 {sect(kopfzeile("Funktionen", "Alles, was ein Schichtbetrieb täglich braucht") +
       karten([
           dict(icon="rotation", h="Rotationsmodelle",
-               t="Kontischicht, Vier-, Fünf- und Sechsgruppenmodelle als Vorlage — oder ein "
+               t="Vier-, Fünf- und Sechsgruppenmodelle als Vorlage — oder ein "
                  "eigener Zyklus über beliebig viele Wochen."),
           dict(icon="schild", h="Arbeitszeitprüfung",
                t="Ruhezeit, Höchstarbeitszeit, Dienste und Nachtdienste in Folge werden beim "
                  "Eintragen geprüft, nicht am Monatsende."),
           dict(icon="haken", h="Qualifikationen mit Ablauf",
-               t="Nachweise laufen ab. CENTRIC warnt vorher — und sperrt danach den Einsatz, "
-                 "wo das Branchenpaket es verlangt."),
+               t="Nachweise laufen ab. CENTRIC warnt vorher. Eine harte Sperre nach Ablauf "
+                 "gehört zu den Branchenpaketen (in Vorbereitung, noch nicht buchbar)."),
           dict(icon="tausch", h="Anträge und Tauschbörse",
                t="Urlaub, Freiwünsche und Tausch laufen über einen Weg. Vor der Entscheidung "
                  "zeigt CENTRIC, welche Lücke entsteht."),
@@ -716,11 +775,12 @@ seiten["index.html"] = dict(
 </ol>''', "sect-hell")}
 
 {sect(kopfzeile("Branchen", "Ein Rechenkern, mehrere Fachwelten",
-                "Was eine Branche zusätzlich braucht, wird als Paket freigeschaltet. Bewusst "
-                "grob geschnitten: fünf Pakete statt fünfzig einzelner Schalter.") +
+                "Was eine Branche zusätzlich braucht, soll als Paket kommen. Die Branchenpakete "
+                "sind in Vorbereitung und noch nicht buchbar. Bewusst grob geschnitten: "
+                f"{len(PAKETE)} Pakete statt fünfzig einzelner Schalter.") +
       '<div class="grid-4">' + "".join(
           f'<article class="karte karte-link"><h3>{p["name"]}</h3><p>{p["kurz"]}</p>'
-          f'<p class="preis-mini">+ {p["aufpreis"]} € je Monat und Betrieb</p>'
+          f'<p class="preis-mini">{paket_status(p)}</p>'
           f'<a href="branchen.html#{p["id"]}">Ansehen</a></article>'
           for p in PAKETE) + "</div>")}
 
@@ -795,7 +855,7 @@ seiten["funktionen.html"] = dict(
          "Stundenkonten, Auswertungen und Rollen — alle Funktionen von CENTRIC im Detail.",
     body=f"""
 {sect(kopfzeile("Funktionen", "Was CENTRIC kann — und warum es so gebaut ist",
-                "Ein Kern für alle Betriebe, fünf Branchenpakete darüber. Diese Seite geht "
+                "Ein Kern für alle Betriebe; Branchenpakete darüber sind in Vorbereitung. Diese Seite geht "
                 "die Bereiche der Anwendung der Reihe nach durch.", tag="h1"), "sect-titel")}
 
 {sect(kopfzeile("Planung", "Der Plan wird gerechnet") +
@@ -830,8 +890,8 @@ seiten["funktionen.html"] = dict(
       der bewussten Ausnahme</span></div>
     <div><strong>Fehlende Qualifikation</strong><span>Zahl der erforderlichen Nachweise je
       Dienst, nicht je Schicht</span></div>
-    <div><strong>Abgelaufener Nachweis</strong><span>Warnung vorher, Sperre danach — wo das
-      Paket es vorsieht</span></div>
+    <div><strong>Abgelaufener Nachweis</strong><span>Warnung vorher; eine Sperre danach
+      gehört zu den Branchenpaketen (in Vorbereitung)</span></div>
     <div><strong>Dienst trotz Abwesenheit</strong><span>Wird abgelehnt statt stillschweigend
       angenommen</span></div>
   </div>
@@ -913,14 +973,16 @@ branchen_body = [sect(kopfzeile(
     "Branchen", "Ein Rechenkern, mehrere Fachwelten",
     "Der Kern ist für alle Betriebe derselbe: Schichtplanung, Anträge, Zeiten, "
     "Stundenkonten, Qualifikationen, Auswertungen. Was darüber hinaus fachlich nötig ist, "
-    "wird als Paket freigeschaltet.", tag="h1"), "sect-titel")]
+    "soll als Paket kommen. Die Branchenpakete sind in Vorbereitung und noch nicht buchbar: "
+    "Preis und Buchung gibt es erst, wenn ein Paket freigegeben ist.", tag="h1"), "sect-titel")]
 for i, p in enumerate(PAKETE):
     bild = plan_strip(24, 480, dark=False)
     branchen_body.append(sect(f'''<div class="split split-eng{" umgekehrt" if i % 2 else ""}">
   <div>
-    <p class="eyebrow tint">Branchenpaket · + {p["aufpreis"]} € je Monat</p>
+    <p class="eyebrow tint">Branchenpaket · {paket_status(p)}</p>
     <h2>{p["name"]}</h2>
     <p class="lead">{p["kurz"]}</p>
+    {"" if paket_buchbar(p) else '<p class="klein">Geplanter Umfang. Noch nicht verfügbar, noch nicht buchbar.</p>'}
     <ul class="tick gross">{"".join(f"<li>{x}</li>" for x in p["punkte"])}</ul>
   </div>
   <div class="karte karte-bild">
@@ -934,17 +996,17 @@ for i, p in enumerate(PAKETE):
 branchen_body.append(sect(kopfzeile(
     "Kernplattform", "In jedem Tarif enthalten",
     "Schichtplanung, Anträge, Zeiten, Stundenkonten, Qualifikationen und Export. Die "
-    "Branchenpakete setzen darauf auf — sie ersetzen nichts.") +
+    "Branchenpakete (in Vorbereitung) sollen darauf aufsetzen — sie ersetzen nichts.") +
     '<div class="band band-mitte"><span>Plan</span><span>Anträge</span><span>Zeiten</span>'
     '<span>Konten</span><span>Qualifikationen</span><span>Export</span></div>'))
-branchen_body.append(cta("Nicht sicher, welches Paket passt?",
+branchen_body.append(cta("Nicht sicher, was Ihr Betrieb braucht?",
                          "Beschreiben Sie uns Ihren Betrieb in drei Sätzen. Wenn der Kern "
-                         "reicht, sagen wir das — ein Paket, das Sie nicht brauchen, "
-                         "verkaufen wir Ihnen nicht."))
+                         "reicht, sagen wir das. Branchenpakete sind in Vorbereitung und "
+                         "noch nicht buchbar."))
 seiten["branchen.html"] = dict(
     title="Branchen — CENTRIC",
-    desc="Branchenpakete für Sicherheitsdienst, Pflege, Klinik sowie Industrie und Anlagen. "
-         "Ein Rechenkern, fachliche Erweiterungen darüber.",
+    desc="Branchenpakete für Sicherheitsdienst, Pflege, Klinik sowie Industrie und Anlagen "
+         "sind in Vorbereitung und noch nicht buchbar. Ein Rechenkern, fachliche Erweiterungen darüber.",
     body="\n".join(branchen_body))
 
 # ── Preise ──────────────────────────────────────────────────────────────────
@@ -968,7 +1030,7 @@ seiten["preise.html"] = dict(
     title="Preise — CENTRIC",
     desc="Bezahlt wird, wer plant: Basis 89 €, Business 159 €, Enterprise 279 € je Monat "
          "für den Betrieb. Beschäftigte, Sub-Planer und Betriebsrat kosten nichts. "
-         "Branchenpakete ab 59 €.",
+         "Branchenpakete sind in Vorbereitung und noch nicht buchbar.",
     body=f"""
 {sect(kopfzeile("Preise", "Bezahlt wird, wer plant.",
                 "Wer geplant wird, kostet nichts — Beschäftigte, Sub-Planer und Betriebsrat "
@@ -985,13 +1047,13 @@ seiten["preise.html"] = dict(
 {sect(f'''{kopfzeile("Rechner", "Was kostet CENTRIC für Ihren Betrieb?",
       "Dieselbe Rechnung wie in der Anwendung: Grundgebühr der Stufe, Pauschale je "
       "Planer-Zugang über dem Kontingent, Zuschlag je Standort über dem Kontingent, "
-      "Branchenpakete je Betrieb.")}
+      "Branchenpakete sind in Vorbereitung und noch nicht Teil der Rechnung.")}
 <div class="rechner">
   <form class="rechner-ein" id="preisrechner">
     {ring_felder()}
     <fieldset class="feld feld-voll">
       <legend>Branchenpakete</legend>
-      <div class="checks">{paket_schalter()}</div>
+      {paket_schalter()}
     </fieldset>
   </form>
   <aside class="rechner-aus dunkel" aria-live="polite">
@@ -1025,13 +1087,15 @@ Einrichtung — eine Patientenadresse, eine kleine Außenstelle, ein Notfallquar
 Solche Orte kosten nichts, auch außerhalb des Kontingents. Ein zusätzlicher
 Planer-Zugang kostet {ZUSATZ_PLANER} € im Monat, unabhängig von der Betriebsgröße.</p>''')}
 
-{sect(f'''{kopfzeile("Pakete", "Branchenpakete je Betrieb")}
+{sect(f'''{kopfzeile("Pakete", "Branchenpakete: in Vorbereitung")}
 <div class="grid-4">{"".join(
     f'<article class="karte"><h3>{p["name"]}</h3>'
-    f'<p class="tarif-preis klein-preis"><strong>+ {p["aufpreis"]} €</strong>'
-    f'<span>je Monat und Betrieb</span></p><p>{p["kurz"]}</p>'
+    + (f'<p class="tarif-preis klein-preis"><strong>+ {paket_preis(p)} €</strong>'
+       f'<span>je Monat und Betrieb</span></p>' if paket_buchbar(p)
+       else f'<p class="preis-mini">{PAKET_VORB}</p>')
+    + f'<p>{p["kurz"]}</p>'
     f'<a href="branchen.html#{p["id"]}">Zum Paket</a></article>' for p in PAKETE)}</div>
-<p class="klein">Im Tarif Enterprise sind zwei Branchenpakete enthalten.</p>''', "sect-hell")}
+<p class="klein">{PAKET_HINWEIS_ENTERPRISE}</p>''', "sect-hell")}
 
 {sect(kopfzeile("Enthalten", "In jedem Tarif, ohne Aufpreis") +
       '''<div class="grid-3">
@@ -1067,7 +1131,7 @@ Planer-Zugang kostet {ZUSATZ_PLANER} € im Monat, unabhängig von der Betriebsg
            "keine Zahlungsdaten."),
           ("Wie wird abgerechnet?",
            "Monatlich per Rechnung an den Betrieb, mit getrennt ausgewiesenen Posten für "
-           "Grundgebühr, zusätzliche Planer-Zugänge, Standortzuschläge und Pakete. "
+           "Grundgebühr, zusätzliche Planer-Zugänge, Standortzuschläge und Branchenpakete (noch nicht buchbar). "
            "Jahresrechnung ist möglich."),
           ("Zahlen wir für Zugänge des Betriebsrats?",
            "Nein. Der lesende Prüfzugang ist in allen Stufen kostenfrei und in der Zahl "
@@ -1239,7 +1303,7 @@ seiten["ueber-uns.html"] = dict(
 <div class="zahlen">
   <div><strong>24</strong><span>Tage im Beispielzyklus — beliebig viele sind möglich</span></div>
   <div><strong>6</strong><span>Rollen vom Betreiber bis zum Betriebsrat</span></div>
-  <div><strong>5</strong><span>Branchenpakete auf einem gemeinsamen Rechenkern</span></div>
+  <div><strong>{len(PAKETE)}</strong><span>Branchenpakete in Vorbereitung auf einem gemeinsamen Rechenkern</span></div>
   <div><strong>261</strong><span>Selbsttests, nachgezählt aus dem Prüflauf</span></div>
 </div>''')}
 
@@ -1275,11 +1339,11 @@ ARTIKEL = [
     ("branchen.html#pflege", "Pflege",
      "Fachkraftquote je Dienst statt je Schicht",
      "Der Unterschied klingt nach einer Feinheit und entscheidet über das Ergebnis der "
-     "Heimaufsicht. Wie die Quote richtig geprüft wird.", "6 Minuten"),
+     "Heimaufsicht. Wie die Quote richtig geprüft wird (Branchenpaket in Vorbereitung).", "6 Minuten"),
     ("branchen.html#sicherheit", "Sicherheitsdienst",
      "§ 34a: warum eine Warnung nicht reicht",
      "Ein abgelaufener Sachkundenachweis ist kein Hinweis, sondern ein Einsatzverbot. "
-     "Wie eine harte Sperre in der Planung aussieht.", "5 Minuten"),
+     "Wie eine harte Sperre in der Planung aussieht (Branchenpaket in Vorbereitung).", "5 Minuten"),
     ("preise.html", "Betriebswirtschaft",
      "Kopfpauschale oder Planer-Preis?",
      "Warum Betriebe mit vielen Beschäftigten bei Kopfpreisen strukturell verlieren — "
@@ -1413,7 +1477,7 @@ seiten["faq.html"] = dict(
      "und Zugangsarten lassen sich im selben Durchgang zuordnen."),
     ("Müssen wir unser Rotationsmodell ändern?",
      "Nein. Sie tragen das Modell ein, das Sie fahren. CENTRIC bringt Vorlagen für gängige "
-     "Konti-, Vier-, Fünf- und Sechsgruppenmodelle mit, aber jeder eigene Zyklus über "
+     "Vier-, Fünf- und Sechsgruppenmodelle mit, aber jeder eigene Zyklus über "
      "beliebig viele Wochen ist möglich."),
     ("Laufen wir eine Zeit lang parallel?",
      "Das empfehlen wir für einen Monat. Ab der ersten Freigabe hält CENTRIC den Stand fest, "
@@ -1421,15 +1485,15 @@ seiten["faq.html"] = dict(
 ]) + '<h2>Planung und Recht</h2>' + faq_liste([
     ("Was prüft CENTRIC automatisch?",
      "Ruhezeit, Höchstarbeitszeit, Dienste und Nachtdienste in Folge, Mindestbesetzung, "
-     "Fachkraftquote und Qualifikationen — laufend, beim Eintragen, nicht am Monatsende."),
+     "Qualifikationen — laufend, beim Eintragen, nicht am Monatsende."),
     ("Sind zwölfstündige Dienste zulässig?",
      "Nach dem Arbeitszeitgesetz nur, wenn im Schnitt über sechs Monate acht Stunden je "
      "Werktag nicht überschritten werden oder erhebliche Bereitschaftsanteile vorliegen. "
      "CENTRIC weist auf diese Bedingung hin und rechnet den Ausgleich mit."),
     ("Was passiert bei einem abgelaufenen Nachweis?",
-     "Vor Ablauf wird gewarnt. Nach Ablauf sperrt CENTRIC den Einsatz überall dort, wo das "
-     "Branchenpaket eine harte Sperre vorsieht — beim Sachkundenachweis im Sicherheitsdienst "
-     "etwa unabhängig von der Dienstart."),
+     "Vor Ablauf wird gewarnt. Eine harte Sperre nach Ablauf ist Teil der Branchenpakete, "
+     "etwa beim Sachkundenachweis im Sicherheitsdienst. Diese Pakete sind in Vorbereitung "
+     "und noch nicht buchbar."),
     ("Wie findet CENTRIC Ersatz?",
      "Es schlägt Personen vor, geordnet nach Eignung. Wer nicht kann, steht unten mit "
      "Begründung. Vor dem Eintragen werden die Folgen gezeigt: Ruhezeit, Wochenstunden, "
@@ -2168,7 +2232,7 @@ body.-bereit .halle .rahmen{opacity:1}
 .branchen-band b{font-family:var(--sig); font-size:1.05rem; font-weight:500;
   letter-spacing:.03em}
 .branchen-band span{grid-column:1; font-size:.85rem; color:var(--text-schwach)}
-.branchen-band em{font-family:var(--zaehl); font-style:normal; font-size:.8rem;
+.branchen-band em{grid-column:1; font-family:var(--zaehl); font-style:normal; font-size:.8rem;
   color:var(--akzent)}
 
 /* ══ Zellen statt Karten ═══════════════════════════════════════════════ */
