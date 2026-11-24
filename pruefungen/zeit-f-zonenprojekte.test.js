@@ -11,7 +11,7 @@ import { VIEWPORTS } from "../e2e/umgebung.mjs";
 import { ABNAHME_ZEITPUNKT, tagPlus } from "../e2e/zeitbasis.mjs";
 import { betriebstag, zeitpunktAusWanduhr } from "../server/lib/betriebszeit.mjs";
 
-/** Kalendertag eines Zeitpunkts in einer Zone (wie ein Gerät dort `new Date()` läse). */
+/** Kalendertag eines Zeitpunkts in einer Zone (so läse ihn ein Gerät mit dieser Ortszeit). */
 const tagIn = (ms, zone) => new Intl.DateTimeFormat("sv-SE", { timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit" })
   .format(new Date(ms));
 
