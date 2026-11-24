@@ -397,9 +397,10 @@ test.describe("Abnahme B — Darstellung und Barrierefreiheit der Abläufe", () 
 
   /* Stempeluhr in festem Stand: je eine eigene Person (global-setup.mjs, ZUSATZ_ZUGAENGE), die kein anderer Test anmeldet.
      Früher prüfte der Test die Person der Rolle „mitarbeiter“; nach B7 (390x844: ein- UND ausgestempelt) zeigte deren
-     Stempeluhr nur noch „Dienst erfasst“ ohne Knopf, und jeder spätere Viewport scheiterte. Der Browser rechnet „heute“ in
-     seiner Ortszeit, der Server stempelt nach Europe/Berlin (zeiterfassung.mjs, heuteBerlin): darum hier die Zeitzone des
-     Betriebs, sonst zeigte ein Runner in UTC zwischen 23 und 24 Uhr den Vortag. */
+     Stempeluhr nur noch „Dienst erfasst“ ohne Knopf, und jeder spätere Viewport scheiterte. Seit ZEIT-C kommt „heute“ aus der
+     Serverlogik und der Zeitbasis (Betriebstag Europe/Berlin, engine/zeit.mjs), nicht aus der Ortszeit des Browsers; der
+     Server stempelt ebenfalls nach Europe/Berlin (zeiterfassung.mjs, heuteBerlin). Die feste Zone des Betriebs bleibt hier
+     nur als Vorsicht: Geräteuhr und Betriebstag sollen in diesem Test nicht auseinanderfallen. */
   test.describe("Stempeluhr", () => {
     test.use({ timezoneId: "Europe/Berlin" });
 
