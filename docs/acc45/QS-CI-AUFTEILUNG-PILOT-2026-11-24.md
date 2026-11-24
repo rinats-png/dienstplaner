@@ -54,6 +54,8 @@ Gemessen (GitHub-API, `gh run view --json jobs`; Wand = Lauf erstellt bis letzte
 | Basis c61a6dba (vorher, ein Job `pruefen`) | 45386093245 | push | success | 2 s | 1884 s (31,4 min) | `pruefen` 1882 s | | | 535 s |
 | 96b85820 (Lauf 1) | 45389767483 | push | success | 2 s | 686 s (11,4 min) | 492 s | 513 s | 683 s | 568 s |
 | 96b85820 (Lauf 1) | 45389821787 | pull_request | success | 34 s | 704 s (11,7 min) | 595 s | 537 s | 536 s | 657 s |
+| 07118798 (Lauf 2) | 45391790921 | push | success | 2 s | 683 s (11,4 min) | 591 s | 500 s | 542 s | 680 s |
+| 07118798 (Lauf 2) | 45391799267 | pull_request | success | 10 s | 692 s (11,5 min) | 568 s | 616 s | 648 s | 677 s |
 
 ## 4. Risiken
 
