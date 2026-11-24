@@ -100,7 +100,10 @@ Bezug von `ghcr.io` (Bild und Datenbank): 10 von 10 erfolgreich.
   zweimal mit `error writing layer blob: failed to parse error response 504`
   (HTML-504-Seite des GitHub-Cache-Backends): Lauf 45427085462 (Job
   `sicherung`/Bildbau, Wiederholung grün) und Lauf 45432642405 (`pruefen-c`,
-  push-Lauf; derselbe SHA im pull_request-Lauf grün). Der Build selbst war in
+  push-Lauf; derselbe SHA im pull_request-Lauf grün). Dieselbe Fehlerklasse
+  trat auch als 503 "no healthy upstream" auf: Lauf 45432642405 (beide
+  Versuche), Lauf 45427085462 (#520) und Job `sicherung` 138586772392 (#522).
+  Der Build selbst war in
   Ordnung. Es schlug das SCHREIBEN des Build-Caches fehl.
 - **Gegenmaßnahme:** `cache-to: type=gha,mode=max,ignore-error=true` in
   `pruefung.yml` (`pruefen-c`), `deploy.yml` (Job `bild`, Prüfbau) und
@@ -109,9 +112,15 @@ Bezug von `ghcr.io` (Bild und Datenbank): 10 von 10 erfolgreich.
   unverändert. `pruefungen/workflow-haertung.test.js` verlangt das Attribut an
   jedem `cache-to: type=gha`.
 - **Risiko:** Ein fehlgeschlagener Cache-Export bleibt für den Lauf stumm.
-  BuildKit schreibt eine Warnung ins Log des Schrittes (nach `cache-to`
-  suchen). Folgeläufe sind dann langsamer (Cache fehlt). Der Lauf selbst
+  Bei ignorierten Export-Fehlern zeigt der Fortschrittsknoten
+  "exporting to GitHub Actions Cache" eine Zeile `#NN ERROR: ...`; der Schritt
+  bleibt grün (Quelle: BuildKit `solver/llbsolver/export.go` Zeilen 139-141,
+  laut Review #523; Beleg nur aus dem Quelltext, in der CI noch nicht
+  ausgelöst). Folgeläufe sind dann langsamer (Cache fehlt). Der Lauf selbst
   bleibt korrekt.
+- **Offener Betreiberhinweis (nicht Teil dieses Nachtrags):** `setup-buildx`
+  zieht `moby/buildkit:buildx-stable-1` ohne Digest-Pin. Die BuildKit-Version
+  ist damit beweglich; nur für die Provenienz relevant.
 - **Weiterhin Rot und Wiederholung:** Ein 504 beim Bezug (Registry,
   `cache-from`, Basis-Bilder) bleibt ein Fehler. Dann hilft ein erneuter Lauf
   der fehlgeschlagenen Jobs; im Bericht benennen, kein "Flake" ohne Ursache.

@@ -188,8 +188,9 @@ dl("website-konsole.sh: lokales Archiv", () => {
 
   it("das Skript kennt keine Test-Umgebungsvariable, die die Terminalpruefung umgeht", () => {
     const text = readFileSync(join(QUELLE, "website-konsole.sh"), "utf8");
-    expect(text).toMatch(/\[ -t 0 \] \|\| ende /);
-    expect(text).not.toMatch(/\$\{?[A-Z_]*(TEST|PTY|TTY|BATCH|NONINTERACTIVE|YES)[A-Z_]*[:}-]/);
+    // Am Zeilenanfang verankert: die Pruefzeile steht unveraendert VOR jeder weiteren Bedingung.
+    // `[ -n "${X:-}" ] || [ -t 0 ] || ende ...` (Umgehung ueber beliebige Variable) trifft nicht.
+    expect(text).toMatch(/^\[ -t 0 \] \|\| ende /m);
   });
 
   it("es gibt keine Option --ja zum Ueberspringen der Bestaetigung", () => {

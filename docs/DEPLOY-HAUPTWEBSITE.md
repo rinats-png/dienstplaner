@@ -84,12 +84,12 @@ Danach, unabhaengig davon:
 Bekannte Grenzen der Skripte (so gebaut, hier ehrlich benannt):
 
 - **JA-Frage:** `website-konsole.sh` liest die Antwort nur von einem Terminal (`[ -t 0 ]`). Ein Aufruf per Pipe oder
-  Umleitung (`echo JA | bash website-konsole.sh`) bricht ab, bevor etwas geaendert wird. Das schuetzt vor einem versehentlichen
+  Umleitung (`echo JA | bash website-konsole.sh`) bricht ab, bevor etwas geaendert wird. Das gilt auch fuer `ssh host 'bash website-konsole.sh'`: ohne `-t` hat die Sitzung kein Terminal, das Skript bricht ab; richtig ist `ssh -t host 'bash website-konsole.sh'` (oder erst anmelden, dann starten). Das schuetzt vor einem versehentlichen
   Aufruf; es ist **keine Rechtegrenze**: Der Ausfuehrende ist ohnehin root und kann `website-ausliefern.sh` direkt starten.
   Der Test startet das Skript in einem Pseudo-Terminal (`script -qec`); eine Test-Umgebungsvariable gibt es bewusst nicht.
 - **Rueckweg ohne Stempel:** siehe oben (neueste Sicherung, auch die eines fehlgeschlagenen Laufs; keine eigene Sicherung).
 - **Dateinamen im dist:** `website-ausliefern.sh` bildet die Pruefsumme mit `find | xargs sha256sum` ohne `-0`. Ein Dateiname mit
-  Leerzeichen oder Zeilenumbruch bricht den Lauf **vor** jeder Aenderung ab. Der Bau (`website/build.py`) erzeugt keine solchen
+  Leerzeichen oder Zeilenumbruch bricht den Lauf in der Regel **vor** jeder Aenderung ab (die Teile des Namens sind keine Dateien). Grenzfall ohne Abbruch: Heisst ein Teil des aufgespaltenen Namens wie eine vorhandene Datei auf oberster Ebene des dist, findet `sha256sum` diese Datei; dann steht nur eine falsche dist-Pruefsumme in der Anzeige (`website-ausliefern.sh`, Zeile mit `SUMME=`). Der Bau (`website/build.py`) erzeugt keine solchen
   Namen. Ein `-print0`-Umbau ist nicht erfolgt (ohne Linux-Lauf nicht abgedeckt).
 - **Keine Sperre gegen parallele Laeufe:** zwei gleichzeitige Laeufe (etwa zwei Konsolen) sind nicht ausgeschlossen. Es darf immer nur
   ein Lauf aktiv sein; vor dem Start pruefen, dass keine andere Konsole `website-*.sh` ausfuehrt.
@@ -102,7 +102,7 @@ nicht gemacht; Nachverfolgung ohne Nummer in `docs/acc45/ENTSCHEIDUNGSLISTE.md`,
    Caddy-Bild nur von Hand geprueft. Empfehlung: einen Schritt in `lieferkette.yml` (oder dem Job mit der Caddy-Vorlage) mit dem
    gepinnten `CADDY_BILD` ergaenzen. Bis dahin: vor jeder Auslieferung von Hand ausfuehren und das Ergebnis vermerken.
 2. **shellcheck fuer `deploy/website/*.sh`** (Review #519 A4). `betrieb-deploy.yml` prueft nur `deploy/*.sh` (nicht rekursiv).
-   Empfehlung: `deploy/website/*.sh` aufnehmen (`shellcheck -x --source-path=SCRIPTDIR`, wegen `# shellcheck source=website-lib.sh`).
+   Empfehlung: `deploy/website/*.sh` aufnehmen (`shellcheck -x --source-path=SCRIPTDIR`, wegen `# shellcheck source=website-lib.sh`). Der Kommentar in `betrieb-deploy.yml` (Zeile 5) sagt "alle Skripte unter deploy/", die Pruefung in Zeile 31 erfasst aber nur `deploy/*.sh`; Kommentar oder Muster angleichen (Betreiberzone, hier nicht geaendert).
 3. **Fester Zweig/Kopf** (Review #519 A3). Siehe Kopf-Pinning oben: Zweig und Commit festlegen, `ERWARTETER_KOPF` als Pflicht in der
    Anweisung. Gilt auch fuer `deploy/website/dist-bauen.md` Abschnitt 3.
 
