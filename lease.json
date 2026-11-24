@@ -1,10 +1,10 @@
 {
-  "epoche": 24,
-  "halter": "nachtlauf-1123-ccr",
-  "uebernommen_am": "2026-11-23T13:33:31.024Z",
-  "erneuert_am": "2026-11-23T13:33:31.024Z",
-  "gueltig_bis": "2026-11-23T13:34:20.756Z",
-  "uebergabe": "Nachtlauf 23.11.: Epoche 23 hauptchat-e23 seit 13:19Z abgelaufen ohne Freigabe, leerlauf Exit 5, Kopf 09688acc, letzte Aktivitaet 12:48Z, keine anderen Koordinatoren erkennbar",
-  "vorgaenger": "hauptchat-e23",
-  "freigegeben_am": "2026-11-23T13:34:20.756Z"
+  "epoche": 25,
+  "halter": "hauptchat-e25",
+  "uebernommen_am": "2026-11-24T06:51:35.454Z",
+  "erneuert_am": "2026-11-24T06:51:35.454Z",
+  "gueltig_bis": "2026-11-24T09:51:35.454Z",
+  "uebergabe": "Hauptchat wieder aktiv 24.11. 07:55; Epoche 24 (Nachtlauf) freigegeben; Kopf 4eae5d81; Kandidat rc-2026-11-22 517993ca unveraendert",
+  "vorgaenger": "nachtlauf-1123-ccr",
+  "freigegeben_am": null
 }
