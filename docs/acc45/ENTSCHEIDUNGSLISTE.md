@@ -140,6 +140,7 @@ Betreiberhinweise zu WP-48 (Nachtrag b, 2026-11-18):
 | P2-44 | **Website: Zeitpunkt der Auslieferung der neuen V4-Website (F7)** (aus Website-Ist-Stand 2026-11-24, Kategorie C — Freigabe). Live steht die V3-Seite (Bauergebnis aus Commit bd7d155). W1 (Quelle im Repo unter `website/`) ist erledigt (#513). Offen sind W2 (Prüfsatz), W5 (V4-Umstellung) und W6 (Rechtsabgleich). `design/v4-glass/MIGRATION.md:11` verlangt: erst nach Approval live umstellen; `:18` nimmt die Website ausdrücklich aus der Autorisierung des V4-Branches aus. Eine Auslieferung ist ein eigener Freigabeschritt. Sie ist kein Gate der App-Datenmigration, und die App-Site-Datei bleibt unberührt. **A:** erst nach W2, W5 und W6 grün, mit eigener Freigabe. **B:** früher, nur mit W2 grün (V3 mit Korrekturen, z. B. P2-39). **C:** Website bleibt unverändert, bis der Betreiber einen Termin nennt. Antwort: `Betreiber: A`, `Betreiber: B` oder `Betreiber: C`. | Vorschlag (keine Entscheidung): A | Live bleibt V3 mit den Befunden aus P2-39 und P2-42 | `website/README.md`; `design/v4-glass/MIGRATION.md:11`, `:18` |
 | P2-45 | **Website: persönliche Mobilnummer im Impressum und auf der Kontaktseite (F8)** (aus Review #513, 2026-11-24, Kategorie C — Datenschutz/Betreiber). Kontaktseite und Impressum nennen eine persönliche Mobilnummer und eine Firmenanschrift (`website/build.py`, Zeilen 1533 und 1562). Die Angabe steht bereits live. Seit #513 liegt die Quelle im Repo; das Repo ist `PUBLIC` (geprüft 2026-11-24). Die Nummer steht hier absichtlich nicht. **A:** Nummer bleibt öffentlich. **B:** durch eine Firmen- oder Funktionsnummer ersetzen (Teil W5; die Live-Bytes ändern sich erst bei der Auslieferung, P2-44). **C:** Nummer entfernen; nur E-Mail. Antwort: `Betreiber: A`, `Betreiber: B` oder `Betreiber: C`. | Vorschlag (keine Entscheidung): B, wenn eine Firmen- oder Funktionsnummer besteht; sonst A | Die persönliche Nummer bleibt live und im öffentlichen Repo | `website/build.py:1533`, `:1562`; Review #513 |
 | P2-46 | **Website: Quelle im App-Repo unter `website/` (F2, Bestätigung)** (aus Website-Ist-Stand 2026-11-24, Kategorie C — Bestätigung). Die Quelle liegt seit #513 im App-Repo unter `website/` (`website/README.md`). Der Bearbeiter hat das autonom entschieden (Masterprompt V6 §4). Gründe: ein Repo; der Preis-Test (Website gegen `src/stufen.js`) ist gekoppelt. Die einzige frühere Kopie war ein lokaler Ordner ohne Remote. **A:** bestätigen (bleibt im App-Repo). **B:** eigenes Repo für die Website; der Umzug wäre ein eigenes Paket. **C:** vorerst im App-Repo; Umzug nach der Pilotphase prüfen. Antwort: `Betreiber: A`, `Betreiber: B` oder `Betreiber: C`. | Vorschlag (keine Entscheidung): A (Bestätigung) | Keine; der Stand bleibt wie gemergt. Bei B entsteht Umzugsaufwand | `website/README.md` |
+| P2-47 | **Status: entschieden 2026-11-24: B (B1 bis B4 wie empfohlen); genehmigt, noch nicht wirksam.** **Berechtigungs- und Freigabemodell für die Release-Automatisierung** (aus der Analyse vom 2026-11-24, Kategorie C — neue Rechte und Freigabegrenzen; Betreiberentscheidung nach `WIEDERAUFNAHME.md`, Koordinationsregel 2026-11-17). Die Regel „nur der Betreiber löst Bildbau und Deployment aus“ gilt heute **nur organisatorisch**, nicht technisch (Fakten, Grenzen der Ermittlung, Stufen 0 bis 3, Alternative A und Staging-Varianten: Abschnitt „P2-47 Detail“ unten). **Frage:** Soll die Release-Vorbereitung weiter ohne neue Rechte laufen (A), mit eigener Claude-Identität und technisch erzwungenen Grenzen (B), oder zusätzlich mit gebündelter Produktionsfreigabe im Umgebungsschutz (C)? Antwort: `Betreiber: A`, `Betreiber: B` oder `Betreiber: C`; dazu Zusatzfragen **B1** (Identität: Maschinenkonto mit fein granularem Token oder GitHub App), **B2** (`STAGING_GATE_AKTIV=true` setzen: ja/nein), **B3** (G2: Belegliste je Release per Hash bestätigen statt Einzelquittung: ja/nein), **B4** (G3: unveränderte Vorlagen gegenüber dem Basis-Release dauerhaft übernehmen: ja/nein). **Entscheidung (Betreiber-Nachricht 2026-11-24 abends):** siehe Abschnitt „P2-47 Detail“, „Entscheidung“. **Bis Stufe 1 technisch eingerichtet und geprüft ist, bleiben alle bestehenden Regeln und Freigabebeschränkungen unverändert gültig** (Bildbau und Auslieferung löst nur der Betreiber aus). Unabhängig von A, B und C bleiben dringend: B-4 und Branch-Schutz (siehe Detail). | Entschieden: `Betreiber: B` (B1 Maschinenkonto, B2 ja, B3 ja, B4 ja); Stufe 3 erst nach dem erfolgreichen ersten V4-Produktionswechsel und nur mit gesonderter Freigabe | Ohne Umsetzung bleibt die Regel Zusage ohne technische Durchsetzung (Lücken L-1 bis L-8); jeder Bildbau und jeder Staging-Lauf wartet auf den Betreiber; das Audit unterscheidet Betreiber und Claude nicht | Analyse 2026-11-24 (Sitzungsablage, nicht im Repo); `RELEASE-PROZESS.md` §3 und §7; `BETREIBER-BRANCHSCHUTZ.md`; `PRODUKTIONSWEG-VORBEREITUNG-2026-11-20.md` (B-3, B-4, B-5); `.github/workflows/deploy.yml`, `.github/workflows/staging-gate.yml` |
 
 **Einordnung 2026-11-19 (P2-14 bis P2-22; P2-23 am 2026-11-20 ergänzt)** — Kategorie A: durch frühere Entscheidung gedeckt; B: technisch, gebautes Verhalten bleibt; C: Entscheidung des Betreibers nötig.
 
@@ -178,6 +179,94 @@ Betreiberhinweise zu WP-48 (Nachtrag b, 2026-11-18):
 | P2-44 | C (Freigabe, Auslieferung) | Vorschlag (keine Entscheidung): A. Auslieferungsweg und Rückweg stehen nur in Nebenzweigen (W3). |
 | P2-45 | C (Betreiber, Datenschutz) | Ob ein Impressum eine Mobilnummer verlangt, ist eine Rechtsfrage (E-18), keine Aussage dieser Liste. |
 | P2-46 | C (Bestätigung) | Bereits autonom umgesetzt; die Bestätigung schließt die Rückfrage. |
+| P2-47 | C (neue Rechte, Freigabegrenzen) | **Entschieden 2026-11-24: B (B1 bis B4 wie empfohlen).** Stufe 3 erst nach dem ersten V4-Produktionswechsel, mit gesonderter Freigabe. Genehmigt, aber noch nicht wirksam: Bis Maschinenkonto, geschützte Workflows und Rulesets eingerichtet und geprüft sind, gelten alle bestehenden Regeln. Dringend und unabhängig davon: B-4 und Branch-Schutz (P3-3). Umsetzung als eigene Pakete. |
+
+### P2-47 Detail: Berechtigungs- und Freigabemodell (Stand der Analyse 2026-11-24, nur lesende GET-Abfragen)
+
+**Entscheidung (Betreiber-Nachricht 2026-11-24 abends): `Betreiber: B` (B1 bis B4 wie empfohlen).** Der Betreiber genehmigt:
+
+- **Stufe 1:** eigenständiges Maschinenkonto mit minimalen Rechten. Der Inhaber-Token wird erst NACH erfolgreicher Einrichtung und Prüfung der Ersatzidentität aus der Arbeitsumgebung entfernt. Technische Trennung von Image-Build und Produktionsdeployment. Autonome Image-Builds in der geschützten Release-Infrastruktur. SBOM, Attestierung, Provenienz, unveränderliche Digests. Branch-Schutz, Rulesets, CODEOWNERS.
+- **Stufe 2:** flüchtiges, isoliertes Staging im Actions-Runner. `STAGING_GATE_AKTIV` wird nach erfolgreicher technischer Vorbereitung gesetzt. Im öffentlichen CI- und Staging-Kontext ausschließlich synthetische Daten.
+- **B3 (G2):** unveränderliche Sammelbelegliste mit Hash und tatsächlichen Prüfnachweisen. Sie ersetzt KEINE fehlenden materiellen Sicherheits- oder Review-Nachweise.
+- **B4 (G3):** Wiederverwendung unveränderter, bereits gültig freigegebener Vorlagen.
+- **Stufe 3:** nur NACH dem erfolgreichen ersten V4-Produktionswechsel; die Ausführung braucht eine gesonderte Freigabe. Produktionsdeployments und produktive Migrationen bleiben bis dahin unter unmittelbarer Betreiberkontrolle.
+- Die Wirksamkeit der technischen Berechtigungsgrenzen wird tatsächlich geprüft. Der Inhaber-Token wird nie genutzt, um die neuen Beschränkungen zu umgehen.
+
+**Heute gültig (bis Stufe 1 technisch eingerichtet und geprüft ist):** Die bestehende Regel „Bildbau und Auslieferung löst nur der Betreiber aus“ (`RELEASE-PROZESS.md` §3) gilt unverändert weiter. Das Maschinenkonto, die geschützten Workflows, die Rulesets und CODEOWNERS existieren noch nicht. Die Genehmigung ist **kein** wirksamer Zustand. Die Umsetzung (Bau-Workflow `bild-bauen.yml`, Konto, Rulesets, CODEOWNERS) kommt als eigene Pakete mit eigenem Sicherheitsreview; dieser Doku-PR ändert keinen Workflow und keine Einstellung. Der Rest dieses Abschnitts ist die Analyse, auf der die Entscheidung beruht.
+
+**Der folgende Analyseteil ist Hintergrund.** Er ändert keine Regel, keinen Workflow, keine Einstellung und kein Secret. Bis zur technischen Einrichtung bleiben alle bestehenden Regeln unverändert: Bildbau und Auslieferung löst nur der Betreiber aus (`RELEASE-PROZESS.md` §3), Claude greift nie auf den VPS zu, kein Merge nach `main` ohne Betreiber, keine Produktivdaten in Staging oder CI, kein automatischer Rücksprung, ein NO-GO wird nie übersteuert. Quelle der Fakten: Analysebericht vom 2026-11-24 (Sitzungsablage, nicht im Repository). Antworten der GitHub-Schnittstelle sind „Stand der Analyse 2026-11-24, GET-Abfragen“; sie wurden für dieses Dokument nicht neu abgefragt. Aufwandsangaben sind Schätzungen.
+
+**Fakten (Befund)**
+
+| Nr | Befund | Beleg |
+|---|---|---|
+| F-1 | Die Regel „nur der Betreiber löst Bildbau und Deployment aus“ ist **rein organisatorisch**. Technisch durchgesetzt ist sie nicht. | `RELEASE-PROZESS.md` §3; Analyse §2.2 |
+| F-2 | Claude arbeitet mit dem Admin-Token des Repository-Inhabers (Scopes `repo`, `workflow`). Das Repository ist öffentlich. Es gibt nur einen Mitarbeiter-Zugang (den Inhaber). | Stand der Analyse (`gh auth status`, Mitarbeiterliste); `BETREIBER-BRANCHSCHUTZ.md` §1 („Heute: Administrator“) |
+| F-3 | Kein Branch-Schutz, keine Rulesets, keine CODEOWNERS-Datei. | Stand der Analyse (Schutzabfragen 404, Rulesets leer); `BETREIBER-BRANCHSCHUTZ.md` §0; `RELEASE-PROZESS.md` §5 (CODEOWNERS „sollten“) |
+| F-4 | Keine Umgebung `produktion`. Keine Repository-Secrets, keine Variablen (auch `STAGING_GATE_AKTIV` nicht gesetzt). | Stand der Analyse (Umgebungen, Secrets, Variablen) |
+| F-5 | Läufe von „Auslieferung“ (die letzten 15) zeigen immer denselben Akteur. Das Audit unterscheidet Betreiber und Claude nicht. Der letzte Lauf war am 2026-11-05. | Stand der Analyse (Lauflisten) |
+| F-6 | Ein Dispatch mit `ausliefern=true` legt die Umgebung `produktion` laut GitHub-Dokumentation **ohne Schutz** an, solange sie fehlt (Lücke L-3). In diesem Repository nicht getestet. | GitHub-Dokumentation (nicht verifiziert); `deploy.yml:200-211` (Job `vps`, `environment: produktion`) |
+| F-7 | Ein Deploy-Key mit Schreibrecht ist auf dem Produktions-VPS eingetragen (Servername siehe Repository-Einstellungen), zuletzt benutzt am 2026-11-22. B-4 und O-5 sind offen. | Stand der Analyse (Deploy-Keys); `PRODUKTIONSWEG-VORBEREITUNG-2026-11-20.md` (B-4, O-5) |
+| F-8 | Bildbau und Auslieferung liegen im selben Workflow. Der Job `bild` hat `packages: write` und keine Ref-Einschränkung. | `deploy.yml:83-88`; `deploy.yml:57-59` (Standard nur lesend) |
+| F-9 | Echtes Deployment ist heute nicht möglich: die Variablen `DEPLOY_HOST` und `DEPLOY_USER` der Umgebung fehlen, der Job bricht in „Eingaben prüfen“ ab. | `deploy.yml:224-225` |
+| F-10 | Einziger technischer Schutz heute liegt auf dem VPS: `deploy.sh` als Forced Command, Freigabeliste, Compose nur per Digest. | `betrieb-deploy.yml`; `deploy/FREIGEGEBENE-IMAGES.md` |
+
+**Grenzen der Ermittlung**
+
+- Das GHCR-Paket (Sichtbarkeit, Versionen, Attestierungen) war nicht ermittelbar: Der Token hat nicht den Scope `read:packages`.
+- Was der Token tatsächlich auslösen darf (Workflows starten, Einstellungen ändern), ist aus Scopes und Rolle abgeleitet und **nicht getestet**.
+- Runner-Größe, das Verhalten „Umgebung wird ohne Schutz angelegt“, „Prevent self-review“ und die Flags von `gh attestation verify` stammen aus der GitHub-Dokumentation und sind hier nicht geprüft.
+- VPS-Auslastung ist nicht gemessen. Kosten stammen nur aus den Repository-Dokumenten (Stand 2026-11-17, Folgepreise unbestätigt). Keine Rechtsberatung.
+
+**Stufenmodell (Vorschlag)**
+
+| | Stufe 0 (heute) | Stufe 1: Vorbereitung ohne Auslieferung | Stufe 2: autonomes Staging | Stufe 3: gebündelte Produktionsfreigabe |
+|---|---|---|---|---|
+| Was ändert sich | nichts | eigene Claude-Identität; Bildbau aus `main` und `release/rc-*` in einem eigenen Bau-Workflow; SBOM und Attestierung; Freigabepaket vollständig vorbereitet | Staging-Gate je Kandidat im Runner (Digest, Smoke, E2E, Mandantentrennung, synthetische Migration), Bericht | Umgebung `produktion` mit Pflicht-Prüfer; Claude beantragt den Deploy-Lauf, der Betreiber gibt im Umgebungsschutz frei |
+| Wer darf was auslösen | Betreiber: Bildbau, Staging-Gate, Deploy. Claude: PRs, Prüfungen | Claude: Bildbau und rc-Branch. Betreiber: Merge `main`, Deploy | Claude: Staging-Gate. Betreiber: Merge `main`, Deploy | Claude: Deploy-Antrag. Nur Betreiber: Freigabe. Merge `main` bleibt Betreiber |
+| GitHub-Einstellungen (nur beschrieben, nichts geändert) | keine | Maschinenkonto oder GitHub App mit Rolle Schreiben, fein granularer Token ohne Rechte für Workflows, Administration, Secrets, Umgebungen, Ablauf höchstens 90 Tage; Ruleset `main` (PR-Pflicht, Review durch CODEOWNER, Pflicht-Checks, kein Force-Push, kein Bypass für das Konto); Ruleset `release/rc-*`; CODEOWNERS für `.github/workflows/`, `deploy/`, `docs/acc45/releases/`, `Dockerfile`; Einstellung „SHA-Pinning Pflicht“; B-4 erledigt | Repository-Variable `STAGING_GATE_AKTIV=true` | Umgebung `produktion`: Pflicht-Prüfer Inhaber, Admin-Bypass aus, „Prevent self-review“ an (ab Stufe 3 möglich, weil Claude auslöst und der Inhaber prüft), Branch-Regel nur `main`; Variablen und Secrets nur dort (B-3, B-5) |
+| Workflows (nur beschrieben; eigener PR mit Sicherheitsreview) | keine | neuer Workflow `bild-bauen.yml` (aus dem Job `bild` herausgelöst): Ref nur `main` und `release/rc-*`, Provenienz und SBOM, Attestierung, kein `latest`; `deploy.yml` behält nur Job `vps` | `staging-gate.yml` erweitern: Compose-Lauf, Migrationsschritt, Bericht | `deploy.yml`: Prüfschritt vor SSH (Attestierung, Digest gleich Freigabedatei), Außen-Smoke |
+| Risiken | Regel nur Zusage (L-1 bis L-8) | Diebstahl des Tokens: Push auf Branches, Dispatch, Bilder in GHCR | öffentliche Logs; Runner weicht vom VPS ab | Fehlfreigabe durch den Betreiber; Fehlkonfiguration des Prüfschritts |
+| Schutzmaßnahmen | Policy; Forced Command auf dem VPS | kein Workflows-Recht, kein Admin, `main` geschützt, Ablaufdatum; Inhaber-Token aus Claudes Umgebung entfernen; Freigaben nur über ein getrenntes Profil oder die mobile App | nur synthetische Daten (Repository öffentlich, Logs und Artefakte öffentlich), Zufallsgeheimnisse, kein Secret im Job | „Prevent self-review“, Secrets nur in der Umgebung, Digest nur aus der Freigabeliste, Forced Command, Concurrency |
+| Rückbau | nicht nötig | Token widerrufen, Konto entfernen; Rulesets bleiben | Variable löschen | Umgebung und Prüfer zurücksetzen; Deploy wieder von Hand (O-2 a) |
+| Aufwand (Schätzung) | 0 | Betreiber 45 bis 60 min; Claude 2 bis 3 Tage | Betreiber 2 min; Claude 1 bis 2 Tage | Betreiber 30 bis 60 min; Claude 2 Tage |
+| Abhängigkeit | keine | Branch-Schutz, B-4 | Stufe 1 | Stufe 1; der erste Wechsel v4-r1 läuft ohnehin von Hand (O-2 a) |
+
+GitHub kennt keine Rechte je Workflow. Wer Schreibrecht für Actions hat, kann jeden Workflow mit `workflow_dispatch` starten (GitHub-Dokumentation, nicht getestet). Die Grenze zwischen „vorbereiten“ und „ausliefern“ entsteht deshalb nur durch Umgebungsschutz mit Pflicht-Prüfer, Secrets nur in der Umgebung, Branch-Regel `main` und geschützte Workflow-Dateien.
+
+**Alternative A (keine neuen Rechte)**
+
+Der Betreiber bleibt einziger Auslöser für Bildbau, Staging-Gate und Deploy. Claude baut das Freigabepaket vollständig: Release-Kandidat als Branch `release/rc-<datum>` mit PR, Vorlagen-Hashes, Belegliste, Vorschläge für Annahmen mit Gründen, Entwurf der Freigabedatei, fertige Befehlszeilen zum Kopieren, Prüfung des Ergebnisses nach jedem Lauf. Vorteil: keine neuen Rechte. Nachteil: Die Lücken L-1 bis L-8 bleiben; Wartezeit bei jedem Bau und jedem Staging-Lauf; das Audit bleibt unscharf.
+
+**Staging-Varianten**
+
+Bestehende Entscheidungen bleiben gültig: Staging-VM bis Phase D zurückgestellt, keine neue kostenpflichtige Staging-Infrastruktur, gefährliche Tests nie auf Produktion (`ENTSCHEIDUNGSLISTE.md` C1, C2, P3-1; `EINRICHTUNGSKETTE-IONOS.md` §1a).
+
+| Variante | Isolation | Kosten | Widerspruch zu Entscheidungen | Bewertung |
+|---|---|---|---|---|
+| (a) Wegwerf-Staging im GitHub-Runner | hoch: kurzlebige VM, Zufallsgeheimnisse, kein Zugang zum VPS; belegt nicht TLS, DNS, Caddy, echten Kernel, echte Datenmenge | 0 (öffentliches Repository, laut GitHub-Dokumentation) | nein (CI-Runner ist ausdrücklich zugelassen) | **Empfehlung jetzt.** Repository öffentlich: Logs und Artefakte sind öffentlich, deshalb nur synthetische Daten |
+| (b) zweiter Stack auf dem Produktions-VPS | unzureichend: gemeinsamer Docker-Daemon, gemeinsamer Kernel, gleiche öffentliche Adresse | 0 direkt, Risiko für die Produktion | widerspricht dem Sinn „gefährliche Tests nie auf Produktion“ | nicht empfohlen |
+| (c) Rechner des Betreibers | mittel; derzeit ohne Docker; teilt die Maschine mit mehreren schreibenden Agenten | 0 | nein | nur als Notweg zur Fehlersuche |
+| (d) kleiner Container-Host oder VM | hoch, wenn kein privates Netz zur Produktion besteht | laut Repository-Dokumenten (Stand 2026-11-17, Folgepreis unbestätigt) laufende Kosten; Zustimmung des Betreibers nötig | ja bis Phase D (P3-1) | **erst in Phase D**, temporär; Zielbild ist (a) plus (d) |
+
+**Unabhängig von A, B und C: dringend**
+
+- **B-4 / O-5:** Den Deploy-Key mit Schreibrecht auf dem Produktions-VPS entfernen oder als lesenden Key neu anlegen. Er ist aktiv (F-7). Vorgang und Wortlaut stehen in `PRODUKTIONSWEG-VORBEREITUNG-2026-11-20.md` (B-4, O-5); hier nicht dupliziert.
+- **Branch-Schutz `main` und `integration/release-v4`:** Rulesets nach `BETREIBER-BRANCHSCHUTZ.md` setzen (Eintrag P3-3, Prüfstand `BRANCH-SCHUTZ-PRUEFUNG.md`). Pflicht-Checks laut Check-Liste: `pruefen-a`, `pruefen-b`, `pruefen-c`, `browser-abnahme` und die weiteren dort genannten Checks. Danach `node werkzeug/branchschutz-pruefen.mjs` (Exit 0) und der Wirkungstest.
+
+Beide Punkte sind Betreiberhandlungen in den GitHub-Einstellungen und auf dem VPS. Claude ändert sie nicht.
+
+**Empfehlung (Grundlage der Entscheidung; vom Betreiber am 2026-11-24 so entschieden)**
+
+`Betreiber: B` (B1 Maschinenkonto, B2 ja, B3 ja, B4 ja); `Betreiber: C` nach dem ersten manuellen Wechsel v4-r1. Begründung: B erhöht die technische Sicherheit gegenüber heute (L-1, L-2, L-4, L-5, L-6), nimmt die Wartezeit bei Bau und Staging und ändert nichts am Produktionsweg. C folgt erst nach v4-r1, weil der erste Wechsel ohnehin von Hand läuft und B-3 und B-5 dann in Ruhe eingerichtet werden können.
+
+Entscheidungsformel: **`Betreiber: A`**, **`Betreiber: B`** oder **`Betreiber: C`**, mit den Zusatzfragen B1 bis B4 (je ja/nein, B1: Maschinenkonto oder GitHub App).
+
+- **A** = Stufe 0 plus Alternative A.
+- **B** = Stufe 1 und Stufe 2.
+- **C** = B plus Stufe 3.
+
+Eine Übersicht der dauerhaften und der pro-Release-Freigaben steht in `RELEASE-PROZESS.md` §7.
 
 ### Priorität 3 — Betrieb und Extern
 
@@ -274,6 +363,8 @@ Nachtrag 2026-11-24 (Website-Entscheidungen, Branch `acc45/doku/website-entschei
 Nachtrag 2026-11-24 (CI-Aufteilung, Branch `acc45/doku/nachtrag-ci-aufteilung`): **Technische Nachverfolgung, keine Betreiberentscheidung, keine Nummer.** Rückbau der G1-Form ALT (`uebergangPruefen.alt` und der Zweig in `g1Ci` in `werkzeug/release-pruefung.mjs`; Tests der Form ALT in `pruefungen/release-pruefung.test.js` auf NO-GO umstellen) nach Release v4-r1, sobald kein Kandidat mehr den alten Workflow (Job `pruefen`) hat. Auslöser: Review #514. Beschreibung: `QS-CI-AUFTEILUNG-PILOT-2026-11-24.md` Abschnitt 4 ("Offener Punkt"). Kein Statuswechsel im SSOT.
 
 Nachtrag 2026-11-24 (Website W3, Nacharbeit zu Review #519, Branch `acc45/website/w3-nacharbeit`): **Technische Nachverfolgung, keine Betreiberentscheidung, keine Nummer.** Drei Punkte vor jeder Website-Auslieferung (Workflow- und Betreiberzone, hier nicht geändert; Wortlaut in `docs/DEPLOY-HAUPTWEBSITE.md`, Abschnitt „Grenzen und offene Punkte“): (1) `pruefungen/website-caddy.sh` (echte Site-Datei, echtes Caddy-Bild) läuft nur von Hand; kein Workflow ruft es auf. Empfehlung: Schritt in `lieferkette.yml` mit gepinntem `CADDY_BILD`. (2) shellcheck in `betrieb-deploy.yml` prüft nur `deploy/*.sh`, nicht `deploy/website/*.sh`. Empfehlung: aufnehmen, mit `--source-path=SCRIPTDIR`. (3) Die Klonbefehle holen den beweglichen Zweig `deploy/hauptwebsite-docker`. Empfehlung: Zweig und Commit festlegen, `ERWARTETER_KOPF` als Pflicht in der Anweisung. Keine neue Betreiberfrage mit Antwortformat; Nummerierung unverändert (nächste frei: P2-47).
+
+Nachtrag 2026-11-24 (Freigabemodell, Branch `acc45/doku/freigabemodell-entscheidung`): Neu **P2-47** (Berechtigungs- und Freigabemodell für die Release-Automatisierung). **Vom Betreiber am 2026-11-24 entschieden: `Betreiber: B` (B1 bis B4 wie empfohlen); genehmigt, aber noch nicht wirksam. Alle bestehenden Regeln und Freigabebeschränkungen gelten unverändert, bis Stufe 1 technisch eingerichtet und geprüft ist; Stufe 3 erst nach dem ersten V4-Produktionswechsel mit gesonderter Freigabe.** Zusätzlich: Widerspruch in der Rollentabelle von `RELEASE-PROZESS.md` und in B-9 des Produktionswegs (Bildbau durch Claude) an die strengere, gültige Regel angeglichen (Bildbau löst nur der Betreiber aus); neuer Abschnitt `RELEASE-PROZESS.md` §7 (dauerhafte und pro-Release-Freigaben). Nur Dokumentation, kein Statuswechsel im SSOT; nächste freie Nummer: P2-48.
 
 ## E. Vorlagen für G8-Annahmetexte (Textvorschlag, keine Betreiberentscheidung)
 

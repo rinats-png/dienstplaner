@@ -41,11 +41,13 @@ Sicherheitskorrekturen dürfen den Abstand unterschreiten; die Gates gelten trot
 
 | Rolle | Aufgabe |
 |---|---|
-| Claude (Entwicklung, Integration) | PRs, Reviews, Integration, Kandidat nach `main` (B-9), Bild bauen, Release-Prüfung, Listen-PR, Berichte |
+| Claude (Entwicklung, Integration) | PRs, Reviews, Integration, Kandidat nach `main` (B-9), Bildbau **vorbereiten** (Befehl und Unterlagen liefern, nicht auslösen), Release-Prüfung, Listen-PR, Berichte |
 | Unabhängiger Prüfer (Agent F oder zweites Modell) | Review je PR, Beleg in `REVIEW-NACHWEIS*.md` oder PR-Text |
 | Betreiber | Freigabedatei commiten; Migration freigeben; Sicherung und Restore-Probe; **löst aus**: `workflow_dispatch` von „Auslieferung“ mit Umgebung `produktion` (ab dem zweiten Wechsel) oder `deploy.sh` von Hand (erster Wechsel, O-2 a); Live-Abnahme; Entscheidung bei Rückweg |
 
 Nur der Betreiber löst ein Deployment aus. Claude startet nie einen Deploy-Workflow.
+
+Bildbau und Auslieferung liegen im selben Workflow „Auslieferung“ (`deploy.yml`). Deshalb löst auch den Bildbau nur der Betreiber aus. Claude bereitet vor (Kandidat, Prüfungen, fertige Befehlszeile, Unterlagen) und prüft nach dem Lauf Digest, Commit, Label und Provenienz. Quelle: [BETREIBER-ANLEITUNG-ERSTRELEASE.md](BETREIBER-ANLEITUNG-ERSTRELEASE.md) (Zeilen „Nur Betreiber“ und Schritt 8), [STAGING-PLAN-V4.md](STAGING-PLAN-V4.md) (V-2) und die Betreiberanweisung „Bildbau/Deploy startet nie Claude“. Das gilt **heute**. Der Betreiber hat am 2026-11-24 (P2-47, Antwort B) einen Ziel-Zustand genehmigt, in dem das Maschinenkonto den Bildbau in geschützten Workflows selbst auslöst; er ist **noch nicht wirksam** und gilt erst nach technischer Einrichtung und Prüfung (§7). Produktionsdeployments bleiben unter Betreiberkontrolle. Diese Zeile gleicht nur einen Widerspruch in der Rollentabelle an die strengere, gültige Regel an; sie ändert keine Regel.
 
 ## 4. Ablauf
 
@@ -186,6 +188,39 @@ beheben; „Flake“ ohne belegte Ursache ist kein Befund (Beispiel: SIGPIPE in 
 
 Ein NO-GO wird nicht übersteuert. Die Konfiguration steht nur im Werkzeug (`--konfig-zeigen`); es gibt kein
 `--konfig`. Offline (Fixture) und `--jetzt` enden nie mit Exit 0, sondern mit Exit 3 (übersteuert).
+
+## 7. Dauerhafte und pro-Release-Freigaben (Übersicht, Stand 2026-11-24)
+
+Nur Übersicht. Sie erteilt keine Freigabe und ändert keine Regel. Der Betreiber hat am 2026-11-24 den Eintrag P2-47 in [ENTSCHEIDUNGSLISTE.md](ENTSCHEIDUNGSLISTE.md) mit „Betreiber: B (B1 bis B4 wie empfohlen)“ entschieden. Diese Entscheidung ist **genehmigt, aber noch nicht wirksam**: Das Maschinenkonto, die geschützten Workflows, die Rulesets und CODEOWNERS existieren noch nicht. Deshalb trennt die Tabelle zwei Spalten:
+
+- **Heute gültig:** Das gilt, bis Stufe 1 technisch eingerichtet und geprüft ist. Bildbau und Auslieferung löst nur der Betreiber aus (§3).
+- **Ziel-Zustand nach Einrichtung (genehmigt 2026-11-24):** Das gilt erst, wenn die Einrichtung abgeschlossen und die Wirksamkeit der technischen Grenzen tatsächlich geprüft ist. Stufe 3 (Deploy-Antrag durch Claude, Freigabe im Umgebungsschutz) gilt erst nach dem erfolgreichen ersten V4-Produktionswechsel und braucht eine gesonderte Freigabe. Produktionsdeployments und produktive Migrationen bleiben bis dahin unter unmittelbarer Betreiberkontrolle.
+
+Stand der Analyse 2026-11-24 (nur lesende Abfragen).
+
+| Freigabe | Art | Quelle / Datum | Heute gültig | Ziel-Zustand nach Einrichtung (genehmigt 2026-11-24) |
+|---|---|---|---|---|
+| Autonomiegrenzen: Freigabe nur für Merge nach `main`, Produktions-Deployment, produktive Migration, Kosten, neue Rechte | dauerhaft | `WIEDERAUFNAHME.md` (Koordinationsregel, Betreiber 2026-11-17); `AGENTS.md` (Masterauftrag 2026-11-22) | unverändert | unverändert; P2-47 ist die einmalige Freigabe „neue Rechte“ für Stufe 1 und 2 |
+| Testdaten-Vorgabe: nur Testdaten, gefährliche Tests nie auf Produktion | dauerhaft | Memory 2026-11-06, 2026-11-17; `EINRICHTUNGSKETTE-IONOS.md` §1a | unverändert | unverändert; im öffentlichen CI- und Staging-Kontext nur synthetische Daten; vor Pilot mit Echtdaten neu bewerten |
+| Staging: VM bis Phase D zurückgestellt; Runner-Gate vorbereitet | dauerhaft bis Phase D; Gate-Aktivierung einmalig | `ENTSCHEIDUNGSLISTE.md` C1, C2, P3-1 (2026-11-14, 2026-11-17); P2-47 (2026-11-24) | Gate aus (`STAGING_GATE_AKTIV` nicht gesetzt); Betreiber startet es | Variable `STAGING_GATE_AKTIV` wird nach erfolgreicher technischer Vorbereitung gesetzt; danach flüchtiges Staging im Runner je Kandidat |
+| Rückweg-Vorgabe `r0` | Feld je Release | G7 (§5, §6); O-1/O-2 in `PRODUKTIONSWEG-VORBEREITUNG-2026-11-20.md` | je Release | unverändert; Claude kann `r0` im Entwurf vorbelegen |
+| Umgebung `produktion`, Secrets, Schlüssel (B-3, B-5) | einmalig | `PRODUKTIONSWEG-VORBEREITUNG-2026-11-20.md` (B-3, B-5) | Betreiberhandlung | Betreiberhandlung |
+| Schreib-Deploy-Key entfernen oder lesend ersetzen (B-4, O-5) | einmalig, dringend | `PRODUKTIONSWEG-VORBEREITUNG-2026-11-20.md` (B-4, O-5) | offen, Betreiberhandlung | Voraussetzung für Stufe 1; Betreiberhandlung |
+| Branch-Schutz `main` und `integration/release-v4`, CODEOWNERS | einmalig, dringend | `BETREIBER-BRANCHSCHUTZ.md`; `ENTSCHEIDUNGSLISTE.md` P3-3 | offen, Betreiberhandlung | Voraussetzung für Stufe 1; Betreiberhandlung |
+| Kosten (Object Storage, Staging-VM) | einmalig | `ENTSCHEIDUNGSLISTE.md` P3-1, P3-7, P3-8 | Betreiberhandlung | Betreiberhandlung |
+| G2 Review-Bestätigungen | pro Release | §6 (G2), §5 (`reviewBestaetigt`) | Einzelquittung durch den Betreiber | unveränderliche Sammelbelegliste mit Hash und tatsächlichen Prüfnachweisen. Sie ersetzt keine fehlenden materiellen Sicherheits- oder Review-Nachweise |
+| G3 Vorlagen-Hashes | pro Release | §5, §6 (G3) | Betreiber quittiert alle Vorlagen | unveränderte, bereits gültig freigegebene Vorlagen werden wiederverwendet; nur geänderte, neue, entfernte quittieren |
+| G4 Bildbau | pro Release | P3-2; `BETREIBER-ANLEITUNG-ERSTRELEASE.md` Schritt 8 | **Nur der Betreiber löst den Bildbau aus.** Claude bereitet vor | autonome Image-Builds durch das Maschinenkonto in der geschützten Release-Infrastruktur (eigener Bau-Workflow, SBOM, Attestierung, Provenienz, unveränderliche Digests); technische Trennung von Bildbau und Produktionsdeployment |
+| G5 Migration | je Änderungstyp | §6 (G5); O-4 | Freigabe durch den Betreiber | Freigabe bleibt beim Betreiber; produktive Migrationen unter unmittelbarer Betreiberkontrolle |
+| G6 Sicherungsnachweise vom VPS | pro Release | §4 (Phase 1), §6 (G6) | Betreiberhandlung (Claude hat keinen VPS-Zugang) | Betreiberhandlung |
+| G7 Rückweg | pro Release | §5, §6 (G7) | je Release | wie `r0` oben |
+| G8, G9 Annahmen offener Pakete und Befunde | pro Release | §5, §6 (G8, G9); `ENTSCHEIDUNGSLISTE.md` Abschnitt E | Betreiber entscheidet | Claude schlägt vor; Entscheidung bleibt beim Betreiber |
+| G10 Freigabedatei | pro Release | §5 | Betreiber commitet | Entwurf durch Claude; Betreiber genehmigt und merged |
+| Merge Kandidat nach `main` (B-9) | pro Release | `BETREIBER-ANLEITUNG-ERSTRELEASE.md`; `BETREIBER-BRANCHSCHUTZ.md` §5 | Betreiber | Betreiber |
+| Produktionsdeployment | pro Release | §3 (Rollen) | **Nur der Betreiber löst aus** | bleibt unter unmittelbarer Betreiberkontrolle. Stufe 3 erst nach dem erfolgreichen ersten V4-Produktionswechsel und nur mit gesonderter Freigabe |
+| Live-Abnahme, Beobachtung 24 h, Go/No-Go | pro Release | §4 (Phasen 5, 6) | Betreiber | Betreiber |
+
+Die Wirksamkeit der technischen Berechtigungsgrenzen wird tatsächlich geprüft, bevor der Inhaber-Token aus der Arbeitsumgebung entfernt wird. Der Inhaber-Token dient nie dazu, die neuen Beschränkungen zu umgehen. Die Umsetzung (Konto, Bau-Workflow, Rulesets) folgt als eigene Pakete; dieser Abschnitt ändert keinen Workflow.
 
 ## Anhang A — Vorschlag Workflow-Härtung (REL-2, nur Text)
 
