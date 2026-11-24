@@ -166,7 +166,7 @@ function cacheExportPruefen(wf) {
     if (s.from !== undefined && String(s.from).trim() !== "type=gha") befunde.push(`${s.ort}: cache-from verändert (${s.from})`);
     if (s.to === undefined) continue;
     const teile = String(s.to).split(",").map((t) => t.trim());
-    if (teile[0] === "type=gha" && !teile.includes("ignore-error=true")) {
+    if (teile.includes("type=gha") &&!teile.includes("ignore-error=true")) {
       befunde.push(`${s.ort}: cache-to type=gha ohne ignore-error=true`);
     }
   }
@@ -183,6 +183,10 @@ describe("Cache-Export type=gha: ignore-error=true", () => {
     expect(cacheExportPruefen(probe("type=gha,mode=max"))).toHaveLength(1);
     expect(cacheExportPruefen(probe("type=gha,mode=max,ignore-error=false"))).toHaveLength(1);
   });
+  it("meldet type=gha auch dann, wenn es nicht das erste Attribut ist", () => {
+    expect(cacheExportPruefen(probe("mode=max,type=gha"))).toHaveLength(1);
+    expect(cacheExportPruefen(probe("mode=max,type=gha,ignore-error=true"))).toEqual([]);
+  });
   it("meldet veränderten cache-from", () => {
     const wf = probe("type=gha,mode=max,ignore-error=true");
     wf.jobs.a.steps[0].with["cache-from"] = "type=gha,ignore-error=true";
@@ -190,14 +194,21 @@ describe("Cache-Export type=gha: ignore-error=true", () => {
   });
   it("alle Workflows im Repository: cache-to trägt ignore-error=true, cache-from unverändert", () => {
     const fehler = {};
-    let gesehen = 0;
+    const anzahl = {};
     for (const f of alleWorkflows()) {
       const wf = yaml.load(readFileSync(path.join(ORDNER, f), "utf8"));
-      gesehen += cacheSchritte(wf).length;
+      const n = cacheSchritte(wf).filter((x) => x.to !== undefined).length;
+      if (n > 0) anzahl[f] = n;
       const b = cacheExportPruefen(wf);
       if (b.length) fehler[f] = b;
     }
-    expect(gesehen).toBeGreaterThan(0);
     expect(fehler).toEqual({});
+    // Feste Erwartung: ein verschwundener cache-to-Eintrag macht den Test rot.
+    // Wird ein Cache-Export bewusst entfernt oder hinzugefügt, diese Zahlen anpassen.
+    expect(anzahl).toEqual({
+      "betrieb-sicherung.yml": 1,
+      "deploy.yml": 1,
+      "pruefung.yml": 1,
+    });
   });
 });

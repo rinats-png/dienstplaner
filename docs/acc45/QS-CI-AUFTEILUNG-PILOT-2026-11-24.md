@@ -109,6 +109,8 @@ Auswertung (gemessen, getrennt von der Schätzung):
 - **Neuer Schritt künftig:** Wer einen Schritt anhängt, wählt einen Teil. Die Sammelkette prüft weiter
   `pruefung:ci-abdeckung`; Schritte außerhalb der Kette prüft die feste Liste in `ci-aufteilung.test.js` nur für die
   heutigen Pflichtschritte. Die Teile driften mit der Zeit auseinander (neu messen, Schnitte nachziehen).
+- **Registry-/Cache-Dienst-Fehler 504/503 beim Cache-Export:** Gegenmaßnahme #523 `ignore-error=true` (Einzelheiten in
+  `docs/CI-LIEFERKETTE.md`, Nachtrag 2026-11-24). Beleg nur aus dem Quelltext, in der CI noch nicht ausgelöst.
 - **Parallelität:** 4 statt 2 gleichzeitige Jobs je Lauf (Grenze 20). Bei push + pull_request je Kopf 8 Jobs.
 - **Andere Workflows:** `deploy.yml` ruft `pruefung.yml` per `workflow_call`; `needs: [pruefung]` wartet auf alle Jobs
   des Aufrufs, also auf alle drei Teile: keine Änderung nötig. Check-Run-Namen dort: „pruefung / pruefen-a“ usw. (G1 zählt
