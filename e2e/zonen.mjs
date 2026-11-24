@@ -3,7 +3,7 @@
    Der Betriebstag ist der Berliner Kalendertag (server/lib/betriebszeit.mjs, E1). Die Oberfläche darf ihn nicht aus der
    Zeitzone des Geräts ableiten. Die Zonenprojekte fahren dafür EINE kleine Spec (e2e/zeit-f-zonen.spec.mjs) in einem
    Browser mit festgelegter Zeitzone; die acht Viewport-Projekte lassen diese Spec aus, und die Zonenprojekte fahren nur
-   sie. Damit bleibt der Zusatz in der Browserabnahme klein (Messung in der Spec-Kopfzeile und in ENTSCHEIDUNGSLISTE P2-39).
+   sie. Damit bleibt der Zusatz in der Browserabnahme klein (CI 2026-11-24: 8 Tests, 19 s Testzeit; Vertrag § 13.3).
 
    Zonen: die drei des Vertrags (UTC, New York, Tokio) und Pago Pago (UTC−11, ohne Sommerzeit). Nur in Pago Pago liegt der
    Gerätetag am festen Abnahmezeitpunkt (Samstag 2026-11-14, 10:00 Berlin, e2e/zeitbasis.mjs) auf dem VORTAG — nur dort
