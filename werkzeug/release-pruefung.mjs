@@ -126,7 +126,8 @@ const ERSTWECHSEL_AUSNAHME = tiefFrieren({
       "64d08a4957c5374e1f04c17be2b75162c07573d2", "1a56988d3c406aff99281f96c2d7da1dc24d7af7"],
     nachholFristStunden: 24,                                                  // F5: Probe + lokale Verifikation
     repoFristStunden: 48,                                                     // F5: Merge des Nachhol-PR
-    erstlaufFristStunden: 2,                                                  // A-SICH
+    erstlaufFristStunden: 2,                                                  // A-SICH (Runbook N2; nicht maschinell geprüft)
+    t0MeldungStunden: 12,                                                     // T0 belegt: Merge von t0.json ≤ T0 + 12 h (Review #535 AU-2)
     stagingMaxTage: 7,
     stagingProben: ["S1", "S2", "S3", "S4", "S5", "S6"],                      // F1
     gueltigBis: "2026-12-31",                                                 // F2; Ende des Tages UTC; keine Verlängerung
@@ -1206,6 +1207,10 @@ export function erstwechselPruefen(k, konfig = KONFIG_STANDARD) {
       if (!x || x.zustand === "unklar") return `${p}: Startzustand unklar (${x?.grund ?? "Nachweis gelöscht"}) — NO-GO (fail-closed)`;
       return x.zustand === "erfolgt" ? verbraucht : null;
     }),
+    // Review #535 BL-2: ein früherer Kandidat ohne unveränderten A-VOR-Nachweis „kein Start“ ⇒ Startzustand unklar
+    ...(Array.isArray(ew.fruehereKandidaten) ? ew.fruehereKandidaten.filter((x) => x !== k.kandidat && !vorStartKandidaten.has(x))
+      .map((x) => `früherer Kandidat ${String(x).slice(0, 12)} ohne A-VOR-Nachweis „kein Start“ — Startzustand unklar (fail-closed)`)
+      : ["frühere Kandidaten (Geschichte der Freigabedatei und der Liste) nicht ermittelbar (fail-closed)"]),
   ]);
   pruef("E10", [wenn(k.nachweise?.widerrufbuchProbe == null && !(releaseDateien || []).includes(`${relVerz}nachweise/widerrufbuch-probe-status.json`),
     "Ausnahme und widerrufbuch-probe-status.json zugleich — widersprüchlich")]);
@@ -1304,6 +1309,10 @@ export const NACHHOL_DATEIEN = Object.freeze(["t0.json", "widerrufbuch-status.js
  * GATE-EW2: Nachholprüfung nach T0 (Gate-Entwurf A.7). d = { releaseId, freigabe, freigabeRoh, dateien: {name: Bytes},
  * stagingRoh, liste, releaseDateien, mergedAt[] }. Jede Verletzung nennt ihre Abbruch-ID (A.8).
  */
+const imFensterT0 = (t, von, bis) => Number.isFinite(t) && t >= von && t <= bis;
+/** F4-Beleg im Format der Probe (widerrufbuch-probe.sh): beide Bücher, je SHA-256 (Review #535 AU-3). */
+const PRUEFSUMMEN = /^zugang-widerrufe\.json=[0-9a-f]{64};konto-widerrufe\.json=[0-9a-f]{64}$/;
+
 export function nachholPruefen(d, konfig = KONFIG_STANDARD) {
   const c = konfig.erstwechselAusnahme.widerrufbuchProbe;
   const gruende = [];
@@ -1317,17 +1326,28 @@ export function nachholPruefen(d, konfig = KONFIG_STANDARD) {
     return ende();
   }
   const relVerz = `${konfig.freigabeVerzeichnis}/${d.releaseId}/`;
+  if (!Array.isArray(d.releaseDateien)) nein("A-FRIST", "Dateien des Release in HEAD nicht ermittelbar (fail-closed)");
+  // Hinweis Review #535: online muss der gelesene HEAD in origin/main liegen (sonst gilt kein Nachweis als gemergt)
+  if (d.online === true && d.headInMain !== true) nein("A-REPO", "HEAD liegt nicht in origin/main (oder nicht ermittelbar)");
   for (const p of Array.isArray(d.releaseDateien) ? d.releaseDateien : []) {
     const m = p.startsWith(relVerz) && !ABBRUCH_VOR.test(p.slice(relVerz.length)) ? /^abbruch-([^/]*)\.json$/.exec(p.slice(relVerz.length)) : null;
     if (m) nein(c.abbruchBedingungen.includes(m[1]) ? m[1] : "A-FRIST", `Abbruchdatei ${p} in HEAD`);
   }
   const bytes = (name) => (d.dateien?.[name] ? Buffer.from(d.dateien[name]) : null);
   const json = (name) => { try { const v = JSON.parse(bytes(name).toString("utf8")); return istObjekt(v) ? v : null; } catch { return null; } };
+  for (const n of NACHHOL_DATEIEN) {
+    const texte = tiefSuchen(json(n), (_, x) => (typeof x === "string" ? x : undefined));
+    if (texte.some((x) => PLATZHALTER.some((m) => m.test(x)))) nein("A-FRIST", `Platzhalter in ${n}`);
+  }
   const t0d = json("t0.json");
   const t0 = Date.parse(t0d?.t0 ?? "");
   if (!t0d || !Number.isFinite(t0)) { nein("A-FRIST", "t0.json fehlt oder T0 unlesbar"); return ende(); }
+  // Review #535 AU-2: T0 ist durch den Merge des PR belegt, der t0.json einführte (≤ T0 + t0MeldungStunden)
+  if (!imFensterT0(Date.parse(d.t0MergedAt ?? ""), t0, t0 + stunden(c.t0MeldungStunden))) {
+    nein("A-FRIST", `t0.json nicht binnen ${c.t0MeldungStunden} h nach T0 gemergt (merged_at ${d.t0MergedAt ?? "unbekannt"}) — T0 nicht belegt`);
+  }
   const frist = t0 + stunden(c.nachholFristStunden);
-  const imFenster = (t, von, bis) => Number.isFinite(t) && t >= von && t <= bis;
+  const imFenster = imFensterT0;
   if (t0d.releaseId !== d.releaseId || t0d.digest !== a.digest || t0d.kandidat !== a.kandidatCommit) nein("A-BILD", "t0.json passt nicht zur Freigabe (releaseId, digest, kandidat)");
   const zeilen = istObjekt(d.liste) && Array.isArray(d.liste.zeilen) ? d.liste.zeilen : [];
   if (!istObjekt(d.liste) || d.liste.fehler?.length || !zeilen.some((z) => z.status === "aktiv" && z.commit === a.kandidatCommit && z.digest === a.digest)) {
@@ -1350,7 +1370,7 @@ export function nachholPruefen(d, konfig = KONFIG_STANDARD) {
         const st = Buffer.from(d.stagingRoh);
         s5 = sha256(st) === a.staging.sha256 && JSON.parse(st.toString("utf8")).widerrufbuch.proben.S5 === "ok";
       } catch { s5 = false; }
-      const beleg = typeof p.pruefsummen === "string" && p.pruefsummen !== "" && v?.pruefsummenVergleich === p.pruefsummen;
+      const beleg = typeof p.pruefsummen === "string" && PRUEFSUMMEN.test(p.pruefsummen) && v?.pruefsummenVergleich === p.pruefsummen;
       if (!(p.gegenprobe === "nicht-aussagekraeftig" && beleg && s5)) nein("A-PROBE-W", `gegenprobe ${p.gegenprobe} ohne Beleg nach F4 (Prüfsummen gleich und Staging S5 ok)`);
     }
   }
@@ -1366,6 +1386,13 @@ export function nachholPruefen(d, konfig = KONFIG_STANDARD) {
   if (!ep || ep.gesamt !== "GO" || ep.exitCode !== 0 || ep.modus !== "online" || ep.uebersteuert !== false || ep.releaseId !== d.releaseId ||
     ep.kandidat !== a.kandidatCommit || ep.digest !== a.digest || !d.freigabeRoh || ep.freigabeSha256 !== sha256(Buffer.from(d.freigabeRoh))) {
     nein("A-FRIST", "endpruefung.json fehlt, ist keine Endprüfung GO (online, Exit 0) dieses Kandidaten, oder die Freigabedatei ist seit der Endprüfung verändert");
+  } else {
+    // Review #535 AU-2, L-2: Endprüfung vor T0; ihr HEAD ist Vorfahr von HEAD; Liste an jenem HEAD = listeSha256
+    if (!(Date.parse(ep.zeitpunkt ?? "") <= t0)) nein("A-FRIST", `Endprüfung (${ep.zeitpunkt}) nicht vor T0`);
+    const st = istObjekt(d.endStand) ? d.endStand : {};
+    if (!hex40(ep.headCommit) || st.istVorfahr !== true || typeof ep.listeSha256 !== "string" || ep.listeSha256 !== st.listeSha256) {
+      nein("A-FRIST", "Stand der Endprüfung nicht belegt (headCommit kein Vorfahr von HEAD oder Liste ≠ listeSha256)");
+    }
   }
   const merges = Array.isArray(d.mergedAt) ? d.mergedAt : [];
   if (!merges.length || merges.some((m) => !imFenster(Date.parse(m), t0, t0 + stunden(c.repoFristStunden)))) {
@@ -1374,7 +1401,7 @@ export function nachholPruefen(d, konfig = KONFIG_STANDARD) {
   return ende();
 }
 
-/** Folge-Release-Rückhalt (SPEZ §3.3): eine Ausnahme, deren Kandidat die Basis ist, muss NACHHOL-GO sein. */
+/** Folge-Release-Rückhalt (SPEZ §3.3, Review #535 AU-1): jede Ausnahme eines anderen Release muss NACHHOL-GO sein. */
 function rueckhaltPruefen(g, k, konfig) {
   for (const r of Array.isArray(k.rueckhalt) ? k.rueckhalt : []) {
     if (!r.daten) { nogo(g, `Erstwechsel-Ausnahme: ${r.datei} nicht lesbar (${r.fehler}) — Rückhalt nicht prüfbar (fail-closed)`); continue; }
@@ -1385,11 +1412,12 @@ function rueckhaltPruefen(g, k, konfig) {
       g.belege.push(`Erstwechsel-Ausnahme ${r.releaseId}: Nachweis verspätet (A-REPO), W-REPO mit nachholAbweichung: ${abw.grund}`);
       continue;
     }
-    nogo(g, `Ausnahme ${r.releaseId} nicht abgeschlossen (Basis = deren Kandidat): ${n.gruende.join("; ")}`);
+    nogo(g, `Ausnahme ${r.releaseId} nicht abgeschlossen: ${n.gruende.join("; ")}`);
   }
 }
 
 /** Einträge eines ZIP-Archivs (Artefakt-Download), nur im Speicher; Größen aus dem Zentralverzeichnis. Wirft bei Fehlern. */
+const ZIP_MAX = 10 * 1024 * 1024; // je Eintrag höchstens 10 MB (Schutz gegen Entpack-Bomben)
 export function zipEntpacken(buf) {
   const b = Buffer.from(buf);
   let e = -1;
@@ -1403,11 +1431,12 @@ export function zipEntpacken(buf) {
     const groesse = b.readUInt32LE(p + 20);
     const lName = b.readUInt16LE(p + 28);
     const ofs = b.readUInt32LE(p + 42);
-    if (groesse === 0xffffffff || ofs === 0xffffffff || ![0, 8].includes(methode)) throw new Error("ZIP64 oder Methode nicht unterstützt");
+    if (groesse > ZIP_MAX || ofs === 0xffffffff || ![0, 8].includes(methode)) throw new Error("ZIP64, zu groß oder Methode nicht unterstützt");
     if (b.readUInt32LE(ofs) !== 0x04034b50) throw new Error("ZIP-Eintrag unlesbar");
     const start = ofs + 30 + b.readUInt16LE(ofs + 26) + b.readUInt16LE(ofs + 28);
     const daten = b.subarray(start, start + groesse);
-    aus.push({ name: b.subarray(p + 46, p + 46 + lName).toString("utf8"), daten: methode === 8 ? inflateRawSync(daten) : Buffer.from(daten) });
+    aus.push({ name: b.subarray(p + 46, p + 46 + lName).toString("utf8"),
+      daten: methode === 8 ? inflateRawSync(daten, { maxOutputLength: ZIP_MAX }) : Buffer.from(daten) });
     p += 46 + lName + b.readUInt16LE(p + 30) + b.readUInt16LE(p + 32);
   }
   return aus;
@@ -1721,6 +1750,7 @@ export function auswerten(e, konfig = KONFIG_STANDARD) {
     // GATE-EW1: Pflichtauflagen (Nachholprüfung); GATE-EW2: SHA-256 der Freigabedatei für die Byte-Gleichheit nach T0
     auflagen: gates.flatMap((g) => g.auflagen || []),
     freigabeSha256: e.freigabeSha256 || null,
+    headCommit: e.headCommit || null, listeSha256: e.listeSha256 || null,
     migrationsbericht: bericht,
     gates,
     konfiguration: konfig,
@@ -1785,7 +1815,8 @@ function quelle(wurzel, rev) {
       for (const f of wurzelDateien()) aus.push({ pfad: f, modus: modus(f) });
       return aus;
     };
-    return { lesen, lesenRoh, modus, eintraege, dateien: (wurzeln) => wurzeln.flatMap((r) => dateien(r)), gibt: (rel) => existsSync(join(wurzel, rel)), wurzelDateien };
+    const alleDateien = (wurzeln) => wurzeln.flatMap((r) => dateien(r));
+    return { lesen, lesenRoh, modus, eintraege, dateien: alleDateien, dateienStreng: alleDateien, gibt: (rel) => existsSync(join(wurzel, rel)), wurzelDateien };
   }
   const lesen = (rel) => { try { return ausfuehren.exec("git", ["show", `${rev}:${rel}`], ausfuehrOptionen(wurzel, { stdio: ["ignore", "pipe", "ignore"] })); } catch { return null; } };
   // ls-tree immer mit -z: Pfade kommen ungequotet (auch mit Nicht-ASCII-Zeichen), getrennt an NUL
@@ -1807,7 +1838,9 @@ function quelle(wurzel, rev) {
       return z ? z.split(" ")[0] : null;
     } catch { return null; }
   };
-  return { lesen, lesenRoh, modus, eintraege, dateien, gibt, wurzelDateien };
+  // Review #535: wie dateien, aber ein Git-Fehler ergibt null statt [] (fail-closed für E15 und den Nachhol-Modus)
+  const dateienStreng = (wurzeln) => { try { return baum(["-r", "--name-only", rev, "--", ...wurzeln]); } catch { return null; } };
+  return { lesen, lesenRoh, modus, eintraege, dateien, dateienStreng, gibt, wurzelDateien };
 }
 
 function nachweiseAusQuelle(q, verz) {
@@ -1897,7 +1930,7 @@ function erstwechselSammeln(e, kq, hq, { online, wurzel: w, gh, ghRoh, fx }, kon
   };
   if (!online) {
     const x = istObjekt(fx.erstwechsel) ? fx.erstwechsel : {};
-    return { releaseHistorie: [], ...x, ...ew, stagingArtefakt: Array.isArray(x.stagingArtefakt) ? x.stagingArtefakt.map((b) => Buffer.from(String(b), "base64")) : null };
+    return { ...x, ...ew, stagingArtefakt: Array.isArray(x.stagingArtefakt) ? x.stagingArtefakt.map((b) => Buffer.from(String(b), "base64")) : null };
   }
   const versuch = (f) => { try { return f(); } catch { return null; } };
   const M = e.kandidat;
@@ -1911,8 +1944,27 @@ function erstwechselSammeln(e, kq, hq, { online, wurzel: w, gh, ghRoh, fx }, kon
   });
   ew.basisDateien = hex40(e.basis) ? menge(e.basis, c.basisOhneDateien) : null;
   ew.kandidatDateien = menge(M, c.kandidatMitDateien);
-  // F10: jeder Pfad, der in der Geschichte von HEAD je unter docs/acc45/releases/<id>/ lag (Löschen hebt den Verbrauch nicht auf)
-  ew.releaseHistorie = versuch(() => git(w, ["log", "--format=", "--name-only", "HEAD", "--", relVerz]).split("\n").filter(Boolean));
+  // F10: jeder Pfad, der in der Geschichte von HEAD je unter docs/acc45/releases/<id>/ lag (Löschen hebt den Verbrauch nicht auf).
+  // Review #535 BL-1: --full-history, sonst folgt git bei einem Merge nur dem Elter ohne die Datei (Merge lässt sie fallen).
+  const voll = ["--full-history", "--no-renames"];
+  ew.releaseHistorie = versuch(() => git(w, ["log", ...voll, "--format=", "--name-only", "HEAD", "--", relVerz]).split("\n").filter(Boolean));
+  // Review #535 BL-2: frühere Kandidaten = kandidatCommit jeder früheren Fassung der Freigabedatei mit Ausnahme und jede
+  // frühere Zeile aktiv der Freigabeliste mit einem Commit außerhalb vorV4Commits (Geschichte von HEAD)
+  ew.fruehereKandidaten = versuch(() => {
+    const fassungen = (pfad) => git(w, ["log", ...voll, "--format=%H", "HEAD", "--", pfad]).split("\n").filter(Boolean)
+      .map((sha) => { try { return ausfuehren.exec("git", ["show", `${sha}:${pfad}`], ausfuehrOptionen(w, { stdio: ["ignore", "pipe", "ignore"] })); } catch { return null; } })
+      .filter((t) => t !== null); // Löschungen haben keinen Inhalt
+    const aus = new Set();
+    for (const t of fassungen(`${konfig.freigabeVerzeichnis}/${e.releaseId}.freigabe.json`)) {
+      const f = jsonLesen(t).wert;
+      if (!istObjekt(f)) throw new Error("frühere Freigabedatei unlesbar");
+      if (f.erstwechselAusnahme !== undefined) aus.add(f.kandidatCommit);
+    }
+    for (const t of fassungen(konfig.freigabeListe)) {
+      for (const z of freigabelisteLesen(t, konfig.gesperrtEingebaut).zeilen) if (z.status === "aktiv" && !c.vorV4Commits.includes(z.commit)) aus.add(z.commit);
+    }
+    return [...aus];
+  });
   const [laufId] = String(a.staging?.lauf || "").split("-");
   if (/^[1-9]\d*$/.test(laufId)) {
     ew.stagingLauf = versuch(() => gh(`repos/${konfig.repo}/actions/runs/${laufId}`));
@@ -1928,7 +1980,7 @@ function erstwechselSammeln(e, kq, hq, { online, wurzel: w, gh, ghRoh, fx }, kon
   for (const z of c.vierAugenZweige) va.regeln[z] = abfrage(`GET rules/branches/${z}`, () => gh(`repos/${konfig.repo}/rules/branches/${encodeURIComponent(z)}`));
   const gemergt = (sha) => gh(`repos/${konfig.repo}/commits/${sha}/pulls`).filter((p) => p.merged_at && konfig.freigabeZweige.includes(p.base?.ref));
   va.freigabePr = abfrage("PR der Freigabedatei", () => {
-    const l = gemergt(git(w, ["log", "-1", "--format=%H", "HEAD", "--", `${konfig.freigabeVerzeichnis}/${e.releaseId}.freigabe.json`]));
+    const l = gemergt(git(w, ["log", "-1", ...voll, "--format=%H", "HEAD", "--", `${konfig.freigabeVerzeichnis}/${e.releaseId}.freigabe.json`]));
     if (l.length !== 1) throw new Error(`${l.length} nach main gemergte PRs`);
     return l[0].number;
   });
@@ -1958,19 +2010,46 @@ function nachholDaten(q, releaseId, { online, wurzel: w, gh, fx }, konfig) {
   const ablage = `${verz}/${releaseId}/nachhol/`;
   const dateien = Object.fromEntries(NACHHOL_DATEIEN.map((n) => [n, q.lesenRoh(ablage + n)]));
   const nachweis = freigabe?.erstwechselAusnahme?.widerrufbuchProbe?.staging?.nachweis;
-  const d = { releaseId, freigabe, freigabeRoh, dateien, liste: freigabelisteLesen(q.lesen(konfig.freigabeListe), konfig.gesperrtEingebaut),
-    releaseDateien: q.dateien([`${verz}/${releaseId}`]), stagingRoh: pfadSicher(nachweis) ? q.lesenRoh(nachweis) : null, mergedAt: null };
-  if (!online) { d.mergedAt = istObjekt(fx?.nachhol?.[releaseId]) ? fx.nachhol[releaseId].mergedAt : null; return d; }
+  const d = { releaseId, online, freigabe, freigabeRoh, dateien, liste: freigabelisteLesen(q.lesen(konfig.freigabeListe), konfig.gesperrtEingebaut),
+    releaseDateien: q.dateienStreng([`${verz}/${releaseId}`]), stagingRoh: pfadSicher(nachweis) ? q.lesenRoh(nachweis) : null,
+    mergedAt: null, t0MergedAt: null, endStand: null, headInMain: null };
+  if (!online) {
+    const n = istObjekt(fx?.nachhol?.[releaseId]) ? fx.nachhol[releaseId] : {};
+    const liste = q.lesenRoh(konfig.freigabeListe);
+    return { ...d, mergedAt: n.mergedAt ?? null, t0MergedAt: n.t0MergedAt ?? null,
+      endStand: { istVorfahr: n.endpruefungIstVorfahr, listeSha256: liste ? sha256(Buffer.from(liste)) : null } };
+  }
   if (!istObjekt(freigabe?.erstwechselAusnahme)) return d; // nichts zu prüfen, keine Netzabfrage
-  try {
-    // Repo-Frist (F5): merged_at des PR, der den heutigen Stand jeder Datei nach main brachte (letzter Commit der Datei)
-    d.mergedAt = NACHHOL_DATEIEN.filter((n) => dateien[n]).map((n) => {
-      const sha = git(w, ["log", "-1", "--format=%H", "HEAD", "--", ablage + n]);
-      const l = gh(`repos/${konfig.repo}/commits/${sha}/pulls`).filter((p) => p.merged_at && konfig.freigabeZweige.includes(p.base?.ref));
-      if (!l.length) throw new Error(`${n}: kein nach main gemergter PR`);
-      return l.map((p) => p.merged_at).sort()[0];
-    });
-  } catch { d.mergedAt = null; }
+  const versuch = (f) => { try { return f(); } catch { return null; } };
+  const voll = ["--full-history", "--no-renames"];
+  const mainPrs = (sha) => gh(`repos/${konfig.repo}/commits/${sha}/pulls`).filter((p) => p.merged_at && konfig.freigabeZweige.includes(p.base?.ref));
+  // Repo-Frist (F5): merged_at des PR, der den heutigen Stand jeder Datei nach main brachte (letzter Commit der Datei)
+  d.mergedAt = versuch(() => NACHHOL_DATEIEN.filter((n) => dateien[n]).map((n) => {
+    const l = mainPrs(git(w, ["log", "-1", ...voll, "--format=%H", "HEAD", "--", ablage + n]));
+    if (!l.length) throw new Error(`${n}: kein nach main gemergter PR`);
+    return l.map((p) => p.merged_at).sort()[0];
+  }));
+  // Review #535 AU-2: T0 belegt durch den Merge des PR, der t0.json zuerst einführte
+  d.t0MergedAt = versuch(() => {
+    const l = mainPrs(git(w, ["log", ...voll, "--diff-filter=A", "--format=%H", "HEAD", "--", `${ablage}t0.json`]).split("\n").filter(Boolean).at(-1));
+    return l.length ? l.map((p) => p.merged_at).sort()[0] : null;
+  });
+  // Review #535 L-2: Stand der Endprüfung (HEAD-Commit Vorfahr von HEAD, SHA-256 der Liste an diesem Commit)
+  const ep = jsonLesen(dateien["endpruefung.json"] ? Buffer.from(dateien["endpruefung.json"]).toString("utf8") : null).wert;
+  if (hex40(ep?.headCommit)) {
+    d.endStand = {
+      istVorfahr: versuch(() => { git(w, ["merge-base", "--is-ancestor", ep.headCommit, "HEAD"]); return true; }) === true,
+      listeSha256: versuch(() => sha256(ausfuehren.exec("git", ["show", `${ep.headCommit}:${konfig.freigabeListe}`], ausfuehrOptionen(w, { stdio: ["ignore", "pipe", "ignore"], encoding: "buffer" })))),
+    };
+  }
+  // Hinweis Review #535: der gelesene HEAD muss in origin/main liegen (GitHub-Repository dieses Werkzeugs)
+  d.headInMain = versuch(() => {
+    if (!new RegExp(konfig.repoUrlMuster).test(git(w, ["remote", "get-url", "origin"]))) return false;
+    const main = git(w, ["ls-remote", "origin", "refs/heads/main"]).split("\t")[0];
+    if (!hex40(main)) return false;
+    git(w, ["merge-base", "--is-ancestor", "HEAD", main]);
+    return true;
+  }) === true;
   return d;
 }
 
@@ -1981,18 +2060,19 @@ export function nachholSammeln(wurzel, releaseId, opt = {}, konfig = KONFIG_STAN
   return nachholDaten(quelle(wurzel, online ? "HEAD" : null), releaseId, { online, wurzel, gh, fx: istObjekt(opt.fixture) ? opt.fixture : {} }, konfig);
 }
 
-/** Folge-Release-Rückhalt: Freigabedateien anderer Releases in HEAD mit Ausnahme, deren Kandidat die Basis ist. */
+/**
+ * Folge-Release-Rückhalt (Review #535 AU-1): abgeleitet aus releaseIds der Konfiguration, nicht aus gefundenen Dateien
+ * und nicht aus der Basis. Für jeden anderen Release muss die Freigabedatei jeder Ausnahme-ID in HEAD liegen; trägt sie
+ * die Ausnahme, muss deren Nachhol-Ablage NACHHOL-GO ergeben. Fehlt oder unlesbar ⇒ NO-GO.
+ */
 function rueckhaltSammeln(e, hq, ctx, konfig) {
-  const verz = konfig.freigabeVerzeichnis;
   const aus = [];
-  for (const p of e.releaseDateien) {
-    const name = p.slice(verz.length + 1);
-    if (!p.startsWith(`${verz}/`) || name.includes("/") || !name.endsWith(".freigabe.json") || name === `${e.releaseId}.freigabe.json`) continue;
-    const j = jsonLesen(hq.lesen(p));
-    if (!istObjekt(j.wert)) { aus.push({ datei: p, fehler: j.fehler || "kein Objekt" }); continue; }
-    if (j.wert.erstwechselAusnahme === undefined || j.wert.kandidatCommit !== e.basis) continue;
-    const releaseId = name.slice(0, -".freigabe.json".length);
-    aus.push({ datei: p, releaseId, daten: nachholDaten(hq, releaseId, ctx, konfig) });
+  for (const releaseId of konfig.erstwechselAusnahme.widerrufbuchProbe.releaseIds.filter((x) => x !== e.releaseId)) {
+    const datei = `${konfig.freigabeVerzeichnis}/${releaseId}.freigabe.json`;
+    const j = jsonLesen(hq.lesen(datei));
+    if (!istObjekt(j.wert)) { aus.push({ datei, releaseId, fehler: j.fehler || "kein Objekt" }); continue; }
+    if (j.wert.erstwechselAusnahme === undefined) continue;
+    aus.push({ datei, releaseId, daten: nachholDaten(hq, releaseId, ctx, konfig) });
   }
   return aus;
 }
@@ -2059,7 +2139,11 @@ export function sammeln(opt, konfig = KONFIG_STANDARD) {
   // GATE-EW1/EW2: Release-Dateien in HEAD (E10, E15), Angaben zur Erstwechsel-Ausnahme, Folge-Release-Rückhalt
   const ghRoh = typeof opt.ghRoh === "function" ? opt.ghRoh : (pfad) => ausfuehren.exec("gh", ["api", pfad], ausfuehrOptionen(w, { encoding: "buffer" }));
   const ctx = { online, wurzel: w, gh, ghRoh, fx };
-  e.releaseDateien = hq.dateien([konfig.freigabeVerzeichnis]);
+  e.releaseDateien = hq.dateienStreng([konfig.freigabeVerzeichnis]);
+  // Review #535 L-2: Stand der Endprüfung (HEAD-Commit und SHA-256 der Freigabeliste) für die Nachholprüfung
+  const listeRoh = hq.lesenRoh(konfig.freigabeListe);
+  e.listeSha256 = listeRoh ? sha256(Buffer.from(listeRoh)) : null;
+  e.headCommit = online ? (() => { try { return git(w, ["rev-parse", "HEAD"]); } catch { return null; } })() : (hex40(fx.headCommit) ? fx.headCommit : null);
   if (istObjekt(e.freigabe) && e.freigabe.erstwechselAusnahme !== undefined) e.erstwechsel = erstwechselSammeln(e, kq, hq, ctx, konfig);
   e.rueckhalt = rueckhaltSammeln(e, hq, ctx, konfig);
 

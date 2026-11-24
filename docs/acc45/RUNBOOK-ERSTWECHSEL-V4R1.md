@@ -43,7 +43,7 @@ Keine Personendaten, keine Hostnamen, keine Schlüssel in den Dateien dieses Run
 | Schritt | Zeitpunkt | Wer | Ergebnis |
 |---|---|---|---|
 | N0 | vor T0 | Betreiber | `widerrufbuch.env` (eigenes Repository, eigenes Passwort), `restic init`, Cron-Zeile vorbereitet (auskommentiert) |
-| N1 | T0 | Betreiber | `t0.json` (Formular 5.1) sofort an Claude; Claude legt den Nachhol-PR an; ab dem Merge sperrt E15 jede weitere Nutzung. **Vor jeder weiteren Endprüfung nach T0 muss `t0.json` gemergt sein.** |
+| N1 | T0 | Betreiber | `t0.json` (Formular 5.1) sofort an Claude; Claude legt den Nachhol-PR an; **Merge ≤ T0 + 12 h** (sonst gilt T0 als nicht belegt: `--nachhol` meldet A-FRIST); ab dem Merge sperrt E15 jede weitere Nutzung. **Vor jeder weiteren Endprüfung nach T0 muss `t0.json` gemergt sein.** |
 | N2 | ≤ T0 + 2 h | Betreiber | `widerrufbuch-sicherung.sh --erster-lauf` ⇒ Exit 0; Cron aktiv |
 | N3 | nach ≥ 2 stündlichen Läufen, ≤ T0 + 24 h | Betreiber | `widerrufbuch-probe.sh` ⇒ Exit 0 |
 | N3a | sofort nach N3, ≤ T0 + 24 h | Betreiber | lokale Verifikation: `verifikation.json` (Formular 5.2) |
@@ -51,7 +51,26 @@ Keine Personendaten, keine Hostnamen, keine Schlüssel in den Dateien dieses Run
 | N5 | nach N4 | Claude, Betreiber liest | `node werkzeug/release-pruefung.mjs --nachhol --release-id v4-r1` ⇒ `NACHHOL-GO` |
 
 Statusdateien entstehen nur aus echten Läufen auf dem VPS. Claude ändert keine Werte. `endpruefung.json` ist die
-unveränderte JSON-Ausgabe der Endprüfung (Exit 0, online); ihr Feld `freigabeSha256` bindet die Freigabedatei.
+unveränderte JSON-Ausgabe der Endprüfung (Exit 0, online, **vor T0**: `zeitpunkt` ≤ T0). Sie bindet die Freigabedatei
+(`freigabeSha256`), den geprüften Stand (`headCommit`, muss Vorfahr von HEAD sein) und die Freigabeliste an diesem Stand
+(`listeSha256`). Platzhalter in den Dateien der Ablage sind NO-GO. `--nachhol` online liest nur einen HEAD, der in
+`origin/main` liegt.
+
+**Vier-Augen-Schritt vor `deploy.sh` (Lücke L-1, bis ein eigenes Paket `deploy.sh` an die Endprüfung bindet):** Zweite
+Person (bzw. Claude lesend und Betreiber) bestätigt schriftlich vor dem Start: (1) der Digest im Aufruf
+`deploy.sh <digest>` = `endpruefung.json.digest`; (2) `sha256sum FREIGEGEBENE-IMAGES.md` auf dem VPS = `listeSha256`
+der Endprüfung. Weicht eines ab: kein Start.
+
+**Neustart nach A-START oder A-ABN mit Umgebungsursache:** derselbe Digest startet erneut mit `deploy.sh`, **ohne neue
+Endprüfung** (die Endprüfung galt für genau diesen Digest; eine neue wäre wegen E15 ohnehin NO-GO). T0 bleibt der erste
+Start, alle Fristen laufen weiter. Es entsteht **keine** Abbruchdatei unter `docs/acc45/releases/v4-r1/`, nur der Vorfall
+(`docs/acc45/VORFALL-<datum>-<id>.md`). Eine Abbruchdatei `abbruch-<ID>.json` entsteht nur bei einem **endgültigen**
+Abbruch nach T0 (Wiederanlauf W-NACH); sie macht `--nachhol` endgültig NO-GO mit dieser ID.
+
+**E14 und dieser PR (Hinweis):** E14 verlangt, dass die PRs von GATE-EW1/EW2 (laut SSOT `pr`) und der PR der
+Freigabedatei ein `APPROVED` des Inhabers tragen, dessen Autor **nicht** der Inhaber ist. Ein vom Inhaber-Token
+angelegter PR erfüllt das nie. Der Inhalt muss für v4-r1 deshalb über einen PR des Maschinenkontos landen (K-1), und der
+SSOT-Eintrag nennt nur diesen PR. Bis dahin bleibt G6 mit Ausnahme NO-GO (fail-closed).
 
 **Fristen-Kalender:** T0 + 2 h (Erstlauf), T0 + 12 h und T0 + 20 h (Claude prüft das Repository auf die Ablage),
 T0 + 24 h (Probe und Verifikation), T0 + 40 h (Claude erinnert), T0 + 48 h (Merge der Ablage).
@@ -69,6 +88,14 @@ Die Ausnahme ist ab dem **ersten tatsächlichen V4-Start** verbraucht. Das Werkz
 | `abbruch-A-VOR[-n].json` mit Buch vorhanden oder Startzeile ≥ 1 | Start erfolgt ⇒ verbraucht |
 | `abbruch-A-VOR[-n].json` unlesbar, unvollständig, nachträglich geändert oder gelöscht | unklar ⇒ NO-GO |
 | Geschichte von HEAD nicht lesbar | unklar ⇒ NO-GO |
+| frühere Fassung der Freigabedatei mit Ausnahme oder frühere Zeile `aktiv` der Liste nennt einen anderen V4-Kandidaten ohne A-VOR-Nachweis „kein Start“ | unklar ⇒ NO-GO |
+
+Die Geschichte wird mit `git log --full-history --no-renames` gelesen: Ein Merge, der eine Datei fallen lässt oder
+zurücksetzt, verbirgt sie nicht.
+
+**Folge-Release:** Für jeden Release ≠ `v4-r1` muss `docs/acc45/releases/v4-r1.freigabe.json` in HEAD liegen. Trägt sie
+die Ausnahme, muss `--nachhol` für v4-r1 `NACHHOL-GO` ergeben (einzige Abweichung: nur A-REPO und `nachholAbweichung`).
+Fehlt oder unlesbar ⇒ NO-GO. Die Basis des Folge-Release spielt keine Rolle.
 
 Abbruch vor dem Start aus Codeursache: neuer Kandidat; der alte steht in der Freigabeliste `gesperrt` mit Grund, der mit
 `A-VOR` beginnt, und hat einen A-VOR-Nachweis „kein Start“. Die Release-ID bleibt `v4-r1` (andere IDs haben keine Ausnahme).
@@ -99,8 +126,9 @@ sha256sum betrieb-protokoll.log
 { "sha256": "<SHA-256 der Datei widerrufbuch-probe-status.json>", "verifiziertAm": "<UTC>", "exit": 0 }
 ```
 
-Bei `gegenprobe = nicht-aussagekraeftig` zusätzlich `"pruefsummenVergleich": "<Prüfsummen des Vergleichs-Snapshots im
-Format von pruefsummen>"` aus den Protokollzeilen `sha256 vergleich …` der Probe (F4; zusätzlich Staging-Probe S5 `ok`).
+Bei `gegenprobe = nicht-aussagekraeftig` zusätzlich `"pruefsummenVergleich": "zugang-widerrufe.json=<64 hex>;konto-widerrufe.json=<64 hex>"`
+aus den Protokollzeilen `sha256 vergleich …` der Probe; `pruefsummen` der Probe muss dasselbe Format haben und gleich sein
+(F4; zusätzlich Staging-Probe S5 `ok`).
 
 ### 5.3 `abbruch-A-VOR.json` (Abbruch vor dem Start; weitere: `abbruch-A-VOR-2.json` …)
 
@@ -123,8 +151,8 @@ Quelle: Gate-Entwurf 2026-11-24 v2, A.8 (einzige Quelle). Bei Abweichung gilt di
 |---|---|---|---|---|
 | A-VOR | Abbruch vor T0, kein V4-Container lief | vor T0 | `deploy.sh` startet `274bfa0` wieder, sonst R0; Ausnahme nicht verbraucht | Ursache beheben; Nachweis 5.3; derselbe Kandidat, bei Codeursache neuer Kandidat (alter `gesperrt`, Grund `A-VOR …`); alle Fristen neu prüfen; Endprüfung Exit 0 |
 | A-STG | Staging-Nachweis fehlt, rot, > 7 d, falsch gebunden | Endprüfung | G6 NO-GO | neuer grüner Lauf am selben Digest |
-| A-START | Start nach T0 scheitert | T0 … T0 + 15 min | R0 | Umgebungsursache: derselbe Kandidat, Frist läuft weiter; Codeursache: W-NACH |
-| A-ABN | Live-Abnahme G-a…G-f nicht erfüllt | ≤ T0 + 60 min | R0 | wie A-START |
+| A-START | Start nach T0 scheitert | T0 … T0 + 15 min | R0; Vorfall; **keine** Abbruchdatei, solange ein Neustart vorgesehen ist | Umgebungsursache: derselbe Digest startet neu, ohne neue Endprüfung, kein neues T0, Fristen laufen weiter; Codeursache oder endgültig: `abbruch-A-START.json`, W-NACH |
+| A-ABN | Live-Abnahme G-a…G-f nicht erfüllt | ≤ T0 + 60 min | R0; Vorfall; keine Abbruchdatei bei Neustart | wie A-START (`abbruch-A-ABN.json` nur bei endgültigem Abbruch) |
 | A-SICHER | Datenschutz- oder Sicherheitsbefund | jederzeit | R0 sofort; Listenzeile `gesperrt`; Vorfall | W-NACH mit neuem Kandidaten |
 | A-DATEN | Datenschaden | jederzeit | R0; Wiederherstellung nur nach Wiederherstellungskonzept M-6 | W-NACH |
 | A-BUCH | Buch fehlt, Siegel ungültig, `/gesund` meldet `widerrufbuch` nicht ok | T0 … T0 + 24 h | R0 sofort + Vorfall | W-NACH |

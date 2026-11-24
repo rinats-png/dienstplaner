@@ -6,6 +6,8 @@
     "kandidatEltern": ["2222222222222222222222222222222222222222", "3333333333333333333333333333333333333333"],
     "baeume": { "kandidat": "6666666666666666666666666666666666666666", "schnitt": "6666666666666666666666666666666666666666" },
     "schnittIstVorfahr": true,
+    "releaseHistorie": [],
+    "fruehereKandidaten": [],
     "basisDateien": { "server/lib/widerrufbuch.mjs": false, "server/lib/kontowiderrufbuch.mjs": false },
     "kandidatDateien": {
       "server/lib/widerrufbuch.mjs": true,
@@ -35,6 +37,6 @@
     }
   },
   "nachhol": {
-    "v4-r1": { "mergedAt": ["2026-11-21T10:30:00Z", "2026-11-22T08:00:00Z"] }
+    "v4-r1": { "mergedAt": ["2026-11-21T10:30:00Z", "2026-11-22T08:00:00Z"], "t0MergedAt": "2026-11-21T10:30:00Z", "endpruefungIstVorfahr": true }
   }
 }

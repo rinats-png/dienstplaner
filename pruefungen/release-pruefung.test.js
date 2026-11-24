@@ -3,7 +3,7 @@
 // Kein Netz: Offline-Modus, alle Git- und GitHub-Angaben kommen aus der Fixture
 // (Beispiel: pruefungen/fixtures/release-pruefung-beispiel.json).
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -2900,6 +2900,22 @@ describe("GATE-EW1/EW2: Erstwechsel-Ausnahme der Widerrufbuch-Probe (G6) und Nac
       expect(erwarte(geaendert, "E15").gruende.join(" ")).toMatch(/nachträglich geändert/);
       erwarte(mitEw(aufbauen(), (x) => { delete x.releaseHistorie; x.releaseHistorie = null; }), "E15");                     // nicht ermittelbar
     });
+    it("BL-2: früherer Kandidat (aus Freigabedatei- oder Listengeschichte) ohne A-VOR-Nachweis ⇒ Startzustand unklar ⇒ NO-GO E15", () => {
+      erwarte(mitEw(aufbauen(), (x) => { x.fruehereKandidaten = [ALT]; }), "E15");
+      const mitNachweis = mitEw(aufbauen({ listeExtra: [zeileListe("sha256:" + "e".repeat(64), ALT, "gesperrt", "A-VOR Codeursache")] }), (x) => { x.fruehereKandidaten = [ALT, M]; });
+      datei(AVOR, avor({ kandidat: ALT }));
+      expect(g6(mitNachweis).gruende).toEqual([]);
+      const gestartet = mitEw(aufbauen(), (x) => { x.fruehereKandidaten = [ALT]; });
+      datei(AVOR, avor({ kandidat: ALT }, { v4Startzeilen: 2 }));
+      erwarte(gestartet, "E15");
+      erwarte(mitEw(aufbauen(), (x) => { x.fruehereKandidaten = null; }), "E15"); // nicht ermittelbar
+    });
+    it("AU-4: Ausnahme-releaseId v4-r1 in einer v4-r2-Freigabe (R1) ⇒ E1; Digest der Ausnahme ≠ Aufruf (R5) ⇒ E5", () => {
+      const fx = aufbauen({ freigabe: { releaseId: "v4-r2" } });
+      datei("docs/acc45/releases/v4-r2.freigabe.json", JSON.parse(roh(FREIGABE_PFAD)));
+      erwarte(fx, "E1", { releaseId: "v4-r2" });
+      erwarte(aufbauen({ ausnahme: { digest: D_ALT } }), "E5");
+    });
     it("A-VOR-Nachweis stört die Nachholprüfung nicht (Start danach mit demselben Release)", () => {
       const fx = nachholAnlegen();
       datei(AVOR, avor());
@@ -2925,7 +2941,8 @@ describe("GATE-EW1/EW2: Erstwechsel-Ausnahme der Widerrufbuch-Probe (G6) und Nac
     const probeRoh = ohneDatei === "widerrufbuch-probe-status.json" ? Buffer.from("") : roh(ABLAGE + "widerrufbuch-probe-status.json");
     schreib("verifikation.json", { sha256: sha(probeRoh), verifiziertAm: um(4.2), exit: 0, ...verifikation });
     schreib("endpruefung.json", { werkzeug: "release-pruefung", gesamt: "GO", exitCode: 0, modus: "online", uebersteuert: false,
-      releaseId: "v4-r1", kandidat: M, digest: D, freigabeSha256: sha(roh(FREIGABE_PFAD)), ...endpruefung });
+      releaseId: "v4-r1", kandidat: M, digest: D, freigabeSha256: sha(roh(FREIGABE_PFAD)), zeitpunkt: um(-2), headCommit: "5".repeat(40),
+      listeSha256: sha(roh("deploy/FREIGEGEBENE-IMAGES.md")), ...endpruefung });
     if (mergedAt) fx.nachhol["v4-r1"].mergedAt = mergedAt;
     return fx;
   }
@@ -2978,6 +2995,42 @@ describe("GATE-EW1/EW2: Erstwechsel-Ausnahme der Widerrufbuch-Probe (G6) und Nac
       const mitAbbruch = nachholAnlegen();
       datei("docs/acc45/releases/v4-r1/abbruch-A-BUCH.json", { id: "A-BUCH" });
       nachholNein(mitAbbruch, "A-BUCH");
+    });
+    it("Review #535 AU-2/AU-3/AU-4/AU-5 und Hinweise: T0 belegt, F4-Format, Ablage vollständig, A-START, Platzhalter, Stand der Endprüfung", () => {
+      // AU-2: T0 ist durch den Merge von t0.json belegt (≤ T0 + 12 h) und die Endprüfung lag vor T0
+      const spaetT0 = nachholAnlegen();
+      spaetT0.nachhol["v4-r1"].t0MergedAt = um(12.1);
+      nachholNein(spaetT0, "A-FRIST");
+      const ohneT0Merge = nachholAnlegen();
+      delete ohneT0Merge.nachhol["v4-r1"].t0MergedAt;
+      nachholNein(ohneT0Merge, "A-FRIST");
+      expect(nachhol(nachholAnlegen({ endpruefung: { zeitpunkt: um(0) } })).ergebnis).toBe("NACHHOL-GO");
+      nachholNein(nachholAnlegen({ endpruefung: { zeitpunkt: um(0.01) } }), "A-FRIST");
+      // AU-3: F4-Beleg nur im Format der Probe (beide Bücher, je 64 Hex)
+      nachholNein(nachholAnlegen({ probe: { gegenprobe: "nicht-aussagekraeftig", pruefsummen: "x" }, verifikation: { pruefsummenVergleich: "x" } }), "A-PROBE-W");
+      nachholNein(nachholAnlegen({ probe: { gegenprobe: "nicht-aussagekraeftig", pruefsummen: `zugang-widerrufe.json=${"1".repeat(64)}` },
+        verifikation: { pruefsummenVergleich: `zugang-widerrufe.json=${"1".repeat(64)}` } }), "A-PROBE-W");
+      // AU-4: fehlende endpruefung.json
+      nachholNein(nachholAnlegen({ ohneDatei: "endpruefung.json" }), "A-FRIST");
+      // AU-5: endgültiger Abbruch nach T0 (Abbruchdatei) ⇒ NACHHOL-NO-GO mit dieser ID; Neustart ohne Abbruchdatei bleibt GO
+      const start = nachholAnlegen();
+      datei("docs/acc45/releases/v4-r1/abbruch-A-START.json", { id: "A-START" });
+      nachholNein(start, "A-START");
+      rmSync(join(w, "docs/acc45/releases/v4-r1/abbruch-A-START.json"));
+      // Hinweis A3: Platzhalter in Nachhol-Dateien
+      nachholNein(nachholAnlegen({ probe: { schritt: "TODO" } }), "A-FRIST");
+      nachholNein(nachholAnlegen({ t0: { kandidat: "0".repeat(40) } }), "A-FRIST");
+      // L-2: Stand der Endprüfung: HEAD-Commit Vorfahr, SHA-256 der Liste an diesem Commit
+      nachholNein(nachholAnlegen({ endpruefung: { listeSha256: "1".repeat(64) } }), "A-FRIST");
+      const keinVorfahr = nachholAnlegen();
+      keinVorfahr.nachhol["v4-r1"].endpruefungIstVorfahr = false;
+      nachholNein(keinVorfahr, "A-FRIST");
+      // Online: HEAD des lokalen Repos muss in origin/main liegen
+      const d = nachholSammeln(w, "v4-r1", { offline: true, fixture: nachholAnlegen() });
+      expect(nachholPruefen(d).ergebnis).toBe("NACHHOL-GO");
+      expect(nachholPruefen({ ...d, online: true, headInMain: false }).abbruchIds).toContain("A-REPO");
+      // Dateiliste des Release nicht ermittelbar (Git-Fehler) ⇒ fail-closed
+      expect(nachholPruefen({ ...d, releaseDateien: null }).ergebnis).toBe("NACHHOL-NO-GO");
     });
     it("--nachhol CLI: nur mit --release-id; offline Exit 3 bei NACHHOL-GO, 1 bei NO-GO; Aufruffehler Exit 2", () => {
       const fx = nachholAnlegen();
@@ -3047,9 +3100,24 @@ describe("GATE-EW1/EW2: Erstwechsel-Ausnahme der Widerrufbuch-Probe (G6) und Nac
       expect(folge(nachholAnlegen({ mergedAt: [um(50)], probe: { bild: D_ALT } }), abw).ergebnis).toBe("NO-GO");
       expect(folge(spaet, { nachholAbweichung: { releaseId: "v4-r0", grund: "x" } }).ergebnis).toBe("NO-GO");
     });
-    it("unlesbare Freigabedatei eines anderen Release in HEAD → G6 NO-GO (fail-closed)", () => {
-      datei("docs/acc45/releases/v4-r0.freigabe.json", "{ kaputt");
-      expect(g6(fixtureGo()).gruende.join(" ")).toMatch(/v4-r0\.freigabe\.json/);
+    it("AU-1: Rückhalt hängt an der Release-ID der Konfiguration, nicht an gefundenen Dateien oder der Basis", () => {
+      // A5: Basis ≠ M (z. B. ein Zwischenstand) — ohne NACHHOL-GO trotzdem NO-GO
+      const fx = aufbauen();
+      datei("docs/acc45/releases/v4-r2.freigabe.json", { ...FREIGABE, releaseId: "v4-r2", kandidatCommit: K2, basisCommit: B });
+      const fx2 = fixtureGo();
+      fx2.kandidatCommit = K2;
+      fx2.nachhol = fx.nachhol;
+      expect(g6(fx2, { releaseId: "v4-r2" }).gruende.join(" ")).toMatch(/Ausnahme v4-r1 nicht abgeschlossen/);
+      // A4: Freigabedatei v4-r1 aus HEAD gelöscht ⇒ NO-GO; unlesbar ⇒ NO-GO
+      rmSync(join(w, FREIGABE_PFAD));
+      expect(g6(fx2, { releaseId: "v4-r2" }).gruende.join(" ")).toMatch(/v4-r1\.freigabe\.json .*fehlt/);
+      datei(FREIGABE_PFAD, "{ kaputt");
+      expect(g6(fx2, { releaseId: "v4-r2" }).gruende.join(" ")).toMatch(/v4-r1\.freigabe\.json/);
+      // v4-r1 ohne Ausnahme freigegeben ⇒ kein Rückhalt
+      datei(FREIGABE_PFAD, FREIGABE);
+      expect(g6(fx2, { releaseId: "v4-r2" }).gruende).toEqual([]);
+      // v4-r1 selbst: kein Rückhalt
+      expect(g6(fixtureGo()).gruende).toEqual([]);
     });
   });
 
@@ -3076,6 +3144,8 @@ describe("GATE-EW1/EW2: Erstwechsel-Ausnahme der Widerrufbuch-Probe (G6) und Nac
       expect(zipEntpacken(zipBauen([{ name: "staging-nachweis/staging-nachweis.json", daten: a }, { name: "e2e/axe.json", daten: b }])))
         .toEqual([{ name: "staging-nachweis/staging-nachweis.json", daten: a }, { name: "e2e/axe.json", daten: b }]);
       expect(() => zipEntpacken(Buffer.from("kein zip"))).toThrow();
+      // Entpack-Bombe: komprimiert klein, entpackt > 10 MB ⇒ Fehler (Review #535)
+      expect(() => zipEntpacken(zipBauen([{ name: "a", daten: Buffer.from("") }, { name: "b", daten: Buffer.alloc(11 * 1024 * 1024) }]))).toThrow();
     });
     it("online: Git-Angaben (Eltern, Bäume, Dateien, Vorfahr) und gh-GET (Lauf, Artefakt, Regeln, PRs) werden gelesen (temporäres Git-Repo)", () => {
       const repo = mkdtempSync(join(tmpdir(), "ew-online-"));
@@ -3134,6 +3204,62 @@ describe("GATE-EW1/EW2: Erstwechsel-Ausnahme der Widerrufbuch-Probe (G6) und Nac
         for (const id of ["E3", "E6", "E7", "E13"]) expect(gruende, id).not.toMatch(new RegExp(` ${id}: `));
         expect(gruende).toMatch(/ E2: /);            // Basis des Test-Repos ist nicht 274bfa0
         expect(gruende).toMatch(/ E14: .*GATE-EW1/); // SSOT ohne GATE-EW1 → fail-closed
+      } finally { rmSync(repo, { recursive: true, force: true }); }
+    }, 120_000);
+
+    it("Review #535 BL-1/BL-2/R34 online: Merge lässt t0.json fallen oder setzt abbruch-A-VOR zurück; frühere Freigabe-Kandidaten; fremder Artefaktname", () => {
+      const repo = mkdtempSync(join(tmpdir(), "ew-merge-"));
+      try {
+        const g = (...args) => {
+          const r = spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false", "-c", "init.defaultBranch=main", "-c", "core.autocrlf=false", ...args], { cwd: repo, encoding: "utf8" });
+          if (r.status !== 0) throw new Error(args.join(" ") + ": " + r.stderr);
+          return r.stdout.trim();
+        };
+        const schreib = (rel, inhalt) => { mkdirSync(join(repo, rel, ".."), { recursive: true }); writeFileSync(join(repo, rel), typeof inhalt === "string" ? inhalt : JSON.stringify(inhalt)); };
+        const commit = (msg) => { g("add", "-A"); g("commit", "-q", "-m", msg); return g("rev-parse", "HEAD"); };
+        const AVOR = "docs/acc45/releases/v4-r1/abbruch-A-VOR.json";
+        const avor = (startzeilen) => ({ id: "A-VOR", releaseId: "v4-r1", kandidat: "c".repeat(40), digest: D, zeit: "2026-11-19T20:00:00Z", deployExit: 1,
+          startzustand: { zugangWiderrufe: "fehlt", kontoWiderrufe: "fehlt", v4Startzeilen: startzeilen, protokollSha256: "4".repeat(64) } });
+        g("init", "-q");
+        schreib("server.mjs", "// Basis\n"); const basis = commit("Basis");
+        g("checkout", "-q", "-b", "rc");
+        for (const p of C.kandidatMitDateien) schreib(p, `// ${p}\n`);
+        const s = commit("Schnitt");
+        g("checkout", "-q", "main");
+        g("merge", "-q", "--no-ff", "rc", "-m", "Merge rc");
+        const m = g("rev-parse", "HEAD");
+        const fr = (kandidat) => ({ ...FREIGABE, kandidatCommit: kandidat, basisCommit: basis, schnittCommit: s, erstwechselAusnahme: { widerrufbuchProbe: {
+          releaseId: "v4-r1", basisCommit: basis, kandidatCommit: kandidat, schnittCommit: s, digest: D, nachholFristStunden: 24, repoFristStunden: 48,
+          gueltigBis: "2026-12-31", staging: { lauf: "4242-1", nachweis: NACHWEIS, sha256: "1".repeat(64) }, abbruchBedingungen: [...C.abbruchBedingungen],
+          nachholAblage: ABLAGE, quittung: "q" } } });
+        schreib(FREIGABE_PFAD, fr(s)); commit("Freigabe: erster Kandidat S (BL-2)");
+        schreib(FREIGABE_PFAD, fr(m)); schreib(AVOR, avor(0)); commit("Freigabe: Kandidat M, A-VOR-Nachweis");
+        g("checkout", "-q", "-b", "alt");
+        schreib("anderes.txt", "x\n"); commit("älterer Zweig");
+        g("checkout", "-q", "main");
+        schreib(ABLAGE + "t0.json", { releaseId: "v4-r1" }); schreib(AVOR, avor(3)); commit("T0 und Start im A-VOR-Nachweis");
+        g("merge", "-q", "--no-ff", "--no-commit", "alt");
+        g("rm", "-q", ABLAGE + "t0.json");
+        g("checkout", "alt", "--", AVOR);
+        commit("Merge alt: t0.json fällt weg, A-VOR auf altem Stand");
+        expect(existsSync(join(repo, ABLAGE + "t0.json"))).toBe(false);
+        const R = "repos/rinats-png/dienstplaner/";
+        const gh = (pfad) => {
+          if (pfad === `${R}actions/runs/4242`) return { id: 4242, run_attempt: 1 };
+          if (pfad === `${R}actions/runs/4242/artifacts?per_page=100`) return { artifacts: [{ id: 5, name: "staging-nachweis-alt", expired: false }] };
+          throw new Error("kein Netz: " + pfad);
+        };
+        const ghRoh = () => zipBauen([{ name: "x.json", daten: Buffer.from("{}") }]);
+        const e = sammeln({ wurzel: repo, offline: false, kandidatSha: m, basisSha: basis, releaseId: "v4-r1", digest: D, jetztMs: JETZT_MS, gh, ghRoh });
+        const x = e.erstwechsel;
+        expect(x.releaseHistorie).toContain(ABLAGE + "t0.json");
+        expect(x.releaseHistorie.filter((p) => p === AVOR).length).toBeGreaterThan(1);
+        expect(x.fruehereKandidaten).toEqual(expect.arrayContaining([s, m]));
+        expect(x.stagingArtefakt).toBe(null); // R34: nur das Artefakt staging-nachweis zählt
+        const gruende = gateVon(auswerten(e), "G6").gruende.join(" | ");
+        expect(gruende).toMatch(/ E15: .*nachhol\/t0\.json: V4-Start erfolgt/);
+        expect(gruende).toMatch(/ E15: .*abbruch-A-VOR\.json wurde nachträglich geändert/);
+        expect(gruende).toMatch(new RegExp(` E15: .*früherer Kandidat ${s.slice(0, 12)}`));
       } finally { rmSync(repo, { recursive: true, force: true }); }
     }, 120_000);
   });
