@@ -93,3 +93,25 @@ Läufe, alle ohne Trivy-Binary-Cache, also im früheren Fehlerpfad). Ein
 elfter Lauf scheiterte sofort an einem Tippfehler (fehlende Umgebungsvariable)
 im ersten Commit, nicht an Trivy; ein zwölfter wurde von Hand abgebrochen.
 Bezug von `ghcr.io` (Bild und Datenbank): 10 von 10 erfolgreich.
+
+## Nachtrag 2026-11-24: Cache-504 im Bildbau (`cache-to: type=gha`)
+
+- **Befund:** Der Schritt `docker/build-push-action` (Bild bauen) scheiterte
+  zweimal mit `error writing layer blob: failed to parse error response 504`
+  (HTML-504-Seite des GitHub-Cache-Backends): Lauf 45427085462 (Job
+  `sicherung`/Bildbau, Wiederholung grün) und Lauf 45432642405 (`pruefen-c`,
+  push-Lauf; derselbe SHA im pull_request-Lauf grün). Der Build selbst war in
+  Ordnung. Es schlug das SCHREIBEN des Build-Caches fehl.
+- **Gegenmaßnahme:** `cache-to: type=gha,mode=max,ignore-error=true` in
+  `pruefung.yml` (`pruefen-c`), `deploy.yml` (Job `bild`, Prüfbau) und
+  `betrieb-sicherung.yml`. Ein Fehler beim Cache-EXPORT ist dann nicht mehr
+  fatal. Ein echter Build- oder Push-Fehler bleibt fatal. `cache-from` ist
+  unverändert. `pruefungen/workflow-haertung.test.js` verlangt das Attribut an
+  jedem `cache-to: type=gha`.
+- **Risiko:** Ein fehlgeschlagener Cache-Export bleibt für den Lauf stumm.
+  BuildKit schreibt eine Warnung ins Log des Schrittes (nach `cache-to`
+  suchen). Folgeläufe sind dann langsamer (Cache fehlt). Der Lauf selbst
+  bleibt korrekt.
+- **Weiterhin Rot und Wiederholung:** Ein 504 beim Bezug (Registry,
+  `cache-from`, Basis-Bilder) bleibt ein Fehler. Dann hilft ein erneuter Lauf
+  der fehlgeschlagenen Jobs; im Bericht benennen, kein "Flake" ohne Ursache.

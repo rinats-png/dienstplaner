@@ -1013,7 +1013,7 @@ jobs:
           load: true
           tags: ${{ env.BILD }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-to: type=gha,mode=max,ignore-error=true
 
       # Jede Prüfung bekommt einen frischen Container mit leerer Ablage.
       #
