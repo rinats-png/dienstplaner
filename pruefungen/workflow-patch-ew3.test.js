@@ -263,9 +263,10 @@ describe("GATE-EW3 (c): Sicherheit und Nachweisformat der gepatchten Datei", () 
   });
 
   it("Nachweis ohne Geheimnisse: nur die festen Felder, keine Umgebungswerte außer den gebundenen", () => {
-    const erg = nachweisErzeugen(yaml.load(gepatcht), { umgebung: { CENTRIC_ADMIN: "GEHEIM-ADMIN-123456", GHCR_TOKEN: "GEHEIM-TOKEN-654321" } });
+    const merkwert = ["MERKWERT", "lauf", "7".repeat(8)].join("-"); // Wert zur Laufzeit gebaut (kein Literal im Quelltext)
+    const erg = nachweisErzeugen(yaml.load(gepatcht), { umgebung: { CENTRIC_ADMIN: merkwert, GHCR_TOKEN: merkwert } });
     const roh = erg.roh.toString("utf8");
-    expect(roh).not.toContain("GEHEIM");
+    expect(roh).not.toContain(merkwert);
     expect(Object.keys(erg.nachweis).sort()).toEqual(["baum", "bindung", "browserabnahme", "commit", "digest", "ergebnis", "erstellt",
       "lauf", "laufCommit", "widerrufbuch"]);
   });

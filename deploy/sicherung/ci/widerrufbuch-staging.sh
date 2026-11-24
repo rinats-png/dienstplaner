@@ -77,8 +77,7 @@ starten() { # nummer
     -v "$T/daten:/data" -v "$T/zustand:/zustand" -v "$T/merk:/ci-merk" \
     -v "$HILFE:/ci/widerrufbuch-staging.mjs:ro" \
     "$BILD" >/dev/null
-  local i
-  for i in $(seq 1 60); do
+  for _ in $(seq 1 60); do
     curl -sf "http://127.0.0.1:$PORT/gesund" >/dev/null && break
     sleep 1
   done
