@@ -1,10 +1,10 @@
 {
-  "epoche": 25,
-  "halter": "hauptchat-e25",
-  "uebernommen_am": "2026-11-24T06:51:35.454Z",
-  "erneuert_am": "2026-11-25T11:50:08.682Z",
-  "gueltig_bis": "2026-11-25T14:50:08.682Z",
-  "uebergabe": "Hauptchat wieder aktiv 24.11. 07:55; Epoche 24 (Nachtlauf) freigegeben; Kopf 4eae5d81; Kandidat rc-2026-11-22 517993ca unveraendert",
-  "vorgaenger": "nachtlauf-1123-ccr",
+  "epoche": 26,
+  "halter": "hauptchat-e26",
+  "uebernommen_am": "2026-11-25T23:09:27.657Z",
+  "erneuert_am": "2026-11-25T23:09:27.657Z",
+  "gueltig_bis": "2026-11-26T03:09:27.657Z",
+  "uebergabe": "Hauptchat setzt Arbeit fort 26.11.; eigene Lease Epoche 25 abgelaufen; Integration 4f548e66; PRs #566/#569/#570 in Bearbeitung",
+  "vorgaenger": "hauptchat-e25",
   "freigegeben_am": null
 }
