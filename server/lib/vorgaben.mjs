@@ -222,7 +222,7 @@ export const aktiveVorgaben = (liste) => (Array.isArray(liste) ? liste : []).fil
  *
  * @param {any} altM gespeicherter Betrieb
  * @param {any} neuM übermittelter Betrieb
- * @param {{ darfOrgEdit: boolean, person: any, tarif?: any, jetzt: string }} ktx
+ * @param {{ darfOrgEdit: boolean, person: any, tarif?: any, jetzt: string, zeitBudgetMs?: number }} ktx
  * @returns {{ grund?: string, mandant?: any }}
  */
 export function vorgabenZusammen(altM, neuM, { darfOrgEdit, person, tarif, jetzt, zeitBudgetMs = VORGABEN_ZEITBUDGET_MS }) {
