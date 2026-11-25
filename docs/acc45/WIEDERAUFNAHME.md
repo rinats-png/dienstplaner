@@ -5,6 +5,14 @@
 > Halter und Epoche stehen nie verlässlich in diesem Dokument: maßgeblich ist allein `node werkzeug/koordination.mjs status`
 > (dazu `leerlauf`). Epochenangaben in den Nachträgen unten sind historisch. Betriebsregeln: Abschnitt „Koordinationsregel“.
 
+## Nachtrag 2026-11-25 (Nachtlauf 07:32Z, nur lesende Prüfung und Statuspflege, Branch `ccr-a5d550e1-ke5nkl`)
+
+- **Integrationskopf:** `integration/release-v4` `6445136` (Merge #539, V4-4-Folge). Davor #540 (SSOT Pakete 2), #541 (Intelligence-Test Zufallstreffer). Branch vor Arbeitsbeginn auf `origin/integration/release-v4` gesetzt.
+- **Lease:** Epoche 25 (`hauptchat-e25`) gültig bis 08:13Z, letzte Erneuerung 05:13Z; `leerlauf` Exit 5 (Verdacht, aber Lease gültig). Nicht übernommen, keine Code-Änderung, keine Fremdarbeit an laufenden Paketen.
+- **Hintergrundausführung (belegt):** Routine `trig_0144efYeRu3BMqUGbXuGTDRB` stündlich (`32 * * * *`), aktiv, Lauf 07:32Z. Keine Einrichtung durch den Betreiber nötig, kein zweiter Zeitplan.
+- **Offene PRs gegen `integration/release-v4` mit Bewegung heute:** #543 (V4-3d-B1, Kontrast Planzellen), #542 (L-4 Rechnungen serverseitig), #535 (GATE-EW1/EW2/EW4, Erstwechsel-Ausnahme). Sie gehören dem aktiven Koordinator. Dependabot #496/#497/#498/#406/#407/#400, Doku #480, Drafts unverändert; #489 (`main`) bleibt Draft, Merge nur mit Betreiberfreigabe.
+- **Keine neu abgeschlossenen PT behauptet.** Kein neuer Betreiberentscheid nötig.
+
 ## Nachtrag 2026-11-24 (Nachtlauf, nur lesende Prüfung und Statuspflege, Branch `ccr-a5d550e1-wkkibk`)
 
 - **Integrationskopf:** `integration/release-v4` `4eae5d8` (Merge #506, Doku). Davor #507 (`eb88621`): Tiefendeckel an allen Rumpflesern (WP-19.5, Review #505 A1), Tests in `modul-tiefendeckel-leser.test.js`. Branch vor Arbeitsbeginn auf `origin/integration/release-v4` gesetzt.
