@@ -2,7 +2,7 @@
    INTERNE VORGABEN — Verwaltung (WP-I4, Block K)
 
    Verwaltung → Betrieb → Interne Vorgaben. Die Leitung legt betriebliche Regeln
-   an, testet sie und aktiviert sie; Planung liest nur. Ohne KI: Jede Regelart
+   an, testet sie und aktiviert sie; Planung, Schichtverantwortung und Betriebsrat bekommen den Abschnitt nicht. Ohne KI: Jede Regelart
    des Regelbaukastens hat Auswahlfelder. Der Server prüft Form, Recht (org.edit)
    und Stufengrenze und setzt Wann/Wer; hier steht nur die Bedienung.
 
@@ -13,7 +13,7 @@ import { C } from "../farben.js";
 import { darf } from "../lib/berechtigung.js";
 import { Pill, Btn, Card, CardHead, Field, Inp, Sel, Leer } from "../ui/bausteine.jsx";
 import {
-  VORGABEN_REGELARTEN, VORGABEN_STAERKEN, VORGABEN_GRUNDLAGEN, VORGABEN_BEZUEGE, VORGABEN_GELTUNG, PARAMETER_FELDER,
+  VORGABEN_REGELARTEN, VORGABEN_STAERKEN, VORGABEN_GRUNDLAGEN, VORGABEN_BEZUEGE, VORGABEN_GELTUNG, VORGABEN_GRENZEN_FELD, PARAMETER_FELDER,
   pruefeVorgabe, vorgabeTestlauf, vorgabenGrenze, aktiveVorgaben, felderAusParametern, parameterAusFeldern,
 } from "../../server/lib/vorgaben.mjs";
 
@@ -37,30 +37,47 @@ const neueId = () => `vg-${Math.random().toString(36).slice(2, 9)}`;
 const leer = () => ({ id: neueId(), name: "", beschreibung: "", regelart: "zaehlregel", parameter: {}, geltung: { art: "betrieb" }, bezug: "monat",
   staerke: "muss", prioritaet: 1, grundlage: { art: "hausregel", fundstelle: "" }, ausnahmen: { personen: [], teilzeitAnteilig: false }, status: "entwurf" });
 
+/** Einheiten und Personen, die es im Betrieb nicht mehr gibt (gelöscht), fallen beim Speichern heraus; der Server nimmt nur eigene Kennungen. */
+export function bezuegeBereinigen(v, m) {
+  const kennung = (l) => new Set((l || []).map((x) => String(x.id)));
+  const eh = kennung(m.einheiten), pe = kennung(m.personen);
+  const nur = (l, menge) => (Array.isArray(l) ? l.filter((x) => menge.has(String(x))) : l);
+  const g = v.geltung || {};
+  const geltung = { ...g, ...(g.einheiten !== undefined ? { einheiten: nur(g.einheiten, eh) } : {}), ...(g.personen !== undefined ? { personen: nur(g.personen, pe) } : {}) };
+  const a = v.ausnahmen;
+  return { ...v, geltung, ...(a ? { ausnahmen: { ...a, ...(a.personen !== undefined ? { personen: nur(a.personen, pe) } : {}) } } : {}) };
+}
+
+/** Aus dem Formularstand die Vorgabe, wie sie gespeichert wird (verwaiste Bezüge entfernt, leere Felder weg). */
+export function formularZuVorgabe(v, werte, m) {
+  const w = bezuegeBereinigen(v, m);
+  const g = w.geltung || { art: "betrieb" };
+  const geltung = { art: g.art, ...(g.art === "einheit" ? { einheiten: g.einheiten || [] } : {}), ...(g.art === "gruppe" ? { gruppen: g.gruppen || [] } : {}),
+    ...(g.art === "personen" ? { personen: g.personen || [] } : {}) };
+  const a = w.ausnahmen || {};
+  const ausnahmen = { ...(a.personen && a.personen.length ? { personen: a.personen } : {}), ...(a.zeitraeume && a.zeitraeume.length ? { zeitraeume: a.zeitraeume } : {}),
+    ...(a.teilzeitAnteilig ? { teilzeitAnteilig: true } : {}) };
+  const grundlage = { art: w.grundlage.art, ...(w.grundlage.fundstelle ? { fundstelle: w.grundlage.fundstelle } : {}) };
+  const aus = { id: w.id, name: w.name.trim(), regelart: w.regelart, parameter: parameterAusFeldern(w.regelart, werte), geltung, bezug: w.bezug,
+    staerke: w.staerke, prioritaet: Number(w.prioritaet), grundlage, status: w.status };
+  if (w.beschreibung && w.beschreibung.trim()) aus.beschreibung = w.beschreibung.trim();
+  if (w.gueltigAb) aus.gueltigAb = w.gueltigAb;
+  if (w.gueltigBis) aus.gueltigBis = w.gueltigBis;
+  if (Object.keys(ausnahmen).length) aus.ausnahmen = ausnahmen;
+  return aus;
+}
+
 /** Das Formular ist ein Entwurf der Vorgabe plus die Texte der Parameterfelder. */
-function Formular({ m, start, onSpeichern, onAbbruch }) {
+export function Formular({ m, start, onSpeichern, onAbbruch }) {
   const [v, setV] = useState(start);
   const [werte, setWerte] = useState(() => felderAusParametern(start.regelart, start.parameter));
   const setz = (k, w) => setV((x) => ({ ...x, [k]: w }));
-  const bereinigt = () => {
-    const g = v.geltung || { art: "betrieb" };
-    const geltung = { art: g.art, ...(g.art === "einheit" ? { einheiten: g.einheiten || [] } : {}), ...(g.art === "gruppe" ? { gruppen: g.gruppen || [] } : {}),
-      ...(g.art === "personen" ? { personen: g.personen || [] } : {}) };
-    const a = v.ausnahmen || {};
-    const ausnahmen = { ...(a.personen && a.personen.length ? { personen: a.personen } : {}), ...(a.zeitraeume && a.zeitraeume.length ? { zeitraeume: a.zeitraeume } : {}),
-      ...(a.teilzeitAnteilig ? { teilzeitAnteilig: true } : {}) };
-    const grundlage = { art: v.grundlage.art, ...(v.grundlage.fundstelle ? { fundstelle: v.grundlage.fundstelle } : {}) };
-    const aus = { id: v.id, name: v.name.trim(), regelart: v.regelart, parameter: parameterAusFeldern(v.regelart, werte), geltung, bezug: v.bezug,
-      staerke: v.staerke, prioritaet: Number(v.prioritaet), grundlage, status: v.status };
-    if (v.beschreibung && v.beschreibung.trim()) aus.beschreibung = v.beschreibung.trim();
-    if (v.gueltigAb) aus.gueltigAb = v.gueltigAb;
-    if (v.gueltigBis) aus.gueltigBis = v.gueltigBis;
-    if (Object.keys(ausnahmen).length) aus.ausnahmen = ausnahmen;
-    return aus;
-  };
+  const bereinigt = () => formularZuVorgabe(v, werte, m);
   const fehler = pruefeVorgabe(bereinigt());
   const liste = (k, id) => { const g = v.geltung[k] || []; setz("geltung", { ...v.geltung, [k]: g.includes(id) ? g.filter((x) => x !== id) : [...g, id] }); };
   const ausnahmePerson = (id) => { const p = (v.ausnahmen && v.ausnahmen.personen) || []; setz("ausnahmen", { ...v.ausnahmen, personen: p.includes(id) ? p.filter((x) => x !== id) : [...p, id] }); };
+  const zeitraeume = (v.ausnahmen && v.ausnahmen.zeitraeume) || [];
+  const zeitraumSetzen = (i, k, w) => setz("ausnahmen", { ...v.ausnahmen, zeitraeume: zeitraeume.map((z, j) => j === i ? { ...z, [k]: w } : z) });
   const personen = (m.personen || []).filter((p) => p.status !== "ausgetreten");
   const box = { maxHeight: 150, overflow: "auto", display: "grid", gap: 4, padding: 8, border: `1px solid ${C.lineSoft}`, borderRadius: "var(--r)" };
   return (
@@ -121,6 +138,18 @@ function Formular({ m, start, onSpeichern, onAbbruch }) {
           <Field label="Ausgenommene Personen"><div style={box}>{personen.map((p) => (
             <label key={p.id} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13.5, minHeight: 24 }}>
               <input type="checkbox" checked={((v.ausnahmen && v.ausnahmen.personen) || []).includes(p.id)} onChange={() => ausnahmePerson(p.id)} />{p.vorname} {p.nachname}</label>))}</div></Field>
+          <Field label="Ausnahmezeiträume" hint="In diesen Zeiträumen gilt die Vorgabe nicht, z. B. über die Feiertage.">
+            <div style={{ display: "grid", gap: 8 }}>
+              {zeitraeume.map((z, i) => (
+                <div key={i} style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                  <Inp type="date" aria-label="Ausnahmezeitraum von" value={z.von || ""} onChange={(e) => zeitraumSetzen(i, "von", e.target.value)} />
+                  <Inp type="date" aria-label="Ausnahmezeitraum bis" value={z.bis || ""} onChange={(e) => zeitraumSetzen(i, "bis", e.target.value)} />
+                  <Btn size="sm" onClick={() => setz("ausnahmen", { ...v.ausnahmen, zeitraeume: zeitraeume.filter((_, j) => j !== i) })}>Entfernen</Btn>
+                </div>))}
+              {zeitraeume.length < VORGABEN_GRENZEN_FELD.zeitraeume
+                && <div><Btn size="sm" onClick={() => setz("ausnahmen", { ...v.ausnahmen, zeitraeume: [...zeitraeume, { von: "", bis: "" }] })}>Zeitraum hinzufügen</Btn></div>}
+            </div>
+          </Field>
         </div>
       </details>
       <div style={{ fontSize: 13, color: C.dim, lineHeight: 1.5 }}>Hinweis: Regeln zur Verteilung der Arbeitszeit sind meist mitbestimmungspflichtig
