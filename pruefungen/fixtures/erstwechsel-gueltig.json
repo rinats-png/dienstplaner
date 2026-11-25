@@ -1,0 +1,43 @@
+{
+  "hinweis": "GATE-EW1/EW2: synthetische Zusatzangaben zur Beispiel-Fixture (release-pruefung-beispiel.json) für die Erstwechsel-Ausnahme der Widerrufbuch-Probe (G6) und den Nachhol-Modus. Erfundene Werte. Kandidat M = aaaa… (Merge-Commit, Eltern 2222… und Schnitt S = 3333…), gleicher Baum 6666…. Online kommen diese Angaben aus git (rev-list --parents, rev-parse ^{tree}, ls-tree, merge-base) und gh api GET (actions/runs, rules/branches, pulls).",
+  "schnittCommit": "3333333333333333333333333333333333333333",
+  "stagingLauf": "4242-1",
+  "erstwechsel": {
+    "kandidatEltern": ["2222222222222222222222222222222222222222", "3333333333333333333333333333333333333333"],
+    "baeume": { "kandidat": "6666666666666666666666666666666666666666", "schnitt": "6666666666666666666666666666666666666666" },
+    "schnittIstVorfahr": true,
+    "releaseHistorie": [],
+    "fruehereKandidaten": [],
+    "basisDateien": { "server/lib/widerrufbuch.mjs": false, "server/lib/kontowiderrufbuch.mjs": false },
+    "kandidatDateien": {
+      "server/lib/widerrufbuch.mjs": true,
+      "server/lib/kontowiderrufbuch.mjs": true,
+      "deploy/sicherung/widerrufbuch-sicherung.sh": true,
+      "deploy/sicherung/widerrufbuch-probe.sh": true,
+      "deploy/sicherung/ci/widerrufbuch-ende-zu-ende.sh": true
+    },
+    "stagingLauf": {
+      "id": 4242, "run_attempt": 1, "path": ".github/workflows/staging-gate.yml", "event": "workflow_dispatch",
+      "status": "completed", "conclusion": "success", "head_sha": "3333333333333333333333333333333333333333"
+    },
+    "vierAugen": {
+      "regeln": {
+        "main": [{ "type": "pull_request", "parameters": { "require_code_owner_review": true } }, { "type": "update" }],
+        "integration/release-v4": [{ "type": "pull_request", "parameters": { "require_code_owner_review": true } }]
+      },
+      "freigabePr": 701,
+      "paketPrs": { "GATE-EW1": [700], "GATE-EW2": [700] },
+      "prs": {
+        "700": { "autor": "maschinenkonto", "kopf": "7777777777777777777777777777777777777777", "gemergt": true,
+          "reviews": [{ "state": "APPROVED", "autor": "rinats-png", "commit": "7777777777777777777777777777777777777777" }] },
+        "701": { "autor": "maschinenkonto", "kopf": "8888888888888888888888888888888888888888", "gemergt": true,
+          "reviews": [{ "state": "APPROVED", "autor": "rinats-png", "commit": "8888888888888888888888888888888888888888" }] }
+      },
+      "fehler": []
+    }
+  },
+  "nachhol": {
+    "v4-r1": { "mergedAt": ["2026-11-21T10:30:00Z", "2026-11-22T08:00:00Z"], "t0MergedAt": "2026-11-21T10:30:00Z", "endpruefungIstVorfahr": true,
+      "fruehereAusnahme": false, "historie": [] }
+  }
+}
