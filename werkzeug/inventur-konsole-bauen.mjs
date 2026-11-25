@@ -509,7 +509,7 @@ const zelle = (t) => t.replace(/\|/g, "\\|");
 
 /* Zählhilfe im Kasten von §2: der Sollwert in 4 Blöcken zu 8 Zeichen (Test A-8); --bauen schreibt sie mit, --pruefen prüft sie. */
 export const zaehlhilfe = (w) => w.kurz32.match(/.{8}/g).join(" ");
-const ZAEHLHILFE_ZEILE = /^(>   )`[0-9a-f]{8}( [0-9a-f]{8}){3}`( \(ohne Leerzeichen tippen)/m;
+const ZAEHLHILFE_ZEILE = /^(> {3})`[0-9a-f]{8}( [0-9a-f]{8}){3}`( \(ohne Leerzeichen tippen)/m;
 
 export function dokuWerte(w, inventurSha) {
   const b = befehle("<ref>", w);

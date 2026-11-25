@@ -15,7 +15,7 @@ import { createElement as h } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { KiSteuerung, KI_STEUERUNG_PROZESS, KI_STEUERUNG_TEXTE } from "../src/ansichten/ki-steuerung.jsx";
 import { transparenz, TRANSPARENZ_ROLLEN, KATEGORIE_TEXT } from "../server/lib/intelligence/transparenz.mjs";
-import { kiSteuerungLesen } from "../server/lib/ki-steuerung.mjs";
+import { kiSteuerungLesen, kiSteuerungAnwenden } from "../server/lib/ki-steuerung.mjs";
 import { FUNKTIONEN_IDS } from "../server/lib/intelligence/schemas.mjs";
 import { FUNKTIONEN } from "../server/lib/intelligence/positivliste.mjs";
 import { FELDER } from "../server/lib/intelligence/felder.mjs";
@@ -74,12 +74,24 @@ describe("Prozessschalter an (nur im Test)", () => {
     expect(knoepfe(ohne)).not.toContain(KI_STEUERUNG_TEXTE.pauseAufheben);
     expect(knoepfe(ohne)).not.toContain(KI_STEUERUNG_TEXTE.pauseSetzen);
   });
-  it("Leitung hebt auf mit dem Stempel der gesehenen Pause (Compare-and-set), nicht blind", () => {
+  it("Leitung hebt auf mit dem Stempel der gesehenen Pause (Compare-and-set), nicht blind: Klick → gesendete Änderung → Server hebt tatsächlich auf", () => {
+    const stand = { kiSteuerung: { ...STAND.kiSteuerung, pause: { aktiv: true, nr: 3, am: "2026-11-11T08:00:00.000Z", vonRolle: "betriebsrat", vonPerson: "r1" } } };
     const aufrufe = [];
-    const html = renderToStaticMarkup(h(KiSteuerung, { sitz: sitz("leitung"), akt: { ...AKT, setzeKiSteuerung: (a) => aufrufe.push(a) }, prozess: "an" }));
-    expect(html).toContain(KI_STEUERUNG_TEXTE.pauseAufheben);
-    const q = lies("src/ansichten/ki-steuerung.jsx");
-    expect(q).toMatch(/pause: \{ aktiv: false, am: t\.pause\.am, nr: t\.pause\.nr \?\? 0 \}/);
+    const baum = KiSteuerung({ sitz: sitz("leitung", stand), akt: { ...AKT, setzeKiSteuerung: (a) => aufrufe.push(a) }, prozess: "an" });
+    const finde = (n) => {                                              // Knopf „Pause aufheben“ im Elementbaum (ohne DOM)
+      if (!n || typeof n !== "object") return null;
+      if (Array.isArray(n)) { for (const k of n) { const r = finde(k); if (r) return r; } return null; }
+      if (n.props && n.props.children === KI_STEUERUNG_TEXTE.pauseAufheben && typeof n.props.onClick === "function") return n;
+      return n.props ? finde(n.props.children) : null;
+    };
+    const knopf = finde(baum);
+    expect(knopf).not.toBeNull();
+    knopf.props.onClick();
+    expect(aufrufe).toEqual([{ pause: { aktiv: false, am: "2026-11-11T08:00:00.000Z", nr: 3 } }]);
+    const alt = kiSteuerungLesen(stand);
+    const r = kiSteuerungAnwenden(alt, aufrufe[0], { rolle: "leitung", person: "l1", betrieb: 0, mandantId: "m1" }, "2026-11-12T08:00:00.000Z");
+    expect(r.stand.pause.aktiv).toBe(false);
+    expect(r.ereignisse.map((e) => e.art)).toEqual(["pause-aufgehoben"]);
   });
   it("Betriebsrat: ausschließlich die Pause SETZEN (nie aufheben), kein Schalter", () => {
     const html = rendere("betriebsrat", "an");
@@ -132,7 +144,7 @@ describe("Transparenzdaten", () => {
     const t = transparenz(zustand, "betriebsrat", { prozess: "an" });
     expect(t.verfuegbar).toBe(true);
     expect(t.betrieb).toEqual({ an: true, am: "2026-11-10T10:00:00.000Z", vonRolle: "leitung" });
-    expect(t.pause).toEqual({ aktiv: true, am: "2026-11-11T08:00:00.000Z", vonRolle: "betriebsrat" });
+    expect(t.pause).toEqual({ aktiv: true, am: "2026-11-11T08:00:00.000Z", vonRolle: "betriebsrat", nr: 0 });
     expect(t.betriebsratFrage.antwort).toBe("ja");
     expect(t.funktionen.map((f) => f.id)).toEqual([...FUNKTIONEN_IDS]);
     expect(t.funktionen.find((f) => f.id === "F3")).toMatchObject({ an: true, vonRolle: "leitung" });

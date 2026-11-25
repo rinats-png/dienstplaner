@@ -1578,11 +1578,6 @@
           "literale": [],
           "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
         },
-        "src/ansichten/ki-steuerung.jsx": {
-          "sha256": null,
-          "literale": [],
-          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
-        },
         "src/ansichten/kommandoleiste.jsx": {
           "sha256": "b3b37b5a22314496e05273bd32cab47fcafb2e38b48ef9f5b2ee041b76054807",
           "literale": [
@@ -1886,11 +1881,6 @@
         },
         "src/ansichten/intelligence/KiAntwort.jsx": {
           "sha256": "52ced9b611d1c4bebd9629800c73fc04366b9e63b891ff3864e7a9db54b13b2f",
-          "literale": [],
-          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
-        },
-        "src/ansichten/ki-steuerung.jsx": {
-          "sha256": null,
           "literale": [],
           "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
         },

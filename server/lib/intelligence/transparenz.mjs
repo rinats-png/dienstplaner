@@ -69,7 +69,7 @@ export function transparenz(zustand, rolle, o = {}) {
     verfuegbar: true,
     betrieb: { an: !!(z && z.betrieb && z.betrieb.an === true), ...(z && z.betrieb ? stempel(z.betrieb) : { am: null, vonRolle: null }) },
     betriebsratFrage: z && z.betriebsratFrage ? { antwort: z.betriebsratFrage.antwort, ...stempel(z.betriebsratFrage) } : null,
-    pause: { aktiv: !!(z && (z.pauseUngueltig || (z.pause && z.pause.aktiv === true))), ...(z && z.pause ? stempel(z.pause) : { am: null, vonRolle: null }) },
+    pause: { aktiv: !!(z && (z.pauseUngueltig || (z.pause && z.pause.aktiv === true))), ...(z && z.pause ? { ...stempel(z.pause), nr: Number.isInteger(z.pause.nr) ? z.pause.nr : 0 } : { am: null, vonRolle: null, nr: 0 }) },
     funktionen: FUNKTIONEN_IDS.map((id) => {
       const e = FUNKTIONEN[id];
       const s = Object.hasOwn(fn, id) ? fn[id] : null;

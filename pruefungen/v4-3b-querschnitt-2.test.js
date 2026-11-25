@@ -66,6 +66,10 @@ const lies = (d) => {
   return d === "src/ui/bausteine.jsx" ? ohneB1(t) : t;
 };
 
+/** WP-I16: Ausnahmeliste „neu seit der Basis, ohne Literale“: Dateien, die es auf der Basis nicht gab und deshalb nicht in der
+ *  (historischen, unveränderten) Fixture stehen. Genau eine Datei, 0 Form-/Farbliterale (Test unten prüft beides). */
+const NEU_SEIT_BASIS = Object.freeze(["src/ansichten/ki-steuerung.jsx"]);
+
 /** Basis des Schnitts (origin/integration/release-v4 mit V4-3b Schnitt 1–11 und Querschnitt Teil 1, #466). */
 const BASIS = "a9e524e5";
 const SCHNITT = "Querschnitt/Bausteine (Teil 2)";
@@ -250,8 +254,16 @@ describe("V4-3b Querschnitt Teil 2: Messung", () => {
     expect(fx.schnitte[SCHNITT].basis.startsWith(BASIS)).toBe(true);
     const inv = await inventar();
     const alle = inv.eintraege.filter((x) => x.gruppe !== "V4" && hauptansicht(x) === ZEILE).map((x) => x.datei).sort();
-    expect(Object.keys(fx.schnitte[SCHNITT].dateien).sort()).toEqual(alle);
-    expect(fixtureBefunde(fx, SCHNITT, alle)).toEqual([]);
+    /* WP-I16: Ausnahmeliste genau eine Datei; in der Fixture nicht vorhanden, in der Messung ohne jedes Form- oder Farbliteral. */
+    expect(NEU_SEIT_BASIS).toEqual(["src/ansichten/ki-steuerung.jsx"]);
+    for (const d of NEU_SEIT_BASIS) {
+      expect(d in fx.schnitte[SCHNITT].dateien, `${d} steht nicht in der Fixture`).toBe(false);
+      const x = inv.eintraege.find((y) => y.datei === d);
+      expect([x.formLiterale, x.rgb + x.hex], `${d}: 0 Literale`).toEqual([0, 0]);
+    }
+    const mitBasis = alle.filter((d) => !NEU_SEIT_BASIS.includes(d));
+    expect(Object.keys(fx.schnitte[SCHNITT].dateien).sort()).toEqual(mitBasis);
+    expect(fixtureBefunde(fx, SCHNITT, mitBasis)).toEqual([]);
     expect(abgleichMitFixture(fx, SCHNITT, QUERSCHNITT2_ZUORDNUNG, lies)).toEqual([]);
     /* Basis a9e524e5: 16 Radius-Literale in Teil 2; gleich der Basis von Teil 1 bis auf die vier Dateien von Teil 1. */
     const t2 = fx.schnitte[SCHNITT].dateien, t1 = fx.schnitte[TEIL1_SCHNITT].dateien;
@@ -267,13 +279,11 @@ describe("V4-3b Querschnitt Teil 2: Messung", () => {
     expect(g).toEqual([]);
   });
 
-  it("Rückrechnung: nur Radiuswerte geändert, sonst byte-gleich zur Basis a9e524e5 (alle 34 Dateien der Zeile, ohne Git)", () => {
+  it("Rückrechnung: nur Radiuswerte geändert, sonst byte-gleich zur Basis a9e524e5 (alle 33 Dateien der Zeile mit Basis, ohne Git)", () => {
     const fx = ladeBasisFixture(WURZEL).schnitte[SCHNITT];
     const dateien = Object.keys(fx.dateien);
-    expect(dateien).toHaveLength(34);
-    /* WP-I16: Dateien, die es auf der Basis nicht gab (sha256 null, keine Literale): genau die neue Oberfläche der Steuerung. */
-    expect(Object.entries(fx.dateien).filter(([, e]) => e.sha256 === null).map(([d, e]) => [d, e.literale.length])).toEqual([["src/ansichten/ki-steuerung.jsx", 0]]);
-    for (const d of dateien.filter((x) => fx.dateien[x].sha256 !== null)) {
+    expect(dateien).toHaveLength(33);
+    for (const d of dateien) {
       const r = rueckgerechnet(d);
       expect(r.ersetzt, `Anzahl Stufen in ${d}`).toBe((QUERSCHNITT2_ZUORDNUNG[d] || []).length);
       expect(sha256(r.text), `${d} zurückgerechnet = Basis`).toBe(fx.dateien[d].sha256);

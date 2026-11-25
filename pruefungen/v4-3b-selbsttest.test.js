@@ -70,7 +70,7 @@ const SELBSTTEST_ZUORDNUNG = {
 };
 
 /** SHA-256 über JSON.stringify(schnitte) der Fixture auf der Basis fd9dea35 (dreizehn Schnitte, vor diesem Schnitt). */
-const FRUEHERE_SCHNITTE_SHA256 = "246a337e0e7d5f7dd7d471307c783f2483738090321270207c8eba793b85e16e"; /* WP-I16: nur zwei neue Einträge (ki-steuerung.jsx, sha256 null) in Teil 1 und Teil 2 der Zeile Querschnitt; vorher 39a960cf… */
+const FRUEHERE_SCHNITTE_SHA256 = "39a960cfa281e2a2aa96726c23fcf533d2c0d54349c27caec61c1b1471356413";
 const FRUEHERE_SCHNITTE = Object.keys(SCHNITTE).filter((s) => s !== SCHNITT);
 
 /** Farbliterale (Hex, ohne Kommentare) in pruefung.jsx je Deklaration auf oberster Ebene, mit Art. */

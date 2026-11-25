@@ -6,7 +6,7 @@ import { heute } from "../../lib/datum.js";
 import { kiSteuerungAktionen } from "../../lib/ki-steuerung-aktionen.js";
 
 export function aktionenEinstellungen(k) {
-  const { mUpd, melde, ref, sitz, upd } = k;
+  const { mUpd, melde, ref, sitz } = k;
   return {
       /* Interne Vorgaben (WP-I4): nur org.edit; Form, Stufengrenze und Wann/Wer/Version prüft und setzt der Server. */
       vorgabeSpeichern: (v) => mUpd((m) => {

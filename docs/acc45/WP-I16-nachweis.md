@@ -82,3 +82,13 @@ Nicht ausgeführt: Vollläufe, Browser, `wp48-teilweg`, `abnahme-*`, `selbstserv
 **Art.-15-Frage (nur geprüft, kein Fix):** Die Selbstauskunft (`server/lib/auskunft.mjs`, `auskunftBauen`) nimmt aus `einstellungen` nur das Modulprotokoll; die Mitarbeitersicht (`eigeneSicht`) trägt `kiSteuerung` nicht (Sicht entfernt es für Beschäftigte). `vonPerson` in `kiSteuerung` (wer die Pause gesetzt oder aufgehoben hat) erscheint daher **nicht** in der eigenen Auskunft eines Betriebsratsmitglieds. Offener Punkt für die rechtliche Prüfung: Ob die Personenkennung im Betriebsstand auskunftspflichtig ist und in die Auskunft gehört (bei Bedarf als eigenes Paket). Gelesen, nicht per Test belegt.
 
 **Offene Punkte:** Das Verhalten des Betreibers bei „zugang-sperren“ unter Pause (Notausgang „alle des Betriebs“ nicht möglich, solange pausiert) ist entsprechend der Vorgabe „Rollenvergabe darf den Schutz nicht umgehen“ gebaut; falls der Betreiber hier eine Ausnahme braucht, ist das eine Entscheidung. Eine bei Pause abgewiesene Einlösung verbraucht die Einladung (wie „Rolle geändert“); die Leitung stellt nach dem Aufheben neu aus.
+
+## Offene Entscheidungen (Delta-Review, dritte Nachbesserung; nicht geändert)
+a. **Notausgang Betreiber bei aktiver Pause:** `zugang-sperren` ist für den Betreiber mitgesperrt. Empfehlung des Reviewers: Sperren und Widerruf aus Sicherheitsgründen erlauben und protokollieren, nur Anlegen und Umstellen sperren.
+b. **Schreibweg der Leitung:** Die Antwort „ja“ auf die Frage nach der Vertretung setzt die Pause; dieser Weg liegt hinter keinem Schalter.
+c. **Betreiberweg `POST /api/zugaenge`:** ohne Pausenprüfung.
+d. **Art. 15 `vonPerson`:** Auskunftspflicht der Personenkennung im Pausenstand (siehe oben).
+e. **Betrieb/Raum löschen** entfernt die Pause.
+
+## Nachbesserung 3 (Messung)
+V4-3b: Fixture `v4-radiusstufen-basis.json` und das Siegel „frühere Schnitte“ (`39a960cf…`) stehen wieder auf dem ursprünglichen Stand. Die neue Datei `src/ansichten/ki-steuerung.jsx` steht stattdessen in einer ausdrücklichen Ausnahmeliste „neu seit der Basis, ohne Literale“ (`NEU_SEIT_BASIS`, genau diese eine Datei) in `v4-3b-querschnitt-1/2.test.js`; geprüft wird, dass sie nicht in der Fixture steht und 0 Form-/Farbliterale hat. Messwerte tragen den begründeten Aufschlag (Dateien/Sichtbar/Zeilen/Inline-Stile) für diese eine Datei; jede Datei mit Basis bleibt byte-gleich.
