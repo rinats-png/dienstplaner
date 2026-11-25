@@ -4,10 +4,10 @@
   "anzahl": 295,
   "statusZaehlung": {
     "BLOCKED": 117,
-    "READY": 28,
+    "READY": 27,
     "IN_PROGRESS": 20,
     "REVIEW": 10,
-    "INTEGRATED": 117,
+    "INTEGRATED": 118,
     "DONE": 3
   },
   "jeStrang": {
@@ -37,10 +37,10 @@
     },
     "folge": {
       "pakete": 62,
-      "offen": 43,
+      "offen": 42,
       "restPT": {
-        "min": 45.95,
-        "max": 79.35
+        "min": 43.95,
+        "max": 76.35
       }
     },
     "extern": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 365.55,
-    "max": 626.5
+    "min": 363.55,
+    "max": 623.5
   },
   "kritischerPfad": {
     "summe": 70,
@@ -7296,12 +7296,12 @@
       "prio": "P1",
       "aufwandPT": {"min":2,"max":3},
       "abhaengigkeiten": [],
-      "status": "READY",
+      "status": "INTEGRATED",
       "stufen": {
         "implementiert": {"wert":true,"beleg":"Branch acc45/release/rst7-probe: deploy/deploy-smoke.mjs (Stufe von /gesund, CENTRIC_SMOKE_PROTOKOLL), Tests in pruefungen/deploy-automatik.test.js; Abgleich und Abgrenzung (K4-P4, em6, be1, be2-a1, deploy-skripte, G7) in docs/acc45/RST-7-nachweis.md"},
         "lokalGetestet": {"wert":true,"beleg":"lokal 2026-11-25 (Windows, TZ=UTC, --maxWorkers=1): deploy-automatik -t deploy-smoke 3/3 (vorher 2 rot), gesund -t deploy-smoke 1/1; Mutationen M1-M6 rot"},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "reviewt": {"wert":true,"beleg":"Opus-Review zu PR #558: FREIGABE auf Kopf ec4be2a6 (niedrige Hinweise ohne Änderung)"},
+        "integriert": {"wert":true,"beleg":"PR #558 in integration/release-v4 (Merge-Commit ff12dad1)"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -7310,12 +7310,12 @@
       "agent": null,
       "modell": "sonnet + opus",
       "konfliktzonen": [],
-      "pr": [],
-      "nachweis": "docs/acc45/RST-7-nachweis.md; Release-Stillstand-Analyse 2026-11-24, Abschnitt 7; docs/acc45/RELEASE-PROZESS.md",
+      "pr": ["#558"],
+      "nachweis": "docs/acc45/RST-7-nachweis.md; Release-Stillstand-Analyse 2026-11-24, Abschnitt 7; docs/acc45/RELEASE-PROZESS.md; PR #558 (gemergt, Merge-Commit ff12dad1); docs/acc45/RST-7-nachweis.md",
       "akzeptanz": "Skript für Außenabruf /gesund und Sicherheitskopfzeilen; Beobachtungsprotokoll 24 h; Rücksprung-Probe A→B→A in CI mit synthetischen Daten; Wiederherstellungs- und Vorwärts-Reparaturnachweis; Probe beweist Rücksprung nur ab dem zweiten Wechsel; R0 unverändert",
       "tests": "Unit, shellcheck, CI-Probe",
       "dateien": "deploy/, pruefungen/",
-      "notiz": "Umfangsklasse: TECHN-ABHAENGIGKEIT. Prioritätsbegründung: P1 gilt nur für den Wiederherstellungs- und Vorwärts-Reparaturnachweis: Vor dem ersten Produktionswechsel muss belegt sein, dass Wiederherstellung und Vorwärts-Reparatur funktionieren (Voraussetzung laut Koordinator-Vorgabe; G7 verlangt eine belegte Rückwegstrategie). Umfang: Skript für Außenabruf /gesund und Sicherheitskopfzeilen, Beobachtungsprotokoll 24 h, Rücksprung-Probe A→B→A in CI mit synthetischen Daten (Vorbereitung E-14), Wiederherstellungs- und Vorwärts-Reparaturnachweis. Die Probe A→B→A beweist den Rücksprung erst ab dem zweiten Wechsel und trägt die P1 nicht; R0 bleibt unverändert. Aufwand und Umfang hängen vom Entwurf wiederherstellung-k4-entwurf-2026-11-24.md ab (liegt im Scratchpad des Koordinators, entsteht noch, nicht im Repo): Aufwand nach Vorlage des Entwurfs neu schätzen. Ausführung auf dem VPS bleibt Betreiberhandlung. Reviewbedarf: Opus. Abweichung von der Analyse-Arbeitspriorität: Die Release-Stillstand-Analyse empfahl „SSOT-Prio P2 wegen G9“; das wäre eine G9-Umgehung und ist laut Betreiber verboten. Die Priorität hier ist fachlich begründet. Quelle: Release-Stillstand-Analyse 2026-11-24 (Abschnitt 7) und Koordinator-Vorgabe 2026-11-24. Aufwand SCHÄTZUNG, nicht gemessen. Konfliktzone (Dateien, nicht im SSOT-Zonenvokabular): deploy/, pruefungen/.\nNachtrag 2026-11-25 (Betreiber): Verbindlich für v4-r1 (Post-Deploy-, Rückweg- und A→B→A-Probe). K4 Pfad 0."
+      "notiz": "Umfangsklasse: TECHN-ABHAENGIGKEIT. Prioritätsbegründung: P1 gilt nur für den Wiederherstellungs- und Vorwärts-Reparaturnachweis: Vor dem ersten Produktionswechsel muss belegt sein, dass Wiederherstellung und Vorwärts-Reparatur funktionieren (Voraussetzung laut Koordinator-Vorgabe; G7 verlangt eine belegte Rückwegstrategie). Umfang: Skript für Außenabruf /gesund und Sicherheitskopfzeilen, Beobachtungsprotokoll 24 h, Rücksprung-Probe A→B→A in CI mit synthetischen Daten (Vorbereitung E-14), Wiederherstellungs- und Vorwärts-Reparaturnachweis. Die Probe A→B→A beweist den Rücksprung erst ab dem zweiten Wechsel und trägt die P1 nicht; R0 bleibt unverändert. Aufwand und Umfang hängen vom Entwurf wiederherstellung-k4-entwurf-2026-11-24.md ab (liegt im Scratchpad des Koordinators, entsteht noch, nicht im Repo): Aufwand nach Vorlage des Entwurfs neu schätzen. Ausführung auf dem VPS bleibt Betreiberhandlung. Reviewbedarf: Opus. Abweichung von der Analyse-Arbeitspriorität: Die Release-Stillstand-Analyse empfahl „SSOT-Prio P2 wegen G9“; das wäre eine G9-Umgehung und ist laut Betreiber verboten. Die Priorität hier ist fachlich begründet. Quelle: Release-Stillstand-Analyse 2026-11-24 (Abschnitt 7) und Koordinator-Vorgabe 2026-11-24. Aufwand SCHÄTZUNG, nicht gemessen. Konfliktzone (Dateien, nicht im SSOT-Zonenvokabular): deploy/, pruefungen/.\nNachtrag 2026-11-25 (Betreiber): Verbindlich für v4-r1 (Post-Deploy-, Rückweg- und A→B→A-Probe). K4 Pfad 0.\nNachtrag 2026-11-25: Außenabruf-Smoke mit Beobachtungsprotokoll integriert (#558); A→B→A, Vorwärts-Reparatur und Rücksprung-Regeln waren durch K4-P4 (#556) und vorhandene Tests belegt. Außenabruf gegen die echte Domain, 24-h-Protokoll und Restore-Probe am Freigabe-Digest belegt erst der Livewechsel ab T0 (stagingGeprueft/fachlichFreigegeben/produktiv bleiben false). Hinweis: `CENTRIC_SMOKE_PROTOKOLL` nicht in die `.env` des Servers eintragen (der Smoke läuft im Container; ein nicht beschreibbarer Pfad würde den Deploy abbrechen). CI-Patch-Vorschläge (Außenabruf in deploy.yml, K4-P4-Schritt in pruefung.yml) bündelt der Betreiber."
     },
     {
       "id": "RST-8",
