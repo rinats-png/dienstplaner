@@ -7,7 +7,7 @@
    des Regelbaukastens hat Auswahlfelder. Der Server prüft Form, Recht (org.edit)
    und Stufengrenze und setzt Wann/Wer; hier steht nur die Bedienung.
 
-   Eine aktive Vorgabe wirkt noch nicht im Plan (WP-I5) — der Text sagt das.
+   Eine aktive Vorgabe wirkt, wo ihre Regelart im Plan gerechnet wird (WP-I5, server/lib/vorgabenwirkung.mjs); die Liste sagt je Vorgabe, wo nicht.
    ========================================================================== */
 import { useState } from "react";
 import { C } from "../farben.js";
@@ -17,6 +17,7 @@ import {
   VORGABEN_REGELARTEN, VORGABEN_STAERKEN, VORGABEN_GRUNDLAGEN, VORGABEN_BEZUEGE, VORGABEN_GELTUNG, VORGABEN_GRENZEN_FELD, PARAMETER_FELDER,
   pruefeVorgabe, vorgabeTestlauf, vorgabenGrenze, aktiveVorgaben, felderAusParametern, parameterAusFeldern,
 } from "../../server/lib/vorgaben.mjs";
+import { vorgabePlanwirkung } from "../../server/lib/vorgabenwirkung.mjs";
 
 export const REGELART_TEXT = {
   zaehlregel: "Zählregel (Ereignisse im Zeitraum zählen)", grenzregel: "Grenzregel (Wert gegen Ober-/Untergrenze)",
@@ -205,8 +206,8 @@ function VorgabenInnen({ sitz, akt, lesend }) {
         <div style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.55, maxWidth: 760 }}>
           Betriebliche Regeln, die CENTRIC zusätzlich zu Gesetz und Tarif prüfen kann, etwa „zwei freie Wochenenden im Monat“. {lesend
             ? "Sie können die Vorgaben einsehen; anlegen, testen, aktivieren und ändern darf nur die Leitung. "
-            : "Eine Vorgabe wird angelegt, getestet und erst dann aktiviert; eine aktive Vorgabe wird deaktiviert, nicht gelöscht. "}Sie ersetzt nie ein Gesetz. Aktive Vorgaben sind gespeichert und rechenbar; ihre Wirkung im Planungsassistenten,
-          in der Ersatzsuche und in der Selbstplanung folgt in einem eigenen Schritt. Der Test rechnet Beispielfälle durch, nicht den echten Plan.
+            : "Eine Vorgabe wird angelegt, getestet und erst dann aktiviert; eine aktive Vorgabe wird deaktiviert, nicht gelöscht. "}Sie ersetzt nie ein Gesetz. Aktive Vorgaben gelten im Planungsassistenten, in der Ersatzsuche und in der Selbstplanung: Ein Muss ist eine Achtung mit Bestätigung, ein Soll ein Hinweis; gesperrt wird nie.
+          Der Test rechnet Beispielfälle durch, nicht den echten Plan.
           {Number.isFinite(grenze) && ` In dieser Preisstufe sind bis zu ${grenze} aktive Vorgaben möglich.`}
         </div>
         {liste.length === 0 && !bearbeite && <Leer titel="Noch keine Vorgaben" text={lesend ? "Die Leitung hat noch keine interne Vorgabe angelegt." : "Legen Sie die erste interne Vorgabe an."} />}
@@ -224,6 +225,8 @@ function VorgabenInnen({ sitz, akt, lesend }) {
                 <span style={{ fontSize: 12.5, color: C.dim }}>{REGELART_TEXT[v.regelart]} · {BEZUG_TEXT[v.bezug]} · {GELTUNG_TEXT[v.geltung && v.geltung.art]} · {GRUNDLAGE_TEXT[v.grundlage && v.grundlage.art]}</span>
               </div>
               {v.beschreibung && <div style={{ fontSize: 13.5 }}>{v.beschreibung}</div>}
+              {v.status === "aktiv" && v.staerke === "wunsch" && <div style={{ fontSize: 12.5, color: C.dim }}>Wirkt im Plan noch nicht: Ein Wunsch wird erst vom Planer berücksichtigt.</div>}
+              {v.status === "aktiv" && v.staerke !== "wunsch" && !vorgabePlanwirkung(v).wirkt && <div style={{ fontSize: 12.5, color: C.dim }}>Wirkt im Plan noch nicht: {vorgabePlanwirkung(v).grund}</div>}
               {t && (
                 <div role="status" style={{ fontSize: 13.5, lineHeight: 1.5 }}>
                   {t.fehler ? t.fehler : <>

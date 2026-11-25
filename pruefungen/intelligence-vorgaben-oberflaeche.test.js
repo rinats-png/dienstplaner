@@ -53,10 +53,20 @@ describe("Oberfläche", () => {
     expect(q).toContain("mitbestimmungspflichtig");
     expect(q).not.toMatch(/Betriebsrat sieht/);
   });
-  it("der Text verspricht keine Wirkung im Plan, die es noch nicht gibt", () => {
+  it("der Text nennt die Wirkung im Plan (WP-I5) und verspricht keine, die es nicht gibt", () => {
     const t = render(sitz([]));
-    expect(t).toContain("folgt in einem eigenen Schritt");
+    expect(t).not.toContain("folgt in einem eigenen Schritt");
+    expect(t).toContain("gelten im Planungsassistenten");
+    expect(t).toContain("gesperrt wird nie");
     expect(t).toContain("nicht den echten Plan");
+  });
+  it("eine aktive Vorgabe, die im Plan nicht wirkt, sagt das mit Grund (Grenzregel, Wunsch); eine wirkende nicht", () => {
+    const g = render(sitz([V("g", "aktiv", { regelart: "grenzregel", parameter: { groesse: "x", hoechstens: 1 } })]));
+    expect(g).toContain("Wirkt im Plan noch nicht");
+    expect(g).toContain("Testlauf");
+    expect(render(sitz([V("w", "aktiv", { staerke: "wunsch" })]))).toContain("Ein Wunsch wird erst vom Planer berücksichtigt");
+    const m = render(sitz([V("m", "aktiv", { regelart: "musterregel", parameter: { art: "verbotenFolge", von: ["N"], dann: ["F"] } })]));
+    expect(m).not.toContain("Wirkt im Plan noch nicht");
   });
   it("Stufengrenzen aus stufen.js entsprechen dem Server", () => {
     expect(VORGABEN_STUFENGRENZE).toEqual({ basis: 5, pro: 25, enterprise: Infinity });

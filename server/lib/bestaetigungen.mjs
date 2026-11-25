@@ -20,6 +20,7 @@
    ========================================================================== */
 import { ZUSTELLARTEN, TITEL_MAX, TEXT_MAX } from "./mitteilungen.mjs";
 import { BRANCHEN_BEFUNDART } from "./branchenkatalog.mjs";
+import { VORGABEN_BEFUNDART } from "./vorgabenwirkung.mjs";
 import { betriebstag } from "./betriebszeit.mjs";
 
 /** Die Gründe, die der Warndialog anbietet — dieselben Kennungen wie
@@ -73,6 +74,8 @@ export const BEFUND_KATALOG = Object.freeze({
   /* WP-19 (Andockpunkt A1): Befunde aktiver Branchenmodule — vorläufige Registerregeln,
      höchstens Hinweis, sperren nie (server/lib/branchenkatalog.mjs). */
   ...BRANCHEN_BEFUNDART,
+  /* WP-I5: Befunde interner Vorgaben des Betriebs — Muss Achtung, Soll Hinweis, sperren nie (server/lib/vorgabenwirkung.mjs). */
+  ...VORGABEN_BEFUNDART,
 });
 /** Sperrt diese Befundart? Unbekannte sperren (fail-closed). */
 export const sperrtBefund = (regel) => (Object.prototype.hasOwnProperty.call(BEFUND_KATALOG, regel) ? BEFUND_KATALOG[regel].sperrt : true);

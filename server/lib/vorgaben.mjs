@@ -15,9 +15,9 @@
        gezählt werden aktive Vorgaben),
      - Beispielfälle für den Testlauf.
 
-   NICHT hier (WP-I5, Vorgaben wirksam machen): Planungsassistent, Ersatzsuche,
-   Selbstplanung und die Prüfung gegen den echten Plan. Eine aktive Vorgabe
-   ist gespeichert und rechenbar, wirkt aber noch in keiner Planungsfunktion.
+   NICHT hier: die Wirkung im Plan (WP-I5) steht in server/lib/vorgabenwirkung.mjs;
+   hindernisBefunde hängt sie an, daher gelten aktive Vorgaben in Ersatzsuche,
+   Planungsassistent und Selbstplanung.
 
    Rein: keine Ablage; einzige Uhr: `jetzt` wird übergeben (Server stempelt).
    ========================================================================== */
@@ -44,6 +44,10 @@ export const VORGABEN_PARAMETER_GRENZE = Object.freeze({ zaehlGrenze: 366, folge
 export const VORGABEN_AUFWAND_JE_ANFRAGE = 50000;
 /** Zeitbudget aller Testläufe einer Anfrage in Millisekunden (Schutz des Ereignisschleife); wird vor jedem Testlauf geprüft. */
 export const VORGABEN_ZEITBUDGET_MS = 2000;
+
+/** Wirkung im Plan (WP-I5): höchstens `aktive` Vorgaben je Prüfung, Zeiträume bis `fensterTage` Tage, kumuliertes Budget `aufwand`
+ *  (Tagesabfragen) je Anfrage; ist es aufgebraucht, steht ein Hinweis statt einer stillen Auslassung. Deterministisch, ohne Uhr. */
+export const VORGABEN_WIRKUNG_GRENZE = Object.freeze({ aktive: 50, fensterTage: 62, aufwand: 200000 });
 
 /** Aktive Vorgaben je Preisstufe (E-21, Plan 10.2). Unbekannte Stufe: die kleinste (fail closed). */
 export const VORGABEN_STUFENGRENZE = Object.freeze({ basis: 5, pro: 25, enterprise: Infinity });
@@ -78,12 +82,22 @@ const idListe = (l, max) => Array.isArray(l) && l.length <= max && l.every((x) =
   && new Set(l).size === l.length;
 
 const ganzIn = (x, von, bis) => typeof x === "number" && Number.isInteger(x) && x >= von && x <= bis;
+const FENSTER_ARTEN = ["kalendermonat", "kalenderjahr", "rollierend"], FENSTER_EINHEITEN = ["tage", "wochen", "monate"];
+/** Art und Einheit des Zeitraums einer Zählregel (sonst scheiterte sie erst beim Aktivieren). Nur, was gesetzt ist; Fehlendes prüft der Baukasten. */
+function fensterFehler(f) {
+  if (f === undefined || f === null) return null;
+  if (!istObjekt(f)) return "Der Zeitraum der Zählregel hat eine unbekannte Form.";
+  if (f.art !== undefined && !FENSTER_ARTEN.includes(f.art)) return "Zeitraum: Art ist Kalendermonat, Kalenderjahr oder rollierend.";
+  if (f.einheit !== undefined && !FENSTER_EINHEITEN.includes(f.einheit)) return "Zeitraum: Einheit ist Tage, Wochen oder Monate.";
+  if (f.art === "rollierend" && f.einheit === undefined) return "Zeitraum: Bei „rollierend“ fehlt die Einheit.";
+  return null;
+}
 /** Größenbestimmende Parameter: Abweisungstext oder null. Nur, was gesetzt ist, wird geprüft; ob es fehlt, prüft der Baukasten. */
 function groessenFehler(v) {
   const G = VORGABEN_PARAMETER_GRENZE, p = (v && v.parameter) || {};
   const zahl = (name, x, von, bis) => (x === undefined || ganzIn(x, von, bis) ? null : `${name} ist eine ganze Zahl von ${von} bis ${bis} (höchstens ${bis}).`);
   switch (v && v.regelart) {
-    case "zaehlregel": return zahl("Grenze", p.grenze, 0, G.zaehlGrenze) || zahl("Länge des Fensters", p.fenster && p.fenster.laenge, 1, G.fensterLaenge);
+    case "zaehlregel": return fensterFehler(p.fenster) || zahl("Grenze", p.grenze, 0, G.zaehlGrenze) || zahl("Länge des Fensters", p.fenster && p.fenster.laenge, 1, G.fensterLaenge);
     case "musterregel": return zahl("Höchstens in Folge", p.max, 1, G.folgeMax) || zahl("Danach frei", p.danachFrei, 0, G.danachFrei);
     case "besetzungsregel":
       for (const a of Array.isArray(p.anforderungen) ? p.anforderungen : []) {

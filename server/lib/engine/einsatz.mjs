@@ -17,6 +17,7 @@ import { addDays, montag, toMin, dow, dauer, pad, stundengrenzeHinweis } from ".
 import { einteilungsBefunde, einheitAm, einheitDienst, imDienst, nachtAnteil, nachtschwelle, schichtmodellWirkungAktiv,
   schichtmodellLageAm, schichtfolgeAm } from "../fachpruefung.mjs";
 import { istVerfuegbar, zeitraumJahr } from "../istdaten.mjs";
+import { vorgabenBefunde, neuesVorgabenBudget } from "../vorgabenwirkung.mjs";
 import { sperrtBefund as sperrtArt } from "../bestaetigungen.mjs";
 import { memo, besetzung, personTag, abwesenheitAm, abwArt, stundenkonto, istStunden, nachweisStand, qualGueltig } from "./plan.mjs";
 import { heute } from "./zeit.mjs";
@@ -95,8 +96,9 @@ export function wochenStundenGeplant(m, p, d) {
  * oder warnt, steht an genau einer Stelle: SPERR_REGELN in src/warnstufen.js
  * (Review WP-10, H1 — bis zur Fachentscheidung die strenge Kette-B-Variante).
  * `regel` ist der Schlüssel dort.
+ * `opt.vorgabenBudget`: das Rechenbudget der Anfrage für interne Vorgaben (WP-I5); ohne eines hat jeder Aufruf sein eigenes.
  */
-export function hindernisBefunde(m, p, d, da) {
+export function hindernisBefunde(m, p, d, da, opt) {
   const g = [];
   /* regel: Schlüssel im Befundkatalog (sperrt oder warnt, BEFUND_KATALOG);
      regelId: Kennung im Regelregister (Fundstelle, Quellenstand) — beides
@@ -148,6 +150,9 @@ export function hindernisBefunde(m, p, d, da) {
   for (const b of bis(["ruhezeitGesetz", "ruhezeitBetrieb", "maxDiensteWoche", "keinAlleindienst", "tagesgrenze"])) fachPush(b);
   /* Branchenmodule (WP-19): Hinweise mit eigener Regelkennung aus dem Register. */
   for (const b of bis(["branche"])) push(b.stufe, b.text, b.quelle, b.art, b.regel, /** @type {any} */ (b).regelId || null);
+  /* Interne Vorgaben des Betriebs (WP-I5): Muss = Achtung mit Bestätigung, Soll = Hinweis, sperrt nie; Budget je Anfrage. */
+  for (const b of vorgabenBefunde(m, p, d, da, { dienstAm: (x, t) => personTag(m, x, t).dienstId || null, einheitAm, budget: opt && opt.vorgabenBudget }))
+    push(b.stufe, b.text, b.quelle, b.art, b.regel, b.regelId);
   // Dienste in Folge (Einstellung des Betriebs; nur die Oberfläche)
   let lauf = 0;
   for (let i = 1; i <= m.einstellungen.maxFolge + 1; i++) {
@@ -164,6 +169,7 @@ export function hindernisBefunde(m, p, d, da) {
  * Sortiert nach Eignung: Qualifikation, Stundenkonto im Minus, Belastungsausgleich.
  */
 export function ersatzVorschlaege(m, d, dienstId, ctx) {
+  const vorgabenBudget = (ctx && ctx.vorgabenBudget) || neuesVorgabenBudget();   // ein Budget für alle Personen dieser Suche (WP-I5)
   const da = m.dienstarten.find((x) => x.id === dienstId);
   if (!da) return [];
   const ym = d.slice(0, 7);
@@ -192,7 +198,7 @@ export function ersatzVorschlaege(m, d, dienstId, ctx) {
     if (t.dienstId) continue;                      // hat bereits Dienst
     /* Einmal prüfen (WP-11): was ab „Achtung" wiegt, hindert; Hinweise
        (nicht bewertbar) stehen bei den Gründen. */
-    const bef = hindernisBefunde(m, p, d, da);
+    const bef = hindernisBefunde(m, p, d, da, { vorgabenBudget });
     const g = bef.filter((b) => stufeRang(b.stufe) >= 2).map((b) => b.text);
     const kto = ctx ? (ctx.konten.has(p.id) ? ctx.konten.get(p.id) : 0) : stundenkonto(m, p, ym);
     const eigene = ctx ? (ctx.einspruenge[p.id] || 0) : (einspruengeJe[p.id] || 0);
