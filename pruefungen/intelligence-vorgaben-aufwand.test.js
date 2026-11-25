@@ -150,3 +150,32 @@ describe("Befund 2: Wiederherstellen übernimmt Vorgaben nicht aus der Sicherung
     expect(r.bestand.mandanten[0].protokoll[0].text).not.toMatch(/Vorgaben/);
   });
 });
+
+describe("Rest-Befunde Delta-Review #561", () => {
+  const stempel = { version: 1, geaendertAm: "2026-11-01T00:00:00.000Z", geaendertVon: "l1" };
+  const gesp = (vorgaben) => ({ vorgaben, personen: [], einheiten: [] });
+  it("A: Altbestand inaktiv ohne Marke lässt sich nicht über Entwurf und zweite Anfrage löschen", () => {
+    const alt = gesp([{ ...ZAEHL(5, { status: "inaktiv" }), ...stempel }]);
+    const r1 = vorgabenZusammen(alt, { vorgaben: [{ ...alt.vorgaben[0], status: "entwurf" }] }, ktx());
+    expect(r1.grund).toBeUndefined();
+    expect(r1.mandant.vorgaben[0].aktiviertAm).toBeTruthy();
+    const r2 = vorgabenZusammen(r1.mandant, { ...r1.mandant, vorgaben: [] }, ktx());
+    expect(r2.grund).toMatch(/deaktiv/i);
+  });
+  it("A: ein nie aktiver Entwurf bleibt löschbar", () => {
+    const alt = gesp([{ ...ZAEHL(5, { status: "entwurf" }), ...stempel }]);
+    const r = vorgabenZusammen(alt, { ...alt, vorgaben: [] }, ktx());
+    expect(r.grund).toBeUndefined();
+  });
+  it("B: fenster.laenge ist begrenzt: 1e15, NaN, negativ, gebrochen, 0 werden abgewiesen, nie eine Ausnahme", () => {
+    for (const laenge of [1e15, 1e9, NaN, Infinity, -1, 0, 2.5, 367]) {
+      const v = basis("z", "zaehlregel", { ereignis: "Nachtdienst", fenster: { art: "rollierend", laenge, einheit: "tage" }, richtung: "hoechstens", grenze: 5 });
+      expect(pruefeVorgabe(v), `laenge ${laenge}`).toMatch(/Länge/);
+      expect(() => vorgabeTestlauf(v), `laenge ${laenge}`).not.toThrow();
+      expect(vorgabeTestlauf(v).ok).toBe(false);
+      expect(() => vorgabenZusammen({}, { vorgaben: [{ ...v, status: "aktiv" }] }, ktx())).not.toThrow();
+    }
+    const gut = basis("z", "zaehlregel", { ereignis: "Nachtdienst", fenster: { art: "rollierend", laenge: 28, einheit: "tage" }, richtung: "hoechstens", grenze: 5 });
+    expect(pruefeVorgabe(gut)).toBeNull();
+  });
+});

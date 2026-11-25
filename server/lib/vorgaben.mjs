@@ -38,7 +38,7 @@ export const VORGABEN_GRENZEN_FELD = Object.freeze({
 /** Obergrenzen der Parameter, die Beispielfälle in ihrer Größe bestimmen (Review #561, Befund 1: Denial of Service).
  *  Fachlich: höchstens 366 Ereignisse je Zeitraum, Folgen bis 366 Tage, bis 300 Personen (wie die Grenze der Personenlisten).
  *  Technisch: Der Baukasten wertet höchstens MAX_TAGE (800) Tage aus; 366 + 1 + 366 + 1 bleibt darunter. */
-export const VORGABEN_PARAMETER_GRENZE = Object.freeze({ zaehlGrenze: 366, folgeMax: 366, danachFrei: 366, personen: 300 });
+export const VORGABEN_PARAMETER_GRENZE = Object.freeze({ zaehlGrenze: 366, folgeMax: 366, danachFrei: 366, personen: 300, fensterLaenge: 366 });
 /** Kumulierter Aufwand der Testläufe einer Anfrage (Einheiten = erzeugte Tage, Ereignisse und Personen der Beispielfälle). Eine einzelne
  *  größte Vorgabe kostet rund 1500, die Grenze lässt also gut dreißig davon in einer Anfrage zu. */
 export const VORGABEN_AUFWAND_JE_ANFRAGE = 50000;
@@ -83,7 +83,7 @@ function groessenFehler(v) {
   const G = VORGABEN_PARAMETER_GRENZE, p = (v && v.parameter) || {};
   const zahl = (name, x, von, bis) => (x === undefined || ganzIn(x, von, bis) ? null : `${name} ist eine ganze Zahl von ${von} bis ${bis} (höchstens ${bis}).`);
   switch (v && v.regelart) {
-    case "zaehlregel": return zahl("Grenze", p.grenze, 0, G.zaehlGrenze);
+    case "zaehlregel": return zahl("Grenze", p.grenze, 0, G.zaehlGrenze) || zahl("Länge des Fensters", p.fenster && p.fenster.laenge, 1, G.fensterLaenge);
     case "musterregel": return zahl("Höchstens in Folge", p.max, 1, G.folgeMax) || zahl("Danach frei", p.danachFrei, 0, G.danachFrei);
     case "besetzungsregel":
       for (const a of Array.isArray(p.anforderungen) ? p.anforderungen : []) {
@@ -287,9 +287,9 @@ export function vorgabenZusammen(altM, neuM, { darfOrgEdit, person, tarif, jetzt
     /* Auch eine deaktivierte Vorgabe behält, wann und von wem sie aktiviert wurde: Daran hängt, dass sie nicht gelöscht werden kann (Teil 3). */
     else if (vorher) {
       if (vorher.aktiviertAm) st.aktiviertAm = vorher.aktiviertAm;
-      else if (vorher.status === "aktiv") st.aktiviertAm = vorher.geaendertAm || jetzt;   // Altbestand ohne Marke: war aktiv, das bleibt nachweisbar (Review #561, Befund 3)
+      else if (vorher.status !== "entwurf") st.aktiviertAm = vorher.geaendertAm || jetzt;   // Altbestand ohne Marke (aktiv oder inaktiv; inaktiv gilt als früher aktiv): bleibt nachweisbar, auch über den Wechsel zum Entwurf (Review #561, Befund 3, Rest-Befund A)
       if (vorher.aktiviertVon !== undefined) st.aktiviertVon = vorher.aktiviertVon;
-      else if (vorher.status === "aktiv") st.aktiviertVon = vorher.geaendertVon === undefined ? null : vorher.geaendertVon;
+      else if (vorher.status !== "entwurf") st.aktiviertVon = vorher.geaendertVon === undefined ? null : vorher.geaendertVon;
     }
     aus.push(st);
   }
@@ -531,7 +531,9 @@ export function vorgabeTestlauf(v, faelle) {
   if (f) return { ok: false, fehler: f, ergebnisse: [] };
   const fall = faelle || beispielFaelle(v);
   if (!fall || !fall.length) return { ok: false, fehler: "Für diese Vorgabe gibt es noch keine Beispielfälle.", ergebnisse: [] };
-  const lauf = testlauf(vorgabeAlsRegel({ ...v, gueltigAb: null, gueltigBis: null }, { wirkend: true }), fall);
+  let lauf;
+  try { lauf = testlauf(vorgabeAlsRegel({ ...v, gueltigAb: null, gueltigBis: null }, { wirkend: true }), fall); }
+  catch { return { ok: false, fehler: "Der Test konnte mit diesen Werten nicht gerechnet werden.", ergebnisse: [] }; }   // nie zur Ausnahme (Rest-Befund B)
   const erwartet = new Map(fall.map((x) => [x.id, x.erwartet]));
   const ergebnisse = lauf.ergebnisse.map((e) => ({ ...e, erwartet: erwartet.get(e.id) || null, stimmt: erwartet.get(e.id) ? erwartet.get(e.id) === e.status : null }));
   return { ok: ergebnisse.every((e) => e.stimmt !== false), fehler: null, anzahl: lauf.anzahl, ergebnisse };
