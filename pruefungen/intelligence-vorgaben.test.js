@@ -180,8 +180,8 @@ describe("Stufengrenzen (E-21)", () => {
     expect(aktiveVorgaben(alt.vorgaben)).toHaveLength(8);
     /* unverändert zurückgeschickt: kein Fehler */
     expect(vorgabenZusammen(alt, { vorgaben: kopie(alt.vorgaben) }, ktx("basis")).grund).toBeUndefined();
-    /* eine aktive weniger ist erlaubt (Verringerung), eine mehr nicht */
-    expect(vorgabenZusammen(alt, { vorgaben: kopie(alt.vorgaben).slice(1) }, ktx("basis")).grund).toBeUndefined();
+    /* eine aktive weniger ist erlaubt (Verringerung durch Deaktivieren; Löschen nicht mehr, Teil 3), eine mehr nicht */
+    expect(vorgabenZusammen(alt, { vorgaben: kopie(alt.vorgaben).map((v, i) => (i === 0 ? { ...v, status: "inaktiv" } : v)) }, ktx("basis")).grund).toBeUndefined();
     expect(vorgabenZusammen(alt, { vorgaben: [...kopie(alt.vorgaben), vorgabe("grenzregel", { id: "neu", name: "Neu", status: "aktiv" })] }, ktx("basis")).grund).toMatch(/höchstens 5/);
   });
 });
@@ -251,9 +251,11 @@ describe("Schreibweg: Rechte und Wann/Wer vom Server", () => {
     expect(schreibeAls(grund("basis"), "LT", (m) => { m.vorgaben = sechs; }).verweigert).toMatch(/höchstens 5/);
     expect(schreibeAls(grund("pro"), "LT", (m) => { m.vorgaben = sechs; }).verweigert).toBeUndefined();
   });
-  it("Löschen durch die Leitung ist möglich", () => {
-    const angelegt = schreibeAls(grund(), "LT", (m) => { m.vorgaben = [kopie(NEU)]; });
-    expect(schreibeAls(angelegt, "LT", (m) => { m.vorgaben = []; }).mandanten[0].vorgaben).toEqual([]);
+  it("Entfernen durch die Leitung: ein Entwurf geht, eine aktive Vorgabe wird deaktiviert statt gelöscht (Teil 3)", () => {
+    const angelegt = schreibeAls(grund(), "LT", (m) => { m.vorgaben = [kopie(NEU), vorgabe("grenzregel", { id: "entwurf-1", name: "Entwurf", status: "entwurf" })]; });
+    expect(schreibeAls(angelegt, "LT", (m) => { m.vorgaben = m.vorgaben.filter((v) => v.id !== "entwurf-1"); }).mandanten[0].vorgaben.map((v) => v.id)).toEqual([NEU.id]);
+    expect(schreibeAls(angelegt, "LT", (m) => { m.vorgaben = []; }).verweigert).toMatch(/deaktiviert/);
+    expect(schreibeAls(angelegt, "LT", (m) => { m.vorgaben[0].status = "inaktiv"; }).verweigert).toBeUndefined();
   });
 });
 
@@ -275,8 +277,13 @@ describe("Lesesicht je Rolle", () => {
       expect(v[0].geltung.personen, r).toContain("a1");
     }
   });
-  it("Planung, Beschäftigte, Schichtverantwortung und Betriebsrat bekommen die Vorgaben nicht (auch keinen Namen, keine Zahl)", () => {
-    for (const r of ["PL", "MA", "SV", "BR"]) {
+  it("Planung liest die Vorgaben des eigenen Betriebs (Entscheidung 2026-11-25, 1.1), ändern darf sie nicht", () => {
+    const v = bestandFuerRolle(bestand(), SITZUNGEN.PL).mandanten[0].vorgaben;
+    expect(v).toHaveLength(1);
+    expect(v[0].name).toBe("Freie Wochenenden");
+  });
+  it("Beschäftigte, Schichtverantwortung und Betriebsrat bekommen die Vorgaben nicht (auch keinen Namen, keine Zahl)", () => {
+    for (const r of ["MA", "SV", "BR"]) {
       const m = bestandFuerRolle(bestand(), SITZUNGEN[r]).mandanten[0];
       expect(m.vorgaben || [], r).toEqual([]);
       expect(JSON.stringify(m), r).not.toContain(MARKE);

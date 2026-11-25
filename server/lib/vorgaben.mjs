@@ -22,6 +22,7 @@
    Rein: keine Ablage; einzige Uhr: `jetzt` wird übergeben (Server stempelt).
    ========================================================================== */
 import { pruefeRegel, testlauf, REGELARTEN_ALLE } from "./regelbaukasten-erweitert.mjs";
+import { MODULPROTOKOLL_GRENZE, modulprotokollFaellig } from "./branchenmodule.mjs";
 
 export const VORGABEN_REGELARTEN = REGELARTEN_ALLE;
 export const VORGABEN_STAERKEN = Object.freeze(["muss", "soll", "wunsch"]);
@@ -34,12 +35,27 @@ export const VORGABEN_GRENZEN_FELD = Object.freeze({
   einheiten: 50, gruppen: 20, gruppeLaenge: 40, personen: 300, zeitraeume: 20, idLaenge: 30,
 });
 
+/** Obergrenzen der Parameter, die Beispielfälle in ihrer Größe bestimmen (Review #561, Befund 1: Denial of Service).
+ *  Fachlich: höchstens 366 Ereignisse je Zeitraum, Folgen bis 366 Tage, bis 300 Personen (wie die Grenze der Personenlisten).
+ *  Technisch: Der Baukasten wertet höchstens MAX_TAGE (800) Tage aus; 366 + 1 + 366 + 1 bleibt darunter. */
+export const VORGABEN_PARAMETER_GRENZE = Object.freeze({ zaehlGrenze: 366, folgeMax: 366, danachFrei: 366, personen: 300, fensterLaenge: 366 });
+/** Kumulierter Aufwand der Testläufe einer Anfrage (Einheiten = erzeugte Tage, Ereignisse und Personen der Beispielfälle). Eine einzelne
+ *  größte Vorgabe kostet rund 1500, die Grenze lässt also gut dreißig davon in einer Anfrage zu. */
+export const VORGABEN_AUFWAND_JE_ANFRAGE = 50000;
+/** Zeitbudget aller Testläufe einer Anfrage in Millisekunden (Schutz des Ereignisschleife); wird vor jedem Testlauf geprüft. */
+export const VORGABEN_ZEITBUDGET_MS = 2000;
+
 /** Aktive Vorgaben je Preisstufe (E-21, Plan 10.2). Unbekannte Stufe: die kleinste (fail closed). */
 export const VORGABEN_STUFENGRENZE = Object.freeze({ basis: 5, pro: 25, enterprise: Infinity });
 /** @param {any} tarifId @returns {number} */
 export function vorgabenGrenze(tarifId) {
   return Object.prototype.hasOwnProperty.call(VORGABEN_STUFENGRENZE, tarifId) ? VORGABEN_STUFENGRENZE[tarifId] : VORGABEN_STUFENGRENZE.basis;
 }
+
+/** Betriebsrat (Betreiberentscheidung 2026-11-25, 1.2): vorläufig keine Sicht (Variante A). Die Lesesicht ohne Personenbezug (Ziel B)
+ *  ist gebaut und getestet, aber AUS, bis die rechtliche Rückmeldung vorliegt; sie ist NICHT rechtlich freigegeben. Einschalten ist
+ *  eine bewusste Codeänderung dieser einen Konstante (kein Betriebs- oder Umgebungsschalter, den jemand versehentlich setzt). */
+export const VORGABEN_BETRIEBSRAT_LESEN = false;
 
 const FELDER = ["id", "name", "beschreibung", "regelart", "parameter", "geltung", "gueltigAb", "gueltigBis", "bezug", "staerke",
   "prioritaet", "grundlage", "ausnahmen", "status"];
@@ -60,6 +76,35 @@ const ID = /^[a-z0-9][a-z0-9-]{0,29}$/;
 const textOk = (s, max) => typeof s === "string" && s.length <= max;
 const idListe = (l, max) => Array.isArray(l) && l.length <= max && l.every((x) => typeof x === "string" && x.length >= 1 && x.length <= 60)
   && new Set(l).size === l.length;
+
+const ganzIn = (x, von, bis) => typeof x === "number" && Number.isInteger(x) && x >= von && x <= bis;
+/** Größenbestimmende Parameter: Abweisungstext oder null. Nur, was gesetzt ist, wird geprüft; ob es fehlt, prüft der Baukasten. */
+function groessenFehler(v) {
+  const G = VORGABEN_PARAMETER_GRENZE, p = (v && v.parameter) || {};
+  const zahl = (name, x, von, bis) => (x === undefined || ganzIn(x, von, bis) ? null : `${name} ist eine ganze Zahl von ${von} bis ${bis} (höchstens ${bis}).`);
+  switch (v && v.regelart) {
+    case "zaehlregel": return zahl("Grenze", p.grenze, 0, G.zaehlGrenze) || zahl("Länge des Fensters", p.fenster && p.fenster.laenge, 1, G.fensterLaenge);
+    case "musterregel": return zahl("Höchstens in Folge", p.max, 1, G.folgeMax) || zahl("Danach frei", p.danachFrei, 0, G.danachFrei);
+    case "besetzungsregel":
+      for (const a of Array.isArray(p.anforderungen) ? p.anforderungen : []) {
+        if (a && (a.art === "anzahl" || a.art === "anzahlMit")) { const f = zahl("Mindestens", a.min, 0, G.personen); if (f) return f; }
+      }
+      return null;
+    case "paarregel": return zahl("Mindestens", p.min, 0, G.personen);
+    default: return null;
+  }
+}
+/** Geschätzter Aufwand des Testlaufs (Größe der Beispielfälle), ohne sie zu erzeugen. Nur für geprüfte Vorgaben. */
+export function vorgabeTestAufwand(v) {
+  const p = (v && v.parameter) || {};
+  switch (v && v.regelart) {
+    case "zaehlregel": return 2 * (Number(p.grenze) + 2);
+    case "musterregel": return 2 * ((Number(p.max) || 0) + (Number(p.danachFrei) || 0) + 3);
+    case "besetzungsregel": return 2 * (((p.anforderungen && p.anforderungen[0] && Number(p.anforderungen[0].min)) || 0) + 2);
+    case "paarregel": return 2 * ((p.min === undefined ? 1 : Number(p.min)) + 2);
+    default: return 10;
+  }
+}
 
 /** Die Regelkennung im Baukasten — Großbuchstaben, damit sie dem Kennungsformat des Bestätigungsprotokolls entspricht. */
 export const vorgabeRegelId = (v) => `VORGABE-${String(v && v.id).toUpperCase()}`;
@@ -138,10 +183,28 @@ export function pruefeVorgabe(v) {
       return `${wo}: Ausnahmen: Zeiträume als Liste mit Von und Bis erwartet.`;
   }
 
+  const gf = groessenFehler(v);
+  if (gf) return `${wo}: ${gf}`;
   /* Der Baukasten ist der Prüfer der Parameter: Er wirft bei unvollständigen Parametern und bei Personenmerkmalen. */
   try { pruefeRegel(vorgabeAlsRegel({ ...v, gueltigAb: null, gueltigBis: null }, { wirkend: true }), {}); }
   catch (e) { return `${wo}: ${String((e && e.message) || e).replace(/^Regelbaukasten:\s*/, "").slice(0, 200)}`; }
   return null;
+}
+
+/**
+ * Die Vorgaben in der Sicht des Betriebsrats (Entscheidung 2026-11-25, 1.2). Solange der Schalter AUS ist: leer. Eingeschaltet: Zahl und Text
+ * ohne Personenbezug (keine Personenkennungen in Geltung und Ausnahmen, keine Stempel-Personen).
+ * @param {any} liste @param {boolean} [offen]
+ */
+export function vorgabenBetriebsratSicht(liste, offen = VORGABEN_BETRIEBSRAT_LESEN) {
+  if (offen !== true || !Array.isArray(liste)) return [];
+  const nimm = (o, felder) => Object.fromEntries(felder.filter((f) => o && Object.prototype.hasOwnProperty.call(o, f)).map((f) => [f, o[f]]));
+  return liste.filter(istObjekt).map((v) => ({
+    ...nimm(v, ["id", "name", "beschreibung", "regelart", "parameter", "bezug", "staerke", "prioritaet", "status", "gueltigAb", "gueltigBis", "version", "geaendertAm", "aktiviertAm"]),
+    ...(istObjekt(v.geltung) ? { geltung: nimm(v.geltung, ["art", "einheiten", "gruppen"]) } : {}),
+    ...(istObjekt(v.grundlage) ? { grundlage: nimm(v.grundlage, ["art", "fundstelle"]) } : {}),
+    ...(istObjekt(v.ausnahmen) ? { ausnahmen: nimm(v.ausnahmen, ["zeitraeume", "teilzeitAnteilig"]) } : {}),
+  }));
 }
 
 /** Aktive Vorgaben. */
@@ -159,10 +222,10 @@ export const aktiveVorgaben = (liste) => (Array.isArray(liste) ? liste : []).fil
  *
  * @param {any} altM gespeicherter Betrieb
  * @param {any} neuM übermittelter Betrieb
- * @param {{ darfOrgEdit: boolean, person: any, tarif?: any, jetzt: string }} ktx
+ * @param {{ darfOrgEdit: boolean, person: any, tarif?: any, jetzt: string, zeitBudgetMs?: number }} ktx
  * @returns {{ grund?: string, mandant?: any }}
  */
-export function vorgabenZusammen(altM, neuM, { darfOrgEdit, person, tarif, jetzt }) {
+export function vorgabenZusammen(altM, neuM, { darfOrgEdit, person, tarif, jetzt, zeitBudgetMs = VORGABEN_ZEITBUDGET_MS }) {
   if (!istObjekt(neuM)) return { mandant: neuM };
   const hatAlt = !!altM && Object.prototype.hasOwnProperty.call(altM, "vorgaben");
   const alt = Array.isArray(altM && altM.vorgaben) ? altM.vorgaben : [];
@@ -194,6 +257,8 @@ export function vorgabenZusammen(altM, neuM, { darfOrgEdit, person, tarif, jetzt
 
   const ids = new Set();
   const aus = [];
+  let aufwand = 0;
+  const start = performance.now();
   /* Bezüge nur zum eigenen Betrieb (der übermittelte Betrieb, damit eine im selben Schritt angelegte Einheit oder Person zählt). */
   const kennungen = (l) => new Set((Array.isArray(l) ? l : []).filter(istObjekt).map((x) => String(x.id)));
   const bekannt = { einheiten: kennungen(neuM.einheiten), personen: kennungen(neuM.personen) };
@@ -205,20 +270,67 @@ export function vorgabenZusammen(altM, neuM, { darfOrgEdit, person, tarif, jetzt
     const vorher = altMap.get(v.id);
     const k = ohneStempel(v);
     if (vorher && gleich(k, ohneStempel(vorher))) { aus.push(vorher); continue; }
+    /* „Erst testen, dann aktivieren" erzwingt der Server: Wer aktiv wird oder als aktive Vorgabe geändert wird, muss den Testlauf
+       mit den Beispielfällen bestehen (nicht nur die Oberfläche). Deaktivieren und Entwürfe sind nicht daran gebunden. */
+    if (v.status === "aktiv") {
+      /* Kumulierter Deckel je Anfrage (Summe über alle Testläufe) und Zeitbudget, bevor gerechnet wird. */
+      aufwand += vorgabeTestAufwand(k);
+      if (aufwand > VORGABEN_AUFWAND_JE_ANFRAGE)
+        return { grund: `Vorgaben: Der Rechenaufwand für die Tests ist in einer Anfrage zu groß (Grenze ${VORGABEN_AUFWAND_JE_ANFRAGE}); bitte weniger Vorgaben auf einmal aktivieren oder ändern.` };
+      if (performance.now() - start >= zeitBudgetMs) return { grund: "Vorgaben: Die Tests dauern zu lange; bitte weniger Vorgaben auf einmal aktivieren oder ändern." };
+      const t = vorgabeTestlauf(k);
+      if (!t.ok) return { grund: `Vorgabe ${String(v.name || v.id).slice(0, 30)}: Vor dem Aktivieren muss der Test bestanden sein (${t.fehler || "Test nicht bestanden"}).` };
+    }
     const st = { ...k, geaendertAm: jetzt, geaendertVon: person === undefined || person === null ? null : String(person),
       version: vorher && Number.isInteger(vorher.version) && vorher.version >= 1 ? vorher.version + 1 : 1 };
     if (v.status === "aktiv" && !(vorher && vorher.status === "aktiv")) { st.aktiviertAm = jetzt; st.aktiviertVon = st.geaendertVon; }
-    else if (v.status === "aktiv" && vorher) {
+    /* Auch eine deaktivierte Vorgabe behält, wann und von wem sie aktiviert wurde: Daran hängt, dass sie nicht gelöscht werden kann (Teil 3). */
+    else if (vorher) {
       if (vorher.aktiviertAm) st.aktiviertAm = vorher.aktiviertAm;
+      else if (vorher.status !== "entwurf") st.aktiviertAm = vorher.geaendertAm || jetzt;   // Altbestand ohne Marke (aktiv oder inaktiv; inaktiv gilt als früher aktiv): bleibt nachweisbar, auch über den Wechsel zum Entwurf (Review #561, Befund 3, Rest-Befund A)
       if (vorher.aktiviertVon !== undefined) st.aktiviertVon = vorher.aktiviertVon;
+      else if (vorher.status !== "entwurf") st.aktiviertVon = vorher.geaendertVon === undefined ? null : vorher.geaendertVon;
     }
     aus.push(st);
+  }
+  /* Deaktivieren statt Löschen (Entscheidung 2026-11-25, 1.3): Nur ein Entwurf, der nie aktiv war, lässt sich entfernen (inaktiv ohne Marke gilt als früher aktiv). */
+  for (const [id, vorher] of altMap) {
+    if (ids.has(id) || (vorher.status === "entwurf" && !vorher.aktiviertAm)) continue;
+    return { grund: `Vorgabe ${String(vorher.name || id).slice(0, 30)}: Eine Vorgabe, die aktiv ist oder war, wird deaktiviert und nicht gelöscht (Nachweis der Änderungen).` };
   }
   const grenze = vorgabenGrenze(tarif);
   const aktivNeu = aktiveVorgaben(aus).length;
   if (aktivNeu > grenze && aktivNeu > aktiveVorgaben(alt).length)
     return { grund: `In dieser Preisstufe sind höchstens ${grenze} aktive Vorgaben möglich (derzeit ${aktivNeu}).` };
-  return { mandant: { ...neuM, vorgaben: aus } };
+
+  /* Änderungsprotokoll: im Modulprotokoll des Betriebs (Aufbewahrung, Obergrenze und Löschweg wie dort); nur Art, Kennung, Zeit, Person,
+     Version und die Namen der geänderten Felder — keine Werte. Die Person ist die Kennung, die der Server schon an der Vorgabe führt. */
+  const wer = person === undefined || person === null ? null : String(person);
+  const ereignisse = [];
+  for (const v of aus) {
+    const vorher = altMap.get(v.id);
+    if (vorher === v) continue;
+    const e = { modul: "vorgaben", regelId: vorgabeRegelId(v), am: jetzt, von: wer, version: v.version };
+    if (!vorher) {
+      ereignisse.push({ art: "vorgabe-angelegt", ...e });
+      if (v.status === "aktiv") ereignisse.push({ art: "vorgabe-aktiviert", ...e });
+      continue;
+    }
+    const felder = FELDER.filter((f) => f !== "id" && f !== "status" && !gleich(v[f], vorher[f]));
+    if (vorher.status !== "aktiv" && v.status === "aktiv") ereignisse.push({ art: "vorgabe-aktiviert", ...e });
+    else if (vorher.status === "aktiv" && v.status !== "aktiv") ereignisse.push({ art: "vorgabe-deaktiviert", ...e });
+    else ereignisse.push({ art: "vorgabe-geaendert", ...e, felder });
+  }
+  for (const [id, vorher] of altMap) if (!ids.has(id)) ereignisse.push({ art: "vorgabe-geloescht", modul: "vorgaben", regelId: vorgabeRegelId(vorher), am: jetzt, von: wer, version: vorher.version });
+  if (!ereignisse.length) return { mandant: { ...neuM, vorgaben: aus } };
+  const einst = istObjekt(neuM.einstellungen) ? neuM.einstellungen : {};
+  let bisher = Array.isArray(einst.modulprotokoll) ? einst.modulprotokoll : [];
+  /* An der Grenze zuerst nach geprüfter Frist fällige Einträge entfernen (heute keine: Regel ungeprüft, FN-32); sonst bleibt die Grenze eine
+     Sperre — außer fürs Deaktivieren, das immer geht. */
+  if (bisher.length + ereignisse.length > MODULPROTOKOLL_GRENZE) bisher = modulprotokollFaellig({ einstellungen: { modulprotokoll: bisher } }, jetzt.slice(0, 10)).rest;
+  if (bisher.length + ereignisse.length > MODULPROTOKOLL_GRENZE && ereignisse.some((x) => x.art !== "vorgabe-deaktiviert"))
+    return { grund: `Modulprotokoll: Die Grenze von ${MODULPROTOKOLL_GRENZE} Einträgen ist erreicht. Deaktivieren geht weiter; alles andere wieder, sobald ältere Einträge nach einer geprüften Aufbewahrungsregel entfallen dürfen.` };
+  return { mandant: { ...neuM, vorgaben: aus, einstellungen: { ...einst, modulprotokoll: [...bisher, ...ereignisse] } } };
 }
 
 /** Streng nur, wenn neu oder geändert (Altbestand bleibt stehen). */
@@ -236,7 +348,8 @@ function pruefeVorgabeKurz(v, altMap, bekannt) {
  *  Was die gespeicherte Vorgabe schon nannte, bleibt zulässig (eine inzwischen gelöschte Kennung blockiert keine Änderung); neu hinzukommen darf nur Bekanntes. */
 function pruefeBezuege(v, bekannt, vorher) {
   const wo = `Vorgabe ${String(v.name || v.id || "").slice(0, 30)}`.trim();
-  const frueher = (...pfad) => new Set(pfad.reduce((o, k) => (o && o[k]) || [], vorher || {}).map(String));
+  /* Altbestand muss keine Liste tragen (Review #555): nur eine Liste zählt, alles andere ist leer. */
+  const frueher = (...pfad) => { const l = pfad.reduce((o, k) => (o && o[k]) || [], vorher || {}); return new Set(Array.isArray(l) ? l.map(String) : []); };
   const fremd = (liste, menge, alt) => Array.isArray(liste) && liste.some((x) => !menge.has(String(x)) && !alt.has(String(x)));
   if (fremd(v.geltung && v.geltung.einheiten, bekannt.einheiten, frueher("geltung", "einheiten"))) return `${wo}: Geltung nennt eine Einheit, die es in diesem Betrieb nicht gibt.`;
   if (fremd(v.geltung && v.geltung.personen, bekannt.personen, frueher("geltung", "personen"))) return `${wo}: Geltung nennt eine Person, die es in diesem Betrieb nicht gibt.`;
@@ -323,6 +436,7 @@ const addT = (tag, n) => { const d = new Date(`${tag}T00:00:00Z`); d.setUTCDate(
  */
 export function beispielFaelle(v) {
   const p = (v && v.parameter) || {};
+  if (groessenFehler(v)) return null;   // Selbstschutz: nie Listen in der Größe ungeprüfter Parameter anlegen
   const tage = (start, klassen) => Object.fromEntries(klassen.map((k, i) => [addT(start, i), k]));
   switch (v && v.regelart) {
     case "zaehlregel": {
@@ -417,7 +531,9 @@ export function vorgabeTestlauf(v, faelle) {
   if (f) return { ok: false, fehler: f, ergebnisse: [] };
   const fall = faelle || beispielFaelle(v);
   if (!fall || !fall.length) return { ok: false, fehler: "Für diese Vorgabe gibt es noch keine Beispielfälle.", ergebnisse: [] };
-  const lauf = testlauf(vorgabeAlsRegel({ ...v, gueltigAb: null, gueltigBis: null }, { wirkend: true }), fall);
+  let lauf;
+  try { lauf = testlauf(vorgabeAlsRegel({ ...v, gueltigAb: null, gueltigBis: null }, { wirkend: true }), fall); }
+  catch { return { ok: false, fehler: "Der Test konnte mit diesen Werten nicht gerechnet werden.", ergebnisse: [] }; }   // nie zur Ausnahme (Rest-Befund B)
   const erwartet = new Map(fall.map((x) => [x.id, x.erwartet]));
   const ergebnisse = lauf.ergebnisse.map((e) => ({ ...e, erwartet: erwartet.get(e.id) || null, stimmt: erwartet.get(e.id) ? erwartet.get(e.id) === e.status : null }));
   return { ok: ergebnisse.every((e) => e.stimmt !== false), fehler: null, anzahl: lauf.anzahl, ergebnisse };

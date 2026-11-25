@@ -39,8 +39,10 @@ describe("Oberfläche", () => {
     expect(t).toMatch(/<button[^>]*disabled=""[^>]*>Aktivieren<\/button>/);
     expect(t).toContain("Zuerst testen.");
   });
-  it("Planung, Schichtverantwortung, Beschäftigte und Betriebsrat bekommen den Abschnitt nicht (kein Markup, auch nicht bei vorhandenen Vorgaben)", () => {
-    for (const rolle of ["planer", "subplaner", "mitarbeiter", "betriebsrat"]) expect(render(sitz([V("a", "aktiv")], "basis", rolle)), rolle).toBe("");
+  it("Schichtverantwortung, Beschäftigte und Betriebsrat bekommen den Abschnitt nicht (kein Markup, auch nicht bei vorhandenen Vorgaben)", () => {
+    for (const rolle of ["subplaner", "mitarbeiter", "betriebsrat"]) expect(render(sitz([V("a", "aktiv")], "basis", rolle)), rolle).toBe("");
+    /* Ohne das Feld (der Server liefert es nicht): nichts, auch nicht für die Planung. */
+    expect(render(sitz(undefined, "basis", "planer"))).toBe("");
     expect(render({ ...sitz([V("a", "aktiv")]), rolle: "betreiber", person: { id: "b", rolle: "betreiber" } })).toBe("");
   });
   it("Leitung und Kundenrolle (org.edit) bekommen ihn; der Hinweis auf die Mitbestimmung nennt keine Sicht des Betriebsrats", () => {
@@ -62,12 +64,35 @@ describe("Oberfläche", () => {
   });
 });
 
+describe("WP-I4 Teil 3: Planung liest, Leitung ändert; deaktivieren statt löschen", () => {
+  const DEAKT = (t) => t.includes(">Deaktivieren</button>");
+  it("Planung sieht die Vorgaben schreibgeschützt: kein Bearbeiten, Testen, Aktivieren, Löschen, Neu", () => {
+    const t = render(sitz([V("a", "entwurf"), V("b", "aktiv")], "pro", "planer"));
+    for (const x of ["Vorgabe a", "Vorgabe b", "Entwurf", "aktiv", "Priorität 1", "Hausregel"]) expect(t, x).toContain(x);
+    for (const x of ["Bearbeiten", "Testen", "Aktivieren", "Deaktivieren", "Löschen", "Neue Vorgabe"]) expect(t, x).not.toContain(x);
+    expect(t).toContain("nur die Leitung");
+  });
+  it("Planung ohne Vorgaben (Liste leer): Leerzustand ohne Knopf", () => {
+    const t = render(sitz([], "pro", "planer"));
+    expect(t).toContain("Noch keine Vorgaben");
+    expect(t).not.toContain("Neue Vorgabe");
+  });
+  it("die Leitung kann nur einen nie aktiven Entwurf löschen; aktive und früher aktive Vorgaben nur deaktivieren", () => {
+    const t = (v) => render(sitz([v]));
+    expect(t(V("e", "entwurf"))).toContain("Löschen");
+    expect(t(V("a", "aktiv", { aktiviertAm: "2026-11-01T00:00:00.000Z" }))).not.toContain("Löschen");
+    expect(DEAKT(t(V("a", "aktiv")))).toBe(true);
+    expect(t(V("i", "inaktiv", { aktiviertAm: "2026-11-01T00:00:00.000Z" }))).not.toContain("Löschen");
+    expect(t(V("i", "inaktiv"))).not.toContain("Löschen");   // Altbestand ohne Marke: deaktiviert, nicht löschbar (Review #561, Befund 3)
+  });
+});
+
 describe("Einhängung in die Einstellungen", () => {
   const lies = (pfad) => readFileSync(new URL(pfad, import.meta.url), "utf8").replace(/\r\n/g, "\n");
   it("die Einstellungen binden den Abschnitt hinter org.edit ein; die Betriebsverwaltung nicht", () => {
     const q = lies("../src/ansichten/einstellungen.jsx");
     expect(q).toContain('import { InterneVorgaben } from "./vorgaben.jsx";');
-    expect(q).toContain('{sitz.mandant && darf(sitz, "org.edit") && <InterneVorgaben sitz={sitz} akt={akt} />}');
+    expect(q).toContain('{sitz.mandant && <InterneVorgaben sitz={sitz} akt={akt} />}');
     expect(lies("../src/App.jsx")).not.toContain("InterneVorgaben");
   });
   it("Aktionen stehen in der Einstellungs-Fabrik (keine 13. Fabrik) und gehen über mUpd (der Server prüft)", () => {
