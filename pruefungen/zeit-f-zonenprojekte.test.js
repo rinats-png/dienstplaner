@@ -29,7 +29,7 @@ describe("Zonenprojekte in playwright.config.mjs", () => {
 
   it("jedes Zonenprojekt fährt nur die Zonen-Spec mit seiner Zone; die Viewport-Projekte lassen sie aus", () => {
     const projekte = konfiguration.projects;
-    expect(projekte.map((p) => p.name)).toEqual([...VIEWPORTS.map((v) => v.id), ...ZONEN_PROJEKTE.map((z) => z.name), "website"]);
+    expect(projekte.map((p) => p.name)).toEqual([...VIEWPORTS.map((v) => v.id), ...ZONEN_PROJEKTE.map((z) => z.name), "website", "v4-visuell"]);
     for (const v of VIEWPORTS) {
       const p = projekte.find((x) => x.name === v.id);
       expect([p.testIgnore].flat(), v.id).toContain(ZONEN_SPEC);
