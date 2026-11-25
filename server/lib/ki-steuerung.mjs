@@ -15,7 +15,11 @@
    WER DARF WAS (Betreiberentscheidung P2-8, Variante A, 2026-11-25; produktive Rechte und endgültige
    Wiederaktivierungsregeln erst nach rechtlicher Prüfung — hier gebaut und getestet, nicht freigegeben):
    - Leitung (Rolle „leitung“, nicht Demo): Hauptschalter, Schalter je Funktion, die Frage nach der
-     Mitbestimmungsvertretung und die Pause AUFHEBEN (Wiederaktivierung).
+     Mitbestimmungsvertretung, die Pause (des Betriebsrats) AUFHEBEN (Wiederaktivierung) und eine EIGENE Pause
+     (`leitungPause`) SETZEN und aufheben (Betreiberentscheidung 2026-11-26): ausdrücklich, ohne den Betreiberschalter
+     CENTRIC_KI_BR_PAUSE. ZWEI getrennte Pausen mit eigenem Stempel (`am`/`nr`/`vonRolle`): `pause` (Betriebsrat oder die
+     Antwort „ja“) und `leitungPause`. Intelligence ist pausiert, solange EINE aktiv ist; keine überschreibt oder hebt die
+     andere auf. Die besondere Konten-Sperre (Betriebsrat-Zugänge) löst NUR `pause` aus (kiBrPauseAktiv), nie die Leitungspause.
    - Betriebsrat: ausschließlich die Pause SETZEN — und nur, wenn der Betreiberschalter CENTRIC_KI_BR_PAUSE
      genau „true“ ist (Vorgabe AUS; der Aufrufer reicht ihn als `schalter` durch, dieses Modul liest keine Umgebung).
      Aus: der Betriebsrat schreibt nirgends, wie bisher.
@@ -43,12 +47,12 @@ export const KI_ROLLEN_AUSLOESEN = Object.freeze(["leitung", "planer", "mitarbei
 export const KI_GESPERRT = Object.freeze({ F7A: "serverseitige Maskierung der Tabelle vor der Leck-Prüfung fehlt" });
 
 export const KI_FELD = "kiSteuerung";
-const KI_TEILE = Object.freeze(["betrieb", "funktion", "frage", "pauseAufheben", "pauseSetzen"]);
+const KI_TEILE = Object.freeze(["betrieb", "funktion", "frage", "pauseAufheben", "pauseSetzen", "leitungPause"]);
 export const KI_PROTOKOLL_GRENZE = 200;
 export const KI_FRAGE_ANTWORTEN = Object.freeze(["ja", "nein"]);
 
 export const KI_RECHTE = Object.freeze({
-  leitung: Object.freeze(["betrieb", "funktion", "frage", "pauseAufheben"]),
+  leitung: Object.freeze(["betrieb", "funktion", "frage", "pauseAufheben", "leitungPause"]),
   betriebsrat: Object.freeze(["pauseSetzen"]),
 });
 
@@ -70,7 +74,7 @@ const nrVon = (p) => (p && Number.isInteger(p.nr) ? p.nr : 0);
  * Der gespeicherte Stand, streng gelesen. Alles Ungültige heißt „nicht vorhanden“
  * (also aus); ein einzelner kaputter Eintrag macht nur sich selbst zu „aus“.
  * @param {any} e einstellungen des Betriebs
- * @returns {null | { betrieb: any, funktionen: Record<string, any>, betriebsratFrage: any, pause: any, pauseUngueltig: boolean, protokoll: any[] }}
+ * @returns {null | { betrieb: any, funktionen: Record<string, any>, betriebsratFrage: any, pause: any, pauseUngueltig: boolean, leitungPause: any, leitungPauseUngueltig: boolean, protokoll: any[] }}
  */
 export function kiSteuerungLesen(e) {
   if (!istObjekt(e) || !hat(e, KI_FELD) || !istObjekt(e[KI_FELD])) return null;
@@ -89,6 +93,8 @@ export function kiSteuerungLesen(e) {
       ? { ...s.betriebsratFrage } : null,
     pause: pauseOk(s.pause) ? { ...s.pause } : null,
     pauseUngueltig: hat(s, "pause") && !pauseOk(s.pause),
+    leitungPause: pauseOk(s.leitungPause) ? { ...s.leitungPause } : null,
+    leitungPauseUngueltig: hat(s, "leitungPause") && !pauseOk(s.leitungPause),
     protokoll: Array.isArray(s.protokoll) ? s.protokoll.filter((x) => istObjekt(x) && typeof x.art === "string" && stempelOk(x)).slice(-KI_PROTOKOLL_GRENZE) : [],
   };
 }
@@ -121,7 +127,7 @@ export function intelligenceEntscheidung(betrieb, funktion, rolle, o = {}) {
     const s = kiSteuerungLesen(betrieb.einstellungen);
     if (!s) return nein("KI_AUS");
     /* Die Pause geht vor jedem Schalter. Ein unlesbarer Pausenstand (vorhanden, aber ungültig) zählt als aktiv. */
-    if (s.pauseUngueltig || (s.pause && s.pause.aktiv === true)) return nein("KI_PAUSIERT");
+    if (s.pauseUngueltig || (s.pause && s.pause.aktiv === true) || s.leitungPauseUngueltig || (s.leitungPause && s.leitungPause.aktiv === true)) return nein("KI_PAUSIERT");
     if (!s.betrieb || s.betrieb.an !== true) return nein("KI_AUS");
     if (!s.betriebsratFrage) return nein("KI_AUS");
     /* „Ja“: erst nach der ausdrücklichen Aufhebung der Pause durch die Leitung (Pause vorhanden und aufgehoben). */
@@ -155,8 +161,9 @@ const wer = (sitzung) => (sitzung && (typeof sitzung.person === "string" || type
 export function kiSteuerungAnwenden(alt, absicht, sitzung, jetzt) {
   const darfRecht = (r) => !!sitzung && sitzung.demo !== true && Object.hasOwn(KI_RECHTE, sitzung.rolle) && KI_RECHTE[sitzung.rolle].includes(r);
   const stand = alt
-    ? { betrieb: alt.betrieb, funktionen: { ...alt.funktionen }, betriebsratFrage: alt.betriebsratFrage, pause: alt.pauseUngueltig ? { aktiv: true, nr: 1, am: jetzt, vonRolle: "system", vonPerson: null } : alt.pause, protokoll: [...alt.protokoll] }
-    : { betrieb: null, funktionen: {}, betriebsratFrage: null, pause: null, protokoll: [] };
+    ? { betrieb: alt.betrieb, funktionen: { ...alt.funktionen }, betriebsratFrage: alt.betriebsratFrage, pause: alt.pauseUngueltig ? { aktiv: true, nr: 1, am: jetzt, vonRolle: "system", vonPerson: null } : alt.pause,
+      leitungPause: alt.leitungPauseUngueltig ? { aktiv: true, nr: 1, am: jetzt, vonRolle: "system", vonPerson: null } : alt.leitungPause, protokoll: [...alt.protokoll] }
+    : { betrieb: null, funktionen: {}, betriebsratFrage: null, pause: null, leitungPause: null, protokoll: [] };
   const ereignisse = [];
   if (absicht === undefined || absicht === null) return { stand, ereignisse };
   /* Ohne Recht an irgendeinem Teil zählt die Anfrage nicht: Der gespeicherte Stand bleibt (wie branchenmoduleZusammen). */
@@ -171,7 +178,8 @@ export function kiSteuerungAnwenden(alt, absicht, sitzung, jetzt) {
     const p = absicht.pause;
     if (!istObjekt(p) || (hat(p, "aktiv") && typeof p.aktiv !== "boolean")) return { grund: "Intelligence-Steuerung: Die Pause braucht den Wert „aktiv“ (wahr oder falsch)." };
     const jetztAktiv = stand.pause ? stand.pause.aktiv === true : false;
-    /* Setzen nur mit dem Recht des Betriebsrats, Aufheben nur mit dem der Leitung; die jeweils andere Richtung zählt nicht. */
+    /* Setzen nur mit dem Recht des Betriebsrats (nur über kiPauseDurchBetriebsrat, hinter dem Schalter), Aufheben nur mit dem
+       der Leitung; die jeweils andere Richtung zählt nicht. Die Leitung setzt hier nie: ihre eigene Pause ist `leitungPause`. */
     const setzen = hat(p, "aktiv") && p.aktiv === true && !jetztAktiv && darfRecht("pauseSetzen");
     /* Aufheben ist ein Compare-and-set auf den Stempel der Pause: Die Anfrage muss die Pause nennen, die die Leitung gesehen
        hat (`am` UND die vom Server vergebene Revisionsnummer `nr`; `am` allein genügt nicht, weil Aufheben und erneutes
@@ -183,6 +191,21 @@ export function kiSteuerungAnwenden(alt, absicht, sitzung, jetzt) {
     if (setzen || aufheben) {
       stand.pause = { aktiv: p.aktiv, nr: nrVon(stand.pause) + 1, ...stempel };
       ereignisse.push({ art: p.aktiv ? "pause-gesetzt" : "pause-aufgehoben", ziel: "betrieb", wert: p.aktiv, ...stempel });
+    }
+  }
+  /* Die EIGENE Pause der Leitung (Betreiberentscheidung 2026-11-26): eigener Zustand mit eigenem Stempel, ohne den Schalter; sie
+     berührt `pause` (Betriebsrat, „ja“) nie, und das Aufheben berührt nur sie. Aufheben wieder als Compare-and-set (am UND nr). */
+  if (hat(absicht, "leitungPause") && darfRecht("leitungPause")) {
+    const p = absicht.leitungPause;
+    if (!istObjekt(p) || (hat(p, "aktiv") && typeof p.aktiv !== "boolean")) return { grund: "Intelligence-Steuerung: Die Pause der Leitung braucht den Wert „aktiv“ (wahr oder falsch)." };
+    const jetztAktiv = stand.leitungPause ? stand.leitungPause.aktiv === true : false;
+    const setzen = hat(p, "aktiv") && p.aktiv === true && !jetztAktiv;
+    const gesehen = !!alt && (alt.leitungPauseUngueltig || (!!alt.leitungPause && typeof p.am === "string" && p.am === alt.leitungPause.am
+      && typeof p.nr === "number" && p.nr === nrVon(alt.leitungPause)));
+    const aufheben = hat(p, "aktiv") && p.aktiv === false && jetztAktiv && gesehen;
+    if (setzen || aufheben) {
+      stand.leitungPause = { aktiv: p.aktiv, nr: nrVon(stand.leitungPause) + 1, ...stempel };
+      ereignisse.push({ art: p.aktiv ? "leitungspause-gesetzt" : "leitungspause-aufgehoben", ziel: "betrieb", wert: p.aktiv, ...stempel });
     }
   }
   if (hat(absicht, "betrieb") && darfRecht("betrieb")) {
@@ -232,6 +255,7 @@ function standFuerAblage(s) {
   if (Object.keys(s.funktionen).length) aus.funktionen = s.funktionen;
   if (s.betriebsratFrage) aus.betriebsratFrage = s.betriebsratFrage;
   if (s.pause) aus.pause = s.pause;
+  if (s.leitungPause) aus.leitungPause = s.leitungPause;
   if (s.protokoll.length) aus.protokoll = s.protokoll;
   return aus;
 }
@@ -311,7 +335,7 @@ export function kiSteuerungSicht(e, rolle) {
   return { ...rest, [KI_FELD]: standFuerAblage({
     betrieb: ohnePerson(s2.betrieb),
     funktionen: Object.fromEntries(Object.entries(s2.funktionen).map(([k, v]) => [k, ohnePerson(v)])),
-    betriebsratFrage: ohnePerson(s2.betriebsratFrage), pause: ohnePerson(s2.pause),
+    betriebsratFrage: ohnePerson(s2.betriebsratFrage), pause: ohnePerson(s2.pause), leitungPause: ohnePerson(s2.leitungPause),
     protokoll: s2.protokoll.map(ohnePerson) }) };
 }
 
@@ -354,10 +378,20 @@ const brSchluessel = (personen) => new Set((Array.isArray(personen) ? personen :
   .filter((p) => istObjekt(p) && p.rolle === "betriebsrat")
   .map((p) => [p.id, p.status || "", p.austritt || "", p.anonym ? 1 : 0].join("|")));
 
-/** Ist die Pause aktiv? Ein vorhandener, aber unlesbarer Pausenstand zählt als aktiv (fail closed). */
-export function kiPauseAktiv(einstellungen) {
+/**
+ * Ist die Pause des Betriebsrats (`pause`, auch die durch die Antwort „ja“ gesetzte) aktiv? Nur sie löst die besondere
+ * Konten-Sperre aus (Betreiberentscheidung 2026-11-26), nicht die eigene Pause der Leitung. Ein vorhandener, aber
+ * unlesbarer Pausenstand zählt als aktiv (fail closed).
+ */
+export function kiBrPauseAktiv(einstellungen) {
   const s = kiSteuerungLesen(einstellungen);
   return !!s && (s.pauseUngueltig || (!!s.pause && s.pause.aktiv === true));
+}
+
+/** Ist Intelligence pausiert (EINE der beiden Pausen aktiv oder unlesbar)? */
+export function kiPauseAktiv(einstellungen) {
+  const s = kiSteuerungLesen(einstellungen);
+  return !!s && (s.pauseUngueltig || s.leitungPauseUngueltig || (!!s.pause && s.pause.aktiv === true) || (!!s.leitungPause && s.leitungPause.aktiv === true));
 }
 
 /**
@@ -371,7 +405,7 @@ export function kiPauseAktiv(einstellungen) {
 export function betriebsratKontenSperre(altM, neuM) {
   try {
     if (!istObjekt(altM) || !istObjekt(neuM)) return { ok: true, grund: null };
-    if (!kiPauseAktiv(istObjekt(altM.einstellungen) ? altM.einstellungen : null)) return { ok: true, grund: null };
+    if (!kiBrPauseAktiv(istObjekt(altM.einstellungen) ? altM.einstellungen : null)) return { ok: true, grund: null };
     const a = brSchluessel(altM.personen);
     const n = brSchluessel(neuM.personen);
     if (a.size === n.size && [...a].every((x) => n.has(x))) return { ok: true, grund: null };

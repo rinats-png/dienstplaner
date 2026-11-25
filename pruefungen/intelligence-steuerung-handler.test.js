@@ -129,13 +129,34 @@ describe("PUT /api/bestand: Steuerung je Rolle", () => {
     const { intelligenceErlaubt } = await import("../server/lib/ki-steuerung.mjs");
     for (const r of ["leitung", "planer", "mitarbeiter"]) expect(intelligenceErlaubt(nachher, "F3", r, AN), r).toBe(false);
   });
-  it("Leitung setzt die Pause nicht (und stößt sie mit Aus/An nicht an)", async () => {
+  it("Leitung setzt eine EIGENE Pause (leitungPause) auch OHNE den Schalter; Aus/An allein stößt keine an; getrennt von der Pause des Betriebsrats", async () => {
     /* erst ein sauberer Zustand: Pause aus, Leitung hebt auf */
     const g = await gespeichert();
     await schreibe("l1", (m) => setze({ ...ki(m), pause: { aktiv: false, am: ki(g).pause.am, nr: ki(g).pause.nr } })(m));
     expect(ki(await gespeichert()).pause.aktiv).toBe(false);
-    await schreibe("l1", (m) => setze({ ...ki(m), pause: { aktiv: true } })(m));
-    expect(ki(await gespeichert()).pause.aktiv).toBe(false);
+    await schreibe("l1", (m) => setze({ ...ki(m), betrieb: { an: false } })(m));
+    expect(ki(await gespeichert()).leitungPause).toBeUndefined();
+    await schreibe("l1", (m) => setze({ ...ki(m), betrieb: { an: true } })(m));
+    delete process.env[SCHALTER];
+    try {
+      /* pause (die des Betriebsrats) setzt die Leitung nie */
+      await schreibe("l1", (m) => setze({ ...ki(m), pause: { aktiv: true } })(m));
+      expect(ki(await gespeichert()).pause.aktiv).toBe(false);
+      const e = await schreibe("l1", (m) => setze({ ...ki(m), leitungPause: { aktiv: true } })(m));
+      expect(e.status, e.roh).toBe(200);
+      const p = ki(await gespeichert()).leitungPause;
+      expect(p).toMatchObject({ aktiv: true, vonRolle: "leitung", vonPerson: "l1" });
+      expect(ki(await gespeichert()).pause.aktiv).toBe(false);
+      const { intelligenceErlaubt } = await import("../server/lib/ki-steuerung.mjs");
+      expect(intelligenceErlaubt(await gespeichert(), "F3", "leitung", AN)).toBe(false);
+      /* der Betriebsrat hebt sie auch ohne Schalter nicht auf; die Leitung hebt mit am+nr auf */
+      const br = await schreibe("r1", (m) => setze({ ...ki(m), leitungPause: { aktiv: false, am: p.am, nr: p.nr } })(m));
+      expect(br.status).toBe(403);
+      expect(ki(await gespeichert()).leitungPause.aktiv).toBe(true);
+      const auf = await schreibe("l1", (m) => setze({ ...ki(m), leitungPause: { aktiv: false, am: p.am, nr: p.nr } })(m));
+      expect(auf.status, auf.roh).toBe(200);
+      expect(ki(await gespeichert()).leitungPause.aktiv).toBe(false);
+    } finally { process.env[SCHALTER] = "true"; }
   });
   it("Betriebsrat hebt nicht auf: erneut pausiert, dann kein Aufheben durch den Betriebsrat — auch nicht mit gefälschtem Hauptschalter", async () => {
     await schreibe("r1", (m) => setze({ ...ki(m), pause: { aktiv: true } })(m));
@@ -175,7 +196,7 @@ describe("PUT /api/bestand: Steuerung je Rolle", () => {
     expect(ki(m).pause).toMatchObject({ aktiv: false, vonRolle: "leitung", vonPerson: "l1" });
     const { intelligenceErlaubt } = await import("../server/lib/ki-steuerung.mjs");
     expect(intelligenceErlaubt(m, "F3", "leitung", AN)).toBe(true);
-    expect(ki(m).protokoll.map((x) => x.art)).toEqual(["betrieb-an", "frage", "funktion-an", "pause-gesetzt", "pause-aufgehoben", "pause-gesetzt", "pause-aufgehoben"]);
+    expect(ki(m).protokoll.map((x) => x.art)).toEqual(["betrieb-an", "frage", "funktion-an", "pause-gesetzt", "pause-aufgehoben", "betrieb-aus", "betrieb-an", "leitungspause-gesetzt", "leitungspause-aufgehoben", "pause-gesetzt", "pause-aufgehoben"]);
     /* ohne Pause lässt sich die Betriebsrat-Rolle wieder ändern; die Änderung steht (nur als Zahl) im Betriebsprotokoll */
     const e2 = await schreibe("l1", (m2) => { m2.personen.push(person("r2", "betriebsrat")); });
     expect(e2.status, e2.roh).toBe(200);

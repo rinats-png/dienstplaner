@@ -63,7 +63,7 @@ import { zustellen, pushSchluessel, geraetAbmelden, geraetAusRumpf, personBerein
 import { auskunftBauen, protokollZurPerson, kontoFuerAuskunft, AUSKUNFT_FUER_ANDERE } from "../lib/auskunft.mjs";
 import { modulProtokollZeilen, bestandOhneModuleinstellungen } from "../lib/branchenmodule.mjs";
 import { schichtzuordnungProtokollZeilen, modellKuerzungFehlerBestand } from "../lib/schichtzuordnung.mjs";
-import { kiSteuerungProtokollZeilen, kiSteuerungVerwerfen, betriebsratKontenZeilen, kiPauseAktiv } from "../lib/ki-steuerung.mjs";
+import { kiSteuerungProtokollZeilen, kiSteuerungVerwerfen, betriebsratKontenZeilen, kiBrPauseAktiv } from "../lib/ki-steuerung.mjs";
 import { VORLAGEN, vorlageBestand, demoGestaltPruefen, demoOhneVertrag, codeBindung, betriebFuerNeuenCode }
   from "../lib/erstbefuellung.mjs";
 import { SICHERUNG_ROLLEN, WIEDERHERSTELLEN_ROLLEN, MARKE, markeNeu, eigenerBetrieb,
@@ -416,6 +416,19 @@ async function behandeln(req, context, ctx) {
       const zielGelesen = await bestandLesen(store, ziel);
       const bindungZ = betriebFuerNeuenCode(zielGelesen && zielGelesen.bestand, 0);
       if (bindungZ.grund) return antwort({ fehler: bindungZ.grund }, 409);
+      /* WP-I16 Teil 2 (Betreiberentscheidung 2026-11-26, Nr. 3): Dieselbe Pausenschutzregel wie bei der Rollenvergabe
+         (betriebsratKontenSperre) und bei Einladungen: Bei aktiver Pause entstehen keine neuen Betriebsrat-Zugänge — auch ohne den
+         Schalter, auch bei unlesbarem Pausenstand (fail closed); die ganze Anfrage wird abgewiesen, nichts entsteht.
+         Vor Kundenraumschutz und Ersteinrichtungsvermerk, damit eine Abweisung nichts schreibt. */
+      {
+        const neueBr = eintraege.filter((e) => e.rolle === "betriebsrat").length;
+        const zm = zielGelesen && zielGelesen.bestand && Array.isArray(zielGelesen.bestand.mandanten) ? zielGelesen.bestand.mandanten[bindungZ.betrieb] : null;
+        if (neueBr && zm && kiBrPauseAktiv(zm.einstellungen && typeof zm.einstellungen === "object" ? zm.einstellungen : null)) {
+          await protokoll("zugaenge", kZ, "abgewiesen", `Neue Betriebsrat-Zugänge bei aktiver Pause: ${neueBr}`);
+          return antwort({ fehler: "Solange die Intelligence-Funktionen pausiert sind, lassen sich keine Betriebsrat-Zugänge anlegen. "
+            + "Die Leitung hebt zuerst die Pause auf." }, 403);
+        }
+      }
       /* SI-P6 (2/2), Betreiberentscheidung G.2: Für einen BESTEHENDEN Kundenraum legt der Betreiber ohne nachweisbare
          Kundenzustimmung keine neuen Zugänge an — gleich welche Rolle, gleich ob eine Leitung fehlt. Erlaubt ist die
          Ersteinrichtung eines neuen Betriebs (lib/kundenraumschutz.mjs). Dieser Weg legt nie Demozugänge an.
@@ -678,11 +691,17 @@ async function behandeln(req, context, ctx) {
               for (const h of brZiele.filter((x) => konten[x].bestand === raum)) {
                 const k = konten[h];
                 const m = k.mandantId ? ms.find((x) => x && x.id === k.mandantId) : ms[Number(k.betrieb ?? 0)];
-                if (m && kiPauseAktiv(m.einstellungen && typeof m.einstellungen === "object" ? m.einstellungen : null)) gesperrtDurchPause = true;
+                if (m && kiBrPauseAktiv(m.einstellungen && typeof m.einstellungen === "object" ? m.einstellungen : null)) gesperrtDurchPause = true;
               }
             }
           } catch { gesperrtDurchPause = true; }
-          if (gesperrtDurchPause) {
+          if (gesperrtDurchPause && sB.rolle === "betreiber") {
+            /* Betreiberentscheidung 2026-11-26 (Nr. 1): Der Betreiber darf kompromittierte Betriebsrat-Zugänge aus
+               Sicherheitsgründen sperren (Widerruf) — auch bei aktiver oder unlesbarer Pause. Nur Sperren: die Pause bleibt
+               unberührt, Anlegen und Umstellen bleiben gesperrt, die Leitung bleibt bei aktiver Pause gesperrt (oben). Pflicht:
+               eine Protokollzeile VOR dem Sperren, nur Art und Zahl, keine Person. */
+            await protokoll("zugaenge", kS, "erfolg", `Sicherheitssperre durch Betreiber: ${brZiele.length} Betriebsrat-Zugang bei aktiver Pause`);
+          } else if (gesperrtDurchPause) {
             await protokoll("zugaenge", kS, "abgewiesen", `Sperrung von Betriebsrat-Zugängen bei aktiver Pause: ${brZiele.length}`);
             return antwort({ fehler: "Solange die Intelligence-Funktionen pausiert sind, lassen sich Betriebsrat-Zugänge nicht zurückziehen. "
               + "Die Leitung hebt zuerst die Pause auf." }, 403);
