@@ -16,7 +16,7 @@ Stand: 2026-11-24 · Umfangsklasse SICHERHEIT-QUALITAET · Bewertung und Vorschl
 
 Die Anforderungen aus P1-6 sind: (a) konkrete Grenzwerte, (b) Angriffsbedingungen, (c) Auswirkung, (d) Alternativen, (e) Negativtests. Abschnitt 3 und 4 decken (a) bis (c), Abschnitt 5 (d), Abschnitt 6 (e).
 
-Zeilenangaben beziehen sich auf den Kopf dieses Branches. Wo der Kandidat abweicht, steht es dabei.
+Zeilenangaben beziehen sich auf den Kopf dieses Branches (nach Delta-Review #536 am Kopf von `acc45/sicherheit/abn-a2-r-a2-1` neu geprüft). Wo der Kandidat oder `274bfa0` gemeint ist, steht es dabei.
 
 ---
 
@@ -44,16 +44,16 @@ Zeilenangaben beziehen sich auf den Kopf dieses Branches. Wo der Kandidat abweic
 
 - SSOT: `docs/acc45/work-packages.json`, Eintrag `ABN-A2` (P1, BLOCKED): „Einladungsbremse sperrt die Leitung nicht mehr aus (PR #277 angehalten)“. Betreiber 2026-11-14: #277, S-1, S-2 und X1 bleiben gesperrt bis zu dieser Bewertung.
 - Abnahme: `pruefungen/abnahme-a-ablauf.test.js` Test 2.4 hielt den Fehler fest („Nach zehn Einladungsversuchen im Raum ist auch die Leitung gesperrt (429) — auch durch Absagen anderer Rollen verbraucht“).
-- Code im Kandidaten (`517993ca`) und in `main`: `server/funktionen/einladung.mjs:107` wählt für `/api/einladung` die Art `zugaenge`; `leitungSitzung` zählt sie in Zeile 76 **vor** `einladungRechtePruefen` (Zeile 116). Kennung `kennung(req, s)` = `s:<Raum>` (`server/lib/schutz.mjs:502-505`).
-- Grenzwerte: `GRENZEN.zugaenge` 10 je 600 s, Sperre 1800 s steigend bis 86 400 s, fail-closed (`schutz.mjs:321`); `WEITERE.zugaenge.gesamt` 40 je 600 s (`schutz.mjs:479`).
-- Dieselbe Art zählt: Zurückziehen durch Leitung und Betreiber (`server/funktionen/daten.mjs:581`), Betreiberwege `/api/zugaenge` (382), Raumweg (500), Übersicht (550).
+- Code im Kandidaten (`517993ca`) und in `main`: `server/funktionen/einladung.mjs:107` wählt für `/api/einladung` die Art `zugaenge`; `leitungSitzung` zählt sie in Zeile 76 **vor** `einladungRechtePruefen` (Zeile 116). Kennung `kennung(req, s)` = `s:<Raum>` (`server/lib/schutz.mjs:523-526`, Kopf).
+- Grenzwerte: `GRENZEN.zugaenge` 10 je 600 s, Sperre 1800 s steigend bis 86 400 s, fail-closed (`schutz.mjs:325`, Zahlen in `ZUGAENGE_ZAHLEN`); `WEITERE.zugaenge.gesamt` 40 je 600 s (`schutz.mjs:496`).
+- Dieselbe Art zählt: Zurückziehen durch Leitung und Betreiber (`server/funktionen/daten.mjs:585`; seit §3.5 nur noch der Betreiber, die Leitung zählt `zugang-sperren`), Betreiberwege `/api/zugaenge` (382), Raumweg (500), Übersicht (550).
 
 ### 1.2 ABN-S2
 
 - SSOT: Eintrag `ABN-S2` (P1, BLOCKED): „Flut aus ca. 45 Herkünften sperrt Betreiber-Neuanmeldung und Einladungseinlösung; bei etwa 134 Herkünften auch Leitungen mit gültigem Code“. Vorbestehend, nicht durch die Abnahme V4 eingeführt.
-- Code: `POST /api/anmelden` zählt Fehlversuche in `bremse("anmelden", k, zielRaum)` (`daten.mjs:992`); `POST /api/einladung/annehmen` zählt dieselbe Art ohne Ziel (`einladung.mjs:174`).
-- Grenzwerte: `GRENZEN.anmelden` 8 je 300 s, Sperre 300 s steigend bis 7200 s (`schutz.mjs:318`); `WEITERE.anmelden` Ziel 40, **Gesamt 400** je 300 s (`schutz.mjs:477`); `NOTGRENZEN.anmelden` 20 je Herkunft, 400 gesamt (`schutz.mjs:1341`); `SPERRVERSUCHE` 8 je Sperre, **Dienst-Deckel 1200** je 300 s (`schutz.mjs:1476-1491`).
-- SI-P7-Durchlass: Ein nutzbarer Code (kein Betreiber) geht an Herkunftssperre, Betriebs- und Gesamtgrenze vorbei (`daten.mjs:964-986`), solange der Dienst-Deckel nicht gerissen ist (`gueltigeDurchlassen`, `schutz.mjs:1558-1562`). Betreibercodes nie (`daten.mjs:972`, `eintragV.rolle !== "betreiber"`).
+- Code: `POST /api/anmelden` zählt Fehlversuche in `bremse("anmelden", k, zielRaum)` (`daten.mjs:996`); `POST /api/einladung/annehmen` zählt dieselbe Art ohne Ziel (`einladung.mjs:204`).
+- Grenzwerte: `GRENZEN.anmelden` 8 je 300 s, Sperre 300 s steigend bis 7200 s (`schutz.mjs:322`); `WEITERE.anmelden` Ziel 40, **Gesamt 400** je 300 s (`schutz.mjs:493`); `NOTGRENZEN.anmelden` 20 je Herkunft, 400 gesamt (`schutz.mjs:1372`); `SPERRVERSUCHE` 8 je Sperre, **Dienst-Deckel 1200** je 300 s (`schutz.mjs:1507-1522`).
+- SI-P7-Durchlass: Ein nutzbarer Code (kein Betreiber) geht an Herkunftssperre, Betriebs- und Gesamtgrenze vorbei (`daten.mjs:968-990`), solange der Dienst-Deckel nicht gerissen ist (`gueltigeDurchlassen`, `schutz.mjs:1589-1593`). Betreibercodes nie (`daten.mjs:976`, `eintragV.rolle !== "betreiber"`).
 - Kein Ratenlimit vor dem Dienst im Repo (`deploy/` enthält keine Proxy-Ratenbegrenzung; `git grep -i "rate_limit\|limit_req" -- deploy` leer).
 
 ### 1.3 Deployter Produktionsstand `274bfa0` (Korrektur nach Review #534, A1)
@@ -91,7 +91,7 @@ Annahmen: ein Prozess je Ablage (`prozesssperre.mjs`), Zähler in der Ablage bzw
 
 ### 3.1 Angriffsbedingungen und Ablauf (vor der Behebung)
 
-1. **Ein Betrieb (T1):** eine Beschäftigte ruft `POST /api/einladung` 11-mal auf. Jede Antwort ist eine Rollenabsage (403), aber jeder Aufruf zählt gegen `zugaenge:s:<Raum>`. Nach dem 11. Aufruf: Raum 1800 s gesperrt, steigend. Folge: Die Leitung kann nicht einladen und **nicht zurückziehen** (gleicher Raumzähler, `daten.mjs:580-581`).
+1. **Ein Betrieb (T1):** eine Beschäftigte ruft `POST /api/einladung` 11-mal auf. Jede Antwort ist eine Rollenabsage (403), aber jeder Aufruf zählt gegen `zugaenge:s:<Raum>`. Nach dem 11. Aufruf: Raum 1800 s gesperrt, steigend. Folge: Die Leitung kann nicht einladen und **nicht zurückziehen** (gleicher Raumzähler; Kandidat `517993ca`, `daten.mjs:580-581`).
 2. **Installationsweit (T1):** je eine Sitzung niedriger Rolle in 4 Räumen, je 11 Aufrufe ⇒ ≥ 40 in `zugaenge:gesamt`. Folge für **alle anderen Betriebe** und den Betreiber: Einladen, Zurückziehen, `/api/zugaenge`, Raumweg und Übersicht 429 bis Fensterende (≤ 600 s), erneuerbar.
 3. Kosten: 44 Anfragen, Sekunden. Spur: Protokoll `einladung · abgewiesen` mit Rolle und Person.
 
@@ -99,8 +99,8 @@ Belegt durch die neuen Prüfungen A2-1, A2-2, A2-4 (rot auf `09ca5a2c`, Abschnit
 
 ### 3.2 Behebung (Commit 2 dieses PR, `server/funktionen/einladung.mjs`)
 
-- Vor der Rollenprüfung zählt `/api/einladung` nur noch `schreiben` je **Person** (`kennungPerson`, `schutz.mjs:514`; 120 je 60 s, Sperre 60 s, keine Gesamtgrenze, `schutz.mjs:346`) — reine Lastgrenze (`einladung.mjs:80`).
-- Nach der Rollenprüfung (`einladung.mjs:122`) zählt `zugaenge` je Raum wie bisher (`einladung.mjs:132`), **vor** der frischen Bestätigung (`einladung.mjs:135`). Zahlen, Sperre, Steigerung, fail-closed, Gesamtgrenze: unverändert.
+- Vor der Rollenprüfung zählt `/api/einladung` nur noch `schreiben` je **Person** (`kennungPerson`, `schutz.mjs:535`; 120 je 60 s, Sperre 60 s, keine Gesamtgrenze, `schutz.mjs:362`) — reine Lastgrenze (`einladung.mjs:80`).
+- Nach der Rollenprüfung (`einladung.mjs:122`) zählt die Einladungsbremse je Raum (`einladung.mjs:144` `einladung-nachweis`, `:154` `einladung`; bis §3.5 `zugaenge`), **vor** der frischen Bestätigung (`einladung.mjs:162`). Zahlen, Sperre, Steigerung, fail-closed, Gesamtgrenze: unverändert.
 - Was sich **nicht** ändert: Kein Geheimnis wird vor der Rollenprüfung verglichen (N-1); der Rateschutz für Nachweise (Zugangscode, Passwort, Faktor) ist derselbe Zähler mit denselben Zahlen (Prüfung A2-3); der Faktorzähler `zweifaktor` bleibt; alle anderen Wege unverändert.
 - Was die Behebung **nicht** ist: Sie ist nicht PR #277. Keine Lockerung von Grenzwerten, kein neuer Zähler je Person für Nachweise, keine Entlastung, X1 nicht umgesetzt. Der Commit ist einzeln entfernbar.
 
@@ -143,7 +143,9 @@ Regeln für `einladung-nachweis`: gezählt **vor** dem Vergleich (kein Rennfenst
 
 **Restrisiko R-A2-1R (Niedrig, Review #536; Ist in A2-5c festgehalten).** Leitungen aus ≥ 4 **Räumen** (der Zähler ist je Raum, `kennung()`) schicken je bis zu 10 Nachweise, die falsch sind oder nicht verglichen werden können ⇒ `einladung-nachweis:gesamt` voll ⇒ in anderen Räumen wartet **nur das Ausstellen mit Nachweis** bis Fensterende (≤ 600 s). Nicht betroffen: Ausstellen mit junger Anmeldung (≤ 5 min), Zurückziehen (Leitung und Betreiber), alle Betreiberwege, Anmelden, Einlösen. Kosten: je Raum danach eigene Sperre 1800 s steigend; erneuern nur mit weiteren Räumen. Spur: nacheinander gesendete falsche Nachweise erscheinen als `einladung · abgewiesen` mit Rolle und Person; gleichzeitig gesendete, die an der Sperre abprallen, nur als `einladung · gebremst` mit der Raumkennung, **ohne** Person. Entspricht S-1 aus #277.
 
-**Korrektur Review #536 (A1) und Abhilfe (c).** Im Stand `541bc983` genügte für R-A2-1R **eine** Leitungssitzung: 60 gleichzeitige falsche Nachweise wurden alle mit 429 abgewiesen, ließen aber ihre Gesamtvermerke stehen; danach wartete die Leitung eines anderen Raums mit **richtigem** Nachweis (429, Retry-After 236 s). Ursache: Die Gesamtgrenze in `bremse()` zählt und vermerkt zuerst, der Sperrpfad gab die Vermerke nicht mit. Abhilfe ohne neue Grenzwerte (2 Stellen, ≈ 15 Zeilen): Der Sperrpfad gibt `vermerke` mit, `einladung.mjs` nimmt sie zurück, wenn `einladung-nachweis` abweist. Danach trägt ein Raum höchstens etwa 10 Gesamtvermerke je Fenster bei, und R-A2-1R verlangt wieder ≥ 4 Räume (Prüfung G1: rot auf `541bc983`, grün danach). Der Rateschutz wird nicht schwächer: Raumzähler, Sperre und Stufe bleiben; zurückgenommen werden nur Vermerke von Aufrufen, die nichts verglichen haben (Prüfung G2: richtige und falsche Nachweise im Wechsel — höchstens 10 Vergleiche je Fenster, kein „Freikaufen“). Vollständig entfiele es nur mit X1 (Gesamtgrenze für Nachweise streichen) oder einer Gewichtung je Betrieb — beides ist eine **Betreiberentscheidung** (§8), hier nicht umgesetzt.
+**Korrektur Review #536 (A1) und Abhilfe (c).** Im Stand `541bc983` genügte für R-A2-1R **eine** Leitungssitzung: 60 gleichzeitige falsche Nachweise wurden alle mit 429 abgewiesen, ließen aber ihre Gesamtvermerke stehen; danach wartete die Leitung eines anderen Raums mit **richtigem** Nachweis (429, Retry-After 236 s). Ursache: Die Gesamtgrenze in `bremse()` zählt und vermerkt zuerst, der Sperrpfad gab die Vermerke nicht mit. Abhilfe ohne neue Grenzwerte (2 Stellen, ≈ 15 Zeilen): Der Sperrpfad gibt `vermerke` mit, `einladung.mjs` nimmt sie zurück, wenn `einladung-nachweis` abweist. Danach trägt ein Raum höchstens etwa 10 Gesamtvermerke je Fenster bei, und R-A2-1R verlangt wieder ≥ 4 Räume (Prüfung G1: rot auf `541bc983`, grün danach). Der Rateschutz wird nicht schwächer: Raumzähler, Sperre und Stufe bleiben; zurückgenommen werden nur Vermerke von Aufrufen, die nichts verglichen haben (Prüfung G2: richtige und falsche Nachweise im Wechsel — höchstens 10 Vergleiche je Fenster, kein „Freikaufen“). Abgesichert nach Delta-Review #536: A2-5g (eine Abweisung im Sperrpfad nimmt nur ihre eigenen Gesamtvermerke zurück, die von anderen gefüllte Rategrenze bleibt voll; Mutant „Präfix löschen“ rot) und A2-5h (Raumzähler `einladung-nachweis` direkt geprüft, damit `einladung` ihn nicht verdeckt: weder eine Abweisung noch ein richtiger Nachweis setzt ihn zurück; Mutanten „Abweisung entlastet“ und „richtiger Nachweis entlastet“ rot).
+
+**Gleichwertigkeit des Feldnamens `vermerke` (Delta-Review, Mutant b).** Hieße das Feld im Sperrpfad `zurueck`, änderte sich für die übrigen Aufrufer nichts: Alle Stellen, die ein `bremse()`-Ergebnis an `vermerkeZuruecknehmen` oder `entlasten` geben, kehren bei `!b.frei` vorher zurück und reichen nur freie Ergebnisse weiter — `daten.mjs:999-1004` (Anmeldung; Verwendung `:1098`, `:1253-1255`), `anmeldung.mjs:283-288` (Kontoanmeldung; Verwendung `:370`, `:481`). Der eigene Name `vermerke` bleibt trotzdem, damit die Rücknahme an einer Sperre nur dort geschieht, wo sie ausdrücklich gewollt ist. Vollständig entfiele es nur mit X1 (Gesamtgrenze für Nachweise streichen) oder einer Gewichtung je Betrieb — beides ist eine **Betreiberentscheidung** (§8), hier nicht umgesetzt.
 
 **Einordnung Gleichzeitigkeit (Review #536, A4).** Schon **vor** diesem Nachtrag genügte eine einzige Leitung mit gleichzeitigen Anfragen für das volle R-A2-1: Prüfung G3 (60 Einladungen und 60 Rückzüge gleichzeitig) ergab auf der Basis `84e93879` für Betreiber-Zurückziehen, fremdes Zurückziehen und fremdes Einladen jeweils 429, mit diesem Nachtrag jeweils 200. Ziel- und Gesamtgrenze zählen in `bremse()` weiter über `await` getrennt; nach Abhilfe (c) bleiben davon je Raum nur Vermerke von Aufrufen, die verglichen wurden oder nicht vergleichbar scheiterten. Die vollständige Abdichtung (`GLEICHZEITIG_DICHT` aus #277) gehört zum Folgepaket (§8).
 
@@ -171,7 +173,7 @@ Keine Sitzung, keine Rolle, kein Wissen über Codes. Nur Herkunftsgruppen.
 | Leitung/Beschäftigte mit gültigem Zugangscode | 200 (SI-P7) | **429** |
 | Einladung einlösen (gültiges Token) | **429** | **429** |
 | bestehende Sitzungen (Lesen) | 200 | 200 |
-| Kontoanmeldung (E-Mail/Passwort, eigene Art `anmelden-konto`, `schutz.mjs:421`, 493) | nach Code frei (anderer Zähler); **nicht geprüft** | dto. |
+| Kontoanmeldung (E-Mail/Passwort, eigene Art `anmelden-konto`, `schutz.mjs:437`, 514) | nach Code frei (anderer Zähler); **nicht geprüft** | dto. |
 | Zurückziehen eines Zugangs | nur mit Sitzung < 20 min (`daten.mjs:208`, 579) | dto. |
 | Nach Fensterende | alles frei, Einladung nicht verbraucht | alles frei |
 
@@ -179,7 +181,7 @@ Grenzen des Angriffs (getestet): eine einzelne Herkunft (80 Fehlversuche) sperrt
 
 ### 4.3 Bestehende Gegenmaßnahmen
 
-`schutz.mjs:318` (Herkunft 8/300 s steigend), `:477` (Gesamt 400), `:1341` (Notgrenze im Prozessspeicher), `:1476-1491` (Sperrversuche, Dienst-Deckel), `:650-659` (IPv6 je /64), `daten.mjs:964-986` (SI-P7-Durchlass), `:1131` (zweiter Faktor für Betreibercodes; schützt vor Übernahme, nicht vor Verzögerung), Protokoll `anmelden · gebremst (gesamt)` (`daten.mjs:998`). `herkunftErlaubt` (`schutz.mjs:747-761`) lässt Anfragen ohne `Origin` zu — kein Schutz gegen Skripte (gewollt).
+`schutz.mjs:322` (Herkunft 8/300 s steigend), `:493` (Gesamt 400), `:1372` (Notgrenze im Prozessspeicher), `:1507-1522` (Sperrversuche, Dienst-Deckel), `:678-687` (IPv6 je /64), `daten.mjs:968-990` (SI-P7-Durchlass), `:1136` (zweiter Faktor für Betreibercodes; schützt vor Übernahme, nicht vor Verzögerung), Protokoll `anmelden · gebremst (gesamt)` (`daten.mjs:1002`). `herkunftErlaubt` (`schutz.mjs:775-789`) lässt Anfragen ohne `Origin` zu — kein Schutz gegen Skripte (gewollt).
 
 ### 4.4 Einstufung
 
@@ -189,7 +191,7 @@ Grenzen des Angriffs (getestet): eine einzelne Herkunft (80 Fehlversuche) sperrt
 
 Kein Fix ist klein **und** ohne neue Grenzwertentscheidung:
 
-- **S2-b (klein, empfohlen als Folge-PR):** `POST /api/einladung/annehmen` auf eine eigene Art (z. B. `einladung-annehmen`, je Herkunft 8/300 s steigend, eigene Gesamtgrenze) statt `anmelden`. Das Token hat 256 Bit und ist nicht ratbar. Wirkung: Einlösen unabhängig von der Anmeldeflut; die Einlöseflut füllt `anmelden:gesamt` nicht mehr. Ändern: `einladung.mjs:174`, `GRENZEN`/`WEITERE` in `schutz.mjs`; Prüfung S2-2 kehrt für das Einlösen um. Braucht die Zahl für die neue Gesamtgrenze → Betreiberentscheidung.
+- **S2-b (klein, empfohlen als Folge-PR):** `POST /api/einladung/annehmen` auf eine eigene Art (z. B. `einladung-annehmen`, je Herkunft 8/300 s steigend, eigene Gesamtgrenze) statt `anmelden`. Das Token hat 256 Bit und ist nicht ratbar. Wirkung: Einlösen unabhängig von der Anmeldeflut; die Einlöseflut füllt `anmelden:gesamt` nicht mehr. Ändern: `einladung.mjs:204`, `GRENZEN`/`WEITERE` in `schutz.mjs`; Prüfung S2-2 kehrt für das Einlösen um. Braucht die Zahl für die neue Gesamtgrenze → Betreiberentscheidung.
 - **S2-a (mittel, eigenes Paket mit Review):** Gültiger Betreibercode an `anmelden:gesamt` vorbei wie SI-P7; der zweite Faktor bleibt Pflicht und behält seine Bremse je Geheimnis. Berührt die SI-P7-Gleichzeitigkeitslogik (`sperrAuswertungenAbwarten`) — eigenes Sicherheitsreview nötig.
 - **S2-d (Betrieb):** Ratenbegrenzung je IP im Reverse-Proxy und Alarm auf `anmelden · gebremst (gesamt)`. Außerhalb dieses Repos bzw. in `deploy/` (hier gesperrt).
 
@@ -230,6 +232,8 @@ Echte Grenzwerte (die Datei hebt nichts an; der erste Test prüft die Zahlen). F
 | G3 (Review #536) | eine Leitung, 60 Einladungen + 60 Rückzüge gleichzeitig → fremdes Einladen/Zurückziehen und Betreiber frei | **rot** (alle 429) | grün |
 | G1 (Review #536) | eine Leitung, 60 falsche Nachweise gleichzeitig → kein Ausstellen; anderer Raum mit richtigem Nachweis 200 | **rot** (auch auf `541bc983`: 429, Retry-After 236 s) | grün (Abhilfe c) |
 | G2 (Review #536) | richtige und falsche Nachweise im Wechsel: höchstens 10 Vergleiche je Fenster (kein Freikaufen) | grün | grün |
+| A2-5g (Delta-Review #536) | 39 Fehlversuche aus 4 Räumen, Abweisung im Sperrpfad in Raum 5, 40. Fehlversuch → Opfer mit richtigem Nachweis 429 | — (Abwehr gegen Mutant c) | grün; Mutant „Präfix löschen“ rot |
+| A2-5h (Delta-Review #536) | Raumzähler `einladung-nachweis` direkt: nach 9 falschen + 1 richtigem Nachweis und nach einer Abweisung (Sperre > 1700 s) nicht zurückgesetzt | — (Abwehr gegen Mutanten d/d2) | grün; beide Mutanten rot |
 | S2-1 | eine Herkunft, 80 Fehlversuche: 8 × 401, Rest 429, kein Token; Betreiber und Leitung von anderswo 200 | grün | grün |
 | S2-2 | Stufe 1 (45 × 9): kein Token, ein Fehlertext; Betreiber 429, Einlösen 429 (Ist), Leitung 200, Sitzung liest; nach Fensterende Betreiber 200, Einlösen 200 | grün | grün |
 | S2-3 | Stufe 2 (Dienst-Deckel gerissen UND `anmelden:gesamt` voll): 90 Herkünfte je 9 Sperrversuche direkt (810, Leitung noch 200), dann 45 Herkünfte × 17 über HTTP (405 in der Gesamtgrenze, 1215 Sperrversuche): Deckel gerissen, kein Token, Leitung 429 (Ist), Sitzung liest; nach Fensterende 200 | grün | grün |
