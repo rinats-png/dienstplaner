@@ -5,7 +5,7 @@
   "statusZaehlung": {
     "BLOCKED": 116,
     "READY": 27,
-    "IN_PROGRESS": 20,
+    "IN_PROGRESS": 21,
     "REVIEW": 10,
     "INTEGRATED": 119,
     "DONE": 3
@@ -31,8 +31,8 @@
       "pakete": 40,
       "offen": 27,
       "restPT": {
-        "min": 181,
-        "max": 320
+        "min": 177,
+        "max": 313
       }
     },
     "folge": {
@@ -2640,26 +2640,26 @@
       "prio": "P3",
       "aufwandPT": {"min":8,"max":14},
       "abhaengigkeiten": ["WP-I13","WP-I15"],
-      "status": "BLOCKED",
+      "status": "IN_PROGRESS",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"Branch intelligence/wp-i16-pause (lokal, nicht gepusht); docs/acc45/WP-I16-nachweis.md"},
+        "lokalGetestet": {"wert":true,"beleg":"pruefungen/intelligence-steuerung*.test.js (Kern, Handler, Oberfläche) und angrenzende Rechte-Suiten, Mutationen je Schutz; docs/acc45/WP-I16-nachweis.md"},
         "reviewt": {"wert":false,"beleg":null},
         "integriert": {"wert":false,"beleg":null},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
       },
-      "branch": "intelligence/wp-i16-betriebssteuerung-und-tr",
+      "branch": "intelligence/wp-i16-pause",
       "agent": "Intelligence (eigener Block)",
       "modell": "opus",
       "konfliktzonen": ["App.jsx","rechte.mjs"],
       "pr": ["#238"],
-      "nachweis": "docs/acc45/INTELLIGENCE-ENTWICKLUNGSPLAN.md",
+      "nachweis": "docs/acc45/WP-I16-nachweis.md",
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block P)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). PR #238 (WP-I16 Teil 1: Steuerung und Transparenz, Betrieb, Betriebsrat-Pause, Schalter aus): offen, Freigabe ausstehend, nicht gemergt. Grund: neues Schreibrecht für den Betriebsrat (nur kiSteuerung.pause.aktiv über PUT /api/bestand) und akzeptiertes Restrisiko (Leitung hält roles.assign und kann die Betriebsrat-Rolle vergeben und damit die Pause aufheben). Betreiberentscheidungen: Recht freigeben; Minderung des roles.assign-Umwegs (bestehende BR-Mitglieder benachrichtigen, BR-Konto vor der Pause vorausgesetzt, Rollenvergabe Betriebsrat durch Leitung untersagen); Plan-Lücken: wer bestätigt, direktes BR-Recht, Ja-nach-Nein durch Leitung, Frage vor Einschalten Pflicht, Beschäftigteninformation, Notschalter, KI-Kennzeichnung. Entscheidungsstand 2026-11-14 (Statusstufe entschieden, keine Freigabe zur Produktion): Betreiber 2026-11-14: Betriebsrat-Schreibrecht (PR #238) ist NICHT freigegeben. Weiter offen: KI-Pause aktivieren und aufheben (wer darf was), wer BR-Konten zuweist, Umgehung der Pause über die Rollenvergabe durch die Leitung (roles.assign). PR #238 bleibt angehalten. Nachtrag 2026-11-18 (SSOT-Klassifizierung): Feld pr um #238 ergänzt (offen, angehalten, nicht gemergt).\nNachtrag 2026-11-25 (Betreiber): P2-8: Variante A als technisches Ziel: Betriebsrat darf Intelligence in seinem Zuständigkeitsbereich pausieren; jede Änderung protokolliert; Rollenvergabe darf die Schutzmaßnahme nicht umgehen; normale Dienstplanung bleibt funktionsfähig; Wiederaktivierung durch die Leitung unter den geltenden Freigaberegeln. Produktive Rechte und endgültige Wiederaktivierungsregeln erst nach rechtlicher Prüfung (Schalter AUS)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). PR #238 (WP-I16 Teil 1: Steuerung und Transparenz, Betrieb, Betriebsrat-Pause, Schalter aus): offen, Freigabe ausstehend, nicht gemergt. Grund: neues Schreibrecht für den Betriebsrat (nur kiSteuerung.pause.aktiv über PUT /api/bestand) und akzeptiertes Restrisiko (Leitung hält roles.assign und kann die Betriebsrat-Rolle vergeben und damit die Pause aufheben). Betreiberentscheidungen: Recht freigeben; Minderung des roles.assign-Umwegs (bestehende BR-Mitglieder benachrichtigen, BR-Konto vor der Pause vorausgesetzt, Rollenvergabe Betriebsrat durch Leitung untersagen); Plan-Lücken: wer bestätigt, direktes BR-Recht, Ja-nach-Nein durch Leitung, Frage vor Einschalten Pflicht, Beschäftigteninformation, Notschalter, KI-Kennzeichnung. Entscheidungsstand 2026-11-14 (Statusstufe entschieden, keine Freigabe zur Produktion): Betreiber 2026-11-14: Betriebsrat-Schreibrecht (PR #238) ist NICHT freigegeben. Weiter offen: KI-Pause aktivieren und aufheben (wer darf was), wer BR-Konten zuweist, Umgehung der Pause über die Rollenvergabe durch die Leitung (roles.assign). PR #238 bleibt angehalten. Nachtrag 2026-11-18 (SSOT-Klassifizierung): Feld pr um #238 ergänzt (offen, angehalten, nicht gemergt).\nNachtrag 2026-11-25 (Betreiber): P2-8: Variante A als technisches Ziel: Betriebsrat darf Intelligence in seinem Zuständigkeitsbereich pausieren; jede Änderung protokolliert; Rollenvergabe darf die Schutzmaßnahme nicht umgehen; normale Dienstplanung bleibt funktionsfähig; Wiederaktivierung durch die Leitung unter den geltenden Freigaberegeln. Produktive Rechte und endgültige Wiederaktivierungsregeln erst nach rechtlicher Prüfung (Schalter AUS).\nNachtrag 2026-11-25: Betreiberentscheidung P2-8 Variante A (Betriebsrat pausiert, Leitung hebt auf, Rollenvergabe darf die Pause nicht aushebeln; produktive Rechte und Wiederaktivierungsregeln erst nach rechtlicher Prüfung). Umgesetzt auf neuer Basis als Branch intelligence/wp-i16-pause (ersetzt #238; Schließen empfohlen): Betriebsrat-Schreibrecht hinter CENTRIC_KI_BR_PAUSE (Vorgabe AUS, nicht freigegeben), Aufheben nur Leitung mit Compare-and-set, Betriebsrat-Konten bei aktiver Pause gesperrt, Protokoll. Offen: Review, Integration, rechtliche Prüfung, Wiederaktivierungsregel, Vier-Augen/Konten-Regel nach dem Aufheben, Betreiber-Notschalter je Betrieb, Verdrahtung. Status IN_PROGRESS, nicht INTEGRATED."
     },
     {
       "id": "WP-I17",

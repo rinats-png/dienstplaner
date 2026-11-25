@@ -23,7 +23,7 @@ import { raumLage, ersteinrichtungVermerken, neueZugaengeErlaubt, KUNDENRAUM_TEX
 import { herkunftsloseFeedsWiderrufen } from "../lib/feedwiderruf.mjs";
 import { kontoLesen, kontoLesenStreng, kontoSchreiben, kontoAendern, alleKonten, kontoVereinzeln, raumUebersicht }
   from "../lib/konten.mjs";
-import { demoAn, teilwegAn, abschlussSegmentweiseAn, abschlussOhneSperreAn, schichtmodellPflegeAn, schichtmodellWirkungAn } from "../lib/schalter.mjs";
+import { kiBetriebsratPauseAn, demoAn, teilwegAn, abschlussSegmentweiseAn, abschlussOhneSperreAn, schichtmodellPflegeAn, schichtmodellWirkungAn } from "../lib/schalter.mjs";
 /* IMP-6 Planwirkung: Quelle der Planrechnung = CENTRIC_SCHICHTMODELL_WIRKUNG (Vorgabe aus; auch ohne server.mjs). */
 import "../lib/schichtmodell-wirkung.mjs";
 import { vollsichtSchichtmodelle, schichtfolgeFuerSicht, abweichungenTeilrollen } from "../lib/schichtfolge-teilrollen.mjs";
@@ -63,6 +63,7 @@ import { zustellen, pushSchluessel, geraetAbmelden, geraetAusRumpf, personBerein
 import { auskunftBauen, protokollZurPerson, kontoFuerAuskunft, AUSKUNFT_FUER_ANDERE } from "../lib/auskunft.mjs";
 import { modulProtokollZeilen, bestandOhneModuleinstellungen } from "../lib/branchenmodule.mjs";
 import { schichtzuordnungProtokollZeilen, modellKuerzungFehlerBestand } from "../lib/schichtzuordnung.mjs";
+import { kiSteuerungProtokollZeilen, kiSteuerungVerwerfen, betriebsratKontenZeilen } from "../lib/ki-steuerung.mjs";
 import { VORLAGEN, vorlageBestand, demoGestaltPruefen, demoOhneVertrag, codeBindung, betriebFuerNeuenCode }
   from "../lib/erstbefuellung.mjs";
 import { SICHERUNG_ROLLEN, WIEDERHERSTELLEN_ROLLEN, MARKE, markeNeu, eigenerBetrieb,
@@ -790,7 +791,10 @@ async function behandeln(req, context, ctx) {
       if (personA) return antwort({ fehler: "Der Bestand ist ungültig.", text: personA.grund, feld: personA.feld }, 422);
       /* Moduleinstellungen (Schalter, Bestätigungen, Regelwerte, Modulprotokoll) bringt kein
          Inhalt mit — jeder Betrieb beginnt ohne (G1/G2/G6, WP-19.0 Nachtrag). */
-      const angeglichen = bestandOhneModuleinstellungen(personenAngleichen(roh));
+      const angeglichen0 = bestandOhneModuleinstellungen(personenAngleichen(roh));
+      /* Auch die Intelligence-Steuerung (WP-I16) bringt kein Inhalt mit. */
+      const angeglichen = angeglichen0 && Array.isArray(angeglichen0.mandanten)
+        ? { ...angeglichen0, mandanten: angeglichen0.mandanten.map(kiSteuerungVerwerfen) } : angeglichen0;
       /* Monatsabschluss und eingefrorenes Ist entstehen nur auf dem Server (POST /api/monatsabschluss) — aus
          einem übermittelten Inhalt werden sie verworfen (WP-16, Nachtrag N4), nie ungeprüft übernommen. */
       let neuerBestand = angeglichen && Array.isArray(angeglichen.mandanten)
@@ -1491,7 +1495,10 @@ async function behandeln(req, context, ctx) {
 
       /* Erst die Rolle, dann alles andere. Wer gar nicht schreiben darf,
          soll auch keine Bremse und keinen Konfliktvergleich auslösen. */
-      if (schreibumfang(s.rolle) === SCHREIBEN_NEIN) {
+      /* WP-I16 Teil 1: Einzige Ausnahme ist der Betriebsrat im Voll-PUT — er darf die Pause der Intelligence-Funktionen
+         setzen und aufheben. Ob die Anfrage genau das und nichts sonst ist, entscheidet zusammenfuehren (rechte.mjs);
+         ohne Änderung der Pause weist es mit derselben Absage ab wie bisher. Der Teilweg bleibt für ihn gesperrt. */
+      if (schreibumfang(s.rolle) === SCHREIBEN_NEIN && !(s.rolle === "betriebsrat" && kiBetriebsratPauseAn() && !teilweg && !loeschweg)) {
         await protokoll(loeschweg ? "loeschlauf" : "schreiben", ks, "abgewiesen", `Rolle ${s.rolle}`, wer);
         return antwort({ fehler: "Keine Schreibberechtigung.",
           text: absageText(s.rolle) }, 403);
@@ -1925,6 +1932,9 @@ async function behandeln(req, context, ctx) {
         /* Schichtmodelle und Zuordnungen (IMP-6 Teil 2): je Änderung nur Kennungen (Modell, Person, Zuordnung) — keine Namen,
            keine Modellnamen, keine Zeiträume. Wer, steht am Datensatz (geaendertVon). */
         for (const z of schichtzuordnungProtokollZeilen(jetzt ? jetzt.bestand : null, zuSchreiben)) await protokoll("schreiben", ks, "schichtmodell", z, wer);
+        /* Intelligence-Steuerung (WP-I16): Art, Ziel und Rolle — ohne Person und ohne Inhalt. */
+        for (const z of kiSteuerungProtokollZeilen(jetzt ? jetzt.bestand : null, zuSchreiben)) await protokoll("schreiben", ks, "ki-steuerung", z, wer);
+        for (const z of betriebsratKontenZeilen(jetzt ? jetzt.bestand : null, zuSchreiben)) await protokoll("schreiben", ks, "ki-steuerung", z, wer);
         /* Rücknahme einer Planfreigabe (WP-23b): ohne Monat, nur die Zahl. */
         const frei = freigabeRuecknahmen(jetzt ? jetzt.bestand : null, zuSchreiben);
         /* RB-2: eingegangene Krankmeldungen und unmittelbar (endgültig) eingetragene — nur Kennung, Schritt, Rolle. */

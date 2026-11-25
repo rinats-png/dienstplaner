@@ -42,6 +42,10 @@
       "klasse": "schalter-aus",
       "quelle": "server/lib/schalter.mjs (IMP-6-Planwirkung, #429; nur genau true)"
     },
+    "CENTRIC_KI_BR_PAUSE": {
+      "klasse": "schalter-aus",
+      "quelle": "server/lib/schalter.mjs (WP-I16, P2-8 Variante A; nur genau true)"
+    },
     "CENTRIC_PRUEFLINK": {
       "klasse": "schalter-aus",
       "quelle": "server/lib/post.mjs (ja)"

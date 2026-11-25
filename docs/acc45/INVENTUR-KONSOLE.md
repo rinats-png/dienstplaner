@@ -79,10 +79,10 @@ sicher, dass sie zum Skript passen. Vergleichen Sie zusätzlich mit den Werten i
 
 | Wert | Soll |
 |---|---|
-| 32-Hex im Tor (Befehl 2, Kontrolle K1) | `dc707bf7bc96a83d90329b5f0291d3a3` |
-| Zeilen: `1075` | Kontrolle K2, erste Zahl |
-| Bytes: `42761` | Kontrolle K2, zweite Zahl |
-| SHA-256 (voll) | `dc707bf7bc96a83d90329b5f0291d3a3b3d70299a112325e15aa41e5324b64fe` |
+| 32-Hex im Tor (Befehl 2, Kontrolle K1) | `7fee4bb956c538c591d58023a0d70b1e` |
+| Zeilen: `1076` | Kontrolle K2, erste Zahl |
+| Bytes: `42781` | Kontrolle K2, zweite Zahl |
+| SHA-256 (voll) | `7fee4bb956c538c591d58023a0d70b1e704d92027e173c9407d2a932bde1032a` |
 | eingebettete inventur.sh | `d99207298c12` (Kopfzeile des Kurzprotokolls) |
 
 Befehle (Zeichenzahl bei 12-stelligem `<ref>`; in der Tabelle steht `\|` nur wegen der Tabellenschreibweise, tippen Sie `|`):
@@ -90,11 +90,11 @@ Befehle (Zeichenzahl bei 12-stelligem `<ref>`; in der Tabelle steht `\|` nur weg
 | Nr | Zeichen | Befehl | Wirkung |
 |---|---|---|---|
 | 1 | 113 | `s=$(curl -fsSL https://raw.githubusercontent.com/rinats-png/dienstplaner/<ref>/deploy/inventur-konsole.sh)` | lädt das Skript in die Variable `s` (keine Datei) |
-| K1 | 72 | `printf %s "$s" \| sha256sum \| grep -c '^dc707bf7bc96a83d90329b5f0291d3a3'` | optional: zeigt `1` (Treffer) oder `0` |
+| K1 | 72 | `printf %s "$s" \| sha256sum \| grep -c '^7fee4bb956c538c591d58023a0d70b1e'` | optional: zeigt `1` (Treffer) oder `0` |
 | K2 | 23 | `printf %s "$s" \| wc -lc` | optional: zeigt Zeilen und Bytes |
-| 2 | 88 | `printf %s "$s" \| sha256sum \| grep -q '^dc707bf7bc96a83d90329b5f0291d3a3' && bash -c "$s"` | Tor + Ausführung: nur bei passender Prüfsumme läuft das Skript (Kurzprotokoll) |
-| V1 | 110 | `printf %s "$s" \| sha256sum \| grep -q '^dc707bf7bc96a83d90329b5f0291d3a3' && bash -c "$s" x --voll \| head -n 60` | nur auf Bitte: ausführlich, Zeilen 1–60 |
-| V2 | 124 | `printf %s "$s" \| sha256sum \| grep -q '^dc707bf7bc96a83d90329b5f0291d3a3' && bash -c "$s" x --voll \| tail -n +61 \| head -n 60` | nur auf Bitte: Zeilen 61–120 (weiter mit +121 usw.) |
+| 2 | 88 | `printf %s "$s" \| sha256sum \| grep -q '^7fee4bb956c538c591d58023a0d70b1e' && bash -c "$s"` | Tor + Ausführung: nur bei passender Prüfsumme läuft das Skript (Kurzprotokoll) |
+| V1 | 110 | `printf %s "$s" \| sha256sum \| grep -q '^7fee4bb956c538c591d58023a0d70b1e' && bash -c "$s" x --voll \| head -n 60` | nur auf Bitte: ausführlich, Zeilen 1–60 |
+| V2 | 124 | `printf %s "$s" \| sha256sum \| grep -q '^7fee4bb956c538c591d58023a0d70b1e' && bash -c "$s" x --voll \| tail -n +61 \| head -n 60` | nur auf Bitte: Zeilen 61–120 (weiter mit +121 usw.) |
 | 3 | 7 | `unset s` | entfernt die Variable |
 
 <!-- KONSOLE-WERTE-ENDE -->
