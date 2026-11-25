@@ -328,3 +328,20 @@ WP-30 (Mail und Push in Produktion) hatte die Push-SSRF-Abwehr unabhängig ein z
 | S6 | niedrig | `sw.js`: offenes Fenster per `url.includes(origin)` gesucht. | `url.startsWith(origin + "/")`. | SI-04 |
 
 Nicht gebaut, sondern als Pakete geführt (`docs/acc45/work-packages.json`): SI-P1 (Sicherungsschlüssel), SI-P2 (Code-Sitzung nach Entfernen), SI-P3 (Mailversand aus Testräumen), SI-P4 (2FA für Leitung/Planung/Kunde), SI-P5 (Matrix-/Sondenlücken), **SI-P6 (Betreiber-Leitungscodes ohne frische Anmeldung, hoch)**, SI-P7 (Herkunftssperre/IPv6), SI-P8 (Actions per SHA).
+
+## Nachtrag: MODINERT-L4 Rechnungsausgang (2026-11-25)
+
+Befund L-4 aus dem Audit Modul-inert (2026-11-24): Der Betreiber-PUT übernahm `rechnungen` ungeprüft (`server/lib/rechte.mjs`, `BETREIBER_FELDER`). Ein alter oder manipulierter Client konnte Paketpositionen unter Zustand 5 berechnen, gespeicherte Rechnungen ändern, löschen oder umordnen, Beträge als Text oder negativ ablegen und Rechnungen rückdatieren.
+
+Korrektur (kleinster sicherer Schnitt, G9): `server/lib/rechnungsausgang.mjs`, aufgerufen in `PUT /api/bestand` (nur Betreiber) und `POST /api/bestand-anlegen`.
+
+- Gespeicherte Rechnungen sind unveränderlich: nicht ändern, nicht löschen; die Reihenfolge bestimmt der Server. Sonst 422 `RECHNUNG_UNVERAENDERLICH`.
+- Neue Rechnungen: festes Schema (nur bekannte Felder, Typen, Wertebereiche, Längen, höchstens 16 KiB je Eintrag, höchstens 1000 neue je Vorgang), sonst 422 `RECHNUNG_FORM`. `lfd` (fortlaufend), `erstellt`, `datum` und `faellig` setzt der Server; mitgeschickte `lfd`/`erstellt` sind 422 `RECHNUNG_SERVERFELD`.
+- Paketpositionen nur mit `paketId`, nur für buchbare Pakete (Zustand 5), mit Abrechnungsgrund und ohne Pilot im Monat; sonst 422 `RECHNUNG_PAKET`. Heute ist kein Paket buchbar.
+- Storno nur als neue Gegenbuchung (`art: "storno"`, `bezug`, Beträge genau umgekehrt, einmal je Rechnung), sonst 422 `RECHNUNG_STORNO`. Ein Statusfeld gibt es nicht.
+- Fehlerantwort und Serverprotokoll ohne Werte aus der Rechnung (nur Code, Grund, Feldpfad bzw. Anzahl und laufende Nummern).
+- Alteinträge ohne Schema (Testdaten) bleiben unverändert speicherbar. Die Betreiberkonsole löscht keine Rechnungen mehr („Alle löschen“ zeigt nur noch einen Hinweis; beim Löschen eines Mandanten bleiben seine Rechnungen).
+
+Test: `pruefungen/rechnungsausgang-l4.test.js` (Angriffsliste A1–A16, rein und über den echten Handler), `pruefungen/modul-inert.test.js` P7.
+
+Offen (Folgepaket): Rechnungen ganz auf dem Server erzeugen (Positionen und Beträge aus dem gespeicherten Vertragsstand statt aus der Übermittlung); Zahlungsstatus als eigene, nur anhängbare Buchung; Maskierung in `rechnungHTML`; `protokoll` des Betreibers ist weiter frei schreibbar.

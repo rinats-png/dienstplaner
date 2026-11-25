@@ -241,7 +241,7 @@
     "pruefung:modul-altwege-oberflaeche": "vitest run pruefungen/modul-altwege-oberflaeche.test.js --testTimeout=120000",
     "pruefung:modulabnahme": "vitest run pruefungen/modul-abnahme.test.js pruefungen/modul-abnahme-oberflaeche.test.js --testTimeout=120000",
     "pruefung:modul-b1": "vitest run pruefungen/modul-b1-schreibweg.test.js --testTimeout=120000",
-    "pruefung:modulaktiv": "vitest run pruefungen/modulaktiv-allowlist.test.js pruefungen/modul-inert.test.js --testTimeout=120000 --hookTimeout=120000",
+    "pruefung:modulaktiv": "vitest run pruefungen/modulaktiv-allowlist.test.js pruefungen/modul-inert.test.js pruefungen/rechnungsausgang-l4.test.js --testTimeout=120000 --hookTimeout=120000",
     "pruefung:abnahme-b": "vitest run pruefungen/abnahme-b-wiederholung.test.js --testTimeout=120000",
     "pruefung:em6-rollback-codes": "vitest run pruefungen/em6-rollback-codes.test.js --testTimeout=240000",
     "pruefung:be1-konto-widerrufbuch": "vitest run pruefungen/be1-konto-widerrufbuch.test.js pruefungen/be1-passwort-widerruf.test.js --testTimeout=240000 --hookTimeout=240000",

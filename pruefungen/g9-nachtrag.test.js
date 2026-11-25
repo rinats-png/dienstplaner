@@ -225,7 +225,7 @@ describe("F3: Rechnung und Preis — Verhalten statt Quelltext", () => {
   it("Zustand 5 ohne Pilot: eine Position mit Zielpreis; anteilig gerechnet", () => {
     const { liste, freigaben } = z5("pflege");
     expect(rechnung({ pakete: ["pflege"] }, 0, liste, freigaben)).toEqual([
-      { text: "Branchenpaket Pflege und Rettungsdienst", menge: "", einzel: "89 €", betrag: "89 €" }]);
+      { text: "Branchenpaket Pflege und Rettungsdienst", menge: "", einzel: "89 €", betrag: "89 €", paketId: "pflege" }]);
     const k = mandantPaketkosten({ pakete: ["pflege"], ...zust(["pflege"]) }, 0, liste, freigaben, ST);
     const halb = paketPositionen({ pakete: k.gewaehlt, paketeFrei: k.frei, paketeNichtBerechnet: k.nichtBerechnet, anteil: 0.5 }, (x) => x);
     expect(halb[0]).toMatchObject({ einzel: 89, betrag: 44.5 });

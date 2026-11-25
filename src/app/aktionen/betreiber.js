@@ -134,8 +134,8 @@ export function aktionenBetreiber(k) {
            Server die Löschung als vollständig meldet. Sonst bleibt er stehen,
            damit dieselbe Löschung erneut ausgeführt werden kann — ein halb
            gelöschter Raum ist bis dahin für neue Zugänge gesperrt. */
-        const entfernen = (st) => bLog({ ...st, mandanten: st.mandanten.filter((x) => x.id !== id),
-          rechnungen: st.rechnungen.filter((r) => r.mandantId !== id) }, `Mandant „${m.name}" gelöscht`);
+        /* MODINERT-L4: Rechnungen bleiben (Aufbewahrungspflicht; der Server nimmt keine Löschung an). */
+        const entfernen = (st) => bLog({ ...st, mandanten: st.mandanten.filter((x) => x.id !== id) }, `Mandant „${m.name}" gelöscht`);
         if (!m.raum) { melde(`${m.name} gelöscht.`); setDetail(null); return entfernen(s); }
         SP.raumLoeschen(m.raum)
           .then((r) => { melde(`${m.name} gelöscht — Datenraum „${m.raum}" (${r.geloescht} Einträge).`); setDetail(null); upd(entfernen); })
@@ -182,7 +182,9 @@ export function aktionenBetreiber(k) {
         return bLog({ ...s, rechnungen: [...neu, ...s.rechnungen] },
           `Rechnungslauf ${monat}: ${neu.length} Rechnungen${nachsatz}`);
       }),
-      rechnungenLeeren: () => upd((s) => { melde("Rechnungsausgang geleert."); return { ...s, rechnungen: [] }; }),
+      /* MODINERT-L4: Rechnungen sind unveränderlich (Aufbewahrungspflicht; der Server nimmt keine Löschung an,
+         server/lib/rechnungsausgang.mjs). Der Knopf bleibt bis zum Folgepaket stehen und löscht nichts. */
+      rechnungenLeeren: () => melde("Rechnungen werden aufbewahrt und nicht gelöscht. Eine falsche Rechnung wird durch ein Storno ausgeglichen."),
       rechnungPDF: (rg) => {
         const bytes = rechnungPDF(rg);
         if (lade(`${rg.nummer}.pdf`, bytes, "application/pdf")) melde("PDF erstellt.");

@@ -19,8 +19,9 @@
                manipulierten Sicherung)
 
    Nicht Teil dieses Satzes (eigene Pakete, im PR benannt):
-     L-1 Website-Bau (P14), L-3 Erkennungslauf, L-4 Rechnungsprüfung (unten nur
-     als it.todo und als dokumentierter Ist-Zustand), L-5 Pilotregel.
+     L-1 Website-Bau (P14), L-3 Erkennungslauf, L-5 Pilotregel. L-4 Rechnungsprüfung
+     ist behoben (MODINERT-L4); P7 prüft hier die Paketposition, die volle
+     Angriffsliste steht in rechnungsausgang-l4.test.js.
 
    Nur synthetische Daten, feste Tage (keine Uhr im Test). Aufruf:
      npm run pruefung:modulaktiv (enthält diesen Satz)
@@ -592,21 +593,28 @@ describe("P6/P7 — Betreiber: neu angelegter oder bestehender Betrieb bekommt k
     expect(nach.pakete).toEqual([]);
     nichtsWirkt(nach, "bestehend");
   });
-  it("P7 IST-ZUSTAND (Lücke L-4, kein Fix in diesem PR): `rechnungen` des Betreibers werden ungeprüft gespeichert — sie buchen aber kein Paket und schalten kein Modul", async () => {
-    const { name, token } = await betreiberRaum({ daten: false, pakete: [] });
-    const vorher = modulSicht(await gespeichertM(name));
-    const rechnung = { id: "R-1", mandantId: "m1", monat: "2026-11", positionen: [{ art: "paket", text: "Branchenpaket Sicherheitsdienst", betrag: 79 }] };
-    const r = await putAendern(token, (m, b) => { b.rechnungen = [rechnung]; void m; });
-    expect(r.status, String(r.text || r.fehler)).toBeLessThan(500);
-    const nach = await B.bestandLesen(laden(), name);
-    /* Dokumentierter Ist-Zustand: ungeprüft gespeichert. Wird L-4 behoben, schlägt diese Zeile an — dann ersetzt der Fix-Test sie. */
-    expect(nach.bestand.rechnungen, "IST L-4: ungeprüft gespeichert").toEqual([rechnung]);
-    const m = nach.bestand.mandanten[0];
-    expect(modulSicht(m)).toEqual(vorher);
-    expect(m.pakete).toEqual([]);
-    nichtsWirkt(m, "Rechnung");
-  });
-  it.todo("L-4 (offen, eigenes Paket): Betreiber-PUT mit Paketposition in `rechnungen` bei Paketzustand < 5 wird vom Server abgewiesen oder entfernt");
+  /* L-4 behoben (MODINERT-L4, server/lib/rechnungsausgang.mjs; volle Angriffsliste: rechnungsausgang-l4.test.js). */
+  for (const [art, position] of [
+    ["mit Paketkennung", { text: "Branchenpaket Sicherheitsdienst", einzel: "79,00 €", betrag: "79,00 €", paketId: "sicherheit" }],
+    ["ohne Paketkennung", { text: "Branchenpaket Sicherheitsdienst", einzel: "79,00 €", betrag: "79,00 €" }],
+  ]) {
+    it(`P7 L-4: Betreiber-PUT mit Paketposition (${art}) bei Paketzustand < 5 wird abgewiesen (422 RECHNUNG_PAKET); nichts gespeichert, nichts wirkt`, async () => {
+      const { name, token } = await betreiberRaum({ daten: false, pakete: [] });
+      const vorher = await B.bestandLesen(laden(), name);
+      const rechnung = { nummer: "202610-INRT", monat: "2026-10", zeitraum: "Oktober 2026", mandantId: "m1", mandant: "Testbetrieb",
+        positionen: [{ text: "Grundgebühr Basis", einzel: "89,00 €", betrag: "89,00 €" }, position],
+        netto: 168, steuersatz: 19, steuer: 31.92, brutto: 199.92 };
+      const r = await putAendern(token, (m, b) => { b.rechnungen = [rechnung]; void m; });
+      expect(r.status, String(r.text || r.fehler)).toBe(422);
+      expect(r.code).toBe("RECHNUNG_PAKET");
+      const nach = await B.bestandLesen(laden(), name);
+      expect(nach.bestand.rechnungen).toEqual(vorher.bestand.rechnungen);
+      const m = nach.bestand.mandanten[0];
+      expect(modulSicht(m)).toEqual(modulSicht(vorher.bestand.mandanten[0]));
+      expect(m.pakete).toEqual([]);
+      nichtsWirkt(m, "Rechnung");
+    });
+  }
 });
 
 /* ======================================================================== */

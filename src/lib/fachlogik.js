@@ -1159,7 +1159,7 @@ export function baueRechnung(db, m, monatISO) {
   const netto = p.gesamt;
   const steuer = Math.round(netto * (db.betreiber || BETREIBER_LEER).steuersatz) / 100;
   return { nummer: nr, datum: heute(), faellig: addDays(heute(), (db.betreiber || BETREIBER_LEER).zahlungsziel),
-    zeitraum: `${MON[Number(monatISO.slice(5, 7)) - 1]} ${monatISO.slice(0, 4)}`,
+    zeitraum: `${MON[Number(monatISO.slice(5, 7)) - 1]} ${monatISO.slice(0, 4)}`, monat: monatISO,
     mandantId: m.id, mandant: m.name, anschrift: m.anschrift, betreiber: db.betreiber || BETREIBER_LEER,
     positionen, netto, rabattBetrag: 0, rabattText: "", steuersatz: (db.betreiber || BETREIBER_LEER).steuersatz,
     steuer, brutto: Math.round((netto + steuer) * 100) / 100,

@@ -45,6 +45,7 @@ import { istWiderrufen, widerrufen as widerrufbuchEintragen, gesperrtesKonto, ke
 import { SK_HOECHST_TAGE, SK_HOECHSTZAHL, SK_STANDARD_TAGE, SK_WARNUNG_PASSWORT, grundAusPruefung, raumIndex,
   schluesselDerZugaenge, schluesselWiderrufen, schluesselWiderrufenWenn, widerrufText } from "../lib/sicherungsschluessel.mjs";
 import { paketfelderGeprueft } from "../lib/paketstand.mjs";
+import { rechnungenPruefen } from "../lib/rechnungsausgang.mjs";
 import { vertragsstandVon, paketAenderungen } from "../lib/paketstand.mjs";
 import { auswertungHolen } from "../lib/br-auswertung.mjs";
 import { stempelWiderspruch, stempelSichern, korrekturAnhaengen } from "../lib/stempelintegritaet.mjs";
@@ -812,6 +813,12 @@ async function behandeln(req, context, ctx) {
       /* Dienstarten (A-4): jede Dienstart braucht eine gültige Mindestbesetzung (ganze Zahlen ab 0) — sonst 422. */
       const daA = dienstartenFehler(neuerBestand, null);
       if (daA) return antwort({ fehler: "Der Bestand ist ungültig.", text: daA.grund, feld: daA.feld }, 422);
+      /* MODINERT-L4: Rechnungen im eigenen Inhalt gelten als neu — dasselbe Schema, dieselbe Paketregel, Serverfelder vom Server. */
+      if (neuerBestand.rechnungen !== undefined) {
+        const rgA = rechnungenPruefen(neuerBestand.rechnungen, [], { mandanten: neuerBestand.mandanten, heute: heuteBerlin(), jetzt: new Date().toISOString() });
+        if ("fehler" in rgA) return antwort({ fehler: "Der Bestand ist ungültig.", code: rgA.fehler.code, text: rgA.fehler.grund, feld: rgA.fehler.feld }, 422);
+        neuerBestand = { ...neuerBestand, rechnungen: rgA.rechnungen };
+      }
       /* Standort- und Einsatzortangaben (Wertebereiche, Quelle, Art): dieselbe Prüfung wie am Schreibweg. */
       const ortA = bestandStandorteFehler(null, neuerBestand) || bestandDienstartOrtFehler(null, neuerBestand);
       if (ortA) return antwort({ fehler: "Der Bestand ist ungültig.", text: ortA }, 422);
@@ -1753,6 +1760,24 @@ async function behandeln(req, context, ctx) {
           return antwort({ fehler: "Keine Schreibberechtigung.",
             text: zuSchreiben.verweigert, ...(typeof zuSchreiben.code === "string" ? { code: zuSchreiben.code } : {}) }, 403);
         }
+        /* MODINERT-L4 (Audit Modul-inert 2026-11-24, G9): `rechnungen` übernimmt die Rechtezusammenführung für den
+           Betreiber aus der Übermittlung. Hier prüft der Server: gespeicherte Rechnungen unveränderlich (nicht ändern,
+           nicht löschen; Reihenfolge vom Server), neue nach festem Schema, Paketpositionen nur buchbar mit Grund und ohne
+           Pilot, Storno nur als Gegenbuchung; lfd, erstellt, datum und faellig setzt der Server
+           (lib/rechnungsausgang.mjs). Antwort und Protokoll ohne Werte aus der Rechnung. */
+        let rechnungenNeu = null;
+        if (s.rolle === "betreiber") {
+          const rgS = rechnungenPruefen(zuSchreiben.rechnungen, jetzt && jetzt.bestand ? jetzt.bestand.rechnungen : undefined,
+            { mandanten: zuSchreiben.mandanten, heute: heuteBerlin(), jetzt: new Date().toISOString() });
+          if ("fehler" in rgS) {
+            await protokoll("schreiben", ks, "abgewiesen", `Rechnungen: ${rgS.fehler.code}`, wer);
+            return antwort({ fehler: "Die Rechnung wurde nicht gespeichert.", code: rgS.fehler.code,
+              text: `${rgS.fehler.grund} Es wurde nichts geändert.`, feld: rgS.fehler.feld }, 422);
+          }
+          /* An Ort und Stelle (wie dienstartenAngleichen): die offene Fachprüfung hängt an diesem Objekt. */
+          if (zuSchreiben.rechnungen !== undefined || rgS.geaendert) zuSchreiben.rechnungen = rgS.rechnungen;
+          if (rgS.neu) rechnungenNeu = rgS;
+        }
         /* Dienstarten (A-4, Betreiberentscheidung 2026-11-13): Eine NEUE Dienstart ohne mindest ist 422 — nichts wird
            still als 0 gelesen; ein neues oder geändertes mindest muss ganze Zahlen 0..999 tragen, sonst 422. Eine
            gespeicherte Dienstart ohne Angabe behält ihren gespeicherten Stand (auch das Fehlen, byte-gleich; an Ort
@@ -2004,6 +2029,9 @@ async function behandeln(req, context, ctx) {
            nimmt nichts zurück und steht deshalb nicht als Rücknahme im Protokoll. */
         if (frei) await protokoll("schreiben", ks, "freigabe-zurueckgenommen", `${frei} Monat(e)`, wer);
         for (const z of krankZeilen) await protokoll("schreiben", ks, "krankmeldung", z, wer);
+        /* MODINERT-L4: neue Rechnungen nur mit Anzahl und laufenden Nummern — ohne Betrieb, Anschrift, Betrag. */
+        if (rechnungenNeu) await protokoll("schreiben", ks, "rechnung",
+          `${rechnungenNeu.neu} neu, lfd ${rechnungenNeu.lfdVon}–${rechnungenNeu.lfdBis}`, wer);
         await protokoll("schreiben", ks, "erfolg",
           `${erg.geschrieben} Stücke · ${s.rolle}`
           + (erg.zusammengefuehrt ? ` · zusammengeführt: ${erg.zusammengefuehrt.join(", ")}` : ""), wer);
