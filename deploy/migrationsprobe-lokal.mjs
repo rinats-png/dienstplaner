@@ -16,7 +16,7 @@
    Betriebskennungen (K4-Zusatzpunkt) prüft deploy/betriebskennungen-pruefen.mjs (nur lesend, vor dem Kandidatenstart).
    Nicht ersetzt: K4 auf einer echten Kopie; K5, K9, K10 und Bild-Digests prüft diese Probe nicht. */
 import path from "node:path"; import { pathToFileURL } from "node:url";
-import { isolationGeprueft, inhaltGleich, schreibErgebnis, gesamtExit, holenMitFrist, fristAus, portAus }
+import { isolationGeprueft, inhaltGleich, schreibErgebnis, gesamtExit, holenMitFrist, fristAus, portAus, betriebGelesen }
   from "./migrationsprobe-regeln.mjs";
 
 async function probe() {
@@ -36,24 +36,31 @@ async function probe() {
     const lib = await bestandLesen(store, raum);
     const mand = lib?.bestand?.mandanten || [];
     const zahlen = mand.map((m) => `${(m.personen || []).length}P/${Object.keys(m.abweichungen || {}).length}A/${Object.keys(m.erfassung || {}).length}E`).join(",");
-    const { token } = await sitzungAnlegen({ bestand: raum, name: "MIGRATIONSPROBE", rolle: "leitung", person: null, betrieb: 0 }, 600000);
-    let g, voll;
-    try { g = await http("/api/bestand", { t: token }); voll = await http("/api/bestand?voll=1", { t: token }); }
-    catch (e) { t(`${raum}: lesbar über die API (200)`, false, String(e && e.message || e)); continue; }   // H6: kein Hängen
-    const gleich = g.s === 200 && (g.d.bestand?.mandanten || []).length >= 1 && (voll.d.bestand?.mandanten || []).length === mand.length;
-    t(`${raum}: lesbar über die API (200), ${mand.length} Betrieb(e) [${zahlen}]`, gleich, `HTTP ${g.s}`);
-    if (g.s !== 200) continue;
-    const vorher = voll.d.bestand;
-    let w, nach;
-    try {
-      w = await http("/api/bestand", { m: "PUT", t: token, b: { bestand: vorher, etag: voll.d.etag, durch: "MIGRATIONSPROBE" } });
-      nach = await http("/api/bestand?voll=1", { t: token });
-    } catch (e) { t(`${raum}: unveränderter Schreibzyklus`, false, String(e && e.message || e)); continue; }
-    const bitgleich = JSON.stringify(nach.d.bestand) === JSON.stringify(vorher);
-    const inhalt = inhaltGleich(nach.d.bestand, vorher);
-    const e = schreibErgebnis(w.s, inhalt);
-    t(`${raum}: unveränderter Schreibzyklus geschrieben (PUT 200), Inhalt gleich${inhalt && !bitgleich ? " (nur Schlüsselreihenfolge anders)" : ""}`,
-      e.bestanden, `${e.text}${w.d.fehler ? " " + w.d.fehler + " " + (w.d.text || "").slice(0, 120) : ""}`);
+    if (!mand.length) { t(`${raum}: lesbar (mindestens ein Betrieb in der Ablage)`, false, "kein Betrieb"); continue; }
+    /* K4-P4: je Betrieb eine Sitzung — eine Sitzung sieht nur ihren eigenen Betrieb (Mandantentrennung). */
+    for (let i = 0; i < mand.length; i++) {
+      const id = mand[i] && mand[i].id;
+      const wer = mand.length > 1 ? `${raum} [Betrieb ${i + 1}/${mand.length}]` : raum;
+      const { token } = await sitzungAnlegen({ bestand: raum, name: "MIGRATIONSPROBE", rolle: "leitung", person: null, betrieb: i,
+        ...(typeof id === "string" ? { mandantId: id } : {}) }, 600000);
+      let g, voll;
+      try { g = await http("/api/bestand", { t: token }); voll = await http("/api/bestand?voll=1", { t: token }); }
+      catch (e) { t(`${wer}: lesbar über die API (200)`, false, String(e && e.message || e)); continue; }   // H6: kein Hängen
+      const gleich = g.s === 200 && betriebGelesen(g.d.bestand, id) && betriebGelesen(voll.d.bestand, id);
+      t(`${wer}: lesbar über die API (200), ${mand.length} Betrieb(e) [${zahlen}]`, gleich, `HTTP ${g.s}`);
+      if (g.s !== 200) continue;
+      const vorher = voll.d.bestand;
+      let w, nach;
+      try {
+        w = await http("/api/bestand", { m: "PUT", t: token, b: { bestand: vorher, etag: voll.d.etag, durch: "MIGRATIONSPROBE" } });
+        nach = await http("/api/bestand?voll=1", { t: token });
+      } catch (e) { t(`${wer}: unveränderter Schreibzyklus`, false, String(e && e.message || e)); continue; }
+      const bitgleich = JSON.stringify(nach.d.bestand) === JSON.stringify(vorher);
+      const inhalt = inhaltGleich(nach.d.bestand, vorher);
+      const e = schreibErgebnis(w.s, inhalt);
+      t(`${wer}: unveränderter Schreibzyklus geschrieben (PUT 200), Inhalt gleich${inhalt && !bitgleich ? " (nur Schlüsselreihenfolge anders)" : ""}`,
+        e.bestanden, `${e.text}${w.d.fehler ? " " + w.d.fehler + " " + (w.d.text || "").slice(0, 120) : ""}`);
+    }
   }
   console.log(`\nMIGRATIONSPROBE: ${ok}/${n}`);
   return gesamtExit(ok, n);   // keine Räume = nichts belegt (fail-closed)

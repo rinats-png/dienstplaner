@@ -7,5 +7,10 @@
     "skript": "pruefung:k4-altbestand",
     "grund": "K4-P3: Schritt in .github/workflows/pruefung.yml fehlt noch, weil Workflow-Änderungen der Betreiber gebündelt macht (Patch-Vorschlag in der PR-Beschreibung); danach diesen Eintrag entfernen.",
     "vorlaeufig": true
+  },
+  {
+    "skript": "pruefung:k4-vorwaerts-reparatur",
+    "grund": "K4-P4: Schritt in .github/workflows/pruefung.yml fehlt noch, weil Workflow-Änderungen der Betreiber gebündelt macht (Patch-Vorschlag in der PR-Beschreibung); danach diesen Eintrag entfernen.",
+    "vorlaeufig": true
   }
 ]

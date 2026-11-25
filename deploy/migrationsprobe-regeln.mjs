@@ -98,6 +98,13 @@ export async function holenMitFrist(url, init = {}, ms = 30000) {
   }
 }
 
+/** K4-P4: Eine Sitzung sieht nur ihren eigenen Betrieb (Mandantentrennung). Gelesen ist ein Betrieb, wenn die Antwort
+    genau ihn enthält — nicht mehr, nicht weniger, nicht einen anderen. */
+export function betriebGelesen(bestand, id) {
+  const m = bestand && Array.isArray(bestand.mandanten) ? bestand.mandanten : [];
+  return typeof id === "string" && id !== "" && m.length === 1 && !!m[0] && m[0].id === id;
+}
+
 /** Exit-Code: 0 nur, wenn mindestens eine Prüfung lief und alle bestanden; sonst 1 (keine Räume = nichts belegt). */
 export function gesamtExit(ok, n) {
   return n > 0 && ok === n ? 0 : 1;

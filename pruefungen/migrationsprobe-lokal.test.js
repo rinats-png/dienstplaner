@@ -14,7 +14,7 @@ import { mkdtempSync, mkdirSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { inhaltGleich, isolationGeprueft, schreibErgebnis, gesamtExit, holenMitFrist, fristAus, portAus }
+import { inhaltGleich, isolationGeprueft, schreibErgebnis, gesamtExit, holenMitFrist, fristAus, portAus, betriebGelesen }
   from "../deploy/migrationsprobe-regeln.mjs";
 import { saeen } from "./migrationsprobe-saat.mjs";
 
@@ -151,6 +151,23 @@ describe("migrationsprobe-lokal: Frist für HTTP (H6)", () => {
       expect(r.s).toBe(200);
       expect(r.x).toBe('{"ok":1}');
     } finally { srv.closeAllConnections(); srv.close(); }
+  });
+});
+
+// K4-P4 (2026-11-25): Auf dem synthetischen Altbestand (K4-P3, Raum alt-sicherheit mit zwei Betrieben) meldete die Probe
+// „lesbar FEHLGESCHLAGEN“: Sie verglich die Zahl der Betriebe der API-Antwort mit der des ganzen Raums — eine Sitzung sieht
+// aber nur ihren eigenen Betrieb (Mandantentrennung), und der zweite Betrieb wurde nie geprüft. Jetzt je Betrieb eine
+// Sitzung; gelesen heißt: genau dieser eine Betrieb kam zurück.
+describe("migrationsprobe-lokal: je Betrieb gelesen (K4-P4)", () => {
+  it("genau der eigene Betrieb: gelesen", () => {
+    expect(betriebGelesen({ mandanten: [{ id: "m-2" }] }, "m-2")).toBe(true);
+  });
+  it("anderer, mehrere, kein Betrieb oder kein Bestand: nicht gelesen", () => {
+    expect(betriebGelesen({ mandanten: [{ id: "m-1" }] }, "m-2")).toBe(false);
+    expect(betriebGelesen({ mandanten: [{ id: "m-1" }, { id: "m-2" }] }, "m-2")).toBe(false);
+    expect(betriebGelesen({ mandanten: [] }, "m-1")).toBe(false);
+    expect(betriebGelesen(undefined, "m-1")).toBe(false);
+    expect(betriebGelesen({ mandanten: [{ id: undefined }] }, undefined)).toBe(false);
   });
 });
 
