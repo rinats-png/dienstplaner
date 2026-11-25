@@ -17,7 +17,7 @@ Je Ansicht, Breite (375 px Telefon, 1280 px Desktop) und Thema (hell, dunkel; ge
 | Ansicht | Rolle | Kontrast | Bildlauf | Außerhalb / abgeschnitten | Überlappung | Fokus |
 | --- | --- | --- | --- | --- | --- | --- |
 | Anmeldung | ohne | ja | ja | ja | ja | ja |
-| Dienstplan (Monatsplan) | Leitung | ja | ja | ja | ja | ja |
+| Dienstplan (Monatsplan) | Leitung | ja, außer B1 (siehe Befunde) | ja | ja | ja | ja |
 | Mitarbeiter (Personal) | Leitung | ja | ja | ja | ja | ja |
 | Abwesenheiten (Anträge) | Leitung | ja | ja | ja | ja | ja |
 | Einstellungen | Leitung | ja | ja | ja | ja | ja |
@@ -42,9 +42,11 @@ Beleg der Mutation (lokal, 2026-11-25): Mit abgeschalteter Kontrastprüfung bzw.
 
 ### B1 Planzelle Zusatzzeile hell
 
-Dienstplan (Monatsplan), Leitung, Desktop 1280 px, hell: Die Zusatzzeile (`.unten`) der Planzellen in Nachtdienst- und Spätdienstfarbe hat 4,0 bis 4,3:1 gegen die Zellenfläche (Nachtdienst Vordergrund #7c3aed auf #dad8e4 = 4,04:1; Spätdienst #b03a0a auf #d7d9ce = 4,25:1); gefordert sind 4,5:1 (WCAG 1.4.3, Schrift 14,5 px, nicht fett). Dunkel besteht, Telefon (375 px) meldet hier nichts. Aufgedeckt, weil die Messung jetzt auch angemeldete Flächen bewertet (siehe Grenzen, erster Punkt); sie war vorher blind. Eingetragen in `VISUELL_BEKANNT` (sichtbar als Anmerkung, nicht rot). Reparatur gehört nicht in dieses Paket (`src/`, V4-3b-Byte-Pins): Kandidat V4-3d (Rest-Farbwerte der Dienstfarben).
+Dienstplan (Monatsplan), Leitung, Desktop 1280 px, hell: Die Zusatzzeile (`.unten`) der Planzellen in Nachtdienst- und Spätdienstfarbe hat 4,0 bis 4,3:1 gegen die Zellenfläche (Nachtdienst Vordergrund #7c3aed auf #dad8e4 = 4,04:1; Spätdienst #b03a0a auf #d7d9ce = 4,25:1); gefordert sind 4,5:1 (WCAG 1.4.3, Schrift 14,5 px, nicht fett). Dunkel besteht, Telefon (375 px) meldet hier nichts. Aufgedeckt, weil die Messung jetzt auch angemeldete Flächen bewertet (siehe Grenzen, erster Punkt); sie war vorher blind. Eingetragen in `VISUELL_BEKANNT` mit dem Muster `.unten`: Nur Kontrastfunde, deren Selektor `.unten` enthält, sind Anmerkung statt rot, und nur auf Dienstplan, Desktop 1280 px, hell. Jeder andere Kontrastverstoß auf derselben Fläche bleibt rot; "keine Knoten bewertet" gilt nie als bekannt. Ein Eintrag ohne Treffer (nach einer Reparatur) macht den Lauf rot und zwingt dazu, Eintrag und diesen Abschnitt zu entfernen.
 
-Der erste vollständige Lauf (alle 10 Tests) zeigt keinen echten Befund an der App: Kontrast, Bildlauf, Außerhalb, Abschneiden, Überlappung und Fokus bestehen in allen geprüften Ansichten, Breiten und Themen. Auch die Folge (Rolle Beschäftigte bei 375 und 1024 px, gezielte Fokusauswahl; 12 Tests) findet keinen echten Befund an der App. `VISUELL_BEKANNT` in `e2e/v4-visuell.mjs` ist leer.
+Quelle (nur Hinweis, nicht Teil dieses Pakets): Die Zelle `Planzelle` in `src/ui/bausteine.jsx` (Zeilen 122 bis 137; `.unten` in Zeile 137) setzt den Hintergrund `${da.farbe}1C` und die Textfarbe `lesbar(da.farbe, 5.4)`. `lesbar` (`src/ui/thema.js`, Zeile 20) lässt die Farbe im hellen Erscheinungsbild unverändert; der Wert 5,4 greift nur im dunklen. Die Dienstfarben stehen in `src/lib/fachlogik.js` (Zeile 237 Spätdienst #B03A0A, Zeile 239 Nachtdienst #7C3AED; auch Zeilen 506 bis 512). `.unten` hat keine eigene CSS-Regel. Reparaturrichtung: im hellen Erscheinungsbild die Textfarbe bis mindestens 4,5:1 abdunkeln. Reparatur gehört nicht in dieses Paket (`src/`, V4-3b-Byte-Pins): Kandidat V4-3d (Rest-Farbwerte der Dienstfarben). Schwere: gering bis mittel (Zusatzzeile, 4,0 bis 4,3 statt 4,5:1).
+
+Stand: Außer B1 findet die Spec keinen echten Befund an der App. Bildlauf, Außerhalb, Abschneiden, Überlappung und Fokus bestehen in allen geprüften Ansichten, Breiten und Themen; Kontrast besteht dort, wo axe Knoten bewertet (siehe Grenzen), außer bei B1. `VISUELL_BEKANNT` in `e2e/v4-visuell.mjs` enthält genau einen Eintrag (B1). Der erste Lauf von PR #538 (10 Tests) meldete "kein Befund"; das galt für den Kontrast auf angemeldeten Flächen nicht, weil axe dort keinen Knoten bewertete.
 
 Zwei Messfehler im ersten Entwurf (kein App-Fehler, im Test behoben):
 
@@ -53,7 +55,7 @@ Zwei Messfehler im ersten Entwurf (kein App-Fehler, im Test behoben):
 
 ## Grenzen (ehrlich)
 
-- Kontrast auf angemeldeten Flächen: Ohne Eingriff meldete axe dort überwiegend „incomplete“ (Hintergrund nicht bestimmbar wegen eines Pseudoelements, `.inhalt::before` und `.m-schale::before`) und bewertete keinen Knoten; ein grünes Ergebnis belegte nichts. Der erste Stand (PR #538 und die erste Fassung dieser Folge) hatte diese Lücke für Leitung und Beschäftigte. Jetzt blendet die Spec für die Messung die beiden Verlaufs-Pseudoelemente aus (die App kennt denselben Zustand als Einstellung, Feldmodus und `kein-verlauf`), zählt die bewerteten Knoten und verlangt mehr als null je Fläche. Gemessen wird damit gegen die Grundfläche, nicht gegen den Verlauf; ein Text, der nur auf dem Verlauf zu blass wäre, bleibt unentdeckt. Der Selbsttest hat eine Kontrast-Mutation auf einer angemeldeten Fläche (Beschäftigte, 375 px, hell).
+- Kontrast auf angemeldeten Flächen: Ohne Eingriff meldete axe dort überwiegend „incomplete“ (Hintergrund nicht bestimmbar wegen eines Pseudoelements, `.inhalt::before` und `.m-schale::before`) und bewertete keinen Knoten; ein grünes Ergebnis belegte nichts. Der erste Stand (PR #538 und die erste Fassung dieser Folge) hatte diese Lücke für Leitung und Beschäftigte. Jetzt blendet die Spec für die Messung die beiden Verlaufs-Pseudoelemente aus (die App kennt denselben Zustand als Einstellung, Feldmodus und `kein-verlauf`), zählt die bewerteten Knoten und verlangt mehr als null je Fläche. Gemessen wird damit gegen die Grundfläche, nicht gegen den Verlauf; ein Text, der nur auf dem Verlauf zu blass wäre, bleibt unentdeckt. Der Verlauf ist für den Kontrast nicht bloß Zierde: Eine Rechnung des Reviewers (keine Browsermessung) ergibt hell für Text in der Farbe "aus" (#566e72) 4,85 statt 3,8 auf dem Verlauf, für die Planzelle Nachtdienst 4,35 statt 3,45 und Spätdienst 4,61 statt 3,66. Die Farben "text", "dim" und "accent" bleiben auch auf dem Verlauf über 4,5. Texte in "aus" oder Zellen in der Titelzone, die der Verlauf bedeckt, würden von der Ausblendung verdeckt; das ist Absicht des Entwurfs, nicht erzwungen. Folgepaket: Messung mit Verlauf. Der Selbsttest hat eine Kontrast-Mutation auf einer angemeldeten Fläche (Beschäftigte, 375 px, hell).
 - Der Wächtertest der Fokusauswahl in `pruefungen/v4-visuell-qa.test.js` ist ein Textwächter (er sucht Zeichenfolgen im Code). Das Verhalten beweist der Selbsttest in der Spec: Mit fester Kopfleiste vor einem `<main>` trifft die Auswahl „haupt“ ein Element in `main` und keines in der Leiste.
 - „erstes“ und „letztes“ wiederholen sich je Fläche (erstes meist die Mitteilungen in der Kopfleiste, letztes der Reiter „Mehr“); nur „haupt“ ist je Reiter ein eigenes Element. Folgepaket-Gedanke: statt „letztes“ das letzte Element im `main`.
 
@@ -80,4 +82,5 @@ Die Anmeldung ist der größte Posten; deshalb gibt es je Thema nur eine Anmeldu
 
 - 1024 px für die Leitung (Schubladen-Navigation, geschätzt +45 s in der CI): erst nach Prüfung der Kontrastbefunde (B1).
 - Rechneransicht der Beschäftigten (Umschalter in „Mehr“; ein Lauf, nur 1280 px): kleines Paket.
+- Messung des Kontrasts mit eingeblendetem Verlauf (Titelzone), nach B1.
 - Reparatur von B1 über V4-3d (Rest-Farbwerte, Betreiberentscheidung in `ENTSCHEIDUNGSLISTE.md`).

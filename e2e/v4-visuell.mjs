@@ -50,17 +50,42 @@ export const VISUELL_BETREIBER_ANSICHT = Object.freeze(["pakete", "betreiber", "
 /** Bilder nur zur Ansicht (nie ein Gate, nie im Repo): nur mit V4_VISUELL_BILDER=1, Ablage unter e2e/ergebnisse (ignoriert). */
 export const BILDER_ORDNER = "e2e/ergebnisse/v4-visuell";
 
-/** Bekannte, in docs/acc45/V4-4-BEFUNDE.md geführte Befunde: [Regel, Fläche, Viewport-Id, Thema] ("*" = alle).
- *  Ein Eintrag macht den Befund sichtbar (Anmerkung), aber nicht rot; ein behobener Eintrag wird als ungenutzt gemeldet. */
+/** Bekannte, in docs/acc45/V4-4-BEFUNDE.md geführte Befunde: { regel, flaeche, viewport, thema, muster, befund } ("*" = alle).
+ *  muster: Text, den der einzelne Fund enthalten muss (z. B. der Selektor); ohne Muster gilt kein Eintrag (Test). Ein Eintrag
+ *  macht genau die passenden Funde sichtbar (Anmerkung), nicht rot; jeder andere Fund derselben Fläche bleibt rot. Ein Eintrag
+ *  ohne Treffer in seinem Geltungsbereich (behoben oder falsch) ist ein Fehler (ungenutzteEintraege): eine Reparatur zwingt
+ *  dazu, den Eintrag zu entfernen. */
 export const VISUELL_BEKANNT = Object.freeze([
   /* B1: Planzellen mit Zusatzzeile (.unten) in Nacht- und Spätdienstfarbe, hell, Desktop: 4,0 bis 4,3:1 (< 4,5:1). */
-  Object.freeze({ regel: "kontrast", flaeche: "dienstplan", viewport: "desktop-1280", thema: "hell", befund: "B1 Planzelle Zusatzzeile hell" }),
+  Object.freeze({ regel: "kontrast", flaeche: "dienstplan", viewport: "desktop-1280", thema: "hell", muster: ".unten", befund: "B1 Planzelle Zusatzzeile hell" }),
 ]);
 
-/** Passt ein Befund auf einen bekannten Eintrag? Rein, ohne Browser. */
-export function bekannterBefund(regel, flaeche, viewportId, thema, liste = VISUELL_BEKANNT) {
+/** Meldung der Kontrastprüfung, wenn axe keinen einzigen Knoten bewertet hat (Spec kontrastFunde). Nie ein bekannter Befund. */
+export const KEIN_FUND_BEWERTET = "keine Knoten bewertet";
+
+/** Passt ein Befund auf einen bekannten Eintrag? Rein, ohne Browser. Mit fund (Text): zusätzlich muss er das Muster des
+ *  Eintrags enthalten, und „keine Knoten bewertet“ passt nie. Ohne fund: nur Regel, Fläche, Breite und Thema. */
+export function bekannterBefund(regel, flaeche, viewportId, thema, liste = VISUELL_BEKANNT, fund = undefined) {
   return liste.find((b) => b.regel === regel && (b.flaeche === flaeche || b.flaeche === "*")
-    && (b.viewport === viewportId || b.viewport === "*") && (b.thema === thema || b.thema === "*")) || null;
+    && (b.viewport === viewportId || b.viewport === "*") && (b.thema === thema || b.thema === "*")
+    && (fund === undefined || (!String(fund).includes(KEIN_FUND_BEWERTET) && !!b.muster && String(fund).includes(b.muster)))) || null;
+}
+
+/** Trennt Funde einer Regel in bekannte (Eintrag + Fund) und offene. Rein, ohne Browser. */
+export function befundeTrennen(regel, flaeche, viewportId, thema, funde, liste = VISUELL_BEKANNT) {
+  const bekannt = [], offen = [];
+  for (const fund of funde) {
+    const eintrag = bekannterBefund(regel, flaeche, viewportId, thema, liste, fund);
+    if (eintrag) bekannt.push({ fund, eintrag }); else offen.push(fund);
+  }
+  return { bekannt, offen };
+}
+
+/** Einträge im Geltungsbereich eines Tests (Flächen, Breiten, Thema; nur Einträge ohne Stern), die keinen Fund getroffen
+ *  haben. Rein, ohne Browser. genutzt = Menge der getroffenen Einträge. */
+export function ungenutzteEintraege(liste, genutzt, bereich) {
+  return liste.filter((b) => !genutzt.has(b) && b.flaeche !== "*" && b.viewport !== "*" && b.thema !== "*"
+    && bereich.flaechen.includes(b.flaeche) && bereich.viewports.includes(b.viewport) && bereich.thema === b.thema);
 }
 
 /** Läuft IN der Seite (page.evaluate): misst Layout-Fehler, ohne etwas zu verändern.

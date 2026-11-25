@@ -16,7 +16,7 @@ import { mkdirSync } from "node:fs";
 import { test, expect, anmelden, geheZu } from "./hilfen.mjs";
 import { BETREIBER_VAR } from "./umgebung.mjs";
 import { VISUELL_BREITEN, VISUELL_THEMEN, VISUELL_ANSICHTEN, VISUELL_BETREIBER_ANSICHT, VISUELL_BEKANNT, BILDER_ORDNER, VISUELL_BESCHAEFTIGTE_BREITEN, VISUELL_BESCHAEFTIGTE_ANSICHTEN,
-  bekannterBefund, layoutMessen, fokusMessen, FOKUS_AUSWAHL } from "./v4-visuell.mjs";
+  befundeTrennen, ungenutzteEintraege, layoutMessen, fokusMessen, FOKUS_AUSWAHL } from "./v4-visuell.mjs";
 
 /* Parallel: Die Flächen lesen nur; jeder Arbeiter hat seinen eigenen Raum (e2e/umgebung.mjs), zwei Arbeiter halbieren die Laufzeit. */
 test.describe.configure({ timeout: 150_000, mode: "parallel" });
@@ -71,13 +71,16 @@ async function flaechePruefen(page, { mitFokus = true } = {}) {
 
 /** Funde → Liste der Verstöße; bekannte Befunde nur als Anmerkung. */
 function bewerten(funde, kontext, testInfo) {
-  const { flaeche, viewport, thema } = kontext;
+  const { flaeche, viewport, thema, genutzt } = kontext;
   const verstoesse = [];
   const sammeln = (regel, liste) => {
     if (!liste.length) return;
-    const bekannt = bekannterBefund(regel, flaeche, viewport, thema, VISUELL_BEKANNT);
-    if (bekannt) testInfo.annotations.push({ type: "bekannt", description: `${flaeche} ${viewport} ${thema}: ${regel} (${bekannt.befund || "V4-4-BEFUNDE.md"}): ${liste.length}` });
-    else for (const l of liste) verstoesse.push(`${regel}: ${l}`);
+    const t = befundeTrennen(regel, flaeche, viewport, thema, liste, VISUELL_BEKANNT);
+    for (const { eintrag } of t.bekannt) if (genutzt) genutzt.add(eintrag);
+    for (const b of new Set(t.bekannt.map((x) => x.eintrag))) {
+      testInfo.annotations.push({ type: "bekannt", description: `${flaeche} ${viewport} ${thema}: ${regel} (${b.befund}): ${t.bekannt.filter((x) => x.eintrag === b).length}` });
+    }
+    for (const l of t.offen) verstoesse.push(`${regel}: ${l}`);
   };
   sammeln("kontrast", funde.kontrast);
   sammeln("bildlauf", funde.layout.bildlaufX.scrollWidth > funde.layout.bildlaufX.clientWidth + 1
@@ -87,6 +90,12 @@ function bewerten(funde, kontext, testInfo) {
   sammeln("ueberlappung", funde.layout.ueberlappungen);
   sammeln("fokus", funde.fokus);
   return verstoesse;
+}
+
+/** Einträge von VISUELL_BEKANNT im Geltungsbereich dieses Tests ohne Treffer: Fehler (behobener Befund, Eintrag entfernen). */
+function ungenutztMelden(alle, genutzt, flaechen, viewports, thema) {
+  for (const b of ungenutzteEintraege(VISUELL_BEKANNT, genutzt, { flaechen, viewports, thema }))
+    alle.push(`ungenutzter Eintrag in VISUELL_BEKANNT (Befund behoben? Eintrag und Doku entfernen): ${b.befund}`);
 }
 
 async function bildAblegen(page, name) {
@@ -147,7 +156,9 @@ for (const b of VISUELL_BREITEN) {
         await themaGilt(page, t.thema, "data-v4-thema");
         await startbildFertig(page);
         await bildAblegen(page, `anmeldung-${b.id}-${t.thema}`);
-        const v = bewerten(await flaechePruefen(page), { flaeche: "anmeldung", viewport: b.id, thema: t.thema }, testInfo);
+        const genutzt = new Set();
+        const v = bewerten(await flaechePruefen(page), { flaeche: "anmeldung", viewport: b.id, thema: t.thema, genutzt }, testInfo);
+        ungenutztMelden(v, genutzt, ["anmeldung"], [b.id], t.thema);
         expect(v, `Anmeldung ${kopf}`).toEqual([]);
       });
     });
@@ -163,14 +174,16 @@ for (const t of VISUELL_THEMEN) {
     await anmelden(page, "leitung");
     await themaGilt(page, t.thema);
     const alle = [];
+    const genutzt = new Set();
     for (const b of VISUELL_BREITEN) {
       await breiteSetzen(page, b);
       for (const [flaeche, , ansicht, bereich] of VISUELL_ANSICHTEN) {
         await ansichtOeffnen(page, ansicht, bereich);
         await bildAblegen(page, `${flaeche}-${b.id}-${t.thema}`);
-        alle.push(...bewerten(await flaechePruefen(page), { flaeche, viewport: b.id, thema: t.thema }, testInfo).map((x) => `[${flaeche} ${b.id}] ${x}`));
+        alle.push(...bewerten(await flaechePruefen(page), { flaeche, viewport: b.id, thema: t.thema, genutzt }, testInfo).map((x) => `[${flaeche} ${b.id}] ${x}`));
       }
     }
+    ungenutztMelden(alle, genutzt, VISUELL_ANSICHTEN.map((a) => a[0]), VISUELL_BREITEN.map((b) => b.id), t.thema);
     expect(alle, `Leitung ${t.thema}`).toEqual([]);
   });
 
@@ -181,14 +194,16 @@ for (const t of VISUELL_THEMEN) {
     await anmelden(page, "mitarbeiter");
     await themaGilt(page, t.thema);
     const alle = [];
+    const genutzt = new Set();
     for (const b of VISUELL_BESCHAEFTIGTE_BREITEN) {
       await breiteSetzen(page, b);
       for (const [flaeche, reiter] of VISUELL_BESCHAEFTIGTE_ANSICHTEN) {
         await geheZu(page, reiter);
         await bildAblegen(page, `${flaeche}-${b.id}-${t.thema}`);
-        alle.push(...bewerten(await flaechePruefen(page), { flaeche, viewport: b.id, thema: t.thema }, testInfo).map((x) => `[${flaeche} ${b.id}] ${x}`));
+        alle.push(...bewerten(await flaechePruefen(page), { flaeche, viewport: b.id, thema: t.thema, genutzt }, testInfo).map((x) => `[${flaeche} ${b.id}] ${x}`));
       }
     }
+    ungenutztMelden(alle, genutzt, VISUELL_BESCHAEFTIGTE_ANSICHTEN.map((a) => a[0]), VISUELL_BESCHAEFTIGTE_BREITEN.map((b) => b.id), t.thema);
     expect(alle, `Beschäftigte ${t.thema}`).toEqual([]);
   });
 
@@ -198,12 +213,14 @@ for (const t of VISUELL_THEMEN) {
     await betreiberAnmelden(page);
     await themaGilt(page, t.thema);
     const alle = [];
+    const genutzt = new Set();
     for (const b of VISUELL_BREITEN) {
       await breiteSetzen(page, b);
       await betreiberAnsicht(page, VISUELL_BETREIBER_ANSICHT[2]);
       await bildAblegen(page, `pakete-${b.id}-${t.thema}`);
-      alle.push(...bewerten(await flaechePruefen(page), { flaeche: "pakete", viewport: b.id, thema: t.thema }, testInfo).map((x) => `[pakete ${b.id}] ${x}`));
+      alle.push(...bewerten(await flaechePruefen(page), { flaeche: "pakete", viewport: b.id, thema: t.thema, genutzt }, testInfo).map((x) => `[pakete ${b.id}] ${x}`));
     }
+    ungenutztMelden(alle, genutzt, ["pakete"], VISUELL_BREITEN.map((b) => b.id), t.thema);
     expect(alle, `Pakete ${t.thema}`).toEqual([]);
   });
 }
