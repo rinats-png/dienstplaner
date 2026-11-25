@@ -3,7 +3,7 @@ name: centric-lean-delivery
 description: Steuert Centric-Aufgaben, Agenten, Reviews und Releases mit minimal notwendigem Aufwand. Anwenden bei Aufgabenvergabe, Planung, Implementierung, Review, Backlog-Pflege und Abschluss; verhindert Scope Creep und redundante Prozesse ohne Sicherheits- oder Freigaberegeln zu schwächen.
 ---
 
-# Centric Lean Delivery v1.0.0
+# Centric Lean Delivery v1.1.0
 
 ## Auftrag und Vorrang
 Liefere funktionierende, sichere, wartbare Produktinkremente bis zur zulässigen Integration und Auslieferung. Optimiere abgeschlossene Anforderungen und nutzbare Funktionen, nicht PR-Anzahl, Testanzahl oder erzeugte Dokumente.
@@ -87,3 +87,10 @@ Integration ist kein Deployment. Keine Risikoannahme oder Veröffentlichung durc
 ## 10. Kurzer Bericht
 Nutze vorhandenes Berichtsformat. Nenne Ergebnis, Beleg (PR/Kopf/CI/Review), verbleibenden Blocker oder Betreiberhandlung und nächsten sinnvollen Schritt. Keine neue Berichtsdatei für jeden Kleinstfix.
 Bewerte Wirkung anhand vorhandener Daten: abgeschlossene Pakete, nutzbare Funktionen, Review-Nacharbeit, Zeit bis Integration und Release. Keine Durchsatzversprechen ohne Messung.
+
+## 11. Kontext und Arbeitsstand (Prinzipien aus ECC, angepasst)
+Übernommen sind nur drei Prinzipien (ECC `skills/strategic-compact`, `skills/iterative-retrieval`, Memory-Persistenz); Originale geprüft, keine Hooks, Skripte, Subagenten, Abhängigkeiten oder Installation.
+- Gezielt suchen: Mit den für den Auftrag relevanten Dateien, Schnittstellen, Tests und SSOT-Einträgen beginnen. Den Suchbereich nur bei einer benannten Informationslücke erweitern (Begriffe der Codebasis lernen, bestätigt Irrelevantes ausschließen). Nach höchstens drei Suchrunden mit dem besten Stand weiterarbeiten und fehlenden Kontext offen nennen; bei offener sicherheitskritischer Lücke nicht damit weiterarbeiten, sondern weitersuchen oder den Blocker melden. Keine Rechercheagenten, Bewertungssysteme oder Retrieval-Infrastruktur. Sicherheitskritische Abhängigkeiten (Aufrufer, Rechte-, Mandanten-, Daten- und Freigabepfade) bleiben immer im Blick; Kontextoptimierung ist kein Grund, sie auszulassen.
+- Komprimieren nur an Arbeitsübergängen (nach Planung, Paketabschluss, verworfenem Ansatz, Themenwechsel) und nur, wenn technisch verfügbar. Nie mitten in einer komplexen Implementierung oder einem Sicherheitsreview. Vorher sichern, was nur im Gespräch steht: Betreiberentscheidungen, laufende Pakete, offene Reviews, Freigaben, Kopf-SHAs, nächster Schritt.
+- Arbeitsstand dauerhaft halten: ausschließlich in vorhandenen Strukturen (SSOT, PR-Text, Review-Nachweise, bestehende Koordinator-Memory-Dateien, Lease, Weckruf-Prompts). Keine neue parallele Informationsquelle, kein neues Gedächtnissystem.
+- Nutzen nur an vorhandenen Durchflussdaten messen (zusammen mit §10).
