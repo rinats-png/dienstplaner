@@ -114,6 +114,12 @@ V4-Start, obwohl die Ausnahme nach F10 dann nicht verbraucht ist. Der Weg bleibt
 **Voller Klon Pflicht:** Endprüfung und `--nachhol` laufen nur in einem vollständigen Klon. In einem flachen Klon
 (`git rev-parse --is-shallow-repository` = `true`) sind E15, Rückhalt und `--nachhol` NO-GO mit `FLACHER-KLON`.
 Ein fehlendes Git-Objekt einer früheren Fassung gilt nicht als Löschung, sondern als „nicht ermittelbar“ ⇒ NO-GO.
+Liegt im prüfenden Klon eine Datei `info/grafts` oder ein Ref unter `refs/replace/`, ist die Geschichte verändert ⇒
+NO-GO mit `GRAFT-ODER-REPLACE`; das Werkzeug wendet Ersetzungen ohnehin nie an (`GIT_NO_REPLACE_OBJECTS=1`).
+Voraussetzung: wer prüft, hat Zugriff auf `.git` des prüfenden Klons; ein Standard-Klon holt `refs/replace` nicht.
+In einem Teil-Klon (`--filter=blob:none`, `--filter=tree:0`) lädt git fehlende Objekte bei erreichbarer Quelle
+nach; das Werkzeug ist dann nicht rein lesend gegenüber dem lokalen Objektspeicher (das Ergebnis bleibt per Hash
+geprüft). Für die Endprüfung und `--nachhol` deshalb einen vollen, normalen Klon verwenden.
 
 Abbruch vor dem Start aus Codeursache: neuer Kandidat; der alte steht in der Freigabeliste `gesperrt` mit Grund, der mit
 `A-VOR` beginnt, und hat einen A-VOR-Nachweis „kein Start“. Die Release-ID bleibt `v4-r1` (andere IDs haben keine Ausnahme).

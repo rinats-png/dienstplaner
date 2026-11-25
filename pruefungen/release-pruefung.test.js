@@ -3028,7 +3028,8 @@ describe("GATE-EW1/EW2: Erstwechsel-Ausnahme der Widerrufbuch-Probe (G6) und Nac
       // Online: HEAD des lokalen Repos muss in origin/main liegen
       const d = nachholSammeln(w, "v4-r1", { offline: true, fixture: nachholAnlegen() });
       expect(nachholPruefen(d).ergebnis).toBe("NACHHOL-GO");
-      expect(nachholPruefen({ ...d, online: true, headInMain: false }).abbruchIds).toContain("A-FRIST"); // H2: nicht A-REPO
+      const ohneMain = nachholPruefen({ ...d, online: true, flach: null, headInMain: false }); // AF-5: voller Klon, nur headInMain falsch
+      expect([ohneMain.abbruchIds, ohneMain.gruende.join(" ")]).toEqual([["A-FRIST"], expect.stringMatching(/HEAD liegt nicht in origin\/main/)]);
       // Dateiliste des Release nicht ermittelbar (Git-Fehler) ⇒ fail-closed
       expect(nachholPruefen({ ...d, releaseDateien: null }).ergebnis).toBe("NACHHOL-NO-GO");
     });
@@ -3371,8 +3372,10 @@ describe("GATE-EW1/EW2: Erstwechsel-Ausnahme der Widerrufbuch-Probe (G6) und Nac
     });
     it("H2/H3: HEAD nicht in origin/main ⇒ A-FRIST (nicht A-REPO); Endprüfung höchstens 24 h vor T0", () => {
       const d = nachholSammeln(w, "v4-r1", { offline: true, fixture: nachholAnlegen() });
-      const r = nachholPruefen({ ...d, online: true, headInMain: false });
+      const r = nachholPruefen({ ...d, online: true, flach: null, headInMain: false }); // AF-5: flach: null (voller Klon)
       expect(r.abbruchIds).toEqual(["A-FRIST"]);
+      expect(r.gruende).toEqual([expect.stringMatching(/A-FRIST: HEAD liegt nicht in origin\/main/)]);
+      expect(nachholPruefen({ ...d, online: true, flach: null, headInMain: true })).toMatchObject({ ergebnis: "NACHHOL-GO" });
       expect(nachhol(nachholAnlegen({ endpruefung: { zeitpunkt: um(-24) } })).ergebnis).toBe("NACHHOL-GO");
       nachholNein(nachholAnlegen({ endpruefung: { zeitpunkt: um(-24.01) } }), "A-FRIST");
       nachholNein(nachholAnlegen({ endpruefung: { zeitpunkt: um(-240) } }), "A-FRIST");
@@ -3558,9 +3561,9 @@ describe("GATE-EW1/EW2: Erstwechsel-Ausnahme der Widerrufbuch-Probe (G6) und Nac
         const { e15 } = r.lauf({ wurzel: flach });
         expect(e15).toMatch(/FLACHER-KLON/);
         const d = nachholSammeln(flach, "v4-r1", { gh: () => { throw new Error("kein Netz"); } });
-        expect(d.flach).toBe(true);
+        expect(d.flach).toMatch(/FLACHER-KLON/);
         expect(nachholPruefen(d).gruende.join(" ")).toMatch(/FLACHER-KLON/);
-        expect(nachholSammeln(r.repo, "v4-r1", { gh: () => { throw new Error("kein Netz"); } }).flach).toBe(false);
+        expect(nachholSammeln(r.repo, "v4-r1", { gh: () => { throw new Error("kein Netz"); } }).flach).toBe(null);
       } finally { weg(r); if (flach) rmSync(flach, { recursive: true, force: true }); }
     }, 180_000);
     it("AF-2: fehlendes Objekt einer früheren Fassung ist keine Löschung ⇒ nicht ermittelbar ⇒ NO-GO (Rückhalt und E15)", () => {
@@ -3593,5 +3596,58 @@ describe("GATE-EW1/EW2: Erstwechsel-Ausnahme der Widerrufbuch-Probe (G6) und Nac
         expect(r3.lauf().e15).not.toMatch(/nicht ermittelbar/); // Löschungs-Commit ist kein Lesefehler
       } finally { weg(r3); }
     }, 240_000);
+
+    /* ------------------------------------------- Opus-Review #535 Runde 4: AF-4 Graft/Replace, AF-6, AF-7, H-1 */
+    it("AF-4: git replace --graft oder info/grafts kürzt die Geschichte ⇒ GRAFT-ODER-REPLACE (Rückhalt, E15, --nachhol); ohne Graft Spur", () => {
+      const r = repoBauen();
+      try {
+        r.schreib(FREIGABE_PFAD, r.fr(r.m)); r.commit("mit Ausnahme");
+        r.schreib(FREIGABE_PFAD, FREIGABE); const c2 = r.commit("ohne"); v4r2(r);
+        r.g("replace", "--graft", c2);
+        expect(g6r2(r.repo, r)).toMatch(/GRAFT-ODER-REPLACE/);
+        r.g("replace", "-d", c2);
+        writeFileSync(join(r.repo, ".git", "info", "grafts"), c2 + "\n");
+        expect(g6r2(r.repo, r)).toMatch(/GRAFT-ODER-REPLACE/);
+        rmSync(join(r.repo, ".git", "info", "grafts"));
+        expect(g6r2(r.repo, r)).toMatch(/Spuren einer Nutzung/); // Kontrolle ohne Graft
+        r.schreib(FREIGABE_PFAD, r.fr(r.m)); const c4 = r.commit("wieder mit Ausnahme");
+        r.g("replace", "--graft", c4);
+        expect(r.lauf().e15).toMatch(/GRAFT-ODER-REPLACE/);
+        expect(nachholSammeln(r.repo, "v4-r1", { gh: () => { throw new Error("kein Netz"); } }).flach).toMatch(/GRAFT-ODER-REPLACE/);
+      } finally { weg(r); }
+    }, 240_000);
+    it("AF-6: nachhol/t0.json nur im Seitenzweig (merge -s ours), Freigabedatei ohne Ausnahme ⇒ Spur (--full-history in der Spurensuche)", () => {
+      const r = repoBauen();
+      try {
+        r.schreib(FREIGABE_PFAD, FREIGABE); r.commit("ohne");
+        r.g("checkout", "-q", "-b", "seite"); r.schreib(ABLAGE + "t0.json", { t0: "x" }); r.commit("t0");
+        r.g("checkout", "-q", "main"); r.g("merge", "-q", "-s", "ours", "seite", "-m", "ours"); v4r2(r);
+        expect(g6r2(r.repo, r)).toMatch(/Spuren einer Nutzung: .*nachhol\/t0\.json/);
+      } finally { weg(r); }
+    }, 180_000);
+    it("AF-7: unlesbare frühere Fassung von v4-r1.freigabe.json im Rückhalt-Pfad ⇒ nicht prüfbar ⇒ NO-GO", () => {
+      const r = repoBauen();
+      try {
+        r.schreib(FREIGABE_PFAD, "{ kaputt"); r.commit("kaputt");
+        r.schreib(FREIGABE_PFAD, FREIGABE); r.commit("ohne"); v4r2(r);
+        expect(g6r2(r.repo, r)).toMatch(/Spuren nicht prüfbar: Geschichte nicht ermittelbar/);
+      } finally { weg(r); }
+    }, 180_000);
+    it("AF-4: jeder git-Aufruf läuft ohne Ersetzungen (GIT_NO_REPLACE_OBJECTS=1)", () => {
+      expect(ausfuehrOptionen("x").env.GIT_NO_REPLACE_OBJECTS).toBe("1");
+      expect(ausfuehrOptionen("x", { stdio: ["ignore", "pipe", "ignore"] }).env.GIT_NO_REPLACE_OBJECTS).toBe("1");
+    });
+    it("H-1/O2: Fehler bei der Shallow-Abfrage gilt als gekürzte Geschichte (fail-closed)", () => {
+      const r = repoBauen();
+      const echt = ausfuehren.exec;
+      try {
+        r.schreib(FREIGABE_PFAD, r.fr(r.m)); r.commit("mit Ausnahme");
+        ausfuehren.exec = (bin, args, opt) => {
+          if (bin === "git" && args.includes("--is-shallow-repository")) throw new Error("git kaputt");
+          return echt(bin, args, opt);
+        };
+        expect(nachholSammeln(r.repo, "v4-r1", { gh: () => { throw new Error("kein Netz"); } }).flach).toMatch(/FLACHER-KLON/);
+      } finally { ausfuehren.exec = echt; weg(r); }
+    }, 120_000);
   });
 });
