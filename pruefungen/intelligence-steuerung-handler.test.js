@@ -132,7 +132,7 @@ describe("PUT /api/bestand: Steuerung je Rolle", () => {
   it("Leitung setzt die Pause nicht (und stößt sie mit Aus/An nicht an)", async () => {
     /* erst ein sauberer Zustand: Pause aus, Leitung hebt auf */
     const g = await gespeichert();
-    await schreibe("l1", (m) => setze({ ...ki(m), pause: { aktiv: false, am: ki(g).pause.am } })(m));
+    await schreibe("l1", (m) => setze({ ...ki(m), pause: { aktiv: false, am: ki(g).pause.am, nr: ki(g).pause.nr } })(m));
     expect(ki(await gespeichert()).pause.aktiv).toBe(false);
     await schreibe("l1", (m) => setze({ ...ki(m), pause: { aktiv: true } })(m));
     expect(ki(await gespeichert()).pause.aktiv).toBe(false);
@@ -141,7 +141,7 @@ describe("PUT /api/bestand: Steuerung je Rolle", () => {
     await schreibe("r1", (m) => setze({ ...ki(m), pause: { aktiv: true } })(m));
     const g = await gespeichert();
     expect(ki(g).pause.aktiv).toBe(true);
-    const e = await schreibe("r1", (m) => setze({ ...ki(m), pause: { aktiv: false, am: ki(g).pause.am }, betrieb: { an: false } })(m));
+    const e = await schreibe("r1", (m) => setze({ ...ki(m), pause: { aktiv: false, am: ki(g).pause.am, nr: ki(g).pause.nr }, betrieb: { an: false } })(m));
     expect(e.status).toBe(403);                                        // keine zulässige Änderung → wie bisher
     const m = await gespeichert();
     expect(ki(m).pause.aktiv).toBe(true);
@@ -169,7 +169,7 @@ describe("PUT /api/bestand: Steuerung je Rolle", () => {
     const g = await gespeichert();
     const blind = await schreibe("l1", (m) => setze({ ...ki(m), pause: { aktiv: false } })(m));
     expect(ki(await gespeichert()).pause.aktiv, `blind ${blind.status}`).toBe(true);
-    const e = await schreibe("l1", (m) => setze({ ...ki(m), pause: { aktiv: false, am: ki(g).pause.am } })(m));
+    const e = await schreibe("l1", (m) => setze({ ...ki(m), pause: { aktiv: false, am: ki(g).pause.am, nr: ki(g).pause.nr } })(m));
     expect(e.status, e.roh).toBe(200);
     const m = await gespeichert();
     expect(ki(m).pause).toMatchObject({ aktiv: false, vonRolle: "leitung", vonPerson: "l1" });
@@ -202,7 +202,7 @@ describe("PUT /api/bestand: Steuerung je Rolle", () => {
       await schreibe("l1", (m) => setze({ ...ki(m), betriebsratFrage: { antwort: "ja" } })(m));
       const g = await gespeichert();
       expect(ki(g).pause.aktiv).toBe(true);
-      const e = await schreibe("l1", (m) => setze({ ...ki(m), pause: { aktiv: false, am: ki(g).pause.am } })(m));
+      const e = await schreibe("l1", (m) => setze({ ...ki(m), pause: { aktiv: false, am: ki(g).pause.am, nr: ki(g).pause.nr } })(m));
       expect(e.status, e.roh).toBe(200);
       expect(ki(await gespeichert()).pause.aktiv).toBe(false);
     } finally { process.env[SCHALTER] = "true"; }

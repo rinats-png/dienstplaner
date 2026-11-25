@@ -3,7 +3,7 @@
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
   "anzahl": 295,
   "statusZaehlung": {
-    "BLOCKED": 116,
+    "BLOCKED": 115,
     "READY": 27,
     "IN_PROGRESS": 21,
     "REVIEW": 10,
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 363.3,
-    "max": 623.25
+    "min": 359.3,
+    "max": 616.25
   },
   "kritischerPfad": {
     "summe": 70,
@@ -2642,7 +2642,7 @@
       "abhaengigkeiten": ["WP-I13","WP-I15"],
       "status": "IN_PROGRESS",
       "stufen": {
-        "implementiert": {"wert":true,"beleg":"Branch intelligence/wp-i16-pause (lokal, nicht gepusht); docs/acc45/WP-I16-nachweis.md"},
+        "implementiert": {"wert":true,"beleg":"Branch intelligence/wp-i16-pause (PR #563); docs/acc45/WP-I16-nachweis.md"},
         "lokalGetestet": {"wert":true,"beleg":"pruefungen/intelligence-steuerung*.test.js (Kern, Handler, Oberfläche) und angrenzende Rechte-Suiten, Mutationen je Schutz; docs/acc45/WP-I16-nachweis.md"},
         "reviewt": {"wert":false,"beleg":null},
         "integriert": {"wert":false,"beleg":null},

@@ -46,7 +46,7 @@ aktuellen Sollwert und ihrer Zeichenzahl stehen in Abschnitt 3.
 > - `&&` sind zwei Zeichen. Ein `&` oder ein `;` statt `&&` startet das Skript **ohne** Prüfung.
 > - Erscheint `[1] …` (eine Zahl in Klammern) oder fehlt `&&`: **STOPP.** Befehl 3, Foto an Claude.
 > - Sollwert: genau 32 Zeichen tippen. Ein kürzerer Sollwert schwächt das Tor. Zählhilfe: 4 Blöcke zu 8 Zeichen,
->   `dc707bf7 bc96a83d 90329b5f 0291d3a3` (ohne Leerzeichen tippen; Werte aus Abschnitt 3).
+>   `7fee4bb9 56c538c5 91d58023 a0d70b1e` (ohne Leerzeichen tippen; Werte aus Abschnitt 3).
 > - Vor `Enter` zählen: Befehl 2 hat genau 88 Zeichen. V1 hat 110 Zeichen, V2 hat 124 Zeichen (Abschnitt 3).
 > - Empfohlen: zuerst **K1** tippen. K1 muss `1` zeigen. Zeigt K1 `0`: Befehl 2 nicht tippen.
 >   K1 erkennt einen verkürzten Sollwert nicht. Deshalb immer auch die Zeichen zählen.

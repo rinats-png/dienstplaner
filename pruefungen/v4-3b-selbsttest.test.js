@@ -70,7 +70,7 @@ const SELBSTTEST_ZUORDNUNG = {
 };
 
 /** SHA-256 über JSON.stringify(schnitte) der Fixture auf der Basis fd9dea35 (dreizehn Schnitte, vor diesem Schnitt). */
-const FRUEHERE_SCHNITTE_SHA256 = "39a960cfa281e2a2aa96726c23fcf533d2c0d54349c27caec61c1b1471356413";
+const FRUEHERE_SCHNITTE_SHA256 = "246a337e0e7d5f7dd7d471307c783f2483738090321270207c8eba793b85e16e"; /* WP-I16: nur zwei neue Einträge (ki-steuerung.jsx, sha256 null) in Teil 1 und Teil 2 der Zeile Querschnitt; vorher 39a960cf… */
 const FRUEHERE_SCHNITTE = Object.keys(SCHNITTE).filter((s) => s !== SCHNITT);
 
 /** Farbliterale (Hex, ohne Kommentare) in pruefung.jsx je Deklaration auf oberster Ebene, mit Art. */
@@ -166,7 +166,7 @@ describe("V4-3b Selbsttest: Messung", () => {
       .toEqual([[0, 0, 77, 0], [0, 0, 0, 5]]);
     /* Gesamt ohne src/v4: Form-Literale 19 → 18 (Dateien 14 → 13), Form erreicht 146, „voll“ 127 → 128 (von 159). */
     const z = zusammenfassung(inv).ohneV4;
-    expect([z.formLiterale, z.mitFormLiteralen, z.formErreicht, z.sichtbarVoll, z.sichtbar]).toEqual([18, 13, 146, 128, 159]);
+    expect([z.formLiterale, z.mitFormLiteralen, z.formErreicht, z.sichtbarVoll, z.sichtbar]).toEqual([18, 13, 147, 129, 160]); /* WP-I16: +ki-steuerung.jsx, Form erreicht (vorher 146/128/159) */
   }, 60000);
 
   it("Nicht alle Hauptansichten haben Form 100 %: offene Zeilen ausgewiesen (V4-3b bleibt offen)", async () => {
@@ -174,7 +174,7 @@ describe("V4-3b Selbsttest: Messung", () => {
     const offen = Object.entries(zeilen).filter(([, x]) => x.formErreicht < x.sichtbar)
       .map(([n, x]) => `${n} ${x.formErreicht}/${x.sichtbar}`);
     expect(offen).toEqual(["Einstieg 7/9", "Zeit/Abrechnung 22/23", "Einstellungen/Verwaltung 20/21", "Branchenmodule 8/13",
-      "Querschnitt/Bausteine 21/24", "Selbsttest 1/2"]);
+      "Querschnitt/Bausteine 22/25", "Selbsttest 1/2"]);
   }, 60000);
 
   it("feste Tabelle: die Stelle trägt genau die Stufe der Zuordnungsregel; keine sichtbare Änderung (12 px → 12 px)", () => {

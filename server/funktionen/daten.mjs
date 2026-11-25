@@ -63,7 +63,7 @@ import { zustellen, pushSchluessel, geraetAbmelden, geraetAusRumpf, personBerein
 import { auskunftBauen, protokollZurPerson, kontoFuerAuskunft, AUSKUNFT_FUER_ANDERE } from "../lib/auskunft.mjs";
 import { modulProtokollZeilen, bestandOhneModuleinstellungen } from "../lib/branchenmodule.mjs";
 import { schichtzuordnungProtokollZeilen, modellKuerzungFehlerBestand } from "../lib/schichtzuordnung.mjs";
-import { kiSteuerungProtokollZeilen, kiSteuerungVerwerfen, betriebsratKontenZeilen } from "../lib/ki-steuerung.mjs";
+import { kiSteuerungProtokollZeilen, kiSteuerungVerwerfen, betriebsratKontenZeilen, kiPauseAktiv } from "../lib/ki-steuerung.mjs";
 import { VORLAGEN, vorlageBestand, demoGestaltPruefen, demoOhneVertrag, codeBindung, betriebFuerNeuenCode }
   from "../lib/erstbefuellung.mjs";
 import { SICHERUNG_ROLLEN, WIEDERHERSTELLEN_ROLLEN, MARKE, markeNeu, eigenerBetrieb,
@@ -662,6 +662,33 @@ async function behandeln(req, context, ctx) {
         if (sB.rolle === "betreiber") return true;
         return imEigenenBetrieb(k);
       });
+      /* WP-I16: Bei aktiver Pause der Intelligence-Funktionen lassen sich Betriebsrat-Zugänge nicht zurückziehen — auch nicht
+         über „alle des Betriebs“ (dann die ganze Anfrage, nichts wird gesperrt). Wie die Rollenvergabe
+         (betriebsratKontenSperre): unabhängig vom Betreiberschalter; ein nicht lesbarer Bestand oder Pausenstand zählt als
+         pausiert (fail closed). Im Protokoll steht nur die Zahl. */
+      {
+        const brZiele = [...new Set([...erlaubt, ...kettenHuelle(konten, erlaubt)])]
+          .filter((h) => konten[h] && !konten[h].gesperrt && konten[h].rolle === "betriebsrat");
+        if (brZiele.length) {
+          let gesperrtDurchPause = false;
+          try {
+            for (const raum of new Set(brZiele.map((h) => konten[h].bestand))) {
+              const g = await bestandLesen(store, raum);
+              const ms = g && g.bestand && Array.isArray(g.bestand.mandanten) ? g.bestand.mandanten : [];
+              for (const h of brZiele.filter((x) => konten[x].bestand === raum)) {
+                const k = konten[h];
+                const m = k.mandantId ? ms.find((x) => x && x.id === k.mandantId) : ms[Number(k.betrieb ?? 0)];
+                if (m && kiPauseAktiv(m.einstellungen && typeof m.einstellungen === "object" ? m.einstellungen : null)) gesperrtDurchPause = true;
+              }
+            }
+          } catch { gesperrtDurchPause = true; }
+          if (gesperrtDurchPause) {
+            await protokoll("zugaenge", kS, "abgewiesen", `Sperrung von Betriebsrat-Zugängen bei aktiver Pause: ${brZiele.length}`);
+            return antwort({ fehler: "Solange die Intelligence-Funktionen pausiert sind, lassen sich Betriebsrat-Zugänge nicht zurückziehen. "
+              + "Die Leitung hebt zuerst die Pause auf." }, 403);
+          }
+        }
+      }
       /* E-M6 (Review, Befund 3): Der Widerruf wirkt ZUERST — in der Ablage gesperrt (jedes Glied der Kette
          `ersetztDurch`: ein älteres Bild folgt ihr nicht, kennt aber `gesperrt`, Produktion 274bfa0), Sitzungen und
          Sicherungsschlüssel beendet. ERST DANN das Widerrufbuch (außerhalb der gesicherten Ablage). Scheitert es, bleibt
@@ -1496,7 +1523,7 @@ async function behandeln(req, context, ctx) {
       /* Erst die Rolle, dann alles andere. Wer gar nicht schreiben darf,
          soll auch keine Bremse und keinen Konfliktvergleich auslösen. */
       /* WP-I16 Teil 1: Einzige Ausnahme ist der Betriebsrat im Voll-PUT — er darf die Pause der Intelligence-Funktionen
-         setzen und aufheben. Ob die Anfrage genau das und nichts sonst ist, entscheidet zusammenfuehren (rechte.mjs);
+         setzen. Ob die Anfrage genau das und nichts sonst ist, entscheidet zusammenfuehren (rechte.mjs);
          ohne Änderung der Pause weist es mit derselben Absage ab wie bisher. Der Teilweg bleibt für ihn gesperrt. */
       if (schreibumfang(s.rolle) === SCHREIBEN_NEIN && !(s.rolle === "betriebsrat" && kiBetriebsratPauseAn() && !teilweg && !loeschweg)) {
         await protokoll(loeschweg ? "loeschlauf" : "schreiben", ks, "abgewiesen", `Rolle ${s.rolle}`, wer);

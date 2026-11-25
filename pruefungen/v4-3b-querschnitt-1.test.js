@@ -176,12 +176,14 @@ describe("V4-3b Querschnitt Teil 1: Messung", () => {
   it("Zeile: Farbliterale 10, Inline-Stile 428, Dialog 12; Dateien von Teil 1 nur mit ihren Ausnahmen", async () => {
     const inv = await inventar();
     const e = jeHauptansicht(inv)[ZEILE];
-    expect(e.dateien).toBe(33);
-    expect(e.sichtbar).toBe(24);
-    expect(e.zeilen).toBe(6408); /* V4-3d-B1: +17 Zeilen in src/ui/bausteine.jsx (vorher 6391) */
+    /* WP-I16: +1 Datei src/ansichten/ki-steuerung.jsx (154 Zeilen, keine Form-/Farbliterale; Fixture-Eintrag sha256 null,
+       erzeugt mit werkzeug/v4-radiusstufen-basis.mjs). Vorher 33 / 24 / 6408. */
+    expect(e.dateien).toBe(34);
+    expect(e.sichtbar).toBe(25);
+    expect(e.zeilen).toBe(6562); /* V4-3d-B1: +17 Zeilen in src/ui/bausteine.jsx (vorher 6391) */
     expect(e.farbLiterale).toBe(10);
-    expect(e.farbrein).toBe(19);
-    expect(e.inlineStil).toBe(428);
+    expect(e.farbrein).toBe(20); /* WP-I16: +ki-steuerung.jsx (vorher 19) */
+    expect(e.inlineStil).toBe(452); /* WP-I16: +24 Inline-Stile in ki-steuerung.jsx (vorher 428; vorgaben.jsx hat 30) */
     expect(e.dialog).toBe(12);
     /* Stand der Zeile nach Teil 1 (gemessen auf a9e524e5): Form-Literale 24, Form 18/24 (10 / 5 / 3), „voll V4“ 9/24,
        ohne V4-Form 6, Gesamt Form-Literale 34, Form erreicht 143, „voll“ 123/159. Teil 2 (v4-3b-querschnitt-2.test.js)
@@ -239,13 +241,15 @@ describe("V4-3b Querschnitt Teil 1: Messung", () => {
     expect(g).toEqual([]);
   });
 
-  it("Rückrechnung: nur Radiuswerte geändert, sonst byte-gleich zur Basis (25 Dateien der Zeile ohne Teil 2, ohne Git)", () => {
+  it("Rückrechnung: nur Radiuswerte geändert, sonst byte-gleich zur Basis (26 Dateien der Zeile ohne Teil 2, ohne Git)", () => {
     const fx = ladeBasisFixture(WURZEL).schnitte[SCHNITT];
     /* Die acht Teil-2-Dateien rechnet v4-3b-querschnitt-2.test.js auf die Basis a9e524e5 zurück; dort ist auch belegt,
        dass a9e524e5 für alle Dateien außer den vier von Teil 1 byte-gleich zu 63a3469b ist. */
+    /* WP-I16: Dateien, die es auf der Basis nicht gab (sha256 null, keine Literale): genau die neue Oberfläche der Steuerung. */
+    expect(Object.entries(fx.dateien).filter(([, e]) => e.sha256 === null).map(([d, e]) => [d, e.literale.length])).toEqual([["src/ansichten/ki-steuerung.jsx", 0]]);
     const dateien = Object.keys(fx.dateien).filter((d) => !(d in TEIL2));
-    expect(dateien).toHaveLength(25);
-    for (const d of dateien) {
+    expect(dateien).toHaveLength(26);
+    for (const d of dateien.filter((x) => fx.dateien[x].sha256 !== null)) {
       const r = rueckgerechnet(d);
       expect(r.ersetzt, `Anzahl Stufen in ${d}`).toBe((QUERSCHNITT_ZUORDNUNG[d] || []).length);
       expect(sha256(r.text), `${d} zurückgerechnet = Basis`).toBe(fx.dateien[d].sha256);

@@ -18,7 +18,7 @@ import { kiBetriebsratPauseAn } from "../server/lib/schalter.mjs";
 import { betriebWiederherstellen } from "../server/lib/sicherungen.mjs";
 import {
   KI_FUNKTIONEN, KI_ROLLEN_AUSLOESEN, KI_GESPERRT, intelligenceErlaubt, intelligenceEntscheidung, kiSteuerungLesen,
-  kiSteuerungVerwerfen, kiSteuerungProtokollZeilen, kiSteuerungSicht, KI_PROTOKOLL_GRENZE, betriebsratKontenZeilen,
+  kiSteuerungVerwerfen, kiSteuerungAnwenden, kiSteuerungProtokollZeilen, kiSteuerungSicht, KI_PROTOKOLL_GRENZE, betriebsratKontenZeilen,
 } from "../server/lib/ki-steuerung.mjs";
 import { FUNKTIONEN_IDS } from "../server/lib/intelligence/schemas.mjs";
 import { ROLLEN_ERLAUBT, FREISCHALTUNG_GESPERRT } from "../server/lib/intelligence/positivliste.mjs";
@@ -74,7 +74,7 @@ function bereit(extra = {}) {
 }
 const KI = (b) => b.mandanten[0].einstellungen.kiSteuerung;
 /** Aufheben der Pause so, wie die Oberfläche es schickt: mit dem Stempel der Pause, die die Leitung gesehen hat. */
-const frei = (b, extra = {}) => ({ pause: { aktiv: false, am: KI(b).pause.am }, ...extra });
+const frei = (b, extra = {}) => ({ pause: { aktiv: false, am: KI(b).pause.am, nr: KI(b).pause.nr }, ...extra });
 
 describe("Verträge: Spiegel der Listen im Rechenkern", () => {
   it("Funktionsliste, Rollenliste und gesperrte Funktionen gleichen der Positivliste", () => {
@@ -318,6 +318,31 @@ describe("Betriebsrat-Pause", () => {
     expect(k.pause.aktiv).toBe(true);
     expect(k.funktionen.F15.an).toBe(false);
   });
+  it("gleicher Zeitstempel (feste Uhr): Aufheben und erneutes Pausieren in derselben Millisekunde — die veraltete Kopie hebt die neue Pause nie auf", () => {
+    const T0 = "2026-11-25T10:00:00.000Z";
+    const LEIT = SITZ.leitung; const BR = SITZ.betriebsrat;
+    const lesen = (st) => kiSteuerungLesen({ kiSteuerung: st.stand ? { pause: st.stand.pause, protokoll: st.stand.protokoll } : null });
+    let r = kiSteuerungAnwenden(null, { pause: { aktiv: true } }, BR, T0);
+    const gesetzt1 = r.stand.pause;
+    const gesehen = { aktiv: false, am: gesetzt1.am, nr: gesetzt1.nr };      // was die Leitung sah
+    r = kiSteuerungAnwenden(lesen(r), { pause: gesehen }, LEIT, T0);          // Leitung hebt auf (gleiche Millisekunde)
+    expect(r.stand.pause.aktiv).toBe(false);
+    r = kiSteuerungAnwenden(lesen(r), { pause: { aktiv: true } }, BR, T0);    // Betriebsrat pausiert erneut, gleiche Millisekunde
+    expect(r.stand.pause.aktiv).toBe(true);
+    expect(r.stand.pause.am).toBe(gesetzt1.am);                                // gleicher Zeitstempel ...
+    expect(r.stand.pause.nr).not.toBe(gesetzt1.nr);                            // ... aber eine andere Pause
+    const stale = kiSteuerungAnwenden(lesen(r), { pause: gesehen }, LEIT, T0); // veraltete Kopie der Leitung
+    expect(stale.stand.pause.aktiv).toBe(true);
+    expect(stale.ereignisse.length).toBe(0);
+    const aktuell = r.stand.pause;                                             // mit dem aktuellen Merkmal gelingt es
+    const ok = kiSteuerungAnwenden(lesen(r), { pause: { aktiv: false, am: aktuell.am, nr: aktuell.nr } }, LEIT, T0);
+    expect(ok.stand.pause.aktiv).toBe(false);
+    /* ohne nr oder mit gefälschter nr: nie */
+    for (const x of [undefined, "1", -1, aktuell.nr + 1]) {
+      const n = kiSteuerungAnwenden(lesen(r), { pause: { aktiv: false, am: aktuell.am, nr: x } }, LEIT, T0);
+      expect(n.stand.pause.aktiv, String(x)).toBe(true);
+    }
+  });
   it("die Sicht der Leitung und Planung nennt nur die Rolle, nicht das Betriebsratsmitglied, das pausiert hat", () => {
     const b = schreibe("betriebsrat", setze({ pause: { aktiv: true } }), bereit()).bestand;
     expect(KI(b).pause.vonPerson).toBe("r1");
@@ -372,7 +397,7 @@ describe("Betriebsrat-Pause", () => {
     expect(auf.abgewiesen, auf.grund).toBe(false);
     expect(KI(auf.bestand).pause).toMatchObject({ aktiv: false, vonRolle: "leitung" });
     expect(KI(auf.bestand).protokoll.at(-1)).toMatchObject({ art: "pause-aufgehoben", vonRolle: "leitung" });
-    const f = schreibe("leitung", setze({ pause: { aktiv: false, am: KI(pausiert).pause.am, vonRolle: "betriebsrat", vonPerson: "x" } }), pausiert);
+    const f = schreibe("leitung", setze({ pause: { aktiv: false, am: KI(pausiert).pause.am, nr: KI(pausiert).pause.nr, vonRolle: "betriebsrat", vonPerson: "x" } }), pausiert);
     expect(KI(f.bestand).pause).toMatchObject({ aktiv: false, vonRolle: "leitung", vonPerson: "l1" });
   });
   it("Pause aufheben nur mit dem Stempel der gesehenen Pause: eine veraltete oder blinde Kopie hebt nichts auf (Compare-and-set)", () => {

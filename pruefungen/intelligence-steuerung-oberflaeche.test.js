@@ -79,7 +79,7 @@ describe("Prozessschalter an (nur im Test)", () => {
     const html = renderToStaticMarkup(h(KiSteuerung, { sitz: sitz("leitung"), akt: { ...AKT, setzeKiSteuerung: (a) => aufrufe.push(a) }, prozess: "an" }));
     expect(html).toContain(KI_STEUERUNG_TEXTE.pauseAufheben);
     const q = lies("src/ansichten/ki-steuerung.jsx");
-    expect(q).toMatch(/pause: \{ aktiv: false, am: t\.pause\.am \}/);
+    expect(q).toMatch(/pause: \{ aktiv: false, am: t\.pause\.am, nr: t\.pause\.nr \?\? 0 \}/);
   });
   it("Betriebsrat: ausschließlich die Pause SETZEN (nie aufheben), kein Schalter", () => {
     const html = rendere("betriebsrat", "an");

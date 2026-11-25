@@ -61,6 +61,11 @@ const stempelOk = (s) => istObjekt(s) && typeof s.am === "string" && s.am.length
   && (s.vonRolle === undefined || typeof s.vonRolle === "string")
   && (s.vonPerson === undefined || s.vonPerson === null || typeof s.vonPerson === "string" || typeof s.vonPerson === "number");
 
+/* Die Pause trägt zusätzlich eine Revisionsnummer `nr` (nur der Server vergibt sie, je Setzen/Aufheben +1). Fehlt sie, gilt 0. */
+const nrOk = (n) => n === undefined || (Number.isInteger(n) && n >= 0 && n <= 1e9);
+const pauseOk = (p) => istObjekt(p) && typeof p.aktiv === "boolean" && stempelOk(p) && nrOk(p.nr);
+const nrVon = (p) => (p && Number.isInteger(p.nr) ? p.nr : 0);
+
 /**
  * Der gespeicherte Stand, streng gelesen. Alles Ungültige heißt „nicht vorhanden“
  * (also aus); ein einzelner kaputter Eintrag macht nur sich selbst zu „aus“.
@@ -82,8 +87,8 @@ export function kiSteuerungLesen(e) {
     funktionen: fn,
     betriebsratFrage: istObjekt(s.betriebsratFrage) && KI_FRAGE_ANTWORTEN.includes(s.betriebsratFrage.antwort) && stempelOk(s.betriebsratFrage)
       ? { ...s.betriebsratFrage } : null,
-    pause: istObjekt(s.pause) && typeof s.pause.aktiv === "boolean" && stempelOk(s.pause) ? { ...s.pause } : null,
-    pauseUngueltig: hat(s, "pause") && !(istObjekt(s.pause) && typeof s.pause.aktiv === "boolean" && stempelOk(s.pause)),
+    pause: pauseOk(s.pause) ? { ...s.pause } : null,
+    pauseUngueltig: hat(s, "pause") && !pauseOk(s.pause),
     protokoll: Array.isArray(s.protokoll) ? s.protokoll.filter((x) => istObjekt(x) && typeof x.art === "string" && stempelOk(x)).slice(-KI_PROTOKOLL_GRENZE) : [],
   };
 }
@@ -150,7 +155,7 @@ const wer = (sitzung) => (sitzung && (typeof sitzung.person === "string" || type
 export function kiSteuerungAnwenden(alt, absicht, sitzung, jetzt) {
   const darfRecht = (r) => !!sitzung && sitzung.demo !== true && Object.hasOwn(KI_RECHTE, sitzung.rolle) && KI_RECHTE[sitzung.rolle].includes(r);
   const stand = alt
-    ? { betrieb: alt.betrieb, funktionen: { ...alt.funktionen }, betriebsratFrage: alt.betriebsratFrage, pause: alt.pauseUngueltig ? { aktiv: true, am: jetzt, vonRolle: "system", vonPerson: null } : alt.pause, protokoll: [...alt.protokoll] }
+    ? { betrieb: alt.betrieb, funktionen: { ...alt.funktionen }, betriebsratFrage: alt.betriebsratFrage, pause: alt.pauseUngueltig ? { aktiv: true, nr: 1, am: jetzt, vonRolle: "system", vonPerson: null } : alt.pause, protokoll: [...alt.protokoll] }
     : { betrieb: null, funktionen: {}, betriebsratFrage: null, pause: null, protokoll: [] };
   const ereignisse = [];
   if (absicht === undefined || absicht === null) return { stand, ereignisse };
@@ -169,12 +174,14 @@ export function kiSteuerungAnwenden(alt, absicht, sitzung, jetzt) {
     /* Setzen nur mit dem Recht des Betriebsrats, Aufheben nur mit dem der Leitung; die jeweils andere Richtung zählt nicht. */
     const setzen = hat(p, "aktiv") && p.aktiv === true && !jetztAktiv && darfRecht("pauseSetzen");
     /* Aufheben ist ein Compare-and-set auf den Stempel der Pause: Die Anfrage muss die Pause nennen, die die Leitung gesehen
-       hat (`am`). Eine veraltete oder blinde Kopie (Rückschreiben einer älteren Sicht) hebt eine neuere Pause nie auf.
+       hat (`am` UND die vom Server vergebene Revisionsnummer `nr`; `am` allein genügt nicht, weil Aufheben und erneutes
+       Pausieren in dieselbe Millisekunde fallen können). Eine veraltete oder blinde Kopie (Rückschreiben einer älteren Sicht) hebt eine neuere Pause nie auf.
        Ein unlesbarer Pausenstand lässt sich ohne Stempel aufheben (sonst bliebe er für immer gesperrt). */
-    const gesehen = !!alt && (alt.pauseUngueltig || (!!alt.pause && typeof p.am === "string" && p.am === alt.pause.am));
+    const gesehen = !!alt && (alt.pauseUngueltig || (!!alt.pause && typeof p.am === "string" && p.am === alt.pause.am
+      && typeof p.nr === "number" && p.nr === nrVon(alt.pause)));
     const aufheben = hat(p, "aktiv") && p.aktiv === false && jetztAktiv && gesehen && darfRecht("pauseAufheben");
     if (setzen || aufheben) {
-      stand.pause = { aktiv: p.aktiv, ...stempel };
+      stand.pause = { aktiv: p.aktiv, nr: nrVon(stand.pause) + 1, ...stempel };
       ereignisse.push({ art: p.aktiv ? "pause-gesetzt" : "pause-aufgehoben", ziel: "betrieb", wert: p.aktiv, ...stempel });
     }
   }
@@ -197,7 +204,7 @@ export function kiSteuerungAnwenden(alt, absicht, sitzung, jetzt) {
       ereignisse.push({ art: "frage", ziel: "betriebsrat", wert: f.antwort, ...stempel });
       /* „Ja“ → keine Modellaufrufe, bis der Betriebsrat bestätigt (Pause). Das setzt der Server, nicht die Anfrage. */
       if (f.antwort === "ja" && vorher !== "ja" && !(stand.pause && stand.pause.aktiv === true)) {
-        stand.pause = { aktiv: true, ...stempel };
+        stand.pause = { aktiv: true, nr: nrVon(stand.pause) + 1, ...stempel };
         ereignisse.push({ art: "pause-gesetzt", ziel: "einrichtung", wert: true, ...stempel });
       }
     }
@@ -257,7 +264,8 @@ export function kiSteuerungZusammen(altM, neuM, sitzung, o = {}) {
 /**
  * Der Weg des Betriebsrats: Er schreibt sonst nirgends, hier genau das Setzen der Pause (nie das Aufheben). Aus dem gespeicherten Stand
  * entsteht der neue; aus der Anfrage zählt nur `kiSteuerung.pause.aktiv` des eigenen Betriebs. Jede Änderung
- * eines anderen Teils der Steuerung (Hauptschalter, Funktion, Frage) weist ab. Ohne Änderung der Pause: null
+ * eines anderen Teils der Steuerung (Hauptschalter, Funktion, Frage) wird ignoriert (der gespeicherte Wert bleibt);
+ * abgewiesen wird nur eine ungültige Pause. Ohne Änderung der Pause: null
  * (wie bisher: keine Schreibberechtigung).
  * @param {any} gespeicherterBetrieb @param {any} geschickterBetrieb @param {{ rolle: string, person?: any, demo?: boolean }} sitzung
  * @returns {null | { verweigert: string } | { mandant: any }}
@@ -353,8 +361,8 @@ export function kiPauseAktiv(einstellungen) {
 }
 
 /**
- * Sperre gegen das Aushebeln der Pause über die Rollenvergabe: Bei aktiver Pause darf niemand außer dem Betreiber
- * Betriebsrat-Konten anlegen, auf diese Rolle umstellen, davon wegstellen, entfernen, deaktivieren oder ihren
+ * Sperre gegen das Aushebeln der Pause über die Rollenvergabe: Bei aktiver Pause darf niemand — auch der
+ * Betreiber nicht (er hat in rollenwechselErlaubt den höchsten Rang und unterliegt der Sperre ebenso) — Betriebsrat-Konten anlegen, auf diese Rolle umstellen, davon wegstellen, entfernen, deaktivieren oder ihren
  * Austritt ändern. (Ohne aktive Pause gelten die bisherigen Regeln von rollenvergabe.mjs; die Änderung steht im
  * Betriebsprotokoll.) Rein; wirft nie.
  * @param {any} altM gespeicherter Betrieb @param {any} neuM übermittelter Betrieb

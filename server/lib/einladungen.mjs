@@ -78,6 +78,7 @@ import { tokenAusstellen, tokenAnsehen, tokenEinloesen } from "./token.mjs";
 import { kontoLesenStreng, kontoSchreiben, alleKontenStreng } from "./konten.mjs";
 import { ablageSchluessel, altHash, neuHash, gleich } from "./codes.mjs";
 import { darfVergeben } from "./rollenvergabe.mjs";
+import { kiPauseAktiv } from "./ki-steuerung.mjs";
 import { darf, eigenerMandant, wirksameRolle, sitzungsRolleBekannt } from "./rechte.mjs";
 import { aktivePerson } from "./personengueltig.mjs";
 import { heuteBerlin } from "./zeiterfassung.mjs";
@@ -331,6 +332,9 @@ export async function einladungAusstellen(store, { sitzung: s, bestand, personId
     return nein(409, "Die Rolle passt nicht zur Personalliste. Bitte erst die Rolle der Person ändern.", "rolle weicht ab");
   const urteil = darfVergeben(vergeber, p.rolle, null);
   if (!urteil.ok) return nein(403, urteil.grund, `rolle nicht vergebbar (${p.rolle})`);
+  /* WP-I16: Bei aktiver Pause der Intelligence-Funktionen entsteht kein neuer Betriebsrat-Zugang (wie betriebsratKontenSperre). */
+  if (p.rolle === "betriebsrat" && kiPauseAktiv(m.einstellungen && typeof m.einstellungen === "object" ? m.einstellungen : null))
+    return nein(403, PAUSE_BETRIEBSRAT, "betriebsrat bei pause");
 
   const ziel = { raum: s.bestand, betrieb: Number(s.betrieb ?? 0), mandantId: m.id, person: String(p.id) };
   /* N2: Laufnummer, Prüfung „schon ein Zugang" und das Ersetzen älterer Einladungen unter derselben Sperre wie
@@ -372,6 +376,8 @@ export async function einladungAusstellen(store, { sitzung: s, bestand, personId
 /* --------------------------------------------------------------------------
    LISTE UND WIDERRUF (B2)
    -------------------------------------------------------------------------- */
+
+const PAUSE_BETRIEBSRAT = "Solange die Intelligence-Funktionen pausiert sind, entsteht kein neuer Betriebsrat-Zugang. Die Leitung hebt zuerst die Pause auf und lädt dann neu ein.";
 
 /** Alle Metadaten eines Betriebs. Wirft bei einem Lesefehler. */
 async function metaListe(store, raum, mandantId) {
@@ -568,6 +574,9 @@ export async function einladungEinloesen(store, { einladung, bestandLesen, jetzt
       if (!p) return abschluss(nein(409, "Diese Person ist im Betrieb nicht mehr aktiv.", "person weg"));
       if (p.rolle !== e.rolle)
         return abschluss(nein(409, "Die Rolle hat sich seit der Einladung geändert. Bitte neu einladen lassen.", "rolle geändert"));
+      /* WP-I16: auch das Einlösen einer früher ausgestellten Einladung legt bei aktiver Pause keinen Betriebsrat-Zugang an. */
+      if (e.rolle === "betriebsrat" && kiPauseAktiv(m.einstellungen && typeof m.einstellungen === "object" ? m.einstellungen : null))
+        return abschluss(nein(403, PAUSE_BETRIEBSRAT, "betriebsrat bei pause"));
 
       const ziel = { raum: e.bestand, betrieb: bindung.betrieb, mandantId: bindung.mandantId, person: e.person };
       if (await aktiverZugangVorhanden(store, ziel))

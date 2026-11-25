@@ -197,18 +197,18 @@ describe("V4-3b Querschnitt Teil 2: Messung", () => {
   it("Zeile: Form-Literale 24 → 9, Farbliterale 10; Form 18/24 → 21/24, „voll V4“ 9/24 → 13/24; Inline-Stile 428, Dialog 12", async () => {
     const inv = await inventar();
     const e = jeHauptansicht(inv)[ZEILE];
-    expect([e.dateien, e.sichtbar, e.zeilen]).toEqual([33, 24, 6408]);
+    expect([e.dateien, e.sichtbar, e.zeilen]).toEqual([34, 25, 6562]); /* WP-I16: +ki-steuerung.jsx (vorher 33/24/6408) */
     expect(e.formLiterale).toBe(9);
     expect(e.farbLiterale).toBe(10);
-    expect(e.farbrein).toBe(19);
-    expect(e.formErreicht).toBe(21);
-    expect([e.overlayDirekt, e.ueberBaustein, e.tokenDirekt]).toEqual([10, 5, 6]);
+    expect(e.farbrein).toBe(20); /* WP-I16: +ki-steuerung.jsx (vorher 19) */
+    expect(e.formErreicht).toBe(22); /* WP-I16: +ki-steuerung.jsx (Über Baustein, voll V4); vorher 21 */
+    expect([e.overlayDirekt, e.ueberBaustein, e.tokenDirekt]).toEqual([10, 6, 6]); /* vorher [10, 5, 6] */
     /* Ohne V4-Form bleiben drei Dateien ohne jedes Form- oder Farbliteral (nichts umzustellen; Hebung ist V4-3c). */
     expect(e.ohneForm).toEqual(["src/ansichten/bestaetigungstext.jsx", "src/gestalt/icons.jsx", "src/ui/scrollbereich.jsx"]);
     /* „voll V4“ = Form und Farbe ohne Literale; Inline-Stile zählen nicht (separat: 428, V4-3d). Voll werden handbuch,
        tourleiste, ringregler, schrittleiste; kommandoleiste, leisten, ziehen (Farbe) und ui/bausteine (Radius) nicht. */
-    expect(e.voll).toBe(13);
-    expect(e.inlineStil).toBe(428);
+    expect(e.voll).toBe(14); /* vorher 13 */
+    expect(e.inlineStil).toBe(452); /* WP-I16: +24 Inline-Stile in ki-steuerung.jsx (vorher 428; vorgaben.jsx hat 30) */
     expect(e.dialog).toBe(12);
     const je = Object.fromEntries(inv.eintraege.filter((x) => hauptansicht(x) === ZEILE).map((x) => [x.datei, x]));
     expect(TEIL2.map((d) => [je[d].formLiterale, je[d].rgb + je[d].hex]))
@@ -221,7 +221,7 @@ describe("V4-3b Querschnitt Teil 2: Messung", () => {
        123 → 127 (von 159). Seit Schnitt 14 (Selbsttest) trägt v4-3b-selbsttest.test.js die Gesamtsummen (18/13/146/128/159);
        hier bleibt der Anteil der Zeile Querschnitt/Bausteine: Form erreicht und Nenner wie nach Teil 2. */
     const z = zusammenfassung(inv).ohneV4;
-    expect([z.formErreicht, z.sichtbar]).toEqual([146, 159]);
+    expect([z.formErreicht, z.sichtbar]).toEqual([147, 160]); /* WP-I16: +ki-steuerung.jsx; vorher [146, 159] */
   }, 60000);
 
   it("feste Tabelle: jede Stelle trägt genau die Stufe der Zuordnungsregel; 15 Stellen", async () => {
@@ -267,11 +267,13 @@ describe("V4-3b Querschnitt Teil 2: Messung", () => {
     expect(g).toEqual([]);
   });
 
-  it("Rückrechnung: nur Radiuswerte geändert, sonst byte-gleich zur Basis a9e524e5 (alle 33 Dateien der Zeile, ohne Git)", () => {
+  it("Rückrechnung: nur Radiuswerte geändert, sonst byte-gleich zur Basis a9e524e5 (alle 34 Dateien der Zeile, ohne Git)", () => {
     const fx = ladeBasisFixture(WURZEL).schnitte[SCHNITT];
     const dateien = Object.keys(fx.dateien);
-    expect(dateien).toHaveLength(33);
-    for (const d of dateien) {
+    expect(dateien).toHaveLength(34);
+    /* WP-I16: Dateien, die es auf der Basis nicht gab (sha256 null, keine Literale): genau die neue Oberfläche der Steuerung. */
+    expect(Object.entries(fx.dateien).filter(([, e]) => e.sha256 === null).map(([d, e]) => [d, e.literale.length])).toEqual([["src/ansichten/ki-steuerung.jsx", 0]]);
+    for (const d of dateien.filter((x) => fx.dateien[x].sha256 !== null)) {
       const r = rueckgerechnet(d);
       expect(r.ersetzt, `Anzahl Stufen in ${d}`).toBe((QUERSCHNITT2_ZUORDNUNG[d] || []).length);
       expect(sha256(r.text), `${d} zurückgerechnet = Basis`).toBe(fx.dateien[d].sha256);

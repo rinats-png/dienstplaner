@@ -122,7 +122,7 @@ export function KiSteuerung({ sitz, akt, prozess = KI_STEUERUNG_PROZESS }) {
             </div>)}
           {leitung && t.pause.aktiv && (
             <div style={{ marginTop: 8 }}>
-              <Btn style={ZIEL} kind="primary" onClick={() => akt.setzeKiSteuerung({ pause: { aktiv: false, am: t.pause.am } })}>{T.pauseAufheben}</Btn>
+              <Btn style={ZIEL} kind="primary" onClick={() => akt.setzeKiSteuerung({ pause: { aktiv: false, am: t.pause.am, nr: t.pause.nr ?? 0 } })}>{T.pauseAufheben}</Btn>
             </div>)}
         </section>
 
