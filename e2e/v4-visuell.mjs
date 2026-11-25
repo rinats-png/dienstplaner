@@ -56,8 +56,7 @@ export const BILDER_ORDNER = "e2e/ergebnisse/v4-visuell";
  *  ohne Treffer in seinem Geltungsbereich (behoben oder falsch) ist ein Fehler (ungenutzteEintraege): eine Reparatur zwingt
  *  dazu, den Eintrag zu entfernen. */
 export const VISUELL_BEKANNT = Object.freeze([
-  /* B1: Planzellen mit Zusatzzeile (.unten) in Nacht- und Spätdienstfarbe, hell, Desktop: 4,0 bis 4,3:1 (< 4,5:1). */
-  Object.freeze({ regel: "kontrast", flaeche: "dienstplan", viewport: "desktop-1280", thema: "hell", muster: ".unten", befund: "B1 Planzelle Zusatzzeile hell" }),
+  /* Leer seit V4-3d-B1 (Planzelle Zusatzzeile hell, behoben; docs/acc45/V4-4-BEFUNDE.md). */
 ]);
 
 /** Meldung der Kontrastprüfung, wenn axe keinen einzigen Knoten bewertet hat (Spec kontrastFunde). Nie ein bekannter Befund. */

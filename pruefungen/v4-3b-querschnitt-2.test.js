@@ -48,7 +48,23 @@ import { regelStufe, ladeBasisFixture, abgleichMitFixture, abgleichMitLiteralen,
   fixtureBefunde, sha256, SCHNITTE, ansichtVon } from "./v4-radiusstufen.mjs";
 
 const WURZEL = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const lies = (d) => readFileSync(path.join(WURZEL, d), "utf8").replace(/\r\n/g, "\n");
+/** V4-3d-B1 (bewusste, begründete Ausnahme vom Byte-Pin): src/ui/bausteine.jsx trägt seit B1 zusätzlich die Planzellen-Schrift
+ *  (Hilfsfunktion planzellenSchrift, zwei Importe, ein Aufruf). Diese drei Stellen werden hier genau zurückgenommen; danach gilt
+ *  der Pin unverändert (Rückrechnung = Basis a9e524e5). Fehlt eine der Stellen, ist das ein Fehler, kein stilles Durchwinken. */
+const OHNE_B1 = [
+  [/\/\* V4-3d-B1:[\s\S]*?\n\};\n/, ""],
+  ['import { kontrastVon } from "../gestalt/lesbar.js";\nimport { istDunkel, lesbar, NUM } from "./thema.js";', 'import { lesbar, NUM } from "./thema.js";'],
+  ["planzellenSchrift(da.farbe, 5.4)", "lesbar(da.farbe, 5.4)"],
+];
+const ohneB1 = (text) => OHNE_B1.reduce((t, [a, b]) => {
+  const n = typeof a === "string" ? t.split(a).length - 1 : (t.match(a) || []).length;
+  if (n !== 1) throw new Error(`V4-3d-B1-Ausnahme: Stelle ${String(a).slice(0, 40)} ${n}-mal gefunden (erwartet 1)`);
+  return t.replace(a, () => b);
+}, text);
+const lies = (d) => {
+  const t = readFileSync(path.join(WURZEL, d), "utf8").replace(/\r\n/g, "\n");
+  return d === "src/ui/bausteine.jsx" ? ohneB1(t) : t;
+};
 
 /** Basis des Schnitts (origin/integration/release-v4 mit V4-3b Schnitt 1–11 und Querschnitt Teil 1, #466). */
 const BASIS = "a9e524e5";
@@ -181,7 +197,7 @@ describe("V4-3b Querschnitt Teil 2: Messung", () => {
   it("Zeile: Form-Literale 24 → 9, Farbliterale 10; Form 18/24 → 21/24, „voll V4“ 9/24 → 13/24; Inline-Stile 428, Dialog 12", async () => {
     const inv = await inventar();
     const e = jeHauptansicht(inv)[ZEILE];
-    expect([e.dateien, e.sichtbar, e.zeilen]).toEqual([33, 24, 6391]);
+    expect([e.dateien, e.sichtbar, e.zeilen]).toEqual([33, 24, 6408]);
     expect(e.formLiterale).toBe(9);
     expect(e.farbLiterale).toBe(10);
     expect(e.farbrein).toBe(19);
