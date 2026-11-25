@@ -120,6 +120,10 @@ Voraussetzung: wer prüft, hat Zugriff auf `.git` des prüfenden Klons; ein Stan
 In einem Teil-Klon (`--filter=blob:none`, `--filter=tree:0`) lädt git fehlende Objekte bei erreichbarer Quelle
 nach; das Werkzeug ist dann nicht rein lesend gegenüber dem lokalen Objektspeicher (das Ergebnis bleibt per Hash
 geprüft). Für die Endprüfung und `--nachhol` deshalb einen vollen, normalen Klon verwenden.
+Auch eine manipulierte Datei `objects/info/commit-graph` kann falsche Eltern liefern (gleiche Angreiferklasse wie
+`info/grafts`: Schreibzugriff auf `.git`); das Werkzeug erkennt das nicht. Deshalb Endprüfung und `--nachhol` immer
+in einem **frischen, vertrauenswürdigen, vollen Klon** ausführen (ohne fremdes commit-graph, ohne `info/grafts`,
+ohne `refs/replace`).
 
 Abbruch vor dem Start aus Codeursache: neuer Kandidat; der alte steht in der Freigabeliste `gesperrt` mit Grund, der mit
 `A-VOR` beginnt, und hat einen A-VOR-Nachweis „kein Start“. Die Release-ID bleibt `v4-r1` (andere IDs haben keine Ausnahme).

@@ -3637,6 +3637,28 @@ describe("GATE-EW1/EW2: Erstwechsel-Ausnahme der Widerrufbuch-Probe (G6) und Nac
       expect(ausfuehrOptionen("x").env.GIT_NO_REPLACE_OBJECTS).toBe("1");
       expect(ausfuehrOptionen("x", { stdio: ["ignore", "pipe", "ignore"] }).env.GIT_NO_REPLACE_OBJECTS).toBe("1");
     });
+    it("AF-8: Graft/Replace mit gültiger Nachhol-Ablage ⇒ NACHHOL-NO-GO mit GRAFT-ODER-REPLACE; Rückhalt v4-r2 nennt den Grund", () => {
+      const r = repoBauen();
+      try {
+        r.schreib(FREIGABE_PFAD, r.fr(r.m)); const c1 = r.commit("mit Ausnahme"); v4r2(r);
+        r.g("replace", "--graft", c1);
+        const grund = nachholSammeln(r.repo, "v4-r1", { gh: () => { throw new Error("kein Netz"); } }).flach;
+        expect(grund).toMatch(/^GRAFT-ODER-REPLACE/);
+        const d = nachholSammeln(w, "v4-r1", { offline: true, fixture: nachholAnlegen() });     // sonst gültige Ablage
+        expect(nachholPruefen({ ...d, online: true, headInMain: true, flach: null }).ergebnis).toBe("NACHHOL-GO");
+        const mitGraft = nachholPruefen({ ...d, online: true, headInMain: true, flach: grund });
+        expect(mitGraft.ergebnis).toBe("NACHHOL-NO-GO");
+        expect(mitGraft.gruende).toEqual([expect.stringMatching(/^A-FRIST: GRAFT-ODER-REPLACE/)]);
+        expect(g6r2(r.repo, r)).toMatch(/Ausnahme v4-r1 nicht abgeschlossen: .*GRAFT-ODER-REPLACE/);
+      } finally { weg(r); }
+    }, 180_000);
+    it("AF-9: eine äußere Umgebungsvariable GIT_NO_REPLACE_OBJECTS überschreibt die Option nicht", () => {
+      const alt = process.env.GIT_NO_REPLACE_OBJECTS;
+      process.env.GIT_NO_REPLACE_OBJECTS = "0";
+      try {
+        expect(ausfuehrOptionen("x").env.GIT_NO_REPLACE_OBJECTS).toBe("1");
+      } finally { if (alt === undefined) delete process.env.GIT_NO_REPLACE_OBJECTS; else process.env.GIT_NO_REPLACE_OBJECTS = alt; }
+    });
     it("H-1/O2: Fehler bei der Shallow-Abfrage gilt als gekürzte Geschichte (fail-closed)", () => {
       const r = repoBauen();
       const echt = ausfuehren.exec;
