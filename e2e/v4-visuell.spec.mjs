@@ -32,16 +32,26 @@ const themaGilt = (page, thema, attribut = "data-thema") => expect.poll(() => pa
 /** Die Startsequenz (Marke mit Wortmarke, blendet ein und aus) ist ein Übergang, kein Ruhebild: erst danach messen. */
 const startbildFertig = (page) => expect(page.locator('[aria-label="CENTRIC wird gestartet"]'), "Startsequenz beendet").toHaveCount(0, { timeout: 30000 });
 
-/** Kontrast-Funde (axe color-contrast) als kurze Texte. */
+/** Kontrast-Funde (axe color-contrast) als kurze Texte. Zusätzlich zählt die Messung die bewerteten Knoten (Verstöße + bestanden):
+ *  Bewertet axe keinen einzigen Knoten (Ergebnis „incomplete“, z. B. wegen eines Pseudoelements als Hintergrund), ist die
+ *  Prüfung blind und der Fund lautet „keine Knoten bewertet“ (sonst wäre ein grünes Ergebnis nichts wert). */
 async function kontrastFunde(page) {
-  const erg = await page.evaluate(() => window.axe.run(document, { runOnly: { type: "rule", values: ["color-contrast"] }, resultTypes: ["violations"] }));
-  return erg.violations.flatMap((v) => v.nodes.map((n) => `${n.target.join(" ")}: ${String(n.any[0] && n.any[0].message || v.help).slice(0, 140)}`));
+  const erg = await page.evaluate(() => window.axe.run(document, { runOnly: { type: "rule", values: ["color-contrast"] }, resultTypes: ["violations", "passes", "incomplete"] }));
+  const zaehle = (liste) => liste.reduce((n, v) => n + v.nodes.length, 0);
+  const funde = erg.violations.flatMap((v) => v.nodes.map((n) => `${n.target.join(" ")}: ${String(n.any[0] && n.any[0].message || v.help).slice(0, 140)}`));
+  const bewertet = zaehle(erg.violations) + zaehle(erg.passes);
+  if (bewertet === 0) funde.push(`keine Knoten bewertet (axe incomplete ${zaehle(erg.incomplete)})`);
+  return funde;
 }
 
 /** Alle Prüfungen einer Fläche; liefert die Funde je Prüfung (leer = bestanden). */
 /* Übergänge für die Messung aus (zusätzliches Stilelement nur im Test, wie e2e/v4-seitenleiste-kontrast.spec.mjs): Der Umriss
    blendet von currentColor zur Fokusfarbe über; ein Zwischenbild gäbe falsche Werte. */
-const OHNE_UEBERGANG = "*,*::before,*::after{transition:none !important;animation:none !important;}";
+/* Verlauf aus für die Messung: Die Hintergrundverläufe der Seitenflächen (.inhalt::before, .m-schale::before) sind
+   Pseudoelemente; axe kann dann die Hintergrundfarbe nicht bestimmen und bewertet den Knoten nicht („incomplete“). Die App
+   hat denselben Zustand als Einstellung (kein-verlauf, Feldmodus). Gemessen wird gegen die Grundfläche, nicht gegen den Verlauf. */
+const OHNE_UEBERGANG = "*,*::before,*::after{transition:none !important;animation:none !important;}"
+  + ".inhalt::before,.m-schale::before{display:none !important;}";
 
 async function flaechePruefen(page, { mitFokus = true } = {}) {
   if (!(await page.locator("#v4-visuell-ruhe").count())) await page.evaluate((css) => { const st = document.createElement("style"); st.id = "v4-visuell-ruhe"; st.textContent = css; document.head.appendChild(st); }, OHNE_UEBERGANG);
@@ -201,6 +211,21 @@ for (const t of VISUELL_THEMEN) {
 /* Beweis durch Mutation: Jede Prüfung schlägt auf einer absichtlich fehlerhaften Seite an. Läuft ohne Anmeldung auf der
    Anmeldeseite, einmal je Breite (hell), in Sekunden. Der Fehler wird per Stilelement/Knoten eingebaut und wieder entfernt. */
 test.describe("Selbsttest: die Prüfungen erkennen eingebaute Fehler", () => {
+  /* Angemeldete Fläche (Beschäftigte, Telefonschale): Auf der Anmeldeseite wäre axe nicht blind, auf angemeldeten Flächen
+     war es das ohne Verlaufsausblendung (Pseudoelement als Hintergrund, „incomplete“). Darum hier ein blasser Text auf der
+     Schale: die Kontrastprüfung muss echte Knoten bewerten und anschlagen. */
+  test("Mutation kontrast auf angemeldeter Fläche (Beschäftigte, 375 px, hell)", async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: VISUELL_BREITEN[0].w, height: VISUELL_BREITEN[0].h });
+    await themaWaehlen(page, VISUELL_THEMEN[0]);
+    await anmelden(page, "mitarbeiter");
+    await themaGilt(page, "hell");
+    const ctx = { flaeche: "selbsttest-angemeldet", viewport: VISUELL_BREITEN[0].id, thema: "hell" };
+    expect(bewerten(await flaechePruefen(page, { mitFokus: false }), ctx, testInfo), "Ausgangslage sauber").toEqual([]);
+    await page.addStyleTag({ content: ".m-tabs button, main *{color:#c8c8c8 !important}" });
+    const v = bewerten(await flaechePruefen(page, { mitFokus: false }), ctx, testInfo);
+    expect(v.some((x) => x.startsWith("kontrast:") && !x.includes("keine Knoten bewertet")), `kontrast (angemeldet): muss mit echten Knoten anschlagen, fand ${JSON.stringify(v.slice(0, 3))}`).toBe(true);
+  });
+
   for (const b of VISUELL_BREITEN) {
     test(`Mutationen ${b.id}`, async ({ page }, testInfo) => {
       await page.setViewportSize({ width: b.w, height: b.h });
@@ -226,6 +251,16 @@ test.describe("Selbsttest: die Prüfungen erkennen eingebaute Fehler", () => {
       await fall("ausserhalb", '<button style="position:absolute;left:' + (b.w - 20) + 'px;top:0;width:120px">Aus dem Bild</button>', "ausserhalb");
       await fall("abgeschnitten", '<div class="karte" style="width:90px;overflow:hidden;white-space:nowrap">Dieser lange Text wird abgeschnitten, weil die Box schmal ist</div>', "abgeschnitten");
       await fall("ueberlappung", '<div style="position:relative;height:40px"><button style="position:absolute;left:0;top:0;width:100px;height:36px">Eins</button><button style="position:absolute;left:40px;top:4px;width:100px;height:36px">Zwei</button></div>', "ueberlappung");
+      /* Fokusauswahl „haupt“ (Verhalten, nicht Text): mit fester Kopfleiste vor einem <main> trifft sie ein Element in main
+         und keines in der festen Leiste. */
+      await page.evaluate(() => {
+        const k = document.createElement("div"); k.id = "mutation-kopf"; k.style.cssText = "position:fixed;top:0;left:0";
+        k.innerHTML = "<button>Kopfknopf</button>"; document.body.prepend(k);
+        const m = document.createElement("main"); m.id = "mutation-haupt"; m.innerHTML = "<button>Hauptknopf</button>"; document.body.appendChild(m);
+      });
+      const haupt = await page.evaluate((fn) => { const f = new Function("return " + fn)(); const erg = f("haupt"); return { erg, inMain: !!document.activeElement.closest("main"), inKopf: !!document.activeElement.closest("#mutation-kopf") }; }, String(fokusMessen));
+      await page.evaluate(() => { document.activeElement && document.activeElement.blur(); document.getElementById("mutation-kopf")?.remove(); document.getElementById("mutation-haupt")?.remove(); });
+      expect(haupt.inMain && !haupt.inKopf, `fokusMessen("haupt") trifft ein Element in main, nicht in der festen Leiste: ${JSON.stringify(haupt)}`).toBe(true);
       /* Fokus: erstes bedienbare Element der Seite verliert Umriss und Schatten. */
       await page.addStyleTag({ content: "*:focus,*:focus-visible{outline:none !important;box-shadow:none !important}" });
       const v = bewerten(await flaechePruefen(page), ctx, testInfo);

@@ -22,13 +22,13 @@ Je Ansicht, Breite (375 px Telefon, 1280 px Desktop) und Thema (hell, dunkel; ge
 | Abwesenheiten (Anträge) | Leitung | ja | ja | ja | ja | ja |
 | Einstellungen | Leitung | ja | ja | ja | ja | ja |
 | Pakete | Betreiber | ja | ja | ja | ja | ja |
-| Heute, Mein Plan, Anliegen (Urlaub, Krank, Tausch), Mehr (Profil) | Beschäftigte | ja | ja | ja | ja | ja |
+| Heute, Mein Plan, Anliegen (Urlaub, Krank, Tausch), Mehr (Profil) | Beschäftigte | ja (Verlauf aus, siehe Grenzen) | ja | ja | ja | ja |
 
 Die Beschäftigten (Schichtdienst) sehen immer die Telefonschale mit vier Reitern (`zeigeMobil` in `src/App.jsx`). Sie wird bei 375 px und bei 1024 px (Umbruch der Seitenleiste, `UMBRUCH.seitenleiste`) geprüft, im selben Lauf je Thema. Die Rechneransicht der Beschäftigten (Umschalter in „Mehr“) ist nicht Teil dieser Prüfung. Die Leitung bleibt bei 375 und 1280 px; 1024 px gibt es für sie nicht.
 
 Die Prüfungen:
 
-- Kontrast: axe-Regel `color-contrast` (WCAG 1.4.3), jeder Fund zählt.
+- Kontrast: axe-Regel `color-contrast` (WCAG 1.4.3), jeder Fund zählt. Je Fläche müssen mehr als null Knoten bewertet sein (Verstöße plus bestanden); sonst ist der Fund „keine Knoten bewertet“ und die Fläche ist rot.
 - Bildlauf: Die Seite hat keine waagerechte Bildlaufleiste (`scrollWidth <= clientWidth`).
 - Außerhalb: Kein Hauptelement (Knöpfe, Felder, Überschriften, Karten, Navigation) liegt außerhalb der Breite, außer in einer waagerecht klemmenden oder blätternden Fläche (Plantabelle; siehe Grenzen).
 - Abgeschnitten: Kein Element mit `overflow: hidden` schneidet Text ab, außer mit Auslassungspunkten.
@@ -40,6 +40,10 @@ Beleg der Mutation (lokal, 2026-11-25): Mit abgeschalteter Kontrastprüfung bzw.
 
 ## Befunde
 
+### B1 Planzelle Zusatzzeile hell
+
+Dienstplan (Monatsplan), Leitung, Desktop 1280 px, hell: Die Zusatzzeile (`.unten`) der Planzellen in Nachtdienst- und Spätdienstfarbe hat 4,0 bis 4,3:1 gegen die Zellenfläche (Nachtdienst Vordergrund #7c3aed auf #dad8e4 = 4,04:1; Spätdienst #b03a0a auf #d7d9ce = 4,25:1); gefordert sind 4,5:1 (WCAG 1.4.3, Schrift 14,5 px, nicht fett). Dunkel besteht, Telefon (375 px) meldet hier nichts. Aufgedeckt, weil die Messung jetzt auch angemeldete Flächen bewertet (siehe Grenzen, erster Punkt); sie war vorher blind. Eingetragen in `VISUELL_BEKANNT` (sichtbar als Anmerkung, nicht rot). Reparatur gehört nicht in dieses Paket (`src/`, V4-3b-Byte-Pins): Kandidat V4-3d (Rest-Farbwerte der Dienstfarben).
+
 Der erste vollständige Lauf (alle 10 Tests) zeigt keinen echten Befund an der App: Kontrast, Bildlauf, Außerhalb, Abschneiden, Überlappung und Fokus bestehen in allen geprüften Ansichten, Breiten und Themen. Auch die Folge (Rolle Beschäftigte bei 375 und 1024 px, gezielte Fokusauswahl; 12 Tests) findet keinen echten Befund an der App. `VISUELL_BEKANNT` in `e2e/v4-visuell.mjs` ist leer.
 
 Zwei Messfehler im ersten Entwurf (kein App-Fehler, im Test behoben):
@@ -48,6 +52,10 @@ Zwei Messfehler im ersten Entwurf (kein App-Fehler, im Test behoben):
 2. Fokusring 1,08:1 auf der Konto-Taste: Der Umriss blendet von `currentColor` zur Fokusfarbe über; der erste Messwert war ein Zwischenbild. Die Spec schaltet Übergänge für die Messung ab (wie `e2e/v4-seitenleiste-kontrast.spec.mjs`). Im Ruhebild ist die Fokusfarbe `--v4-focus` (hell `#ac670e`, dunkel `#ffd77b`).
 
 ## Grenzen (ehrlich)
+
+- Kontrast auf angemeldeten Flächen: Ohne Eingriff meldete axe dort überwiegend „incomplete“ (Hintergrund nicht bestimmbar wegen eines Pseudoelements, `.inhalt::before` und `.m-schale::before`) und bewertete keinen Knoten; ein grünes Ergebnis belegte nichts. Der erste Stand (PR #538 und die erste Fassung dieser Folge) hatte diese Lücke für Leitung und Beschäftigte. Jetzt blendet die Spec für die Messung die beiden Verlaufs-Pseudoelemente aus (die App kennt denselben Zustand als Einstellung, Feldmodus und `kein-verlauf`), zählt die bewerteten Knoten und verlangt mehr als null je Fläche. Gemessen wird damit gegen die Grundfläche, nicht gegen den Verlauf; ein Text, der nur auf dem Verlauf zu blass wäre, bleibt unentdeckt. Der Selbsttest hat eine Kontrast-Mutation auf einer angemeldeten Fläche (Beschäftigte, 375 px, hell).
+- Der Wächtertest der Fokusauswahl in `pruefungen/v4-visuell-qa.test.js` ist ein Textwächter (er sucht Zeichenfolgen im Code). Das Verhalten beweist der Selbsttest in der Spec: Mit fester Kopfleiste vor einem `<main>` trifft die Auswahl „haupt“ ein Element in `main` und keines in der Leiste.
+- „erstes“ und „letztes“ wiederholen sich je Fläche (erstes meist die Mitteilungen in der Kopfleiste, letztes der Reiter „Mehr“); nur „haupt“ ist je Reiter ein eigenes Element. Folgepaket-Gedanke: statt „letztes“ das letzte Element im `main`.
 
 - Die Fokusprüfung ist eine gezielte Auswahl (drei Elemente je Ansicht), keine vollständige Tabulatorfolge.
 - Die Überlappungsprüfung nimmt feste und klebende Leisten sowie Bildlaufflächen aus. Ein Fehler dort bleibt unentdeckt.
@@ -60,10 +68,16 @@ Zwei Messfehler im ersten Entwurf (kein App-Fehler, im Test behoben):
 
 ## Laufzeit
 
-Messweise: lokal (Windows, 2 Arbeiter, ohne Parallellast), Summe der Testzeiten laut Listenausgabe von Playwright, 2026-11-25. Die Wandzeit der Testphase ist lokal nicht getrennt vom Aufbau des Testservers (`global-setup.mjs`, rund zwei Minuten) gemessen; der Aufbau fällt ohnehin an und zählt nicht zum Zusatz.
+Messweise: lokal (Windows, 2 Arbeiter), Summe der Testzeiten laut Playwright-Liste und Beobachtung des Reviewers, 2026-11-25. Die Werte schwanken stark mit der Last der Maschine; sie sind Größenordnungen, keine Zusagen.
 
-- Erster Stand (10 Tests): Summe der Testzeiten 139 s. Die frühere Angabe „Testphase rund 70 s Wandzeit“ ist nicht reproduziert und gilt nicht mehr.
-- Mit der Rolle Beschäftigte (12 Tests): Summe der Testzeiten 165 s. Die zwei neuen Tests brauchen zusammen 31 s (hell 12 s, dunkel 19 s).
-- CI (Job `browser-abnahme`): Der Zuwachs steht in der PR-Beschreibung (Vergleich mit der Basis). Die Testphase ist dort nicht getrennt gemessen.
+- Zwei neue Tests (Beschäftigte hell und dunkel): lokal Größenordnung +30 bis 45 s Summe (gemessen 31 s und 43 s). Die frühere Angabe „Testphase rund 70 s Wandzeit“ und die Summen 139 s und 165 s sind nicht bestätigt und gelten nicht als Wert. Ein Lauf des Reviewers mit 12 Tests brauchte für die Testphase rund 3,5 min (Summe etwa 225 s).
+- Mit Verlaufsausblendung und Kontrastzählung: Messung siehe PR-Beschreibung; der Zusatz je Fläche liegt im Millisekundenbereich, ein weiterer Test (Mutation auf angemeldeter Fläche) kommt hinzu (eine Anmeldung, rund 10 s).
+- CI (Job `browser-abnahme`): im Rauschen der Läufe (etwa ±2,5 min), kein messbarer Zuwachs. Die Testphase ist dort nicht getrennt gemessen.
 
 Die Anmeldung ist der größte Posten; deshalb gibt es je Thema nur eine Anmeldung je Rolle, die Breite wechselt im selben Lauf.
+
+## Folgepakete (nicht in diesem PR)
+
+- 1024 px für die Leitung (Schubladen-Navigation, geschätzt +45 s in der CI): erst nach Prüfung der Kontrastbefunde (B1).
+- Rechneransicht der Beschäftigten (Umschalter in „Mehr“; ein Lauf, nur 1280 px): kleines Paket.
+- Reparatur von B1 über V4-3d (Rest-Farbwerte, Betreiberentscheidung in `ENTSCHEIDUNGSLISTE.md`).

@@ -52,7 +52,10 @@ export const BILDER_ORDNER = "e2e/ergebnisse/v4-visuell";
 
 /** Bekannte, in docs/acc45/V4-4-BEFUNDE.md geführte Befunde: [Regel, Fläche, Viewport-Id, Thema] ("*" = alle).
  *  Ein Eintrag macht den Befund sichtbar (Anmerkung), aber nicht rot; ein behobener Eintrag wird als ungenutzt gemeldet. */
-export const VISUELL_BEKANNT = Object.freeze([]);
+export const VISUELL_BEKANNT = Object.freeze([
+  /* B1: Planzellen mit Zusatzzeile (.unten) in Nacht- und Spätdienstfarbe, hell, Desktop: 4,0 bis 4,3:1 (< 4,5:1). */
+  Object.freeze({ regel: "kontrast", flaeche: "dienstplan", viewport: "desktop-1280", thema: "hell", befund: "B1 Planzelle Zusatzzeile hell" }),
+]);
 
 /** Passt ein Befund auf einen bekannten Eintrag? Rein, ohne Browser. */
 export function bekannterBefund(regel, flaeche, viewportId, thema, liste = VISUELL_BEKANNT) {

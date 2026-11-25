@@ -110,6 +110,13 @@ describe("Spec", () => {
     expect(spec).toContain('values: ["color-contrast"]');
     expect(spec).toContain("Ausgangslage sauber");
   });
+  it("Kontrast ist nicht blind: zählt bewertete Knoten, blendet den Verlauf aus, beweist die Mutation auch angemeldet", () => {
+    expect(spec).toContain('resultTypes: ["violations", "passes", "incomplete"]');
+    expect(spec).toContain("keine Knoten bewertet");
+    expect(spec).toContain(".inhalt::before,.m-schale::before{display:none !important;}");
+    expect(spec).toContain("Mutation kontrast auf angemeldeter Fläche");
+    expect(spec).toContain('fokusMessen("haupt")');
+  });
   it("Bilder nur auf Anforderung und nie im Repo; Quelle ohne new Date, ohne feste Wartezeit-Gates", () => {
     expect(spec).toContain("V4_VISUELL_BILDER");
     expect(spec).not.toMatch(/screenshot\s*:\s*["']on|toHaveScreenshot|toMatchSnapshot/);
