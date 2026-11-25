@@ -8222,8 +8222,8 @@
       "abhaengigkeiten": [],
       "status": "BLOCKED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"docs/acc45/K4-P7-nachweis.md"},
+        "lokalGetestet": {"wert":true,"beleg":"docs/acc45/K4-P7-nachweis.md"},
         "reviewt": {"wert":false,"beleg":null},
         "integriert": {"wert":false,"beleg":null},
         "stagingGeprueft": {"wert":false,"beleg":null},
