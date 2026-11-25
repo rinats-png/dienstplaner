@@ -51,9 +51,11 @@ Keine Personendaten, keine Hostnamen, keine Schlüssel in den Dateien dieses Run
 | N5 | nach N4 | Claude, Betreiber liest | `node werkzeug/release-pruefung.mjs --nachhol --release-id v4-r1` ⇒ `NACHHOL-GO` |
 
 Statusdateien entstehen nur aus echten Läufen auf dem VPS. Claude ändert keine Werte. `endpruefung.json` ist die
-unveränderte JSON-Ausgabe der Endprüfung (Exit 0, online, **vor T0**: `zeitpunkt` ≤ T0). Sie bindet die Freigabedatei
+unveränderte JSON-Ausgabe der Endprüfung (Exit 0, online, **höchstens 24 h vor T0**: `zeitpunkt` ∈ [T0 − 24 h, T0];
+Grund: die Endprüfung belegt eine Sicherung ≤ 26 h, die beim Start noch gelten soll). Sie bindet die Freigabedatei
 (`freigabeSha256`), den geprüften Stand (`headCommit`, muss Vorfahr von HEAD sein) und die Freigabeliste an diesem Stand
-(`listeSha256`). Platzhalter in den Dateien der Ablage sind NO-GO. `--nachhol` online liest nur einen HEAD, der in
+(`listeSha256`). Platzhalter in den Status- und Formulardateien der Ablage sind NO-GO (in `endpruefung.json` nur in
+den Bindungsfeldern; ihre `konfiguration` enthält Beispielpfade des Werkzeugs). `--nachhol` online liest nur einen HEAD, der in
 `origin/main` liegt.
 
 **Vier-Augen-Schritt vor `deploy.sh` (Lücke L-1, bis ein eigenes Paket `deploy.sh` an die Endprüfung bindet):** Zweite
@@ -95,7 +97,12 @@ zurücksetzt, verbirgt sie nicht.
 
 **Folge-Release:** Für jeden Release ≠ `v4-r1` muss `docs/acc45/releases/v4-r1.freigabe.json` in HEAD liegen. Trägt sie
 die Ausnahme, muss `--nachhol` für v4-r1 `NACHHOL-GO` ergeben (einzige Abweichung: nur A-REPO und `nachholAbweichung`).
-Fehlt oder unlesbar ⇒ NO-GO. Die Basis des Folge-Release spielt keine Rolle.
+Fehlt oder unlesbar ⇒ NO-GO. Die Basis des Folge-Release spielt keine Rolle. **Folge: Jeder Release ≠ `v4-r1` ist in
+G6 NO-GO, solange `v4-r1.freigabe.json` nicht in HEAD liegt — auch ein V3-Hotfix vor v4-r1.** Trägt die Datei die
+Ausnahme nicht (mehr), ist sie nur zulässig, wenn die Ausnahme nie genutzt wurde: keine frühere Fassung mit
+`erstwechselAusnahme` und nie eine Datei unter `v4-r1/nachhol/` oder `v4-r1/abbruch-*` (HEAD und Geschichte), sonst NO-GO.
+Die Rückhaltprüfung eines Folge-Release online liest die Nachhol-Ablage aus HEAD; dieser HEAD muss in `origin/main`
+liegen (sonst `--nachhol` NO-GO und damit Rückhalt NO-GO).
 
 Abbruch vor dem Start aus Codeursache: neuer Kandidat; der alte steht in der Freigabeliste `gesperrt` mit Grund, der mit
 `A-VOR` beginnt, und hat einen A-VOR-Nachweis „kein Start“. Die Release-ID bleibt `v4-r1` (andere IDs haben keine Ausnahme).

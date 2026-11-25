@@ -3028,7 +3028,7 @@ describe("GATE-EW1/EW2: Erstwechsel-Ausnahme der Widerrufbuch-Probe (G6) und Nac
       // Online: HEAD des lokalen Repos muss in origin/main liegen
       const d = nachholSammeln(w, "v4-r1", { offline: true, fixture: nachholAnlegen() });
       expect(nachholPruefen(d).ergebnis).toBe("NACHHOL-GO");
-      expect(nachholPruefen({ ...d, online: true, headInMain: false }).abbruchIds).toContain("A-REPO");
+      expect(nachholPruefen({ ...d, online: true, headInMain: false }).abbruchIds).toContain("A-FRIST"); // H2: nicht A-REPO
       // Dateiliste des Release nicht ermittelbar (Git-Fehler) ⇒ fail-closed
       expect(nachholPruefen({ ...d, releaseDateien: null }).ergebnis).toBe("NACHHOL-NO-GO");
     });
@@ -3097,8 +3097,9 @@ describe("GATE-EW1/EW2: Erstwechsel-Ausnahme der Widerrufbuch-Probe (G6) und Nac
       const g = folge(spaet, abw);
       expect(g.ergebnis).toBe("GO");
       expect(g.belege.join(" ")).toMatch(/W-REPO/);
+      // N31 (Delta-Review): die Abweichung gilt nur für genau diese Release-ID (Ablage vorher neu, nur A-REPO)
+      expect(folge(nachholAnlegen({ mergedAt: [um(50)] }), { nachholAbweichung: { releaseId: "v4-r0", grund: "x" } }).ergebnis).toBe("NO-GO");
       expect(folge(nachholAnlegen({ mergedAt: [um(50)], probe: { bild: D_ALT } }), abw).ergebnis).toBe("NO-GO");
-      expect(folge(spaet, { nachholAbweichung: { releaseId: "v4-r0", grund: "x" } }).ergebnis).toBe("NO-GO");
     });
     it("AU-1: Rückhalt hängt an der Release-ID der Konfiguration, nicht an gefundenen Dateien oder der Basis", () => {
       // A5: Basis ≠ M (z. B. ein Zwischenstand) — ohne NACHHOL-GO trotzdem NO-GO
@@ -3262,5 +3263,254 @@ describe("GATE-EW1/EW2: Erstwechsel-Ausnahme der Widerrufbuch-Probe (G6) und Nac
         expect(gruende).toMatch(new RegExp(` E15: .*früherer Kandidat ${s.slice(0, 12)}`));
       } finally { rmSync(repo, { recursive: true, force: true }); }
     }, 120_000);
+  });
+
+  /* ------------------------------------------- Delta-Review #535 Runde 2: BL-3, AU-6, AU-7, H1–H3, Angriffe B1–B10 */
+  describe("Delta-Review #535 Runde 2", () => {
+    const ALT = "c".repeat(40);
+    const AVOR = "docs/acc45/releases/v4-r1/abbruch-A-VOR.json";
+    const R = "repos/rinats-png/dienstplaner/";
+    function repoBauen() {
+      const repo = mkdtempSync(join(tmpdir(), "rev535b-"));
+      const g = (...args) => {
+        const r = spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false", "-c", "init.defaultBranch=main", "-c", "core.autocrlf=false", ...args], { cwd: repo, encoding: "utf8" });
+        if (r.status !== 0) throw new Error(args.join(" ") + ": " + r.stderr);
+        return r.stdout.trim();
+      };
+      const schreib = (rel, inhalt) => { mkdirSync(join(repo, rel, ".."), { recursive: true }); writeFileSync(join(repo, rel), typeof inhalt === "string" ? inhalt : JSON.stringify(inhalt)); };
+      const commit = (msg) => { g("add", "-A"); g("commit", "-q", "-m", msg); return g("rev-parse", "HEAD"); };
+      g("init", "-q");
+      schreib("server.mjs", "// Basis\n"); const basis = commit("Basis");
+      g("checkout", "-q", "-b", "rc");
+      for (const p of C.kandidatMitDateien) schreib(p, `// ${p}\n`);
+      const s = commit("Schnitt");
+      g("checkout", "-q", "main");
+      g("merge", "-q", "--no-ff", "rc", "-m", "Merge rc");
+      const m = g("rev-parse", "HEAD");
+      const fr = (kandidat) => ({ ...FREIGABE, kandidatCommit: kandidat, basisCommit: basis, schnittCommit: s, erstwechselAusnahme: { widerrufbuchProbe: {
+        releaseId: "v4-r1", basisCommit: basis, kandidatCommit: kandidat, schnittCommit: s, digest: D, nachholFristStunden: 24, repoFristStunden: 48,
+        gueltigBis: "2026-12-31", staging: { lauf: "4242-1", nachweis: NACHWEIS, sha256: "1".repeat(64) }, abbruchBedingungen: [...C.abbruchBedingungen],
+        nachholAblage: ABLAGE, quittung: "q" } } });
+      const gh = (pfad) => { throw new Error("kein Netz: " + pfad); };
+      const lauf = (opt = {}) => {
+        const e = sammeln({ wurzel: repo, offline: false, kandidatSha: m, basisSha: basis, releaseId: "v4-r1", digest: D, jetztMs: JETZT_MS, gh, ghRoh: gh, ...opt });
+        return { e, e15: gateVon(auswerten(e), "G6").gruende.filter((x) => / E15: /.test(x)).join(" | ") };
+      };
+      return { repo, g, schreib, commit, basis, s, m, fr, lauf };
+    }
+    const weg = (r) => rmSync(r.repo, { recursive: true, force: true });
+
+    it("BL-3: die ECHTE Ausgabe der Endprüfung (auswerten) als endpruefung.json ⇒ NACHHOL-GO; Bindungsfelder bleiben streng", () => {
+      const fx = nachholAnlegen();
+      fx.headCommit = "5".repeat(40);
+      const e = sammeln({ wurzel: w, offline: true, fixture: fx, releaseId: "v4-r1", digest: D, jetztMs: JETZT_MS });
+      rmSync(join(w, ABLAGE), { recursive: true, force: true }); // Endprüfung lag vor T0: ohne Ablage
+      const echt = auswerten({ ...e, modus: "online", jetztUeberschrieben: false, releaseDateien: (e.releaseDateien || []).filter((p) => !p.includes("/nachhol/")) });
+      expect([echt.gesamt, echt.exitCode]).toEqual(["GO", 0]);
+      expect(JSON.stringify(echt.konfiguration)).toMatch(/beispiel/); // enthält immer Beispiel-Pfade der Konfiguration
+      const fx2 = nachholAnlegen();
+      datei(ABLAGE + "endpruefung.json", echt);
+      expect(nachhol(fx2)).toEqual({ ergebnis: "NACHHOL-GO", gruende: [], abbruchIds: [], verspaetet: false });
+      datei(ABLAGE + "endpruefung.json", { ...echt, headCommit: "0".repeat(40) });
+      nachholNein(fx2, "A-FRIST");
+    });
+    it("BL-3: Formate der echten Skripte (widerrufbuch-probe.sh, widerrufbuch-sicherung.sh: alle printf-Felder) ⇒ NACHHOL-GO", () => {
+      const fx = nachholAnlegen({
+        probe: { schritt: "fertig", neuester: "a1".repeat(32), vergleich: "b2".repeat(32), dauer_s: 41 },
+        status: { schritt: "fertig", host: "centric-prod", letzte_erfolgreiche: um(3.3), snapshot_id: "c3".repeat(32), buecher: 2,
+          eintraege_codes: 3, eintraege_konten: 1, fehlend: 0, nachweis: "", dauer_s: 12 },
+      });
+      expect(nachhol(fx).ergebnis).toBe("NACHHOL-GO");
+    });
+    it("AU-6: Ausnahme aus v4-r1.freigabe.json entfernt, Spuren (Nachhol-Ablage, frühere Fassung) ⇒ v4-r2 G6 NO-GO (B7 umgedreht)", () => {
+      const fx = nachholAnlegen({ probe: { ergebnis: "fehler" } });
+      const f = JSON.parse(roh(FREIGABE_PFAD)); delete f.erstwechselAusnahme; delete f.schnittCommit; datei(FREIGABE_PFAD, f);
+      datei("docs/acc45/releases/v4-r2.freigabe.json", { ...FREIGABE, releaseId: "v4-r2", kandidatCommit: "9".repeat(40), basisCommit: M });
+      const fx2 = fixtureGo(); fx2.kandidatCommit = "9".repeat(40); fx2.basisCommit = M; fx2.nachhol = kopie(fx.nachhol);
+      expect(g6(fx2, { releaseId: "v4-r2" }).gruende.join(" ")).toMatch(/v4-r1\.freigabe\.json .*Spuren/);
+      rmSync(join(w, ABLAGE), { recursive: true, force: true });                     // ohne Ablage in HEAD …
+      fx2.nachhol["v4-r1"].fruehereAusnahme = true;                                   // … aber eine frühere Fassung trug die Ausnahme
+      expect(g6(fx2, { releaseId: "v4-r2" }).ergebnis).toBe("NO-GO");
+      fx2.nachhol["v4-r1"].fruehereAusnahme = false;
+      fx2.nachhol["v4-r1"].historie = ["docs/acc45/releases/v4-r1/abbruch-A-SICH.json"]; // gelöschte Abbruchdatei
+      expect(g6(fx2, { releaseId: "v4-r2" }).ergebnis).toBe("NO-GO");
+      fx2.nachhol["v4-r1"].historie = [];
+      expect(g6(fx2, { releaseId: "v4-r2" }).gruende).toEqual([]);                   // nie Ausnahme, keine Spur ⇒ kein Rückhalt
+      delete fx2.nachhol["v4-r1"].fruehereAusnahme;                                   // nicht ermittelbar ⇒ NO-GO
+      expect(g6(fx2, { releaseId: "v4-r2" }).ergebnis).toBe("NO-GO");
+    });
+    it("AU-6 online: frühere Fassung von v4-r1.freigabe.json mit Ausnahme, HEAD ohne ⇒ Rückhalt NO-GO", () => {
+      const r = repoBauen();
+      try {
+        r.schreib(FREIGABE_PFAD, r.fr(r.m)); r.commit("Freigabe mit Ausnahme");
+        r.schreib(FREIGABE_PFAD, FREIGABE); r.commit("Ausnahme entfernt");
+        r.schreib("docs/acc45/releases/v4-r2.freigabe.json", { ...FREIGABE, releaseId: "v4-r2" }); r.commit("v4-r2");
+        const e = sammeln({ wurzel: r.repo, offline: false, kandidatSha: r.m, basisSha: r.basis, releaseId: "v4-r2", digest: D, jetztMs: JETZT_MS, gh: () => { throw new Error("kein Netz"); } });
+        expect(gateVon(auswerten(e), "G6").gruende.join(" ")).toMatch(/v4-r1\.freigabe\.json .*Spuren/);
+      } finally { weg(r); }
+    }, 120_000);
+    it("H1: ZIP mit vielen Einträgen auf dieselben Daten oder Summe über der Grenze ⇒ Fehler; Größe aus dem Zentralverzeichnis (N27)", () => {
+      const roh10 = Buffer.alloc(10 * 1024 * 1024); const komp = deflateRawSync(roh10); const name = Buffer.from("a");
+      const lokal = Buffer.alloc(30); lokal.writeUInt32LE(0x04034b50, 0); lokal.writeUInt16LE(8, 8); lokal.writeUInt16LE(1, 26);
+      const lok = Buffer.concat([lokal, name, komp]);
+      const bombe = (n) => {
+        const zentral = [];
+        for (let i = 0; i < n; i++) { const z = Buffer.alloc(46); z.writeUInt32LE(0x02014b50, 0); z.writeUInt16LE(8, 10); z.writeUInt32LE(komp.length, 20); z.writeUInt16LE(1, 28); zentral.push(Buffer.concat([z, name])); }
+        const zd = Buffer.concat(zentral); const ende = Buffer.alloc(22);
+        ende.writeUInt32LE(0x06054b50, 0); ende.writeUInt16LE(n, 8); ende.writeUInt16LE(n, 10); ende.writeUInt32LE(zd.length, 12); ende.writeUInt32LE(lok.length, 16);
+        return Buffer.concat([lok, zd, ende]);
+      };
+      expect(zipEntpacken(bombe(2))).toHaveLength(2);       // 20 MB: unter der Summengrenze
+      expect(() => zipEntpacken(bombe(20))).toThrow(/Summe|Einträge/);
+      expect(() => zipEntpacken(bombe(1001))).toThrow(/Einträge/);
+      // gespeicherter Eintrag (Methode 0) > 10 MB laut Zentralverzeichnis ⇒ Fehler
+      const gross = Buffer.alloc(30); gross.writeUInt32LE(0x04034b50, 0); gross.writeUInt16LE(1, 26);
+      const z = Buffer.alloc(46); z.writeUInt32LE(0x02014b50, 0); z.writeUInt32LE(11 * 1024 * 1024, 20); z.writeUInt16LE(1, 28);
+      const e2 = Buffer.alloc(22); e2.writeUInt32LE(0x06054b50, 0); e2.writeUInt16LE(1, 8); e2.writeUInt16LE(1, 10); e2.writeUInt32LE(47, 12); e2.writeUInt32LE(31, 16);
+      expect(() => zipEntpacken(Buffer.concat([gross, name, z, name, e2]))).toThrow(/zu groß/);
+    });
+    it("H2/H3: HEAD nicht in origin/main ⇒ A-FRIST (nicht A-REPO); Endprüfung höchstens 24 h vor T0", () => {
+      const d = nachholSammeln(w, "v4-r1", { offline: true, fixture: nachholAnlegen() });
+      const r = nachholPruefen({ ...d, online: true, headInMain: false });
+      expect(r.abbruchIds).toEqual(["A-FRIST"]);
+      expect(nachhol(nachholAnlegen({ endpruefung: { zeitpunkt: um(-24) } })).ergebnis).toBe("NACHHOL-GO");
+      nachholNein(nachholAnlegen({ endpruefung: { zeitpunkt: um(-24.01) } }), "A-FRIST");
+      nachholNein(nachholAnlegen({ endpruefung: { zeitpunkt: um(-240) } }), "A-FRIST");
+      expect(C.endpruefungVorT0MaxStunden).toBe(24);
+    });
+    it("N23: Dateiliste bei Git-Fehler ⇒ null (fail-closed); N20: origin ≠ GitHub-Repo ⇒ headInMain false", () => {
+      const leer = mkdtempSync(join(tmpdir(), "ew-leer-"));
+      try {
+        spawnSync("git", ["init", "-q"], { cwd: leer });
+        expect(nachholSammeln(leer, "v4-r1").releaseDateien).toBe(null); // kein HEAD
+      } finally { rmSync(leer, { recursive: true, force: true }); }
+      const r = repoBauen();
+      const fern = mkdtempSync(join(tmpdir(), "ew-fern-"));
+      try {
+        r.schreib(FREIGABE_PFAD, r.fr(r.m)); r.commit("Freigabe");
+        spawnSync("git", ["init", "-q", "--bare", fern]);
+        r.g("remote", "add", "origin", fern); r.g("push", "-q", "origin", "HEAD:refs/heads/main");
+        const d = nachholSammeln(r.repo, "v4-r1", { gh: () => { throw new Error("kein Netz"); } });
+        expect(d.headInMain).toBe(false); // HEAD liegt in main, aber origin ist nicht rinats-png/dienstplaner
+      } finally { weg(r); rmSync(fern, { recursive: true, force: true }); }
+    }, 120_000);
+    it("N15: T0-Merge vom ältesten Einführen von t0.json (nicht vom jüngsten)", () => {
+      const r = repoBauen();
+      try {
+        r.schreib(FREIGABE_PFAD, r.fr(r.m)); r.commit("Freigabe");
+        r.schreib(ABLAGE + "t0.json", { t0: T0 }); const erst = r.commit("t0 erstmals");
+        r.g("rm", "-q", ABLAGE + "t0.json"); r.commit("t0 weg");
+        r.schreib(ABLAGE + "t0.json", { t0: T0 }); const spaet = r.commit("t0 erneut");
+        const pr = (n, wann) => [{ number: n, merged_at: wann, base: { ref: "main" } }];
+        const gh = (pfad) => {
+          if (pfad === `${R}commits/${erst}/pulls`) return pr(1, um(1));
+          if (pfad === `${R}commits/${spaet}/pulls`) return pr(2, um(30));
+          throw new Error("kein Netz: " + pfad);
+        };
+        expect(nachholSammeln(r.repo, "v4-r1", { gh }).t0MergedAt).toBe(um(1));
+      } finally { weg(r); }
+    }, 120_000);
+    it("N2: Merge setzt die Freigabedatei auf einen älteren Stand zurück — frühere Kandidaten bleiben sichtbar (--full-history)", () => {
+      const r = repoBauen();
+      try {
+        r.schreib(FREIGABE_PFAD, r.fr(r.m)); r.commit("Freigabe M");
+        r.g("checkout", "-q", "-b", "alt"); r.schreib("x.txt", "x"); r.commit("alt");
+        r.g("checkout", "-q", "main");
+        const m1 = "d".repeat(40);
+        r.schreib(FREIGABE_PFAD, r.fr(m1)); r.commit("Freigabe M1 (gestartet)");
+        r.g("merge", "-q", "--no-ff", "--no-commit", "alt");
+        r.g("checkout", "alt", "--", FREIGABE_PFAD); r.commit("Merge: Freigabe zurück auf M");
+        const { e, e15 } = r.lauf();
+        expect(e.erstwechsel.fruehereKandidaten).toContain(m1);
+        expect(e15).toMatch(new RegExp(`früherer Kandidat ${m1.slice(0, 12)}`));
+      } finally { weg(r); }
+    }, 120_000);
+    it("B1 BL-1: t0.json nur auf Seitenzweig, Merge -s ours (nie im Baum von main) ⇒ E15 verbraucht", () => {
+      const r = repoBauen();
+      try {
+        r.schreib(FREIGABE_PFAD, r.fr(r.m)); r.commit("Freigabe");
+        r.g("checkout", "-q", "-b", "nachhol");
+        r.schreib(ABLAGE + "widerrufbuch-probe-status.json", { x: 1 }); r.schreib(ABLAGE + "t0.json", { t0: "x" }); r.commit("Nachhol");
+        r.g("checkout", "-q", "main");
+        r.g("merge", "-q", "-s", "ours", "nachhol", "-m", "Merge ours");
+        expect(existsSync(join(r.repo, ABLAGE + "t0.json"))).toBe(false);
+        const { e, e15 } = r.lauf();
+        expect(e.erstwechsel.releaseHistorie).toContain(ABLAGE + "t0.json");
+        expect(e15).toMatch(/nachhol\/t0\.json: V4-Start erfolgt/);
+        expect(e15).toMatch(/nachhol\/widerrufbuch-probe-status\.json: V4-Start erfolgt/);
+      } finally { weg(r); }
+    }, 120_000);
+    it("B2 BL-1: abbruch-A-START.json per Merge entfernt ⇒ E15", () => {
+      const r = repoBauen();
+      try {
+        r.schreib(FREIGABE_PFAD, r.fr(r.m)); r.commit("Freigabe");
+        r.g("checkout", "-q", "-b", "x");
+        r.schreib("docs/acc45/releases/v4-r1/abbruch-A-START.json", { id: "A-START" }); r.commit("Abbruch");
+        r.g("checkout", "-q", "main");
+        r.g("merge", "-q", "--no-ff", "--no-commit", "x");
+        r.g("rm", "-q", "-f", "docs/acc45/releases/v4-r1/abbruch-A-START.json");
+        r.commit("Merge ohne Datei");
+        expect(r.lauf().e15).toMatch(/abbruch-A-START\.json: V4-Start erfolgt/);
+      } finally { weg(r); }
+    }, 120_000);
+    it("B3/N6 BL-2: frühere aktiv-Zeile nur in der Listengeschichte (ALT); Freigabe M1 → M ⇒ E15 nennt beide, nicht M", () => {
+      const r = repoBauen();
+      try {
+        r.schreib("deploy/FREIGEGEBENE-IMAGES.md", liste([zeileListe("sha256:" + "e".repeat(64), ALT, "aktiv", "x")])); r.commit("Liste ALT aktiv");
+        r.schreib("deploy/FREIGEGEBENE-IMAGES.md", liste([zeileListe(D, r.m, "aktiv", "Kandidat")])); r.commit("Zeile ALT entfernt");
+        const m1 = "d".repeat(40);
+        r.schreib(FREIGABE_PFAD, r.fr(m1)); r.commit("Freigabe M1");
+        r.schreib(FREIGABE_PFAD, r.fr(r.m)); r.commit("Freigabe M2 = M");
+        const { e, e15 } = r.lauf();
+        expect(e.erstwechsel.fruehereKandidaten).toEqual(expect.arrayContaining([ALT, m1, r.m]));
+        expect(e15).toMatch(new RegExp(`früherer Kandidat ${ALT.slice(0, 12)}`));
+        expect(e15).toMatch(new RegExp(`früherer Kandidat ${m1.slice(0, 12)}`));
+        expect(e15).not.toMatch(new RegExp(`früherer Kandidat ${r.m.slice(0, 12)}`));
+      } finally { weg(r); }
+    }, 120_000);
+    it("B4/N8 BL-2: frühere Fassung der Freigabedatei unlesbar ⇒ fail-closed", () => {
+      const r = repoBauen();
+      try {
+        r.schreib(FREIGABE_PFAD, "{ kaputt"); r.commit("kaputt");
+        r.schreib(FREIGABE_PFAD, r.fr(r.m)); r.commit("Freigabe");
+        expect(r.lauf().e15).toMatch(/frühere Kandidaten .* nicht ermittelbar/);
+      } finally { weg(r); }
+    }, 120_000);
+    it("B5 offline: Fixture ohne fruehereKandidaten oder releaseHistorie ⇒ E15 (fail-closed)", () => {
+      erwarte(mitEw(aufbauen(), (x) => { delete x.fruehereKandidaten; }), "E15");
+      erwarte(mitEw(aufbauen(), (x) => { delete x.releaseHistorie; }), "E15");
+    });
+    it("B6 AU-1: Freigabedatei v4-r1 umbenannt ⇒ v4-r2 NO-GO", () => {
+      const fx = aufbauen();
+      datei("docs/acc45/releases/v4-r1-alt.freigabe.json", JSON.parse(roh(FREIGABE_PFAD)));
+      rmSync(join(w, FREIGABE_PFAD));
+      datei("docs/acc45/releases/v4-r2.freigabe.json", { ...FREIGABE, releaseId: "v4-r2", kandidatCommit: "9".repeat(40), basisCommit: "8".repeat(40) });
+      const fx2 = fixtureGo(); fx2.kandidatCommit = "9".repeat(40); fx2.basisCommit = "8".repeat(40); fx2.nachhol = fx.nachhol;
+      expect(g6(fx2, { releaseId: "v4-r2" }).ergebnis).toBe("NO-GO");
+    });
+    it("B8/N17 AU-3: Varianten des Prüfsummen-Belegs (Großbuchstaben, Leerzeichen, Reihenfolge, Zusatz) ⇒ A-PROBE-W", () => {
+      const z = "1".repeat(64), k = "2".repeat(64);
+      for (const ps of [`zugang-widerrufe.json=${z.toUpperCase().replaceAll("1", "A")};konto-widerrufe.json=${k}`, `zugang-widerrufe.json=${z};konto-widerrufe.json=${k} `,
+        `zugang-widerrufe.json=${z};konto-widerrufe.json=${k}\n`, `konto-widerrufe.json=${k};zugang-widerrufe.json=${z}`, `zugang-widerrufe.json=${z};konto-widerrufe.json=${k};`,
+        ` zugang-widerrufe.json=${z};konto-widerrufe.json=${k}`, `zugang-widerrufe.json=${z}; konto-widerrufe.json=${k}`]) {
+        nachholNein(nachholAnlegen({ probe: { gegenprobe: "nicht-aussagekraeftig", pruefsummen: ps }, verifikation: { pruefsummenVergleich: ps } }), "A-PROBE-W");
+      }
+      const ok = `zugang-widerrufe.json=${z};konto-widerrufe.json=${k}`;
+      expect(nachhol(nachholAnlegen({ probe: { gegenprobe: "nicht-aussagekraeftig", pruefsummen: ok }, verifikation: { pruefsummenVergleich: ok } })).abbruchIds).not.toContain("A-PROBE-W");
+    });
+    it("B9/N13 AU-2: merged_at von t0.json vor T0 oder ungültig ⇒ A-FRIST; Grenze T0 + 12 h gilt", () => {
+      const vor = nachholAnlegen(); vor.nachhol["v4-r1"].t0MergedAt = um(-0.01); nachholNein(vor, "A-FRIST");
+      const kaputt = nachholAnlegen(); kaputt.nachhol["v4-r1"].t0MergedAt = "gestern"; nachholNein(kaputt, "A-FRIST");
+      const grenze = nachholAnlegen(); grenze.nachhol["v4-r1"].t0MergedAt = um(12); expect(nachhol(grenze).ergebnis).toBe("NACHHOL-GO");
+    });
+    it("B10: __proto__ in t0.json und endpruefung.json ⇒ A-FRIST", () => {
+      const fx = nachholAnlegen();
+      writeFileSync(join(w, ABLAGE + "t0.json"), `{"__proto__":{"releaseId":"v4-r1","digest":"${D}","kandidat":"${M}","t0":"${T0}"}}`);
+      nachholNein(fx, "A-FRIST");
+      const fx2 = nachholAnlegen();
+      const ep = JSON.parse(roh(ABLAGE + "endpruefung.json"));
+      writeFileSync(join(w, ABLAGE + "endpruefung.json"), JSON.stringify({ ...ep, gesamt: undefined }).replace("{", '{"__proto__":{"gesamt":"GO"},'));
+      nachholNein(fx2, "A-FRIST");
+    });
   });
 });

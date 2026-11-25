@@ -37,6 +37,7 @@
     }
   },
   "nachhol": {
-    "v4-r1": { "mergedAt": ["2026-11-21T10:30:00Z", "2026-11-22T08:00:00Z"], "t0MergedAt": "2026-11-21T10:30:00Z", "endpruefungIstVorfahr": true }
+    "v4-r1": { "mergedAt": ["2026-11-21T10:30:00Z", "2026-11-22T08:00:00Z"], "t0MergedAt": "2026-11-21T10:30:00Z", "endpruefungIstVorfahr": true,
+      "fruehereAusnahme": false, "historie": [] }
   }
 }

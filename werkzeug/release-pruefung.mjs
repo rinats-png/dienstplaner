@@ -128,6 +128,7 @@ const ERSTWECHSEL_AUSNAHME = tiefFrieren({
     repoFristStunden: 48,                                                     // F5: Merge des Nachhol-PR
     erstlaufFristStunden: 2,                                                  // A-SICH (Runbook N2; nicht maschinell geprüft)
     t0MeldungStunden: 12,                                                     // T0 belegt: Merge von t0.json ≤ T0 + 12 h (Review #535 AU-2)
+    endpruefungVorT0MaxStunden: 24,                                           // Endprüfung höchstens 24 h vor T0 (Sicherung ≤ 26 h gilt dann noch; H3)
     stagingMaxTage: 7,
     stagingProben: ["S1", "S2", "S3", "S4", "S5", "S6"],                      // F1
     gueltigBis: "2026-12-31",                                                 // F2; Ende des Tages UTC; keine Verlängerung
@@ -1312,6 +1313,8 @@ export const NACHHOL_DATEIEN = Object.freeze(["t0.json", "widerrufbuch-status.js
 const imFensterT0 = (t, von, bis) => Number.isFinite(t) && t >= von && t <= bis;
 /** F4-Beleg im Format der Probe (widerrufbuch-probe.sh): beide Bücher, je SHA-256 (Review #535 AU-3). */
 const PRUEFSUMMEN = /^zugang-widerrufe\.json=[0-9a-f]{64};konto-widerrufe\.json=[0-9a-f]{64}$/;
+/** Bindungsfelder der Endprüfung (Delta-Review #535 BL-3). */
+const ENDPRUEFUNG_BINDUNG = ["releaseId", "kandidat", "digest", "zeitpunkt", "headCommit", "listeSha256", "freigabeSha256"];
 
 export function nachholPruefen(d, konfig = KONFIG_STANDARD) {
   const c = konfig.erstwechselAusnahme.widerrufbuchProbe;
@@ -1328,17 +1331,20 @@ export function nachholPruefen(d, konfig = KONFIG_STANDARD) {
   const relVerz = `${konfig.freigabeVerzeichnis}/${d.releaseId}/`;
   if (!Array.isArray(d.releaseDateien)) nein("A-FRIST", "Dateien des Release in HEAD nicht ermittelbar (fail-closed)");
   // Hinweis Review #535: online muss der gelesene HEAD in origin/main liegen (sonst gilt kein Nachweis als gemergt)
-  if (d.online === true && d.headInMain !== true) nein("A-REPO", "HEAD liegt nicht in origin/main (oder nicht ermittelbar)");
+  if (d.online === true && d.headInMain !== true) nein("A-FRIST", "HEAD liegt nicht in origin/main (oder nicht ermittelbar) — Nachweise nicht belegt");
   for (const p of Array.isArray(d.releaseDateien) ? d.releaseDateien : []) {
     const m = p.startsWith(relVerz) && !ABBRUCH_VOR.test(p.slice(relVerz.length)) ? /^abbruch-([^/]*)\.json$/.exec(p.slice(relVerz.length)) : null;
     if (m) nein(c.abbruchBedingungen.includes(m[1]) ? m[1] : "A-FRIST", `Abbruchdatei ${p} in HEAD`);
   }
   const bytes = (name) => (d.dateien?.[name] ? Buffer.from(d.dateien[name]) : null);
   const json = (name) => { try { const v = JSON.parse(bytes(name).toString("utf8")); return istObjekt(v) ? v : null; } catch { return null; } };
-  for (const n of NACHHOL_DATEIEN) {
-    const texte = tiefSuchen(json(n), (_, x) => (typeof x === "string" ? x : undefined));
-    if (texte.some((x) => PLATZHALTER.some((m) => m.test(x)))) nein("A-FRIST", `Platzhalter in ${n}`);
-  }
+  // Delta-Review #535 BL-3: Platzhalter nur in den Status- und Formulardateien; endpruefung.json ist die unveränderte
+  // Werkzeugausgabe (ihre konfiguration enthält Beispielpfade) — dort nur die Bindungsfelder
+  const ohneEndpruefung = NACHHOL_DATEIEN.filter((n) => n !== "endpruefung.json");
+  const epRoh = json("endpruefung.json");
+  const texteJe = [...ohneEndpruefung.map((n) => [n, tiefSuchen(json(n), (_, x) => (typeof x === "string" ? x : undefined))]),
+    ["endpruefung.json", ENDPRUEFUNG_BINDUNG.map((x) => epRoh?.[x]).filter((x) => typeof x === "string")]];
+  for (const [n, texte] of texteJe) if (texte.some((x) => PLATZHALTER.some((m) => m.test(x)))) nein("A-FRIST", `Platzhalter in ${n}`);
   const t0d = json("t0.json");
   const t0 = Date.parse(t0d?.t0 ?? "");
   if (!t0d || !Number.isFinite(t0)) { nein("A-FRIST", "t0.json fehlt oder T0 unlesbar"); return ende(); }
@@ -1388,7 +1394,9 @@ export function nachholPruefen(d, konfig = KONFIG_STANDARD) {
     nein("A-FRIST", "endpruefung.json fehlt, ist keine Endprüfung GO (online, Exit 0) dieses Kandidaten, oder die Freigabedatei ist seit der Endprüfung verändert");
   } else {
     // Review #535 AU-2, L-2: Endprüfung vor T0; ihr HEAD ist Vorfahr von HEAD; Liste an jenem HEAD = listeSha256
-    if (!(Date.parse(ep.zeitpunkt ?? "") <= t0)) nein("A-FRIST", `Endprüfung (${ep.zeitpunkt}) nicht vor T0`);
+    if (!imFensterT0(Date.parse(ep.zeitpunkt ?? ""), t0 - stunden(c.endpruefungVorT0MaxStunden), t0)) {
+      nein("A-FRIST", `Endprüfung (${ep.zeitpunkt}) nicht in [T0 − ${c.endpruefungVorT0MaxStunden} h, T0]`);
+    }
     const st = istObjekt(d.endStand) ? d.endStand : {};
     if (!hex40(ep.headCommit) || st.istVorfahr !== true || typeof ep.listeSha256 !== "string" || ep.listeSha256 !== st.listeSha256) {
       nein("A-FRIST", "Stand der Endprüfung nicht belegt (headCommit kein Vorfahr von HEAD oder Liste ≠ listeSha256)");
@@ -1404,7 +1412,7 @@ export function nachholPruefen(d, konfig = KONFIG_STANDARD) {
 /** Folge-Release-Rückhalt (SPEZ §3.3, Review #535 AU-1): jede Ausnahme eines anderen Release muss NACHHOL-GO sein. */
 function rueckhaltPruefen(g, k, konfig) {
   for (const r of Array.isArray(k.rueckhalt) ? k.rueckhalt : []) {
-    if (!r.daten) { nogo(g, `Erstwechsel-Ausnahme: ${r.datei} nicht lesbar (${r.fehler}) — Rückhalt nicht prüfbar (fail-closed)`); continue; }
+    if (!r.daten) { nogo(g, `Erstwechsel-Ausnahme: ${r.datei} ${r.fehler} — Rückhalt NO-GO (fail-closed)`); continue; }
     const n = nachholPruefen(r.daten, konfig);
     if (n.ergebnis === "NACHHOL-GO") { g.belege.push(`Erstwechsel-Ausnahme ${r.releaseId} abgeschlossen (NACHHOL-GO)`); continue; }
     const abw = k.freigabe?.nachholAbweichung;
@@ -1418,6 +1426,8 @@ function rueckhaltPruefen(g, k, konfig) {
 
 /** Einträge eines ZIP-Archivs (Artefakt-Download), nur im Speicher; Größen aus dem Zentralverzeichnis. Wirft bei Fehlern. */
 const ZIP_MAX = 10 * 1024 * 1024; // je Eintrag höchstens 10 MB (Schutz gegen Entpack-Bomben)
+const ZIP_SUMME = 50 * 1024 * 1024; // entpackt zusammen höchstens 50 MB (Delta-Review #535 H1)
+const ZIP_EINTRAEGE = 1000;         // höchstens 1000 Einträge
 export function zipEntpacken(buf) {
   const b = Buffer.from(buf);
   let e = -1;
@@ -1425,6 +1435,8 @@ export function zipEntpacken(buf) {
   if (e < 0) throw new Error("kein ZIP (Endsatz fehlt)");
   const aus = [];
   let p = b.readUInt32LE(e + 16);
+  let summe = 0;
+  if (b.readUInt16LE(e + 10) > ZIP_EINTRAEGE) throw new Error(`ZIP: mehr als ${ZIP_EINTRAEGE} Einträge`);
   for (let n = b.readUInt16LE(e + 10); n > 0; n--) {
     if (b.readUInt32LE(p) !== 0x02014b50) throw new Error("ZIP-Verzeichnis unlesbar");
     const methode = b.readUInt16LE(p + 10);
@@ -1437,6 +1449,8 @@ export function zipEntpacken(buf) {
     const daten = b.subarray(start, start + groesse);
     aus.push({ name: b.subarray(p + 46, p + 46 + lName).toString("utf8"),
       daten: methode === 8 ? inflateRawSync(daten, { maxOutputLength: ZIP_MAX }) : Buffer.from(daten) });
+    summe += aus.at(-1).daten.length;
+    if (summe > ZIP_SUMME) throw new Error("ZIP: entpackte Summe zu groß");
     p += 46 + lName + b.readUInt16LE(p + 30) + b.readUInt16LE(p + 32);
   }
   return aus;
@@ -2065,13 +2079,50 @@ export function nachholSammeln(wurzel, releaseId, opt = {}, konfig = KONFIG_STAN
  * und nicht aus der Basis. Für jeden anderen Release muss die Freigabedatei jeder Ausnahme-ID in HEAD liegen; trägt sie
  * die Ausnahme, muss deren Nachhol-Ablage NACHHOL-GO ergeben. Fehlt oder unlesbar ⇒ NO-GO.
  */
+function ausnahmeSpur(hq, releaseId, { online, wurzel: w, fx }, konfig) {
+  const verz = konfig.freigabeVerzeichnis;
+  const relVerz = `${verz}/${releaseId}/`;
+  const genutzt = (p) => p.startsWith(`${relVerz}nachhol/`) || /^abbruch-[^/]*\.json$/.test(p.slice(relVerz.length));
+  const jetzt = hq.dateienStreng([`${verz}/${releaseId}`]);
+  let historie = null;
+  let frueher = null;
+  if (!online) {
+    const n = istObjekt(fx?.nachhol?.[releaseId]) ? fx.nachhol[releaseId] : {};
+    historie = Array.isArray(n.historie) ? n.historie : null;
+    frueher = typeof n.fruehereAusnahme === "boolean" ? n.fruehereAusnahme : null;
+  } else {
+    try {
+      const voll = ["--full-history", "--no-renames"];
+      historie = git(w, ["log", ...voll, "--format=", "--name-only", "HEAD", "--", relVerz]).split("\n").filter(Boolean);
+      const datei = `${verz}/${releaseId}.freigabe.json`;
+      frueher = git(w, ["log", ...voll, "--format=%H", "HEAD", "--", datei]).split("\n").filter(Boolean).some((sha) => {
+        let t = null;
+        try { t = ausfuehren.exec("git", ["show", `${sha}:${datei}`], ausfuehrOptionen(w, { stdio: ["ignore", "pipe", "ignore"] })); } catch { return false; }
+        const f = jsonLesen(t).wert;
+        if (!istObjekt(f)) throw new Error("frühere Fassung unlesbar");
+        return f.erstwechselAusnahme !== undefined;
+      });
+    } catch { historie = null; frueher = null; }
+  }
+  if (jetzt === null || historie === null || frueher === null) return "Geschichte nicht ermittelbar (fail-closed)";
+  const pfade = [...new Set([...jetzt, ...historie])].filter(genutzt);
+  if (frueher) pfade.unshift("frühere Fassung der Freigabedatei mit erstwechselAusnahme");
+  return pfade.length ? pfade.slice(0, 5).join(", ") : null;
+}
+
 function rueckhaltSammeln(e, hq, ctx, konfig) {
   const aus = [];
   for (const releaseId of konfig.erstwechselAusnahme.widerrufbuchProbe.releaseIds.filter((x) => x !== e.releaseId)) {
     const datei = `${konfig.freigabeVerzeichnis}/${releaseId}.freigabe.json`;
     const j = jsonLesen(hq.lesen(datei));
     if (!istObjekt(j.wert)) { aus.push({ datei, releaseId, fehler: j.fehler || "kein Objekt" }); continue; }
-    if (j.wert.erstwechselAusnahme === undefined) continue;
+    if (j.wert.erstwechselAusnahme === undefined) {
+      // Delta-Review #535 AU-6: ohne Ausnahme in HEAD nur, wenn sie nie genutzt wurde (keine frühere Fassung mit Ausnahme,
+      // nie eine Datei unter <id>/nachhol/ oder <id>/abbruch-* in HEAD oder seiner Geschichte)
+      const spur = ausnahmeSpur(hq, releaseId, ctx, konfig);
+      if (spur) aus.push({ datei, releaseId, fehler: `ohne Ausnahme, aber Spuren einer Nutzung: ${spur}` });
+      continue;
+    }
     aus.push({ datei, releaseId, daten: nachholDaten(hq, releaseId, ctx, konfig) });
   }
   return aus;
