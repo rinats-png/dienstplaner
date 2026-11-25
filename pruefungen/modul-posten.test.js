@@ -145,7 +145,7 @@ describe("Schreibweg und Sicht (Server)", () => {
       const v = schreibeAlsEcht(g, r, (m) => { m.objekte = OBJEKTE; m.postenPlan = { [`a1|${MO}`]: "po1" }; });
       expect(!!v && !!v.verweigert, r).toBe(true);
     }
-    for (const r of ["PL", "LT", "KD"]) expect(schreibeAlsEcht(g, r, (m) => { m.postenPlan = { [`a1|${MO}`]: "po1" }; }).verweigert, r).toMatch(/wirkt in diesem Betrieb nicht/);
+    for (const r of ["PL", "LT", "KD"]) expect(schreibeAlsEcht(g, r, (m) => { m.objekte = OBJEKTE; m.postenPlan = { [`a1|${MO}`]: "po1" }; }).verweigert, r).toMatch(/wirkt in diesem Betrieb nicht/); // WP-19.1: Posten muss bekannt sein, sonst greift die Prüfung „unbekannter Posten“ vor der Modulsperre
   });
   it("Planung und Leitung speichern Objekte und Einteilungen; fehlerhafte werden abgewiesen", () => {
     const g = branchenbestand({ pakete: ["sicherheit"], branchenmodule: { posten: { an: true } } });

@@ -1700,7 +1700,7 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
       const geteilt = geteilterdienstZusammen(geschickt, ort.betrieb);
       if (geteilt.grund) return { verweigert: geteilt.grund };
       /* Posten (WP-19): Form von Objekten und Postenplan, nur Neues oder Geändertes streng. */
-      const posten = postenZusammen(geschickt, ort.betrieb);
+      const posten = postenZusammen(geschickt, ort.betrieb, { bekannt: moduldatenAusnahme === undefined });
       if (posten.grund) return { verweigert: posten.grund };
       /* Bereichsplan (WP-19): Bereiche je Einheit und Zuordnung, nur Neues oder Geändertes streng. */
       const bereiche = bereichsplanZusammen(geschickt, ort.betrieb);
