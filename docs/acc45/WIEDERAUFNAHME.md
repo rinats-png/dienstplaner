@@ -5,6 +5,14 @@
 > Halter und Epoche stehen nie verlässlich in diesem Dokument: maßgeblich ist allein `node werkzeug/koordination.mjs status`
 > (dazu `leerlauf`). Epochenangaben in den Nachträgen unten sind historisch. Betriebsregeln: Abschnitt „Koordinationsregel“.
 
+## Nachtrag 2026-11-25 (Nachtlauf 06:32Z, nur lesende Prüfung und Statuspflege, Branch `ccr-a5d550e1-1mmsn9`)
+
+- **Integrationskopf:** `integration/release-v4` `6445136` (Merge #539, V4-4-Folge, 05:54 MEZ). Seit dem Nachtrag vom 24.11. integriert: #529 bis #541 (u. a. #530 ABN-A4, #536 ABN-A2, #537 EW3, #538 V4-4 visuelle QA, #540 SSOT). Keine Integration durch diesen Lauf.
+- **Lease:** Epoche 25 (`hauptchat-e25`), erneuert 05:13Z, gültig bis 08:13Z, `leerlauf` meldet Verdacht (79 Min ohne Aktivität), aber keine Übernahme vor 08:15Z. Dieser Lauf hat keine Lease übernommen und keinen Code geändert.
+- **Hintergrundausführung (belegt):** Routine `trig_0144efYeRu3BMqUGbXuGTDRB` (`32 * * * *`) aktiv, letzter Lauf 06:32Z. Keine zusätzliche Einrichtung nötig, keine weitere Routine angelegt.
+- **Neue offene PRs, CI je 26/27 Checks erfolgreich, kein Review-Nachweis, nicht gemergt:** #543 (V4-3d-B1, Planzellen-Kontrast hell), #542 (L-4 Rechnungen serverseitig validieren, Sicherheit; zusätzlich Job `sicherung` grün), #535 (GATE-EW1/EW2/EW4 Erstwechsel-Ausnahme). Merge erst nach Opus-Review (Projektregel). Weiter offen: Dependabot #496/#497/#498/#406/#407/#400, Doku #480, Drafts #479/#468/#327/#177, Entwurf #489 (`main` nur mit Betreiberfreigabe).
+- **Nächster Schritt für den Halter:** Reviews zu #542 (Sicherheit zuerst), #543, #535. Keine neue Betreiberentscheidung. Keine Zahl zu neu abgeschlossenen PT behauptet.
+
 ## Nachtrag 2026-11-24 (Nachtlauf, nur lesende Prüfung und Statuspflege, Branch `ccr-a5d550e1-wkkibk`)
 
 - **Integrationskopf:** `integration/release-v4` `4eae5d8` (Merge #506, Doku). Davor #507 (`eb88621`): Tiefendeckel an allen Rumpflesern (WP-19.5, Review #505 A1), Tests in `modul-tiefendeckel-leser.test.js`. Branch vor Arbeitsbeginn auf `origin/integration/release-v4` gesetzt.
