@@ -21,6 +21,17 @@ export const demoAn = () => process.env.CENTRIC_DEMO === "true";
 export const teilwegAn = () => process.env.CENTRIC_TEILSPEICHERUNG === "true";
 
 /* --------------------------------------------------------------------------
+   BETRIEBSRAT-PAUSE DER INTELLIGENCE (WP-I16, Betreiberentscheidung P2-8 Variante A) — Vorgabe AUS
+
+   CENTRIC_KI_BR_PAUSE  Schreibrecht des Betriebsrats, die Intelligence-Funktionen seines Betriebs zu PAUSIEREN
+                 (nur setzen, nie aufheben; Aufheben hat nur die Leitung). Aus: der Betriebsrat schreibt nirgends,
+                 wie bisher (403). Nur genau `true` schaltet ein. Rechtlich noch nicht freigegeben — die
+                 produktiven Rechte und die Wiederaktivierungsregeln folgen nach der rechtlichen Prüfung; bis dahin
+                 bleibt der Schalter AUS (nirgends gesetzt, auch nicht in CI).
+   -------------------------------------------------------------------------- */
+export const kiBetriebsratPauseAn = () => process.env.CENTRIC_KI_BR_PAUSE === "true";
+
+/* --------------------------------------------------------------------------
    MONATSABSCHLUSS SEGMENTWEISE (WP-48.7, Stufe a) — Vorgabe AUS
 
    CENTRIC_ABSCHLUSS_SEGMENTWEISE  Abschließen, Wiederöffnen und Lohnexport

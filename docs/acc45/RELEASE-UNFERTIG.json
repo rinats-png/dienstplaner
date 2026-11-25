@@ -15,6 +15,18 @@
       ]
     },
     {
+      "id": "ki-betriebsrat-pause",
+      "name": "Betriebsrat darf die Intelligence-Funktionen pausieren (WP-I16, P2-8 Variante A)",
+      "variablen": [
+        "CENTRIC_KI_BR_PAUSE"
+      ],
+      "stand": "im Code (server/lib/schalter.mjs, kiBetriebsratPauseAn), Vorgabe AUS, nur genau true schaltet ein; nirgends gesetzt, auch nicht in CI",
+      "gruende": [
+        "Neues Schreibrecht des Betriebsrats (nur Pause setzen, nie aufheben); produktive Rechte und endgültige Wiederaktivierungsregeln erst nach rechtlicher Prüfung (Betreiberentscheidung 2026-11-25)."
+      ],
+      "quelle": "server/lib/schalter.mjs; docs/acc45/WP-I16-nachweis.md (WP-I16); docs/acc45/ENTSCHEIDUNGSLISTE.md P2-8"
+    },
+    {
       "id": "schichtmodell-wirkung",
       "name": "Schichtmodell-Planwirkung (IMP-6)",
       "variablen": [

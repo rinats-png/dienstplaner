@@ -28,6 +28,8 @@ import { freigegebeneMonate, planFreigabePflicht } from "./planfreigabe.mjs";
 import { fachpruefungUebermittlung, sperrendeBefunde, letzteLaufzeit } from "./schutzdurchsetzung.mjs";
 import { EINWILLIGUNG_ARTEN } from "./schutzpruefung.mjs";
 import { branchenmoduleZusammen, moduleinstellungenVerwerfen } from "./branchenmodule.mjs";
+import { kiSteuerungZusammen, kiSteuerungVerwerfen, kiPauseDurchBetriebsrat, betriebsratKontenSperre } from "./ki-steuerung.mjs";
+import { kiBetriebsratPauseAn } from "./schalter.mjs";
 import { paketfelderGeprueft, preisgestaltungFuerKunde } from "./paketstand.mjs";
 import { modulSchreibwegeAnwenden } from "./modulschreibwege.mjs";
 import { vorgabenZusammen } from "./vorgaben.mjs";
@@ -1469,7 +1471,11 @@ export function rollenwechselErlaubt(gespeichert, uebermittelt, sitzung) {
      am Server ermittelt, nie aus einer Anfrage; fehlt der Vermerk, gilt der Rang. */
   if (sitzung.ersteinrichtungAltweg === true && (!Array.isArray(alt.personen) || alt.personen.length === 0))
     return { ok: true, grund: null };
-  return pruefeRollenwechsel(Array.isArray(alt.personen) ? alt.personen : [], neu.personen, rolle);
+  const rv = pruefeRollenwechsel(Array.isArray(alt.personen) ? alt.personen : [], neu.personen, rolle);
+  if (!rv.ok) return rv;
+  /* WP-I16: Die Rollenvergabe hebelt die Pause des Betriebsrats nicht aus (betriebsratKontenSperre). */
+  const sp = betriebsratKontenSperre(alt, neu);
+  return sp.ok ? rv : { ...rv, ok: false, grund: sp.grund };
 }
 
 /* Abgeleitete Personenfelder (planungsregeln, sichtbereich) entstehen beim
@@ -1549,6 +1555,18 @@ export function sammelAnzahlSetzen(mandant, sammel, altM = null) {
       ? { ...b, anzahl: s[String(b.id)].anzahl, von: s[String(b.id)].von, bis: s[String(b.id)].bis, datum: s[String(b.id)].von } : b)) };
 }
 
+function betriebsratPause(gespeichert, uebermittelt, sitzung) {
+  if (!gespeichert || typeof gespeichert !== "object" || !uebermittelt || typeof uebermittelt !== "object") return null;
+  const alt = eigenerMandant(gespeichert, sitzung);
+  if (!alt || !Array.isArray(uebermittelt.mandanten)) return null;
+  const geschickt = uebermittelt.mandanten.find((x) => x && x.id === alt.id);
+  if (!geschickt) return null;
+  const r = kiPauseDurchBetriebsrat(alt, geschickt, sitzung, { schalter: kiBetriebsratPauseAn() });
+  if (!r) return null;
+  if ("verweigert" in r) return { verweigert: r.verweigert };
+  return { ...gespeichert, mandanten: gespeichert.mandanten.map((x) => (x === alt ? r.mandant : x)) };
+}
+
 function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {}) {
   /* Unbekannte Rolle schreibt nicht (Commit D1d) — vorher machte
      „|| kunde" aus einer leeren Bezeichnung das volle Schreibrecht. */
@@ -1556,6 +1574,10 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
   const uebermittelt = abgeleiteteEntfernen(uebermitteltRoh);
   const rolle = sitzung.rolle;
   const umfang = schreibumfang(rolle);
+  /* Der Betriebsrat schreibt sonst nirgends (Rechtematrix). WP-I16 Teil 1: einzige Ausnahme ist die Pause der
+     Intelligence-Funktionen im eigenen Betrieb — aus dem gespeicherten Stand, nichts sonst aus der Anfrage. Ohne
+     Änderung der Pause bleibt es bei null (keine Schreibberechtigung), wie bisher. */
+  if (umfang === SCHREIBEN_NEIN && rolle === "betriebsrat") return betriebsratPause(gespeichert, uebermittelt, sitzung);
   if (umfang === SCHREIBEN_NEIN) return null;
 
   if (umfang === SCHREIBEN_VOLL || umfang === SCHREIBEN_EINHEIT) {
@@ -1663,6 +1685,11 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
       const module = branchenmoduleZusammen(ort.betrieb, geschickt, sitzung, darf(rolle, "org.edit"));
       if (module.grund) return { verweigert: module.grund };
       geschickt = module.mandant;
+      /* Intelligence-Steuerung (WP-I16): Hauptschalter, Funktionen und Frage nur die Leitung, die Pause nie hier
+         (nur der Betriebsrat, eigener Weg unten); Wann/Wer und Protokoll setzt der Server. */
+      const kiSt = kiSteuerungZusammen(ort.betrieb, geschickt, sitzung);
+      if (kiSt.grund) return { verweigert: kiSt.grund };
+      geschickt = kiSt.mandant;
       /* Anlagen (WP-19): Form von Mindestbesetzung und Laufzeit an Betriebsmitteln der Art „anlage“. */
       const anlagen = anlagenZusammen(geschickt, ort.betrieb);
       if (anlagen.grund) return { verweigert: anlagen.grund };
@@ -1838,7 +1865,7 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
               const { schichtmodellZuordnungen: _weg, ...ohne } = x; // eslint-disable-line no-unused-vars
               return ohne;
             });
-          return paketeGeprueft(neuerBetrieb, null);
+          return paketeGeprueft(kiSteuerungVerwerfen(neuerBetrieb), null);
         }
         const zusammen = { ...alt };
         for (const feld of KAUFMAENNISCHE_FELDER) {

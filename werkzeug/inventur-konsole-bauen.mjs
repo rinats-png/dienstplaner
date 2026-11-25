@@ -494,7 +494,7 @@ export function pruefeInhalt({ konsole, inventur, vorlage, doku }) {
   const w = werte(k);
   if (w.bytes >= 100000) f.push(`Skript zu groß für bash -c (${w.bytes} Byte)`);
   const d = lf(doku ?? "");
-  for (const soll of [`\`${w.kurz32}\``, `grep -q '^${w.kurz32}' && bash -c "$s"`, `\`${w.sha256}\``, `Zeilen: \`${w.zeilen}\``, `Bytes: \`${w.bytes}\``]) {
+  for (const soll of [`\`${w.kurz32}\``, `grep -q '^${w.kurz32}' && bash -c "$s"`, `\`${w.sha256}\``, `Zeilen: \`${w.zeilen}\``, `Bytes: \`${w.bytes}\``, `\`${zaehlhilfe(w)}\` (ohne Leerzeichen tippen`]) {
     if (!d.includes(soll)) f.push(`${DOKU}: Sollwert fehlt oder veraltet: ${soll} (node werkzeug/inventur-konsole-bauen.mjs --bauen)`);
   }
   return f;
@@ -506,6 +506,10 @@ export function pruefen(wurzel) {
 }
 
 const zelle = (t) => t.replace(/\|/g, "\\|");
+
+/* Zählhilfe im Kasten von §2: der Sollwert in 4 Blöcken zu 8 Zeichen (Test A-8); --bauen schreibt sie mit, --pruefen prüft sie. */
+export const zaehlhilfe = (w) => w.kurz32.match(/.{8}/g).join(" ");
+const ZAEHLHILFE_ZEILE = /^(> {3})`[0-9a-f]{8}( [0-9a-f]{8}){3}`( \(ohne Leerzeichen tippen)/m;
 
 export function dokuWerte(w, inventurSha) {
   const b = befehle("<ref>", w);
@@ -598,7 +602,9 @@ if (istHaupt) {
       process.exit(2);
     }
     const block = dokuWerte(werte(neu), sha256(lf(lies(wurzel, INVENTUR))));
-    writeFileSync(join(wurzel, DOKU), doku.slice(0, a) + block + doku.slice(e + DOKU_ENDE.length));
+    const wNeu = werte(neu);
+    const mitBlock = doku.slice(0, a) + block + doku.slice(e + DOKU_ENDE.length);
+    writeFileSync(join(wurzel, DOKU), mitBlock.replace(ZAEHLHILFE_ZEILE, (_m, v, _g, rest) => `${v}\`${zaehlhilfe(wNeu)}\`${rest}`));
     console.log(`geschrieben: ${KONSOLE}, ${DOKU}`);
   } else if (befehl === "--pruefcode") {
     const r = pruefcode(readFileSync(0, "utf8"));

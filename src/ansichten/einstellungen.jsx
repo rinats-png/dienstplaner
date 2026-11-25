@@ -17,6 +17,7 @@ import { NAV_KUNDE, ansichtErlaubt } from "../app/navigation.js";
 import { useTour } from "./tourleiste.jsx";
 import { InterneVorgaben } from "./vorgaben.jsx";
 import { MailBestaetigung } from "./mailbestaetigung.jsx";
+import { KiSteuerung } from "./ki-steuerung.jsx";
 
 
 /* ==========================================================================
@@ -362,6 +363,8 @@ export function Einstellungen({ sitz, akt, gehZu }) {
 
       {/* WP-I4: interne Vorgaben — verwalten nur org.edit (Leitung, Kundenrolle), lesen die Planung; die Komponente und der Server entscheiden ebenso. */}
       {sitz.mandant && <InterneVorgaben sitz={sitz} akt={akt} />}
+      {/* WP-I16 Teil 1: Steuerung und Transparenz; ohne Prozessschalter nur „nicht verfügbar“, für Beschäftigte nichts. */}
+      {sitz.mandant && sitz.rolle !== "betreiber" && <KiSteuerung sitz={sitz} akt={akt} />}
 
       {/* ------------- Sicherungen: Liste und Zurückspielen (WP-25) ------------- */}
       {sitz.mandant && SP.angemeldet() && darfSicherungenSehen(serverRolle) && (

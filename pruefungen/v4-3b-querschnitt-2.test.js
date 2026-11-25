@@ -66,6 +66,10 @@ const lies = (d) => {
   return d === "src/ui/bausteine.jsx" ? ohneB1(t) : t;
 };
 
+/** WP-I16: Ausnahmeliste „neu seit der Basis, ohne Literale“: Dateien, die es auf der Basis nicht gab und deshalb nicht in der
+ *  (historischen, unveränderten) Fixture stehen. Genau eine Datei, 0 Form-/Farbliterale (Test unten prüft beides). */
+const NEU_SEIT_BASIS = Object.freeze(["src/ansichten/ki-steuerung.jsx"]);
+
 /** Basis des Schnitts (origin/integration/release-v4 mit V4-3b Schnitt 1–11 und Querschnitt Teil 1, #466). */
 const BASIS = "a9e524e5";
 const SCHNITT = "Querschnitt/Bausteine (Teil 2)";
@@ -197,18 +201,18 @@ describe("V4-3b Querschnitt Teil 2: Messung", () => {
   it("Zeile: Form-Literale 24 → 9, Farbliterale 10; Form 18/24 → 21/24, „voll V4“ 9/24 → 13/24; Inline-Stile 428, Dialog 12", async () => {
     const inv = await inventar();
     const e = jeHauptansicht(inv)[ZEILE];
-    expect([e.dateien, e.sichtbar, e.zeilen]).toEqual([33, 24, 6408]);
+    expect([e.dateien, e.sichtbar, e.zeilen]).toEqual([34, 25, 6562]); /* WP-I16: +ki-steuerung.jsx (vorher 33/24/6408) */
     expect(e.formLiterale).toBe(9);
     expect(e.farbLiterale).toBe(10);
-    expect(e.farbrein).toBe(19);
-    expect(e.formErreicht).toBe(21);
-    expect([e.overlayDirekt, e.ueberBaustein, e.tokenDirekt]).toEqual([10, 5, 6]);
+    expect(e.farbrein).toBe(20); /* WP-I16: +ki-steuerung.jsx (vorher 19) */
+    expect(e.formErreicht).toBe(22); /* WP-I16: +ki-steuerung.jsx (Über Baustein, voll V4); vorher 21 */
+    expect([e.overlayDirekt, e.ueberBaustein, e.tokenDirekt]).toEqual([10, 6, 6]); /* vorher [10, 5, 6] */
     /* Ohne V4-Form bleiben drei Dateien ohne jedes Form- oder Farbliteral (nichts umzustellen; Hebung ist V4-3c). */
     expect(e.ohneForm).toEqual(["src/ansichten/bestaetigungstext.jsx", "src/gestalt/icons.jsx", "src/ui/scrollbereich.jsx"]);
     /* „voll V4“ = Form und Farbe ohne Literale; Inline-Stile zählen nicht (separat: 428, V4-3d). Voll werden handbuch,
        tourleiste, ringregler, schrittleiste; kommandoleiste, leisten, ziehen (Farbe) und ui/bausteine (Radius) nicht. */
-    expect(e.voll).toBe(13);
-    expect(e.inlineStil).toBe(428);
+    expect(e.voll).toBe(14); /* vorher 13 */
+    expect(e.inlineStil).toBe(452); /* WP-I16: +24 Inline-Stile in ki-steuerung.jsx (vorher 428; vorgaben.jsx hat 30) */
     expect(e.dialog).toBe(12);
     const je = Object.fromEntries(inv.eintraege.filter((x) => hauptansicht(x) === ZEILE).map((x) => [x.datei, x]));
     expect(TEIL2.map((d) => [je[d].formLiterale, je[d].rgb + je[d].hex]))
@@ -221,7 +225,7 @@ describe("V4-3b Querschnitt Teil 2: Messung", () => {
        123 → 127 (von 159). Seit Schnitt 14 (Selbsttest) trägt v4-3b-selbsttest.test.js die Gesamtsummen (18/13/146/128/159);
        hier bleibt der Anteil der Zeile Querschnitt/Bausteine: Form erreicht und Nenner wie nach Teil 2. */
     const z = zusammenfassung(inv).ohneV4;
-    expect([z.formErreicht, z.sichtbar]).toEqual([146, 159]);
+    expect([z.formErreicht, z.sichtbar]).toEqual([147, 160]); /* WP-I16: +ki-steuerung.jsx; vorher [146, 159] */
   }, 60000);
 
   it("feste Tabelle: jede Stelle trägt genau die Stufe der Zuordnungsregel; 15 Stellen", async () => {
@@ -250,8 +254,16 @@ describe("V4-3b Querschnitt Teil 2: Messung", () => {
     expect(fx.schnitte[SCHNITT].basis.startsWith(BASIS)).toBe(true);
     const inv = await inventar();
     const alle = inv.eintraege.filter((x) => x.gruppe !== "V4" && hauptansicht(x) === ZEILE).map((x) => x.datei).sort();
-    expect(Object.keys(fx.schnitte[SCHNITT].dateien).sort()).toEqual(alle);
-    expect(fixtureBefunde(fx, SCHNITT, alle)).toEqual([]);
+    /* WP-I16: Ausnahmeliste genau eine Datei; in der Fixture nicht vorhanden, in der Messung ohne jedes Form- oder Farbliteral. */
+    expect(NEU_SEIT_BASIS).toEqual(["src/ansichten/ki-steuerung.jsx"]);
+    for (const d of NEU_SEIT_BASIS) {
+      expect(d in fx.schnitte[SCHNITT].dateien, `${d} steht nicht in der Fixture`).toBe(false);
+      const x = inv.eintraege.find((y) => y.datei === d);
+      expect([x.formLiterale, x.rgb + x.hex], `${d}: 0 Literale`).toEqual([0, 0]);
+    }
+    const mitBasis = alle.filter((d) => !NEU_SEIT_BASIS.includes(d));
+    expect(Object.keys(fx.schnitte[SCHNITT].dateien).sort()).toEqual(mitBasis);
+    expect(fixtureBefunde(fx, SCHNITT, mitBasis)).toEqual([]);
     expect(abgleichMitFixture(fx, SCHNITT, QUERSCHNITT2_ZUORDNUNG, lies)).toEqual([]);
     /* Basis a9e524e5: 16 Radius-Literale in Teil 2; gleich der Basis von Teil 1 bis auf die vier Dateien von Teil 1. */
     const t2 = fx.schnitte[SCHNITT].dateien, t1 = fx.schnitte[TEIL1_SCHNITT].dateien;
@@ -267,7 +279,7 @@ describe("V4-3b Querschnitt Teil 2: Messung", () => {
     expect(g).toEqual([]);
   });
 
-  it("Rückrechnung: nur Radiuswerte geändert, sonst byte-gleich zur Basis a9e524e5 (alle 33 Dateien der Zeile, ohne Git)", () => {
+  it("Rückrechnung: nur Radiuswerte geändert, sonst byte-gleich zur Basis a9e524e5 (alle 33 Dateien der Zeile mit Basis, ohne Git)", () => {
     const fx = ladeBasisFixture(WURZEL).schnitte[SCHNITT];
     const dateien = Object.keys(fx.dateien);
     expect(dateien).toHaveLength(33);
