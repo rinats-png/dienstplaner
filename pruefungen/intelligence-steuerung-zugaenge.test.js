@@ -88,7 +88,7 @@ describe("Pause aktiv: Betriebsrat-Zugänge lassen sich nicht über zugang-sperr
     const { spurLesen } = await import("../server/lib/schutz.mjs");
     const spur = JSON.stringify(await spurLesen(50));
     expect(spur).toContain("Betriebsrat-Zugängen bei aktiver Pause: 1");
-    expect(spur).not.toContain("Vr1");
+    expect(spur).not.toContain("Vr1"); // kollision-ok: Kennung Vr1 ist im Testbestand eindeutig (keine Teilkette anderer Kennungen)
   });
   it("„alle des Betriebs“: 403, nichts wird gesperrt (auch die übrigen Zugänge nicht)", async () => {
     const e = await sperren({ alleDesBetriebs: true });
