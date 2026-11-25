@@ -4,7 +4,7 @@ Erzeugt von `werkzeug/acc45-backlog.mjs` aus `docs/acc45/work-packages.json` (ni
 
 **Kritischer Pfad gemeinsam** (offener Entwicklungsaufwand, ohne extern): WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **50–90 PT**
 **Ohne Intelligence:** WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 → WP-42a → WP-42 = **22,5–35 PT**
-**Offener Entwicklungsaufwand:** 353,8–604,75 PT in 116 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
+**Offener Entwicklungsaufwand:** 370,65–635,2 PT in 149 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
 
 WP-09 ist nur Livegang-Reihenfolge und zählt im Pfad nicht als Abhängigkeit. Der Graph zeigt nur offene Pakete.
 
@@ -53,6 +53,22 @@ flowchart LR
     WEBSITE_W3b["WEBSITE-W3b<br/>READY"]
     WEBSITE_W5["WEBSITE-W5<br/>BLOCKED"]
     WEBSITE_W6["WEBSITE-W6<br/>BLOCKED"]
+    ABN_A2_Folge["ABN-A2-Folge<br/>BLOCKED"]
+    ABN_S2_b["ABN-S2-b<br/>BLOCKED"]
+    ABN_S2_de["ABN-S2-de<br/>READY"]
+    ABN_S2_H["ABN-S2-H<br/>READY"]
+    MODINERT_L4["MODINERT-L4<br/>READY"]
+    MODINERT_L3["MODINERT-L3<br/>READY"]
+    SSOT_UK1["SSOT-UK1<br/>BLOCKED"]
+    SSOT_UK2["SSOT-UK2<br/>BLOCKED"]
+    RC_WECHSEL["RC-WECHSEL<br/>BLOCKED"]
+    K4_P2["K4-P2<br/>READY"]
+    K4_P5["K4-P5<br/>BLOCKED"]
+    K4_P6["K4-P6<br/>BLOCKED"]
+    K4_P8["K4-P8<br/>BLOCKED"]
+    WEBSITE_W7["WEBSITE-W7<br/>BLOCKED"]
+    WEBSITE_W8["WEBSITE-W8<br/>BLOCKED"]
+    WEBSITE_W8_1["WEBSITE-W8-1<br/>BLOCKED"]
   end
   subgraph wp19[WP-19-Module]
     WP_19_1["WP-19.1<br/>BLOCKED"]
@@ -112,7 +128,7 @@ flowchart LR
     V4_3b["V4-3b<br/>IN_PROGRESS"]
     V4_3c["V4-3c<br/>BLOCKED"]
     V4_3d["V4-3d<br/>BLOCKED"]
-    V4_4["V4-4<br/>BLOCKED"]
+    V4_4["V4-4<br/>IN_PROGRESS"]
     V4_5["V4-5<br/>BLOCKED"]
     V4_6["V4-6<br/>BLOCKED"]
     DEP_1["DEP-1<br/>REVIEW"]
@@ -133,6 +149,23 @@ flowchart LR
     RST_8["RST-8<br/>BLOCKED"]
     RST_9["RST-9<br/>READY"]
     FREIGABE_S2["FREIGABE-S2<br/>READY"]
+    V4_4b["V4-4b<br/>REVIEW"]
+    GATE_EW1["GATE-EW1<br/>IN_PROGRESS"]
+    GATE_EW2["GATE-EW2<br/>IN_PROGRESS"]
+    GATE_EW3["GATE-EW3<br/>BLOCKED"]
+    GATE_EW4["GATE-EW4<br/>IN_PROGRESS"]
+    GATE_EW5["GATE-EW5<br/>IN_PROGRESS"]
+    GATE_EW6["GATE-EW6<br/>BLOCKED"]
+    GATE_DEPLOY_DIGEST["GATE-DEPLOY-DIGEST<br/>BLOCKED"]
+    GATE_RUECKHALT_AU6["GATE-RUECKHALT-AU6<br/>BLOCKED"]
+    GATE_VPS_SIGNATUR["GATE-VPS-SIGNATUR<br/>BLOCKED"]
+    K4_P1["K4-P1<br/>READY"]
+    K4_P3["K4-P3<br/>READY"]
+    K4_P4["K4-P4<br/>BLOCKED"]
+    K4_P7["K4-P7<br/>BLOCKED"]
+    V4_4c["V4-4c<br/>BLOCKED"]
+    V4_4e["V4-4e<br/>READY"]
+    V4_4d["V4-4d<br/>BLOCKED"]
   end
   subgraph extern[Extern/Entscheidungen]
     E_1["E-1<br/>BLOCKED"]
@@ -323,6 +356,7 @@ flowchart LR
   WP_14c --> WP_42R2
   WP_16b --> WP_42R2
   WP_24b --> WP_42R2
+  ABN_S2_b --> WP_42R2
   IMP_6 --> IMP_7
   WR_5 --> WR_7
   WR_7 --> WR_8
@@ -350,6 +384,33 @@ flowchart LR
   RST_5 --> RST_6
   REL_2 --> RST_6
   WEBSITE_W3b --> WEBSITE_W4
+  V4_4 --> V4_4b
+  GATE_EW1 --> GATE_EW2
+  GATE_EW1 --> GATE_EW4
+  GATE_EW1 --> GATE_EW5
+  GATE_EW2 --> GATE_EW5
+  GATE_EW4 --> GATE_EW5
+  GATE_EW3 --> GATE_EW6
+  ABN_A2 --> ABN_A2_Folge
+  ABN_S2 --> ABN_S2_b
+  GATE_EW1 --> GATE_DEPLOY_DIGEST
+  GATE_EW2 --> GATE_RUECKHALT_AU6
+  GATE_EW1 --> GATE_VPS_SIGNATUR
+  SSOT_UK1 --> SSOT_UK2
+  GATE_EW1 --> RC_WECHSEL
+  GATE_EW2 --> RC_WECHSEL
+  GATE_EW3 --> RC_WECHSEL
+  GATE_EW4 --> RC_WECHSEL
+  GATE_EW5 --> RC_WECHSEL
+  RST_5 --> RC_WECHSEL
+  RST_7 --> RC_WECHSEL
+  K4_P3 --> K4_P4
+  K4_P1 --> K4_P5
+  K4_P1 --> K4_P6
+  WEBSITE_W4 --> WEBSITE_W7
+  V4_4 --> V4_4c
+  V4_4b --> V4_4d
+  V4_4e --> V4_4d
 ```
 
 | Paket | Strang | Prio | PT | Rest-PT | hängt ab von | Konfliktzonen | Modell | Status |
@@ -515,7 +576,7 @@ flowchart LR
 | SI-P11 | acc45 | P3 | 0,3–0,8 | 0 | SI-P10 | – | opus | INTEGRATED |
 | SI-P6b | acc45 | P1 | 1,5–3 | 1,5–3 | SI-P6 | daten.mjs | opus | BLOCKED |
 | WP-42R1 | acc45 | P1 | 0 | 0 | WP-16, WP-16c, WP-07b, WP-S1, WP-18, WP-33, WP-44, SI-P4 | – | opus | BLOCKED |
-| WP-42R2 | acc45 | P1 | 0 | 0 | WP-42R1, WP-19.R, WP-21, WP-15, WP-30, SI-P6b, SI-P5, WP-32d, WP-40, WP-14c, WP-16b, WP-24b, WP-27c, WP-47b | – | opus | BLOCKED |
+| WP-42R2 | acc45 | P1 | 0 | 0 | WP-42R1, WP-19.R, WP-21, WP-15, WP-30, SI-P6b, SI-P5, WP-32d, WP-40, WP-14c, WP-16b, WP-24b, WP-27c, WP-47b, ABN-S2-b | – | opus | BLOCKED |
 | IMP-0 | acc45 | P1 | 0,5–1 | 0 | – | – | opus | INTEGRATED |
 | IMP-1 | acc45 | P0 | 2–3,5 | 0 | IMP-0 | – | sonnet | INTEGRATED |
 | IMP-2 | acc45 | P1 | 3–5 | 0 | IMP-0 | – | sonnet | INTEGRATED |
@@ -588,7 +649,7 @@ flowchart LR
 | V4-3d | folge | P3 | 2–5 | 2–5 | V4-3b | src/ansichten | sonnet | BLOCKED |
 | A11Y-1 | folge | P2 | 0,25–0,5 | 0 | – | src/ansichten | sonnet | INTEGRATED |
 | A11Y-2 | folge | P2 | 0,25–0,5 | 0 | A11Y-1 | src/ansichten | sonnet | INTEGRATED |
-| V4-4 | folge | P2 | 2–3 | 2–3 | V4-1, WP-33 | – | opus | BLOCKED |
+| V4-4 | folge | P2 | 2–3 | 1–1,5 | V4-1, WP-33 | – | opus | IN_PROGRESS |
 | V4-5 | folge | P2 | 3–5 | 3–5 | V4-2 | – | opus | BLOCKED |
 | V4-6 | folge | P2 | 2–4 | 2–4 | V4-3, V4-4, V4-3a, V4-3b, V4-3c | – | opus | BLOCKED |
 | DEP-1 | folge | P2 | 0,5–1 | 0,1–0,2 | – | – | opus | REVIEW |
@@ -616,3 +677,36 @@ flowchart LR
 | WEBSITE-W3b | acc45 | P1 | 0,5 | 0,5 | – | – | sonnet | READY |
 | WEBSITE-W5 | acc45 | P2 | 3–5 | 3–5 | – | – | sonnet | BLOCKED |
 | WEBSITE-W6 | acc45 | P2 | 0,5–1 | 0,5–1 | – | – | opus | BLOCKED |
+| V4-4b | folge | P2 | 0,5–1 | 0,1–0,2 | V4-4 | – | sonnet | REVIEW |
+| GATE-EW1 | folge | P1 | 1,5–3 | 0,75–1,5 | – | – | opus | IN_PROGRESS |
+| GATE-EW2 | folge | P1 | 0,5–1 | 0,25–0,5 | GATE-EW1 | – | opus | IN_PROGRESS |
+| GATE-EW3 | folge | P1 | 0,5–1 | 0,5–1 | – | – | sonnet | BLOCKED |
+| GATE-EW4 | folge | P1 | 0,5–1 | 0,25–0,5 | GATE-EW1 | – | opus | IN_PROGRESS |
+| GATE-EW5 | folge | P1 | 0,5–1 | 0,25–0,5 | GATE-EW1, GATE-EW2, GATE-EW4 | – | sonnet | IN_PROGRESS |
+| GATE-EW6 | folge | P2 | 0,25–0,5 | 0,25–0,5 | GATE-EW3 | – | sonnet | BLOCKED |
+| ABN-A2-Folge | acc45 | P2 | 2–4 | 2–4 | ABN-A2 | – | opus | BLOCKED |
+| ABN-S2-b | acc45 | P1 | 1–2 | 1–2 | ABN-S2 | – | opus | BLOCKED |
+| ABN-S2-de | acc45 | P1 | 0,25–0,5 | 0,25–0,5 | – | – | haiku | READY |
+| ABN-S2-H | acc45 | P2 | 0,25–0,5 | 0,25–0,5 | – | – | haiku | READY |
+| MODINERT-L4 | acc45 | P2 | 0,5–1 | 0,5–1 | – | – | opus | READY |
+| MODINERT-L3 | acc45 | P2 | 0,25–0,5 | 0,25–0,5 | – | – | sonnet | READY |
+| GATE-DEPLOY-DIGEST | folge | P2 | 0,5–1 | 0,5–1 | GATE-EW1 | – | opus | BLOCKED |
+| GATE-RUECKHALT-AU6 | folge | P2 | 0,25–0,5 | 0,25–0,5 | GATE-EW2 | – | opus | BLOCKED |
+| GATE-VPS-SIGNATUR | folge | P2 | 1–2 | 1–2 | GATE-EW1 | – | opus | BLOCKED |
+| SSOT-UK1 | acc45 | P2 | 0,5–1 | 0,5–1 | – | – | sonnet | BLOCKED |
+| SSOT-UK2 | acc45 | P2 | 0,25–0,5 | 0,25–0,5 | SSOT-UK1 | – | sonnet | BLOCKED |
+| RC-WECHSEL | acc45 | P1 | 0,5–1 | 0,5–1 | GATE-EW1, GATE-EW2, GATE-EW3, GATE-EW4, GATE-EW5, RST-5, RST-7 | – | opus | BLOCKED |
+| K4-P1 | folge | P1 | 0,5–1 | 0,5–1 | – | – | sonnet | READY |
+| K4-P2 | acc45 | P2 | 0,5 | 0,5 | – | – | sonnet | READY |
+| K4-P3 | folge | P1 | 1–1,5 | 1–1,5 | – | – | sonnet | READY |
+| K4-P4 | folge | P1 | 1,5–2 | 1,5–2 | K4-P3 | – | opus | BLOCKED |
+| K4-P5 | acc45 | P2 | 1 | 1 | K4-P1 | – | sonnet | BLOCKED |
+| K4-P6 | acc45 | P2 | 0,25 | 0,25 | K4-P1 | – | haiku | BLOCKED |
+| K4-P7 | folge | P1 | 0,25 | 0,25 | – | – | haiku | BLOCKED |
+| K4-P8 | acc45 | P2 | 0,25 | 0,25 | – | – | opus | BLOCKED |
+| WEBSITE-W7 | acc45 | P2 | 0,5–1 | 0,5–1 | WEBSITE-W4 | – | sonnet | BLOCKED |
+| WEBSITE-W8 | acc45 | P2 | 0,25–0,5 | 0,25–0,5 | – | – | sonnet | BLOCKED |
+| V4-4c | folge | P2 | 1–2 | 1–2 | V4-4 | – | sonnet | BLOCKED |
+| V4-4e | folge | P2 | 0,5–1 | 0,5–1 | – | – | sonnet | READY |
+| V4-4d | folge | P2 | 0,5–1 | 0,5–1 | V4-4b, V4-4e | – | sonnet | BLOCKED |
+| WEBSITE-W8-1 | acc45 | P1 | 0,25–0,5 | 0,25–0,5 | – | – | sonnet | BLOCKED |
