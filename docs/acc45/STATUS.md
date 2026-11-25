@@ -18,17 +18,17 @@ oder `"teilweise"`, jeweils mit Beleg (PR, Commit, Nachweis). „Geplant“, „
 <!-- AUTO:BEGIN -->
 Erzeugt aus `docs/acc45/work-packages.json` (Schema 2) mit `node werkzeug/acc45-backlog.mjs status-schreiben` — nicht von Hand ändern.
 
-**Pakete gesamt:** 295 · BLOCKED 117 · READY 30 · IN_PROGRESS 24 · REVIEW 10 · INTEGRATED 111 · DONE 3
+**Pakete gesamt:** 295 · BLOCKED 117 · READY 29 · IN_PROGRESS 25 · REVIEW 10 · INTEGRATED 111 · DONE 3
 
 | Strang | Pakete | BLOCKED | READY | IN_PROGRESS | REVIEW | INTEGRATED | DONE | offener Aufwand PT |
 |---|---|---|---|---|---|---|---|---|
 | ACC45 | 143 | 42 | 5 | 7 | 3 | 84 | 2 | 74,1–126,65 |
 | WP-19-Module | 15 | 13 | 0 | 1 | 0 | 1 | 0 | 64,5–100,5 |
 | Intelligence | 40 | 20 | 0 | 7 | 0 | 13 | 0 | 181–320 |
-| Folgepakete | 62 | 24 | 9 | 9 | 7 | 13 | 0 | 49,95–85,85 |
+| Folgepakete | 62 | 24 | 8 | 10 | 7 | 13 | 0 | 49,7–85,35 |
 | Extern/Entscheidungen | 35 | 18 | 16 | 0 | 0 | 0 | 1 | 20,35–46,1 |
 
-Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **369,55–633 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
+Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **369,3–632,5 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
 
 **Kritische Pfade** (offener Aufwand, Mitte der Spanne maßgeblich):
 
@@ -86,14 +86,18 @@ PR #535 offen, Review nicht abgeschlossen (Stand im PR); Betreiber-Gate-Freigabe
 | GATE-EW5 RELEASE-PROZESS und Runbook Erstwechsel v4-r1 (docs/acc45/RUNBOOK-ERSTWECHSEL-V4R1.md) | IN_PROGRESS | `–` | Umfangsklasse: RELEASE-UMFANG.
 Prioritätsbegründung: P1: Release-Pfad v4-r1. Ohne die Erstwechsel-Ausnahme in G6 ist der erste Produktionswechsel mit der Regel widerrufbuchProbePflicht nicht freigabefähig (G6 NO-GO); die Gate-Regel selbst bleibt unverändert. Ohne Runbook fehlt dem Betreiber der geprüfte Ablauf des ersten Wechsels.
 PR #535 offen, Review nicht abgeschlossen (Stand im PR); Betreiber-Gate-Freigabe erst nach Review. Nichts davon ist integriert; Aussagen zu Tests und Mutationen stehen in der PR-Beschreibung und sind hier nicht geprüft. PR #535 ist mit dem Inhaber-Token angelegt; E14 (Vier-Augen) wird damit nicht erfüllt (fail-closed, gewollt). Strang: SPEZ-UMSETZUNG 2026-11-24 (Scratchpad, nicht im Repo) Abschnitt 7.4 nennt acc45; hier folge, wie bei REL-* und RST-*: offenes P1 blockiert G9 bis INTEGRATED. Das ist die strengere Wahl. Quelle: Auftrag SSOT-Pakete 2 vom 2026-11-25 (Koordinator). Aufwand SCHÄTZUNG, nicht gemessen. |
+| K4-P1 K4 P-1: Schwärzungs-Wrapper werkzeug/k4-bericht.mjs (Positivliste, keine Klarnamen im Bericht) | IN_PROGRESS | `acc45/release/k4-p1-schwaerzungs-wrapper` | Umfangsklasse: SICHERHEIT-QUALITAET.
+Prioritätsbegründung: P1: Betreibervorgabe 2026-11-24: keine produktive Migration ohne geprüfte Sicherung, erfolgreiche Migrationsprobe und nachvollziehbare Wiederherstellungsstrategie; ohne Wrapper darf kein K4-Bericht den lokalen Rechner verlassen (Datenschutz).
+Review Opus. K4-Grundregel: Der Betreiber beantwortet die Fragen F-1 bis F-6 selbst; es gelten keine Annahmen. Echtdaten nur in einer gesondert abgesicherten lokalen Umgebung, nie an KI-Dienste, öffentliche Runner, Cloud-Dienste oder öffentliche Repo-Bereiche; öffentliche Runner nur mit synthetischen Daten. Reihenfolge laut Entwurf: P-1, P-3, P-2, P-6, P-4, P-5, P-7/P-8. Strang folge (Review PR #540): Release-Pfad-Pakete stehen einheitlich in folge, gleiche Begründung wie K4-P3/K4-P4 (Betreibervorgabe 2026-11-24: keine produktive Migration ohne Sicherung, Probe, Strategie); offenes P1 blockiert G9 bis INTEGRATED. Quelle: Auftrag SSOT-Pakete 2 vom 2026-11-25 (Koordinator). Aufwand SCHÄTZUNG, nicht gemessen.
+Reserviert (2026-11-25): Bearbeitung durch zusätzlichen externen Codex-Cloud-Agenten auf Branch acc45/release/k4-p1-schwaerzungs-wrapper; Auftragstext liegt beim Betreiber; unabhängiger Opus-Review durch den Koordinator vor Merge; keine Produktionsdaten/Secrets an den Agenten. |
 
-### Bereit zum Start (14)
+### Bereit zum Start (13)
 
-RST-1 (folge, 0,5–1 PT) · RST-2 (folge, 2–3 PT) · RST-3 (folge, 1–2 PT) · RST-5 (folge, 2,5–4 PT) · RST-7 (folge, 2–3 PT) · RST-9 (folge, 1–1,5 PT) · FREIGABE-S2 (folge, 0,5–1 PT) · WEBSITE-W3b (acc45, 0,5 PT) · ABN-S2-de (acc45, 0,25–0,5 PT) · ABN-S2-H (acc45, 0,25–0,5 PT) · MODINERT-L3 (acc45, 0,25–0,5 PT) · K4-P1 (folge, 0,5–1 PT) · K4-P2 (acc45, 0,5 PT) · K4-P3 (folge, 1–1,5 PT)
+RST-1 (folge, 0,5–1 PT) · RST-2 (folge, 2–3 PT) · RST-3 (folge, 1–2 PT) · RST-5 (folge, 2,5–4 PT) · RST-7 (folge, 2–3 PT) · RST-9 (folge, 1–1,5 PT) · FREIGABE-S2 (folge, 0,5–1 PT) · WEBSITE-W3b (acc45, 0,5 PT) · ABN-S2-de (acc45, 0,25–0,5 PT) · ABN-S2-H (acc45, 0,25–0,5 PT) · MODINERT-L3 (acc45, 0,25–0,5 PT) · K4-P2 (acc45, 0,5 PT) · K4-P3 (folge, 1–1,5 PT)
 
-### In Arbeit, fortsetzbar (15)
+### In Arbeit, fortsetzbar (16)
 
-WP-40 (acc45, 1,5–2,25 PT offen) · WP-28b (folge, 0,5–1 PT offen) · WP-I4 (intelligence, 4–7 PT offen) · WP-I19 (intelligence, 8–14 PT offen) · WP-I20 (intelligence, 8–14 PT offen) · WP-I24 (intelligence, 2,5–4,5 PT offen) · WP-I29 (intelligence, 9–15 PT offen) · WP-I30 (intelligence, 2–4 PT offen) · WP-I31 (intelligence, 4,5–7,5 PT offen) · IMP-6 (acc45, 1,5–2,5 PT offen) · IMP-8 (acc45, 1–1,5 PT offen) · WP-48-GB (acc45, 0,5–1,5 PT offen) · WP-ZEIT (acc45, 4,5–7,5 PT offen) · V4-1 (folge, 1–1,5 PT offen) · GATE-EW1 (folge, 0,75–1,5 PT offen)
+WP-40 (acc45, 1,5–2,25 PT offen) · WP-28b (folge, 0,5–1 PT offen) · WP-I4 (intelligence, 4–7 PT offen) · WP-I19 (intelligence, 8–14 PT offen) · WP-I20 (intelligence, 8–14 PT offen) · WP-I24 (intelligence, 2,5–4,5 PT offen) · WP-I29 (intelligence, 9–15 PT offen) · WP-I30 (intelligence, 2–4 PT offen) · WP-I31 (intelligence, 4,5–7,5 PT offen) · IMP-6 (acc45, 1,5–2,5 PT offen) · IMP-8 (acc45, 1–1,5 PT offen) · WP-48-GB (acc45, 0,5–1,5 PT offen) · WP-ZEIT (acc45, 4,5–7,5 PT offen) · V4-1 (folge, 1–1,5 PT offen) · GATE-EW1 (folge, 0,75–1,5 PT offen) · K4-P1 (folge, 0,25–0,5 PT offen)
 
 ### Integriert in `integration/centric-complete` (111)
 
