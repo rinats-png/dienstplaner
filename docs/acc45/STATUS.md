@@ -210,7 +210,7 @@ WP-40 (acc45, 1,5–2,25 PT offen) · WP-28b (folge, 0,5–1 PT offen) · WP-I4 
 
 ✓ belegt · T teilweise (z. B. nur Server-Teilumfang) · – nicht erreicht oder nicht belegt. „Staging“, „Freigabe“ und
 „prod.“ stehen nur mit Beleg auf ✓. Gezeigt sind alle Pakete mit mindestens einer erreichten Stufe; alle übrigen
-98 offenen Entwicklungspakete stehen auf allen Stufen auf „–“.
+97 offenen Entwicklungspakete stehen auf allen Stufen auf „–“.
 
 | Paket | Status | impl. | lokal | Review | integr. | Staging | Freigabe | prod. |
 |---|---|---|---|---|---|---|---|---|
@@ -375,6 +375,7 @@ WP-40 (acc45, 1,5–2,25 PT offen) · WP-28b (folge, 0,5–1 PT offen) · WP-I4 
 | MODINERT-L4 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | K4-P3 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | K4-P4 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
+| K4-P7 | BLOCKED | ✓ | ✓ | – | – | – | – | – |
 | V4-4e | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 <!-- AUTO:END -->
 

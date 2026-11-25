@@ -87,3 +87,35 @@ describe("öffentliches Repository", () => {
     }
   });
 });
+
+/* K4-P7 (Pfad 0): Vorlage „Neustart-Nachweis" im vorhandenen Vorlagenordner. */
+describe("K4-P7: Vorlage Neustart-Nachweis", () => {
+  const VORLAGE = "docs/acc45/vorlagen/K4-NEUSTART-NACHWEIS.md";
+  it("die Vorlage gibt es und führt Strategie-Nachweis, Bestandsverifikation und Betreiberzugang", () => {
+    expect(existsSync(path.join(WURZEL, VORLAGE))).toBe(true);
+    const t = lies(VORLAGE);
+    for (const n of ["N-1", "N-2", "N-3", "N-4", "N-7", "N-8", "N-9", "N-10", "N-11"]) expect(t, n).toContain(n);
+    for (const n of ["N-5", "N-6", "N-12"]) expect(t, `${n} entfällt`).toMatch(new RegExp(`${n}[^\n]*entfällt`));
+    expect(t).toContain("bestaende-zaehlen.mjs");
+    expect(existsSync(path.join(WURZEL, "deploy/sicherung/hilfen/bestaende-zaehlen.mjs"))).toBe(true);
+    expect(t).toMatch(/CENTRIC_ADMIN/);
+    expect(t).toMatch(/CENTRIC_PFEFFER/);
+    expect(t).toMatch(/beiseite/i);
+    expect(t).toMatch(/[Gg]esonderte Produktionsfreigabe/);
+    expect(t).toMatch(/Neustart wird NICHT durchgeführt/);
+    expect(t).toMatch(/RUNBOOK-ERSTWECHSEL-V4R1\.md/);
+  });
+  it("Verweise zeigen auf vorhandene Dateien; keine Hosts, Digests, Codes oder Schlüssel", () => {
+    const t = lies(VORLAGE);
+    for (const [, ziel] of t.matchAll(/\]\(([^)\s]+)\)/g)) {
+      if (/^(https?:|mailto:|#)/.test(ziel)) continue;
+      expect(existsSync(path.join(WURZEL, "docs/acc45/vorlagen", ziel.split("#")[0])), ziel).toBe(true);
+    }
+    const ips = [...t.matchAll(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g)].map((m) => m[0]).filter((ip) => ip !== "127.0.0.1");
+    expect(ips).toEqual([]);
+    expect(t).not.toMatch(/sha256:[0-9a-f]{64}/);
+    expect(t).not.toMatch(/\b[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}\b/);
+    expect(t).not.toMatch(/\bV-[A-Z0-9]{5}-[A-Z0-9]{5}/);
+    expect(t).not.toMatch(/-----BEGIN|ssh-ed25519 AAAA/);
+  });
+});
