@@ -7,8 +7,8 @@ import { ZONEN_SPEC } from "../e2e/zonen.mjs";
 import { WEBSITE_SPEC } from "../e2e/website.mjs";
 import { VIEWPORTS } from "../e2e/umgebung.mjs";
 import { BEREICHE, NAV_BETREIBER } from "../src/app/navigation.js";
-import { VISUELL_SPEC, VISUELL_BREITEN, VISUELL_THEMEN, VISUELL_ANSICHTEN, VISUELL_BETREIBER_ANSICHT, VISUELL_BEKANNT,
-  bekannterBefund, FOKUS_STICHPROBE } from "../e2e/v4-visuell.mjs";
+import { VISUELL_SPEC, VISUELL_BREITEN, VISUELL_THEMEN, VISUELL_ANSICHTEN, VISUELL_BETREIBER_ANSICHT, VISUELL_BEKANNT, VISUELL_BESCHAEFTIGTE_BREITEN, VISUELL_BESCHAEFTIGTE_ANSICHTEN,
+  bekannterBefund, befundeTrennen, ungenutzteEintraege, KEIN_FUND_BEWERTET, FOKUS_AUSWAHL, fokusMessen } from "../e2e/v4-visuell.mjs";
 
 const lies = (p) => readFileSync(new URL(`../${p}`, import.meta.url), "utf8");
 
@@ -50,9 +50,35 @@ describe("Prüfumfang", () => {
     expect(NAV_BETREIBER.some((n) => n[1] === VISUELL_BETREIBER_ANSICHT[2])).toBe(true);
   });
 
-  it("Stichprobe des Fokus ist klein und aufsteigend", () => {
-    expect([...FOKUS_STICHPROBE]).toEqual([...FOKUS_STICHPROBE].sort((a, b) => a - b));
-    expect(FOKUS_STICHPROBE.length).toBeLessThanOrEqual(4);
+  it("Fokusauswahl ist gezielt und klein: erstes, erstes im Hauptinhalt, letztes", () => {
+    expect([...FOKUS_AUSWAHL]).toEqual(["erstes", "haupt", "letztes"]);
+  });
+  it("Fokusmessung schließt für „haupt“ feste und klebende Leisten aus (Code und Kommentar stimmen überein)", () => {
+    const q = String(fokusMessen);
+    expect(q).toContain("fixiert");
+    expect(q).toContain("frei.find(");
+    expect(q).toContain('closest("main")');
+  });
+});
+
+describe("Rolle Beschäftigte (Telefonschale)", () => {
+  it("Breiten 375 und 1024 px; je Fläche ein Reiter der Telefonschale, jeder Reiter gibt es in M_TABS", () => {
+    expect(VISUELL_BESCHAEFTIGTE_BREITEN.map((b) => b.w)).toEqual([375, 1024]);
+    const quelle = lies("src/ansichten/mobil.jsx");
+    expect(VISUELL_BESCHAEFTIGTE_ANSICHTEN.length).toBeGreaterThanOrEqual(3);
+    for (const [flaeche, reiter] of VISUELL_BESCHAEFTIGTE_ANSICHTEN) {
+      expect(flaeche, flaeche).toMatch(/^beschaeftigte-/);
+      expect(quelle, reiter).toContain(`label: "${reiter}"`);
+    }
+  });
+  it("Flächennamen der Beschäftigten sind eigen (kollidieren nicht mit der Leitung)", () => {
+    const leitung = new Set(VISUELL_ANSICHTEN.map((a) => a[0]));
+    for (const [flaeche] of VISUELL_BESCHAEFTIGTE_ANSICHTEN) expect(leitung.has(flaeche)).toBe(false);
+  });
+  it("die Spec meldet die Rolle an und prüft sie je Thema", () => {
+    const spec = lies("e2e/v4-visuell.spec.mjs");
+    expect(spec).toContain('anmelden(page, "mitarbeiter")');
+    expect(spec).toContain("VISUELL_BESCHAEFTIGTE_BREITEN");
   });
 });
 
@@ -64,7 +90,29 @@ describe("bekannte Befunde", () => {
     expect(bekannterBefund("fokus", "pakete", "telefon-375", "dunkel", liste)).toBeNull();
     expect(bekannterBefund("kontrast", "einstellungen", "desktop-1280", "dunkel", liste)).toBeNull();
   });
-  it("jeder Eintrag ist in docs/acc45/V4-4-BEFUNDE.md benannt", () => {
+  it("ein Eintrag mit Muster gilt nur für Funde mit diesem Muster; ein anderer Verstoß auf derselben Fläche bleibt offen", () => {
+    const liste = [{ regel: "kontrast", flaeche: "dienstplan", viewport: "desktop-1280", thema: "hell", muster: ".unten", befund: "B1" }];
+    const funde = ['td > .planzelle > .unten: zu blass', "h1.titel: zu blass"];
+    const t = befundeTrennen("kontrast", "dienstplan", "desktop-1280", "hell", funde, liste);
+    expect(t.bekannt.map((x) => x.fund)).toEqual([funde[0]]);
+    expect(t.offen).toEqual([funde[1]]);
+    expect(befundeTrennen("kontrast", "dienstplan", "telefon-375", "hell", funde, liste).offen).toEqual(funde);
+  });
+  it("„keine Knoten bewertet“ gilt nie als bekannt, auch nicht bei Stern und passendem Muster", () => {
+    const liste = [{ regel: "kontrast", flaeche: "*", viewport: "*", thema: "*", muster: "bewertet", befund: "B9" }];
+    const fund = `${KEIN_FUND_BEWERTET} (axe incomplete 3)`;
+    expect(befundeTrennen("kontrast", "dienstplan", "desktop-1280", "hell", [fund], liste).offen).toEqual([fund]);
+  });
+  it("ein Eintrag ohne Treffer in seinem Geltungsbereich wird gemeldet (Reparatur zwingt zum Entfernen)", () => {
+    const a = { regel: "kontrast", flaeche: "dienstplan", viewport: "desktop-1280", thema: "hell", muster: ".unten", befund: "B1" };
+    const b = { regel: "kontrast", flaeche: "pakete", viewport: "desktop-1280", thema: "hell", muster: ".x", befund: "B2" };
+    const w = { flaechen: ["dienstplan"], viewports: ["desktop-1280", "telefon-375"], thema: "hell" };
+    expect(ungenutzteEintraege([a, b], new Set([a]), w)).toEqual([]);          // b liegt außerhalb des Geltungsbereichs
+    expect(ungenutzteEintraege([a, b], new Set(), w)).toEqual([a]);            // a ohne Treffer
+    expect(ungenutzteEintraege([a], new Set(), { ...w, thema: "dunkel" })).toEqual([]);
+  });
+  it("jeder Eintrag hat ein Muster (nie die ganze Fläche) und ist in docs/acc45/V4-4-BEFUNDE.md benannt", () => {
+    for (const b of VISUELL_BEKANNT) expect(typeof b.muster === "string" && b.muster.length > 0, JSON.stringify(b)).toBe(true);
     const doku = lies("docs/acc45/V4-4-BEFUNDE.md");
     for (const b of VISUELL_BEKANNT) {
       expect(typeof b.befund === "string" && b.befund.length > 0, JSON.stringify(b)).toBe(true);
@@ -83,6 +131,15 @@ describe("Spec", () => {
     }
     expect(spec).toContain('values: ["color-contrast"]');
     expect(spec).toContain("Ausgangslage sauber");
+  });
+  it("Kontrast ist nicht blind: zählt bewertete Knoten, blendet den Verlauf aus, beweist die Mutation auch angemeldet", () => {
+    expect(spec).toContain('resultTypes: ["violations", "passes", "incomplete"]');
+    expect(spec).toContain("keine Knoten bewertet");
+    expect(spec).toContain(".inhalt::before,.m-schale::before{display:none !important;}");
+    expect(spec).toContain("Mutation kontrast auf angemeldeter Fläche");
+    expect(spec).toContain('fokusMessen("haupt")');
+    expect(spec).toContain("ungenutzteEintraege(");
+    expect(spec).toContain("befundeTrennen(");
   });
   it("Bilder nur auf Anforderung und nie im Repo; Quelle ohne new Date, ohne feste Wartezeit-Gates", () => {
     expect(spec).toContain("V4_VISUELL_BILDER");
