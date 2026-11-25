@@ -143,7 +143,7 @@ export function aktionenBranchen(k) {
       /* --- Schwarzes Brett --- */
       neuerAushang: (f) => mUpd((m) => ({ ...m, aushang: [{ id: uid("ah"), titel: f.titel, text: f.text,
         wichtig: !!f.wichtig, bis: f.bis || null, von: `${sitz.person.vorname} ${sitz.person.nachname}`,
-        zeit: new Date().toLocaleString("de-DE") }, ...(m.aushang || [])] }), "Aushang angeschlagen"),
+        zeit: new Date().toLocaleString("de-DE", { timeZone: "Europe/Berlin" }) }, ...(m.aushang || [])] }), "Aushang angeschlagen"),
       loescheAushang: (id) => mUpd((m) => ({ ...m, aushang: (m.aushang || []).filter((x) => x.id !== id) }), "Aushang abgenommen"),
 
       /* --- Betriebsmittel --- */

@@ -52,7 +52,7 @@ export function Verfuegbarkeit({ sitz, akt, personId, onClose }) {
               const i = d * 3 + f.id, an = v.raster[i];
               return (
                 <button key={d} onClick={() => um(i)} aria-label={`${DOW[d]}, ${f.name}`} aria-pressed={!!an}
-                  style={{ height: 46, borderRadius: 12, border: "none", cursor: "pointer",
+                  style={{ height: 46, borderRadius: "var(--v4-r-mittel)", border: "none", cursor: "pointer",
                     background: an ? C.okLight : C.bg,
                     color: C.ok, display: "flex", alignItems: "center", justifyContent: "center" }}>
                   {an && <Icon n="haken" size={20} strokeWidth={2.4} />}</button>);
@@ -67,7 +67,7 @@ export function Verfuegbarkeit({ sitz, akt, personId, onClose }) {
             {frei} von 21 Zeitfenstern frei</span>
         </div>
         {v.aktiv && frei < 8 && (
-          <div style={{ marginTop: 16, padding: 14, borderRadius: 12, background: C.warnLight,
+          <div style={{ marginTop: 16, padding: 14, borderRadius: "var(--v4-r-mittel)", background: C.warnLight,
             color: C.warn, fontSize: 13, lineHeight: 1.5 }}>
             Bei {frei} freigegebenen Fenstern bist du kaum noch einplanbar. Bitte sprich das mit der Planung ab.
           </div>)}

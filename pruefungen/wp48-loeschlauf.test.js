@@ -171,7 +171,7 @@ async function heutigerWeg(token) {
   const m0 = s2.mandanten.find((x) => x.id === "m1");
   const vor = A.vorschau(m0, HEUTE);
   const { mandant } = A.raeumen(m0, HEUTE);
-  const neu = { ...mandant, protokoll: [{ id: "lui", zeit: new Date().toLocaleString("de-DE"), text: `Löschlauf: ${A.berichtstext(vor)}` },
+  const neu = { ...mandant, protokoll: [{ id: "lui", zeit: new Date().toLocaleString("de-DE", { timeZone: "Europe/Berlin" }), text: `Löschlauf: ${A.berichtstext(vor)}` },
     ...(mandant.protokoll || [])].slice(0, 200) };
   const bestand = { ...s2, mandanten: s2.mandanten.map((m) => (m.id === "m1" ? neu : m)) };
   return anfrage("/api/bestand", { methode: "PUT", token, rumpf: { bestand, etag: g.etag, durch: "V Nl1" } });

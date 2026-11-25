@@ -464,7 +464,12 @@ describe("N1 / WP-22: Laufzeit der Nachrechnung", () => {
     return warm;
   };
   it("WP-22: 300 Personen, 120 Tage, Schichtfolge geändert: unter 300 ms", () => {
-    /* Nachtrag WP-22b: Laufzeit in CI hart, lokal (belastete Maschine) eine Warnung — die CI-Grenze bleibt. */
+    /* Nachtrag WP-22b: Laufzeit in CI hart, lokal (belastete Maschine) eine Warnung — die CI-Grenze bleibt.
+       QS-2, Restpaket (Messung 2026-11-23): Der Vorrat auf dem CI-Runner ist belegt. Aus den Logs von 10 erfolgreichen Läufen des Workflows Prüfung
+       (Schritt „Eine Schutzprüfung“, Zeile „Nachrechnung 300 Personen … warm“) stammen diese Werte für `warm` (Minimum aus 3, in ms):
+       78,0 / 84,5 / 43,3 / 76,3 / 57,3 / 74,5 / 69,9 / 65,5 / 64,4 / 84,7 (Median etwa 70, Maximum 84,7; kalt 98 bis 171). Der Vorrat zur Grenze
+       300 ms ist damit mindestens 3,5-fach (Median etwa 4,3-fach). Test und Grenze bleiben unverändert. Lokal unter Last (349 bis 442 ms) gilt
+       weiter nur die Warnung. Wird der Runner langsamer als etwa 3,5-fach, ist die Grenze zu prüfen. */
     const ms = szenario(300, 60);
     if (process.env.CI) expect(ms).toBeLessThan(300);
     else if (ms >= 300) console.warn(`WARNUNG: 300 Personen ${ms.toFixed(1)} ms (in CI wäre das rot)`);

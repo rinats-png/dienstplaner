@@ -6,7 +6,7 @@ import { positionHolen, stempelVorgang, geoPruefungAn, MARKIERUNG_TEXT, koordMit
 import { nachtschwelle, nachtAnteil, einheitAm } from "../../server/lib/fachpruefung.mjs";
 import { verknuepfungAnwenden } from "../verknuepfung.js";
 import { pad, addDays, dow, between, dim_, dauer } from "../regelwerk.js";
-import { C } from "../farben.js";
+import { C, dunkelAktiv } from "../farben.js";
 import { klickbar, Rubrik, Schalter, Btn, Inp, Sel, Field, Seg, Pill } from "../ui/bausteine.jsx";
 import { lesbar, NUM } from "../ui/thema.js";
 import { useDialogFokus } from "../ui/dialogfokus.js";
@@ -30,6 +30,7 @@ import { darfSelbstEintragen, laufendeRunde, selbstplanStand } from "../lib/selb
 import { NOTRUF_ARTEN } from "../lib/notrufe.js";
 import { NAV_BETREIBER, NAV_KUNDE, ansichtErlaubt } from "../app/navigation.js";
 import { Logo } from "../ui/logo.jsx";
+import { Wortmarke } from "../marke.jsx";
 import { urlaubAntragFehler } from "../lib/antragpruefung.js";
 import { Fehlerband } from "../gestalt/ansichten.jsx";
 import { KrankmeldungenOffen } from "./krankmeldungen-offen.jsx";
@@ -46,7 +47,7 @@ export const M_TABS = [
 export const MKarte = ({ children, onClick, ton, style }) => (
   <div {...klickbar(onClick)} style={{ background: C.flaeche,
     border: `1px solid ${ton === "danger" ? `${C.danger}66` : ton === "warn" ? `${C.warn}66` : C.line}`,
-    borderRadius: 18, padding: 16, marginBottom: 10, cursor: onClick ? "pointer" : "default",
+    borderRadius: "var(--v4-r-gross)", padding: 16, marginBottom: 10, cursor: onClick ? "pointer" : "default",
     boxShadow: "var(--schatten)", ...style }}>{children}</div>);
 
 /* zeiger: Zeile ohne eigene Bedienung in einer bedienbaren Karte (WP-40, kein Knopf im Knopf) behält den Zeiger. */
@@ -185,7 +186,7 @@ export function MHeute({ sitz, akt, setTab, oeffnen }) {
           <MKarte key={i} ton={a.dringend ? "danger" : undefined}
             onClick={() => { if (a.ziel === "meine") setTab("plan"); else if (a.ziel === "antraege" || a.ziel === "boerse") setTab("anliegen"); else oeffnen(a.ziel); }}>
             <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-              <span style={{ width: 40, height: 40, borderRadius: 14, flexShrink: 0, display: "flex",
+              <span style={{ width: 40, height: 40, borderRadius: "var(--v4-r-mittel)", flexShrink: 0, display: "flex",
                 alignItems: "center", justifyContent: "center", fontSize: 17, fontWeight: 700,
                 background: a.dringend ? C.dangerLight : C.bg,
                 color: a.dringend ? C.danger : C.dim }}><AufgabeSymbol art={a.art} /></span>
@@ -221,7 +222,7 @@ export function MStempel({ sitz, akt, vorgang }) {
   };
   const Flaeche = ({ kind, onClick, children }) => (
     <button onClick={onClick} disabled={laeuft} className={`btn btn-${kind}`}
-      style={{ width: "100%", height: 56, fontSize: 16.5, fontWeight: 650, borderRadius: 18 }}>
+      style={{ width: "100%", height: 56, fontSize: 16.5, fontWeight: 650, borderRadius: "var(--v4-r-gross)" }}>
       {laeuft ? (geoAn ? "Standort wird geprüft …" : "Wird gespeichert …") : children}</button>);
 
   /* Nachtdienst von gestern ohne Einstempeln (WP-17, F1/W3). */
@@ -332,7 +333,7 @@ export function MPlan({ sitz, akt, oeffnen }) {
                     {Number(d.slice(8))}</div>
                   <div style={{ fontSize: 10.5, color: C.dimmer, ...NUM }}>{MON[Number(d.slice(5, 7)) - 1].slice(0, 3)}</div>
                 </div>
-                <div style={{ width: 3, alignSelf: "stretch", borderRadius: 2,
+                <div style={{ width: 3, alignSelf: "stretch", borderRadius: "var(--v4-r-pille)",
                   background: da ? lesbar(da.farbe, 3) : t.abwesenheit ? lesbar(abwArt(t.abwesenheit.art).farbe, 3) : "transparent" }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 16.5, fontWeight: 600, letterSpacing: "-.015em" }}>
@@ -364,7 +365,7 @@ export function MPlan({ sitz, akt, oeffnen }) {
               return (
                 <div key={d} {...klickbar(() => setGewaehlt({ datum: d, t }),
                   `${fKurz(d)}: ${da ? da.name : t.abwesenheit ? abwArt(t.abwesenheit.art).label : "frei"}`)}
-                  style={{ aspectRatio: "1", borderRadius: 12, display: "flex", flexDirection: "column",
+                  style={{ aspectRatio: "1", borderRadius: "var(--v4-r-mittel)", display: "flex", flexDirection: "column",
                     alignItems: "center", justifyContent: "center", cursor: "pointer", gap: 2,
                     background: da ? `${da.farbe}1C` : t.abwesenheit ? `${abwArt(t.abwesenheit.art).farbe}1C` : C.bg,
                     outline: d === heute() ? `2px solid ${C.accent}` : "none" }}>
@@ -394,24 +395,24 @@ export function MPlan({ sitz, akt, oeffnen }) {
               </MKarte>)}
             {da && (
               <div style={{ display: "grid", gap: 10 }}>
-                <Btn kind="primary" style={{ height: 50, borderRadius: 16, fontSize: 15.5 }}
+                <Btn kind="primary" style={{ height: 50, borderRadius: "var(--v4-r-gross)", fontSize: 15.5 }}
                   onClick={() => { akt.tauschAusPlan(gewaehlt.datum); setGewaehlt(null); }}>
                   Tausch für diesen Tag suchen</Btn>
-                <Btn style={{ height: 50, borderRadius: 16, fontSize: 15.5 }}
+                <Btn style={{ height: 50, borderRadius: "var(--v4-r-gross)", fontSize: 15.5 }}
                   onClick={() => { akt.oeffneAntrag(gewaehlt.datum); setGewaehlt(null); }}>
                   Frei beantragen</Btn>
               </div>)}
             {!da && gewaehlt.datum >= heute() && (
               <div style={{ display: "grid", gap: 10 }}>
                 <Btn kind={w && w.art === "moechte" ? "primary" : "plain"}
-                  style={{ height: 50, borderRadius: 16, fontSize: 15.5 }}
+                  style={{ height: 50, borderRadius: "var(--v4-r-gross)", fontSize: 15.5 }}
                   onClick={() => { akt.setzeWunsch(ich.id, gewaehlt.datum); setGewaehlt(null); }}>
                   Würde an diesem Tag gern arbeiten</Btn>
               </div>)}
             {da && gewaehlt.datum >= heute() && (
               <div style={{ marginTop: 10 }}>
                 <Btn kind={w && w.art === "lieber_nicht" ? "danger" : "quiet"}
-                  style={{ width: "100%", height: 46, borderRadius: 16, fontSize: 14.5 }}
+                  style={{ width: "100%", height: 46, borderRadius: "var(--v4-r-gross)", fontSize: 14.5 }}
                   onClick={() => { akt.setzeWunsch(ich.id, gewaehlt.datum); setGewaehlt(null); }}>
                   {w ? (w.art === "moechte" ? "Doch lieber nicht" : "Wunsch zurücknehmen") : "Lieber nicht arbeiten"}</Btn>
               </div>)}
@@ -439,9 +440,9 @@ export function MAnliegen({ sitz, akt, oeffnen }) {
       <MTitel rubrik="Deine Vorgänge">Anliegen</MTitel>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 20 }}>
-        <Btn kind="primary" style={{ height: 52, borderRadius: 17, fontSize: 15 }}
+        <Btn kind="primary" style={{ height: 52, borderRadius: "var(--v4-r-gross)", fontSize: 15 }}
           onClick={() => akt.oeffneAntrag(null)}>Frei beantragen</Btn>
-        <Btn kind="danger" style={{ height: 52, borderRadius: 17, fontSize: 15 }}
+        <Btn kind="danger" style={{ height: 52, borderRadius: "var(--v4-r-gross)", fontSize: 15 }}
           onClick={() => akt.oeffneKrankmeldung(ich.id)}>Krank melden</Btn>
       </div>
       {/* RB-2: Status der eigenen Krankmeldung (eingegangen / vorläufig bestätigt). */}
@@ -457,9 +458,9 @@ export function MAnliegen({ sitz, akt, oeffnen }) {
               <div style={{ fontSize: 14, color: C.dim, marginTop: 4, ...NUM }}>
                 {da ? `${da.name} · ${da.start}–${da.ende} · ${n1(dauer(da))} h` : a.dienstId}</div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 14 }}>
-                <Btn kind="ok" style={{ height: 46, borderRadius: 15 }}
+                <Btn kind="ok" style={{ height: 46, borderRadius: "var(--v4-r-gross)" }}
                   onClick={() => akt.beantworteEinsatz(a.id, true)}>Zusagen</Btn>
-                <Btn kind="quiet" style={{ height: 46, borderRadius: 15 }}
+                <Btn kind="quiet" style={{ height: 46, borderRadius: "var(--v4-r-gross)" }}
                   onClick={() => akt.beantworteEinsatz(a.id, false)}>Absagen</Btn>
               </div>
             </MKarte>);
@@ -484,7 +485,7 @@ export function MAnliegen({ sitz, akt, oeffnen }) {
                 </div>
               </div>
               {a.text && <div style={{ fontSize: 13, color: C.dimmer, marginTop: 9 }}>„{a.text}"</div>}
-              <Btn kind={gemeldet ? "quiet" : "primary"} style={{ width: "100%", height: 46, marginTop: 13, borderRadius: 15 }}
+              <Btn kind={gemeldet ? "quiet" : "primary"} style={{ width: "100%", height: 46, marginTop: 13, borderRadius: "var(--v4-r-gross)" }}
                 onClick={() => gemeldet ? akt.tauschAbmelden(a.id) : akt.tauschMelden(a.id)}>
                 {gemeldet ? "Meldung zurücknehmen" : "Ich übernehme"}</Btn>
             </MKarte>);
@@ -592,7 +593,7 @@ export function MMehr({ sitz, akt, oeffnen, aufRechner }) {
       </MKarte>
 
       <div style={{ padding: "10px 4px 0" }}>
-        <Btn kind="quiet" style={{ width: "100%", height: 46, borderRadius: 15 }}
+        <Btn kind="quiet" style={{ width: "100%", height: 46, borderRadius: "var(--v4-r-gross)" }}
           onClick={akt.abmelden}>Abmelden</Btn>
       </div>
       <div style={{ textAlign: "center", fontSize: 11.5, color: C.dimmer, padding: "18px 0 6px" }}>
@@ -629,7 +630,7 @@ export function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge, startTab, 
     <div className="m-schale">
       <header className="m-kopf">
         <Logo size={24} />
-        <span className="m-wort">CENTRIC</span>
+        <span className="m-wort"><Wortmarke hell={dunkelAktiv()} hoehe={12} alt="" /></span>
         <button onClick={() => oeffnen("post")} className="m-postknopf"
           aria-label={`Mitteilungen${ungelesen ? `, ${ungelesen} ungelesen` : ""}`}>
           <Icon n="brief" size={19} />
@@ -686,7 +687,7 @@ export function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge, startTab, 
                   {st.vollstaendig ? "Alle Pflichtpunkte erledigt"
                     : `noch ${st.pflichtGesamt - st.pflichtFertig} Pflichtpunkte offen`}</div>
               </div>
-              <div style={{ width: 54, height: 54, borderRadius: 27, flexShrink: 0,
+              <div style={{ width: 54, height: 54, borderRadius: "var(--v4-r-pille)", flexShrink: 0,
                 display: "flex", alignItems: "center", justifyContent: "center",
                 background: st.vollstaendig ? C.okLight : C.flaecheStill,
                 color: st.vollstaendig ? C.ok : C.dim, fontSize: 16, fontWeight: 700, ...NUM }}>
@@ -704,12 +705,12 @@ export function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge, startTab, 
                     <button key={z.id} disabled={z.erledigt}
                       onClick={() => akt.hakeAb(p.id, heute(), t.dienstId, z.id, "")}
                       style={{ display: "flex", alignItems: "flex-start", gap: 14, width: "100%",
-                        padding: "16px 18px", marginBottom: 8, borderRadius: 14, minHeight: 56,
+                        padding: "16px 18px", marginBottom: 8, borderRadius: "var(--v4-r-mittel)", minHeight: 56,
                         border: `1px solid ${z.erledigt ? C.okLight : C.line}`,
                         background: z.erledigt ? C.okLight : C.flaeche, textAlign: "left",
                         fontFamily: "inherit", color: C.text,
                         cursor: z.erledigt ? "default" : "pointer" }}>
-                      <span style={{ width: 26, height: 26, borderRadius: 13, flexShrink: 0,
+                      <span style={{ width: 26, height: 26, borderRadius: "var(--v4-r-pille)", flexShrink: 0,
                         marginTop: 1, display: "flex", alignItems: "center", justifyContent: "center",
                         border: `1.5px solid ${z.erledigt ? C.ok : C.lineStark}`,
                         background: z.erledigt ? C.ok : "transparent", color: C.aufAkzent,
@@ -801,7 +802,7 @@ export function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge, startTab, 
                           {da ? `${da.name} · ${da.start}–${da.ende}` : e.dienstId}</div>
                       </div>
                       <button onClick={() => akt.selbstAustragen(e.datum)}
-                        style={{ padding: "9px 14px", borderRadius: 10, minHeight: 44,
+                        style={{ padding: "9px 14px", borderRadius: "var(--v4-r-mittel)", minHeight: 44,
                           border: `1px solid ${C.line}`, background: "transparent",
                           color: C.dim, fontFamily: "inherit", fontSize: 13.5,
                           fontWeight: 600, cursor: "pointer" }}>Weg</button>
@@ -827,7 +828,7 @@ export function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge, startTab, 
                       {moeglich.map(({ da, pruef }) => (
                         <button key={da.id} onClick={() => akt.selbstEintragen(d, da.id)}
                           style={{ flex: "1 1 auto", minWidth: 100, minHeight: 48,
-                            padding: "11px 14px", borderRadius: 11, cursor: "pointer",
+                            padding: "11px 14px", borderRadius: "var(--v4-r-mittel)", cursor: "pointer",
                             border: `1px solid ${da.farbe}`, background: `${da.farbe}12`,
                             color: C.text, fontFamily: "inherit", textAlign: "left" }}>
                           <span style={{ display: "block", fontSize: 14, fontWeight: 600 }}>
@@ -864,7 +865,7 @@ export function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge, startTab, 
         {Object.entries(NOTRUF_ARTEN).map(([id, a]) => (
           <button key={id} onClick={() => { akt.notrufSenden(id, ""); setBlatt(null); }}
             style={{ display: "block", width: "100%", textAlign: "left", marginBottom: 11,
-              padding: "18px 20px", borderRadius: 14, cursor: "pointer", minHeight: 64,
+              padding: "18px 20px", borderRadius: "var(--v4-r-mittel)", cursor: "pointer", minHeight: 64,
               border: `1px solid ${a.dringend ? C.danger : C.line}`,
               background: a.dringend ? C.dangerLight : "transparent",
               fontFamily: "inherit", color: C.text }}>
@@ -908,7 +909,7 @@ export function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge, startTab, 
                       {anzahl === 1 ? "Du bist bisher die einzige Meldung."
                         : `${anzahl} haben sich gemeldet. Die Planung entscheidet.`}</div>
                     <button onClick={() => akt.ziehBewerbungZurueck(a.id)}
-                      style={{ marginTop: 12, padding: "11px 18px", borderRadius: 12,
+                      style={{ marginTop: 12, padding: "11px 18px", borderRadius: "var(--v4-r-mittel)",
                         border: `1px solid ${C.line}`, background: "transparent", color: C.dim,
                         fontFamily: "inherit", fontSize: 14, fontWeight: 600, cursor: "pointer",
                         minHeight: 48 }}>Zurückziehen</button>
@@ -942,7 +943,7 @@ export function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge, startTab, 
                       {(a.bewerbungen || []).length > 0
                         ? ` · ${(a.bewerbungen || []).length} haben sich schon gemeldet` : ""}</div>
                     <button onClick={() => akt.bewirbDich(a.id, "")}
-                      style={{ marginTop: 14, width: "100%", padding: "14px", borderRadius: 12,
+                      style={{ marginTop: 14, width: "100%", padding: "14px", borderRadius: "var(--v4-r-mittel)",
                         border: "none", background: C.accent, color: C.aufAkzent, fontFamily: "inherit",
                         fontSize: 15.5, fontWeight: 600, cursor: "pointer", minHeight: 48 }}>
                       Ich übernehme das</button>
@@ -979,7 +980,7 @@ export function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge, startTab, 
               </div>
               {SP.pushMoeglich() && (
                 <button onClick={() => akt.pushUmschalten(!SP.pushErlaubt())}
-                  style={{ marginTop: 12, padding: "11px 18px", borderRadius: 12, border: "none",
+                  style={{ marginTop: 12, padding: "11px 18px", borderRadius: "var(--v4-r-mittel)", border: "none",
                     background: SP.pushErlaubt() ? C.flaecheStill : C.accent,
                     color: SP.pushErlaubt() ? C.text : C.aufAkzent, fontFamily: "inherit",
                     fontSize: 14.5, fontWeight: 600, cursor: "pointer", minHeight: 48 }}>
@@ -997,7 +998,7 @@ export function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge, startTab, 
           </div>
           <input type="email" aria-label="E-Mail-Adresse" defaultValue={p.email || ""} placeholder="name@betrieb.de"
             onBlur={(e) => akt.setzeEmail(p.id, e.target.value.trim())}
-            style={{ width: "100%", padding: "13px 15px", fontSize: 16, borderRadius: 12,
+            style={{ width: "100%", padding: "13px 15px", fontSize: 16, borderRadius: "var(--v4-r-mittel)",
               border: `1px solid ${C.steuer}`, fontFamily: "inherit", boxSizing: "border-box",
               background: C.bg, color: C.text, minHeight: 48 }} />
           <MailBestaetigung email={p.email || ""} />
@@ -1015,7 +1016,7 @@ export function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge, startTab, 
               <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
                 {[["mail", "E-Mail", w.mail], ["push", "Gerät", w.push]].map(([weg, label, an]) => (
                   <button key={weg} onClick={() => akt.setzeZustellung(p.id, id, weg, !an)}
-                    style={{ flex: 1, padding: "10px 12px", borderRadius: 10, minHeight: 44,
+                    style={{ flex: 1, padding: "10px 12px", borderRadius: "var(--v4-r-mittel)", minHeight: 44,
                       border: `1px solid ${an ? C.accent : C.line}`, cursor: "pointer",
                       background: an ? C.accentLight : "transparent", color: an ? C.accent : C.dim,
                       fontFamily: "inherit", fontSize: 13.5, fontWeight: 600 }}>
@@ -1078,7 +1079,7 @@ export function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge, startTab, 
               <div style={{ fontSize: 15.5, fontWeight: 600, ...NUM }}>{fLang(d)}</div>
               <div style={{ fontSize: 13.5, color: C.dim, marginTop: 4, ...NUM }}>
                 geplant {da.start}–{da.ende} · {n1(dauer(da))} h</div>
-              <Btn kind="ok" style={{ width: "100%", height: 46, marginTop: 13, borderRadius: 15 }}
+              <Btn kind="ok" style={{ width: "100%", height: 46, marginTop: 13, borderRadius: "var(--v4-r-gross)" }}
                 onClick={() => akt.bestaetigeZeit(p.id, d, null, null, "")}>Wie geplant</Btn>
             </MKarte>);
         })}
@@ -1103,7 +1104,7 @@ export function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge, startTab, 
               onChange={(e) => setAntrag({ ...antrag, text: e.target.value })} /></Field>
             {/* Ende vor Beginn und Überschneidungen wie in der Rechneransicht: Fehlertext im Blatt, das Blatt bleibt offen. */}
             {antragFehler && <Fehlerband id="antrag-fehler">{antragFehler}</Fehlerband>}
-            <Btn kind="primary" style={{ height: 52, borderRadius: 17, fontSize: 15.5 }}
+            <Btn kind="primary" style={{ height: 52, borderRadius: "var(--v4-r-gross)", fontSize: 15.5 }}
               onClick={() => { const fe = urlaubAntragFehler(m, p.id, antrag); if (fe) { setAntragFehler(fe); return; }
                 akt.stelleAntrag({ typ: "abwesenheit", art: antrag.art,
                   von: antrag.von, bis: antrag.bis, text: antrag.text }); setAntrag(null); }}>
@@ -1153,7 +1154,7 @@ export function MWuensche({ sitz, akt }) {
           <div key={d}
             {...(vergangen ? {} : klickbar(() => akt.setzeWunsch(ich.id, d),
               `${fLang(d)}${w ? `, ${w.art === "moechte" ? "möchte arbeiten" : "lieber nicht"}` : ""}`))}
-            style={{ aspectRatio: "1", borderRadius: 12, display: "flex", flexDirection: "column",
+            style={{ aspectRatio: "1", borderRadius: "var(--v4-r-mittel)", display: "flex", flexDirection: "column",
               alignItems: "center", justifyContent: "center", gap: 1, opacity: vergangen ? .4 : 1,
               background: w ? (w.art === "moechte" ? C.okLight : C.warnLight)
                 : C.bg }}>

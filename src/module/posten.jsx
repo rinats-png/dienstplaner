@@ -21,7 +21,7 @@ export function PostenUebersicht({ m, datum, dienstId, personenImDienst }) {
   return (
     <section aria-label={`Posten am ${datum}`} style={{ display: "grid", gap: 10, maxWidth: "100%" }}>
       {objekte.map((o) => (
-        <article key={o.id} style={{ border: "1px solid currentColor", borderRadius: 8, padding: 12, overflowWrap: "anywhere" }}>
+        <article key={o.id} style={{ border: "1px solid currentColor", borderRadius: "var(--v4-r-klein)", padding: 12, overflowWrap: "anywhere" }}>
           <h3 style={{ margin: 0, fontSize: 15 }}>{o.name}</h3>
           <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
             {(o.posten || []).map((p) => {

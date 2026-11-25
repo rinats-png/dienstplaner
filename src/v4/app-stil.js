@@ -5,7 +5,8 @@
    ändert nur Form und Zustand: Radien, Flächen, Ränder, Schatten, Fokus,
    Glas an Navigation und Dialogen, Mindestgrößen für Touch.
 
-   Farben und Maße kommen ausschließlich aus den Tokens (var(--v4-…)). Diese
+   Farben und Maße kommen ausschließlich aus den Tokens (var(--v4-…); die Tönungen
+   der Seitenleiste als var(--sl-…) aus V4_SEITENLEISTE, App.jsx). Diese
    Datei enthält keinen Farbwert. Die Gültigkeit der Klassen prüft
    pruefungen/v4-app-stil.test.js gegen den tatsächlichen App-Stil.
 
@@ -33,11 +34,14 @@ html[data-v4-app] .inhalt{min-width:0; max-width:100%;}
 html[data-v4-app] main.bereich [style*="flex-wrap: wrap"] > *{max-width:100%;}
 html[data-v4-app] main.bereich [style*="display: grid"]:not([style*="grid-template-columns"]) > *{min-width:0;}
 
-/* Navigation: dunkle Seitenleiste; aktiver Eintrag als Glasfläche mit Akzentkante */
+/* Navigation: dunkle Seitenleiste; aktiver Eintrag als helle Tönung mit Akzentkante.
+   V4-2c: Hover und Aktiv tragen die Tönungen der Seitenleiste (V4_SEITENLEISTE.hover/.an), nicht das Glas des
+   Inhalts (--v4-glas): das ergab im hellen Thema weiße Schrift auf heller Glasfläche = 1,76:1 (WCAG 1.4.3).
+   --sl-hover/--sl-an setzt der App-Stil aus V4_SEITENLEISTE (App.jsx seitenleisteVariablen), in beiden Themen gleich. */
 html[data-v4-app] .seitenleiste{background:var(--v4-sidebar); border-right:1px solid var(--v4-glas-rand);}
 html[data-v4-app] .slink{min-height:var(--v4-ziel); border-radius:var(--v4-r-mittel);}
-html[data-v4-app] .slink:hover{background:var(--v4-glas);}
-html[data-v4-app] .slink.on{background:var(--v4-glas);
+html[data-v4-app] .slink:hover{background:var(--sl-hover);}
+html[data-v4-app] .slink.on{background:var(--sl-an);
   border:1px solid var(--v4-glas-rand);}
 html[data-v4-app] .slink.on::before{background:var(--v4-akzent-auf-dunkel);}
 
@@ -57,6 +61,9 @@ html[data-v4-app] .btn{min-height:var(--v4-ziel); border-radius:var(--v4-r-pille
 html[data-v4-app] .btn-primary{background:var(--v4-accent); border-color:var(--v4-accent); color:var(--v4-auf-akzent);}
 html[data-v4-app] .btn-primary:hover{background:var(--v4-accent-hi); border-color:var(--v4-accent-hi); color:var(--v4-auf-akzent);}
 html[data-v4-app] .btn:focus-visible{outline:var(--v4-fokus-breite) solid var(--v4-focus); outline-offset:var(--v4-fokus-abstand);}
+/* V4-2c: Fokusring auf der dunklen Seitenleiste im Akzent für dunkle Flächen (>= 3:1 gegen Leiste und Füllung der
+   Einträge, beide Themen). Steht nach .btn:focus-visible: gleiche Spezifität (0,3,1), daher gewinnt diese Regel. */
+html[data-v4-app] .seitenleiste :focus-visible{outline-color:var(--v4-akzent-auf-dunkel);}
 html[data-v4-app] .btn-sm{min-height:34px;}
 
 /* Auswahlfelder in der Akzentfarbe statt Systemblau */
@@ -90,6 +97,11 @@ html[data-v4-app] .suchknopf{background:var(--v4-flaeche); border-color:var(--v4
 @media (pointer: coarse){
   html[data-v4-app] .btn, html[data-v4-app] .slink, html[data-v4-app] .seg button{min-height:var(--v4-ziel);}
 }
+
+/* WP-40 (WCAG 1.4.10 Reflow, gemessen bei 320 px): Die Seitenüberschrift (h1.titel, 38 px) ragte bei langen Wörtern
+   ("Belastungsverteilung": 336 px Text in 310 px Platz) über den Rand und schob die ganze Seite 26 px nach rechts. Ein zu
+   langes Wort bricht jetzt (mit Trennung, wo lang="de" sie kennt); kurze Wörter bleiben unverändert. */
+html[data-v4-app] h1.titel{overflow-wrap:break-word; hyphens:auto;}
 
 /* Bewegung und Transparenz: reduziert, ohne Glas */
 @media (prefers-reduced-motion: reduce){

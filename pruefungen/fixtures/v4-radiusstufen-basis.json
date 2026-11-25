@@ -1,0 +1,2106 @@
+{
+  "hinweis": "Erzeugt mit node werkzeug/v4-radiusstufen-basis.mjs (Review #443, B1). Nicht von Hand ändern.",
+  "schnitte": {
+    "Plan/Dienstplan": {
+      "basis": "b2a42a7f79975140571f90ed8942bfe1f539a7ab",
+      "dateien": {
+        "src/ansichten/ausgleichplanen.jsx": {
+          "sha256": "ebce2cb199505fb71287a1abb6f9c7a02837dc737192f6622e877022684ef4ca",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/bereitschaft.jsx": {
+          "sha256": "8381824bf3d07e901e1c7c8672c5e112569dcf917e5779ad047847dce0158038",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/betriebsmittel.jsx": {
+          "sha256": "8c860ce37858397e58868bccb4bb34b5d6200f26576887871040f1163a8c669e",
+          "literale": [
+            {
+              "wert": "14",
+              "kontext": "{{ borderRadius: 14 }}"
+            },
+            {
+              "wert": "14",
+              "kontext": "{{ borderRadius: 14 }}"
+            }
+          ],
+          "literaleSha256": "cb8b104c7cb8b778a7aea5b8bd57dab1a7d692226b373cc4004c7b2f58660dd2"
+        },
+        "src/ansichten/dienstarten.jsx": {
+          "sha256": "34b89c5c9009c8468d6de0bceca82f46bd99fc952c56c618e0b8d87c9e5abf3e",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/dienstkarte.jsx": {
+          "sha256": "d9572bbda64eb704c97ce598ab9e1f356e365aaf8f3ab636cb6fb71354816e8e",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/einsatzorte.jsx": {
+          "sha256": "55927327979c20b625385bb0968e05ebdf9620bc32e312dab6603d05933af8d5",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/einsatzplan.jsx": {
+          "sha256": "4a2dd85e4a17c6483bd673e4bf58bea5109a0e73641398cd2b9da51ee0725c80",
+          "literale": [
+            {
+              "wert": "6",
+              "kontext": "{{ position: \"absolute\", inset: -1, border: `2px solid ${C.danger}`,\n                          borderRadius: 6, pointerEvents: \"none\" }}"
+            },
+            {
+              "wert": "4",
+              "kontext": "{{ position: \"absolute\", top: -2, right: 1, width: 7, height: 7, borderRadius: 4,\n                          background: b.stufe === \"recht\" ? C.danger : C.warn, border: `1px solid ${C.flaeche}` }}"
+            }
+          ],
+          "literaleSha256": "6f23d50f74142b04c5087dc8a7a66dd968ca12d48ede129d36b6ffecc5d44457"
+        },
+        "src/ansichten/ersatzliste.jsx": {
+          "sha256": "2523974d3763160c18b3b01ab47690d9bd4afbf165940658840d11d9cd369590",
+          "literale": [
+            {
+              "wert": "9",
+              "kontext": "{{ width: 26, height: 26, borderRadius: 9, background: i === 0 ? C.okLight : C.bg,\n            color: i === 0 ? C.ok : C.dimmer, display: \"flex\", alignItems: \"center\", justifyContent: \"center\",\n            fontSize: 11.5, fontWeight: 700, flexShrink: 0, ...NUM }}"
+            },
+            {
+              "wert": "14",
+              "kontext": "{{ marginTop: 16, padding: 16, borderRadius: 14, background: C.dangerLight }}"
+            }
+          ],
+          "literaleSha256": "db3aab1e16c0c452dc26f7fb6c5ac33edf485828923b3d53f284345521abd382"
+        },
+        "src/ansichten/freigabeleiste.jsx": {
+          "sha256": "f2529e2e96255fa8fcd9e9d064b89889e74255d896aba821cbf553d7e6043f38",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/intelligence/Aenderungsuebersicht.jsx": {
+          "sha256": "d7ed06a679403b490f1bb9c87fdadd217bccaf4deab6b65ae2ad3e8d38d2dcb9",
+          "literale": [
+            {
+              "wert": "8",
+              "kontext": "{{ border: \"1px solid currentColor\", borderRadius: 8, padding: 12, maxWidth: \"100%\", overflowWrap: \"anywhere\" }}"
+            }
+          ],
+          "literaleSha256": "aeebeaca88680c4c81c36a1bdcad85f5b749a921937b4f43647aaefda2958723"
+        },
+        "src/ansichten/intelligence/KiEntwurf.jsx": {
+          "sha256": "e08f81cbea2affe2cb27e43c32d1e9519225ea75742ee033abb668a84f5fda5e",
+          "literale": [
+            {
+              "wert": "8",
+              "kontext": "const kasten = { border: \"1px solid currentColor\", borderRadius: 8, padding: 12, overflowWrap: \"anywhere\", maxWidth: \"100%\" };"
+            }
+          ],
+          "literaleSha256": "29a16f068fb94d85c2734cbabca619c2e778d37beb796539e82f9e26b1e46420"
+        },
+        "src/ansichten/jahresansicht.jsx": {
+          "sha256": "8d5bcf9ecd0621de3a2cd63ab73ed81de492ea9d8e0e1f8f7569ef604d3285d2",
+          "literale": [
+            {
+              "wert": "6",
+              "kontext": "{{ width: 40, height: 36, background: C.flaecheStill, borderRadius: 6,\n                          position: \"relative\", overflow: \"hidden\" }}"
+            },
+            {
+              "wert": "1",
+              "kontext": "{{ position: \"absolute\", left: 4, right: 4,\n                              ...(ueber ? { bottom: 18 } : { top: 19 }),\n                              height: balken, background: ton,\n                              opacity: ton === C.accent ? .6 : .95, borderRadius: 1 }}"
+            }
+          ],
+          "literaleSha256": "d3a05e7812d20b95ea93a503bd4f08a7bf4946e25eb71ff72ef33e52fee2c2b1"
+        },
+        "src/ansichten/kapazitaetsvorschau.jsx": {
+          "sha256": "d39cb7f199e3d1c15bd89ef7b6f312fe90256a1e6d6dbcc49a25b46065f1bc42",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/mehrfach.jsx": {
+          "sha256": "4924e8f3dee98c50262df4dc6f248f125461eeb36dfc1255ebbb38a88c807490",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/meineschichten.jsx": {
+          "sha256": "8f09d6a8fd6a3731fe22aeca28d6eddb1bf603aa2e1cd92e10c8d786eb66ce90",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/monatsplan.jsx": {
+          "sha256": "b67bd9134f0853ea148b4395dfbe61025e70857231eaf782eeefd20fc927ba60",
+          "literale": [
+            {
+              "wert": "2",
+              "kontext": "{{ width: \"58%\", borderRadius: 2,\n                      height: t ? (t.stufe === 2 ? 16 : 9) : 3,\n                      background: t ? (t.stufe === 2 ? C.danger : C.warn) : C.line,\n                      opacity: t ? 1 : .55 }}"
+            },
+            {
+              "wert": "4",
+              "kontext": "{{ width: 8, height: 8, borderRadius: 4, background: lesbar(e.farbe, 3), flexShrink: 0 }}"
+            },
+            {
+              "wert": "2",
+              "kontext": "{{ width: \"72%\", height: 3, borderRadius: 2, background: C.lineSoft, overflow: \"hidden\" }}"
+            },
+            {
+              "wert": "3",
+              "kontext": "{{ width: 5, height: 5, borderRadius: 3, background: C.danger }}"
+            }
+          ],
+          "literaleSha256": "7d14af2376f0a6414b386e3c3e0ea9ff4eb56f6dd9241e4ea29a30f04369b71d"
+        },
+        "src/ansichten/offeneschichten.jsx": {
+          "sha256": "961bb68795fc0e53aa6796f884c0c0234ff118c4f4515bc7825a34e0664fe05f",
+          "literale": [
+            {
+              "wert": "2",
+              "kontext": "{{ width: 4, alignSelf: \"stretch\", borderRadius: 2,\n                    background: da ? da.farbe : C.line }}"
+            },
+            {
+              "wert": "2",
+              "kontext": "{{ width: 4, alignSelf: \"stretch\", minHeight: 34, borderRadius: 2,\n                    background: da ? da.farbe : C.line }}"
+            },
+            {
+              "wert": "10",
+              "kontext": "{{ padding: \"14px 16px\", borderRadius: 10,\n                  background: moeglich > 0 ? C.okLight : C.warnLight,\n                  border: `1px solid ${moeglich > 0 ? C.ok : C.warn}66` }}"
+            }
+          ],
+          "literaleSha256": "d49ceab1b125b8caf5b79ae7bfdb0b66c94b6e755ef4c6fa81e7109ba70cd5f7"
+        },
+        "src/ansichten/planstand.jsx": {
+          "sha256": "20202142ea11dfee84c057102df6a0a5bca808b017a68285938ea42481e079af",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/schichtfolge.jsx": {
+          "sha256": "3194658eaa8904ec4e56167693b64907fa767107ef19980c54e0c72a4cad16fe",
+          "literale": [
+            {
+              "wert": "4",
+              "kontext": "{{ width: 8, height: 8, borderRadius: 4, background: lesbar(e.farbe, 3) }}"
+            }
+          ],
+          "literaleSha256": "776fd274df6fc03dc72ba0a0d7f7c686277a7a3d27679b406f03089445790f14"
+        },
+        "src/ansichten/schnellbesetzung.jsx": {
+          "sha256": "61418b4570beaf432065188d8349fd5132e345ef47ca8afefe140f95c7c6448f",
+          "literale": [
+            {
+              "wert": "12",
+              "kontext": "{{ padding: 14, borderRadius: 12, background: C.dangerLight, color: C.danger, fontSize: 13.5, marginBottom: 16 }}"
+            },
+            {
+              "wert": "9",
+              "kontext": "{{ width: 25, height: 25, borderRadius: 9, flexShrink: 0, display: \"flex\",\n                alignItems: \"center\", justifyContent: \"center\", fontSize: 11.5, fontWeight: 700, ...NUM,\n                background: i === 0 ? C.okLight : C.bg, color: i === 0 ? C.ok : C.dimmer }}"
+            }
+          ],
+          "literaleSha256": "4b2ad7f61176055a0297d8e822bd9ecfe002a9e58acf324abc2226f4aad07894"
+        },
+        "src/ansichten/selbstplanung.jsx": {
+          "sha256": "a7556dbd919d9e58c1e38c0b3a2959c9a3586fdfbd38f78c76df4538abe591f7",
+          "literale": [
+            {
+              "wert": "8",
+              "kontext": "{{ display: \"inline-block\", minWidth: 44,\n                                  padding: \"3px 8px\", borderRadius: 8, fontSize: 12.5,\n                                  fontWeight: 600, ...NUM,\n                                  background: x.gedeckt ? C.okLight : x.drin > 0 ? C.warnLight : C.dangerLight,\n                                  color: x.gedeckt ? C.ok : x.drin > 0 ? C.warn : C.danger }}"
+            }
+          ],
+          "literaleSha256": "ee6cb2a5042a47a61db5793c482456b6ea46b3f42c5cca56b8c73aed6ca8a7cc"
+        },
+        "src/ansichten/sondereinsaetze.jsx": {
+          "sha256": "80a17b1a12b34397fff032cae28e90f973efd00c30f727e67a8ab0d64defc758",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/standorte.jsx": {
+          "sha256": "06fd1f894ca5ce19ef5bfb1d94d096a96c31982880105c91da6f0305baddd012",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/standortespiegel.jsx": {
+          "sha256": "77e3eb3f129d631c9a76ca0eeaa3e4b005482b39ce28e8259b115419ee7364c8",
+          "literale": [
+            {
+              "wert": "10",
+              "kontext": "{{ display: \"flex\", alignItems: \"center\", gap: 12,\n              background: C.bg, borderRadius: 10, padding: \"12px 14px\", flexWrap: \"wrap\" }}"
+            }
+          ],
+          "literaleSha256": "1550621b58a08627e4f4d9f503c192ca63c6139186b061fd68c4e3c93c49de4a"
+        },
+        "src/ansichten/tagesdetail.jsx": {
+          "sha256": "0f349e1e77b8b16743ea6a16b27e0787041a909720dce738355f36a92f0eaba0",
+          "literale": [
+            {
+              "wert": "12",
+              "kontext": "{{ padding: \"11px 15px\", marginBottom: 20, borderRadius: 12, background: \"rgba(179,38,30,.085)\",\n        color: C.danger, fontSize: 13.5, fontWeight: 500 }}"
+            },
+            {
+              "wert": "999",
+              "kontext": "{{ borderRadius: 999 }}"
+            },
+            {
+              "wert": "16",
+              "kontext": "{{ borderRadius: 16, padding: 4 }}"
+            }
+          ],
+          "literaleSha256": "d4da5de2675b0ca172df1760e338ebe144f64162935e8c66935a7289389c2ae6"
+        },
+        "src/ansichten/teamauslastungleiste.jsx": {
+          "sha256": "b356e733f5d4dc8cebdfbdd45cd1a0c358779d35ee8b145b40aac9b569a308c4",
+          "literale": [
+            {
+              "wert": "6",
+              "kontext": "{{ padding: \"13px 16px\", background: C.flaecheStill, borderRadius: 6,\n      marginBottom: 12, fontSize: 13.5, color: C.dim }}"
+            }
+          ],
+          "literaleSha256": "9c7254321c23163c1feb8b391588639d981971af5d5fef15b3492b891f3469c7"
+        },
+        "src/ansichten/wochenliste.jsx": {
+          "sha256": "def00a269699a8b9d8c3dca73eba945553d2ccbb36c82681498a52ccd632c5bd",
+          "literale": [
+            {
+              "wert": "2",
+              "kontext": "{{ width: 58, height: 3, borderRadius: 2, background: C.lineSoft,\n                          overflow: \"hidden\", marginLeft: \"auto\", marginTop: 3 }}"
+            },
+            {
+              "wert": "4",
+              "kontext": "{{ width: 7, height: 7, borderRadius: 4, background: C.danger, flexShrink: 0 }}"
+            }
+          ],
+          "literaleSha256": "1b6d07de39387fcd98c51d67e3bf35d0b9f973911028db5dacc1c721ab33e3e2"
+        }
+      }
+    },
+    "Personal": {
+      "basis": "7d659b55eaf17630edf406f81e210420b807dbe3",
+      "dateien": {
+        "src/ansichten/einarbeitung.jsx": {
+          "sha256": "c24811e9b7ff7315cdc64393b5916a34b8a39417251660fb15b7edb13c88fdb2",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/kompetenzen.jsx": {
+          "sha256": "892932bc92c35d92c03e0c52e6e01a0812377db2497ffc275b523616e6d4e222",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/nachweise.jsx": {
+          "sha256": "b6763985ddccad1e6aac0d43d5ab6688ed5fcb51d66218b441219b8bcd47d982",
+          "literale": [
+            {
+              "wert": "2",
+              "kontext": "{{ width: 4, alignSelf: \"stretch\", borderRadius: 2, flexShrink: 0,\n                  background: tone === \"danger\" ? C.danger : tone === \"warn\" ? C.warn : \"transparent\" }}"
+            }
+          ],
+          "literaleSha256": "55647b9147f841351bfbea62e56ba9dc7d1973c00e4e0a48a7b23cb86a09effe"
+        },
+        "src/ansichten/nachweispflege.jsx": {
+          "sha256": "6b0e1d08cd6bfd5a2875627465b5bbf74e35bc34c02586dfa09e58490fc43107",
+          "literale": [
+            {
+              "wert": "12",
+              "kontext": "{{ padding: 14, borderRadius: 12, background: C.dangerLight, color: C.danger,\n          fontSize: 13.5, marginBottom: 20, lineHeight: 1.5 }}"
+            }
+          ],
+          "literaleSha256": "95f90478cdd37b48adf74fd83d4d1f16b46bdfdc6d3ae6f651c9e33b9a3ce32f"
+        },
+        "src/ansichten/personal.jsx": {
+          "sha256": "b422f16227821f84775622a3d28c9e1a831e841dd2493619277cd7da9c608368",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/personalakte.jsx": {
+          "sha256": "e37f43d6f41cbaf9f0c4adf6a07384cf25d6937e83d82cd458839d8ee721d650",
+          "literale": [
+            {
+              "wert": "5px 5px 0 0",
+              "kontext": "{{ height: Math.max(3, ((v || 0) / maxN) * 56),\n                background: i === Number(ym.slice(5)) - 1 ? C.accent : \"rgba(43,52,64,.24)\", borderRadius: \"5px 5px 0 0\",\n                transition: \"height .4s\" }}"
+            },
+            {
+              "wert": "8",
+              "kontext": "{{ fontSize: 12.5, color: C.dim, lineHeight: 1.55,\n                background: C.accentLight, padding: \"10px 13px\", borderRadius: 8 }}"
+            }
+          ],
+          "literaleSha256": "d0e49a4e72b1387d1310232db5f81857a75fdc65132939b43695c5a465ffa2af"
+        },
+        "src/ansichten/qualifikationsmatrix.jsx": {
+          "sha256": "025537f7f7f99b2c3e1b27d8c756d98056dce396e315e8cb5e8269b72a094553",
+          "literale": [
+            {
+              "wert": "5",
+              "kontext": "{{ width: 9, height: 9, borderRadius: 5, background: lesbar(s.qual.farbe, 3) }}"
+            }
+          ],
+          "literaleSha256": "f3137297eca760df1bf0caa776af8b46f75a114ab563672dfa14d947a9c8fcbf"
+        },
+        "src/ansichten/selbstauskunft.jsx": {
+          "sha256": "8230147a46db95666ddd6b3d2780cba25f9e7739d915c09f28aee89c909cc4d4",
+          "literale": [
+            {
+              "wert": "6",
+              "kontext": "{{ minWidth: 240, padding: \"7px 9px\", border: `1px solid ${C.line}`, borderRadius: 6 }}"
+            }
+          ],
+          "literaleSha256": "ef18c5e0cfdeddb07284c3a5b7f4aa4493cb32a823b60da174cdfbfc0a4e0bcb"
+        },
+        "src/ansichten/verfuegbarkeit.jsx": {
+          "sha256": "cee53038fcf4bf712c3806f2a4bf9e679029c13ac837473e1c66ba3354b0e816",
+          "literale": [
+            {
+              "wert": "12",
+              "kontext": "{{ height: 46, borderRadius: 12, border: \"none\", cursor: \"pointer\",\n                    background: an ? C.okLight : C.bg,\n                    color: C.ok, display: \"flex\", alignItems: \"center\", justifyContent: \"center\" }}"
+            },
+            {
+              "wert": "5",
+              "kontext": "{{ width: 15, height: 15, borderRadius: 5, background: C.okLight }}"
+            },
+            {
+              "wert": "5",
+              "kontext": "{{ width: 15, height: 15, borderRadius: 5, background: C.bg }}"
+            },
+            {
+              "wert": "12",
+              "kontext": "{{ marginTop: 16, padding: 14, borderRadius: 12, background: C.warnLight,\n            color: C.warn, fontSize: 13, lineHeight: 1.5 }}"
+            }
+          ],
+          "literaleSha256": "58f905df93d56535da1d75e8685e09e14d585ee1a0857996dae1e5fc528e0deb"
+        },
+        "src/ansichten/verteilung.jsx": {
+          "sha256": "5002c2aeccf3ad09d8a348e30ac8cbd5db0493fcd915345c1b0312669759a228",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        }
+      }
+    },
+    "Zeit/Abrechnung": {
+      "basis": "c11a6a722720bd88b39bc07b0ea19f181ac04485",
+      "dateien": {
+        "src/ansichten/abrechnungsdaten.jsx": {
+          "sha256": "04ac615624fe0fc309a2ad5ec62b95b9255f349ee5cd0fafb530dae73563d454",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/antraege.jsx": {
+          "sha256": "e05087d702c65b3c8342b72d7047b6d6426f1951b8b5f8962fad9a0815c72484",
+          "literale": [
+            {
+              "wert": "2",
+              "kontext": "{{ width: 4, alignSelf: \"stretch\", borderRadius: 2, flexShrink: 0,\n                  background: a.status === \"offen\" ? C.warn : a.status === \"genehmigt\" ? C.ok : C.danger }}"
+            }
+          ],
+          "literaleSha256": "7a93cd1af61e69b0bf00d3ca1572d6e9b9fe0a742ed8455d962c3457c34a0940"
+        },
+        "src/ansichten/antraegegeteilt.jsx": {
+          "sha256": "acef9b2f8ec6a7e0c6fe56cb6d21ea4fe0b6811a3df3cc20e94c264e1cf9fb14",
+          "literale": [
+            {
+              "wert": "9",
+              "kontext": "{{ display: \"flex\", alignItems: \"center\", gap: 12,\n                      padding: \"9px 11px\", borderRadius: 9, marginBottom: 5,\n                      background: hervor ? flaeche : \"transparent\",\n                      outline: hervor ? `1.5px solid ${farbe}` : \"none\" }}"
+            },
+            {
+              "wert": "6",
+              "kontext": "{{ flex: 1, height: 22, borderRadius: 6, background: C.bg,\n                        position: \"relative\", overflow: \"hidden\" }}"
+            }
+          ],
+          "literaleSha256": "4aa5657435b6c402e4cb10998589990362dd43392b15b62ff34a21f397a1a762"
+        },
+        "src/ansichten/auftraggeberbericht.jsx": {
+          "sha256": "79b0f810a34b07ba770c333f293f34ec7ee7a55de9226d86f1129945815bb223",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/belastbarkeit.jsx": {
+          "sha256": "368f7adf641507121eb5b360f5b22fd2cfabed7f4ed63a8f725c41642e33063e",
+          "literale": [
+            {
+              "wert": "4",
+              "kontext": "{{ width: 26, height: 16, borderRadius: 4, flexShrink: 0,\n                  background: `${farbe(s.id)}1C`, borderBottom: `2px solid ${farbe(s.id)}` }}"
+            },
+            {
+              "wert": "10",
+              "kontext": "{{ marginBottom: 6, borderRadius: 10, cursor: \"pointer\",\n                background: gewaehlt === w.kw ? flaeche(w.stufe) : \"transparent\",\n                outline: gewaehlt === w.kw ? `1.5px solid ${farbe(w.stufe)}` : \"none\" }}"
+            },
+            {
+              "wert": "6",
+              "kontext": "{{ flex: 1, height: 26, borderRadius: 6, display: \"flex\", alignItems: \"center\",\n                        justifyContent: \"center\", fontSize: 11, fontWeight: 650,\n                        background: `${farbe(z.stufe)}1C`, color: farbe(z.stufe),\n                        borderBottom: `2px solid ${farbe(z.stufe)}` }}"
+            },
+            {
+              "wert": "8",
+              "kontext": "{{ background: C.flaeche, borderRadius: 8 }}"
+            }
+          ],
+          "literaleSha256": "c3f8e001758af68243be6f7aff1dd491788e353f780017816a97fc73a297c673"
+        },
+        "src/ansichten/belastung.jsx": {
+          "sha256": "7b78f1e2eee8a9e17930cde59da49c92db71d778258d392009d4e5de88b2d946",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/datenmitnahme.jsx": {
+          "sha256": "6629c2fc025af7827d5e7eb2beccd9e4a12d6eecb83626eb5fe2997fb32d4fc1",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/kontoblatt.jsx": {
+          "sha256": "f94f991d9eb6892fd206dc03bb58678c14485ee54ba7d6615d201452d055abc7",
+          "literale": [
+            {
+              "wert": "24",
+              "kontext": "{{ background: C.flaeche, borderRadius: 24, padding: \"24px 26px\",\n        border: `1px solid ${C.line}`, marginBottom: 12, color: C.dim, fontSize: 14.5, lineHeight: 1.5 }}"
+            },
+            {
+              "wert": "24",
+              "kontext": "{{ background: C.flaeche, borderRadius: 24, padding: \"30px 26px 26px\",\n      border: `1px solid ${C.line}`, marginBottom: 12 }}"
+            },
+            {
+              "wert": "50%",
+              "kontext": "{{ position: \"absolute\", left: `${(letzterX / W) * 100}%`,\n        top: (letzterY / (H + 14)) * 104, width: 10, height: 10, boxSizing: \"border-box\",\n        transform: \"translate(-50%, -50%)\", borderRadius: \"50%\", background: C.flaeche,\n        border: `2px solid ${ueber ? C.warn : C.accentHi}` }}"
+            }
+          ],
+          "literaleSha256": "a4be16acafc8d1a56003182af7b6708f8b22f4619657083a80064bcc284e8adf"
+        },
+        "src/ansichten/korrekturantraege.jsx": {
+          "sha256": "82018d3d222b82134cbf16713c59a8fe59edf7ea8b1c1d81ef5d0b11401a74e3",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/korrekturen.jsx": {
+          "sha256": "3bdc78201272ddcf38ffd4bfb1c232e2c8bdfa595a7d65b4d3de190e5f03d940",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/korrekturoffene.jsx": {
+          "sha256": "a0ebcf7520bf670b4d8866a7d8421f6ec65e61057d67f5efbc26fcd762e0cadb",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/krankmeldung.jsx": {
+          "sha256": "69780bbb4daba66b032018ccde2169db24d635601d888722eadb87b64bc3e30d",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/krankmeldungen-offen.jsx": {
+          "sha256": "758e0d1fdf379565266a45c6647857595f3e04a95bbb7e0838a3b98908084bb5",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/lohnausgabe.jsx": {
+          "sha256": "d483270fc1d180fd417043543acc6b5761752c13b749649c5dd2bcc435c15d27",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/monatsabschluss.jsx": {
+          "sha256": "8f6e6736492713ceef6134f35a01ecd7408c4e9f343b15fa3c0f51662504acc7",
+          "literale": [
+            {
+              "wert": "6",
+              "kontext": "{{ marginTop: 8, padding: \"10px 12px\", border: `1px solid ${C.warn}`, borderRadius: 6 }}"
+            }
+          ],
+          "literaleSha256": "4cd11a9138c50230b4f93d21919bb84f737755dd75c6c61a879207fd3aadd19e"
+        },
+        "src/ansichten/monatskorrektur.jsx": {
+          "sha256": "27d53bb5fab686529970e15d2b37f71285d0dea94d3235918ea83f3c1d50308e",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/stempelpuffer.jsx": {
+          "sha256": "89e8917c58719aef779ff729cc22492b747ae0f837ae7ce29d7f85591f80abf0",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/stempeluhr.jsx": {
+          "sha256": "52c92fe48773034d26f6a4dadb980176896e414418495331d2f3261622d46c9d",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/tauschboerse.jsx": {
+          "sha256": "5a18bcc53a5d04e1a6b06a52b493ab069927e7471cf6a9c6516dae76fb6e865e",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/therapieminuten.jsx": {
+          "sha256": "d04e21321ce9df2538056832ece731f45e4da80dbff3b223b40be15e92b06abf",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/ungeplanthinweis.jsx": {
+          "sha256": "a46e11b59cd366f56d79f0f10a587156eabfacb58c0e43f15a5b903b53a0b861",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/urlaubsrunde.jsx": {
+          "sha256": "905b42ae4160d4769b8b84578f54eb12e9af2b2e854de2b1e6f85d6f08f7e7b6",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/wunschdienste.jsx": {
+          "sha256": "2b9395c372dd6e16274e41b5e3a3a6f4716643c14d26e83c2b2571cf0c872d69",
+          "literale": [
+            {
+              "wert": "11",
+              "kontext": "{{ padding: \"8px 4px\", borderRadius: 11, border: \"none\",\n                cursor: vergangen ? \"default\" : \"pointer\", textAlign: \"center\", opacity: vergangen ? .38 : 1,\n                background: art ? `${art.farbe}1C` : C.bg,\n                outline: art ? `1.5px solid ${art.farbe}66` : \"none\" }}"
+            },
+            {
+              "wert": "6",
+              "kontext": "{{ width: 17, height: 17, borderRadius: 6, background: `${a.farbe}1C`,\n              color: lesbar(a.farbe), fontSize: 12, fontWeight: 800, display: \"flex\", alignItems: \"center\",\n              justifyContent: \"center\" }}"
+            },
+            {
+              "wert": "8",
+              "kontext": "{{ width: 24, height: 24, borderRadius: 8, flexShrink: 0, display: \"flex\",\n                    alignItems: \"center\", justifyContent: \"center\", fontWeight: 800, fontSize: 13,\n                    background: `${art.farbe}1C`, color: lesbar(art.farbe) }}"
+            }
+          ],
+          "literaleSha256": "151c9f5967020b1b41da08200baa6b6cba4caaf172b9358e96fc203486baf2c6"
+        }
+      }
+    },
+    "Einstellungen/Verwaltung": {
+      "basis": "8f15631dcd67f70796412b0eff7e9c21b6992c45",
+      "dateien": {
+        "src/ansichten/assistent.jsx": {
+          "sha256": "b31c131781f0b6048c936f984f08ab156ffce4a701ff0d30ea0414045cf985fb",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/assistent2.jsx": {
+          "sha256": "ab8f00fd755f73b64e337270f259d771b2047b27462f847e8f6955ae6d3a5a6b",
+          "literale": [
+            {
+              "wert": "12",
+              "kontext": "{{ borderRadius: 12 }}"
+            },
+            {
+              "wert": "10",
+              "kontext": "{{ width: 34, height: 34, borderRadius: 10, cursor: \"pointer\", fontSize: 12, fontWeight: 700, ...NUM,\n                          display: \"flex\", alignItems: \"center\", justifyContent: \"center\",\n                          background: d ? `${d.farbe}22` : C.bg, color: d ? d.farbe : C.dimmer }}"
+            },
+            {
+              "wert": "5",
+              "kontext": "{{ width: 10, height: 10, borderRadius: 5, background: lesbar(g.farbe, 3), marginBottom: 12 }}"
+            }
+          ],
+          "literaleSha256": "158435a375329842443199cd2aedb7f5131d94af9778207c81b582bf7330a052"
+        },
+        "src/ansichten/datenschutz.jsx": {
+          "sha256": "077f12503ce8ce29de4a6afdcacae95539b84e68d8716ab64e4c4d8412092316",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/einladungen.jsx": {
+          "sha256": "f3cb644ce7f8f9d9b39d79c523f2787477d0c4ddfd70a673239261070b232d53",
+          "literale": [
+            {
+              "wert": "10",
+              "kontext": "{{ display: \"block\", marginTop: 6, padding: \"10px 12px\", borderRadius: 10,\n            border: `1px solid ${C.line}`, wordBreak: \"break-all\", fontSize: 13.5, userSelect: \"all\" }}"
+            },
+            {
+              "wert": "10",
+              "kontext": "{{ display: \"block\", marginTop: 6, padding: \"10px 12px\", borderRadius: 10,\n              border: `1px solid ${C.line}`, wordBreak: \"break-all\", fontSize: 13, userSelect: \"all\" }}"
+            },
+            {
+              "wert": "12",
+              "kontext": "{{ display: \"block\", margin: \"8px 0\", padding: \"12px 14px\", borderRadius: 12,\n        border: `1px solid ${F.line}`, fontSize: 18, letterSpacing: \".08em\", userSelect: \"all\" }}"
+            },
+            {
+              "wert": "12",
+              "kontext": "{{ width: \"100%\", padding: \"11px 13px\", fontSize: 14, borderRadius: 12, boxSizing: \"border-box\",\n          border: `1px solid ${fehler ? F.danger : F.line}`, fontFamily: \"inherit\", background: F.bg, color: F.text }}"
+            },
+            {
+              "wert": "999",
+              "kontext": "{{ marginTop: 10, padding: \"10px 16px\", fontSize: 14, fontWeight: 600, borderRadius: 999, border: \"none\",\n          fontFamily: \"inherit\", cursor: einladung.trim() && !laeuft ? \"pointer\" : \"default\",\n          background: einladung.trim() && !laeuft ? F.accent : F.lineStark, color: F.aufAkzent }}"
+            }
+          ],
+          "literaleSha256": "e31aa9a5c8e125ed85ce8fdd01b258264c8e83d0a4a808d549264d85de511176"
+        },
+        "src/ansichten/einsatzregelliste.jsx": {
+          "sha256": "0d245c38bf611140f9a624be646d9f707313d5d88d2d64ebfaa148613b067034",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/einstellungen.jsx": {
+          "sha256": "a1f367302eb708fa821eb7acabb2d932d94f2ef17a6483a9ec157b8460788b5a",
+          "literale": [
+            {
+              "wert": "8",
+              "kontext": "{{ fontSize: 11.5, padding: \"7px 11px\", borderRadius: 8,\n                background: C.bg, border: `1px solid ${C.line}`, maxWidth: 300,\n                display: \"block\", overflow: \"hidden\", textOverflow: \"ellipsis\",\n                whiteSpace: \"nowrap\", ...NUM }}"
+            }
+          ],
+          "literaleSha256": "b335e2f8ee2be15bbc57bae516b71cf5092fb5382b44029e674c988e2e76c10a"
+        },
+        "src/ansichten/einwilligungen.jsx": {
+          "sha256": "2a87427026d96595e422a8b4db5fadc7dae8dc167678b75f93e2a60b37f22dd3",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/geo-schalter.jsx": {
+          "sha256": "ca0f450172f4148f08dff8a268adf83b45b775dccb9a8301a9e4bc57a6a8f5b9",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/jugendschutz-schalter.jsx": {
+          "sha256": "338d07daf89d9396f8d005b2d23d16bf10aceb7b0629ea0561dbeeaa4ef0028f",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/lenkzeiten.jsx": {
+          "sha256": "7e00447dc084adf13f461244ba491c2a7cda8c7809df710216a06d1cb2abb1c3",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/offline-schalter.jsx": {
+          "sha256": "d033a32116089f0c2bacabaf086291af7a53b6742f91ec92c4171d37bdb8fcb1",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/planfreigabeschalter.jsx": {
+          "sha256": "c5cba187a2237206929748939ec61abc83f2b745e79c18e1502ae527cdc5d3ed",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/planungsreife.jsx": {
+          "sha256": "e54c81c9f11b9e3bdf2cdf173ed49677dc122417fa034479e170650651392124",
+          "literale": [
+            {
+              "wert": "10",
+              "kontext": "{{ border: `1px solid ${C.lineSoft}`, borderRadius: 10, padding: \"12px 14px\", display: \"grid\", gap: 8 }}"
+            }
+          ],
+          "literaleSha256": "c2448d9a2791f0ba0e6c17a84ee9bc10b84cfa7607fb4b4d37ea47582401dd7e"
+        },
+        "src/ansichten/pruefung.jsx": {
+          "sha256": "5a0a4d5a49db5d666f64acc349d387a03235c852ee31fe2e07b7197208257180",
+          "literale": [
+            {
+              "wert": "5",
+              "kontext": "{{ padding: \"1px 7px\", borderRadius: 5,\n                            background: q.betrieblich ? \"transparent\" : C.flaecheStill,\n                            border: q.betrieblich ? `1px solid ${C.lineSoft}` : \"none\",\n                            color: C.dim, fontWeight: 550, whiteSpace: \"nowrap\" }}"
+            }
+          ],
+          "literaleSha256": "fb9250bfc75368aa8e760a6d00d2fc33ff321e460b257f4e3addb88742583f5d"
+        },
+        "src/ansichten/regelwerk.jsx": {
+          "sha256": "08a813bfac88b1109847244d279f64496d6e88ba75c8026aa4089b6d6ddee210",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/sicherungausserhaus.jsx": {
+          "sha256": "815ba72e243ff10dae6a0d0a838f6fe03bdffdaf5c52edf27730b04a86da858c",
+          "literale": [
+            {
+              "wert": "8",
+              "kontext": "{{ display: \"block\", fontFamily: \"ui-monospace, monospace\",\n                fontSize: 12.5, wordBreak: \"break-all\", background: C.flaeche,\n                padding: \"9px 11px\", borderRadius: 8, marginBottom: 10 }}"
+            },
+            {
+              "wert": "8",
+              "kontext": "{{ margin: 0, padding: \"10px 12px\", borderRadius: 8,\n                background: C.flaecheStill, color: C.text, border: `1px solid ${C.lineSoft}`, fontSize: 12,\n                overflowX: \"auto\", lineHeight: 1.5 }}"
+            }
+          ],
+          "literaleSha256": "8543e58bd7172a1ec6c9a5b99fa1b3d0339903bf5d43acd266e507a19bd0288a"
+        },
+        "src/ansichten/sicherungenverwalten.jsx": {
+          "sha256": "7b2190412a60570c4b21334eafd82810acf07413c1c54b8a5ac1ce2e9b9d38cd",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/tarifwerk.jsx": {
+          "sha256": "47c408ad108db37da1eaa1be2ee9ef3a6f683df3cbcc657cd362052fd8e708dc",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/untergrenzen.jsx": {
+          "sha256": "16e6d6c5e492c68084685c4e9c36ebe1ad1896f8d87f7884208bffa69df64ff7",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/vorgaben.jsx": {
+          "sha256": "d40602f32c277209af57c78a085a51a114ac622e647ea6624a934aa7e4ca68af",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/warndialog.jsx": {
+          "sha256": "0f4e900639d28b9969a11f8c7c1c484a533773ff728478c2a9e806318db9fa1f",
+          "literale": [
+            {
+              "wert": "10",
+              "kontext": "{{ fontSize: 13, color: abwesenheitGesperrt ? C.danger : C.dim, background: C.bg, borderRadius: 10, padding: \"10px 12px\", margin: \"6px 0 14px\", lineHeight: 1.5 }}"
+            }
+          ],
+          "literaleSha256": "b4f8d48d1367f0b0890054b0105c9c46fb99ed4c761fe090edfa3f7194a4bd4f"
+        }
+      }
+    },
+    "Lage/Dashboard": {
+      "basis": "bf25396375ef952d901790b66e6d7ca375bc41c2",
+      "dateien": {
+        "src/ansichten/ablauf.jsx": {
+          "sha256": "a02975c8ba4f33a521a93f245fd6204754b7a9470eac48ef1df755b9b7da3b64",
+          "literale": [
+            {
+              "wert": "16",
+              "kontext": "{{ minWidth: kompakt ? 132 : 168, padding: kompakt ? \"12px 13px\" : \"15px 16px\",\n                  borderRadius: 16, cursor: \"pointer\", position: \"relative\",\n                  background: st.ok ? C.okLight : aktuell ? `${f}12` : C.bg,\n                  outline: offen === st.id ? `2px solid ${C.accent}` : aktuell ? `2px solid ${f}` : \"none\",\n                  opacity: st.mein ? 1 : .62 }}"
+            },
+            {
+              "wert": "10",
+              "kontext": "{{ width: 20, height: 20, borderRadius: 10, flexShrink: 0, display: \"flex\",\n                    alignItems: \"center\", justifyContent: \"center\", fontSize: 11, fontWeight: 700, ...NUM,\n                    background: st.ok ? C.ok : aktuell ? f : C.lineStark,\n                    color: st.ok || aktuell ? C.aufAkzent : C.dimmer }}"
+            },
+            {
+              "wert": "2",
+              "kontext": "{{ flex: 1, height: 4, borderRadius: 2, cursor: \"pointer\",\n                background: k <= i ? C.accentDeep : C.line, transition: \"background .25s\" }}"
+            },
+            {
+              "wert": "12",
+              "kontext": "{{ width: 24, height: 24, borderRadius: 12, flexShrink: 0, display: \"flex\",\n                alignItems: \"center\", justifyContent: \"center\", fontSize: 11.5, fontWeight: 700, ...NUM,\n                background: st.ok ? C.ok : C.line, color: st.ok ? C.aufAkzent : C.dimmer }}"
+            }
+          ],
+          "literaleSha256": "3bf1c94c121e22095b786a7652744fc833b410b5b2ed66e298a1b7616a852d36"
+        },
+        "src/ansichten/dienstbuch.jsx": {
+          "sha256": "f0ae5c66337e9976a28693c8ba108491927523f43809b7389cd6277bbb1863f0",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/eskalation.jsx": {
+          "sha256": "727cc31fd3318639a1248239f87a07062437e0159e75be0231f8535afe210788",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/lagebild.jsx": {
+          "sha256": "24957d4c0927a4f50664dab72fbf3e42ac2c15ebc2b315e06481de07598844e9",
+          "literale": [
+            {
+              "wert": "4",
+              "kontext": "{{ width: 8, height: 8, borderRadius: 4, background: lesbar(e.farbe, 3), display: \"inline-block\", marginRight: 9 }}"
+            }
+          ],
+          "literaleSha256": "5341f98520e2b0e92001a40d3575685e30c506913c7c00d488aea6a72d19545b"
+        },
+        "src/ansichten/nachrichten.jsx": {
+          "sha256": "6791a8a44102802f20b45b2332614a4006707962031c0072595fdbb0001b8364",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/notizen.jsx": {
+          "sha256": "f4848b3afa2eeda0531cc8f0d6933f71aa37bc7d3a0f4bdb4377fe3f5b60a0a5",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/notrufe.jsx": {
+          "sha256": "9df599255021c22334f4d283133a0a7477ea5399d2bec478ee8002b5cb4077d6",
+          "literale": [
+            {
+              "wert": "5",
+              "kontext": "{{ width: 10, height: 10, borderRadius: 5, marginTop: 6, flexShrink: 0,\n            background: istOffen ? (a.dringend ? C.danger : C.warn) : C.ok }}"
+            }
+          ],
+          "literaleSha256": "bea3f1859e67cbf8e57baa1cda61b97753e82e1205a717477f9af23270b7baac"
+        },
+        "src/ansichten/prioritaeten.jsx": {
+          "sha256": "9e3cbd26bbee51cfd030688542220f2d182646a3a61658b558dba8cc9684146b",
+          "literale": [
+            {
+              "wert": "11",
+              "kontext": "{{ width: 34, height: 34, borderRadius: 11, flexShrink: 0, display: \"flex\",\n                    alignItems: \"center\", justifyContent: \"center\", fontSize: 14,\n                    background: a.dringend ? C.dangerLight : C.bg,\n                    color: a.dringend ? C.danger : C.dim }}"
+            }
+          ],
+          "literaleSha256": "04a17a557c27078711eaf1e9b66326348e9236ea13e7df2679a02cb36500e423"
+        },
+        "src/ansichten/schichtuebergabe.jsx": {
+          "sha256": "3fe0732895b289860431b395f5dd0189d239ea01bdf5435b1ebb6d14efb7f485",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/schwarzesbrett.jsx": {
+          "sha256": "dfb6fbcae22701562890d7f364e4c91277221a17979f63c9ae446b75e5712e7a",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/tagesfazit.jsx": {
+          "sha256": "d72e68a1b72968e278bf0c2a3d2bb98c35b4f24c8a92c1b279697ff3655a80d4",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/tagesstart.jsx": {
+          "sha256": "35caac8df37a4415c6636a2e74a86d8a3b039bb20f512e01052d95cb47b83ba9",
+          "literale": [
+            {
+              "wert": "3",
+              "kontext": "{{ height: 5, borderRadius: 3, background: C.line, overflow: \"hidden\",\n              marginBottom: 18 }}"
+            },
+            {
+              "wert": "12",
+              "kontext": "{{ width: 24, height: 24, borderRadius: 12, flexShrink: 0, display: \"flex\",\n                  alignItems: \"center\", justifyContent: \"center\", fontSize: 12, fontWeight: 700,\n                  background: x.erledigt ? C.okLight : C.lineSoft,\n                  color: x.erledigt ? C.ok : C.dimmer }}"
+            },
+            {
+              "wert": "13",
+              "kontext": "{{ width: 38, height: 38, borderRadius: 13, flexShrink: 0, display: \"flex\",\n                    alignItems: \"center\", justifyContent: \"center\", fontSize: 17, fontWeight: 700,\n                    background: a.dringend ? C.dangerLight : C.bg,\n                    color: a.dringend ? C.danger : C.dim }}"
+            }
+          ],
+          "literaleSha256": "22252917506b197810f89c49b78cae1dd9b644f3a4cd90f09160fb4559001872"
+        },
+        "src/ansichten/zeitachse.jsx": {
+          "sha256": "20ca692ed0d1812378f7e87f32c43574d10b457f81fea67bfde71f656ac22539",
+          "literale": [
+            {
+              "wert": "8",
+              "kontext": "{{ position: \"absolute\", top: oben, height: hoehe,\n          left: `calc(${index * breite}% + 2px)`, width: `calc(${breite}% - 4px)`,\n          background: `${s.da.farbe}1C`, borderLeft: `3px solid ${s.da.farbe}`,\n          borderRadius: 8, padding: \"5px 7px\", overflow: \"hidden\", cursor: \"pointer\",\n          outline: s.status === \"danger\" ? `2px solid ${C.danger}` : s.status === \"warn\" ? `2px solid ${C.warn}` : \"none\" }}"
+            },
+            {
+              "wert": "9",
+              "kontext": "{{ position: \"absolute\", left: `${links}%`, width: `${breite}%`,\n                            top: 6, bottom: 6, borderRadius: 9, cursor: \"pointer\",\n                            background: `${z.da.farbe}14`, borderLeft: `3px solid ${z.da.farbe}`,\n                            display: \"flex\", alignItems: \"center\", padding: \"0 10px\", overflow: \"hidden\" }}"
+            },
+            {
+              "wert": "6",
+              "kontext": "{{ position: \"absolute\", left: 0, right: 0, top: 12, bottom: 12,\n                          borderRadius: 6, background: `${abwArt(z.abw.art).farbe}12`,\n                          display: \"flex\", alignItems: \"center\", padding: \"0 10px\" }}"
+            },
+            {
+              "wert": "7",
+              "kontext": "{{ position: \"absolute\", left: 0, width: `${((bis - 1440) / 1440) * 100}%`,\n                          top: 7, bottom: 7, borderRadius: 7, background: `${z.da.farbe}18`,\n                          borderLeft: `3px solid ${z.da.farbe}`, opacity: .65 }}"
+            },
+            {
+              "wert": "8",
+              "kontext": "{{ flex: 1, position: \"relative\", opacity: aus ? .22 : 1,\n                    background: d === heute() ? C.flaecheStill : \"transparent\", borderRadius: 8 }}"
+            },
+            {
+              "wert": "5",
+              "kontext": "{{ width: 14, height: 14, borderRadius: 5, background: `${d.farbe}2A`,\n              borderLeft: `3px solid ${d.farbe}` }}"
+            }
+          ],
+          "literaleSha256": "e75b656a6463db6ee057328aa9a5698638ea982b8ef8f769ea96e4bc8a17bf04"
+        }
+      }
+    },
+    "Betreiberkonsole": {
+      "basis": "7ca4064607b3bea8624683c6250bb00108b97642",
+      "dateien": {
+        "src/ansichten/adressaenderungen.jsx": {
+          "sha256": "268af7e047b115aa9ccda963ce9a8b7a8f1b2add085953977cbfacce2d01fcc0",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/betreiber-tarife.jsx": {
+          "sha256": "687503d0f43b3639706872606c85c3154a51ccc3605db7f0bed53654382199ac",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/betreiberdetail.jsx": {
+          "sha256": "7e1748e43577373838bcd3d1a4c3de7edcf92776737175198012dac04ebfe769",
+          "literale": [
+            {
+              "wert": "8",
+              "kontext": "{{ width: 24, height: 24, borderRadius: 8, background: C.accentLight,\n                color: C.accent, display: \"flex\", alignItems: \"center\", justifyContent: \"center\",\n                fontSize: 11, fontWeight: 700 }}"
+            },
+            {
+              "wert": "8",
+              "kontext": "{{ width: 24, height: 24, borderRadius: 8, background: C.bg,\n                  color: C.dim, display: \"flex\", alignItems: \"center\", justifyContent: \"center\",\n                  fontSize: 11, fontWeight: 700 }}"
+            },
+            {
+              "wert": "8",
+              "kontext": "{{ width: 24, height: 24, borderRadius: 8, background: C.bg,\n                  color: C.dim, display: \"flex\", alignItems: \"center\", justifyContent: \"center\",\n                  fontSize: 11, fontWeight: 700 }}"
+            },
+            {
+              "wert": "8",
+              "kontext": "{{ width: 24, height: 24, borderRadius: 8, background: C.bg,\n                  color: C.dim, display: \"flex\", alignItems: \"center\", justifyContent: \"center\",\n                  fontSize: 11, fontWeight: 700 }}"
+            }
+          ],
+          "literaleSha256": "f3922e7bc036e98093a9bea8df1c39b8c0139c6787dc60b355a3d9651c823b70"
+        },
+        "src/ansichten/betreibermandanten.jsx": {
+          "sha256": "77575f7f1c851fc7228f7c649b2cda8aac5224416f9f635f4b39fa4d2e8e377d",
+          "literale": [
+            {
+              "wert": "7",
+              "kontext": "{{ width: 21, height: 21, borderRadius: 7, background: `${r.farbe}1E`, color: lesbar(r.farbe),\n                          display: \"flex\", alignItems: \"center\", justifyContent: \"center\", fontSize: 10, fontWeight: 700 }}"
+            }
+          ],
+          "literaleSha256": "ad3a4591776127d2e79d0e1d4c6e2746009a0823f333367b104d7002521e22c2"
+        },
+        "src/ansichten/betreiberrechnungen.jsx": {
+          "sha256": "003c8ec507e71920e63fb238a06e39c27bffa9f3a0865da7bdf7975ac85192cf",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/demozugaenge.jsx": {
+          "sha256": "41ea36985913fccdafc87e189dfca2b79e754576d52510c3c21fef55cc9fb7b4",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/mandantanlegen.jsx": {
+          "sha256": "63fc816bc9c47a22729bb21bb76fe0fd529ac47af47dcfb6cb67a9fd96dd7ff0",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/mandantenrechner.jsx": {
+          "sha256": "350fd310a62aee0ed3bad1506ebb70fcff67444c70793dae93d91b958eaa8c83",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/mandantneuanlegen.jsx": {
+          "sha256": "80e0259463da68a3831b58541c565ab4344cf833620dfcf79a486eefbcacbdd3",
+          "literale": [
+            {
+              "wert": "12",
+              "kontext": "{{ padding: \"20px 22px\", borderRadius: 12, background: C.okLight,\n        border: `1px solid ${C.ok}33` }}"
+            },
+            {
+              "wert": "8",
+              "kontext": "{{ fontSize: 16, fontWeight: 700, letterSpacing: \".08em\",\n              padding: \"9px 14px\", borderRadius: 8, background: C.bg,\n              border: `1px solid ${C.line}`, ...NUM }}"
+            },
+            {
+              "wert": "10",
+              "kontext": "{{ display: \"flex\", alignItems: \"center\", gap: 11,\n              padding: \"11px 14px\", borderRadius: 10, cursor: fest ? \"default\" : \"pointer\",\n              border: `1px solid ${fest || extra.includes(id) ? C.accent : C.line}`,\n              background: fest || extra.includes(id) ? C.accentLight : \"transparent\" }}"
+            },
+            {
+              "wert": "10",
+              "kontext": "{{ padding: \"13px 16px\", borderRadius: 10,\n          background: C.dangerLight, color: C.danger, fontSize: 13.5, lineHeight: 1.5 }}"
+            }
+          ],
+          "literaleSha256": "b1366ab1a709e51f6e9c7af6e8f6e7cdba1bb4bfcf1dd1f69d6e6b023657ca61"
+        },
+        "src/ansichten/pakete.jsx": {
+          "sha256": "b98f1ea644734efad547f222071a23c98050dee9266f89d6afaedc2c3cef16c3",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/preisgestaltung.jsx": {
+          "sha256": "f8f7cd29baa3d1a3809c4dc20efc22dc3a7b2e7cd37ccba2c1883606c2ed2d89",
+          "literale": [
+            {
+              "wert": "10",
+              "kontext": "{{ display: \"flex\", alignItems: \"center\", gap: 10,\n                    background: C.bg, borderRadius: 10, padding: \"10px 12px\" }}"
+            }
+          ],
+          "literaleSha256": "55c6b1ba15cfadf8a5647b2f895627f72cca3e67a4a759b911b8964563b0f81e"
+        },
+        "src/ansichten/selbststarts.jsx": {
+          "sha256": "baa402144d3db9f31ec6ff62458c0365cd9edaa015f07438fd44df01769b6e7f",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        }
+      }
+    },
+    "Import": {
+      "basis": "5f1dc861166eba68a64848d36abea4f0376b83fe",
+      "dateien": {
+        "src/ansichten/import-datei.jsx": {
+          "sha256": "fecb7416f75d35e64cc86085f6905e8f99f55ae68142c6b9b21d4c5cc29447ec",
+          "literale": [
+            {
+              "wert": "8",
+              "kontext": "{{ padding: \"10px 14px\", borderRadius: 8, marginBottom: 14, fontSize: 13.5,\n    background: \"rgba(179,38,30,.10)\", color: C.danger }}"
+            }
+          ],
+          "literaleSha256": "c935d4f738d28812b49c33babe1c99defd982fa814d95d87f9e1abd4e0dc9770"
+        },
+        "src/ansichten/import.jsx": {
+          "sha256": "7b8a6e2f72f76aac6e0d7de0bc9a45cb35c773d760257866c90a1c681bb5d498",
+          "literale": [
+            {
+              "wert": "10",
+              "kontext": "{{ width: 20, height: 20, borderRadius: 10, display: \"flex\", alignItems: \"center\",\n                    justifyContent: \"center\", fontSize: 11, fontWeight: 700,\n                    background: z.ok ? \"rgba(46,107,79,.14)\" : \"rgba(179,38,30,.12)\",\n                    color: z.ok ? C.ok : C.danger }}"
+            }
+          ],
+          "literaleSha256": "6376999dc5bec7d85affdee9df59981598a80319cd8cddf894f98d6f3649c551"
+        }
+      }
+    },
+    "Telefonschale": {
+      "basis": "55db4363dcbd367d59203cfd2e7096f6e2ff178a",
+      "dateien": {
+        "src/ansichten/mobil.jsx": {
+          "sha256": "6ee23d70b8232bcb139a61c7603bf8faa7a9ed8ffc2c93b9eae33bb5a23705ad",
+          "literale": [
+            {
+              "wert": "18",
+              "kontext": "{{ background: C.flaeche,\n    border: `1px solid ${ton === \"danger\" ? `${C.danger}66` : ton === \"warn\" ? `${C.warn}66` : C.line}`,\n    borderRadius: 18, padding: 16, marginBottom: 10, cursor: onClick ? \"pointer\" : \"default\",\n    boxShadow: \"var(--schatten)\", ...style }}"
+            },
+            {
+              "wert": "14",
+              "kontext": "{{ width: 40, height: 40, borderRadius: 14, flexShrink: 0, display: \"flex\",\n                alignItems: \"center\", justifyContent: \"center\", fontSize: 17, fontWeight: 700,\n                background: a.dringend ? C.dangerLight : C.bg,\n                color: a.dringend ? C.danger : C.dim }}"
+            },
+            {
+              "wert": "18",
+              "kontext": "{{ width: \"100%\", height: 56, fontSize: 16.5, fontWeight: 650, borderRadius: 18 }}"
+            },
+            {
+              "wert": "2",
+              "kontext": "{{ width: 3, alignSelf: \"stretch\", borderRadius: 2,\n                  background: da ? lesbar(da.farbe, 3) : t.abwesenheit ? lesbar(abwArt(t.abwesenheit.art).farbe, 3) : \"transparent\" }}"
+            },
+            {
+              "wert": "12",
+              "kontext": "{{ aspectRatio: \"1\", borderRadius: 12, display: \"flex\", flexDirection: \"column\",\n                    alignItems: \"center\", justifyContent: \"center\", cursor: \"pointer\", gap: 2,\n                    background: da ? `${da.farbe}1C` : t.abwesenheit ? `${abwArt(t.abwesenheit.art).farbe}1C` : C.bg,\n                    outline: d === heute() ? `2px solid ${C.accent}` : \"none\" }}"
+            },
+            {
+              "wert": "16",
+              "kontext": "{{ height: 50, borderRadius: 16, fontSize: 15.5 }}"
+            },
+            {
+              "wert": "16",
+              "kontext": "{{ height: 50, borderRadius: 16, fontSize: 15.5 }}"
+            },
+            {
+              "wert": "16",
+              "kontext": "{{ height: 50, borderRadius: 16, fontSize: 15.5 }}"
+            },
+            {
+              "wert": "16",
+              "kontext": "{{ width: \"100%\", height: 46, borderRadius: 16, fontSize: 14.5 }}"
+            },
+            {
+              "wert": "17",
+              "kontext": "{{ height: 52, borderRadius: 17, fontSize: 15 }}"
+            },
+            {
+              "wert": "17",
+              "kontext": "{{ height: 52, borderRadius: 17, fontSize: 15 }}"
+            },
+            {
+              "wert": "15",
+              "kontext": "{{ height: 46, borderRadius: 15 }}"
+            },
+            {
+              "wert": "15",
+              "kontext": "{{ height: 46, borderRadius: 15 }}"
+            },
+            {
+              "wert": "15",
+              "kontext": "{{ width: \"100%\", height: 46, marginTop: 13, borderRadius: 15 }}"
+            },
+            {
+              "wert": "15",
+              "kontext": "{{ width: \"100%\", height: 46, borderRadius: 15 }}"
+            },
+            {
+              "wert": "27",
+              "kontext": "{{ width: 54, height: 54, borderRadius: 27, flexShrink: 0,\n                display: \"flex\", alignItems: \"center\", justifyContent: \"center\",\n                background: st.vollstaendig ? C.okLight : C.flaecheStill,\n                color: st.vollstaendig ? C.ok : C.dim, fontSize: 16, fontWeight: 700, ...NUM }}"
+            },
+            {
+              "wert": "14",
+              "kontext": "{{ display: \"flex\", alignItems: \"flex-start\", gap: 14, width: \"100%\",\n                        padding: \"16px 18px\", marginBottom: 8, borderRadius: 14, minHeight: 56,\n                        border: `1px solid ${z.erledigt ? C.okLight : C.line}`,\n                        background: z.erledigt ? C.okLight : C.flaeche, textAlign: \"left\",\n                        fontFamily: \"inherit\", color: C.text,\n                        cursor: z.erledigt ? \"default\" : \"pointer\" }}"
+            },
+            {
+              "wert": "13",
+              "kontext": "{{ width: 26, height: 26, borderRadius: 13, flexShrink: 0,\n                        marginTop: 1, display: \"flex\", alignItems: \"center\", justifyContent: \"center\",\n                        border: `1.5px solid ${z.erledigt ? C.ok : C.lineStark}`,\n                        background: z.erledigt ? C.ok : \"transparent\", color: C.aufAkzent,\n                        fontSize: 14 }}"
+            },
+            {
+              "wert": "10",
+              "kontext": "{{ padding: \"9px 14px\", borderRadius: 10, minHeight: 44,\n                          border: `1px solid ${C.line}`, background: \"transparent\",\n                          color: C.dim, fontFamily: \"inherit\", fontSize: 13.5,\n                          fontWeight: 600, cursor: \"pointer\" }}"
+            },
+            {
+              "wert": "11",
+              "kontext": "{{ flex: \"1 1 auto\", minWidth: 100, minHeight: 48,\n                            padding: \"11px 14px\", borderRadius: 11, cursor: \"pointer\",\n                            border: `1px solid ${da.farbe}`, background: `${da.farbe}12`,\n                            color: C.text, fontFamily: \"inherit\", textAlign: \"left\" }}"
+            },
+            {
+              "wert": "14",
+              "kontext": "{{ display: \"block\", width: \"100%\", textAlign: \"left\", marginBottom: 11,\n              padding: \"18px 20px\", borderRadius: 14, cursor: \"pointer\", minHeight: 64,\n              border: `1px solid ${a.dringend ? C.danger : C.line}`,\n              background: a.dringend ? C.dangerLight : \"transparent\",\n              fontFamily: \"inherit\", color: C.text }}"
+            },
+            {
+              "wert": "12",
+              "kontext": "{{ marginTop: 12, padding: \"11px 18px\", borderRadius: 12,\n                        border: `1px solid ${C.line}`, background: \"transparent\", color: C.dim,\n                        fontFamily: \"inherit\", fontSize: 14, fontWeight: 600, cursor: \"pointer\",\n                        minHeight: 48 }}"
+            },
+            {
+              "wert": "12",
+              "kontext": "{{ marginTop: 14, width: \"100%\", padding: \"14px\", borderRadius: 12,\n                        border: \"none\", background: C.accent, color: C.aufAkzent, fontFamily: \"inherit\",\n                        fontSize: 15.5, fontWeight: 600, cursor: \"pointer\", minHeight: 48 }}"
+            },
+            {
+              "wert": "12",
+              "kontext": "{{ marginTop: 12, padding: \"11px 18px\", borderRadius: 12, border: \"none\",\n                    background: SP.pushErlaubt() ? C.flaecheStill : C.accent,\n                    color: SP.pushErlaubt() ? C.text : C.aufAkzent, fontFamily: \"inherit\",\n                    fontSize: 14.5, fontWeight: 600, cursor: \"pointer\", minHeight: 48 }}"
+            },
+            {
+              "wert": "12",
+              "kontext": "{{ width: \"100%\", padding: \"13px 15px\", fontSize: 16, borderRadius: 12,\n              border: `1px solid ${C.steuer}`, fontFamily: \"inherit\", boxSizing: \"border-box\",\n              background: C.bg, color: C.text, minHeight: 48 }}"
+            },
+            {
+              "wert": "10",
+              "kontext": "{{ flex: 1, padding: \"10px 12px\", borderRadius: 10, minHeight: 44,\n                      border: `1px solid ${an ? C.accent : C.line}`, cursor: \"pointer\",\n                      background: an ? C.accentLight : \"transparent\", color: an ? C.accent : C.dim,\n                      fontFamily: \"inherit\", fontSize: 13.5, fontWeight: 600 }}"
+            },
+            {
+              "wert": "15",
+              "kontext": "{{ width: \"100%\", height: 46, marginTop: 13, borderRadius: 15 }}"
+            },
+            {
+              "wert": "17",
+              "kontext": "{{ height: 52, borderRadius: 17, fontSize: 15.5 }}"
+            },
+            {
+              "wert": "12",
+              "kontext": "{{ aspectRatio: \"1\", borderRadius: 12, display: \"flex\", flexDirection: \"column\",\n              alignItems: \"center\", justifyContent: \"center\", gap: 1, opacity: vergangen ? .4 : 1,\n              background: w ? (w.art === \"moechte\" ? C.okLight : C.warnLight)\n                : C.bg }}"
+            }
+          ],
+          "literaleSha256": "ec31d2a0be3bde0157cb1af2c44df2dfb44fdc2c156ee488adec4a96ee112f7b"
+        }
+      }
+    },
+    "Einstieg": {
+      "basis": "b9ab081a8453e18b0752eca5ee6534cf6a3cd402",
+      "dateien": {
+        "src/ansichten/anmeldung.jsx": {
+          "sha256": "253912d6273df383896746be664a5c1786fa9e6b25d162a66f924ff5fc78cf4b",
+          "literale": [
+            {
+              "wert": "0 8px 8px 0",
+              "kontext": "{{ display: \"flex\", alignItems: \"flex-start\", gap: 12, padding: \"14px 18px\",\n            marginBottom: 22, background: C.warnLight, borderLeft: `3px solid ${C.warn}`,\n            borderRadius: \"0 8px 8px 0\" }}"
+            },
+            {
+              "wert": "14",
+              "kontext": "{{ width: 46, height: 46, borderRadius: 14, background: C.accent, color: C.aufAkzent,\n                display: \"flex\", alignItems: \"center\", justifyContent: \"center\", fontSize: 15, fontWeight: 700, flexShrink: 0 }}"
+            },
+            {
+              "wert": "10",
+              "kontext": "{{ width: 30, height: 30, borderRadius: 10, background: `${r.farbe}1E`, color: lesbar(r.farbe),\n                      display: \"flex\", alignItems: \"center\", justifyContent: \"center\", fontSize: 12, fontWeight: 700 }}"
+            }
+          ],
+          "literaleSha256": "328642cd6075a51414756ae21defc783958fceb2395856d0a6c2a85109cfd328"
+        },
+        "src/ansichten/ladefehler.jsx": {
+          "sha256": "cca50c5e94ae3ebd39cb6dcfe1a90b9d42a611b4ead875c502d786dd758db7d8",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/mailbestaetigung.jsx": {
+          "sha256": "50b8236cf510e84e7105ec13b830b4d5d224150235bdb97cd9d16a04aee890ca",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/betreiber-2fa.jsx": {
+          "sha256": "c956d8799d3b93197254de7fe4f713063d8fc8638cc21dd502d862ace805b4dc",
+          "literale": [
+            {
+              "wert": "14",
+              "kontext": "{{ marginTop: 18, border: `1px solid ${F.line}`, borderRadius: 14, background: F.bg, color: F.text }}"
+            },
+            {
+              "wert": "10",
+              "kontext": "{{ padding: \"11px 13px\", fontSize: 15, borderRadius: 10, border: `1px solid ${F.line}`,\n    background: F.bg, color: F.text, fontFamily: \"inherit\", boxSizing: \"border-box\", width: \"100%\" }}"
+            },
+            {
+              "wert": "999",
+              "kontext": "{{ padding: \"9px 16px\", fontSize: 14, fontWeight: 600, borderRadius: 999, fontFamily: \"inherit\",\n    cursor: p.disabled ? \"default\" : \"pointer\", border: primaer ? \"none\" : `1px solid ${F.line}`,\n    background: primaer ? F.accent : \"transparent\", color: primaer ? F.aufAkzent : F.text, opacity: p.disabled ? 0.55 : 1 }}"
+            },
+            {
+              "wert": "12",
+              "kontext": "{{ width: \"100%\", padding: \"13px 15px\", fontSize: 17, borderRadius: 12,\n          border: `1px solid ${F.line}`, fontFamily: \"inherit\", letterSpacing: \".06em\",\n          fontVariantNumeric: \"tabular-nums\", boxSizing: \"border-box\", background: F.bg, color: F.text }}"
+            }
+          ],
+          "literaleSha256": "e8304e2b85aa91ae2452461f8d21e32e34a6363f1c1486bc59e47998f5785888"
+        },
+        "src/main.jsx": {
+          "sha256": "711f9d09f4e3f6469852f26be76b625643e0862ea170f694f654c5dc8b9712b1",
+          "literale": [
+            {
+              "wert": "18",
+              "kontext": "const KARTE = { background: \"var(--v4-flaeche)\", border: \"1px solid var(--v4-line)\", borderRadius: 18,\n  boxShadow: \"var(--v4-schatten)\" };\nconst Markenzeile = () => (\n  <div style={{ display: \"flex\", alignItems: \"center\", gap: 14, marginBottom: 36 }}"
+            },
+            {
+              "wert": "16",
+              "kontext": "{{ background: C.flaeche, border: `1px solid ${C.accent}`, borderRadius: 16,\n        padding: 26, marginBottom: 40 }}"
+            },
+            {
+              "wert": "8",
+              "kontext": "{{ width: 76, padding: \"8px 10px\", borderRadius: 8,\n                    border: `1px solid ${C.line}`, fontFamily: \"inherit\", fontSize: 14 }}"
+            },
+            {
+              "wert": "8",
+              "kontext": "{{ alignSelf: \"flex-start\", padding: \"8px 14px\", borderRadius: 8,\n                  border: `1px solid ${C.line}`, background: \"transparent\", color: C.text,\n                  fontFamily: \"inherit\", fontSize: 13, cursor: \"pointer\" }}"
+            },
+            {
+              "wert": "10",
+              "kontext": "{{ display: \"flex\", flexWrap: \"wrap\", alignItems: \"baseline\",\n                  justifyContent: \"space-between\", gap: 10, padding: \"12px 14px\",\n                  borderRadius: 10, cursor: p.buchbar ? \"pointer\" : \"default\",\n                  opacity: p.buchbar ? 1 : 0.7,\n                  border: `1px solid ${an ? C.accent : C.line}`,\n                  background: an ? C.accentLight : \"transparent\" }}"
+            },
+            {
+              "wert": "16",
+              "kontext": "{{ padding: 24, borderRadius: 16,\n              border: `1px solid ${an ? C.accent : C.line}`,\n              background: an ? C.accentLight : C.flaeche }}"
+            },
+            {
+              "wert": "14",
+              "kontext": "{{ background: C.flaeche, border: `1px solid ${C.line}`, borderRadius: 14,\n        padding: 24, marginBottom: 36 }}"
+            },
+            {
+              "wert": "11",
+              "kontext": "{{ flex: \"1 1 130px\", padding: \"13px 15px\", borderRadius: 11,\n              border: `1px solid ${C.line}` }}"
+            },
+            {
+              "wert": "999",
+              "kontext": "{{ width: \"100%\", padding: 15, fontSize: 15.5, fontWeight: 600, borderRadius: 999,\n          border: \"none\", background: C.accent, color: C.aufAkzent, fontFamily: \"inherit\",\n          cursor: \"pointer\", marginBottom: 14 }}"
+            },
+            {
+              "wert": "14",
+              "kontext": "{{ padding: \"22px 24px\", borderRadius: 14, background: C.okLight,\n        border: `1px solid ${C.line}`, marginBottom: 24 }}"
+            },
+            {
+              "wert": "8",
+              "kontext": "{{ fontSize: 15, fontWeight: 700, letterSpacing: \".07em\",\n              padding: \"8px 13px\", borderRadius: 8, background: C.bg,\n              border: `1px solid ${C.line}`, fontVariantNumeric: \"tabular-nums\" }}"
+            },
+            {
+              "wert": "999",
+              "kontext": "{{ marginTop: 18, padding: \"11px 18px\", borderRadius: 999,\n          border: `1px solid ${C.line}`, background: \"transparent\", color: C.text,\n          fontFamily: \"inherit\", fontSize: 14, fontWeight: 600, cursor: \"pointer\" }}"
+            },
+            {
+              "wert": "999",
+              "kontext": "{{ width: \"100%\", padding: 15, fontSize: 15.5, fontWeight: 600, borderRadius: 999,\n          border: \"none\", background: C.accent, color: C.aufAkzent, fontFamily: \"inherit\",\n          cursor: \"pointer\" }}"
+            },
+            {
+              "wert": "12",
+              "kontext": "{{ width: \"100%\", padding: \"13px 15px\", fontSize: 16, borderRadius: 12,\n              border: `1px solid ${C.steuer}`, fontFamily: \"inherit\", boxSizing: \"border-box\",\n              background: C.bg, color: C.text }}"
+            },
+            {
+              "wert": "11",
+              "kontext": "{{ display: \"block\", width: \"100%\", textAlign: \"left\", cursor: \"pointer\",\n                  padding: \"13px 16px\", borderRadius: 11, fontFamily: \"inherit\",\n                  border: `1px solid ${branche === id ? C.accent : C.line}`,\n                  background: branche === id ? C.accentLight : \"transparent\", color: C.text }}"
+            },
+            {
+              "wert": "10",
+              "kontext": "{{ display: \"flex\", alignItems: \"center\", gap: 11,\n                padding: \"10px 14px\", borderRadius: 10, cursor: \"pointer\",\n                border: `1px solid ${rollen.includes(id) ? C.accent : C.line}`,\n                background: rollen.includes(id) ? C.accentLight : \"transparent\" }}"
+            },
+            {
+              "wert": "12",
+              "kontext": "{{ width: \"100%\", padding: \"13px 15px\", fontSize: 16, borderRadius: 12,\n              border: `1px solid ${C.steuer}`, fontFamily: \"inherit\", boxSizing: \"border-box\",\n              background: C.bg, color: C.text }}"
+            },
+            {
+              "wert": "10",
+              "kontext": "{{ padding: \"13px 16px\", borderRadius: 10,\n            background: C.dangerLight, color: C.danger, fontSize: 13.5, lineHeight: 1.5 }}"
+            },
+            {
+              "wert": "999",
+              "kontext": "{{ width: \"100%\", padding: 15, fontSize: 15.5, fontWeight: 600, borderRadius: 999,\n            border: \"none\", fontFamily: \"inherit\",\n            cursor: name.trim() && branche && !laeuft ? \"pointer\" : \"default\",\n            background: name.trim() && branche && !laeuft ? C.accent : C.lineStark, color: C.aufAkzent }}"
+            },
+            {
+              "wert": "6",
+              "kontext": "{{ height: 15, borderRadius: 6, background: C.bg, marginBottom: 12,\n                  width: `${92 - i * 16}%` }}"
+            },
+            {
+              "wert": "999",
+              "kontext": "{{ width: \"100%\", padding: 14, fontSize: 15.5, fontWeight: 600,\n                  borderRadius: 999, border: \"none\", background: C.accent, color: C.aufAkzent,\n                  fontFamily: \"inherit\", cursor: \"pointer\" }}"
+            },
+            {
+              "wert": "18",
+              "kontext": "{{ display: \"flex\", alignItems: \"center\", gap: 16, width: \"100%\",\n                        background: C.flaeche, border: `1px solid ${C.line}`, borderRadius: 18,\n                        padding: \"16px 18px\", cursor: laeuft ? \"default\" : \"pointer\",\n                        fontFamily: \"inherit\", textAlign: \"left\", color: C.text,\n                        opacity: laeuft ? .5 : 1, transition: \"border-color .14s, background .14s\" }}"
+            },
+            {
+              "wert": "12",
+              "kontext": "{{ width: 40, height: 40, borderRadius: 12, flexShrink: 0,\n                        display: \"flex\", alignItems: \"center\", justifyContent: \"center\",\n                        background: C.accentLight, color: C.accent, fontSize: 12.5, fontWeight: 700 }}"
+            },
+            {
+              "wert": "12",
+              "kontext": "{{ width: \"100%\", padding: \"13px 15px\", fontSize: 17, borderRadius: 12,\n                  border: `1px solid ${fehler ? C.danger : C.line}`, fontFamily: \"inherit\",\n                  letterSpacing: \".06em\", fontVariantNumeric: \"tabular-nums\", boxSizing: \"border-box\",\n                  background: C.bg, color: C.text }}"
+            },
+            {
+              "wert": "999",
+              "kontext": "{{ width: \"100%\", marginTop: 22, padding: 14, fontSize: 15, fontWeight: 600,\n                  borderRadius: 999, border: \"none\", fontFamily: \"inherit\",\n                  cursor: code.trim() && !laeuft ? \"pointer\" : \"default\",\n                  background: code.trim() && !laeuft ? C.accent : C.lineStark, color: C.aufAkzent }}"
+            }
+          ],
+          "literaleSha256": "4c78ced5e14f1445a6c2af5c9f7b79e6e1b7e3b4e087f598bb77233b25752ea6"
+        },
+        "src/marke.jsx": {
+          "sha256": "f9c79d1d6a1154652777a4088e3f2921ea14fe235bbb2694e8d14f118b0c6b37",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/rechtstexte.jsx": {
+          "sha256": "c623a25bee07b6f3e2fa0606f7a41a643eaf038e710e7cf9bad2eaf8c530fc2e",
+          "literale": [
+            {
+              "wert": "4",
+              "kontext": "{{ fontFamily: \"ui-monospace, monospace\", fontSize: \"0.92em\",\n        background: C.flaecheStill, padding: \"1px 5px\", borderRadius: 4 }}"
+            },
+            {
+              "wert": "10",
+              "kontext": "{{ overflowX: \"auto\", margin: \"0 0 20px\",\n          border: `1px solid ${C.lineSoft}`, borderRadius: 10 }}"
+            },
+            {
+              "wert": "10",
+              "kontext": "{{ margin: \"0 0 18px\", padding: \"14px 16px\",\n        background: C.flaecheStill, borderRadius: 10, border: `1px solid ${C.lineSoft}`,\n        fontSize: 13.5, lineHeight: 1.6, fontFamily: \"inherit\", whiteSpace: \"pre-wrap\",\n        overflowX: \"auto\" }}"
+            },
+            {
+              "wert": "8",
+              "kontext": "{{ border: `1px solid ${C.line}`, background: \"transparent\", cursor: \"pointer\",\n              borderRadius: 8, padding: \"6px 12px\", fontSize: 13.5, color: C.dim,\n              fontFamily: \"inherit\" }}"
+            }
+          ],
+          "literaleSha256": "228a7fa8019c3aed3bb40da4db4b61ac2bc5ce4015684cd58065cd9ca53374ff"
+        },
+        "src/startbild.jsx": {
+          "sha256": "86e6e1eb1779133140c52182e4c72cce5a180df64b5bc2f91ddcbf1db1a79a9d",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/verlustweg.jsx": {
+          "sha256": "038396503e81d22d752ee485f998e3f247a182b257931cf354395e724d315d51",
+          "literale": [
+            {
+              "wert": "10",
+              "kontext": "const KASTEN = { padding: \"12px 14px\", borderRadius: 10, border: \"1px solid currentColor\", display: \"grid\", gap: 8, minWidth: 0 };"
+            },
+            {
+              "wert": "999",
+              "kontext": "const TAST = { padding: \"8px 14px\", minHeight: 36, fontSize: 14, fontWeight: 600, borderRadius: 999, fontFamily: \"inherit\","
+            }
+          ],
+          "literaleSha256": "7540fe6657efb3228fdab44d1728361e7f1862210b878846e0445c39dd817d11"
+        }
+      }
+    },
+    "Speicherlage": {
+      "basis": "93b5f7f70d1b02700de3e19920b2ee0fd85b0b48",
+      "dateien": {
+        "src/ansichten/speicherlage.jsx": {
+          "sha256": "46f411f17ff5d864d038e4204095e5eea80bfe09748901658feba2d349a76a8a",
+          "literale": [
+            {
+              "wert": "12",
+              "kontext": "{{ padding: \"16px 20px\", borderRadius: 12, marginBottom: 20,\n      background: C.dangerLight, border: `1px solid ${C.danger}44` }}"
+            },
+            {
+              "wert": "12",
+              "kontext": "{{ padding: \"12px 18px\", borderRadius: 12, marginBottom: 20,\n      background: C.warnLight, border: `1px solid ${C.warn}33`,\n      display: \"flex\", gap: 14, alignItems: \"baseline\", flexWrap: \"wrap\" }}"
+            }
+          ],
+          "literaleSha256": "7e5d933726b8a638d626ec8bba86da5c4a1623710c3c7187189b89ebf1ef0111"
+        },
+        "src/ansichten/teilkonflikt.jsx": {
+          "sha256": "7177d6df740507c6b47c9f5f23bed5ac4eae509e415dc1698bf0cd5e3ea41ed7",
+          "literale": [
+            {
+              "wert": "12",
+              "kontext": "{{ padding: \"12px 18px\", borderRadius: 12, marginBottom: 20, background: C.warnLight,\n      border: `1px solid ${C.warn}33`, display: \"flex\", gap: 14, alignItems: \"center\", flexWrap: \"wrap\" }}"
+            }
+          ],
+          "literaleSha256": "b0499dba4ba9f83382e3f54e4bd6323224c00a9b339477b8cf6e33ba9d606b16"
+        }
+      }
+    },
+    "Branchenmodule": {
+      "basis": "bb782c4492b9de162dd19db17ff7d4c16c3a9e19",
+      "dateien": {
+        "src/module/anlagen.jsx": {
+          "sha256": "7d34cbdb5af2409535967a1b2930fc1798417a4191410045b524332672e8db3c",
+          "literale": [
+            {
+              "wert": "8",
+              "kontext": "{{ border: \"1px solid currentColor\", borderRadius: 8, padding: 12, overflowWrap: \"anywhere\" }}"
+            }
+          ],
+          "literaleSha256": "9efc90e1470836d9f8e7706f66794fdc44a102a3d8f71dea51b799dd282233ba"
+        },
+        "src/module/bereichsplan.jsx": {
+          "sha256": "535ad56cdaddb103d866013f6ab4c4f8081358994110b28be8bd9ed9606b979b",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/module/bereitschaftsdienst.jsx": {
+          "sha256": "1c8577e2f392771a8fdb9bb024e0a4fa2d99ff30a899b189cddea79d34640c26",
+          "literale": [
+            {
+              "wert": "8",
+              "kontext": "{{ border: \"1px solid currentColor\", borderRadius: 8, padding: 12, overflowWrap: \"anywhere\" }}"
+            }
+          ],
+          "literaleSha256": "9efc90e1470836d9f8e7706f66794fdc44a102a3d8f71dea51b799dd282233ba"
+        },
+        "src/module/funktionsdienst.jsx": {
+          "sha256": "e6308a073677f4a9ea9f77148719c021a2fb9c755768045be0d7b6b943a2a1fb",
+          "literale": [
+            {
+              "wert": "8",
+              "kontext": "{{ border: \"1px solid currentColor\", borderRadius: 8, padding: 12, overflowWrap: \"anywhere\" }}"
+            }
+          ],
+          "literaleSha256": "9efc90e1470836d9f8e7706f66794fdc44a102a3d8f71dea51b799dd282233ba"
+        },
+        "src/module/geteilterdienst.jsx": {
+          "sha256": "6df418e57eb41a85bd78943f0059e48d31214346970935f8a6b0818be88214f8",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/module/kern.jsx": {
+          "sha256": "fc1b70410c8e2eb3688b7c46cbeaf5944ca60e7300dedeabf4eaf332e3019545",
+          "literale": [
+            {
+              "wert": "8",
+              "kontext": "const RAHMEN = { border: \"1px solid currentColor\", borderRadius: 8, padding: 12, overflowWrap: \"anywhere\", maxWidth: \"100%\" };"
+            }
+          ],
+          "literaleSha256": "b7381de531267b7de885cfb3220a53af4e79ba4240e77cf292e2432df493a500"
+        },
+        "src/module/kontimodelle.jsx": {
+          "sha256": "8c0bdf067b1ad3e380966819357a32455b62747724b4abb03d4fd7fcbe6f3947",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/module/maschinenqual.jsx": {
+          "sha256": "bd4fac8c7993eaef968429f24d198f9093ec907cf66549df8b94bddd6cb31453",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/module/objektbericht.jsx": {
+          "sha256": "aa5e750178600e1226fe0c8a650ef29a6bd54d7a86fd4b4082173291791584f4",
+          "literale": [
+            {
+              "wert": "8",
+              "kontext": "{{ border: \"1px solid currentColor\", borderRadius: 8, padding: 12, overflowWrap: \"anywhere\" }}"
+            }
+          ],
+          "literaleSha256": "9efc90e1470836d9f8e7706f66794fdc44a102a3d8f71dea51b799dd282233ba"
+        },
+        "src/module/pflegequal.jsx": {
+          "sha256": "19db8c6410146544f3bcb97a7972fcbec9b19278269f3813eb9473ae8fb9ad33",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/module/posten.jsx": {
+          "sha256": "e959a1b4b8e66a5c3aa2ddfe95b963be523eb72fb72a54e8992b0fcc2eff5e6b",
+          "literale": [
+            {
+              "wert": "8",
+              "kontext": "{{ border: \"1px solid currentColor\", borderRadius: 8, padding: 12, overflowWrap: \"anywhere\" }}"
+            }
+          ],
+          "literaleSha256": "9efc90e1470836d9f8e7706f66794fdc44a102a3d8f71dea51b799dd282233ba"
+        },
+        "src/module/rotation.jsx": {
+          "sha256": "56f56d95ea09653451ab551df4154f69def794bff75b9d68279241e1f7c89c7a",
+          "literale": [
+            {
+              "wert": "8",
+              "kontext": "{{ border: \"1px solid currentColor\", borderRadius: 8, padding: 12, overflowWrap: \"anywhere\" }}"
+            }
+          ],
+          "literaleSha256": "9efc90e1470836d9f8e7706f66794fdc44a102a3d8f71dea51b799dd282233ba"
+        },
+        "src/module/wachbuch.jsx": {
+          "sha256": "2e3bd3433ca78d649a48234fe5431c0d5c8c99c70fb9924828736e3275eb1332",
+          "literale": [
+            {
+              "wert": "8",
+              "kontext": "{{ border: \"1px solid currentColor\", borderRadius: 8, padding: 12, overflowWrap: \"anywhere\" }}"
+            }
+          ],
+          "literaleSha256": "9efc90e1470836d9f8e7706f66794fdc44a102a3d8f71dea51b799dd282233ba"
+        }
+      }
+    },
+    "Querschnitt/Bausteine (Teil 1)": {
+      "basis": "63a3469b115139e0046459e92e4c1695caecbe3c",
+      "dateien": {
+        "src/App.jsx": {
+          "sha256": "af0070b66a5f5cd63bcd5fcd9f5b65d8cbf67b1efa1e9755680626dee3b3f4b1",
+          "literale": [
+            {
+              "wert": "12",
+              "kontext": "{{ background: C.flaecheStill, borderRadius: 12, padding: 14, fontSize: 12,\n            overflowX: \"auto\", margin: \"0 0 20px\", whiteSpace: \"pre-wrap\" }}"
+            },
+            {
+              "wert": "8",
+              "kontext": "{{ width: 25, height: 25, borderRadius: 8, cursor: fest ? \"not-allowed\" : \"pointer\",\n                          display: \"inline-flex\", alignItems: \"center\", justifyContent: \"center\", padding: 0,\n                          border: an ? \"none\" : `1.5px solid ${C.steuer}`,\n                          background: an ? r.farbe : \"transparent\", color: an ? \"white\" : \"transparent\",\n                          opacity: fest ? .55 : 1 }}"
+            },
+            {
+              "wert": "12",
+              "kontext": "{{ width: 23, height: 23, borderRadius: 12, flexShrink: 0, display: \"flex\", alignItems: \"center\",\n                  justifyContent: \"center\", background: t.ok ? C.okLight : C.dangerLight,\n                  color: t.ok ? C.ok : C.danger }}"
+            },
+            {
+              "wert": "8",
+              "kontext": "{{ width: 220, height: 34, borderRadius: 8,\n          background: C.flaecheStill, marginBottom: 12 }}"
+            },
+            {
+              "wert": "6",
+              "kontext": "{{ width: 320, height: 16, borderRadius: 6,\n          background: C.flaecheStill, marginBottom: 30 }}"
+            },
+            {
+              "wert": "12",
+              "kontext": "{{ height: 92, borderRadius: 12,\n              background: C.flaeche, border: `1px solid ${C.lineSoft}` }}"
+            },
+            {
+              "wert": "12",
+              "kontext": "{{ height: 240, borderRadius: 12,\n          background: C.flaeche, border: `1px solid ${C.lineSoft}` }}"
+            },
+            {
+              "wert": "999",
+              "kontext": "{{ position: \"fixed\", bottom: 104, left: \"50%\", transform: \"translateX(-50%)\",\n        zIndex: 90, background: C.accentDeep, color: C.aufAkzent, padding: \"12px 20px\", borderRadius: 999,\n        fontSize: 14, boxShadow: \"var(--schatten-toast)\", maxWidth: \"90vw\", textAlign: \"center\",\n         \n        pointerEvents: \"none\" }}"
+            },
+            {
+              "wert": "9",
+              "kontext": "{{ width: 30, height: 30, borderRadius: 9, flexShrink: 0, display: \"flex\",\n                alignItems: \"center\", justifyContent: \"center\", fontSize: 11, fontWeight: 700,\n                background: \"var(--sl-kuerzel)\", color: \"var(--sl-schrift)\" }}"
+            },
+            {
+              "wert": "8",
+              "kontext": "{{ position: \"absolute\", top: -4, right: -8, minWidth: 15, height: 15,\n                borderRadius: 8, background: C.danger, color: istDunkel() ? C.bg : \"#fff\", fontSize: 9.5, fontWeight: 700,\n                display: \"flex\", alignItems: \"center\", justifyContent: \"center\", padding: \"0 3px\" }}"
+            }
+          ],
+          "literaleSha256": "6f700d1f3efc50e165c7e0a1a57b12a5f353c5a6a8f459077d3720648fd0a717"
+        },
+        "src/ansichten/ansichtleiste.jsx": {
+          "sha256": "1510c26232b7a1a35b33b9238aa66e680feb1d15083cd3c500877e9e061a67fd",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/bestaetigungsfrage.jsx": {
+          "sha256": "2bf054b764e3ffba85ff51adb00b9d99387e5387b3afdbe79ce8c86cff6c06e8",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/bestaetigungstext.jsx": {
+          "sha256": "dc554933811e36a832d4e38a109f0f611491708a673228f1140d9845a7badcff",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/einheitwahl.jsx": {
+          "sha256": "2a8fb317f384a28607d994415505d3b500c62712c98bfbc7fdd72b05619472d1",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/fenster.jsx": {
+          "sha256": "a598a898c06cd3310f3484dd940894e7d0af42b80c519118841f54c075cef619",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/handbuch.jsx": {
+          "sha256": "67c8204eb12c1fa6ac3311a9308768f9ecee600a1da0443b9205a2b66c504a05",
+          "literale": [
+            {
+              "wert": "8",
+              "kontext": "{{ width: 26, height: 26, borderRadius: 8, flexShrink: 0, cursor: \"pointer\",\n              marginTop: 2, border: `1.5px solid ${ok ? C.ok : C.steuer}`,\n              background: ok ? C.ok : \"transparent\", color: C.aufAkzent, padding: 0,\n              display: \"flex\", alignItems: \"center\", justifyContent: \"center\", fontFamily: \"inherit\" }}"
+            },
+            {
+              "wert": "11",
+              "kontext": "{{ width: 22, height: 22, borderRadius: 11, flexShrink: 0, marginTop: 1,\n                  background: C.accentLight, color: C.accent, fontSize: 11.5, fontWeight: 700,\n                  display: \"flex\", alignItems: \"center\", justifyContent: \"center\", ...NUM }}"
+            },
+            {
+              "wert": "11",
+              "kontext": "{{ width: 22, height: 22, borderRadius: 11, flexShrink: 0, marginTop: 1,\n                    display: \"flex\", alignItems: \"center\", justifyContent: \"center\",\n                    fontSize: 11, fontWeight: 700, ...NUM,\n                    background: fertig ? C.ok : an ? C.accent : C.flaecheStill,\n                    color: fertig || an ? C.aufAkzent : C.dim }}"
+            }
+          ],
+          "literaleSha256": "90c39194232a712f81341bf98650780ebaab67a98835ae0fb10a5f09e134014c"
+        },
+        "src/ansichten/hilfe-frage.jsx": {
+          "sha256": "78bf6be70e26de3134ff9d24d41bc6c25cff70ed531047ade784a55226bb062e",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/hilfe.jsx": {
+          "sha256": "8bdf64a6c6ff6de56385a39dce13fc93ca621da4aa8d49e8e52227b6628fec2c",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/intelligence/KiAntwort.jsx": {
+          "sha256": "52ced9b611d1c4bebd9629800c73fc04366b9e63b891ff3864e7a9db54b13b2f",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/kommandoleiste.jsx": {
+          "sha256": "b3b37b5a22314496e05273bd32cab47fcafb2e38b48ef9f5b2ee041b76054807",
+          "literale": [
+            {
+              "wert": "6",
+              "kontext": "{{ fontSize: 11, color: C.dimmer, background: C.lineSoft,\n            padding: \"3px 7px\", borderRadius: 6, ...NUM }}"
+            },
+            {
+              "wert": "9",
+              "kontext": "{{ width: 27, height: 27, borderRadius: 9, flexShrink: 0, fontSize: 13,\n                  display: \"flex\", alignItems: \"center\", justifyContent: \"center\",\n                  background: C.bg, color: C.dim }}"
+            }
+          ],
+          "literaleSha256": "16f08a5d630e05fe41b1b6117ad452d503627b39715e22ee89a4e875a06f26ce"
+        },
+        "src/ansichten/schichtmodelle.jsx": {
+          "sha256": "7a5b2baeefc6f9ca954227bb1a112cb6673fce528fce25761d113e56ccabdcbe",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/schrittleiste.jsx": {
+          "sha256": "86029b671b28d70054ac73c2ed736e384c3577a736c31b076a1a7638bef32169",
+          "literale": [
+            {
+              "wert": "13",
+              "kontext": "{{ width: 26, height: 26, borderRadius: 13, flexShrink: 0, display: \"flex\",\n            alignItems: \"center\", justifyContent: \"center\", fontSize: 12, fontWeight: 700, ...NUM,\n            background: i < aktuell ? C.accentDeep : i === aktuell ? C.accent : C.lineSoft,\n            color: i <= aktuell ? C.aufAkzent : C.dim }}"
+            }
+          ],
+          "literaleSha256": "2583ac9a9300d5ccb1d3f904d6add2581f6fa5b2729ec36603e8442a51ce0aac"
+        },
+        "src/ansichten/tourleiste.jsx": {
+          "sha256": "334fd017a418f2a57c081b443b8b562e733af32771e3b0af68ff62cfe404251b",
+          "literale": [
+            {
+              "wert": "999",
+              "kontext": "{{ padding: \"3px 9px\", borderRadius: 999, cursor: \"pointer\",\n                    fontFamily: \"inherit\", fontSize: 11.5, lineHeight: 1.5,\n                    border: `1px solid ${hier ? C.accent : C.lineSoft}`,\n                    background: hier ? C.accentLight : \"transparent\",\n                    color: hier ? C.accentDeep : k.fertig ? C.ok : C.dim,\n                    fontWeight: hier ? 620 : 500 }}"
+            },
+            {
+              "wert": "8",
+              "kontext": "{{ fontSize: 12, color: C.dim, lineHeight: 1.45,\n              padding: \"8px 10px\", borderRadius: 8, background: C.okLight }}"
+            }
+          ],
+          "literaleSha256": "5f33badad9cec6f880bce4d8655751e65e033c77cb5ef28b09066acd9b7d0176"
+        },
+        "src/gestalt/ansichten.jsx": {
+          "sha256": "89320151a0b295faed221b0d1b06504871dc494e749abccdc84a75cf50138c75",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/gestalt/bausteine.jsx": {
+          "sha256": "34c404e8f97ff61db2d6a8184da7ac691793a3153c8c0eb80f4389623e500acb",
+          "literale": [
+            {
+              "wert": "1",
+              "kontext": "{{ width: 4, height: 4, borderRadius: 1, background: farbe(d) }}"
+            },
+            {
+              "wert": "2",
+              "kontext": "{{ flex: \"1 1 0\", minWidth: 3, maxWidth: 6, height: `${h}%`, borderRadius: 2,\n            background: neu ? tonFarbe(ton) : C.lineStark }}"
+            },
+            {
+              "wert": "50%",
+              "kontext": "{{ position: \"absolute\", right: 0, top: y(letzte) - 4, width: 8, height: 8, borderRadius: \"50%\",\n        background: tonFarbe(ton), boxShadow: `0 0 0 1.5px ${C.flaeche}` }}"
+            },
+            {
+              "wert": "3",
+              "kontext": "{{ width: 10, height: 10, borderRadius: 3, background: farbe(t.ton) }}"
+            }
+          ],
+          "literaleSha256": "bd030af335994c06c01e05e78ebffa72b5362df9f3c23c7eee8667c469955751"
+        },
+        "src/gestalt/icons.jsx": {
+          "sha256": "57e407bbb978b907935e8597e550575703206992d9dc46814f74907c58d0528b",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/gestalt/lesbar.js": {
+          "sha256": "1a81247c9b90484f8cabe68d5ccd3e8faf2f817eb879e4b0a7042ff579b5e227",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/gestalt/rahmen.jsx": {
+          "sha256": "c1d5070228086302927fb47ba0bc2c66b4ad716fa0d0f31fc975492791636c8c",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/gestalt/stil.js": {
+          "sha256": "ae69cab79d345c4168c233cc0a53ae45c52fc7e53fbbc7953e7c690a12e83a80",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ringregler.jsx": {
+          "sha256": "b3f0e7860ca2ff2a7a360ebe5085827ee8cd5658e9fd492a8a2469b9ffc7c5cc",
+          "literale": [
+            {
+              "wert": "50%",
+              "kontext": "{{\n           \n          width: `min(${groesse}px, 100%)`, aspectRatio: \"1\",\n          borderRadius: \"50%\", outlineOffset: 4,\n          cursor: gefasst ? \"grabbing\" : \"pointer\", touchAction: \"none\",\n        }}"
+            },
+            {
+              "wert": "9",
+              "kontext": "{{\n        width: 34, height: 34, borderRadius: 9, cursor: aus ? \"default\" : \"pointer\",\n        border: `1px solid ${C.line}`, background: C.flaeche, color: C.text,\n        fontFamily: \"inherit\", fontSize: 17, lineHeight: 1, opacity: aus ? 0.4 : 1,\n      }}"
+            }
+          ],
+          "literaleSha256": "c46c94f82e7381bb99edb5c8ce3d9eeb9a26d37787eb6f1025e2204f60acfa47"
+        },
+        "src/ui/bausteine.jsx": {
+          "sha256": "b613a461586df4f59dffc0d8c0c4731aabd94d43e3b2c57235f8b1da79e7086a",
+          "literale": [
+            {
+              "wert": "14",
+              "kontext": "{{ width: 46, height: 46, borderRadius: 14, margin: \"0 auto 16px\", display: \"flex\",\n      alignItems: \"center\", justifyContent: \"center\", background: C.flaecheStill, color: C.dim }}"
+            },
+            {
+              "wert": "5",
+              "kontext": "{{ height: 14, borderRadius: 5, marginBottom: 10,\n        width: `${100 - (i % 3) * 14}%`, background: C.bg,\n        animation: \"pulsieren 1.4s ease-in-out infinite\", animationDelay: `${i * .08}s` }}"
+            }
+          ],
+          "literaleSha256": "34aafe61171ebf2aa84789aa4aa200d5184c8d2602aaebdbd57c3cab66fcef38"
+        },
+        "src/ui/diagramme.jsx": {
+          "sha256": "3ff87b35cc06fc6055790285868b6eb16974c9db3494a0344476f12468e69151",
+          "literale": [
+            {
+              "wert": "50%",
+              "kontext": "{{ position: \"absolute\", left: `${x(i)}%`, top: (y(d[wert]) / H) * hoehe,\n            width: aktiv === i ? 11 : 8, height: aktiv === i ? 11 : 8, boxSizing: \"border-box\",\n            transform: \"translate(-50%, -50%)\", borderRadius: \"50%\", background: C.flaeche,\n            border: `2px solid ${farbe}`, cursor: \"pointer\" }}"
+            },
+            {
+              "wert": "9",
+              "kontext": "{{ position: \"absolute\", top: -6, left: `${(aktiv / (daten.length - 1)) * 100}%`,\n          transform: \"translateX(-50%)\", background: C.accentDeep, color: C.aufAkzent, padding: \"5px 10px\",\n          borderRadius: 9, fontSize: 12, fontWeight: 650, whiteSpace: \"nowrap\", pointerEvents: \"none\", ...NUM }}"
+            },
+            {
+              "wert": "5px 5px 2px 2px",
+              "kontext": "{{ flex: 1, height: `${h}%`, background: farbe, borderRadius: \"5px 5px 2px 2px\",\n                opacity: aktiv === null || aktiv === i ? 1 : .45, transition: \"opacity .15s\",\n                cursor: klick ? \"pointer\" : \"default\", position: \"relative\", minWidth: 4 }}"
+            },
+            {
+              "wert": "9",
+              "kontext": "{{ position: \"absolute\", bottom: \"calc(100% + 7px)\", left: \"50%\",\n                  transform: \"translateX(-50%)\", background: C.accentDeep, color: C.aufAkzent, padding: \"5px 10px\",\n                  borderRadius: 9, fontSize: 12, fontWeight: 650, whiteSpace: \"nowrap\", zIndex: 5, ...NUM }}"
+            },
+            {
+              "wert": "4",
+              "kontext": "{{ position: \"absolute\", top: 3, bottom: 3, borderRadius: 4,\n                left: pos ? \"50%\" : `${50 - breite}%`, width: `${breite}%`,\n                background: Math.abs(v) < 1 ? C.dimmer : pos ? C.warn : C.ok, opacity: .85 }}"
+            },
+            {
+              "wert": "13",
+              "kontext": "{{ width: 26, height: 26, borderRadius: 13, flexShrink: 0, display: \"flex\",\n              alignItems: \"center\", justifyContent: \"center\", fontSize: 12, fontWeight: 700, ...NUM,\n              background: i < aktuell ? C.accentDeep : i === aktuell ? C.accent : C.lineSoft,\n              color: i <= aktuell ? C.aufAkzent : C.dim }}"
+            },
+            {
+              "wert": "5",
+              "kontext": "{{ width: 17, height: 17, borderRadius: 5, fontSize: 8.5, fontWeight: 700, ...NUM,\n              display: \"flex\", alignItems: \"center\", justifyContent: \"center\",\n              background: v ? `${v.farbe}22` : C.bg, color: v ? v.farbe : C.dimmer }}"
+            }
+          ],
+          "literaleSha256": "015c007eabc0bc4a1a4709e83ef0783a0c5232ce9fbe29cb47eb9af5723b7568"
+        },
+        "src/ui/dialogfokus.js": {
+          "sha256": "fda0586e3821d59d8b5d0389ea72f078db56fee2712015db0b0ec685416f26ee",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ui/farbwahl.jsx": {
+          "sha256": "845e45a181d6b1c6777a5185be2f4352aa2ed0124ea9fea0a42a75358b99340b",
+          "literale": [
+            {
+              "wert": "8",
+              "kontext": "{{ width: 25, height: 25, borderRadius: 8, background: c, cursor: \"pointer\",\n            border: wert === c ? \"3px solid #fff\" : \"1px solid rgba(0,0,0,.12)\",\n            boxShadow: wert === c ? `0 0 0 2px ${c}` : \"none\" }}"
+            },
+            {
+              "wert": "9",
+              "kontext": "{{ width: 18, height: 18, borderRadius: 9, background: wert, cursor: \"pointer\",\n          border: `1px solid ${C.lineStark}`, padding: 0 }}"
+            },
+            {
+              "wert": "10",
+              "kontext": "{{ position: \"absolute\", top: \"calc(100% + 6px)\", left: 0, zIndex: 20,\n          background: C.flaeche, border: `1px solid ${C.line}`, borderRadius: 10,\n          padding: 10, boxShadow: \"0 10px 28px -10px rgba(7,19,23,.28)\" }}"
+            }
+          ],
+          "literaleSha256": "5e68ab319963ce3e8328995116390f88f07d09192f7541a950dd93bc62e7eb0b"
+        },
+        "src/ui/geraete.js": {
+          "sha256": "ff54b715f0e6a64d491d9073200916d60078bf8b5d97a83498747614efb4620b",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ui/leisten.jsx": {
+          "sha256": "eba87beba9a113ed30c9e3301a2502eba31ff955e4b028ab3cc0f84dc1195688",
+          "literale": [
+            {
+              "wert": "3",
+              "kontext": "{{ height: 5, background: \"rgba(20,20,25,.08)\", borderRadius: 3, overflow: \"hidden\" }}"
+            },
+            {
+              "wert": "3",
+              "kontext": "{{ width: `${pct}%`, height: \"100%\", background: col, borderRadius: 3, transition: \"width .4s cubic-bezier(.4,0,.2,1)\" }}"
+            }
+          ],
+          "literaleSha256": "bf28ad6003a4be68f0166c1f83281d202d3317b801799a874a87c739e9736c00"
+        },
+        "src/ui/logo.jsx": {
+          "sha256": "198fa76847ec6a58d6fbf5bc05af4bcff7d24253f1ba545fc979d18bad3ca95e",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ui/raster.js": {
+          "sha256": "4eaa0f1066c93f179717ace53daf7a0f3253bc229def9686d34fb76e78726b05",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ui/schriftart.js": {
+          "sha256": "9edf4f1afae57fe4cd349970165ec260dc30c9320667507bb8bbdff7af7afe0a",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ui/scrollbereich.jsx": {
+          "sha256": "181fa474bfb2ebc99027f501e83e91dd7b5180a3cc715c66b447e80f3aa1d34b",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ui/thema.js": {
+          "sha256": "50a25fd66b9f1ea9d5558149f7a6165ce40b7c733b6b38930627c9a66426b308",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ui/ziehen.jsx": {
+          "sha256": "013f113e997cb76d548bcfb353e0e8f394f89c35bd397e27eb6939b8807e0c65",
+          "literale": [
+            {
+              "wert": "12",
+              "kontext": "{{ position: \"fixed\", left: zeiger.x, top: zeiger.y, zIndex: 999,\n          transform: \"translate(-50%,-140%)\", pointerEvents: \"none\",\n          background: last.farbe ? `${last.farbe}` : C.accentDeep, color: last.farbe ? \"#fff\" : C.aufAkzent,\n          padding: \"8px 14px\", borderRadius: 12, fontSize: 13.5, fontWeight: 600,\n          boxShadow: \"var(--schatten-toast)\", whiteSpace: \"nowrap\" }}"
+            },
+            {
+              "wert": "999",
+              "kontext": "{{ position: \"fixed\", bottom: 26, left: \"50%\", transform: \"translateX(-50%)\", zIndex: 998,\n      background: C.text, color: C.flaeche, padding: \"11px 20px\", borderRadius: 999,\n      fontSize: 13.5, boxShadow: \"var(--schatten-toast)\", pointerEvents: \"none\" }}"
+            }
+          ],
+          "literaleSha256": "1d3130426801149e800e080786d373b9dac27d271ce26cbe1648758a55bce5b0"
+        }
+      }
+    },
+    "Querschnitt/Bausteine (Teil 2)": {
+      "basis": "a9e524e56f5f50ca7f1ea53e32ee78979f6cfef2",
+      "dateien": {
+        "src/App.jsx": {
+          "sha256": "617ebcf63b3c4bc4028493bb59748b0bbb532cf90fb33b5707020502473a8db4",
+          "literale": [
+            {
+              "wert": "6",
+              "kontext": "{{ width: 320, height: 16, borderRadius: 6,\n          background: C.flaecheStill, marginBottom: 30 }}"
+            }
+          ],
+          "literaleSha256": "76824313848a0e7a48f6b8434a90771a6e3988f900e490cad7ea63c9b90e6328"
+        },
+        "src/ansichten/ansichtleiste.jsx": {
+          "sha256": "1510c26232b7a1a35b33b9238aa66e680feb1d15083cd3c500877e9e061a67fd",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/bestaetigungsfrage.jsx": {
+          "sha256": "2bf054b764e3ffba85ff51adb00b9d99387e5387b3afdbe79ce8c86cff6c06e8",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/bestaetigungstext.jsx": {
+          "sha256": "dc554933811e36a832d4e38a109f0f611491708a673228f1140d9845a7badcff",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/einheitwahl.jsx": {
+          "sha256": "2a8fb317f384a28607d994415505d3b500c62712c98bfbc7fdd72b05619472d1",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/fenster.jsx": {
+          "sha256": "a598a898c06cd3310f3484dd940894e7d0af42b80c519118841f54c075cef619",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/handbuch.jsx": {
+          "sha256": "67c8204eb12c1fa6ac3311a9308768f9ecee600a1da0443b9205a2b66c504a05",
+          "literale": [
+            {
+              "wert": "8",
+              "kontext": "{{ width: 26, height: 26, borderRadius: 8, flexShrink: 0, cursor: \"pointer\",\n              marginTop: 2, border: `1.5px solid ${ok ? C.ok : C.steuer}`,\n              background: ok ? C.ok : \"transparent\", color: C.aufAkzent, padding: 0,\n              display: \"flex\", alignItems: \"center\", justifyContent: \"center\", fontFamily: \"inherit\" }}"
+            },
+            {
+              "wert": "11",
+              "kontext": "{{ width: 22, height: 22, borderRadius: 11, flexShrink: 0, marginTop: 1,\n                  background: C.accentLight, color: C.accent, fontSize: 11.5, fontWeight: 700,\n                  display: \"flex\", alignItems: \"center\", justifyContent: \"center\", ...NUM }}"
+            },
+            {
+              "wert": "11",
+              "kontext": "{{ width: 22, height: 22, borderRadius: 11, flexShrink: 0, marginTop: 1,\n                    display: \"flex\", alignItems: \"center\", justifyContent: \"center\",\n                    fontSize: 11, fontWeight: 700, ...NUM,\n                    background: fertig ? C.ok : an ? C.accent : C.flaecheStill,\n                    color: fertig || an ? C.aufAkzent : C.dim }}"
+            }
+          ],
+          "literaleSha256": "90c39194232a712f81341bf98650780ebaab67a98835ae0fb10a5f09e134014c"
+        },
+        "src/ansichten/hilfe-frage.jsx": {
+          "sha256": "78bf6be70e26de3134ff9d24d41bc6c25cff70ed531047ade784a55226bb062e",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/hilfe.jsx": {
+          "sha256": "8bdf64a6c6ff6de56385a39dce13fc93ca621da4aa8d49e8e52227b6628fec2c",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/intelligence/KiAntwort.jsx": {
+          "sha256": "52ced9b611d1c4bebd9629800c73fc04366b9e63b891ff3864e7a9db54b13b2f",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/kommandoleiste.jsx": {
+          "sha256": "b3b37b5a22314496e05273bd32cab47fcafb2e38b48ef9f5b2ee041b76054807",
+          "literale": [
+            {
+              "wert": "6",
+              "kontext": "{{ fontSize: 11, color: C.dimmer, background: C.lineSoft,\n            padding: \"3px 7px\", borderRadius: 6, ...NUM }}"
+            },
+            {
+              "wert": "9",
+              "kontext": "{{ width: 27, height: 27, borderRadius: 9, flexShrink: 0, fontSize: 13,\n                  display: \"flex\", alignItems: \"center\", justifyContent: \"center\",\n                  background: C.bg, color: C.dim }}"
+            }
+          ],
+          "literaleSha256": "16f08a5d630e05fe41b1b6117ad452d503627b39715e22ee89a4e875a06f26ce"
+        },
+        "src/ansichten/schichtmodelle.jsx": {
+          "sha256": "7a5b2baeefc6f9ca954227bb1a112cb6673fce528fce25761d113e56ccabdcbe",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ansichten/schrittleiste.jsx": {
+          "sha256": "86029b671b28d70054ac73c2ed736e384c3577a736c31b076a1a7638bef32169",
+          "literale": [
+            {
+              "wert": "13",
+              "kontext": "{{ width: 26, height: 26, borderRadius: 13, flexShrink: 0, display: \"flex\",\n            alignItems: \"center\", justifyContent: \"center\", fontSize: 12, fontWeight: 700, ...NUM,\n            background: i < aktuell ? C.accentDeep : i === aktuell ? C.accent : C.lineSoft,\n            color: i <= aktuell ? C.aufAkzent : C.dim }}"
+            }
+          ],
+          "literaleSha256": "2583ac9a9300d5ccb1d3f904d6add2581f6fa5b2729ec36603e8442a51ce0aac"
+        },
+        "src/ansichten/tourleiste.jsx": {
+          "sha256": "334fd017a418f2a57c081b443b8b562e733af32771e3b0af68ff62cfe404251b",
+          "literale": [
+            {
+              "wert": "999",
+              "kontext": "{{ padding: \"3px 9px\", borderRadius: 999, cursor: \"pointer\",\n                    fontFamily: \"inherit\", fontSize: 11.5, lineHeight: 1.5,\n                    border: `1px solid ${hier ? C.accent : C.lineSoft}`,\n                    background: hier ? C.accentLight : \"transparent\",\n                    color: hier ? C.accentDeep : k.fertig ? C.ok : C.dim,\n                    fontWeight: hier ? 620 : 500 }}"
+            },
+            {
+              "wert": "8",
+              "kontext": "{{ fontSize: 12, color: C.dim, lineHeight: 1.45,\n              padding: \"8px 10px\", borderRadius: 8, background: C.okLight }}"
+            }
+          ],
+          "literaleSha256": "5f33badad9cec6f880bce4d8655751e65e033c77cb5ef28b09066acd9b7d0176"
+        },
+        "src/gestalt/ansichten.jsx": {
+          "sha256": "89320151a0b295faed221b0d1b06504871dc494e749abccdc84a75cf50138c75",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/gestalt/bausteine.jsx": {
+          "sha256": "b6ba4bc5272e093ebc3d3f0cfab163f4d3f3858d2351844b8ef75dd8ff9770bf",
+          "literale": [
+            {
+              "wert": "1",
+              "kontext": "{{ width: 4, height: 4, borderRadius: 1, background: farbe(d) }}"
+            },
+            {
+              "wert": "2",
+              "kontext": "{{ flex: \"1 1 0\", minWidth: 3, maxWidth: 6, height: `${h}%`, borderRadius: 2,\n            background: neu ? tonFarbe(ton) : C.lineStark }}"
+            },
+            {
+              "wert": "3",
+              "kontext": "{{ width: 10, height: 10, borderRadius: 3, background: farbe(t.ton) }}"
+            }
+          ],
+          "literaleSha256": "4ebeec16139daa86f856700d887e8b5f464a4a042c0a5c28dfca1d4b9bdece3b"
+        },
+        "src/gestalt/icons.jsx": {
+          "sha256": "57e407bbb978b907935e8597e550575703206992d9dc46814f74907c58d0528b",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/gestalt/lesbar.js": {
+          "sha256": "1a81247c9b90484f8cabe68d5ccd3e8faf2f817eb879e4b0a7042ff579b5e227",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/gestalt/rahmen.jsx": {
+          "sha256": "c1d5070228086302927fb47ba0bc2c66b4ad716fa0d0f31fc975492791636c8c",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/gestalt/stil.js": {
+          "sha256": "ae69cab79d345c4168c233cc0a53ae45c52fc7e53fbbc7953e7c690a12e83a80",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ringregler.jsx": {
+          "sha256": "b3f0e7860ca2ff2a7a360ebe5085827ee8cd5658e9fd492a8a2469b9ffc7c5cc",
+          "literale": [
+            {
+              "wert": "50%",
+              "kontext": "{{\n           \n          width: `min(${groesse}px, 100%)`, aspectRatio: \"1\",\n          borderRadius: \"50%\", outlineOffset: 4,\n          cursor: gefasst ? \"grabbing\" : \"pointer\", touchAction: \"none\",\n        }}"
+            },
+            {
+              "wert": "9",
+              "kontext": "{{\n        width: 34, height: 34, borderRadius: 9, cursor: aus ? \"default\" : \"pointer\",\n        border: `1px solid ${C.line}`, background: C.flaeche, color: C.text,\n        fontFamily: \"inherit\", fontSize: 17, lineHeight: 1, opacity: aus ? 0.4 : 1,\n      }}"
+            }
+          ],
+          "literaleSha256": "c46c94f82e7381bb99edb5c8ce3d9eeb9a26d37787eb6f1025e2204f60acfa47"
+        },
+        "src/ui/bausteine.jsx": {
+          "sha256": "b613a461586df4f59dffc0d8c0c4731aabd94d43e3b2c57235f8b1da79e7086a",
+          "literale": [
+            {
+              "wert": "14",
+              "kontext": "{{ width: 46, height: 46, borderRadius: 14, margin: \"0 auto 16px\", display: \"flex\",\n      alignItems: \"center\", justifyContent: \"center\", background: C.flaecheStill, color: C.dim }}"
+            },
+            {
+              "wert": "5",
+              "kontext": "{{ height: 14, borderRadius: 5, marginBottom: 10,\n        width: `${100 - (i % 3) * 14}%`, background: C.bg,\n        animation: \"pulsieren 1.4s ease-in-out infinite\", animationDelay: `${i * .08}s` }}"
+            }
+          ],
+          "literaleSha256": "34aafe61171ebf2aa84789aa4aa200d5184c8d2602aaebdbd57c3cab66fcef38"
+        },
+        "src/ui/diagramme.jsx": {
+          "sha256": "4cdfe0f84dc7b1666f08301d1b15e3639718d914e67cff854f11f9c3fb057d91",
+          "literale": [
+            {
+              "wert": "5px 5px 2px 2px",
+              "kontext": "{{ flex: 1, height: `${h}%`, background: farbe, borderRadius: \"5px 5px 2px 2px\",\n                opacity: aktiv === null || aktiv === i ? 1 : .45, transition: \"opacity .15s\",\n                cursor: klick ? \"pointer\" : \"default\", position: \"relative\", minWidth: 4 }}"
+            },
+            {
+              "wert": "4",
+              "kontext": "{{ position: \"absolute\", top: 3, bottom: 3, borderRadius: 4,\n                left: pos ? \"50%\" : `${50 - breite}%`, width: `${breite}%`,\n                background: Math.abs(v) < 1 ? C.dimmer : pos ? C.warn : C.ok, opacity: .85 }}"
+            }
+          ],
+          "literaleSha256": "8374807f8e2cdcee80a69302b8613eb4ca29db6dd7a42e12b18e1f26427d1d27"
+        },
+        "src/ui/dialogfokus.js": {
+          "sha256": "fda0586e3821d59d8b5d0389ea72f078db56fee2712015db0b0ec685416f26ee",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ui/farbwahl.jsx": {
+          "sha256": "6dcf600a6e038031cff0066443de91813d20e1fce4d0ab143254bdfe476fde40",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ui/geraete.js": {
+          "sha256": "ff54b715f0e6a64d491d9073200916d60078bf8b5d97a83498747614efb4620b",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ui/leisten.jsx": {
+          "sha256": "eba87beba9a113ed30c9e3301a2502eba31ff955e4b028ab3cc0f84dc1195688",
+          "literale": [
+            {
+              "wert": "3",
+              "kontext": "{{ height: 5, background: \"rgba(20,20,25,.08)\", borderRadius: 3, overflow: \"hidden\" }}"
+            },
+            {
+              "wert": "3",
+              "kontext": "{{ width: `${pct}%`, height: \"100%\", background: col, borderRadius: 3, transition: \"width .4s cubic-bezier(.4,0,.2,1)\" }}"
+            }
+          ],
+          "literaleSha256": "bf28ad6003a4be68f0166c1f83281d202d3317b801799a874a87c739e9736c00"
+        },
+        "src/ui/logo.jsx": {
+          "sha256": "198fa76847ec6a58d6fbf5bc05af4bcff7d24253f1ba545fc979d18bad3ca95e",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ui/raster.js": {
+          "sha256": "4eaa0f1066c93f179717ace53daf7a0f3253bc229def9686d34fb76e78726b05",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ui/schriftart.js": {
+          "sha256": "9edf4f1afae57fe4cd349970165ec260dc30c9320667507bb8bbdff7af7afe0a",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ui/scrollbereich.jsx": {
+          "sha256": "181fa474bfb2ebc99027f501e83e91dd7b5180a3cc715c66b447e80f3aa1d34b",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ui/thema.js": {
+          "sha256": "50a25fd66b9f1ea9d5558149f7a6165ce40b7c733b6b38930627c9a66426b308",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        "src/ui/ziehen.jsx": {
+          "sha256": "013f113e997cb76d548bcfb353e0e8f394f89c35bd397e27eb6939b8807e0c65",
+          "literale": [
+            {
+              "wert": "12",
+              "kontext": "{{ position: \"fixed\", left: zeiger.x, top: zeiger.y, zIndex: 999,\n          transform: \"translate(-50%,-140%)\", pointerEvents: \"none\",\n          background: last.farbe ? `${last.farbe}` : C.accentDeep, color: last.farbe ? \"#fff\" : C.aufAkzent,\n          padding: \"8px 14px\", borderRadius: 12, fontSize: 13.5, fontWeight: 600,\n          boxShadow: \"var(--schatten-toast)\", whiteSpace: \"nowrap\" }}"
+            },
+            {
+              "wert": "999",
+              "kontext": "{{ position: \"fixed\", bottom: 26, left: \"50%\", transform: \"translateX(-50%)\", zIndex: 998,\n      background: C.text, color: C.flaeche, padding: \"11px 20px\", borderRadius: 999,\n      fontSize: 13.5, boxShadow: \"var(--schatten-toast)\", pointerEvents: \"none\" }}"
+            }
+          ],
+          "literaleSha256": "1d3130426801149e800e080786d373b9dac27d271ce26cbe1648758a55bce5b0"
+        }
+      }
+    },
+    "Selbsttest": {
+      "basis": "fd9dea357091659345e5b53e5f9d1604bc453055",
+      "dateien": {
+        "src/ansichten/testablauf.jsx": {
+          "sha256": "7533ecd5407d797659432bfc522550b4fc3818ad0fd4544ddc77cc853b185b9a",
+          "literale": [
+            {
+              "wert": "12",
+              "kontext": "{{ padding: \"14px 18px\", borderRadius: 12, marginBottom: 20,\n      background: grund, border: `1px solid ${rand}33`,\n      display: \"flex\", gap: 16, alignItems: \"flex-start\", flexWrap: \"wrap\" }}"
+            }
+          ],
+          "literaleSha256": "02250dbc9e30ee8bd3ca91ca40a882a4c20fee85dd602d5d56a8633192556215"
+        },
+        "src/pruefung.jsx": {
+          "sha256": "cb925a5d0477c55d6a22c198fbb8c5e86260fc93157e197f064c8474b010a71c",
+          "literale": [],
+          "literaleSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        }
+      }
+    }
+  }
+}

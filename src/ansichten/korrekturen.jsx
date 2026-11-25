@@ -199,7 +199,7 @@ export function StempelBefunde({ sitz, ym, akt }) {
                     gültige Ist-Zeit nach der letzten Korrektur hier. */}
                 {Array.isArray(e.korrekturen) && e.korrekturen.length > 0 && (() => {
                   const z = e.korrekturen[e.korrekturen.length - 1];
-                  return (<span title={e.korrekturen.map((x) => `${x.wann ? new Date(x.wann).toLocaleString("de-DE") : ""} · ${(x.wer && x.wer.name) || "–"}: ${x.vorher ? `${x.vorher.start || "–"}–${x.vorher.ende || "–"}` : "ohne Ist-Zeit"} → ${x.nachher.start}–${x.nachher.ende} (${x.grund})${Array.isArray(x.hinweise) && x.hinweise.length ? ` · Hinweise: ${x.hinweise.map((h) => h.text).join(" ")}` : ""}`).join("\n")}><Pill size="sm" tone="accent">
+                  return (<span title={e.korrekturen.map((x) => `${x.wann ? new Date(x.wann).toLocaleString("de-DE", { timeZone: "Europe/Berlin" }) : ""} · ${(x.wer && x.wer.name) || "–"}: ${x.vorher ? `${x.vorher.start || "–"}–${x.vorher.ende || "–"}` : "ohne Ist-Zeit"} → ${x.nachher.start}–${x.nachher.ende} (${x.grund})${Array.isArray(x.hinweise) && x.hinweise.length ? ` · Hinweise: ${x.hinweise.map((h) => h.text).join(" ")}` : ""}`).join("\n")}><Pill size="sm" tone="accent">
                     {`korrigiert${e.korrekturen.length > 1 ? ` (${e.korrekturen.length}×)` : ""}: ${z.nachher.start}–${z.nachher.ende}`}</Pill></span>);
                 })()}</td>
             </tr>);

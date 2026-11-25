@@ -21,7 +21,8 @@
       (Löschlauf, Aufbewahrung) nicht.
    2. Mittelbar: Ändert die Übermittlung Dienstarten, Schichtfolge (zyklus,
       anker), Einheiten (Versatz) oder Personen (Zugehörigkeit, Springer,
-      Schichtdienst, Teilzeit, Eintritt, Austritt, Status), rechnet der Server
+      Schichtdienst, Teilzeit, Eintritt, Austritt, Status) — mit Planwirkung
+      (IMP-6, Vorgabe aus) auch Schichtmodelle und Zuordnungen —, rechnet der Server
       für jede Person die nächsten SCHUTZ_HORIZONT_TAGE Tage vorher und
       nachher nach — nur dort, wo sich für die Einteilung etwas geändert haben
       kann (Dienst, Dienstart, Nachbartage, Woche, Person, Betriebsvorgaben).
@@ -53,8 +54,13 @@
    - Mittelbar nur im Horizont; spätere Tage prüft die Planprüfung. Das gilt
      auch für Tage, die eine aufgehobene Abwesenheit wieder dienstpflichtig
      macht (B-H5 Stufe 2).
-   - /api/wiederherstellen (nur Leitung) läuft ohne diese Prüfung
-     (Entscheidungsliste, Kategorie C).
+   - /api/wiederherstellen (nur Leitung) PRÜFT mit derselben Rechnung, sperrt
+     aber nicht (P2-21, Empfehlung B der Entscheidungsliste: warnen und
+     protokollieren): wiederherstellungsPruefung liefert einen Bericht (Anzahl
+     neuer Befunde je Regel, ohne Person, Tag oder Merkmal) für Antwort,
+     Betriebsprotokoll und Serverprotokoll. Kann die Prüfung nicht zu Ende
+     rechnen (Zeitbudget, Fehler), wird nichts zurückgespielt (fail-closed,
+     503). Sperren wie beim Speichern (Option C) ist Betreiberentscheidung.
    - B-H5: Tage vor heute bleiben ausgenommen. Wer die Abweichung von
      GESTERN löscht, ändert damit auch die Ruhezeit zum Dienst von heute —
      das prüft der Server nicht.
@@ -70,7 +76,7 @@ import { schutzEinsatz, addDays, tagUTC } from "./schutzpruefung.mjs";
 import { heuteBerlin } from "./zeiterfassung.mjs";
 import { BEFUND_KATALOG, sperrtBefund, befundText } from "./bestaetigungen.mjs";
 import { einteilungsBefunde, imDienst, mindestOhneFeiertag, einheitAm, einheitDienst, teilzeitDienst,
-  landFuerEinheit } from "./fachpruefung.mjs";
+  landFuerEinheit, planDienst, schichtmodellWirkungAktiv, schichtmodellPlanfelder } from "./fachpruefung.mjs";
 
 /** Wie weit der Server mittelbare Änderungen voraus nachrechnet (Tage ab heute). */
 export const SCHUTZ_HORIZONT_TAGE = 120;
@@ -127,7 +133,10 @@ function planStrukturGeaendert(altM, neuM) {
 }
 /** Dasselbe in Häppchen (Nachtrag WP-22b, Review HOCH 2): je Person eine Gelegenheit zum Nachgeben. */
 function* planStrukturSchritte(altM, neuM, zeitUm = () => false, weiter = () => {}) {
-  for (const f of ["dienstarten", "zyklus", "anker", "einheiten"])
+  /* IMP-6 Planwirkung (Vorgabe aus): Mit AN bestimmen auch die Modelldefinitionen und die Zuordnungen je Person den Plan
+     und lösen die mittelbare Nachrechnung aus; mit AUS sind die Listen leer — wie bisher. */
+  const wirkung = schichtmodellPlanfelder();
+  for (const f of ["dienstarten", "zyklus", "anker", "einheiten", ...wirkung.betrieb])
     if (hat(neuM, f) && !gleich(altM[f], neuM[f])) return true;
   const alt = new Map(liste(altM.personen).map((p) => [String(p.id), p]));
   for (const p of liste(neuM.personen)) {
@@ -139,7 +148,7 @@ function* planStrukturSchritte(altM, neuM, zeitUm = () => false, weiter = () => 
     /* Review M2: auch Schutzmerkmale und Einwilligungen — wer sie ändert,
        ändert, ob bestehende Einteilungen zulässig sind. */
     for (const f of ["zugehoerigkeit", "springer", "imSchichtdienst", "teilzeit", "wochenstunden", "eintritt", "austritt", "status",
-      "mutterschutz", "mutterschutzEinwilligungen", "geburtstag", "geburtsdatum"])
+      "mutterschutz", "mutterschutzEinwilligungen", "geburtstag", "geburtsdatum", ...wirkung.person])
       if (!gleich(a[f], p[f])) return true;
   }
   return false;
@@ -182,6 +191,7 @@ function* planrechner(m, personen, zeitUm = () => false, weiter = () => {}) {
     if (v === undefined) { v = einheitDienst(m, eid, d); je.set(d, v); }
     return v;
   };
+  const wirkung = schichtmodellWirkungAktiv();                               // je Planrechner einmal gelesen
   const dienste = new Map();                                                 // pid → Map(tag → id|null)
   const am = (p, d) => {
     const pid = String(p.id);
@@ -197,7 +207,9 @@ function* planrechner(m, personen, zeitUm = () => false, weiter = () => {}) {
       if (ab !== undefined) basis = frei(ab) ? null : ab;
       else {
         const eid = einheitAm(p, d);
-        basis = eid && !p.springer && p.imSchichtdienst !== false ? teilzeitDienst(m, p, d, folgeAm(eid, d)) : null;
+        /* IMP-6 Planwirkung (Vorgabe aus): je Person das zugeordnete Modell (planDienst); aus wörtlich wie bisher. */
+        basis = wirkung ? planDienst(m, p, d, eid)
+          : eid && !p.springer && p.imSchichtdienst !== false ? teilzeitDienst(m, p, d, folgeAm(eid, d)) : null;
       }
       const ab2 = basis ? fehlt.get(pid) : undefined;
       if (basis && !(ab2 && ab2.some((a) => a.von <= d && a.bis >= d))) v = basis;
@@ -294,7 +306,7 @@ export function fachpruefungUebermittlung(altM, neuM, heute = heuteBerlin(), opt
  * @param {any} altM
  * @param {any} neuM
  * @param {string} [heute]
- * @param {{ imBereich?: (personId: any, tag: string) => boolean, budgetMs?: number }} [opt]
+ * @param {{ imBereich?: (personId: any, tag: string) => boolean, budgetMs?: number, bericht?: boolean }} [opt]
  * @returns {Promise<null | Fachergebnis>}
  */
 export async function fachpruefungUebermittlungAsync(altM, neuM, heute = heuteBerlin(), opt = {}) {
@@ -325,11 +337,65 @@ export async function fachpruefungUebermittlungAsync(altM, neuM, heute = heuteBe
 }
 
 /**
- * @typedef {{ sperre?: string, zeitbudget?: boolean,
+ * @typedef {{ sperre?: string, zeitbudget?: boolean, bericht?: any,
  *   warnungen?: { personId: any, datum: string, dienstId: any, befunde: { regel: string, stufe: string, text: string }[] }[],
  *   sammelVorschlag?: { regel: string, stufe: string, text: string, einheitId: any, von: string, bis: string, anzahl: number }[],
  *   sammel?: Record<string, { anzahl: number, von: string, bis: string }>, konflikte?: { personId: any, datum: string, dienstId: any }[] }} Fachergebnis
  */
+
+/** P2-21 (Review #419, Auflage 1): eigenes Zeitbudget der Wiederherstellung. Sie ist selten (Bremse 5 je Stunde, nur
+    Leitung) und rechnet AUSSERHALB der Raumsperre (daten.mjs) in Häppchen — andere Betriebe und andere Schreiber
+    desselben Raums warten nicht. Delta-Review #419 (Auflage 2): Die Antwort muss samt Wartezeit auf die Raumsperre
+    (höchstens 15 s, raumsperre.mjs) und Lesen/Schreiben sicher unter der Antwortzeitgrenze des Proxys bleiben (60 s,
+    Caddyfile.vorlage) — sonst 504 bei womöglich doch geschriebenem Stand. Daher:
+      budgetMs     Prüfung höchstens 30 s;
+      gesamtMs     ist seit Beginn der Anfrage mehr als 45 s vergangen, bricht daten.mjs unter der Sperre VOR dem
+                   Schreiben ab (503, nichts geschrieben) — bleiben 15 s für das Schreiben;
+      gleichzeitig höchstens so viele Wiederherstellungs-Prüfungen gleichzeitig im Prozess (sonst 503, vor der Bremse).
+    Veränderlich nur für Prüfungen. Messwerte und Notweg: docs/acc45/p2-21-nachweis.md. */
+export const WIEDERHERSTELLEN_GRENZEN = { budgetMs: 30000, gesamtMs: 45000, gleichzeitig: 2 };
+export const WIEDERHERSTELLEN_BUDGET_MS = WIEDERHERSTELLEN_GRENZEN.budgetMs;
+
+/**
+ * P2-21: Fachprüfung einer Wiederherstellung als Bericht (Empfehlung B — warnen
+ * und protokollieren, nicht sperren). Dieselbe Rechnung wie beim Speichern
+ * (ausdrücklich, B-H5, mittelbar im Horizont), gezählt werden nur NEUE Befunde
+ * gegenüber dem jetzigen Stand. Keine Absage an einer Stelle: Eine unbekannte
+ * Dienstart wird gezählt, die Mengensperre für aufgehobene Abwesenheiten
+ * begrenzt nur die Zählung (`begrenzt`). Der Bericht nennt keine Person,
+ * keinen Tag und kein Merkmal — nur Regelschlüssel und Anzahlen.
+ * Verändert nichts (rein): Weder der zurückgespielte Stand noch das
+ * Bestätigungsprotokoll werden angefasst.
+ * @param {any} altM jetziger Betrieb
+ * @param {any} neuM zurückgespielter Betrieb
+ * @param {string} [heute]
+ * @param {{ budgetMs?: number }} [opt]
+ * @returns {Promise<{ zeitbudget: true } | { bericht: Wiederherstellungsbericht }>}
+ */
+export async function wiederherstellungsPruefung(altM, neuM, heute = heuteBerlin(), opt = {}) {
+  const r = await fachpruefungUebermittlungAsync(altM, neuM, heute, { budgetMs: opt.budgetMs || WIEDERHERSTELLEN_GRENZEN.budgetMs, bericht: true });
+  if (r && r.zeitbudget) return { zeitbudget: true };
+  const b = (r && r.bericht) || leererBericht();
+  return { bericht: { ...b, konflikte: r && Array.isArray(r.konflikte) ? r.konflikte.length : 0 } };
+}
+/**
+ * @typedef {{ einteilungen: number, sperrend: number, vergangen: number, befunde: Record<string, number>,
+ *   dienstartUnbekannt: number, begrenzt: boolean, konflikte: number }} Wiederherstellungsbericht
+ */
+const leererBericht = () => ({ einteilungen: 0, sperrend: 0, vergangen: 0, befunde: {}, dienstartUnbekannt: 0, begrenzt: false, konflikte: 0 });
+/** Eine Zeile für Protokolle — nur Regelschlüssel und Anzahlen. */
+export function wiederherstellungsBerichtZeile(b) {
+  if (!b) return "Fachprüfung: nicht durchgeführt";
+  const regeln = Object.keys(b.befunde || {}).sort().map((k) => `${k} ${b.befunde[k]}`);
+  const n = b.einteilungen + b.dienstartUnbekannt + b.konflikte;
+  if (!n) return `Fachprüfung: keine neuen Befunde${b.begrenzt ? " (Zählung begrenzt)" : ""}`;
+  return [`Fachprüfung: ${b.einteilungen} Einteilungen mit neuem Befund (sperrend ${b.sperrend}, vor heute ${b.vergangen})`,
+    regeln.length ? regeln.join(", ") : null,
+    b.dienstartUnbekannt ? `unbekannte Dienstart ${b.dienstartUnbekannt}` : null,
+    b.konflikte ? `Schutzangaben-Konflikte ${b.konflikte}` : null,
+    b.begrenzt ? "Zählung begrenzt" : null,
+    "nicht gesperrt (P2-21, Empfehlung B)"].filter(Boolean).join(" · ");
+}
 
 /** Schutzangaben einer Person: ändern sie sich, wird gespeichert und nachgemeldet, nie abgewiesen (M2). */
 const SCHUTZ_FELDER = ["mutterschutz", "mutterschutzEinwilligungen", "geburtstag", "geburtsdatum", "schwerbehindert", "nachtvorsorge"];
@@ -341,6 +407,23 @@ function nurSchutzGeaendert(a, b) {
 function mitKonflikten(r, ausgabe) {
   if (!ausgabe.konflikte.length || (r && (r.sperre || r.zeitbudget))) return r;
   return { ...(r || {}), konflikte: ausgabe.konflikte.slice(0, 200) };
+}
+
+/** P2-21: Anzahlen aus den neuen Befunden — ohne Person, Tag oder Merkmal. */
+function berichtAus(funde, heute) {
+  /** @type {Record<string, number>} */
+  const befunde = {};
+  let sperrend = 0, vergangen = 0;
+  for (const f of funde.values()) {
+    /* Review #419 (H2): Regeln mit Schutzbezug (Katalogspalte `schutz`: Schutzvorschrift, keine Nacht, kein
+       Alleindienst, Höchstzahl je Woche) nur zusammengefasst als „schutz" — der Schlüssel verriete sonst eine
+       Einschränkung der Person. Je Einteilung höchstens einmal. */
+    for (const k of new Set(f.befunde.map((b) => (BEFUND_KATALOG[b.regel] && BEFUND_KATALOG[b.regel].schutz ? "schutz" : b.regel))))
+      befunde[k] = (befunde[k] || 0) + 1;
+    if (f.befunde.some((b) => sperrtBefund(b.regel))) sperrend++;
+    if (f.datum < heute) vergangen++;
+  }
+  return { einteilungen: funde.size, sperrend, vergangen, befunde, dienstartUnbekannt: 0, begrenzt: false, konflikte: 0 };
 }
 
 /** Deckt eine Sammelbestätigung (Review B1) diese Einteilung? */
@@ -355,7 +438,7 @@ function sammelDeckt(b, p, d, regel) {
  * @param {any} neuM
  * @param {string} heute
  * @param {{ mittelbar: boolean, personen: number, geprueft: number, blockMs: number }} zaehler
- * @param {{ imBereich?: (personId: any, tag: string) => boolean }} opt
+ * @param {{ imBereich?: (personId: any, tag: string) => boolean, bericht?: boolean }} opt
  * @returns {Generator<void, null | Fachergebnis, void>}
  */
 function* pruefen(altM, neuM, heute, zaehler, opt, ausgabe = { konflikte: [] }) {
@@ -386,9 +469,12 @@ function* pruefen(altM, neuM, heute, zaehler, opt, ausgabe = { konflikte: [] }) 
   const daAlt = new Map(liste(mAlt.dienstarten).map((d) => [String(d.id), d]));
   const hatZeiten = (da) => !!da && typeof da.start === "string" && typeof da.ende === "string";
   const imBereich = typeof opt.imBereich === "function" ? opt.imBereich : null;
+  /* P2-21: Bericht statt Absage (wiederherstellungsPruefung). */
+  const bericht = opt.bericht === true;
+  let unbekannt = 0, begrenzt = false;
 
   /* 0. Eine noch verwendete Dienstart löschen (N1) — für alle Personen gleich. */
-  if (altM && hat(neuM, "dienstarten")) {
+  if (!bericht && altM && hat(neuM, "dienstarten")) {                     // im Bericht zählt zelle() die unbekannte Dienstart
     const weg = new Set([...daAlt.keys()].filter((id) => !daNeu.has(id)));
     if (weg.size) {
       const name = (id) => { const d = daAlt.get(String(id)); return (d && d.name) || String(id); };
@@ -423,7 +509,7 @@ function* pruefen(altM, neuM, heute, zaehler, opt, ausgabe = { konflikte: [] }) 
     if (altAbw[k] === wert) continue;
     const [pid, tag] = String(k).split("|");
     if (!TAG.test(tag || "") || !neuNach.has(String(pid))) continue;       // darüber urteilen die Rollenprüfungen
-    if (!frei(wert) && !daNeu.has(String(wert)))
+    if (!bericht && !frei(wert) && !daNeu.has(String(wert)))
       return { sperre: `Einteilung am ${tag} nicht möglich: Die Dienstart ist nicht bekannt.` };   // fail-closed
     zellen.set(`${pid}|${tag}`, wert);
   }
@@ -462,7 +548,8 @@ function* pruefen(altM, neuM, heute, zaehler, opt, ausgabe = { konflikte: [] }) 
         if (zellen.has(k)) continue;
         const n = rN.am(p, d);
         if (!n || (pA && String(rA.am(pA, d)) === String(n))) continue;
-        if (++zusatz > ABWESENHEIT_TAGE_MAX)
+        if (++zusatz > ABWESENHEIT_TAGE_MAX && bericht) { begrenzt = true; break; }
+        if (zusatz > ABWESENHEIT_TAGE_MAX)
           return { sperre: "Diese Änderung hebt Abwesenheiten an zu vielen Tagen auf einmal auf. Bitte in kleineren Schritten speichern." };
         zellen.set(k, undefined);
       }
@@ -526,7 +613,7 @@ function* pruefen(altM, neuM, heute, zaehler, opt, ausgabe = { konflikte: [] }) 
         for (const d of rN.abwTage(p)) if (d > horizont[horizont.length - 1] && rN.am(p, d)) struktur.push([p, d]);
     }
   }
-  if (!zellen.size && !struktur.length) return null;
+  if (!zellen.size && !struktur.length) return bericht ? { bericht: { ...berichtAus(new Map(), heute), begrenzt } } : null;
 
   /* Tage mit ausdrücklichen Änderungen: dort auch die Kolleginnen mit
      „kein Alleindienst" — ihnen kann der Partner weggenommen worden sein.
@@ -557,7 +644,10 @@ function* pruefen(altM, neuM, heute, zaehler, opt, ausgabe = { konflikte: [] }) 
     const id = ausdruecklich !== undefined ? (frei(ausdruecklich) ? null : ausdruecklich) : rN.am(p, d);
     if (!id) return null;
     const da = daNeu.get(String(id));
-    if (!da) return { sperre: `Einteilung am ${d} nicht möglich: Die Dienstart ist nicht bekannt.` };
+    if (!da) {
+      if (bericht) { unbekannt++; return null; }
+      return { sperre: `Einteilung am ${d} nicht möglich: Die Dienstart ist nicht bekannt.` };
+    }
     if (!hatZeiten(da)) return null;
     zaehler.geprueft++;
     const neu = einteilungsBefunde(mNeu, p, da, d, kN).filter((b) => zaehlt(b.regel));
@@ -614,6 +704,7 @@ function* pruefen(altM, neuM, heute, zaehler, opt, ausgabe = { konflikte: [] }) 
       for (const p of weg) dazu(p.id, d, id, { regel: "untergrenze", stufe: BEFUND_KATALOG.untergrenze.stufe, text: befundText("untergrenze") });
     }
   }
+  if (bericht) return { bericht: { ...berichtAus(funde, heute), dienstartUnbekannt: unbekannt, begrenzt } };
   if (!funde.size) return null;
 
   /* Review B4: Die Schichtverantwortung kann nur für ihren Bereich bestätigen.

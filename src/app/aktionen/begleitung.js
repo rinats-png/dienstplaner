@@ -5,7 +5,7 @@ import { heute, fLang } from "../../lib/datum.js";
 import { uid, n1 } from "../../lib/format.js";
 import { waehltEinheit, eigeneEinheitVon, vorlauf, abwArt, personTag, briefingText, tagesaufgaben } from "../../lib/fachlogik.js";
 import { addDays, REGELSTAND, fenster, dauer, pISO } from "../../regelwerk.js";
-import { einheitAm, einheitDienst } from "../../../server/lib/fachpruefung.mjs";
+import { einheitAm, einheitDienst, schichtfolgeAm, schichtfolgeOffen } from "../../../server/lib/fachpruefung.mjs";
 import { lade } from "../../lib/download.js";
 
 export function aktionenBegleitung(k) {
@@ -40,7 +40,7 @@ export function aktionenBegleitung(k) {
         p.id === sitz.person.id ? { ...p, einfuehrung: { erledigt: true, schritt: 0 } } : p) }), null),
       oeffneAntrag: (d) => setAntragVon({ von: d || heute(), bis: d || heute() }),
       tauschAusPlan: (d) => mUpd((m) => {
-        const jetzt = new Date().toLocaleString("de-DE");
+        const jetzt = new Date().toLocaleString("de-DE", { timeZone: "Europe/Berlin" });
         melde("Tauschgesuch eingestellt. Alle im Betrieb sehen es.");
         return { ...m, anfragen: [{ id: uid("r"), personId: sitz.person.id, typ: "tausch", status: "offen",
           partnerId: null, interessenten: [], von: d, bis: d, text: "", erstellt: jetzt }, ...m.anfragen] };
@@ -63,7 +63,7 @@ export function aktionenBegleitung(k) {
       /* --- Notizen --- */
       neueNotiz: (k, text, einheitId = null) => mUpd((m) => ({ ...m, notizen: { ...(m.notizen || {}),
         [k]: [{ id: uid("nz"), text, von: `${sitz.person.vorname} ${sitz.person.nachname}`, vonId: sitz.person.id,
-          zeit: new Date().toLocaleString("de-DE"),
+          zeit: new Date().toLocaleString("de-DE", { timeZone: "Europe/Berlin" }),
           einheitId: waehltEinheit(sitz) ? einheitId : eigeneEinheitVon(sitz) }, ...((m.notizen || {})[k] || [])] } }), "Notiz gespeichert"),
       loescheNotiz: (k, id) => mUpd((m) => ({ ...m, notizen: { ...(m.notizen || {}),
         [k]: ((m.notizen || {})[k] || []).filter((x) => x.id !== id) } }), null),
@@ -77,15 +77,15 @@ export function aktionenBegleitung(k) {
       /* --- Mehrfachbearbeitung --- */
       mehrfachDienst: (ids, von, bis, dienstId) => mUpd((m) => {
         const ab = { ...m.abweichungen };
-        const aend = []; const jetzt = new Date().toLocaleString("de-DE");
+        const aend = []; const jetzt = new Date().toLocaleString("de-DE", { timeZone: "Europe/Berlin" });
         for (const pid of ids) {
           const p = m.personen.find((x) => x.id === pid); if (!p) continue;
           for (let d = von; d <= bis; d = addDays(d, 1)) {
             const eid = einheitAm(p, d);
-            const plan = eid && p.imSchichtdienst !== false ? einheitDienst(m, eid, d) : null;
+            const plan = schichtfolgeAm(m, p, d, () => (eid && p.imSchichtdienst !== false ? einheitDienst(m, eid, d) : null));   // IMP-6: AUS wie bisher
             const k = `${pid}|${d}`;
             const vorher = ab[k] !== undefined ? ab[k] : plan;
-            if ((dienstId === "-" && !plan) || dienstId === plan) delete ab[k]; else ab[k] = dienstId;
+            if (!schichtfolgeOffen(p, d) && ((dienstId === "-" && !plan) || dienstId === plan)) delete ab[k]; else ab[k] = dienstId;   // offen: Server entscheidet
             const nachher = ab[k] !== undefined ? ab[k] : plan;
             if ((vorher || "-") !== (nachher || "-"))
               aend.push({ id: uid("c"), personId: pid, datum: d, von: vorher || "-", nach: nachher || "-",

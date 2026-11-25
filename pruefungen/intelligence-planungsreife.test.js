@@ -208,11 +208,24 @@ describe("Zusagen", () => {
     for (const p of e.punkte) expect(p.status === "ok", p.id).toBe(p.luecken.length === 0);
     expect(e.gruende.length).toBe(e.luecken.length);
   });
-  it("Laufzeit: 31 Tage x 40 Personen, 200 Läufe unter einer Sekunde", () => {
-    const b = betrieb(40);
-    const t0 = performance.now();
-    for (let i = 0; i < 200; i++) planungsreife(b, OPT);
-    expect(performance.now() - t0).toBeLessThan(1000);
+  it("Laufzeit: 31 Tage x 40 Personen, 200 Läufe: nicht überlinear und mit großem Vorrat unter einer Sekunde", () => {
+    /* QS-2, Mittelpaket: statt der festen Wandzeit-Grenze („200 Läufe < 1000 ms“, auf einem gestörten Runner nicht reproduzierbar)
+       die Skalierung in der Personenzahl: 1 Lauf mit 160 Personen gegen 4 Läufe mit 40 Personen (gleiche Gesamtgröße, also gleiche
+       Dauer und gleiche Störanfälligkeit durch den Scheduler; ungleich lange Messblöcke lagen unter Last bei 8 bis 9 statt 3,7). Beide
+       Seiten werden ABWECHSELND gemessen (je Runde einmal je Seite; Minimum je Seite aus höchstens 9 Runden zu je 50 Durchgängen
+       gegen 200 Durchgänge der kleinen Größe). Linear ergibt etwa 1, quadratisch etwa 4; Grenze 2 (mit 4 ms Spielraum für sehr kurze
+       Zeiten). Zusätzlich die absolute Grobgrenze: 200 Läufe mit 40 Personen in höchstens 2000 ms
+       (gemessen 46 bis 58 ms, Vorrat über 30-fach; die alte Grenze „< 1000 ms“ hatte etwa 18-fach). */
+    const klein = betrieb(40), gross = betrieb(160);
+    const zeit = (fn) => { const t0 = performance.now(); fn(); return performance.now() - t0; };
+    const kurz = () => { for (let i = 0; i < 50; i++) for (let j = 0; j < 4; j++) planungsreife(klein, OPT); };   // 200 Läufe mit 40 Personen
+    const lang = () => { for (let i = 0; i < 50; i++) planungsreife(gross, OPT); };                              // 50 Läufe mit 160 Personen
+    let vier = Infinity, eins = Infinity;
+    const start = performance.now();
+    /* Höchstens 9 Runden, mindestens 2; ein Mangel (Sekunden je Runde) bricht nach 8 s ab statt Minuten zu laufen. */
+    for (let runde = 0; runde < 9 && (runde < 2 || performance.now() - start < 8000); runde++) { vier = Math.min(vier, zeit(kurz)); eins = Math.min(eins, zeit(lang)); }
+    expect(eins, `4 × 40 Personen ${vier.toFixed(2)} ms`).toBeLessThanOrEqual(Math.max(2 * vier, vier + 4));
+    expect(vier).toBeLessThanOrEqual(2000);
   });
 });
 

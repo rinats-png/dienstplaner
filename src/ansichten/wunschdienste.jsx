@@ -59,7 +59,7 @@ export function Wunschdienste({ sitz, akt, personId, onClose }) {
           const vergangen = d < heute();
           return (
             <button key={d} disabled={vergangen} onClick={() => akt.setzeWunsch(p.id, d)}
-               style={{ padding: "8px 4px", borderRadius: 11, border: "none",
+               style={{ padding: "8px 4px", borderRadius: "var(--v4-r-mittel)", border: "none",
                 cursor: vergangen ? "default" : "pointer", textAlign: "center", opacity: vergangen ? .38 : 1,
                 background: art ? `${art.farbe}1C` : C.bg,
                 outline: art ? `1.5px solid ${art.farbe}66` : "none" }}>
@@ -76,7 +76,7 @@ export function Wunschdienste({ sitz, akt, personId, onClose }) {
       <div style={{ display: "flex", gap: 18, marginTop: 18, flexWrap: "wrap" }}>
         {WUNSCH_ARTEN.map((a) => (
           <span key={a.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: C.dim }}>
-            <span style={{ width: 17, height: 17, borderRadius: 6, background: `${a.farbe}1C`,
+            <span style={{ width: 17, height: 17, borderRadius: "var(--v4-r-klein)", background: `${a.farbe}1C`,
               color: lesbar(a.farbe), fontSize: 12, fontWeight: 800, display: "flex", alignItems: "center",
               justifyContent: "center" }}>{a.zeichen}</span>{a.label}</span>))}
         <span style={{ fontSize: 13, color: C.dimmer, marginLeft: "auto", ...NUM }}>
@@ -113,7 +113,7 @@ export function Wunschdienste({ sitz, akt, personId, onClose }) {
             <div style={{ marginTop: 10 }}>
               {bilanz.map(({ w, da, art, getroffen }) => (
                 <div key={w.datum} className="listenzeile" style={{ padding: "9px 0", gap: 10 }}>
-                  <span style={{ width: 24, height: 24, borderRadius: 8, flexShrink: 0, display: "flex",
+                  <span style={{ width: 24, height: 24, borderRadius: "var(--v4-r-klein)", flexShrink: 0, display: "flex",
                     alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 13,
                     background: `${art.farbe}1C`, color: lesbar(art.farbe) }}>{art.zeichen}</span>
                   <div style={{ flex: 1, minWidth: 0 }}>

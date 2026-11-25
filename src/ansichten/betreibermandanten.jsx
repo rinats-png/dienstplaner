@@ -66,7 +66,7 @@ export function BetreiberMandanten({ db, akt, oeffne }) {
                   return (
                     <div key={r.id} className="karte" style={{ padding: "12px 14px" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 7 }}>
-                        <span style={{ width: 21, height: 21, borderRadius: 7, background: `${r.farbe}1E`, color: lesbar(r.farbe),
+                        <span style={{ width: 21, height: 21, borderRadius: "var(--v4-r-klein)", background: `${r.farbe}1E`, color: lesbar(r.farbe),
                           display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700 }}>{r.kurz}</span>
                         <span style={{ fontSize: 11.5, color: C.dim }}>{r.label}</span>
                       </div>
@@ -86,7 +86,7 @@ export function BetreiberMandanten({ db, akt, oeffne }) {
                     {s.standorte}<span style={{ fontSize: 12, color: C.dimmer, fontWeight: 400 }}>
                       /{s.preis.stufe.standorteInklusive} inkl.</span></div>
                 </div>
-                <div className="karte" style={{ padding: "12px 14px", background: "rgba(43,52,64,.06)" }}>
+                <div className="karte" style={{ padding: "12px 14px", background: C.bg }}>
                   <div style={{ fontSize: 11.5, color: C.dim, marginBottom: 7 }}>Monatspreis</div>
                   <div style={{ fontSize: 20, fontWeight: 650, color: s.preis.zahlt ? C.accent : C.dimmer, ...NUM }}>{eur(s.preis.gesamt)}</div>
                   <div style={{ fontSize: 10.5, color: C.dimmer, marginTop: 3, ...NUM }}>

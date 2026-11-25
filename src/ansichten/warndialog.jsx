@@ -118,7 +118,7 @@ export function Warndialog({ sitz, vorgang, onClose }) {
         </div>)}
 
       {abwesend && (
-        <div style={{ fontSize: 13, color: abwesenheitGesperrt ? C.danger : C.dim, background: C.bg, borderRadius: 10, padding: "10px 12px", margin: "6px 0 14px", lineHeight: 1.5 }}>
+        <div style={{ fontSize: 13, color: abwesenheitGesperrt ? C.danger : C.dim, background: C.bg, borderRadius: "var(--v4-r-mittel)", padding: "10px 12px", margin: "6px 0 14px", lineHeight: 1.5 }}>
           {abwesenheitGesperrt
             ? "Eine Abwesenheit kann nur die Planung oder die Leitung aufheben. Bitte dort melden oder einen anderen Weg wählen."
             : "Die Abwesenheit wird für diesen Tag aufgehoben und die Person benachrichtigt. Der übrige Zeitraum bleibt bestehen."}

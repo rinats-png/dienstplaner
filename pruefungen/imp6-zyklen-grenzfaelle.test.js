@@ -263,8 +263,17 @@ describe("D. Differenz alt/neu: Altbestand rechnet mit genau einem Modell je Per
 describe("D2. Wächter: nur bekannte Module lesen Zuordnungen und Modelldefinitionen (Quelltextsuche)", () => {
   /* Wer die Zuordnung in die Planrechnung bringt, schaltet die Planwirkung ein (P2-4 Punkt 6) und muss vorher Punkt 8
      (Wiederherstellen) lösen — dann diese Liste bewusst erweitern und die Differenzprüfung D umstellen. */
+  /* IMP-6 Oberfläche (bewusste Erweiterung, keine Planwirkung): src/lib/schichtmodelle-pflege.js ist die einzige Stelle der
+     Oberfläche, die die Felder nennt (Pflege: Entwurf prüfen, Feld setzen, Lage anzeigen). Ansicht und Aktionen gehen nur
+     über sie; dass weder sie noch die Planrechnung (fachlogik.js) einander nutzen, prüft imp6-oberflaeche E3. */
+  /* IMP-6 Planwirkung PR 1 (bewusste Erweiterung, Schalter CENTRIC_SCHICHTMODELL_WIRKUNG aus und unverbunden):
+     server/lib/schichtmodell-kern.mjs ist der aus schichtzuordnung.mjs ausgelagerte Kern ohne Importe (sonst Importkreis
+     über monatsabschluss.mjs → isteinfrieren.mjs); server/lib/fachpruefung.mjs ist die EINE Stelle der Planrechnung, die
+     ihn liest (planDienst, schichtmodellLageAm, schichtmodellKlaerungen) — alle übrigen Rechnungen gehen über planDienst
+     (Wächter imp6-planwirkung S). Die Differenz D bleibt unverändert bit-gleich (Wirkung aus); AN prüft imp6-planwirkung D3.
+     Der Suchausdruck erkennt zusätzlich jedes Modul, das den Kern importiert. */
   const ERLAUBT = ["server/lib/schichtzuordnung.mjs", "server/lib/rechte.mjs", "server/lib/sicht.mjs", "server/funktionen/daten.mjs",
-    "server/lib/import/schichtvorschau.mjs"];
+    "server/lib/import/schichtvorschau.mjs", "src/lib/schichtmodelle-pflege.js", "server/lib/schichtmodell-kern.mjs", "server/lib/fachpruefung.mjs"];
   const wurzel = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
   const dateien = (rel) => readdirSync(path.join(wurzel, rel)).flatMap((n) => {
     const r = `${rel}/${n}`;
@@ -274,13 +283,14 @@ describe("D2. Wächter: nur bekannte Module lesen Zuordnungen und Modelldefiniti
      dynamisch gebildeter Feldzugriff (etwa m["schicht" + "modelle"]) bleibt unerkannt. */
   it("server/ und src/: schichtmodellZuordnungen oder schichtzuordnung.mjs nur in den erlaubten Modulen", () => {
     const treffer = [...dateien("server"), ...dateien("src")]
-      .filter((r) => /schichtmodellZuordnungen|schichtzuordnung\.mjs|\bZUORDNUNG_FELD\b/.test(readFileSync(path.join(wurzel, r), "utf8")));
+      .filter((r) => /schichtmodellZuordnungen|schichtzuordnung\.mjs|schichtmodell-kern\.mjs|\bZUORDNUNG_FELD\b/.test(readFileSync(path.join(wurzel, r), "utf8")));
     expect(treffer.sort()).toEqual([...ERLAUBT].sort());
   });
   it("server/ und src/: das Feld der Modelldefinitionen (schichtmodelle) nur in den erlaubten Modulen", () => {
     /* Erlaubt: die Module, die schon Zuordnungen lesen, ohne daten.mjs (es liest Modelle nur über die Bibliothek), dazu
        src/app/feldbezeichnungen.js — dort steht nur die deutsche Bezeichnung des Kernfelds, kein Lesen der Definitionen. */
-    const MODELL_ERLAUBT = [...ERLAUBT.filter((r) => r !== "server/funktionen/daten.mjs"), "src/app/feldbezeichnungen.js"];
+    /* fachpruefung.mjs liest die Modelldefinitionen nur über den Kern (modellVerzeichnis), nennt das Feld also nicht. */
+    const MODELL_ERLAUBT = [...ERLAUBT.filter((r) => r !== "server/funktionen/daten.mjs" && r !== "server/lib/fachpruefung.mjs"), "src/app/feldbezeichnungen.js"];
     const treffer = [...dateien("server"), ...dateien("src")]
       .filter((r) => /\.schichtmodelle\b|["'`]schichtmodelle["'`]|\bschichtmodelle\s*:|\bMODELLE_FELD\b/.test(readFileSync(path.join(wurzel, r), "utf8")));
     expect(treffer.sort()).toEqual([...MODELL_ERLAUBT].sort());

@@ -11,8 +11,8 @@
    Lesende Prüfungen an allen acht Viewports (B6/B14): Mein Plan ohne waagrechtes Scrollen, Bedienflächen ≥ 24 px,
    axe WCAG 2.2 AA auf Heute (Stempeluhr), Krankmeldungsblatt, Lagebild (offene Krankmeldungen) und Stempelbefunde
    (Monatsabschluss); Tastaturbedienung des Krankmeldungsblatts. Zugangscodes werden nie ausgegeben. */
-import { test, expect, anmelden, geheZu, axePruefen, schreibvorgaengeVerfolgen } from "./hilfen.mjs";
-import { BASIS, ZUGAENGE_VAR } from "./umgebung.mjs";
+import { test, expect, anmelden, geheZu, axePruefen, schreibvorgaengeVerfolgen, zugangscode } from "./hilfen.mjs";
+import { BASIS } from "./umgebung.mjs";
 import { ABNAHME_B_FLAECHEN as FL } from "./abnahme-b-flaechen.mjs";
 import { abnahmeHeute, jetzt, tagPlus, uhrVersetzen, versatzMs } from "./zeitbasis.mjs";
 import { sucheDiensttag, sucheMitTagwechsel, betriebstagAusKopf } from "./dienstsuche.mjs";
@@ -35,8 +35,8 @@ async function api(pfad, { methode = "GET", rumpf, token } = {}) {
   return { s: a.status, d, text };
 }
 async function apiAnmelden(rolle) {
-  const code = JSON.parse(process.env[ZUGAENGE_VAR] || "{}")[rolle];
-  if (!code) throw new Error(`Kein Testzugang für ${rolle}`);
+  /* Befund CI #423: derselbe Code-Pool wie die Browseranmeldung (Lastbremse je Code). */
+  const code = zugangscode(rolle);
   const r = await api("anmelden", { methode: "POST", rumpf: { zugangscode: code } });
   if (!r.d.token) throw new Error(`API-Anmeldung ${rolle} gescheitert (Status ${r.s})`);
   return r.d;
@@ -144,11 +144,13 @@ async function monatsSchritt(page, knopf, erwartet, eintrag, testInfo) {
 test.describe("Abnahme B — Abläufe mit Schreibwirkung (einmal je Lauf)", () => {
   /* Drei Anmeldungen und mehrere Serverwege je Ablauf: großzügiger als die 90 s der Suite. */
   test.describe.configure({ timeout: 300_000 });
-  /* QS-6: Die Oberfläche rechnet „heute“ in der Ortszeit des Geräts (src/lib/datum.js → engine/zeit.mjs), der Server
-     stempelt nach Europe/Berlin (zeiterfassung.mjs, heuteBerlin). Ein Runner in UTC zeigte zwischen 23 und 24 Uhr UTC
-     (Winterzeit; Sommerzeit 22–24 Uhr) den Vortag: Der Stempel landete auf dem Berliner Tag, die Stempeluhr suchte ihn
-     am Vortag und bot nach dem Neuladen wieder „Einstempeln“ statt „Ausstempeln“ an. Darum hier, wie bei der
-     Stempeluhr unten, die Zeitzone des Betriebs. */
+  /* QS-6: Vor ZEIT-C rechnete die Oberfläche „heute“ in der Ortszeit des Geräts, der Server stempelte nach
+     Europe/Berlin. Ein Runner in UTC zeigte zwischen 23 und 24 Uhr UTC (Winterzeit; Sommerzeit 22–24 Uhr) den Vortag:
+     Der Stempel landete auf dem Berliner Tag, die Stempeluhr suchte ihn am Vortag und bot nach dem Neuladen wieder
+     „Einstempeln“ statt „Ausstempeln“ an. Seit ZEIT-C kommt „heute“ aus der Serverlogik und der Zeitbasis (Betriebstag
+     Europe/Berlin, server/lib/engine/zeit.mjs heute()); der Server stempelt ebenfalls nach Europe/Berlin
+     (zeiterfassung.mjs, heuteBerlin). Die feste Zone des Betriebs bleibt hier, wie bei der Stempeluhr unten, nur als
+     Vorsicht (Vertrag § 9.3: der Pin bleibt). Dieselben Abläufe in fremden Zonen: e2e/zeit-f-abnahme-b-zonen.spec.mjs. */
   test.use({ timezoneId: "Europe/Berlin" });
   test.beforeEach(async ({ page }, testInfo) => { neuerTest(); if (!testInfo.title.startsWith("B7")) await seiteVerfolgen(page); });
   test("B7 Stempeln ohne Netz, vorläufig auf dem Gerät, nach dem Netz genau ein Stempel", async ({ page, context }, testInfo) => {
@@ -397,9 +399,10 @@ test.describe("Abnahme B — Darstellung und Barrierefreiheit der Abläufe", () 
 
   /* Stempeluhr in festem Stand: je eine eigene Person (global-setup.mjs, ZUSATZ_ZUGAENGE), die kein anderer Test anmeldet.
      Früher prüfte der Test die Person der Rolle „mitarbeiter“; nach B7 (390x844: ein- UND ausgestempelt) zeigte deren
-     Stempeluhr nur noch „Dienst erfasst“ ohne Knopf, und jeder spätere Viewport scheiterte. Der Browser rechnet „heute“ in
-     seiner Ortszeit, der Server stempelt nach Europe/Berlin (zeiterfassung.mjs, heuteBerlin): darum hier die Zeitzone des
-     Betriebs, sonst zeigte ein Runner in UTC zwischen 23 und 24 Uhr den Vortag. */
+     Stempeluhr nur noch „Dienst erfasst“ ohne Knopf, und jeder spätere Viewport scheiterte. Seit ZEIT-C kommt „heute“ aus der
+     Serverlogik und der Zeitbasis (Betriebstag Europe/Berlin, engine/zeit.mjs), nicht aus der Ortszeit des Browsers; der
+     Server stempelt ebenfalls nach Europe/Berlin (zeiterfassung.mjs, heuteBerlin). Die feste Zone des Betriebs bleibt hier
+     nur als Vorsicht: Geräteuhr und Betriebstag sollen in diesem Test nicht auseinanderfallen. */
   test.describe("Stempeluhr", () => {
     test.use({ timezoneId: "Europe/Berlin" });
 

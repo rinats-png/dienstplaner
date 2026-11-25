@@ -436,12 +436,30 @@ describe("S6 zum Gateway nur Frage und Hilfetexte, Personenangaben vorher entfer
     expect(alles).not.toMatch(/beispiel|2345678|\(at\)|punkt/);
     expect(alles).not.toContain(voll);
   });
-  it("bleibt bei langen, gemeinen Eingaben schnell (keine quadratische Laufzeit)", () => {
-    const t0 = Date.now();
-    suche.frageBereinigen("1 ".repeat(150) + "a@" + "b.".repeat(100));
-    suche.frageBereinigen("1".repeat(300));
-    suche.frageBereinigen("DE12 ".repeat(60));
-    expect(Date.now() - t0).toBeLessThan(500);
+  it("bleibt bei langen, gemeinen Eingaben schnell (keine quadratische Laufzeit)", { timeout: 120_000 }, () => {
+    /* QS-2: statt fester Wandzeit-Grenze („< 500 ms“, auf einem gestörten Runner nicht reproduzierbar) die Skalierung: ein Lauf mit
+       Eingaben der 7-fachen Länge (k = 7) gegen sieben Läufe mit Eingaben der einfachen Länge (k = 1): gleiche Gesamtlänge, also
+       gleiche Dauer und gleiche Störanfälligkeit durch den Scheduler (ein Vergleich ungleich langer Läufe lag unter Last weit über
+       dem Linearwert). Beide Seiten werden ABWECHSELND gemessen (je Runde einmal je Seite; Minimum je Seite aus 9 Runden zu je
+       30 Durchgängen). Linear ergibt etwa 1, quadratisch etwa 7; Grenze 2. Die Länge ist durch die Fremdtextgrenze (4000 Zeichen)
+       nach oben beschränkt: k = 7 ergibt höchstens 3602 Zeichen. Zusätzlich eine absolute Grobgrenze mit großem Vorrat: 30
+       Durchgänge bei k = 7 in höchstens 8000 ms (gemessen 290 bis 500 ms, Vorrat mindestens 16-fach). */
+    const durchgang = (k) => () => {
+      for (let i = 0; i < 30; i++) {
+        suche.frageBereinigen("1 ".repeat(150 * k) + "a@" + "b.".repeat(100 * k));
+        suche.frageBereinigen("1".repeat(300 * k));
+        suche.frageBereinigen("DE12 ".repeat(60 * k));
+      }
+    };
+    const zeit = (fn) => { const t0 = performance.now(); fn(); return performance.now() - t0; };
+    const k1 = durchgang(1), lang = durchgang(7);
+    const kurz = () => { for (let i = 0; i < 7; i++) k1(); };
+    let sieben = Infinity, eins = Infinity;
+    const start = performance.now();
+    /* Höchstens 9 Runden, mindestens 2; ein Mangel (Sekunden je Runde) bricht nach 8 s ab statt Minuten zu laufen. */
+    for (let runde = 0; runde < 9 && (runde < 2 || performance.now() - start < 8000); runde++) { sieben = Math.min(sieben, zeit(kurz)); eins = Math.min(eins, zeit(lang)); }
+    expect(eins, `7 × k = 1: ${sieben.toFixed(2)} ms`).toBeLessThanOrEqual(Math.max(2 * sieben, sieben + 4));
+    expect(eins).toBeLessThanOrEqual(8000);
   });
 });
 

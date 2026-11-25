@@ -24,6 +24,9 @@
      L5  Personalimport-Fehlerfall im Browser (Text einfügen; der Dateiimport ist ausgeschaltet, IMPORT_DATEI_AKTIV und
          CENTRIC_IMPORT_AKTIV): fehlerhafte Zeile wird erkannt und nicht übernommen, nur die gültige landet auf dem Server;
          nur fehlerhafte Zeilen → Übernahme gesperrt.
+     L6  Speicherfehler am Telefon (B-P3): Beschäftigte ändert am Telefon das Erscheinungsbild, der PUT bekommt eine
+         (umgeleitete) 403 mit Begründung → Leiste „Nicht gespeichert“ in der Telefonschale mit Begründung und Ausweg,
+         kein waagrechtes Scrollen bei 390 und 320 px, Server unverändert.
    Nur ein Projekt (1024x768, Telefonschritte auf 390x844 umgestellt): Die Abläufe schreiben Daten.
    zeit-ok: kein eigener Uhrbezug — Tage relativ zum festen Abnahmetag (abnahmeHeute), Laufkennung nur als eindeutiger Raumname. */
 import { test, expect, geheZu, schreibvorgaengeVerfolgen } from "./hilfen.mjs";
@@ -404,5 +407,47 @@ test.describe.serial("Lokale E2E-Abnahme 2026-11-19: Urlaub, Konflikt, Sitzung, 
     expect(nachher.length).toBe(vorher + 1);
     expect(nachher.filter((p) => p.nachname === `Import-${MK}`)).toHaveLength(1);
     expect(nachher.some((p) => p.vorname === "Ohne")).toBe(false);
+  });
+
+  /* B-P3 (PR fix/b-p3-403-grund): Scheitert am Telefon ein Speichervorgang, steht die Leiste „Nicht gespeichert“ auch in
+     der Telefonschale — mit der Begründung einer 403 und dem Ausweg „Als Datei sichern“. Die 403 kommt aus einer
+     umgeleiteten Antwort (nur der PUT dieser Seite), der Server bleibt unverändert. */
+  test("L6 Speicherfehler am Telefon (B-P3): Leiste „Nicht gespeichert“ mit Begründung in der Telefonschale", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    page.on("dialog", (d) => d.accept().catch(() => {}));   // „Seite verlassen?“ beim Aufräumen (Eingabe steht aus)
+    await anmeldenBrowser(page, C.a1);
+    const themaA1 = async () => ((await mandant(C.lLT)).personen.find((p) => p.id === "a1") || {}).thema || "auto";
+    const vorher = await themaA1();
+    const ziel = vorher === "dunkel" ? "Hell" : "Dunkel";
+    const GRUND = "Diese Änderung ist für diese Rolle hier nicht vorgesehen (Probe B-P3).";
+    let puts = 0;
+    await page.route("**/api/bestand", async (route) => {
+      if (route.request().method() !== "PUT") return route.fallback();
+      puts += 1;
+      return route.fulfill({ status: 403, contentType: "application/json",
+        body: JSON.stringify({ fehler: "Keine Schreibberechtigung.", text: GRUND }) });
+    });
+    await geheZu(page, "Mehr");
+    await expect(page.locator(".m-tabs"), "Telefonschale").toBeVisible();
+    await page.getByRole("tab", { name: ziel, exact: true }).click();
+    const leiste = page.locator("main").getByRole("alert").filter({ hasText: "Diese Änderung ist mit deiner Rolle nicht zulässig" });
+    await expect(leiste, "B-P3: Leiste in der Telefonschale").toBeVisible({ timeout: 20000 });
+    await expect(leiste).toContainText(`Begründung: ${GRUND}`);
+    await expect(leiste.getByRole("button", { name: "Als Datei sichern" })).toBeVisible();
+    await expect(leiste.getByRole("button", { name: "Seite neu laden" })).toBeVisible();
+    expect(puts, "genau ein PUT, abgewiesen").toBe(1);
+    /* Kein waagrechtes Scrollen durch die Leiste — 390 px und 320 px. */
+    const ohneUeberlauf = () => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+    expect(await ohneUeberlauf(), "kein waagrechtes Scrollen (390 px)").toBe(true);
+    await page.setViewportSize({ width: 320, height: 844 });
+    await expect(leiste).toBeVisible();
+    expect(await ohneUeberlauf(), "kein waagrechtes Scrollen (320 px)").toBe(true);
+    /* Auch nach einem Reiterwechsel bleibt sie stehen (über jedem Reiter). */
+    await geheZu(page, "Heute");
+    await expect(leiste, "über jedem Reiter").toBeVisible();
+    expect(await themaA1(), "Server unverändert").toBe(vorher);
+    /* Die Umleitung bleibt bis zum Verlassen: ein Senden beim Schließen bekäme ebenfalls die 403. */
+    await page.goto("about:blank");
+    expect(await themaA1(), "Server weiter unverändert").toBe(vorher);
   });
 });

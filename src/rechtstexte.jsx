@@ -150,7 +150,7 @@ export function markdown(quelle) {
       const ohneKopf = kopf.every((k) => !k);
       aus.push(
         <div key={`t${aus.length}`} style={{ overflowX: "auto", margin: "0 0 20px",
-          border: `1px solid ${C.lineSoft}`, borderRadius: 10 }}>
+          border: `1px solid ${C.lineSoft}`, borderRadius: "var(--v4-r-mittel)" }}>
           <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 13.5 }}>
             {!ohneKopf && (
               <thead>
@@ -196,7 +196,7 @@ export function markdown(quelle) {
         i++;
       }
       aus.push(<pre key={`pre${aus.length}`} style={{ margin: "0 0 18px", padding: "14px 16px",
-        background: C.flaecheStill, borderRadius: 10, border: `1px solid ${C.lineSoft}`,
+        background: C.flaecheStill, borderRadius: "var(--v4-r-mittel)", border: `1px solid ${C.lineSoft}`,
         fontSize: 13.5, lineHeight: 1.6, fontFamily: "inherit", whiteSpace: "pre-wrap",
         overflowX: "auto" }}>{block.join("\n").trimEnd()}</pre>);
       continue;
@@ -293,12 +293,12 @@ export function RechtFenster({ start, onClose }) {
   return (
     <div role="dialog" aria-modal="true" aria-label="Rechtliche Angaben"
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
-      style={{ position: "fixed", inset: 0, zIndex: 400, background: "var(--c-ueberlagerung, rgba(7,19,23,.36))",
+      style={{ position: "fixed", inset: 0, zIndex: 400, background: "var(--c-ueberlagerung, var(--v4-ueberlagerung))",
         display: "flex", alignItems: "flex-start", justifyContent: "center",
         padding: "4vh 16px", overflowY: "auto" }}>
       <div ref={rahmen} tabIndex={-1}
         style={{ background: C.flaeche, borderRadius: "var(--r-gross, 18px)", maxWidth: 880, width: "100%",
-          padding: "26px 30px 34px", boxShadow: "var(--schatten-blatt, 0 20px 48px rgba(7,19,23,.18))",
+          padding: "26px 30px 34px", boxShadow: "var(--schatten-blatt, var(--v4-schatten-blatt))",
           border: `1px solid ${C.line}`,
           outline: "none" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
@@ -306,7 +306,7 @@ export function RechtFenster({ start, onClose }) {
           <div style={{ fontSize: 18, fontWeight: 650 }}>Rechtliche Angaben</div>
           <button type="button" onClick={onClose} aria-label="Schließen"
             style={{ border: `1px solid ${C.line}`, background: "transparent", cursor: "pointer",
-              borderRadius: 8, padding: "6px 12px", fontSize: 13.5, color: C.dim,
+              borderRadius: "var(--v4-r-klein)", padding: "6px 12px", fontSize: 13.5, color: C.dim,
               fontFamily: "inherit" }}>Schließen</button>
         </div>
         <Rechtliches start={start} />

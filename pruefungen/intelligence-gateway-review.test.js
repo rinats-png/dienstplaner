@@ -9,7 +9,7 @@
    10 kanonischer Fingerprint · 11 Beleg bei Fehler vor dem try.
    ========================================================================== */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { erzeugeGateway, kanonisch } from "../server/lib/intelligence/gateway/gateway.mjs";
 import { erzeugeAttrappe } from "../server/lib/intelligence/gateway/attrappe.mjs";
 import { Limits } from "../server/lib/intelligence/gateway/limits.mjs";
@@ -20,6 +20,7 @@ import { ausgabePruefen } from "../server/lib/intelligence/gateway/pruefer.mjs";
 import { sperrlisteBilden } from "../server/lib/intelligence/leckpruefung.mjs";
 import { SCHLUESSEL, VERSIONEN, ZR, bestand, S, vollQuelle, schluesselbundTest, registryTest } from "./intelligence-gateway-fixture.mjs";
 
+afterEach(() => { vi.useRealTimers(); });
 const AN = { prozess: () => "an", laufzeit: () => "an" };
 const code = async (p) => { try { await p; return "ok"; } catch (e) { return e.code || String(e); } };
 const anfrage = (funktion = "F2", von = "2026-11-01") => ({ funktion, eingabe: { zeitraum: { von, bis: ZR.bis } } });
@@ -177,9 +178,16 @@ describe("Befund 8: Adapter, die das Abbruchsignal ignorieren", () => {
     const lose = [];
     const haengt = { id: "haengt", modellOrt: "extern", erzeuge: () => new Promise((r) => { lose.push(r); }) };
     const t = bauen({ anbieter: haengt, zeiten: { stufeMs: 20, deadlineMs: 500 }, limitKonfig: { parallelJeBetrieb: 2, personJeStunde: { leitung: 100 } } });
-    const t0 = Date.now();
-    expect((await t.gw.ausfuehren(S.leitung, anfrage("F2", tag(1)))).status).toBe("rueckfall");
-    expect(Date.now() - t0).toBeLessThan(450);
+    /* Vorgetäuschte Uhr statt Wandzeit (QS-2; frühere Grenze „< 450 ms“ war auf einem gestörten Runner nicht reproduzierbar):
+       Die Stufenfrist (20 ms) beendet den Vorgang, lange vor der Gesamtfrist (500 ms), ohne auf den hängenden Adapter zu warten. */
+    vi.useFakeTimers();
+    try {
+      let status = null;
+      const erste = t.gw.ausfuehren(S.leitung, anfrage("F2", tag(1))).then((r) => { status = r.status; });
+      await vi.advanceTimersByTimeAsync(100);              // 100 ms Uhrzeit, Gesamtfrist 500 ms
+      expect(status).toBe("rueckfall");
+      await erste;
+    } finally { vi.useRealTimers(); }
     expect(t.limits.stand("raum-a|0").laufend).toBe(1);
     expect((await t.gw.ausfuehren(S.leitung, anfrage("F2", tag(2)))).status).toBe("rueckfall");
     expect(t.limits.stand("raum-a|0").laufend).toBe(2);

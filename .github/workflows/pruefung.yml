@@ -17,12 +17,12 @@ permissions:
   contents: read
 
 jobs:
-  pruefen:
+  # Pilot f1 (QS-CI-AUFTEILUNG-PILOT-2026-11-24.md): der frühere Job `pruefen` in drei Jobs, nach gemessener
+  # Schrittdauer geteilt, Reihenfolge innerhalb jedes Teils unverändert. Jeder Schritt steht in genau einem Teil
+  # (pruefungen/ci-aufteilung.test.js). Teil a: Lint, Verdrahtung, CI-Abdeckung, Fach- und Rücksprungprüfungen.
+  pruefen-a:
     runs-on: ubuntu-latest
     timeout-minutes: 40
-    env:
-      # Das Bild, gegen das die serverseitigen Prüfungen laufen (siehe unten).
-      BILD: centric-pruefung:${{ github.sha }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -229,6 +229,22 @@ jobs:
 
       - name: Synthetische Testdateien und Testmatrix des Imports (IMP-8)
         run: npm run pruefung:imp8-testmatrix
+
+  # Teil b: Fortsetzung der vitest-/Node-Prüfungen in der bisherigen Reihenfolge.
+  pruefen-b:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
 
       - name: Teilspeicherung je Segment mit Versionen (WP-48.3)
         run: npm run pruefung:wp48-teilweg
@@ -741,6 +757,26 @@ jobs:
       - name: Zwei-Faktor für Betreibercodes
         run: npm run pruefung:betreiber-zweifaktor
 
+  # Teil c: letzte vitest-/Node-Prüfungen, Gate-Proben gegen frischen Server (Port 3000), Übersetzen, Bild
+  # bauen und alle Prüfungen gegen das gebaute Bild. Gate-Proben laufen vor dem Container-Teil, der Port 3000 danach belegt.
+  pruefen-c:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      # Das Bild, gegen das die serverseitigen Prüfungen laufen (siehe unten).
+      BILD: centric-pruefung:${{ github.sha }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
+
       # Die aus daten.mjs herausgezogene Sitzungslogik, unverändert im
       # Verhalten: Fristen, Untätigkeit, Drosselung, Sicherungsschlüssel.
       - name: Sitzungen
@@ -977,7 +1013,7 @@ jobs:
           load: true
           tags: ${{ env.BILD }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-to: type=gha,mode=max,ignore-error=true
 
       # Jede Prüfung bekommt einen frischen Container mit leerer Ablage.
       #
@@ -1321,7 +1357,7 @@ jobs:
         run: docker logs centric-pruefung
 
   # WP-33 Teil 3: Browserabnahme mit Playwright und axe-core (WCAG 2.2 AA) an den acht
-  # Viewports der Gerätematrix WP-21 (src/ui/geraete.js). Eigener Job neben `pruefen`,
+  # Viewports der Gerätematrix WP-21 (src/ui/geraete.js). Eigener Job neben `pruefen-a/b/c`,
   # damit die vitest-Kette unverändert bleibt. Keine Geheimnisse: Server, Verwalterschlüssel
   # und Zugänge entstehen zufällig je Lauf in e2e/global-setup.mjs (Demo-Bestand, erfundene
   # Personen). Chromium kommt in der zur gepinnten @playwright/test-Fassung passenden Version

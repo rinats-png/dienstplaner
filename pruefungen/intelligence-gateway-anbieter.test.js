@@ -6,7 +6,7 @@
    mit niemandem und wirft „nicht freigegeben“.
    ========================================================================== */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { inspect } from "node:util";
 import { AnbieterFehler, anbieterPruefen, aufrufen, alsAnbieterFehler, nutzungBereinigen, ANBIETER_FEHLERKLASSEN } from "../server/lib/intelligence/gateway/anbieter.mjs";
 import { erzeugeAttrappe, ATTRAPPE_MODI } from "../server/lib/intelligence/gateway/attrappe.mjs";
@@ -18,6 +18,14 @@ const KEIN_WARTEN = () => Promise.resolve();
 const lauf = (anbieter, o = {}) => aufrufen({ anbieter, eingabe: EIN, zeitJeVersuchMs: 100, maxWiederholungen: 2, deadline: Date.now() + 1000,
   jetzt: Date.now, schlafen: KEIN_WARTEN, ...o });
 const klasse = async (p) => { try { await p; return "ok"; } catch (e) { return e.klasse || `?${e}`; } };
+
+afterEach(() => { vi.useRealTimers(); });
+
+/* Fristen mit vorgetäuschter Uhr (vi.useFakeTimers) statt echter Wartezeit: gemessen wird die Uhrzeit der Fake-Uhr, nicht die Last
+   des Rechners. Die frühere Wandzeit-Grenze (< 500 / < 600 ms) war auf einem gestörten Runner nicht reproduzierbar (QS-2). */
+const mitFakeUhr = async (fn) => { vi.useFakeTimers(); try { return await fn(); } finally { vi.useRealTimers(); } };
+/** Startet die Beobachtung von p: ob und mit welcher Fehlerklasse es abgeschlossen ist. */
+const beobachten = (p) => { const z = { fertig: false, klasse: null }; z.p = klasse(p).then((k) => { z.fertig = true; z.klasse = k; return k; }); return z; };
 
 describe("Adapter-Vertrag", () => {
   it("verlangt id (Muster), modellOrt lokal|extern und erzeuge()", () => {
@@ -71,17 +79,28 @@ describe("Fristen, Wiederholungen, Abbruch", () => {
   });
   it("Zeitüberschreitung: Fehlerklasse zeit, Abbruchsignal gesetzt, rechtzeitig zurück", async () => {
     const a = erzeugeAttrappe({ modus: "zeitueberschreitung" });
-    const t0 = Date.now();
-    expect(await klasse(lauf(a, { zeitJeVersuchMs: 30 }))).toBe("zeit");
-    expect(Date.now() - t0).toBeLessThan(500);
+    await mitFakeUhr(async () => {
+      const z = beobachten(lauf(a, { zeitJeVersuchMs: 30, jetzt: Date.now }));
+      await vi.advanceTimersByTimeAsync(29);
+      expect(z.fertig).toBe(false);                       // die Frist von 30 ms wird nicht verkürzt
+      expect(a.aufrufe[0].signal.aborted).toBe(false);
+      await vi.advanceTimersByTimeAsync(21);              // 50 ms Uhrzeit: Frist + 20 ms Spielraum, kein Warten auf den Adapter
+      expect(z.fertig).toBe(true);
+      expect(z.klasse).toBe("zeit");
+    });
     expect(a.aufrufe[0].signal.aborted).toBe(true);
     expect(a.aufrufe.length).toBe(1);   // nicht wiederholt
   });
   it("Frist je Versuch wird auf die Restzeit bis zur Deadline gekürzt; abgelaufene Deadline → kein Aufruf", async () => {
     const a = erzeugeAttrappe({ modus: "zeitueberschreitung" });
-    const t0 = Date.now();
-    expect(await klasse(lauf(a, { zeitJeVersuchMs: 5000, deadline: Date.now() + 40 }))).toBe("zeit");
-    expect(Date.now() - t0).toBeLessThan(600);
+    await mitFakeUhr(async () => {
+      const z = beobachten(lauf(a, { zeitJeVersuchMs: 5000, deadline: Date.now() + 40, jetzt: Date.now }));
+      await vi.advanceTimersByTimeAsync(39);
+      expect(z.fertig).toBe(false);
+      await vi.advanceTimersByTimeAsync(61);              // 100 ms Uhrzeit: weit vor den 5000 ms der Versuchsfrist
+      expect(z.fertig).toBe(true);
+      expect(z.klasse).toBe("zeit");
+    });
     const b = erzeugeAttrappe();
     expect(await klasse(lauf(b, { deadline: Date.now() - 1 }))).toBe("zeit");
     expect(b.aufrufe.length).toBe(0);

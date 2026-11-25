@@ -106,6 +106,17 @@ export const SPEICHERLAGE = {
       + "Änderungen und lade neu; sichere sie vorher bei Bedarf als Datei.",
     verwerfen: true,
   },
+  /* IMP-6 Oberfläche: Der Server hat eine Änderung an Schichtmodellen oder Zuordnungen abgewiesen (422
+     MODELL_VERKUERZT_VERSATZ oder eine inhaltliche 403 aus schichtzuordnungZusammen). Kein Rollenproblem; ein zweiter
+     Versuch schickte denselben Stand. Der Text des Servers steht darunter (nur Kennungen, keine Namen). */
+  schichtmodell: {
+    titel: "Schichtmodell oder Zuordnung nicht gespeichert",
+    text: "Der Server hat die Änderung an den Schichtmodellen abgewiesen; gespeichert wurde nichts, auch keine andere "
+      + "Änderung seit dem letzten Speichern. Der Grund steht unten. Wer Schichtmodelle pflegt (Planung oder "
+      + "Leitung), ändert das Schichtmodell oder die Zuordnung entsprechend — das nächste Speichern nimmt dann alle Änderungen "
+      + "mit. Sonst: die nicht gespeicherten Änderungen verwerfen und neu laden; vorher bei Bedarf als Datei sichern.",
+    verwerfen: true,
+  },
   /* Befund B-L4c / Review #381 (2): Nach dem Sitzungsende hat sich ein anderer Zugang angemeldet (anderer Inhaber).
      speicher.js hat nichts gesendet und die Eingaben der vorherigen Sitzung verworfen; die Seite lädt neu. */
   fremd: {
@@ -202,7 +213,7 @@ export function NichtGespeichert({ lage, melde, aufGeloest, onKonflikt = null })
   };
 
   return (
-    <div role="alert" style={{ padding: "16px 20px", borderRadius: 12, marginBottom: 20,
+    <div role="alert" style={{ padding: "16px 20px", borderRadius: "var(--v4-r-mittel)", marginBottom: 20,
       background: C.dangerLight, border: `1px solid ${C.danger}44` }}>
       <div style={{ fontSize: 15, fontWeight: 650, marginBottom: 6 }}>{l.titel}</div>
       <p style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.6, margin: "0 0 14px", maxWidth: "72ch" }}>
@@ -279,8 +290,9 @@ export function Konfliktfenster({ lage, onSchliessen, onUebernehmen, melde }) {
       style={{ position: "fixed", inset: 0, background: "var(--c-ueberlagerung)",
         backdropFilter: "blur(6px)", zIndex: 90, display: "flex", alignItems: "center",
         justifyContent: "center", padding: 20 }}>
+      {/* B-P3: auch am Telefon (Telefonschale) — höher als der Bildschirm wird das Blatt in sich gerollt, nicht abgeschnitten. */}
       <div ref={rahmen} tabIndex={-1} className="blatt"
-        style={{ maxWidth: 560, padding: 28, outline: "none" }}>
+        style={{ maxWidth: 560, padding: 28, outline: "none", maxHeight: "100%", overflowY: "auto" }}>
         <div style={{ fontSize: 18, fontWeight: 650, marginBottom: 10 }}>
           {kern
             ? "Die Stammdaten wurden gleichzeitig geändert"
@@ -377,7 +389,7 @@ export function Offlineleiste({ lage }) {
           : `vor ${Math.round(minuten / 1440)} Tagen`;
 
   return (
-    <div role="status" style={{ padding: "12px 18px", borderRadius: 12, marginBottom: 20,
+    <div role="status" style={{ padding: "12px 18px", borderRadius: "var(--v4-r-mittel)", marginBottom: 20,
       background: C.warnLight, border: `1px solid ${C.warn}33`,
       display: "flex", gap: 14, alignItems: "baseline", flexWrap: "wrap" }}>
       <span style={{ fontSize: 14, fontWeight: 640 }}>Keine Verbindung</span>

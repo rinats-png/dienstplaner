@@ -16,6 +16,9 @@ import { addDays } from "./regelwerk.js";
 import { csvFeld, csvText } from "./csvfeld.js";
 import { v4ThemaMerken, v4ThemaGemerkt, v4SystemthemaBeobachten } from "./v4/thema.js";
 import { v4AppStil } from "./v4/app-stil.js";
+import { v4AppVariablen, v4RadienVariablen } from "./v4/stil.js";
+import { V4_SCHATTEN, V4_SEITENLEISTE } from "./v4/tokens.js";
+import { Wortmarke } from "./marke.jsx";
 
 /* ==========================================================================
    FEHLERAUFFANG
@@ -45,7 +48,7 @@ class Fehlerauffang extends Component {
             gehen nicht verloren. Bitte melde den folgenden Text zusammen mit dem, was du zuletzt
             gemacht hast.
           </p>
-          <pre style={{ background: C.flaecheStill, borderRadius: 12, padding: 14, fontSize: 12,
+          <pre style={{ background: C.flaecheStill, borderRadius: "var(--v4-r-mittel)", padding: 14, fontSize: 12,
             overflowX: "auto", margin: "0 0 20px", whiteSpace: "pre-wrap" }}>{meldung}</pre>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <button onClick={() => window.location.reload()} className="btn btn-primary">Neu laden</button>
@@ -307,6 +310,17 @@ function themaVomSystem() {
   catch { return false; }
 }
 
+/* Ebenen aus den V4-Tokens (V4-2): E2 Karte, E3 Karte im Hover, E5 Blatt und Menü,
+   E6 Toast, dazu Schalterknopf und Schublade. Auf Dunkel trägt der Rand die Karte. */
+const schattenVariablen = (thema) => {
+  const s = V4_SCHATTEN[thema];
+  return `--schatten:${s.karte}; --schatten-hoch:${s.hoch}; --schatten-blatt:${s.blatt};`
+    + ` --schatten-toast:${s.toast}; --schatten-regler:${s.regler}; --schatten-schublade:${s.schublade};`;
+};
+/* Seitenleiste (in beiden Themes dunkel): Schrift- und Flächentöne aus den Tokens als --sl-… */
+const seitenleisteVariablen = () => Object.entries(V4_SEITENLEISTE)
+  .map(([k, w]) => `--sl-${k.replace(/[A-Z]/g, (x) => `-${x.toLowerCase()}`)}:${w};`).join(" ");
+
 /** Globale Gestaltung. Hover- und Glaseffekte brauchen echtes CSS. */
 const bauStyles = () => `
 :root{
@@ -314,20 +328,16 @@ const bauStyles = () => `
   /* Dichte — systemweit umschaltbar zwischen Komfortabel und Kompakt */
   --zeile: 48px; --pad-y: 14px; --pad-x: 20px; --luft: 32px; --schrift: 14.5px;
   --block: 48px;                 /* Abstand zwischen Abschnitten — bewusst großzügig */
-  --r: 12px; --r-gross: 18px; --r-pille: 999px;
-  /* Ebenen: E2 Karte, E3 Karte im Hover, E5 Blatt und Menü, E6 Toast */
-  --schatten: 0 1px 2px rgba(7,19,23,.04), 0 8px 22px rgba(7,19,23,.05);
-  --schatten-hoch: 0 4px 12px -2px rgba(7,19,23,.10), 0 16px 32px -12px rgba(7,19,23,.14);
-  --schatten-blatt: 0 20px 48px rgba(7,19,23,.18);
-  --schatten-toast: 0 12px 32px rgba(7,19,23,.28);
+  /* V4-3a: Radiusstufen aus den Tokens (src/v4/tokens.js V4_RADIEN); die Altnamen zeigen darauf. */
+  ${v4RadienVariablen()}
+  --r: var(--v4-r-mittel); --r-gross: var(--v4-r-gross); --r-pille: var(--v4-r-pille);
+  ${schattenVariablen("hell")}
+  ${seitenleisteVariablen()}
   --sidebar-breite: 252px;
   --kopf-hoehe: 64px; --unter-hoehe: 48px;
 }
-/* Die dunkle Palette als eigener Satz. Das Attribut setzt themaSetzen.
-   Auf Dunkel trägt der Rand die Karte, nicht der Schatten. */
-:root[data-thema="dunkel"]{ ${alsVariablen(C_DUNKEL)}
-  --schatten: 0 1px 2px rgba(0,0,0,.30); --schatten-hoch: 0 1px 2px rgba(0,0,0,.30);
-  --schatten-blatt: 0 20px 48px rgba(0,0,0,.5); --schatten-toast: 0 12px 32px rgba(0,0,0,.5); }
+/* Die dunkle Palette als eigener Satz. Das Attribut setzt themaSetzen. */
+:root[data-thema="dunkel"]{ ${alsVariablen(C_DUNKEL)} ${schattenVariablen("dunkel")} }
 .dicht{ --zeile: 36px; --pad-y: 8px; --pad-x: 14px; --luft: 20px; --block: 26px; --schrift: 13.5px; }
 
 *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
@@ -338,7 +348,7 @@ const bauStyles = () => `
   clip:rect(0,0,0,0); white-space:nowrap; border:0;}
 /* Sprungmarke zum Inhalt */
 .sprung{position:absolute; left:8px; top:-48px; z-index:100; background:${C.accent}; color:${C.aufAkzent};
-  padding:10px 16px; border-radius:8px; font-size:13.5px; font-weight:600; text-decoration:none;
+  padding:10px 16px; border-radius:var(--v4-r-klein); font-size:13.5px; font-weight:600; text-decoration:none;
   transition:top .16s;}
 .sprung:focus{top:8px;}
 body{margin:0;}
@@ -350,7 +360,7 @@ body{margin:0;}
 /* ------------------------------- Gerüst -------------------------------- */
 .huelle{display:flex; min-height:100vh;}
 .seitenleiste{
-  width:var(--sidebar-breite); flex-shrink:0; background:${C.sidebar}; color:#fff;
+  width:var(--sidebar-breite); flex-shrink:0; background:${C.sidebar}; color:var(--sl-schrift);
   display:flex; flex-direction:column; position:fixed; left:0; top:0; bottom:0; z-index:40;
   transition:transform .24s cubic-bezier(.4,0,.2,1);
 }
@@ -358,30 +368,30 @@ body{margin:0;}
 .fokus .seitenleiste{transform:translateX(-100%);}
 
 .marke{padding:22px 20px 18px; display:flex; align-items:center; gap:11px;
-  border-bottom:1px solid rgba(255,255,255,.08);}
-.marke b{font-size:16px; font-weight:700; letter-spacing:-.02em;}
+  border-bottom:1px solid var(--sl-trenner);}
+.marke .wortmarke{margin-bottom:2px;}
 
 .snav{flex:1; overflow-y:auto; padding:14px 12px 20px;}
 .snav::-webkit-scrollbar{width:5px;}
-.snav::-webkit-scrollbar-thumb{background:rgba(255,255,255,.16); border-radius:3px;}
+.snav::-webkit-scrollbar-thumb{background:var(--sl-griff); border-radius:3px;}
 .sgruppe{font-size:10.5px; font-weight:700; letter-spacing:.11em; text-transform:uppercase;
-  color:rgba(255,255,255,.40); padding:20px 14px 8px;}
+  color:var(--sl-schrift-gruppe); padding:20px 14px 8px;}
 .slink{
   display:flex; align-items:center; gap:12px; width:100%; border:none; background:transparent;
-  color:rgba(255,255,255,.74); font-family:inherit; font-size:14px; font-weight:500;
-  padding:11px 14px; border-radius:10px; cursor:pointer; text-align:left;
+  color:var(--sl-schrift-leise); font-family:inherit; font-size:14px; font-weight:500;
+  padding:11px 14px; border-radius:var(--v4-r-mittel); cursor:pointer; text-align:left;
   transition:background .14s, color .14s; margin-bottom:1px; position:relative;
 }
-.slink:hover{background:rgba(255,255,255,.07); color:#fff;}
+.slink:hover{background:var(--sl-hover); color:var(--sl-schrift);}
 /* Aktiv über helle Fläche statt Akzentfarbe — Teal auf Anthrazit erreicht nur 2,7:1 */
-.slink.on{background:rgba(255,255,255,.13); color:#fff; font-weight:600;}
+.slink.on{background:var(--sl-an); color:var(--sl-schrift); font-weight:600;}
 .slink.on::before{content:""; position:absolute; left:0; top:9px; bottom:9px; width:3px;
   border-radius:0 3px 3px 0; background:${C.accentOrig};}
-.slink .zahl{margin-left:auto; font-size:11px; font-weight:700; padding:2px 7px; border-radius:999px;
-  background:rgba(255,255,255,.14); ${'' /* Zähler */}}
-.slink .zahl.warn{background:${C.danger}; color:${istDunkel() ? C.bg : "#fff"};}
-.sfuss{padding:14px 16px; border-top:1px solid rgba(255,255,255,.08); font-size:12px;
-  color:rgba(255,255,255,.55);}
+.slink .zahl{margin-left:auto; font-size:11px; font-weight:700; padding:2px 7px; border-radius:var(--v4-r-pille);
+  background:var(--sl-zahl); ${'' /* Zähler */}}
+.slink .zahl.warn{background:${C.danger}; color:${istDunkel() ? C.bg : "var(--sl-schrift)"};}
+.sfuss{padding:14px 16px; border-top:1px solid var(--sl-trenner); font-size:12px;
+  color:var(--sl-schrift-fuss);}
 
 /* Die Kopfzeile sitzt im klebenden .kopfblock (gestalt/stil.js), zusammen mit der Unterleiste. */
 .kopfleiste{
@@ -461,7 +471,7 @@ h1.titel b{font-weight:680;}
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='7' viewBox='0 0 11 7'%3E%3Cpath d='M1 1l4.5 4.5L10 1' stroke='%236B7280' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
   background-repeat:no-repeat; background-position:right 12px center;}
 
-.pille{display:inline-flex; align-items:center; gap:5px; padding:4px 11px; border-radius:999px;
+.pille{display:inline-flex; align-items:center; gap:5px; padding:4px 11px; border-radius:var(--v4-r-pille);
   font-size:12.5px; font-weight:600; background:${C.flaecheStill}; color:${C.dim};
   white-space:nowrap; font-variant-numeric:tabular-nums;}
 .pille-sm{padding:2px 9px; font-size:11.5px;}
@@ -477,12 +487,14 @@ h1.titel b{font-weight:680;}
   background:${C.flaecheStill}; color:${C.dim}; letter-spacing:-.02em;}
 .avatar-sm{width:30px; height:30px; font-size:11.5px;}
 /* Schichtmarke mit linkem Akzentstrich statt voller Farbfläche */
-.schicht{display:flex; flex-direction:column; gap:1px; padding:7px 10px; border-radius:9px;
+.schicht{display:flex; flex-direction:column; gap:1px; padding:7px 10px; border-radius:var(--v4-r-klein);
   line-height:1.25; min-width:0;}
 .schicht b{font-size:12px; font-weight:640;}
 .schicht span{font-size:11px; opacity:.78; white-space:nowrap;}
 /* Freie Zelle im Plan — sichtbar, aber ruhig */
-.leerzelle{border:1.5px dashed ${C.line}; border-radius:9px; background:transparent;}
+.leerzelle{border:1.5px dashed ${C.line}; border-radius:var(--v4-r-klein); background:transparent;}
+/* V4-3a: Planzelle mit der kleinen Radiusstufe (Referenz design/v4-glass .shift, 8 px); Fläche und Fokus unverändert. */
+.planzelle{border-radius:var(--v4-r-klein);}
 
 .rubrik{font-size:11px; font-weight:700; letter-spacing:.10em; text-transform:uppercase; color:${C.dim};}
 
@@ -501,7 +513,7 @@ table.raster tbody tr[data-gewaehlt="1"] td{background:${C.accentLight};}
 .seg{display:inline-flex; gap:8px; max-width:100%; overflow-x:auto; padding:2px;}
 .seg button{border:1px solid ${C.line}; background:${C.flaeche}; cursor:pointer;
   font-family:inherit; font-size:13px; font-weight:550; color:${C.dim};
-  padding:8px 16px; border-radius:999px; white-space:nowrap; flex-shrink:0;
+  padding:8px 16px; border-radius:var(--v4-r-pille); white-space:nowrap; flex-shrink:0;
   transition:background .14s, color .14s, border-color .14s;}
 .seg button:hover{border-color:${C.steuer};}
 .seg button.on{background:${C.accentLight}; color:${C.accent}; border-color:${C.accent}; font-weight:620;}
@@ -515,11 +527,11 @@ table.raster tbody tr[data-gewaehlt="1"] td{background:${C.accentLight};}
 .hakenliste{list-style:none; padding:0; margin:0;}
 .hakenliste li{display:flex; gap:10px; align-items:flex-start; padding:7px 0; font-size:13.5px;}
 
-.schalter{width:40px; height:23px; border-radius:999px; border:none; cursor:pointer; padding:0;
+.schalter{width:40px; height:23px; border-radius:var(--v4-r-pille); border:none; cursor:pointer; padding:0;
   position:relative; transition:background .18s; flex-shrink:0; background:${C.steuer};}
 .schalter.on{background:${C.accent};}
 .schalter i{position:absolute; top:2.5px; left:2.5px; width:18px; height:18px; border-radius:50%;
-  background:${C.aufAkzent}; box-shadow:0 1px 2px rgba(0,0,0,.2); transition:transform .18s;}
+  background:${C.aufAkzent}; box-shadow:var(--schatten-regler); transition:transform .18s;}
 .schalter.on i{transform:translateX(17px);}
 
 /* Tastaturkürzel als Marke im Text */
@@ -548,6 +560,8 @@ kbd.taste{display:inline-flex; align-items:center; justify-content:center; min-w
   padding:24px; overflow-y:auto; overscroll-behavior:contain;
   animation:blattauf .16s cubic-bezier(.4,0,.2,1);}
 .sheet-back > .blatt{width:100%; margin:auto; outline:none;}
+/* V4-2 (DESIGNSYSTEM Gate 4): bei reduzierter Transparenz ohne Weichzeichner; die Abdunklung bleibt. */
+@media (prefers-reduced-transparency: reduce){ .sheet-back{backdrop-filter:none; -webkit-backdrop-filter:none;} }
 @keyframes blattauf{from{opacity:0;} to{opacity:1;}}
 .zeile-hover:hover{background:${C.bg};}
 
@@ -595,7 +609,7 @@ kbd.taste{display:inline-flex; align-items:center; justify-content:center; min-w
 .feldmodus table.raster td{border-bottom-color:${C.line};}
 
 @media (max-width: 1024px){
-  .seitenleiste{transform:translateX(-100%); box-shadow:0 0 40px rgba(0,0,0,.3);}
+  .seitenleiste{transform:translateX(-100%); box-shadow:var(--schatten-schublade);}
   .seitenleiste.offen{transform:translateX(0);}
   .inhalt{margin-left:0;}
   main.bereich{padding:16px 14px 96px;}
@@ -629,11 +643,11 @@ kbd.taste{display:inline-flex; align-items:center; justify-content:center; min-w
   .seg button{padding:8px 13px;}
   /* Unter sechzehn Pixeln zoomt iOS beim Antippen in das Feld hinein */
   .inp,.sel,textarea{font-size:16px !important;}
-  .karte{border-radius:10px;}
+  .karte{border-radius:var(--v4-r-mittel);}
   /* Auf dem Telefon zählt jeder Millimeter Breite: der Rand um ein Blatt
      schrumpft, das Blatt selbst nimmt die volle Breite. */
   .sheet-back{padding:10px;}
-  .sheet-back > .blatt{border-radius:12px;}
+  .sheet-back > .blatt{border-radius:var(--v4-r-mittel);}
 }
 
 /* WP-35: Datentabelle der Abrechnungsdaten (Zuschlaege je Person) ohne
@@ -659,6 +673,7 @@ kbd.taste{display:inline-flex; align-items:center; justify-content:center; min-w
   .karte{border-color:#D1D5DB; box-shadow:none; break-inside:avoid;}
 }
 ${gestaltStil()}
+${v4AppVariablen()}
 ${v4AppStil()}
 ${geraeteStil()}
 `;
@@ -860,7 +875,7 @@ function Betrieb({ sitz, akt }) {
                         title={festesRecht ? "Verbindlich freigeben dürfen nur Leitung und Planung — nicht änderbar."
                           : fest ? "Die Organisationsleitung hat immer alle Rechte."
                           : `${rollenName(m, r.id)}: ${an ? "erlaubt" : "nicht erlaubt"}`}
-                        style={{ width: 25, height: 25, borderRadius: 8, cursor: fest ? "not-allowed" : "pointer",
+                        style={{ width: 25, height: 25, borderRadius: "var(--v4-r-klein)", cursor: fest ? "not-allowed" : "pointer",
                           display: "inline-flex", alignItems: "center", justifyContent: "center", padding: 0,
                           border: an ? "none" : `1.5px solid ${C.steuer}`,
                           background: an ? r.farbe : "transparent", color: an ? "white" : "transparent",
@@ -901,7 +916,7 @@ function Betrieb({ sitz, akt }) {
               {tests.filter((t) => t.ok).length} von {tests.length} bestanden</Pill></div>
             {tests.map((t, i) => (
               <div key={i} style={{ display: "flex", gap: 13, alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${C.lineSoft}` }}>
-                <span style={{ width: 23, height: 23, borderRadius: 12, flexShrink: 0, display: "flex", alignItems: "center",
+                <span style={{ width: 23, height: 23, borderRadius: "var(--v4-r-pille)", flexShrink: 0, display: "flex", alignItems: "center",
                   justifyContent: "center", background: t.ok ? C.okLight : C.dangerLight,
                   color: t.ok ? C.ok : C.danger }}>
                   <Icon n={t.ok ? "haken" : "x"} size={13} strokeWidth={2.5} />
@@ -1676,17 +1691,17 @@ function AppInnen() {
     <div className="sw-root" style={{ display: "flex", minHeight: "100vh" }}>
       <div style={{ width: 252, background: C.sidebar, flexShrink: 0 }} className="nur-breit" />
       <div style={{ flex: 1, padding: "28px 32px" }}>
-        <div className="pulsiert" style={{ width: 220, height: 34, borderRadius: 8,
+        <div className="pulsiert" style={{ width: 220, height: 34, borderRadius: "var(--v4-r-klein)",
           background: C.flaecheStill, marginBottom: 12 }} />
         <div className="pulsiert" style={{ width: 320, height: 16, borderRadius: 6,
           background: C.flaecheStill, marginBottom: 30 }} />
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
           gap: 12, marginBottom: 26 }}>
           {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="pulsiert" style={{ height: 92, borderRadius: 12,
+            <div key={i} className="pulsiert" style={{ height: 92, borderRadius: "var(--v4-r-mittel)",
               background: C.flaeche, border: `1px solid ${C.lineSoft}` }} />))}
         </div>
-        <div className="pulsiert" style={{ height: 240, borderRadius: 12,
+        <div className="pulsiert" style={{ height: 240, borderRadius: "var(--v4-r-mittel)",
           background: C.flaeche, border: `1px solid ${C.lineSoft}` }} />
         <div className="nurLeser" role="status" aria-live="polite">CENTRIC wird geladen</div>
       </div>
@@ -1743,7 +1758,7 @@ function AppInnen() {
         Absage eines Stempels („Stempel abgelehnt: …“) vor. Eine erst mit dem Text entstehende Region wird oft überhört. */}
     <div role="status" aria-live="polite">
       {hinweis && <div style={{ position: "fixed", bottom: 104, left: "50%", transform: "translateX(-50%)",
-        zIndex: 90, background: C.accentDeep, color: C.aufAkzent, padding: "12px 20px", borderRadius: 999,
+        zIndex: 90, background: C.accentDeep, color: C.aufAkzent, padding: "12px 20px", borderRadius: "var(--v4-r-pille)",
         fontSize: 14, boxShadow: "var(--schatten-toast)", maxWidth: "90vw", textAlign: "center",
         /* WP-21: im Querformat liegt der Streifen über Schaltflächen eines Blattes (gemessen: „Schließen“ der Krankmeldung bei 390 und 430 px Höhe); er nimmt keine Eingaben an. */
         pointerEvents: "none" }}>
@@ -1751,16 +1766,39 @@ function AppInnen() {
     </div>
   </>);
 
+  /* B-P3: Die Leiste „Nicht gespeichert“ (mit Ausweg: Datei sichern, neu anmelden, neu laden) und das Konfliktfenster
+     gelten in beiden Schalen — vorher nur in der Rechneransicht, am Telefon scheiterte Speichern ohne stehenden Hinweis. */
+  const nichtGespeichertLeiste = (
+    <NichtGespeichert lage={nichtGespeichert} melde={melde}
+      aufGeloest={() => setNichtGespeichert(null)}
+      onKonflikt={() => { const d = SP.konfliktLage(); if (d) setKonflikt({ ...d, meiner: ref.current }); else if (SP.konfliktOhneAbsage()) verwerfenMitRueckfrage(); }} />);
+  const konfliktBlock = konflikt ? (
+    <Konfliktfenster lage={konflikt} melde={melde}
+      onSchliessen={() => { setKonflikt(false); if (SP.konfliktLage() || SP.konfliktOhneAbsage()) setNichtGespeichert(SP.ausstehend()); }}
+      onUebernehmen={() => {
+        /* Denselben Stand noch einmal schicken. Erst mit dieser Entscheidung
+           übernimmt speicher.js den ETag aus der Absage (vorher Sendesperre),
+           der zweite Versuch läuft also gegen den aktuellen Stand und geht durch. */
+        SP.konfliktLoesen("meins");
+        setNichtGespeichert((l) => (l && l.art === "konfliktOffen" ? null : l));
+        SP.schreib(ref.current, { durch: "Übernahme nach Konflikt", sofort: true,
+          onFehler: (l) => setNichtGespeichert(l) });
+        setKonflikt(false);
+        melde("Dein Stand wurde übernommen.");
+      }} />) : null;
+
   if (zeigeMobil) return (
     <div className={`sw-root${sitz.person.kontrastmodus ? " feldmodus" : ""}`}>
       <style>{bauStyles()}</style>
       <div style={{display:"none"}}><i /><i /><i /><i /></div>
       <div>
-        {/* B-P2: Auch am Telefon sagt die Leiste, dass ein gespeicherter Stand ohne Verbindung gezeigt wird. */}
+        {/* B-P2: Auch am Telefon sagt die Leiste, dass ein gespeicherter Stand ohne Verbindung gezeigt wird.
+            B-P3: ebenso die Leiste „Nicht gespeichert“ (gescheitertes Speichern). */}
         <MobilSchale sitz={sitz} akt={akt} dialoge={dialogBlock} startTab={mobilStart}
-          hinweise={<Offlineleiste lage={offline} />}
+          hinweise={<><Offlineleiste lage={offline} />{nichtGespeichertLeiste}</>}
           aufRechner={() => setRechnerAnsicht(true)} />
       </div>
+      {konfliktBlock}
     </div>);
 
   return (
@@ -1777,8 +1815,8 @@ function AppInnen() {
           <div className="marke">
             <Logo size={26} hell />
             <div style={{ minWidth: 0 }}>
-              <b>CENTRIC</b>
-              <div style={{ fontSize: 11.5, color: "rgba(255,255,255,.55)", marginTop: 2,
+              <Wortmarke hell hoehe={13} alt="" />
+              <div style={{ fontSize: 11.5, color: "var(--sl-schrift-fuss)", marginTop: 2,
                 whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                 {istBetreiber ? "Betreiberkonsole" : sitz.mandant.name}</div>
             </div>
@@ -1807,17 +1845,17 @@ function AppInnen() {
 
           <div className="sfuss">
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ width: 30, height: 30, borderRadius: 9, flexShrink: 0, display: "flex",
+              <span style={{ width: 30, height: 30, borderRadius: "var(--v4-r-klein)", flexShrink: 0, display: "flex",
                 alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700,
-                background: "rgba(255,255,255,.12)", color: "#fff" }}>{r.kurz}</span>
+                background: "var(--sl-kuerzel)", color: "var(--sl-schrift)" }}>{r.kurz}</span>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 12.5, color: "#fff", whiteSpace: "nowrap",
+                <div style={{ fontSize: 12.5, color: "var(--sl-schrift)", whiteSpace: "nowrap",
                   overflow: "hidden", textOverflow: "ellipsis" }}>
                   {istBetreiber ? "Betreiber" : `${sitz.person.vorname} ${sitz.person.nachname}`}</div>
-                <div style={{ fontSize: 11, color: "rgba(255,255,255,.5)" }}>{r.label}</div>
+                <div style={{ fontSize: 11, color: "var(--sl-schrift-klein)" }}>{r.label}</div>
               </div>
               <button onClick={akt.abmelden} title="Abmelden" aria-label="Abmelden"
-                style={{ border: "none", background: "transparent", color: "rgba(255,255,255,.55)",
+                style={{ border: "none", background: "transparent", color: "var(--sl-schrift-fuss)",
                   cursor: "pointer", padding: 11, margin: -7, display: "flex" }}><Icon n="abmelden" size={18} /></button>
             </div>
           </div>
@@ -1857,9 +1895,7 @@ function AppInnen() {
             aria-label={`Ansicht ${aktiveView}`}>
           {!istBetreiber && <Testablauf mandant={sitz.mandant} darfEinrichten={darf(sitz, "org.edit")} />}
           <Offlineleiste lage={offline} />
-          <NichtGespeichert lage={nichtGespeichert} melde={melde}
-            aufGeloest={() => setNichtGespeichert(null)}
-            onKonflikt={() => { const d = SP.konfliktLage(); if (d) setKonflikt({ ...d, meiner: ref.current }); else if (SP.konfliktOhneAbsage()) verwerfenMitRueckfrage(); }} />
+          {nichtGespeichertLeiste}
           {teilLage && !teilFenster && <TeilwegLeiste zustand={teilLage} onOeffnen={() => setTeilFenster(true)} />}
           {schmal && !mobilOk && (
             <Card style={{ padding: 20, marginBottom: 20, background: C.warnLight }}>
@@ -2023,27 +2059,14 @@ function AppInnen() {
           {!istBetreiber && <button onClick={() => setPostfach(true)}>
             <span className="glyph" style={{ position: "relative", display: "flex" }}><Icon n="brief" size={20} />
               {ungelesen > 0 && <span style={{ position: "absolute", top: -4, right: -8, minWidth: 15, height: 15,
-                borderRadius: 8, background: C.danger, color: istDunkel() ? C.bg : "#fff", fontSize: 9.5, fontWeight: 700,
+                borderRadius: "var(--v4-r-pille)", background: C.danger, color: istDunkel() ? C.bg : "#fff", fontSize: 9.5, fontWeight: 700,
                 display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px" }}>{ungelesen}</span>}
             </span>Post</button>}
           {!istBetreiber && <button onClick={() => akt.oeffneKrankmeldung(sitz.person.id)}>
             <span className="glyph" style={{ color: C.danger, display: "flex" }}><Icon n="krank" size={20} /></span>Krank</button>}
         </nav>)}
 
-      {konflikt && (
-        <Konfliktfenster lage={konflikt} melde={melde}
-          onSchliessen={() => { setKonflikt(false); if (SP.konfliktLage() || SP.konfliktOhneAbsage()) setNichtGespeichert(SP.ausstehend()); }}
-          onUebernehmen={() => {
-            /* Denselben Stand noch einmal schicken. Erst mit dieser Entscheidung
-               übernimmt speicher.js den ETag aus der Absage (vorher Sendesperre),
-               der zweite Versuch läuft also gegen den aktuellen Stand und geht durch. */
-            SP.konfliktLoesen("meins");
-            setNichtGespeichert((l) => (l && l.art === "konfliktOffen" ? null : l));
-            SP.schreib(ref.current, { durch: "Übernahme nach Konflikt", sofort: true,
-              onFehler: (l) => setNichtGespeichert(l) });
-            setKonflikt(false);
-            melde("Dein Stand wurde übernommen.");
-          }} />)}
+      {konfliktBlock}
 
       {teilLage && teilFenster && (
         <Teilkonfliktfenster key={`${teilLage.phase}:${(teilLage.konflikte || []).map((f) => f.id).join(",")}`}

@@ -8,6 +8,7 @@ import { sitzungBeenden, merkmalAus } from "../lib/sitzungen.mjs";
 import { hilfeModus } from "../lib/schalter.mjs";
 import { hilfeGateway } from "../lib/intelligence/hilfe/gateway.mjs";
 import { hilfeBeantworten } from "../lib/intelligence/hilfe/assistent.mjs";
+import { zuTief, zuTiefRumpf } from "../lib/rumpftiefe.mjs";
 
 /* ==========================================================================
    HILFE-ASSISTENT (WP-I23, F9)
@@ -62,6 +63,7 @@ export default async (req) => {
     if (!bz.frei) return zuVielAntwort(bz.wartet);
 
     const rumpf = await req.json().catch(() => null);
+    if (zuTief(rumpf)) return antwort(zuTiefRumpf(), 400);   /* WP-19.5 Nachtrag (Review #505 A1): Tiefendeckel vor jeder Verwendung des Rumpfs. */
     if (!rumpf || typeof rumpf !== "object" || Array.isArray(rumpf) || Object.keys(rumpf).some((k) => k !== "frage"))
       return antwort({ fehler: "Ungültig.", text: "Bitte nur eine Frage senden." }, 400);
 

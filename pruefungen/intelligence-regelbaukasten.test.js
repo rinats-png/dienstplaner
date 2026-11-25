@@ -415,10 +415,16 @@ describe("Dispatcher und Register", () => {
 });
 
 describe("Laufzeit: 31 Tage x 40 Personen", () => {
-  it("rechnet alle vier Arten für alle Personen unter einer Sekunde", () => {
+  it("rechnet alle vier Arten für alle Personen: nicht überlinear in der Personenzahl, mit großem Vorrat unter einer Sekunde", () => {
+    /* QS-2, Mittelpaket: statt der festen Wandzeit-Grenze („< 1000 ms“, auf einem gestörten Runner nicht reproduzierbar) die Skalierung
+       in der Personenzahl: 1 Durchgang mit 160 Personen gegen 4 Durchgänge mit 40 Personen (gleiche Gesamtgröße, also gleiche Dauer und
+       gleiche Störanfälligkeit durch den Scheduler; ungleich lange Messblöcke lagen unter Last bei 8 bis 9 statt 3,7). Beide Seiten
+       werden ABWECHSELND gemessen (je Runde einmal je Seite; Minimum je Seite aus höchstens 9 Runden zu je 20 Wiederholungen). Linear
+       ergibt etwa 1, quadratisch etwa 4; Grenze 2 (mit 4 ms Spielraum für sehr kurze Zeiten). Zusätzlich die absolute Grobgrenze des
+       Vertrags: ein Durchgang mit 40 Personen in höchstens 1000 ms (gemessen 6,6 bis 8,3 ms, Vorrat über 100-fach). */
     const tage = tageAb("2026-03-01", 31);
     const klassen = ["F", "S", "N", "frei"];
-    const personen = Array.from({ length: 40 }, (_, p) => {
+    const personenListe = (n) => Array.from({ length: n }, (_, p) => {
       const t = {};
       tage.forEach((d, i) => { t[d] = klassen[(p + i * 3 + (i % 7 === 0 ? 1 : 0)) % 4]; });
       return t;
@@ -428,15 +434,25 @@ describe("Laufzeit: 31 Tage x 40 Personen", () => {
     const block = R({ typ: "blockregel", parameter: { wochentage: [5, 6], gruppen: { F: "tag", S: "tag" } } });
     const wunsch = R({ typ: "wunschregel", parameter: { wunsch: "frei", wochentage: [1] } });
     const verteil = R({ typ: "verteilungsregel", parameter: { groesse: "Nächte", maxAbweichung: 3 } });
-    const t0 = performance.now();
-    const werte = {};
-    personen.forEach((t, p) => {
-      const k = { tage: t, von: "2026-03-01", bis: "2026-03-31" };
-      musterregel(muster, k); musterregel(verbot, k); blockregel(block, k); wunschregel(wunsch, k);
-      werte[`p${p}`] = Object.values(t).filter((c) => c === "N").length;
-    });
-    verteilungsregel(verteil, { werte });
-    wochenendEreignisse(personen[0], "2026-03-01", "2026-03-31", { tagKlassen: ["F", "S"], nachtKlassen: ["N"] });
-    expect(performance.now() - t0).toBeLessThan(1000);
+    const durchgang = (personen) => () => {
+      const werte = {};
+      personen.forEach((t, p) => {
+        const k = { tage: t, von: "2026-03-01", bis: "2026-03-31" };
+        musterregel(muster, k); musterregel(verbot, k); blockregel(block, k); wunschregel(wunsch, k);
+        werte[`p${p}`] = Object.values(t).filter((c) => c === "N").length;
+      });
+      verteilungsregel(verteil, { werte });
+      wochenendEreignisse(personen[0], "2026-03-01", "2026-03-31", { tagKlassen: ["F", "S"], nachtKlassen: ["N"] });
+    };
+    const zeit = (fn) => { const t0 = performance.now(); fn(); return performance.now() - t0; };
+    const k40 = durchgang(personenListe(40)), k160 = durchgang(personenListe(160));
+    const kurz = () => { for (let i = 0; i < 20; i++) for (let j = 0; j < 4; j++) k40(); };   // 80 Durchgänge mit 40 Personen
+    const lang = () => { for (let i = 0; i < 20; i++) k160(); };                              // 20 Durchgänge mit 160 Personen
+    let vier = Infinity, eins = Infinity;
+    const start = performance.now();
+    /* Höchstens 9 Runden, mindestens 2; ein Mangel (Sekunden je Runde) bricht nach 8 s ab statt Minuten zu laufen. */
+    for (let runde = 0; runde < 9 && (runde < 2 || performance.now() - start < 8000); runde++) { vier = Math.min(vier, zeit(kurz)); eins = Math.min(eins, zeit(lang)); }
+    expect(eins, `4 × 40 Personen ${vier.toFixed(2)} ms`).toBeLessThanOrEqual(Math.max(2 * vier, vier + 4));
+    expect(Math.min(zeit(k40), zeit(k40), zeit(k40)), "ein Durchgang mit 40 Personen").toBeLessThanOrEqual(1000);
   });
 });

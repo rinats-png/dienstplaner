@@ -157,9 +157,9 @@ export function Import({ sitz, akt, onClose }) {
             <tbody>{pruef.zeilen.map((z) => (
               <tr key={z.nr} className="row">
                 <td style={{ padding: "9px 14px", borderBottom: `1px solid ${C.lineSoft}` }}>
-                  <span style={{ width: 20, height: 20, borderRadius: 10, display: "flex", alignItems: "center",
+                  <span style={{ width: 20, height: 20, borderRadius: "var(--v4-r-pille)", display: "flex", alignItems: "center",
                     justifyContent: "center", fontSize: 11, fontWeight: 700,
-                    background: z.ok ? "rgba(46,107,79,.14)" : "rgba(179,38,30,.12)",
+                    background: z.ok ? C.okLight : "rgba(179,38,30,.12)",
                     color: z.ok ? C.ok : C.danger }}>{z.ok ? <><Icon n="haken" size={13} strokeWidth={2.4} /><span className="nurLeser">ja</span></> : <><Icon n="x" size={13} strokeWidth={2.4} /><span className="nurLeser">nein</span></>}</span></td>
                 <td style={{ padding: "9px 14px", borderBottom: `1px solid ${C.lineSoft}`, fontSize: 13 }}>
                   {z.nachname}, {z.vorname}{z.teilzeit && <Pill size="sm" style={{ marginLeft: 6 }}>TZ</Pill>}</td>

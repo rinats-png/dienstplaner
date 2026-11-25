@@ -25,7 +25,7 @@ export function RotationUebersicht({ m, datum, heute, personen = {} }) {
         const e = einheitAm(w, pid, datum);
         const ziele = rotationZiele(w, pid, heute);
         return (
-          <article key={pid} style={{ border: "1px solid currentColor", borderRadius: 8, padding: 12, overflowWrap: "anywhere" }}>
+          <article key={pid} style={{ border: "1px solid currentColor", borderRadius: "var(--v4-r-klein)", padding: 12, overflowWrap: "anywhere" }}>
             <h3 style={{ margin: 0, fontSize: 15 }}>{personen[pid] || "Person"}</h3>
             <p style={{ margin: "6px 0 0" }}>{e ? `eingesetzt in ${einheiten[e] || "einer Einheit"}` : "am Tag keiner Einheit zugeordnet"}</p>
             {ziele.length > 0 && (

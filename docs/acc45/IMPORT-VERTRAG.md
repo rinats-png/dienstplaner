@@ -288,6 +288,7 @@ auch ohne Sitzung mit **404** und `{ "fehler": "Gibt es nicht." }` (ohne `code`)
 | 422 | Parsercode aus 9 (außer `DATEI_ZU_GROSS`, siehe 413) | upload | Datei nicht lesbar oder nicht unterstützt, kein Teilergebnis |
 | 201 | – | upload | Vorgang angelegt: `vorgang`, `art`, `format`, `blaetter`, `vorgabeBlatt`, `hinweise`, `gueltigBis`, `inaktivMinuten` |
 | 400 | `RUMPF_UNGUELTIG` | analyse, vorschau, uebernahme, verwerfen | kein JSON-Objekt oder größer als 2 MB |
+| 400 | `RUMPF_ZU_TIEF` | analyse, vorschau, uebernahme, verwerfen | Rumpf tiefer als 64 Ebenen (WP-19.5, `server/lib/rumpftiefe.mjs`); Antwort `{ fehler: "Der Rumpf ist zu tief verschachtelt.", text, code }`, geprüft vor jeder Verwendung des Rumpfs |
 | 200 | – | verwerfen | `{ ok: true }`, Vorgang gelöscht |
 | 409 | `BEREITS_UEBERNOMMEN` | analyse, vorschau, uebernahme | Vorgang schon übernommen (`ergebnis`) |
 | 409 | `UEBERNAHME_LAEUFT` | analyse, vorschau | Übernahme dieses Vorgangs läuft |

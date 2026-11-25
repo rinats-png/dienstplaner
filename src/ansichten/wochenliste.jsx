@@ -98,13 +98,13 @@ export function Wochenliste({ sitz, ym, oeffneTag, bes, lage }) {
                           <span style={{ color: col, fontWeight: b.status === "ok" ? 500 : 700 }}>{b.anzahl}</span>
                           <span style={{ color: C.dimmer, fontSize: 11.5 }}>/{sollAnzeige(b)}</span></div>
                         {b.bedarfOffen && <div style={{ fontSize: 11, color: C.warn }}>{BEDARF_OFFEN_TEXT}</div>}
-                        <div style={{ width: 58, height: 3, borderRadius: 2, background: C.lineSoft,
+                        <div style={{ width: 58, height: 3, borderRadius: "var(--v4-r-pille)", background: C.lineSoft,
                           overflow: "hidden", marginLeft: "auto", marginTop: 3 }}>
                           <div style={{ width: `${anteil}%`, height: "100%",
                             background: b.status === "ok" ? C.ok : b.status === "warn" ? C.warn : C.danger }} /></div>
                       </div>
                       {b.qualFehlt && <span title="Fachkraftquote nicht erfüllt"
-                        style={{ width: 7, height: 7, borderRadius: 4, background: C.danger, flexShrink: 0 }} />}
+                        style={{ width: 7, height: 7, borderRadius: "var(--v4-r-pille)", background: C.danger, flexShrink: 0 }} />}
                     </div>);
                 })}
               </div>

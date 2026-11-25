@@ -115,6 +115,18 @@ ist wie früher die Offlineleiste nur im Hauptbereich der Rechneransicht eingeh�
 Scheitert am Telefon ein Speichervorgang (Sitzungsende, Netz, 403, Konflikt), sehen Beschäftigte keine stehende Leiste mit
 Ausweg („Als Datei sichern“, neu anmelden, neu laden). Noch nicht im Browser belegt; Behebung und E2E-Beleg offen.
 
+**Behoben (Branch `fix/b-p3-403-grund`, PR offen):** App.jsx baut die Leiste einmal (`nichtGespeichertLeiste`) und hängt sie
+in beide Schalen: in der Rechneransicht wie bisher, in der Telefonschale zusammen mit der Offlineleiste als `hinweise`.
+Das Konfliktfenster (`konfliktBlock`) steht ebenfalls in beiden Schalen, sonst bliebe „Konflikt entscheiden“ am Telefon
+ohne Wirkung; es rollt in sich, wenn es höher als der Bildschirm ist. Prüfung: `pruefungen/speicherfehler-telefon.test.js`
+(Quelltext und Render je Lage: 403 mit Begründung, Sitzungsende mit Codefeld „Zugangscode“, Netz, Konflikt). Browser:
+`e2e/lokale-abnahme-luecken.spec.mjs` **L6** (Beschäftigte am Telefon ändert das Erscheinungsbild, der PUT bekommt eine
+umgeleitete 403 mit Begründung → Leiste mit Begründung, „Als Datei sichern“ und „Seite neu laden“ in der Telefonschale,
+auch nach Reiterwechsel; kein waagrechtes Scrollen bei 390 und 320 px; Server unverändert). Lokal: L6 ohne die Änderung an
+`src/App.jsx` rot („element(s) not found“), mit ihr grün; die ganze Datei 10/10 grün, `pwa-dienstarbeiter.spec.mjs` 2/2.
+Offen bleibt: Teilkonfliktfenster (Teilweg, Schalter `teile`) und `TeilwegLeiste` stehen weiter nur in der
+Rechneransicht.
+
 ### B-Z3 (Beobachtung, fachlich zu klären — kein bestätigter Fehler)
 
 Belegt in **Z3/Z4**. Die Zuschlagsstunden (Sonntag) eines geplanten Frühdienstes 06:00–14:00 mit 30 min Pause betragen 8,0,
@@ -122,6 +134,8 @@ die gearbeiteten Stunden 7,5: Zuschlagsanteile rechnen die Anwesenheit ohne Paus
 (`server/lib/isteinfrieren.mjs`, `zuschlagTagAddieren`/`tagesanteile`). Ob das gewollt ist (Pause nicht verortet) oder die
 Pause anteilig abgezogen werden muss (§ 3b EStG: zuschlagsfähig ist tatsächlich geleistete Arbeit), entscheidet die
 Fachseite. Der Test hält 8,0 fest und ist als „nach fachlicher Klärung ggf. umkehren“ markiert (dann 7,5 in Z3 und Z4).
+Entscheidungsvorlage: `ENTSCHEIDUNGSVORLAGE-B-Z3-ZUSCHLAG-PAUSE.md`, registriert als P2-23 in `ENTSCHEIDUNGSLISTE.md`
+(Optionen A/B/C, Empfehlung B; Code unverändert).
 
 ### Hinweis zum Auftrag „ungültige Pause 422 PAUSE_UNGUELTIG“
 
@@ -137,8 +151,8 @@ mit `code: PAUSE_UNGUELTIG` gibt es nur auf dem Vollschreibweg `PUT /api/bestand
 | B-H5 (H5b) | behoben, PR #397 gemergt |
 | B-I1 | PR #412 offen (zum Zeitpunkt dieses Nachtrags noch nicht gemergt) |
 | B-P2 | behoben, PR #410 gemergt |
-| B-P3 | offen |
-| B-Z3 | fachlich offen (Entscheidung der Fachseite) |
+| B-P3 | behoben im Branch `fix/b-p3-403-grund` (PR offen), Browser-Beleg L6 lokal grün |
+| B-Z3 | fachlich offen (Entscheidung der Fachseite), Vorlage P2-23 |
 
 ### Wechselwirkung Integration-Regression #389 × #390 (behoben mit #399)
 

@@ -37,6 +37,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { paketeFuerPr, ERLEDIGT } from "./ssot-zuordnung.mjs";
+import { argWert, optionenPruefen } from "./ssot-abgleich.mjs";
 
 const WURZEL = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const BASIS = "integration/release-v4";
@@ -148,10 +149,17 @@ export function anwenden(ssot, aenderungen, pr) {
 }
 
 function main() {
-  const pnr = process.argv.find((a) => /^\d+$/.test(a));
-  if (!pnr) return ERGEBNIS(2, "Aufruf: node werkzeug/ssot-nach-integration.mjs <PR-Nummer> [--schreibe]");
+  /* QS-2 Restpaket (Review #500): unbekannte Optionen und eine fehlende Dateiangabe brechen mit Rückgabe 2 ab, bevor gh (Netz) oder eine
+     Datei berührt wird. Vorher: --datei ohne Wert nahm das nächste Argument (oder undefined), die PR-Nummer war die erste Zahl irgendwo. */
+  let pnr, datei;
+  try {
+    const positionen = optionenPruefen(process.argv, { flags: ["--schreibe"], werte: ["--datei"] });
+    datei = argWert("--datei") ?? null;
+    pnr = positionen.find((a) => /^\d+$/.test(a));
+    if (positionen.some((a) => a !== pnr)) throw new Error(`Unerwartetes Argument ${positionen.find((a) => a !== pnr)}`);
+  } catch (e) { return ERGEBNIS(2, `SSOT-Nachführung ABGEBROCHEN: ${e.message}`); }
+  if (!pnr) return ERGEBNIS(2, "Aufruf: node werkzeug/ssot-nach-integration.mjs <PR-Nummer> [--schreibe] [--datei F]");
   const schreibe = process.argv.includes("--schreibe");
-  const datei = process.argv.includes("--datei") ? process.argv[process.argv.indexOf("--datei") + 1] : null;
 
   const pr = prAnsicht(pnr, WURZEL);
   if (!pr.mergedAt || pr.baseRefName !== BASIS) return ERGEBNIS(2, `PR #${pnr} ist nicht in ${BASIS} gemergt (Basis ${pr.baseRefName}).`);

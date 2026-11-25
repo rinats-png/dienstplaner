@@ -1,6 +1,15 @@
 /* SSOT-Belege: kompakte Zuordnung von Paket-IDs zu Commit-, Test- und Nachweisnamen. */
 import { describe, it, expect } from "vitest";
 import { kompakt, trifftText } from "../werkzeug/ssot-zuordnung.mjs";
+import { anwenden, ssotPrBelege } from "../werkzeug/ssot-belege.mjs";
+import { abgleich, argWert, optionenPruefen } from "../werkzeug/ssot-abgleich.mjs";
+import { readFileSync, writeFileSync, mkdtempSync, mkdirSync, copyFileSync, rmSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
+import { spawnSync, execFileSync } from "node:child_process";
+
+const WURZEL = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 describe("kompakte Paket-ID und Trefferprüfung", () => {
   it("kompakte Form", () => {
@@ -20,4 +29,395 @@ describe("kompakte Paket-ID und Trefferprüfung", () => {
     expect(trifftText("WP-47", "docs/acc45/WP-47b-NACHWEIS.md")).toBe(false);
     expect(trifftText("WP-I12", "pruefungen/wp-i12-nachweis.md")).toBe(true);
   });
+});
+
+/* Review #483 (Opus) Folgebefund H4: anwenden() übernahm PR-Verweise mit /#\d+/ (auch „#0“, „#012“) und suchte Duplikate
+   per String.includes („#12“ galt als enthalten in „#123“). Jetzt: Format genau PR_MUSTER (acc45-backlog.mjs), exakter
+   Listenvergleich; ein ungültiger Verweis bricht ab, bevor irgendein Paket geändert wird (main: Rückgabe 1, Rollback). */
+describe("ssot-belege anwenden: PR-Verweise nach PR_MUSTER, exakter Duplikatvergleich (Review #483 H4)", () => {
+  const ssot = (pr = []) => ({ pakete: [{ id: "WP-1", status: "INTEGRATED", pr, stufen: {} }, { id: "WP-2", status: "DONE", pr: ["#5"], stufen: {} }] });
+  const ok = (id, integriert) => ({ id, klasse: "OK", integriert, commits: [], dateien: [] });
+
+  it("„#12“ wird ergänzt, auch wenn „#123“ schon im pr steht (kein Teilstring-Vergleich)", () => {
+    const s = ssot(["#123"]);
+    expect(anwenden(s, [ok("WP-1", "PR #12")])).toEqual({ belegErgaenzt: 1, statusAufReview: 0 });
+    expect(s.pakete[0].pr).toEqual(["#123", "#12"]);
+  });
+
+  it("vorhandene und doppelte Verweise werden nicht erneut ergänzt", () => {
+    const s = ssot(["#12"]);
+    expect(anwenden(s, [ok("WP-1", "PR #12,#13,#13")]).belegErgaenzt).toBe(1);
+    expect(s.pakete[0].pr).toEqual(["#12", "#13"]);
+    expect(anwenden(s, [ok("WP-1", "PR #12,#13")]).belegErgaenzt).toBe(0);
+    expect(anwenden(s, [ok("WP-1", "nein")]).belegErgaenzt).toBe(0);
+  });
+
+  it("ungültiger Verweis („#0“, führende Null, Zusatz) → Fehler, keine Datenänderung, auch nicht an früheren Zeilen", () => {
+    for (const integriert of ["PR #0", "PR #012", "PR #12a", "PR #12,#0", "PR 12", "PR #", "PR #12, #13"]) {
+      const s = ssot(["#1"]);
+      const vorher = JSON.stringify(s);
+      expect(() => anwenden(s, [ok("WP-2", "PR #6"), ok("WP-1", integriert)]), integriert).toThrow(/ungültige[rn]? PR-Verweis/);
+      expect(JSON.stringify(s), integriert).toBe(vorher);
+    }
+  });
+
+  it("PR_MUSTER kommt aus einer Quelle (acc45-backlog.mjs), keine eigene lockere Regel", () => {
+    const text = readFileSync(join(WURZEL, "werkzeug", "ssot-belege.mjs"), "utf8");
+    expect(text).toMatch(/import \{[^}]*\bPR_MUSTER\b[^}]*\} from "\.\/acc45-backlog\.mjs"/);
+    expect(text).not.toMatch(/#\\d\+/);
+  });
+});
+
+/* Review #486 (Opus) H-d: die Tests oben prüfen anwenden() (Fehler, keine Datenänderung), aber nicht den Exit-Code von
+   main(). Hier läuft die CLI selbst (spawnSync) auf einer Wegwerf-Kopie: eigenes Git-Repository mit den Werkzeugdateien,
+   Ref origin/integration/release-v4, SSOT-Kopie und PR-Liste aus Datei (--prs, kein Netz), Sperre im eigenen Temp. */
+describe("ssot-belege CLI: ungültiger PR-Verweis → Rückgabe 1, Datei byte-gleich (Review #486 H-d)", () => {
+  const WERKZEUGE = ["ssot-belege.mjs", "gh-rest.mjs", "ssot-zuordnung.mjs", "ssot-abgleich.mjs", "acc45-backlog.mjs"];
+  const aufbauen = () => {
+    const d = mkdtempSync(join(tmpdir(), "ssot-belege-cli-"));
+    mkdirSync(join(d, "werkzeug"));
+    for (const f of WERKZEUGE) copyFileSync(join(WURZEL, "werkzeug", f), join(d, "werkzeug", f));
+    const git = (...a) => execFileSync("git", a, { cwd: d, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+    git("init", "-q");
+    git("config", "user.email", "pruefung@example.org");
+    git("config", "user.name", "Pruefung");
+    git("config", "commit.gpgsign", "false");
+    git("commit", "-q", "--allow-empty", "-m", "start");
+    git("update-ref", "refs/remotes/origin/integration/release-v4", "HEAD");
+    // absichtlich ungewöhnlich formatiert: byte-gleich heißt Originaltext, nicht neu serialisiert
+    const ssotText = '{"pakete":[{"id":"WP-1","titel":"t","strang":"acc45","prio":"P2","status":"INTEGRATED","pr":[],"stufen":{}}]}';
+    writeFileSync(join(d, "ssot.json"), ssotText);
+    const lauf = (prs, ...extra) => {
+      writeFileSync(join(d, "prs.json"), JSON.stringify(prs));
+      return spawnSync(process.execPath, [join(d, "werkzeug", "ssot-belege.mjs"), ...extra, "--datei", join(d, "ssot.json"), "--prs", join(d, "prs.json")],
+        { cwd: d, encoding: "utf8", env: { ...process.env, TMP: d, TEMP: d, TMPDIR: d }, timeout: 60000 });
+    };
+    return { d, ssotText, lauf, weg: () => rmSync(d, { recursive: true, force: true }) };
+  };
+
+  it("--anwenden mit PR-Nummer 0 oder „12a“ (→ „#0“, „#12a“) → Rückgabe 1, zurückgerollt, SSOT-Datei byte-gleich", () => {
+    const u = aufbauen();
+    try {
+      // Gegenprobe: dieselbe Umgebung ohne --anwenden läuft (Rückgabe 0) — die 1 unten kommt nicht aus dem Aufbau
+      const ok = u.lauf([{ number: 0, title: "WP-1: Test", headRefName: "x/wp-1" }]);
+      expect(ok.status, ok.stderr).toBe(0);
+      expect(ok.stdout).toMatch(/Dry-Run/);
+      for (const number of [0, "12a", "012"]) {
+        const r = u.lauf([{ number, title: "WP-1: Test", headRefName: "x/wp-1" }], "--anwenden");
+        expect(r.status, `${number}: ${r.stdout}${r.stderr}`).toBe(1);
+        expect(r.stdout, String(number)).toMatch(/zurückgerollt: ungültiger PR-Verweis/);
+        expect(readFileSync(join(u.d, "ssot.json"), "utf8"), String(number)).toBe(u.ssotText);
+      }
+    } finally { u.weg(); }
+  });
+});
+
+/* Review #486 (Opus) H-e: ssotPrBelege las p.pr locker mit /\d+/ („12“, „#0“, „#12a“ galten als PR 12/0/12). Jetzt genau
+   PR_MUSTER; ein anderer Eintrag löst keinen Abruf aus. Gültige Einträge („#N“) wie vorher. */
+describe("ssotPrBelege: SSOT-Feld pr nur nach PR_MUSTER (Review #486 H-e)", () => {
+  it("ungültige Einträge → kein Abruf, kein Beleg; gültige „#N“ → Abruf mit N wie vorher", () => {
+    const abrufe = [];
+    const ansicht = (n) => { abrufe.push(n); return { state: "OPEN" }; };
+    expect(ssotPrBelege({ pr: ["12", "#0", "#012", "#12a", " #5", "#5 ", "PR #5", 5, null, ["#5"], "#"] }, ansicht)).toEqual([]);
+    expect(abrufe).toEqual([]);
+    expect(ssotPrBelege({ pr: ["#5", "#123"] }, ansicht)).toEqual([]);
+    expect(abrufe).toEqual(["5", "123"]);
+    expect(ssotPrBelege({}, ansicht)).toEqual([]);
+  });
+
+  it("Quelltext: keine lockere Zahlensuche mehr in ssot-belege.mjs", () => {
+    const text = readFileSync(join(WURZEL, "werkzeug", "ssot-belege.mjs"), "utf8");
+    expect(text).not.toMatch(/match\(\/\\d\+\/\)/);
+  });
+});
+
+/* Review #490 (Opus) Folgepunkte N1/N2.
+   N1: abgleich() las p.pr noch locker mit /\d+/ (wie H-e in ssotPrBelege). Jetzt genau PR_MUSTER; ein ungültiger Eintrag
+       bricht ab (fail-closed), gültige Daten („#N“) ergeben dasselbe Ergebnis wie vorher.
+   N2: Eine Option mit Wert (--prs, --datei) ohne Wert ergab undefined, und das Werkzeug fiel still auf gh (Netz) bzw. auf
+       den Standardpfad zurück. Jetzt: klarer Fehler, Rückgabe 2. */
+describe("abgleich: SSOT-Feld pr nur nach PR_MUSTER, fail-closed (Review #490 N1)", () => {
+  const ssot = (pr) => ({ pakete: [{ id: "WP-1", status: "INTEGRATED", pr, stufen: {} }] });
+
+  it("gültige „#N“: Treffer wie vorher (Nummer im SSOT-Feld zählt bei gemergtem PR)", () => {
+    expect(abgleich(ssot(["#5", "#123"]), [{ number: 5, title: "x", headRefName: "y" }])).toEqual([
+      { id: "WP-1", status: "INTEGRATED", klasse: "OK", prs: ["#5"] },
+    ]);
+    expect(abgleich(ssot([]), [])).toEqual([{ id: "WP-1", status: "INTEGRATED", klasse: "BELEG_FEHLT", prs: [] }]);
+    expect(abgleich(ssot(["#5"]), [])).toEqual([{ id: "WP-1", status: "INTEGRATED", klasse: "BELEG_FEHLT", prs: [] }]);
+    expect(abgleich({ pakete: [{ id: "WP-1", status: "OPEN", stufen: {} }] }, [])).toEqual([{ id: "WP-1", status: "OPEN", klasse: "OK", prs: [] }]);
+  });
+
+  it("ungültiger Eintrag → Fehler mit Paket-ID und Eintrag, auch wenn der PR gemergt ist", () => {
+    for (const x of ["12", "#0", "#012", "#12a", " #5", "#5 ", "PR #5", "#", 12, 0, null, ["#5"], {}]) {
+      const prs = [{ number: 12, title: "x", headRefName: "y" }, { number: 5, title: "x", headRefName: "y" }];
+      expect(() => abgleich(ssot(["#5", x]), prs), JSON.stringify(x)).toThrow(/WP-1.*ungültiger PR-Verweis.*#123/s);
+    }
+  });
+
+  it("pr kein Array → Fehler", () => {
+    for (const pr of ["#5", 5, { a: 1 }, true]) expect(() => abgleich(ssot(pr), []), JSON.stringify(pr)).toThrow(/WP-1.*kein Array/s);
+  });
+
+  it("Quelltext: keine lockere Zahlensuche mehr in ssot-abgleich.mjs; PR_MUSTER aus acc45-backlog.mjs", () => {
+    const text = readFileSync(join(WURZEL, "werkzeug", "ssot-abgleich.mjs"), "utf8");
+    expect(text).not.toMatch(/match\(\/\\d\+\/\)/);
+    expect(text).toMatch(/import \{[^}]*\bPR_MUSTER\b[^}]*\} from "\.\/acc45-backlog\.mjs"/);
+  });
+});
+
+describe("argWert: Option mit Wert verlangt einen Wert (Review #490 N2)", () => {
+  it("liefert den Wert, undefined bei fehlender Option; Fehler bei fehlendem, leerem oder option-artigem Wert", () => {
+    const av = (...a) => ["node", "skript", ...a];
+    expect(argWert("--prs", av("--prs", "F"))).toBe("F");
+    expect(argWert("--prs", av("--json"))).toBeUndefined();
+    for (const a of [["--prs"], ["--prs", ""], ["--prs", "--anwenden"], ["--json", "--prs"]]) {
+      expect(() => argWert("--prs", av(...a)), JSON.stringify(a)).toThrow(/--prs verlangt einen Wert/);
+    }
+  });
+});
+
+describe("CLI ssot-abgleich und ssot-belege: Fehler statt stillem Netzfallback, ungültiges pr → Rückgabe 2 (Review #490 N1/N2)", () => {
+  const WERKZEUGE = ["ssot-belege.mjs", "gh-rest.mjs", "ssot-zuordnung.mjs", "ssot-abgleich.mjs", "acc45-backlog.mjs"];
+  const SSOT = (pr) => `{"pakete":[{"id":"WP-1","titel":"t","strang":"acc45","prio":"P2","status":"INTEGRATED","pr":${pr},"stufen":{}}]}`;
+  const aufbauen = (prJson = "[]") => {
+    const d = mkdtempSync(join(tmpdir(), "ssot-n12-cli-"));
+    mkdirSync(join(d, "werkzeug"));
+    for (const f of WERKZEUGE) copyFileSync(join(WURZEL, "werkzeug", f), join(d, "werkzeug", f));
+    const git = (...a) => execFileSync("git", a, { cwd: d, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+    git("init", "-q");
+    git("config", "user.email", "pruefung@example.org");
+    git("config", "user.name", "Pruefung");
+    git("config", "commit.gpgsign", "false");
+    git("commit", "-q", "--allow-empty", "-m", "start");
+    git("update-ref", "refs/remotes/origin/integration/release-v4", "HEAD");
+    const ssotText = SSOT(prJson);
+    writeFileSync(join(d, "ssot.json"), ssotText);
+    writeFileSync(join(d, "prs.json"), "[]");
+    const lauf = (werkzeug, ...args) => spawnSync(process.execPath, [join(d, "werkzeug", werkzeug), ...args],
+      { cwd: d, encoding: "utf8", env: { ...process.env, TMP: d, TEMP: d, TMPDIR: d }, timeout: 60000 });
+    return { d, ssotText, lauf, weg: () => rmSync(d, { recursive: true, force: true }) };
+  };
+  const ssotDatei = (u) => readFileSync(join(u.d, "ssot.json"), "utf8");
+
+  it("Gegenprobe: mit beiden Werten laufen beide Werkzeuge (Rückgabe 0)", () => {
+    const u = aufbauen();
+    try {
+      for (const w of ["ssot-abgleich.mjs", "ssot-belege.mjs"]) {
+        const r = u.lauf(w, "--datei", join(u.d, "ssot.json"), "--prs", join(u.d, "prs.json"));
+        expect(r.status, `${w}: ${r.stdout}${r.stderr}`).toBe(0);
+      }
+      expect(ssotDatei(u)).toBe(u.ssotText);
+    } finally { u.weg(); }
+  });
+
+  it("--prs oder --datei ohne Wert (am Ende, leer, oder Option als Wert) → Rückgabe 2, Meldung nennt die Option, SSOT byte-gleich", () => {
+    const u = aufbauen();
+    try {
+      const faelle = [["--prs"], ["--datei"], ["--prs", ""], ["--datei", ""], ["--prs", "--anwenden"], ["--datei", "--json"]];
+      for (const w of ["ssot-abgleich.mjs", "ssot-belege.mjs"]) {
+        for (const f of faelle) {
+          const mit = f[0] === "--prs" ? ["--datei", join(u.d, "ssot.json")] : ["--prs", join(u.d, "prs.json")];
+          const r = u.lauf(w, ...mit, ...f);
+          expect(r.status, `${w} ${JSON.stringify(f)}: ${r.stdout}${r.stderr}`).toBe(2);
+          expect(r.stderr, `${w} ${JSON.stringify(f)}`).toContain(`${f[0]} verlangt einen Wert`);
+          expect(ssotDatei(u)).toBe(u.ssotText);
+        }
+      }
+      const r = u.lauf("ssot-belege.mjs", "--anwenden", "--datei", join(u.d, "ssot.json"), "--prs");
+      expect(r.status, r.stdout + r.stderr).toBe(2);
+      expect(ssotDatei(u)).toBe(u.ssotText);
+    } finally { u.weg(); }
+  });
+
+  it("ungültiger Eintrag im SSOT-Feld pr → Rückgabe 2, keine Klassenausgabe, SSOT byte-gleich (auch mit --anwenden)", () => {
+    // Ein Wegwerf-Repository für alle Fälle (Prozessstart ist teuer); die Varianten je Eintrag deckt der Unit-Test oben ab.
+    const u = aufbauen();
+    try {
+      for (const pr of ['["#0"]', '["#012"]', '["#12a"]', "[12]", '["#5",null]']) {
+        const text = SSOT(pr);
+        writeFileSync(join(u.d, "ssot.json"), text);
+        const cli = [["ssot-abgleich.mjs", "--pruefe"], ["ssot-belege.mjs", "--anwenden"]];
+        for (const [w, ...extra] of cli) {
+          const r = u.lauf(w, ...extra, "--datei", join(u.d, "ssot.json"), "--prs", join(u.d, "prs.json"));
+          expect(r.status, `${pr} ${w} ${extra}: ${r.stdout}${r.stderr}`).toBe(2);
+          expect(r.stderr, `${pr} ${w}`).toMatch(/ABGEBROCHEN.*WP-1.*ungültiger PR-Verweis/s);
+          expect(r.stdout, `${pr} ${w}`).not.toMatch(/SSOT-(Abgleich|Belege)/);
+          expect(ssotDatei(u), pr).toBe(text);
+        }
+      }
+      // ohne --anwenden (Bericht) bricht ssot-belege ebenso ab
+      const b = u.lauf("ssot-belege.mjs", "--datei", join(u.d, "ssot.json"), "--prs", join(u.d, "prs.json"));
+      expect(b.status, b.stdout + b.stderr).toBe(2);
+    } finally { u.weg(); }
+  }, 180000);
+
+  it("gültige Daten: Ausgabe von ssot-abgleich unverändert (JSON und Text)", () => {
+    const u = aufbauen('["#5"]');
+    try {
+      writeFileSync(join(u.d, "prs.json"), JSON.stringify([{ number: 5, title: "x", headRefName: "y" }]));
+      const args = ["--datei", join(u.d, "ssot.json"), "--prs", join(u.d, "prs.json")];
+      const j = u.lauf("ssot-abgleich.mjs", "--json", ...args);
+      expect(j.status).toBe(0);
+      expect(JSON.parse(j.stdout)).toEqual([{ id: "WP-1", status: "INTEGRATED", klasse: "OK", prs: ["#5"] }]);
+      const t = u.lauf("ssot-abgleich.mjs", ...args);
+      expect(t.stdout).toBe('SSOT-Abgleich gegen integration/release-v4: {"OK":1}\n');
+    } finally { u.weg(); }
+  });
+});
+
+/* QS-2 Restpaket (Review #500): unbekannte Optionen (`--prs=F`, `--pr F`, `--datei=F`, Tippfehler) wurden still ignoriert; das Werkzeug fiel dann auf gh (Netz)
+   oder den Standardpfad zurück. Jetzt Rückgabe 2 mit „Unbekannte Option“, bevor gh oder eine Datei berührt wird. ssot-nach-integration.mjs: `--datei` ohne Wert
+   und die PR-Nummer aus dem Wert von `--datei` sind ebenfalls Fehler. Gültige Aufrufe bleiben unverändert (siehe Gegenproben oben). */
+describe("CLI: unbekannte Optionen → Rückgabe 2, kein stiller Netzfallback (QS-2 Restpaket)", () => {
+  const WERKZEUGE = ["ssot-belege.mjs", "gh-rest.mjs", "ssot-zuordnung.mjs", "ssot-abgleich.mjs", "acc45-backlog.mjs", "ssot-nach-integration.mjs"];
+  const aufbauen = () => {
+    const d = mkdtempSync(join(tmpdir(), "ssot-opt-cli-"));
+    mkdirSync(join(d, "werkzeug"));
+    for (const f of WERKZEUGE) copyFileSync(join(WURZEL, "werkzeug", f), join(d, "werkzeug", f));
+    const git = (...a) => execFileSync("git", a, { cwd: d, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+    git("init", "-q");
+    git("config", "user.email", "pruefung@example.org");
+    git("config", "user.name", "Pruefung");
+    git("config", "commit.gpgsign", "false");
+    git("commit", "-q", "--allow-empty", "-m", "start");
+    git("update-ref", "refs/remotes/origin/integration/release-v4", "HEAD");
+    const ssotText = '{"pakete":[{"id":"WP-1","titel":"t","strang":"acc45","prio":"P2","status":"INTEGRATED","pr":[],"stufen":{}}]}';
+    writeFileSync(join(d, "ssot.json"), ssotText);
+    writeFileSync(join(d, "prs.json"), "[]");
+    const lauf = (werkzeug, ...args) => spawnSync(process.execPath, [join(d, "werkzeug", werkzeug), ...args],
+      { cwd: d, encoding: "utf8", env: { ...process.env, TMP: d, TEMP: d, TMPDIR: d }, timeout: 60000 });
+    return { d, ssotText, lauf, weg: () => rmSync(d, { recursive: true, force: true }) };
+  };
+
+  it("abgleich und belege: `--prs=F`, `--pr F`, `--datei=F`, Tippfehler → Rückgabe 2, Meldung „Unbekannte Option“, SSOT byte-gleich; gültiger Aufruf Rückgabe 0", () => {
+    const u = aufbauen();
+    try {
+      const gut = ["--datei", join(u.d, "ssot.json"), "--prs", join(u.d, "prs.json")];
+      for (const w of ["ssot-abgleich.mjs", "ssot-belege.mjs"]) {
+        expect(u.lauf(w, ...gut).status, `${w} Gegenprobe`).toBe(0);
+        const faelle = [["--prs=" + join(u.d, "prs.json")], ["--pr", join(u.d, "prs.json")], ["--datei=" + join(u.d, "ssot.json")], ["--json=1"], ["--anwende"], ["-x"]];
+        for (const f of faelle) {
+          const r = u.lauf(w, ...gut, ...f);
+          expect(r.status, `${w} ${JSON.stringify(f)}: ${r.stdout}${r.stderr}`).toBe(2);
+          expect(r.stderr, `${w} ${JSON.stringify(f)}`).toContain(`Unbekannte Option ${f[0]}`);
+          expect(r.stdout, `${w} ${JSON.stringify(f)}`).not.toMatch(/SSOT-(Abgleich|Belege)/);
+        }
+        // nur die unbekannte Option, ohne gültige Quelle: kein Rückfall auf gh oder den Standardpfad
+        const nur = u.lauf(w, "--prs=" + join(u.d, "prs.json"));
+        expect(nur.status, `${w}: ${nur.stdout}${nur.stderr}`).toBe(2);
+        expect(nur.stderr).toContain("Unbekannte Option --prs=");
+      }
+      expect(readFileSync(join(u.d, "ssot.json"), "utf8")).toBe(u.ssotText);
+    } finally { u.weg(); }
+  }, 120000);
+
+  it("nach-integration: unbekannte Option, `--datei` ohne Wert, fremdes Argument → Rückgabe 2 vor jedem gh-Aufruf; ohne PR-Nummer Aufrufhinweis", () => {
+    const u = aufbauen();
+    try {
+      const faelle = [
+        [["315", "--pr", "316"], /Unbekannte Option --pr/],
+        [["315", "--schreibe", "--datei=" + join(u.d, "ssot.json")], /Unbekannte Option --datei=/],
+        [["315", "--datei"], /--datei verlangt einen Wert/],
+        [["315", "--datei", "--schreibe"], /--datei verlangt einen Wert/],
+        [["315", "--datei", ""], /--datei verlangt einen Wert/],
+        [["315", "abc"], /Unerwartetes Argument abc/],
+        [["--datei", "315"], /Aufruf: node werkzeug\/ssot-nach-integration\.mjs/],   // 315 ist der Wert von --datei, nicht die PR-Nummer
+        [[], /Aufruf: node werkzeug\/ssot-nach-integration\.mjs/],
+      ];
+      for (const [args, muster] of faelle) {
+        const r = u.lauf("ssot-nach-integration.mjs", ...args);
+        expect(r.status, `${JSON.stringify(args)}: ${r.stdout}${r.stderr}`).toBe(2);
+        expect(r.stdout + r.stderr, JSON.stringify(args)).toMatch(muster);
+        expect(r.stdout + r.stderr, JSON.stringify(args)).not.toMatch(/nicht in integration|gh:|HTTP/i);
+      }
+      expect(readFileSync(join(u.d, "ssot.json"), "utf8")).toBe(u.ssotText);
+    } finally { u.weg(); }
+  }, 120000);
+});
+
+/* Review #501 H2: Eine doppelte Option (`--datei F --datei G`, `--prs a --prs b`) wurde in optionenPruefen übersprungen und von argWert
+   (indexOf) still auf den ersten Wert reduziert. Jetzt Fehler (fail-closed): Rückgabe 2, Meldung „Option … doppelt angegeben“, bevor gh oder
+   eine Datei berührt wird. Gilt im gemeinsamen Helfer optionenPruefen (ssot-abgleich.mjs) für alle drei Werkzeuge, auch für Schalter. */
+describe("optionenPruefen: doppelte Option ist ein Fehler (Review #501 H2)", () => {
+  const av = (...a) => ["node", "skript", ...a];
+  const OPT = { flags: ["--json", "--anwenden"], werte: ["--datei", "--prs"] };
+  it("doppelte Option mit Wert oder doppelter Schalter → Fehler mit Namen der Option", () => {
+    const faelle = [
+      [["--datei", "F", "--datei", "G"], "--datei"],
+      [["--prs", "a", "--prs", "b"], "--prs"],
+      [["--datei", "F", "--prs", "a", "--datei", "F"], "--datei"],   // auch mit gleichem Wert
+      [["--json", "--datei", "F", "--json"], "--json"],
+      [["--anwenden", "--anwenden"], "--anwenden"],
+    ];
+    for (const [a, name] of faelle)
+      expect(() => optionenPruefen(av(...a), OPT), JSON.stringify(a)).toThrow(`Option ${name} doppelt angegeben`);
+  });
+  it("Gegenprobe: jede Option einmal → kein Fehler; Positionsargumente unverändert", () => {
+    expect(optionenPruefen(av("--datei", "F", "--prs", "G", "--json", "--anwenden"), OPT)).toEqual([]);
+    expect(optionenPruefen(av("315", "--datei", "F", "x"), OPT)).toEqual(["315", "x"]);
+    expect(optionenPruefen(av(), OPT)).toEqual([]);
+  });
+});
+
+describe("CLI: doppelte Option → Rückgabe 2, SSOT byte-gleich (Review #501 H2)", () => {
+  const WERKZEUGE = ["ssot-belege.mjs", "gh-rest.mjs", "ssot-zuordnung.mjs", "ssot-abgleich.mjs", "acc45-backlog.mjs", "ssot-nach-integration.mjs"];
+  const aufbauen = () => {
+    const d = mkdtempSync(join(tmpdir(), "ssot-doppelt-cli-"));
+    mkdirSync(join(d, "werkzeug"));
+    for (const f of WERKZEUGE) copyFileSync(join(WURZEL, "werkzeug", f), join(d, "werkzeug", f));
+    const git = (...a) => execFileSync("git", a, { cwd: d, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+    git("init", "-q");
+    git("config", "user.email", "pruefung@example.org");
+    git("config", "user.name", "Pruefung");
+    git("config", "commit.gpgsign", "false");
+    git("commit", "-q", "--allow-empty", "-m", "start");
+    git("update-ref", "refs/remotes/origin/integration/release-v4", "HEAD");
+    const ssotText = '{"pakete":[{"id":"WP-1","titel":"t","strang":"acc45","prio":"P2","status":"INTEGRATED","pr":[],"stufen":{}}]}';
+    writeFileSync(join(d, "ssot.json"), ssotText);
+    writeFileSync(join(d, "ssot2.json"), ssotText);
+    writeFileSync(join(d, "prs.json"), "[]");
+    writeFileSync(join(d, "prs2.json"), "[]");
+    const lauf = (werkzeug, ...args) => spawnSync(process.execPath, [join(d, "werkzeug", werkzeug), ...args],
+      { cwd: d, encoding: "utf8", env: { ...process.env, TMP: d, TEMP: d, TMPDIR: d }, timeout: 60000 });
+    return { d, ssotText, lauf, weg: () => rmSync(d, { recursive: true, force: true }) };
+  };
+
+  it("abgleich und belege: `--datei F --datei G`, `--prs a --prs b`, doppelter Schalter → Rückgabe 2 vor jedem Lesen", () => {
+    const u = aufbauen();
+    try {
+      const s1 = join(u.d, "ssot.json"), s2 = join(u.d, "ssot2.json"), p1 = join(u.d, "prs.json"), p2 = join(u.d, "prs2.json");
+      for (const [w, schalter] of [["ssot-abgleich.mjs", "--json"], ["ssot-belege.mjs", "--anwenden"]]) {
+        expect(u.lauf(w, "--datei", s1, "--prs", p1).status, `${w} Gegenprobe`).toBe(0);
+        const faelle = [
+          [["--datei", s1, "--prs", p1, "--datei", s2], "--datei"],
+          [["--datei", s1, "--prs", p1, "--prs", p2], "--prs"],
+          [["--datei", s1, "--datei", s1, "--prs", p1], "--datei"],
+          [["--datei", s1, "--prs", p1, schalter, schalter], schalter],
+        ];
+        for (const [args, name] of faelle) {
+          const r = u.lauf(w, ...args);
+          expect(r.status, `${w} ${JSON.stringify(args)}: ${r.stdout}${r.stderr}`).toBe(2);
+          expect(r.stderr, `${w} ${JSON.stringify(args)}`).toContain(`Option ${name} doppelt angegeben`);
+          expect(r.stdout, `${w} ${JSON.stringify(args)}`).not.toMatch(/SSOT-(Abgleich|Belege)|Nachweise ergänzt/);
+        }
+      }
+      expect(readFileSync(join(u.d, "ssot.json"), "utf8")).toBe(u.ssotText);
+      expect(readFileSync(join(u.d, "ssot2.json"), "utf8")).toBe(u.ssotText);
+    } finally { u.weg(); }
+  }, 120000);
+
+  it("nach-integration: `--datei F --datei G` und `--schreibe --schreibe` → Rückgabe 2 vor jedem gh-Aufruf", () => {
+    const u = aufbauen();
+    try {
+      const s1 = join(u.d, "ssot.json"), s2 = join(u.d, "ssot2.json");
+      for (const [args, name] of [[["315", "--datei", s1, "--datei", s2], "--datei"], [["315", "--schreibe", "--datei", s1, "--schreibe"], "--schreibe"]]) {
+        const r = u.lauf("ssot-nach-integration.mjs", ...args);
+        expect(r.status, `${JSON.stringify(args)}: ${r.stdout}${r.stderr}`).toBe(2);
+        expect(r.stdout + r.stderr, JSON.stringify(args)).toContain(`Option ${name} doppelt angegeben`);
+        expect(r.stdout + r.stderr, JSON.stringify(args)).not.toMatch(/nicht in integration|gh:|HTTP/i);
+      }
+      expect(readFileSync(join(u.d, "ssot.json"), "utf8")).toBe(u.ssotText);
+    } finally { u.weg(); }
+  }, 120000);
 });

@@ -17,7 +17,7 @@
 > Schutzbefunde — bei strukturellen Änderungen auch als Sammelbestätigung je Regel, Einheit und Zeitraum (Review B1).
 > Ein Dienst über zehn Stunden ist nur ein Hinweis (Nutzerentscheidung; § 7 ArbZG verantwortet der Betrieb);
 > Rufbereitschaft zählt nicht als Arbeitszeit. Dienstarten schreiben Leitung und Planung (`org.edit` oder
-> `pattern.edit`), alle anderen werden abgewiesen. Die Nachrechnung gibt der Event-Loop nach (höchstens 20 ms am Stück),
+> `pattern.edit`), alle anderen werden abgewiesen. Die Nachrechnung gibt der Event-Loop nach (höchstens 15 ms am Stück),
 > bricht nach 8 s mit 503 ab und ist je Raum auf 10 Strukturänderungen je Minute gebremst (429; Review B2). Die
 > Schichtverantwortung sieht in einer 409 nie Fremdes: Wirkt ihre Änderung außerhalb ihres Bereichs, sperrt sie ohne
 > Kennung (Review B4). Schutzangaben werden immer gespeichert (Nachprüfung 9717ddf). **Grenzen:**

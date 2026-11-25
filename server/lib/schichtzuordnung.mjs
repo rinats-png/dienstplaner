@@ -21,21 +21,31 @@
      Zuordnung — Altbestand bleibt gültig und UNVERÄNDERT, nichts wird
      umgeschrieben (Rundweg ohne Änderung).
 
-   Die Zuordnung wirkt in diesem Paket NICHT auf die Planrechnung (dienstAm,
-   Oberfläche) — das Einschalten ist eine eigene Entscheidung. Sie wird
+   Die Zuordnung wirkt nur hinter CENTRIC_SCHICHTMODELL_WIRKUNG auf die Planrechnung
+   (fachpruefung.mjs, planDienst; Vorgabe aus) — das Einschalten ist eine eigene Entscheidung. Sie wird
    gespeichert, geprüft, gegen Rückwirkung geschützt und protokolliert, und
    die Importvorschau zeigt Modellwechsel an.
 
    Rein: keine Ablage, keine Uhr (heute wird übergeben). Kein node:-Modul —
    die Datei erreicht über rechte.mjs auch das Oberflächenbündel.
    ========================================================================== */
-import { einheitAm, einheitDienst } from "./fachpruefung.mjs";
+import { einheitAm, einheitDienst, imDienst, schichtmodellLageAm } from "./fachpruefung.mjs";
 import { abgeschlosseneMonate, monatText } from "./monatsabschluss.mjs";
+import { BETRIEB_MODELL, ZUORDNUNG_FELD, MODELLE_FELD, gueltigesDatum, plusTage, modellVerzeichnis, IMPLIZIT, zuordnungenVon,
+  anzuwendendesModell, modellLage } from "./schichtmodell-kern.mjs";
 
-/** Kennung des bisherigen Betriebsmodells (m.zyklus); reserviert, nie Kennung eines eigenen Modells. */
-export const BETRIEB_MODELL = "betrieb";
-export const ZUORDNUNG_FELD = "schichtmodellZuordnungen";
-export const MODELLE_FELD = "schichtmodelle";
+/** Stabile Codes der inhaltlichen Absagen (403) des Schreibwegs: SCHICHTMODELL_<Code der Prüfung>, etwa
+    SCHICHTMODELL_UEBERSCHNEIDUNG, SCHICHTMODELL_RUECKWIRKEND, SCHICHTMODELL_DIENSTART_VERWENDET. Die Oberfläche
+    (src/speicher.js) erkennt die Absage am Präfix, nicht am Text (Folgepunkt 1 aus PR #423). */
+export const SCHICHTMODELL_CODE_PRAEFIX = "SCHICHTMODELL_";
+/** Der 403-Code zu einem Prüfcode (unbekannt oder leer: SCHICHTMODELL_ABGEWIESEN). @param {unknown} code */
+export const schichtmodellAbsageCode = (code) => SCHICHTMODELL_CODE_PRAEFIX
+  + (typeof code === "string" && /^[A-Z_]{1,40}$/.test(code) ? code : "ABGEWIESEN");
+
+/* Kern (Kennungen, Datum, anzuwendendes Modell): server/lib/schichtmodell-kern.mjs — ausgelagert ohne Importe, damit die
+   Planrechnung ihn ohne Importkreis liest (IMP-6 Planwirkung). Hier unverändert re-exportiert. */
+export { BETRIEB_MODELL, ZUORDNUNG_FELD, MODELLE_FELD, gueltigesDatum, plusTage, modellVerzeichnis, IMPLIZIT, zuordnungenVon,
+  anzuwendendesModell };
 
 /** Technische Grenzen (keine Geschäftsregel): gegen unsinnige oder teure Eingaben. */
 export const SCHICHTMODELL_GRENZEN = Object.freeze({ modelle: 50, tage: 1000, nameLaenge: 80, zuordnungenJePerson: 50,
@@ -45,82 +55,10 @@ export const SERVERFELDER = Object.freeze(["geaendertAm", "geaendertVon", "versi
 const ZUORDNUNG_FELDER = Object.freeze(["id", "modellId", "gueltigAb", "gueltigBis", "versatz", ...SERVERFELDER]);
 const MODELL_FELDER_ERLAUBT = Object.freeze(["id", "name", "tage", ...SERVERFELDER]);
 
-const TAG = /^(\d{4})-(\d{2})-(\d{2})$/;
 const KENNUNG = /^[A-Za-z0-9_-]{1,40}$/;
 const istObjekt = (x) => !!x && typeof x === "object" && !Array.isArray(x);
 const hat = (o, f) => !!o && Object.prototype.hasOwnProperty.call(o, f);
 const gleich = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-
-/** Ein wirkliches Kalenderdatum JJJJ-MM-TT? */
-export function gueltigesDatum(s) {
-  const t = typeof s === "string" ? TAG.exec(s) : null;
-  if (!t) return false;
-  const d = new Date(Date.UTC(Number(t[1]), Number(t[2]) - 1, Number(t[3])));
-  return d.toISOString().slice(0, 10) === s;
-}
-const tagMs = (s) => Date.UTC(Number(s.slice(0, 4)), Number(s.slice(5, 7)) - 1, Number(s.slice(8, 10)));
-/** Tage zwischen zwei Daten, ohne Zeitzone (Zeitumstellung spielt für Kalendertage keine Rolle). */
-const zwischen = (a, b) => Math.round((tagMs(b) - tagMs(a)) / 86400000);
-/** Datum + n Tage, ohne Zeitzone. */
-export const plusTage = (s, n) => new Date(tagMs(s) + n * 86400000).toISOString().slice(0, 10);
-const mod = (a, n) => ((a % n) + n) % n;
-
-/** Die Modelle des Betriebs als Verzeichnis (nur wohlgeformte Einträge). */
-export function modellVerzeichnis(m) {
-  const aus = new Map();
-  for (const x of (m && Array.isArray(m[MODELLE_FELD]) ? m[MODELLE_FELD] : []))
-    if (istObjekt(x) && typeof x.id === "string" && x.id !== BETRIEB_MODELL && Array.isArray(x.tage) && x.tage.length) aus.set(x.id, x);
-  return aus;
-}
-
-/** Die implizite Zuordnung des Altbestands: das Betriebsmodell, unbefristet. */
-export const IMPLIZIT = Object.freeze({ id: null, modellId: BETRIEB_MODELL, gueltigAb: null, gueltigBis: null });
-
-/** Die Zuordnungen einer Person — ohne Feld oder mit leerer Liste die implizite. */
-export function zuordnungenVon(p) {
-  const l = p && Array.isArray(p[ZUORDNUNG_FELD]) ? p[ZUORDNUNG_FELD] : null;
-  return l && l.length ? l : [IMPLIZIT];
-}
-
-const deckt = (z, d) => (z.gueltigAb === null || z.gueltigAb === undefined || z.gueltigAb <= d)
-  && (z.gueltigBis === null || z.gueltigBis === undefined || d <= z.gueltigBis);
-
-/**
- * Das an einem Tag anzuwendende Schichtmodell einer Person. Genau ein Ergebnis:
- * - { art: "modell", modellId, zuordnungId, versatz, anker, quelle: "zuordnung" | "betrieb" }
- * - { art: "keine" }                       — kein Modell gilt an diesem Tag; zulässiger Zustand (Betreiberentscheidung
- *                                            2026-11-14 Frage 5), nie still das Betriebsmodell oder ein Nachbarmodell
- * - { art: "mehrdeutig", zuordnungIds }    — mehrere gelten (Klärung nötig, nie still entschieden)
- * - { art: "ungueltig", grund }            — Datum oder gespeicherte Zuordnung fehlerhaft (Klärung nötig)
- * @param {any} m Betrieb
- * @param {any} p Person
- * @param {string} datum JJJJ-MM-TT
- */
-export function anzuwendendesModell(m, p, datum) {
-  if (!gueltigesDatum(datum)) return { art: "ungueltig", grund: "datum" };
-  const treffer = [];
-  for (const z of zuordnungenVon(p)) {
-    if (!istObjekt(z)) return { art: "ungueltig", grund: "zuordnung" };
-    for (const f of ["gueltigAb", "gueltigBis"])
-      if (z[f] !== null && z[f] !== undefined && !gueltigesDatum(z[f])) return { art: "ungueltig", grund: "zuordnung" };
-    if (deckt(z, datum)) treffer.push(z);
-  }
-  if (!treffer.length) return { art: "keine" };
-  if (treffer.length > 1) return { art: "mehrdeutig", zuordnungIds: treffer.map((z) => (z.id === undefined ? null : z.id)) };
-  const z = treffer[0];
-  if (z.modellId === BETRIEB_MODELL)
-    return { art: "modell", modellId: BETRIEB_MODELL, zuordnungId: z.id ?? null, versatz: null, anker: null, quelle: "betrieb" };
-  const modell = modellVerzeichnis(m).get(z.modellId);
-  if (!modell) return { art: "ungueltig", grund: "modell-unbekannt" };
-  if (!z.gueltigAb) return { art: "ungueltig", grund: "anker" };
-  /* Versatz: fehlt er (oder ist leer), gilt Zyklustag 1 wie im Datenmodell. Ein gespeicherter Wert außerhalb 0 … n−1 oder
-     keine ganze Zahl ist ungültig — nie still 0 oder Modulo. Entsteht über eine alte Sicherung oder ein später verkürztes
-     Modell bei unveränderter Zuordnung (heute mit 200 gespeichert; vor der Planwirkung abweisen, ENTSCHEIDUNGSLISTE P2-4). */
-  const v = z.versatz;
-  if (v !== undefined && v !== null && !(Number.isInteger(v) && v >= 0 && v < modell.tage.length)) return { art: "ungueltig", grund: "versatz" };
-  return { art: "modell", modellId: z.modellId, zuordnungId: z.id ?? null, versatz: Number.isInteger(v) ? v : 0,
-    anker: z.gueltigAb, quelle: "zuordnung" };
-}
 
 /**
  * Der Dienst der Schichtfolge einer Person an einem Tag nach dem anzuwendenden Modell (ohne Abweichungen,
@@ -134,8 +72,8 @@ export function modellDienstAm(m, p, datum) {
     const eid = einheitAm(p, datum);
     return { art: "dienst", modellId: BETRIEB_MODELL, dienstId: eid ? einheitDienst(m, eid, datum) : null };
   }
-  const tage = /** @type {any} */ (modellVerzeichnis(m).get(r.modellId)).tage;
-  const id = tage[mod(zwischen(/** @type {string} */ (r.anker), datum) + r.versatz, tage.length)];
+  const { index, tage } = modellLage(m, /** @type {any} */ (r), datum);
+  const id = tage[index];
   return { art: "dienst", modellId: r.modellId, dienstId: id && id !== "-" ? id : null };
 }
 
@@ -452,6 +390,64 @@ export function modellKuerzungFehlerBestand(neuB, altB) {
     if (f) return { code: f.code, grund: f.grund, feld: `mandanten[${i}].${MODELLE_FELD}` };
   }
   return null;
+}
+
+/* --------------------------------------------------------------------------
+   VORPRÜFUNG VOR DEM EINSCHALTEN DER PLANWIRKUNG (IMP-6, P2-4 Punkt 6)
+   -------------------------------------------------------------------------- */
+/**
+ * Welche schon geschehenen, freigegebenen oder abgeschlossenen Tage würde das Einschalten der Planwirkung ändern?
+ * Die Zuordnungen sind gegen Rückwirkung geschützt, solange sie gespeichert werden — aber bei AUS rechnet der Plan
+ * weiter mit dem Betriebsmodell. Eine Zuordnung, die vor dem Einschalten begonnen hat, rechnete den Plan dieser Tage
+ * also anders als sie selbst. Das Einschalten darf diese Tage nicht still umrechnen (Q2, Q3): Die Vorprüfung nennt sie
+ * (nur Kennungen und Anzahlen), entschieden wird außerhalb (ENTSCHEIDUNGSLISTE, Stichtag der Wirkung).
+ * Verglichen wird die rohe Schichtfolge (vor Teilzeit, Abweichung, Abwesenheit): bisher (Betriebsmodell der Einheit)
+ * gegen mit Wirkung (schichtmodellLageAm). Abgeschlossene Monate rechnen Soll/Ist/Zuschläge weiter aus dem
+ * Eingefrorenen; gemeldet werden sie trotzdem (Plananzeige, Nachvollziehbarkeit).
+ * @param {any} m Betrieb
+ * @param {string} heute JJJJ-MM-TT (Europe/Berlin)
+ * @param {{ maxTage?: number }} [o] höchstens so viele Tage je Person (Vorgabe 3700), danach `begrenzt`
+ * @returns {{ personen: { personId: string, tage: number, vergangen: number, freigegeben: string[], abgeschlossen: string[], von: string, bis: string }[], begrenzt: boolean }}
+ */
+export function wirkungsVorpruefung(m, heute, { maxTage = 3700 } = {}) {
+  const aus = []; let begrenzt = false;
+  if (!istObjekt(m) || !gueltigesDatum(heute)) return { personen: aus, begrenzt };
+  const geschlossen = new Set(abgeschlosseneMonate(m)), frei = new Set(freigegebeneMonate(m));
+  const spaetester = [...geschlossen, ...frei].sort().pop();
+  const ende = spaetester && monatLetzter(spaetester) > heute ? monatLetzter(spaetester) : heute;
+  for (const p of Array.isArray(m.personen) ? m.personen : []) {
+    if (!istObjekt(p) || !Array.isArray(p[ZUORDNUNG_FELD]) || !p[ZUORDNUNG_FELD].length) continue;      // implizit: unverändert
+    const grenzen = [];
+    for (const z of p[ZUORDNUNG_FELD]) if (istObjekt(z)) {
+      if (gueltigesDatum(z.gueltigAb)) grenzen.push(z.gueltigAb);
+      if (gueltigesDatum(z.gueltigBis)) grenzen.push(plusTage(z.gueltigBis, 1));
+    }
+    if (!grenzen.length) continue;
+    let d = grenzen.sort()[0], n = 0;
+    const treffer = { tage: 0, vergangen: 0, freigegeben: new Set(), abgeschlossen: new Set(), von: null, bis: null };
+    for (; d <= ende; d = plusTage(d, 1)) {
+      if (++n > maxTage) { begrenzt = true; break; }
+      const mon = d.slice(0, 7);
+      const vergangen = d <= heute, gm = geschlossen.has(mon), fm = frei.has(mon);
+      if (!vergangen && !gm && !fm) continue;
+      if (!imDienst(p, d)) continue;
+      const eid = einheitAm(p, d);
+      const bisher = eid && !p.springer && p.imSchichtdienst !== false ? einheitDienst(m, eid, d) : null;
+      const l = schichtmodellLageAm(m, p, d);
+      const neu = l.art === "dienst" ? l.dienstId : null;
+      if ((bisher || null) === (neu || null)) continue;
+      treffer.tage++;
+      if (vergangen) treffer.vergangen++;
+      if (gm) treffer.abgeschlossen.add(mon);
+      if (fm) treffer.freigegeben.add(mon);
+      if (!treffer.von) treffer.von = d;
+      treffer.bis = d;
+    }
+    if (treffer.tage) aus.push({ personId: kennung(p.id), tage: treffer.tage, vergangen: treffer.vergangen,
+      freigegeben: [...treffer.freigegeben].sort(), abgeschlossen: [...treffer.abgeschlossen].sort(),
+      von: /** @type {string} */ (treffer.von), bis: /** @type {string} */ (treffer.bis) });
+  }
+  return { personen: aus, begrenzt };
 }
 
 /* --------------------------------------------------------------------------

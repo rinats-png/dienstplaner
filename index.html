@@ -14,10 +14,10 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
 
-    <!-- Eine Farbe für beide Fälle: Die Anwendung ist hell, unabhängig vom
-         Systemthema. Die Anwendung setzt diese Angabe selbst um, wenn jemand
-         ausdrücklich auf Dunkel stellt. -->
-    <meta name="theme-color" content="#D9E4E8" />
+    <!-- Startwert: die V4-Grundfarbe hell (src/v4/tokens.js, bg). Einstieg und
+         Anwendung setzen diese Angabe beim ersten Bild auf das gültige Thema
+         (v4/thema.js, themaSetzen in App.jsx). -->
+    <meta name="theme-color" content="#f0f3ed" />
     <!-- Beide Themen zulassen: Sonst bleiben Datumsauswahl, Auswahlfelder
          und Bildlaufleisten im Dunkelmodus hell. Welches Thema gilt,
          entscheidet die Anwendung über data-thema am Wurzelelement. -->

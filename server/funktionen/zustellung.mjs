@@ -9,6 +9,7 @@ import { pushEndpunktErlaubt } from "../lib/pushziel.mjs";
 import { mailbestaetigungModus, bestaetigungStand, bestaetigungAnfordern, bestaetigen, bestaetigungsQuote } from "../lib/mailbestaetigung.mjs";
 import { rollenSitzungOhneFaktor } from "../lib/betreiber-zweifaktor.mjs";
 import { sitzungBeenden, merkmalAus } from "../lib/sitzungen.mjs";
+import { zuTief, zuTiefRumpf } from "../lib/rumpftiefe.mjs";
 
 /* ==========================================================================
    ZUSTELLUNG
@@ -96,6 +97,7 @@ export default async (req) => {
       const bz = await bremse("zustellen", kz);
       if (!bz.frei) return zuVielAntwort(bz.wartet);
       const rumpf = await req.json().catch(() => null);
+      if (zuTief(rumpf)) return antwort(zuTiefRumpf(), 400);   /* WP-19.5 Nachtrag (Review #505 A1): Tiefendeckel vor jeder Verwendung des Rumpfs. */
       const ids = rumpf && rumpf.nachrichten;
       if (!Array.isArray(ids) || !ids.length) return antwort({ fehler: "Keine Mitteilungen." }, 400);
       if (ids.length > 200) return antwort({ fehler: "Zu viele auf einmal." }, 400);
@@ -146,11 +148,15 @@ export default async (req) => {
       if (pfad === "abmelden") {
         /* E-9: nur die Anmeldung dieses Geräts (Rumpf `{geraet: {endpoint}}`,
            `{geraet: null}` = dieses Gerät hat keine); ohne Angabe wie bisher. */
-        const geraet = geraetAusRumpf(await req.json().catch(() => null));
+        const rumpfAb = await req.json().catch(() => null);
+        if (zuTief(rumpfAb)) return antwort(zuTiefRumpf(), 400);   /* WP-19.5 Nachtrag (Review #505 A1): Tiefendeckel vor jeder Verwendung des Rumpfs. */
+        const geraet = geraetAusRumpf(rumpfAb);
         if (da) await pushAbmelden(store(), s.bestand, bestand, m.id, s.person, geraet);
         return antwort({ ok: true });
       }
-      const { anmeldung } = await req.json().catch(() => ({}));
+      const rumpfAn = await req.json().catch(() => ({}));
+      if (zuTief(rumpfAn)) return antwort(zuTiefRumpf(), 400);   /* WP-19.5 Nachtrag (Review #505 A1): Tiefendeckel vor jeder Verwendung des Rumpfs. */
+      const { anmeldung } = rumpfAn;
       /* WP-30: Der Endpunkt, an den der Server später sendet, kommt vom Gerät —
          nur https-Adressen der Push-Dienste (lib/pushziel.mjs, SI-01), Schlüssel in
          Form und Größe begrenzt. Sonst wäre das ein Weg für Anfragen des
@@ -213,6 +219,7 @@ export default async (req) => {
       const bz = await bremse("mailbestaetigen", kz);
       if (!bz.frei) return zuVielAntwort(bz.wartet);
       const rumpf = await req.json().catch(() => null);
+      if (zuTief(rumpf)) return antwort(zuTiefRumpf(), 400);   /* WP-19.5 Nachtrag (Review #505 A1): Tiefendeckel vor jeder Verwendung des Rumpfs. */
       const code = rumpf && typeof rumpf.code === "string" && rumpf.code.length <= 40 ? rumpf.code : "";
       const r = await bestaetigen(store(), { raum: s.bestand, m, p, code });
       await protokoll("zustellen", kz, r.ok ? "mailbestaetigung-bestaetigt" : "mailbestaetigung-ungueltig", null);

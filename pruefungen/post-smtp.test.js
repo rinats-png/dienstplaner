@@ -6,8 +6,9 @@
    Kein echter Mailserver, keine echten Zugangsdaten.
    ========================================================================== */
 
-import { describe, it, expect, beforeEach, afterEach, afterAll } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
 import net from "node:net";
+import { Duplex } from "node:stream";
 import {
   smtpKonfig, smtpStatus, sendeSmtp, tlsOptionen, kodiereKopfzeile, kodiereQp, punktPolsterung,
 } from "../server/lib/post-smtp.mjs";
@@ -84,13 +85,32 @@ const fabrik = (port) => ({
   aufruesten: async (s) => s, // Test: kein TLS; produktiv: tls.connect mit rejectUnauthorized
 });
 
+/* QS-2, Mittelpaket: Verbindung ohne Netz (Duplex im Speicher). Für Prüfungen der Frist unter vorgetäuschter Uhr: Mit echten Sockets
+   und echter Wandzeit hing die Aussage „die Frist greift“ an Grenzen wie „< 1500 ms“ (auf einem gestörten Runner nicht reproduzierbar).
+   `antwort` ist der Text, den der Server sofort sendet (leer = stumm, der Server schweigt). */
+const speicherVerbindung = (antwort = "") => {
+  const s = new Duplex({ read() {}, write(_c, _e, cb) { cb(); } });
+  if (antwort) s.push(antwort);
+  return s;
+};
+/** Startet die Aufgaben unter vorgetäuschter Uhr; gibt die Beobachter zurück (fertig, Ergebnis). */
+const beobachten = (versprechen) => {
+  const b = { fertig: false, ergebnis: null };
+  b.versprechen = versprechen.then((r) => { b.fertig = true; b.ergebnis = r; });
+  return b;
+};
+const faelschen = async (fn) => {
+  vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+  try { await fn(); } finally { vi.useRealTimers(); }
+};
+
 let srv;
 afterEach(async () => { if (srv) await srv.close(); srv = null; });
 beforeEach(() => { for (const k of Object.keys(SMTP_ENV).concat(["RESEND_API_KEY", "CENTRIC_SMTP_PORT", "CENTRIC_SMTP_SICHER", "CENTRIC_PRUEFLINK", "NODE_ENV"])) delete process.env[k]; });
 afterAll(() => { process.env = { ...UMGEBUNG }; });
 
 const senden = (opt = {}, an = "empfaenger@beispiel.test", betreff = "Hallo", text = "Text") =>
-  sendeSmtp(an, betreff, text, {}, { env: SMTP_ENV, frist: 2000, ...fabrik(srv.port), ...opt });
+  sendeSmtp(an, betreff, text, {}, { env: SMTP_ENV, frist: 2000, ...(srv ? fabrik(srv.port) : {}), ...opt });
 
 describe("Schalter", () => {
   it("Standard: aus, auch wenn SMTP-Variablen gesetzt sind", () => {
@@ -193,10 +213,18 @@ describe("Versand gegen Fake-Server", () => {
   });
   it("Zeitüberschreitung → temporaer", async () => {
     srv = await fakeServer({}, { schweigen: true });
-    const t0 = Date.now();
     const r = await senden({ frist: 150 });
     expect(r).toMatchObject({ ok: false, klasse: "temporaer" });
-    expect(Date.now() - t0).toBeLessThan(1500);
+    /* Die Frist selbst unter vorgetäuschter Uhr statt der früheren Wandzeit-Grenze „< 1500 ms“: 150 ms Uhrzeit werden nicht verkürzt,
+       und danach kommt das Ergebnis, ohne dass der stumme Server antwortet. */
+    await faelschen(async () => {
+      const b = beobachten(senden({ frist: 150, verbinden: async () => speicherVerbindung(), aufruesten: async (x) => x }));
+      await vi.advanceTimersByTimeAsync(149);
+      expect(b.fertig).toBe(false);
+      await vi.advanceTimersByTimeAsync(51);               // 200 ms Uhrzeit
+      expect(b.fertig).toBe(true);
+      expect(b.ergebnis).toMatchObject({ ok: false, klasse: "temporaer" });
+    });
   });
   it("Verbindung verweigert → temporaer", async () => {
     srv = await fakeServer();
@@ -262,11 +290,18 @@ describe("Nachbesserung nach Review", () => {
   it("Flutung ohne Zeilenende und mit tausenden Zeilen: Abbruch als temporaer", async () => {
     for (const flut of ["puffer", "zeilen"]) {
       srv = await fakeServer({}, { flut });
-      const t0 = Date.now();
       const r = await senden();
       expect(r).toMatchObject({ ok: false, klasse: "temporaer" });
-      expect(Date.now() - t0).toBeLessThan(1500);
       await srv.close(); srv = null;
+      /* Der Abbruch kommt vom Puffer- bzw. Zeilenlimit, nicht erst von der Frist (QS-2, Mittelpaket; frühere Wandzeit-Grenze „< 1500 ms“):
+         unter vorgetäuschter Uhr mit einer Frist von 5000 ms Uhrzeit ist das Ergebnis nach höchstens 1000 ms Uhrzeit da. */
+      await faelschen(async () => {
+        const antwort = flut === "puffer" ? "220 " + "x".repeat(200_000) : "220-" + "y\r\n220-".repeat(5000) + "z\r\n";
+        const b = beobachten(senden({ frist: 5000, verbinden: async () => speicherVerbindung(antwort), aufruesten: async (x) => x }));
+        for (let i = 0; i < 200 && !b.fertig; i++) { await vi.advanceTimersByTimeAsync(5); await new Promise((r) => setImmediate(r)); }
+        expect(b.fertig, flut).toBe(true);
+        expect(b.ergebnis, flut).toMatchObject({ ok: false, klasse: "temporaer" });
+      });
     }
     expect(PUFFER_MAX).toBe(65536);
   });
@@ -322,10 +357,19 @@ describe("Nachbesserung nach Review", () => {
 
   it("hängender Server, 6 Mails: Wartezeit zählt zur Frist, alle enden temporaer", async () => {
     srv = await fakeServer({}, { schweigen: true });
-    const t0 = Date.now();
     const rs = await Promise.all(Array.from({ length: 6 }, (_, i) => senden({ frist: 400 }, `h${i}@beispiel.test`)));
     expect(rs.every((r) => r.ok === false && r.klasse === "temporaer")).toBe(true);
-    expect(Date.now() - t0).toBeLessThan(1500);
+    /* Unter vorgetäuschter Uhr statt der früheren Wandzeit-Grenze „< 1500 ms“ (QS-2, Mittelpaket): Alle sechs Mails (zwei Plätze, vier
+       Wartende) sind nach 400 ms Uhrzeit fertig, nicht erst nach drei Wellen zu je 400 ms. Zählte die Wartezeit nicht zur Frist,
+       wäre die letzte Welle erst bei 1200 ms Uhrzeit fertig. */
+    await faelschen(async () => {
+      const bs = Array.from({ length: 6 }, (_, i) => beobachten(senden({ frist: 400, verbinden: async () => speicherVerbindung(), aufruesten: async (x) => x }, `h${i}@beispiel.test`)));
+      await vi.advanceTimersByTimeAsync(399);
+      expect(bs.filter((b) => b.fertig).length).toBe(0);   // keine Frist wird verkürzt
+      await vi.advanceTimersByTimeAsync(51);               // 450 ms Uhrzeit
+      expect(bs.every((b) => b.fertig)).toBe(true);
+      expect(bs.every((b) => b.ergebnis.ok === false && b.ergebnis.klasse === "temporaer")).toBe(true);
+    });
   });
   it("Notruf (dringend) wird in der Warteschlange vorgezogen", async () => {
     srv = await fakeServer({}, { verzoegerung: 150 });

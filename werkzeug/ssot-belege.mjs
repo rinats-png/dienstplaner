@@ -9,15 +9,23 @@
 
    Vorhandener Code allein ist keine Integration und keine Freigabe.
 
-   Aufruf:  node werkzeug/ssot-belege.mjs [--anwenden] [--datei F]
+   Aufruf:  node werkzeug/ssot-belege.mjs [--anwenden] [--datei F] [--prs F]
      Ohne --anwenden: nur Bericht (Standard).
+     --prs F: gemergte PRs aus Datei (JSON-Array wie gh) statt gh (Prüfungen ohne Netz).
+     PR-Belege aus dem SSOT-Feld pr zählen nur im Format "#123" (PR_MUSTER; Review #486 H-e).
      --anwenden: Pakete mit INTEGRIERT_OHNE_PR oder NICHT_BELEGT werden
                  auf REVIEW gesetzt (nie neu implementiert). Der Beleg
                  (Commits, Tests, Nachweise) wird eingetragen. Danach
                  status-schreiben und pruefen; scheitert die Prüfung,
                  wird zurückgerollt. Gemeinsame Sperre wie ssot-nach-integration.
+                 PR-Verweise genau "#123" (PR_MUSTER aus acc45-backlog.mjs),
+                 exakter Duplikatvergleich; ein ungültiger Verweis bricht vor
+                 jeder Änderung ab (Rückgabe 1, Quelle unverändert; Review #483 H4).
 
-   Exit: 0 ok · 1 Prüfung fehlgeschlagen · 3 Sperre belegt
+   Option mit Wert (--datei, --prs) ohne Wert, ungültiger Eintrag im SSOT-Feld pr oder PR-Liste nicht ermittelbar:
+   Abbruch vor jeder Änderung, Rückgabe 2 (Review #490 N1/N2; kein stiller Rückfall auf gh oder Standardpfad).
+
+   Exit: 0 ok · 1 Prüfung fehlgeschlagen · 2 abgebrochen · 3 Sperre belegt
    ========================================================================== */
 import { execFileSync } from "node:child_process";
 import { prAnsicht } from "./gh-rest.mjs";
@@ -26,7 +34,9 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { trifftText, ERLEDIGT, brauchtPrBeleg } from "./ssot-zuordnung.mjs";
-import { gemergteUndPrs, abgleich, ssotLesen } from "./ssot-abgleich.mjs";
+import { gemergteUndPrs, abgleich, argWert, optionenPruefen } from "./ssot-abgleich.mjs";
+// Review #483 H4: eine Quelle für das PR-Format (kein Zyklus: acc45-backlog.mjs importiert nur node:*).
+import { PR_MUSTER } from "./acc45-backlog.mjs";
 
 const WURZEL = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const BASIS = "origin/integration/release-v4";
@@ -64,13 +74,15 @@ export function imBasisstand(hash) {
  * PR-Belege aus der SSOT: PR gemergt (gleich welche Basis) UND sein
  * Merge-Commit liegt im Integrationsbranch. Nur dann zählt er als Integration.
  */
-export function ssotPrBelege(p) {
+export function ssotPrBelege(p, ansicht = prAnsicht) {
   const belege = [];
   for (const x of p.pr || []) {
-    const n = String(x).match(/\d+/)?.[0];
-    if (!n) continue;
+    // Review #486 H-e: genau PR_MUSTER („#123“), wie das Schema (acc45-backlog pruefen) es für pr verlangt; ein anderer
+    // Eintrag („12“, „#0“, „#12a“) zählt nicht als Beleg und löst keinen Abruf aus. Gültige Daten: unverändert.
+    if (typeof x !== "string" || !PR_MUSTER.test(x)) continue;
+    const n = x.slice(1);
     let info;
-    try { info = prAnsicht(n, WURZEL); }
+    try { info = ansicht(n, WURZEL); }
     catch { continue; }
     const hashes = Object.values(p.stufen || {}).map((st) => String(st?.beleg || "")).join(" ").match(/\b[0-9a-f]{7,40}\b/g) || [];
     const ueber = info.mergeCommit?.oid && imBasisstand(info.mergeCommit.oid);
@@ -117,14 +129,29 @@ function lockFreigeben() { try { rmSync(LOCK, { recursive: true, force: true });
  * Pakete werden auf REVIEW gesetzt. DONE wird nie automatisch herabgestuft.
  * Nie INTEGRATED durch dieses Werkzeug, nie neue Umsetzung.
  */
+/**
+ * PR-Verweise aus dem Feld integriert („PR #1,#2“, sonst keine). Review #483 H4: jeder Eintrag genau nach PR_MUSTER
+ * („#0“, führende Null, Zusatz oder Leerzeichen → Fehler); doppelte Einträge zählen einmal.
+ */
+export function prVerweiseAus(integriert) {
+  const m = /^PR (.*)$/s.exec(String(integriert));
+  if (!m) return [];
+  const xs = m[1].split(",");
+  const falsch = xs.filter((x) => !PR_MUSTER.test(x));
+  if (falsch.length) throw new Error(`ungültiger PR-Verweis ${JSON.stringify(falsch)} (Format "#123")`);
+  return [...new Set(xs)];
+}
+
 export function anwenden(ssot, zeilen) {
   let belegErgaenzt = 0;
   let statusAufReview = 0;
+  // Review #483 H4: erst alle Verweise prüfen, dann ändern — ein ungültiger Verweis ändert nichts (main: Rückgabe 1).
+  const verweise = new Map(zeilen.filter((z) => z.klasse === "OK").map((z) => [z, prVerweiseAus(z.integriert)]));
   for (const z of zeilen) {
     const p = ssot.pakete.find((x) => x.id === z.id);
     if (z.klasse === "OK") {
-      const nummern = (z.integriert.match(/#\d+/g) || []);
-      const neu = nummern.filter((x) => !(p.pr || []).some((y) => String(y).includes(x)));
+      const vorhanden = new Set((p.pr || []).map(String));                  // exakter Listenvergleich, kein includes
+      const neu = verweise.get(z).filter((x) => !vorhanden.has(x));
       if (neu.length > 0) { p.pr = [...(p.pr || []), ...neu]; belegErgaenzt++; }
       continue;
     }
@@ -142,11 +169,23 @@ export function anwenden(ssot, zeilen) {
 
 function main() {
   const wirken = process.argv.includes("--anwenden");
-  const datei = process.argv.includes("--datei") ? process.argv[process.argv.indexOf("--datei") + 1] : null;
-  /* Die Quelle ist die Arbeitsdatei, sonst überschreibt --anwenden die eigenen Änderungen mit dem Integrationsstand. */
-  const quelle = datei ? path.resolve(datei) : path.join(WURZEL, "docs", "acc45", "work-packages.json");
-  const ssot = JSON.parse(readFileSync(quelle, "utf8"));
-  const zeilen = ebenen(ssot, gemergteUndPrs(null), commitBetreffs(), dateienImBasisstand());
+  let quelle, ssot, zeilen;
+  try {
+    /* Review #490 N2: --datei und --prs verlangen einen Wert; kein stiller Rückfall auf Standardpfad oder gh (Netz). */
+    optionenPruefen(process.argv, { flags: ["--anwenden"], werte: ["--datei", "--prs"] });   // unbekannte Option: Abbruch (Rückgabe 2), kein Netzfallback
+    const datei = argWert("--datei");
+    /* --prs F: PR-Liste aus Datei statt gh (wie ssot-abgleich.mjs; für Prüfungen ohne Netz, Review #486 H-d). */
+    const prsDatei = argWert("--prs");
+    /* Die Quelle ist die Arbeitsdatei, sonst überschreibt --anwenden die eigenen Änderungen mit dem Integrationsstand. */
+    quelle = datei ? path.resolve(datei) : path.join(WURZEL, "docs", "acc45", "work-packages.json");
+    ssot = JSON.parse(readFileSync(quelle, "utf8"));
+    zeilen = ebenen(ssot, gemergteUndPrs(prsDatei), commitBetreffs(), dateienImBasisstand());
+  } catch (e) {
+    // Review #490 N1/N2: Fehlbedienung oder ungültiges SSOT-Feld pr bricht vor jeder Änderung ab (wie ssot-abgleich.mjs).
+    console.error("SSOT-Belege ABGEBROCHEN: " + String(e.message || e).split("\n")[0]);
+    process.exitCode = 2;
+    return;
+  }
   const zaehl = {};
   for (const z of zeilen) zaehl[z.klasse] = (zaehl[z.klasse] || 0) + 1;
   console.log("SSOT-Belege (implementiert / integriert / freigabebereit):", JSON.stringify(zaehl));

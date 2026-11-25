@@ -34,7 +34,7 @@ export function Qualifikationsmatrix({ sitz, akt }) {
           {qm.spalten.map((s) => (
             <div key={s.qual.id} style={{ marginBottom: 22 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 9, flexWrap: "wrap" }}>
-                <span style={{ width: 9, height: 9, borderRadius: 5, background: lesbar(s.qual.farbe, 3) }} />
+                <span style={{ width: 9, height: 9, borderRadius: "var(--v4-r-pille)", background: lesbar(s.qual.farbe, 3) }} />
                 <span style={{ fontSize: 14.5, fontWeight: 620 }}>{s.qual.name}</span>
                 <span style={{ fontSize: 12.5, color: C.dimmer, ...NUM }}>{s.anzahl} Personen</span>
                 {s.bedarf > 0 && <Pill size="sm">Bedarf {s.bedarf} je Dienst</Pill>}

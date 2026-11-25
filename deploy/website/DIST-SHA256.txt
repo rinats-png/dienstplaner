@@ -1,0 +1,2 @@
+# sha256 des Website-Archivs (centric-website-dist.tgz), eine Zeile. Siehe dist-bauen.md.
+69f51e7031e0ea22bae9d542bbbd29904306cdb8b88409163fcfdb3cac6684c8

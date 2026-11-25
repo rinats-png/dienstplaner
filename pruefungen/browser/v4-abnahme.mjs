@@ -30,6 +30,31 @@
      BILDER_ALLE=1     von jeder Ansicht ein Bild
      ROLLEN=leitung,mitarbeiter   BREITEN_REFLOW=320   THEMEN=light,dark
      NUR=<Text>        nur Ansichten, deren Name den Text enthält (reflow, ziele)
+     IMPORT_BLATT=1    in der Ansicht Personal zusätzlich das Blatt „Personal importieren“
+                       (Eingabe, Vorschau; ohne Übernahme) messen (V4-3b Import)
+     TELEFON_BLATT=1   in der Telefonschale (Reiter „Heute“) zusätzlich das Blatt „Mitteilungen“
+                       (Postknopf) messen: Reflow, Zielgröße, Radius, Fokus (V4-3b Telefonschale)
+     EINSTIEG=1        zusätzlich den Einstieg ohne Anmeldung messen (V4-3b Einstieg): Startseite, Preise,
+                       Registrierung (leer, Fehler, fertig), Anmeldung mit Code, zweiter Faktor, Rechtsfenster.
+                       Nur Testdaten: GET /api/demos und POST /starten beantwortet der Browser selbst (page.route,
+                       erfundene Einträge, kein Serveraufruf); es wird kein Code abgeschickt. Mit ROLLEN= (leer)
+                       nur der Einstieg.
+     SPEICHERLAGE=1    im Reiter „Heute“ (Rolle mitarbeiter) zusätzlich die Leiste „Keine Verbindung“ messen: Kontext
+                       offline, Reflow, Zielgröße, Radius (Stufe mittel), Bild; wieder online, Leiste weg
+                       (V4-3b Speicherlage). Es wird nichts geschrieben.
+     BRANCHENMODULE=1  in der Ansicht „Betrieb“ (Rolle leitung) zusätzlich den Bereich „Branchenmodule“ messen: Reflow,
+                       Zielgröße, Radius der Modulzeilen (Stufe klein), Bild (V4-3b Branchenmodule). Die Registry steht
+                       auf „geplant“; sichtbar sind nur die Modulzeilen, keine Moduloberfläche. Es wird nichts geschrieben.
+     QUERSCHNITT=1     Bausteine des Querschnitts, Teil 1 (V4-3b): in „Betrieb“ (Rolle leitung) alle Inline-Stufen der
+                       Seite (Rechte-Matrix, Farbpunkte, ab 1000 px das Kürzel der Seitenleiste) gegen V4_RADIEN, dazu die
+                       Auswahlfläche des ersten Farbpunkts („Farbe von …“) (öffnen, messen, Bild, schließen ohne Wahl); in
+                       „Qualifikationen“ das Hinweisfenster des ersten Diagrammbalkens (Maus darüber). Es wird nichts
+                       geschrieben.
+     QUERSCHNITT=2     wie QUERSCHNITT=1 und zusätzlich Teil 2 (V4-3b): in jeder Ansicht der Leitung jede Inline-Stufe
+                       gegen V4_RADIEN; im Handbuch Haken-Knopf und Marken, Bild; dort die Schnellsuche (Strg + K) öffnen,
+                       Esc-Taste (Radius, Höhe) und Treffersymbol messen, Bild, mit Escape schließen. Mit Rolle
+                       betreiber: „Rechner“ (Ringregler) und „Mandanten“ → „Mandant anlegen“ bis Schritt 3
+                       (Schrittleiste, Tageskacheln der ModellVorschau), Bild, Blatt ohne Anlegen schließen. Nur lesend.
    Browser: vorinstalliertes Playwright (playwright-core, playwright im Projekt
    oder global); chromium.launch() ohne Optionen. Es wird nichts installiert.
    Exit 0: keine Befunde · 1: Befunde · 2: Aufruf oder Umgebung · 3: Aufbau gescheitert
@@ -52,7 +77,8 @@ if (!istLoopback(BASE)) { console.error("ABBRUCH: Ziel ist nicht die eigene Masc
 const ALLE = ["reflow", "ziele", "fokus", "fehler", "folge", "ki"];
 const KRITERIEN = (process.argv[2] || ALLE.join(",")).split(",").map((s) => s.trim()).filter(Boolean);
 if (KRITERIEN.some((k) => !ALLE.includes(k)) || process.argv.length > 3) { console.error(`ABBRUCH: kriterien aus ${ALLE.join(", ")}`); process.exit(2); }
-const ROLLEN = (process.env.ROLLEN || "leitung,mitarbeiter").split(",");
+/* ROLLEN= (leer) mit EINSTIEG=1: nur der Einstieg ohne Anmeldung. */
+const ROLLEN = (process.env.ROLLEN ?? "leitung,mitarbeiter").split(",").filter(Boolean);
 const THEMEN = (process.env.THEMEN || "light,dark").split(",");
 const BREITEN_REFLOW = (process.env.BREITEN_REFLOW || "320").split(",").map(Number);
 const BILDER = path.resolve(WT, process.env.BILDER || "design/abnahme/v4-staging");
@@ -124,7 +150,8 @@ if (braucheApp) {
   const z = await j("/api/zugaenge", { bestand: RAUM, eintraege: [
     { rolle: "leitung", personId: "l", name: "Lena" }, { rolle: "planer", personId: "p", name: "Paul" }, { rolle: "mitarbeiter", personId: "m1", name: "Mia" }] }, bt);
   if (!z.d.zugaenge) { console.error("ABBRUCH: Zugänge konnten nicht angelegt werden."); await ende(3); }
-  codes = { leitung: z.d.zugaenge[0].code, planer: z.d.zugaenge[1].code, mitarbeiter: z.d.zugaenge[2].code };
+  /* betreiber: Betreiberkonsole (V4-3b); lokal ohne zweiten Faktor (NODE_ENV=development, Faktor nicht eingerichtet). */
+  codes = { leitung: z.d.zugaenge[0].code, planer: z.d.zugaenge[1].code, mitarbeiter: z.d.zugaenge[2].code, betreiber: e.d.zugangscode };
 }
 
 const browser = await chromium.launch();
@@ -219,6 +246,338 @@ const MESSEN = () => {
   return { quer, taeter, ziele, breite: innerWidth, gesamt: dok.scrollWidth };
 };
 
+/* V4-3b Import (IMPORT_BLATT=1): Das Blatt „Personal importieren“ ist keine Ansicht der Navigation. In der Ansicht
+   Personal öffnet das Skript es über „Importieren“ und misst drei Zustände wie eine Ansicht (Reflow, Zielgröße, Bild):
+   Eingabe, Vorschau mit dem Beispiel, Vorschau mit „mit anlegen“ (nur ein Haken in der Vorschau; es wird nichts
+   übernommen). Dazu Fokus im Blatt per Tab (2.4.7/2.4.11). „Abbrechen“ schließt ohne Übernahme. */
+async function importBlatt(p, ansicht, k) {
+  const knopf = p.locator("main button:visible", { hasText: /^Importieren$/ }).first();
+  if (!(await knopf.count())) { hinweis("import-blatt", `${ansicht}: kein Knopf „Importieren“ (Rolle ohne staff.edit?)`); return; }
+  await knopf.click({ timeout: 4000 }).catch(() => melde("klick", `${ansicht}: Importieren scheitert`));
+  const blatt = p.locator('[role=dialog][aria-label="Personal importieren"]');
+  if (!(await blatt.waitFor({ state: "visible", timeout: 5000 }).then(() => true).catch(() => false))) { melde("import-blatt", `${ansicht}: Blatt öffnet nicht`); return; }
+  const messe = async (zustand) => {
+    const name = `${ansicht}/Import ${zustand}`;
+    await p.waitForTimeout(400);
+    geprueft++;
+    const m = await p.evaluate(MESSEN);
+    let schlecht = false;
+    if (k.reflow && !reflowOk(m.gesamt, m.breite)) { schlecht = true; melde("reflow", `${name}: Seite ${m.gesamt - m.breite}px breiter als ${m.breite}px — ${m.taeter}`); }
+    if (k.ziele) {
+      const z = zielgroessenBefunde(m.ziele, 24);
+      if (z.length) { schlecht = true; melde("zielgroesse", `${name}: ${z.length} Ziele unter 24 px ohne Abstandsausnahme (z. B. ${z.slice(0, 3).map((x) => `${x.id} ${Math.round(x.w)}x${Math.round(x.h)}`).join("; ")})`); }
+    }
+    const punkte = await p.evaluate(() => [...document.querySelectorAll("[role=dialog] td > span")].filter((e) => e.style.width === "20px").length);
+    if (!schlecht) beleg("import-blatt", `${name}: Reflow${k.ziele ? " und Zielgröße" : ""} ohne Befund${punkte ? `, ${punkte} Prüfpunkte` : ""}`);
+    /* Bild mit den Prüfpunkten im Fenster (sie stehen unter der Spaltenzuordnung). */
+    if (punkte) await p.evaluate(() => [...document.querySelectorAll("[role=dialog] td > span")].find((e) => e.style.width === "20px").scrollIntoView({ block: "center" }));
+    if (schlecht || process.env.BILDER_ALLE) await bild(p, name);
+  };
+  await messe("Eingabe");
+  await blatt.getByRole("button", { name: "Beispiel einfügen" }).click({ timeout: 4000 }).catch(() => melde("klick", `${ansicht}: Beispiel einfügen scheitert`));
+  await blatt.getByRole("button", { name: "Prüfen", exact: true }).click({ timeout: 4000 }).catch(() => melde("klick", `${ansicht}: Prüfen scheitert`));
+  await messe("Vorschau");
+  const haken = blatt.getByRole("checkbox", { name: /mit anlegen/ });
+  if (await haken.count()) { await haken.check({ timeout: 4000 }).catch(() => melde("klick", `${ansicht}: Haken mit anlegen scheitert`)); await messe("Vorschau mit anlegen"); }
+  /* Fokus im Blatt: Tab bleibt im Blatt, jeder Stopp sichtbar und nicht verdeckt. */
+  let n = 0, ohneRing = 0, verdeckt = 0, draussen = 0;
+  for (let i = 0; i < 12; i++) {
+    await p.keyboard.press("Tab");
+    await p.waitForTimeout(120);
+    const f = await p.evaluate(() => {
+      const e = document.activeElement;
+      if (!e || e === document.body) return null;
+      const cs = getComputedStyle(e), r = e.getBoundingClientRect();
+      const treffer = [[r.left + r.width / 2, r.top + r.height / 2], [r.left + 2, r.top + 2], [r.right - 2, r.bottom - 2]]
+        .filter(([x, y]) => x >= 0 && y >= 0 && x < innerWidth && y < innerHeight)
+        .map(([x, y]) => { const h = document.elementFromPoint(x, y); return { frei: !h || h === e || e.contains(h) || h.contains(e) }; });
+      return { imBlatt: !!e.closest("[role=dialog]"), stil: { outlineStyle: cs.outlineStyle, outlineWidth: cs.outlineWidth, outlineColor: cs.outlineColor, boxShadow: cs.boxShadow },
+        treffer, draussen: r.bottom < 0 || r.top > innerHeight || r.right < 0 || r.left > innerWidth };
+    });
+    if (!f) continue;
+    n++;
+    if (!f.imBlatt) { melde("fokus", `${ansicht}/Import: Tab verlässt das Blatt`); break; }
+    if (!fokusSichtbar(f.stil)) ohneRing++;
+    if (f.draussen) draussen++; else if (!fokusNichtVerdeckt(f.treffer)) verdeckt++;
+  }
+  geprueft++;
+  if (ohneRing || verdeckt) melde("fokus", `${ansicht}/Import: ${ohneRing} ohne Ring, ${verdeckt} verdeckt von ${n} Stopps`);
+  else beleg("fokus", `${ansicht}/Import: ${n} Tab-Stopps im Blatt, Fokus sichtbar, nichts verdeckt${draussen ? ` (${draussen} außerhalb des Fensters, rollt beim Weiter-Tabben)` : ""}`);
+  await blatt.getByRole("button", { name: "Abbrechen" }).click({ timeout: 4000 }).catch(() => melde("klick", `${ansicht}: Abbrechen scheitert`));
+  await blatt.waitFor({ state: "hidden", timeout: 5000 }).catch(() => melde("import-blatt", `${ansicht}: Blatt schließt nicht`));
+}
+
+/* V4-3b Telefonschale (TELEFON_BLATT=1): Die Blätter der Telefonschale (MBlatt, .m-blatt mit .m-griff) sind keine
+   Ansicht der Navigation; alleAnsichten überspringt den Postknopf. Im Reiter „Heute“ öffnet das Skript das Blatt
+   „Mitteilungen“ über den Postknopf der Kopfzeile und misst es wie eine Ansicht (Reflow, Zielgröße, Bild), dazu den
+   berechneten Radius von Blatt und Griff und den Fokus per Tab im Blatt. Escape schließt; es wird nichts geändert
+   (beim Schließen setzt die Schale Mitteilungen auf gelesen, wie bei jeder Nutzung; Wegwerfdaten). */
+async function telefonBlatt(p, ansicht, k) {
+  const knopf = p.locator(".m-postknopf:visible").first();
+  if (!(await knopf.count())) { hinweis("telefon-blatt", `${ansicht}: kein Postknopf (keine Telefonschale?)`); return; }
+  await knopf.click({ timeout: 4000 }).catch(() => melde("klick", `${ansicht}: Postknopf scheitert`));
+  const blatt = p.locator('.m-blattrahmen[role=dialog][aria-label="Mitteilungen"]');
+  if (!(await blatt.waitFor({ state: "visible", timeout: 5000 }).then(() => true).catch(() => false))) { melde("telefon-blatt", `${ansicht}: Blatt öffnet nicht`); return; }
+  const name = `${ansicht}/Blatt Mitteilungen`;
+  await p.waitForTimeout(400);
+  geprueft++;
+  const m = await p.evaluate(MESSEN);
+  let schlecht = false;
+  if (k.reflow && !reflowOk(m.gesamt, m.breite)) { schlecht = true; melde("reflow", `${name}: Seite ${m.gesamt - m.breite}px breiter als ${m.breite}px — ${m.taeter}`); }
+  if (k.ziele) {
+    const z = zielgroessenBefunde(m.ziele, 24);
+    if (z.length) { schlecht = true; melde("zielgroesse", `${name}: ${z.length} Ziele unter 24 px ohne Abstandsausnahme (z. B. ${z.slice(0, 3).map((x) => `${x.id} ${Math.round(x.w)}x${Math.round(x.h)}`).join("; ")})`); }
+  }
+  const r = await p.evaluate(() => {
+    const rad = (s) => { const e = document.querySelector(s); return e ? `${getComputedStyle(e).borderTopLeftRadius}/${getComputedStyle(e).borderBottomLeftRadius}` : null; };
+    return { blatt: rad(".m-blatt"), griff: rad(".m-griff") };
+  });
+  if (!schlecht) beleg("telefon-blatt", `${name}: Reflow${k.ziele ? " und Zielgröße" : ""} ohne Befund; Radius Blatt ${r.blatt}, Griff ${r.griff}`);
+  if (schlecht || process.env.BILDER_ALLE) await bild(p, name);
+  let n = 0, ohneRing = 0, verdeckt = 0, draussen = 0;
+  for (let i = 0; i < 8; i++) {
+    await p.keyboard.press("Tab");
+    await p.waitForTimeout(120);
+    const f = await p.evaluate(() => {
+      const e = document.activeElement;
+      if (!e || e === document.body) return null;
+      const cs = getComputedStyle(e), rr = e.getBoundingClientRect();
+      const treffer = [[rr.left + rr.width / 2, rr.top + rr.height / 2], [rr.left + 2, rr.top + 2], [rr.right - 2, rr.bottom - 2]]
+        .filter(([x, y]) => x >= 0 && y >= 0 && x < innerWidth && y < innerHeight)
+        .map(([x, y]) => { const h = document.elementFromPoint(x, y); return { frei: !h || h === e || e.contains(h) || h.contains(e) }; });
+      return { imBlatt: !!e.closest("[role=dialog]"), stil: { outlineStyle: cs.outlineStyle, outlineWidth: cs.outlineWidth, outlineColor: cs.outlineColor, boxShadow: cs.boxShadow },
+        treffer, draussen: rr.bottom < 0 || rr.top > innerHeight || rr.right < 0 || rr.left > innerWidth, blattSelbst: e.classList.contains("m-blatt") };
+    });
+    if (!f) continue;
+    if (f.blattSelbst) continue;   // Startpunkt des Fokus (tabIndex -1), kein Ziel
+    n++;
+    if (!f.imBlatt) { melde("fokus", `${name}: Tab verlässt das Blatt`); break; }
+    if (!fokusSichtbar(f.stil)) ohneRing++;
+    if (f.draussen) draussen++; else if (!fokusNichtVerdeckt(f.treffer)) verdeckt++;
+  }
+  geprueft++;
+  if (ohneRing || verdeckt) melde("fokus", `${name}: ${ohneRing} ohne Ring, ${verdeckt} verdeckt von ${n} Stopps`);
+  else if (n === 0) hinweis("fokus", `${name}: kein Tab-Stopp im Blatt`);
+  else beleg("fokus", `${name}: ${n} Tab-Stopps im Blatt, Fokus sichtbar, nichts verdeckt${draussen ? ` (${draussen} außerhalb des Fensters)` : ""}`);
+  await p.keyboard.press("Escape");
+  await blatt.waitFor({ state: "hidden", timeout: 5000 }).catch(() => melde("telefon-blatt", `${name}: Blatt schließt nicht mit Escape`));
+}
+
+/* V4-3b Speicherlage (SPEICHERLAGE=1): Die Leiste „Keine Verbindung“ (Offlineleiste, role=status) erscheint nur ohne
+   Netz. Im Reiter „Heute“ schaltet das Skript den Browserkontext offline (Ereignis „offline“), misst die Seite mit der
+   Leiste (Reflow, Zielgröße, Bild) und den berechneten Radius der Leiste (Stufe mittel), schaltet wieder online
+   (Ereignis „online“) und erwartet, dass die Leiste verschwindet. Es wird nichts geschrieben. */
+async function speicherLeiste(p, ansicht, k) {
+  const { V4_RADIEN: R } = await import(pathToFileURL(path.join(WT, "src", "v4", "tokens.js")).href);
+  const ctx = p.context();
+  const name = `${ansicht}/Leiste Keine Verbindung`;
+  await ctx.setOffline(true);
+  await p.evaluate(() => window.dispatchEvent(new Event("offline")));
+  const leiste = p.getByRole("status").filter({ hasText: "Keine Verbindung" }).first();
+  if (!(await leiste.waitFor({ state: "visible", timeout: 8000 }).then(() => true).catch(() => false))) {
+    melde("speicherlage", `${name}: Leiste erscheint nicht`);
+  } else {
+    await p.waitForTimeout(400);
+    geprueft++;
+    const m = await p.evaluate(MESSEN);
+    let schlecht = false;
+    if (k.reflow && !reflowOk(m.gesamt, m.breite)) { schlecht = true; melde("reflow", `${name}: Seite ${m.gesamt - m.breite}px breiter als ${m.breite}px — ${m.taeter}`); }
+    if (k.ziele) {
+      const z = zielgroessenBefunde(m.ziele, 24);
+      if (z.length) { schlecht = true; melde("zielgroesse", `${name}: ${z.length} Ziele unter 24 px ohne Abstandsausnahme (z. B. ${z.slice(0, 3).map((x) => `${x.id} ${Math.round(x.w)}x${Math.round(x.h)}`).join("; ")})`); }
+    }
+    const r = await leiste.evaluate((e) => ({ inline: e.style.borderRadius, wert: getComputedStyle(e).borderTopLeftRadius,
+      hoehe: Math.round(e.getBoundingClientRect().height) }));
+    if (r.inline !== "var(--v4-r-mittel)" || r.wert !== R.mittel) { schlecht = true; melde("radius", `${name}: Radius ${r.inline} = ${r.wert}, erwartet var(--v4-r-mittel) = ${R.mittel}`); }
+    if (!schlecht) beleg("speicherlage", `${name}: Reflow${k.ziele ? " und Zielgröße" : ""} ohne Befund; Radius ${r.inline} = ${r.wert}, Höhe ${r.hoehe} px`);
+    if (schlecht || process.env.BILDER_ALLE) { await leiste.scrollIntoViewIfNeeded().catch(() => {}); await bild(p, name); }
+  }
+  await ctx.setOffline(false);
+  await p.evaluate(() => window.dispatchEvent(new Event("online")));
+  if (!(await leiste.waitFor({ state: "detached", timeout: 10000 }).then(() => true).catch(() => false))) melde("speicherlage", `${name}: Leiste bleibt nach „online“ stehen`);
+}
+
+/* V4-3b Branchenmodule (BRANCHENMODULE=1): In der Ansicht „Betrieb“ der Leitung steht der Bereich „Branchenmodule“
+   (src/module/kern.jsx) mit einer Modulzeile (article, Rahmen RAHMEN) je Modul. Die Moduloberflächen erscheinen erst mit
+   einem eingeschalteten Modul; die Registry steht auf „geplant“, also nie im Browser. Gemessen werden Reflow, Zielgröße
+   und der berechnete Radius aller Modulzeilen (Stufe klein); dazu ein Bild des Bereichs. Es wird nichts geschrieben. */
+async function branchenBereich(p, ansicht, k) {
+  const { V4_RADIEN: R } = await import(pathToFileURL(path.join(WT, "src", "v4", "tokens.js")).href);
+  const name = `${ansicht}/Branchenmodule`;
+  const bereich = p.locator('section[aria-label="Branchenmodule"]').first();
+  if (!(await bereich.waitFor({ state: "visible", timeout: 8000 }).then(() => true).catch(() => false))) {
+    melde("branchenmodule", `${name}: Bereich fehlt`);
+    return;
+  }
+  await bereich.scrollIntoViewIfNeeded().catch(() => {});
+  await p.waitForTimeout(300);
+  geprueft++;
+  const m = await p.evaluate(MESSEN);
+  let schlecht = false;
+  if (k.reflow && !reflowOk(m.gesamt, m.breite)) { schlecht = true; melde("reflow", `${name}: Seite ${m.gesamt - m.breite}px breiter als ${m.breite}px — ${m.taeter}`); }
+  if (k.ziele) {
+    const z = zielgroessenBefunde(m.ziele, 24);
+    if (z.length) { schlecht = true; melde("zielgroesse", `${name}: ${z.length} Ziele unter 24 px ohne Abstandsausnahme (z. B. ${z.slice(0, 3).map((x) => `${x.id} ${Math.round(x.w)}x${Math.round(x.h)}`).join("; ")})`); }
+  }
+  const zeilen = await bereich.evaluate((b) => [...b.querySelectorAll("article")].map((e) => ({ inline: e.style.borderRadius,
+    wert: getComputedStyle(e).borderTopLeftRadius, hoehe: Math.round(e.getBoundingClientRect().height) })));
+  const falsch = zeilen.filter((r) => r.inline !== "var(--v4-r-klein)" || r.wert !== R.klein);
+  if (!zeilen.length) { schlecht = true; melde("branchenmodule", `${name}: keine Modulzeile`); }
+  if (falsch.length) { schlecht = true; melde("radius", `${name}: ${falsch.length} Modulzeilen nicht var(--v4-r-klein) = ${R.klein} (z. B. ${falsch[0].inline} = ${falsch[0].wert})`); }
+  if (!schlecht) beleg("branchenmodule", `${name}: Reflow${k.ziele ? " und Zielgröße" : ""} ohne Befund; ${zeilen.length} Modulzeilen var(--v4-r-klein) = ${R.klein}, Höhe ${Math.min(...zeilen.map((z) => z.hoehe))}–${Math.max(...zeilen.map((z) => z.hoehe))} px`);
+  if (schlecht || process.env.BILDER_ALLE) await bild(p, name);
+}
+
+/* V4-3b Querschnitt Teil 1 (QUERSCHNITT=1): Bausteine aus App.jsx, ui/farbwahl.jsx und ui/diagramme.jsx tragen jetzt
+   Radiusstufen im Inline-Stil. Gemessen wird je Stelle die Stufe gegen den berechneten Radius (V4_RADIEN). Die
+   Auswahlfläche eines Farbpunkts und das Hinweisfenster eines Balkens erscheinen erst auf Klick bzw. Maus; das Skript
+   öffnet sie, misst, macht ein Bild und schließt (Klick auf den Punkt, Maus weg). Keine Farbe wird gewählt. */
+async function querschnittBausteine(p, ansicht, k) {
+  const { V4_RADIEN: R } = await import(pathToFileURL(path.join(WT, "src", "v4", "tokens.js")).href);
+  /* Wie STUFEN_MESSEN (weiter unten, beim Ablauf hier noch nicht definiert): Stufe und berechneter Radius je Stelle. */
+  const stufenMessen = () => [...document.querySelectorAll('[style*="--v4-r-"]')].filter((e) => e.getBoundingClientRect().width > 0).map((e) => {
+    const cs = getComputedStyle(e);
+    const stufe = (e.getAttribute("style").match(/--v4-r-([a-z]+)/) || [])[1];
+    const ecke = /--v4-r-/.test(e.style.borderTopLeftRadius) ? cs.borderTopLeftRadius : cs.borderTopRightRadius;
+    return { stufe, wert: ecke, text: (e.innerText || e.getAttribute("aria-label") || e.tagName).trim().slice(0, 24).split("\n")[0] };
+  });
+  const pruefeStufen = async (name, art) => {
+    const st = await p.evaluate(stufenMessen);
+    const falsch = st.filter((s) => R[s.stufe] !== s.wert);
+    if (falsch.length) melde("radius", `${name}: ${falsch.length} Stellen mit falschem Radius (z. B. ${falsch[0].stufe} = ${falsch[0].wert}, ${falsch[0].text})`);
+    const je = {};
+    for (const s of st) je[s.stufe] = (je[s.stufe] || 0) + 1;
+    if (!falsch.length) beleg("querschnitt", `${name}: ${art}${st.length} Inline-Stufen = V4_RADIEN (${Object.entries(je).map(([a, n]) => `${a} ${n}`).join(", ")})`);
+    return st;
+  };
+  if (/Betrieb$/.test(ansicht)) {
+    await pruefeStufen(ansicht, "");
+    const punkt = p.locator('button[aria-expanded][title^="Farbe von "]:visible').first();
+    if (!(await punkt.count())) { hinweis("querschnitt", `${ansicht}: kein Farbpunkt sichtbar`); return; }
+    await punkt.scrollIntoViewIfNeeded().catch(() => {});
+    await punkt.click({ timeout: 4000 }).catch(() => melde("klick", `${ansicht}: Farbpunkt scheitert`));
+    const gruppe = p.getByRole("group", { name: "Farbe wählen" }).first();
+    if (!(await gruppe.waitFor({ state: "visible", timeout: 5000 }).then(() => true).catch(() => false))) { melde("querschnitt", `${ansicht}: Auswahlfläche öffnet nicht`); return; }
+    const name = `${ansicht}/Farbauswahl`;
+    await p.waitForTimeout(300);
+    geprueft++;
+    const m = await p.evaluate(MESSEN);
+    if (k.reflow && !reflowOk(m.gesamt, m.breite)) melde("reflow", `${name}: Seite ${m.gesamt - m.breite}px breiter als ${m.breite}px — ${m.taeter}`);
+    const flaeche = await gruppe.evaluate((g) => { const e = g.parentElement; return { inline: e.style.borderRadius, wert: getComputedStyle(e).borderTopLeftRadius }; });
+    if (flaeche.inline !== "var(--v4-r-mittel)" || flaeche.wert !== R.mittel) melde("radius", `${name}: Auswahlfläche ${flaeche.inline} = ${flaeche.wert}`);
+    else beleg("querschnitt", `${name}: Auswahlfläche ${flaeche.inline} = ${flaeche.wert}`);
+    await pruefeStufen(name, "mit Auswahlfläche ");
+    await bild(p, name);
+    await punkt.click({ timeout: 4000 }).catch(() => melde("klick", `${name}: Schließen scheitert`));
+    await gruppe.waitFor({ state: "hidden", timeout: 5000 }).catch(() => melde("querschnitt", `${name}: Auswahlfläche schließt nicht`));
+  }
+  if (/Qualifikationen$/.test(ansicht)) {
+    const balken = p.locator('div[style*="5px 5px 2px 2px"]').first();
+    if (!(await balken.count())) { hinweis("querschnitt", `${ansicht}: kein Diagrammbalken`); return; }
+    await balken.scrollIntoViewIfNeeded().catch(() => {});
+    await balken.hover({ timeout: 4000 }).catch(() => melde("klick", `${ansicht}: Maus über Balken scheitert`));
+    const fenster = balken.locator('div[style*="--v4-r-klein"]').first();
+    if (!(await fenster.waitFor({ state: "visible", timeout: 4000 }).then(() => true).catch(() => false))) { melde("querschnitt", `${ansicht}: Hinweisfenster erscheint nicht`); return; }
+    const name = `${ansicht}/Hinweisfenster Balken`;
+    geprueft++;
+    const r = await fenster.evaluate((e) => ({ wert: getComputedStyle(e).borderTopLeftRadius, text: e.innerText.trim().slice(0, 30) }));
+    const b = await balken.evaluate((e) => ({ oben: getComputedStyle(e).borderTopLeftRadius, unten: getComputedStyle(e).borderBottomLeftRadius }));
+    if (r.wert !== R.klein) melde("radius", `${name}: ${r.wert}, erwartet ${R.klein}`);
+    else beleg("querschnitt", `${name}: Hinweisfenster var(--v4-r-klein) = ${r.wert} („${r.text}“); Balken bleibt ${b.oben}/${b.unten} (Ausnahme)`);
+    await bild(p, name);
+    await p.mouse.move(1, 1);
+  }
+}
+
+/* V4-3b Querschnitt Teil 2 (QUERSCHNITT=2): Bausteine aus handbuch, kommandoleiste, tourleiste, ringregler,
+   ui/bausteine, ui/leisten, ui/ziehen und schrittleiste tragen Radiusstufen im Inline-Stil. In jeder Ansicht der Leitung
+   wird jede Inline-Stufe gegen V4_RADIEN gemessen (Leerzustand, Balken, wo sie erscheinen). Im Handbuch zusätzlich:
+   Haken-Knopf (26×26 klein), Marken (22×22 pille), Bild; dann die Schnellsuche (Strg + K) öffnen, Esc-Taste (klein,
+   Höhe) und Treffersymbol (27×27 klein) messen, Bild, mit Escape schließen. Es wird nichts geschrieben. */
+async function querschnittTeil2(p, ansicht, k) {
+  const { V4_RADIEN: R } = await import(pathToFileURL(path.join(WT, "src", "v4", "tokens.js")).href);
+  const messen = () => [...document.querySelectorAll('[style*="--v4-r-"]')].filter((e) => e.getBoundingClientRect().width > 0).map((e) => {
+    const stufe = (e.getAttribute("style").match(/--v4-r-([a-z]+)/) || [])[1];
+    const cs = getComputedStyle(e);
+    return { stufe, wert: /--v4-r-/.test(e.style.borderTopLeftRadius) ? cs.borderTopLeftRadius : cs.borderTopRightRadius };
+  });
+  const st = await p.evaluate(messen);
+  const falsch = st.filter((s) => R[s.stufe] !== s.wert);
+  if (falsch.length) melde("radius", `${ansicht}: ${falsch.length} Stellen mit falschem Radius (z. B. ${falsch[0].stufe} = ${falsch[0].wert})`);
+  if (!/Handbuch$/.test(ansicht)) return;
+  const je = {};
+  for (const s of st) je[s.stufe] = (je[s.stufe] || 0) + 1;
+  const mass = (e) => ({ inline: e.style.borderRadius, wert: getComputedStyle(e).borderTopLeftRadius,
+    b: Math.round(e.getBoundingClientRect().width), h: Math.round(e.getBoundingClientRect().height) });
+  const haken = p.getByRole("button", { name: /^Als (erledigt|ungelesen) markieren$/ }).first();
+  if (!(await haken.count())) { melde("querschnitt", `${ansicht}: kein Haken-Knopf`); return; }
+  const h = await haken.evaluate(mass);
+  const marken = await p.evaluate(() => [...document.querySelectorAll('span[style*="--v4-r-pille"]')]
+    .filter((x) => Math.round(x.getBoundingClientRect().width) === 22).map((x) => getComputedStyle(x).borderTopLeftRadius));
+  if (h.wert !== R.klein || h.b !== 26 || !marken.length || marken.some((m) => m !== R.pille))
+    melde("radius", `${ansicht}: Haken ${h.inline} = ${h.wert} (${h.b}×${h.h}), Marken ${[...new Set(marken)].join("/")}`);
+  else beleg("querschnitt2", `${ansicht}: ${st.length} Inline-Stufen = V4_RADIEN (${Object.entries(je).map(([a, n]) => `${a} ${n}`).join(", ")}); Haken 26×26 = ${h.wert}, ${marken.length} Marken 22×22 = ${R.pille}`);
+  await bild(p, ansicht);
+  await p.keyboard.press("Control+k");
+  const dialog = p.getByRole("dialog", { name: "Schnellsuche" });
+  if (!(await dialog.waitFor({ state: "visible", timeout: 5000 }).then(() => true).catch(() => false))) { melde("querschnitt", `${ansicht}: Schnellsuche öffnet nicht`); return; }
+  const name = `${ansicht}/Schnellsuche`;
+  await p.keyboard.type("Hand");
+  await p.waitForTimeout(300);
+  geprueft++;
+  const m = await p.evaluate(MESSEN);
+  if (k.reflow && !reflowOk(m.gesamt, m.breite)) melde("reflow", `${name}: Seite ${m.gesamt - m.breite}px breiter als ${m.breite}px — ${m.taeter}`);
+  const esc = await dialog.locator("kbd", { hasText: "Esc" }).evaluate(mass);
+  const sym = await dialog.getByRole("option").first().locator("span").first().evaluate(mass).catch(() => null);
+  if (esc.wert !== R.klein || esc.h <= 16 || !sym || sym.wert !== R.klein || sym.b !== 27)
+    melde("radius", `${name}: Esc ${esc.wert} (${esc.b}×${esc.h}), Symbol ${sym ? `${sym.wert} (${sym.b}×${sym.h})` : "fehlt"}`);
+  else beleg("querschnitt2", `${name}: Esc ${esc.inline} = ${esc.wert} bei ${esc.b}×${esc.h} px (8 < ${esc.h / 2}); Treffersymbol ${sym.b}×${sym.h} = ${sym.wert}`);
+  await bild(p, name);
+  await p.keyboard.press("Escape");
+  await dialog.waitFor({ state: "hidden", timeout: 5000 }).catch(() => melde("querschnitt", `${name}: Schnellsuche schließt nicht`));
+}
+
+/* QUERSCHNITT=2, Rolle betreiber: „Rechner“ (Ringregler: Ring pille, Tasten 34×34 klein) und „Mandanten“ →
+   „Mandant anlegen“ bis Schritt 3 (Schrittleiste: Marken 26×26 pille; ModellVorschau des gewählten Modells: Tageskacheln
+   17×17 klein, Review #466 H2). Der Name wird nur im Formular eingetragen; das Blatt wird ohne Anlegen geschlossen
+   (Escape). Es wird nichts geschrieben. */
+async function querschnittTeil2Betreiber(p, ansicht, k) {
+  const { V4_RADIEN: R } = await import(pathToFileURL(path.join(WT, "src", "v4", "tokens.js")).href);
+  const radienVon = (sel) => p.evaluate((s) => [...document.querySelectorAll(s)].filter((e) => e.getBoundingClientRect().width > 0)
+    .map((e) => ({ inline: e.style.borderRadius, wert: getComputedStyle(e).borderTopLeftRadius,
+      b: Math.round(e.getBoundingClientRect().width), h: Math.round(e.getBoundingClientRect().height) })), sel);
+  const gleich = (liste, inline, wert, b) => liste.length > 0 && liste.every((x) => x.inline === inline && x.wert === wert && (!b || x.b === b));
+  if (/Rechner$/.test(ansicht)) {
+    const ring = await radienVon('[role="slider"]');
+    const tasten = await radienVon('button[title$="verringern"], button[title$="erhöhen"]');
+    if (!gleich(ring, "var(--v4-r-pille)", R.pille) || !gleich(tasten, "var(--v4-r-klein)", R.klein, 34))
+      melde("radius", `${ansicht}: Ring ${JSON.stringify(ring[0] || null)}, Tasten ${JSON.stringify(tasten[0] || null)}`);
+    else beleg("querschnitt2", `${ansicht}: ${ring.length} Ringe = ${R.pille} (${ring[0].b}×${ring[0].h}), ${tasten.length} Tasten 34×34 = ${R.klein}`);
+    await bild(p, `${ansicht}/Ringregler`);
+    return;
+  }
+  if (!/Mandanten$/.test(ansicht)) return;
+  const knopf = p.getByRole("button", { name: "Mandant anlegen" }).first();
+  if (!(await knopf.count())) { hinweis("querschnitt2", `${ansicht}: kein Knopf „Mandant anlegen“`); return; }
+  await knopf.click({ timeout: 4000 });
+  const blatt = p.getByRole("dialog", { name: /Neuen Mandanten einrichten/ }).first();
+  if (!(await blatt.waitFor({ state: "visible", timeout: 5000 }).then(() => true).catch(() => false))) { melde("querschnitt2", `${ansicht}: Blatt öffnet nicht`); return; }
+  await blatt.getByPlaceholder("z. B. Wachdienst Süd GmbH").fill("Abnahme Testbetrieb");
+  for (let i = 0; i < 2; i++) { await blatt.getByRole("button", { name: "Weiter" }).first().click({ timeout: 4000 }); await p.waitForTimeout(250); }
+  const name = `${ansicht}/Mandant anlegen, Schritt 3`;
+  geprueft++;
+  const m = await p.evaluate(MESSEN);
+  if (k.reflow && !reflowOk(m.gesamt, m.breite)) melde("reflow", `${name}: Seite ${m.gesamt - m.breite}px breiter als ${m.breite}px — ${m.taeter}`);
+  const marken = (await radienVon('.reiterreihe span[style*="--v4-r-"]')).filter((x) => x.b === 26);
+  const kacheln = (await radienVon('div[style*="--v4-r-klein"]')).filter((x) => x.b === 17 && x.h === 17);
+  if (!gleich(marken, "var(--v4-r-pille)", R.pille) || !gleich(kacheln, "var(--v4-r-klein)", R.klein))
+    melde("radius", `${name}: Marken ${marken.length} ${JSON.stringify(marken[0] || null)}, Tageskacheln ${kacheln.length} ${JSON.stringify(kacheln[0] || null)}`);
+  else beleg("querschnitt2", `${name}: ${marken.length} Schrittmarken 26×26 = ${R.pille}; ${kacheln.length} Tageskacheln der ModellVorschau 17×17 = ${R.klein} (Teil 1, H2)`);
+  await bild(p, name);
+  await p.keyboard.press("Escape");
+  await blatt.waitFor({ state: "hidden", timeout: 5000 }).catch(() => melde("querschnitt2", `${name}: Blatt schließt nicht`));
+}
+
 /* ===================================================== 1 + 2  Reflow, Zielgröße */
 if (KRITERIEN.includes("reflow") || KRITERIEN.includes("ziele")) {
   const konfig = [];
@@ -241,10 +600,161 @@ if (KRITERIEN.includes("reflow") || KRITERIEN.includes("ziele")) {
         if (z.length) { schlecht = true; melde("zielgroesse", `${name}: ${z.length} Ziele unter 24 px ohne Abstandsausnahme (z. B. ${z.slice(0, 3).map((x) => `${x.id} ${Math.round(x.w)}x${Math.round(x.h)}`).join("; ")})`); }
       }
       if (schlecht || process.env.BILDER_ALLE) await bild(p, `${name}`);
+      if (process.env.IMPORT_BLATT && /Personal$/.test(name)) await importBlatt(p, name, k);
+      if (process.env.TELEFON_BLATT && /Heute$/.test(name)) await telefonBlatt(p, name, k);
+      if (process.env.SPEICHERLAGE && /Heute$/.test(name)) await speicherLeiste(p, name, k);
+      if (process.env.BRANCHENMODULE && rolle === "leitung" && /Betrieb$/.test(name)) await branchenBereich(p, name, k);
+      if (process.env.QUERSCHNITT && rolle === "leitung" && /(Betrieb|Qualifikationen)$/.test(name)) await querschnittBausteine(p, name, k);
+      if (process.env.QUERSCHNITT === "2" && rolle === "leitung") await querschnittTeil2(p, name, k);
+      if (process.env.QUERSCHNITT === "2" && rolle === "betreiber") await querschnittTeil2Betreiber(p, name, k);
     });
     for (const f of fehler) melde("konsole", `${marke}: ${f}`);
     if (ansichten === 0) melde("keine-ansicht", `${marke}: keine Ansicht erreicht`);
     else beleg("ansichten", `${marke}: ${ansichten} Ansichten gemessen${k.ziele ? `, ${zielAnzahl} Ziele, kleinstes ${kleinste ? `${Math.round(kleinste.w)}x${Math.round(kleinste.h)} (${kleinste.id})` : "–"}` : ""}`);
+    await ctx.close();
+  }
+}
+
+/* ======================================== 1b  Einstieg ohne Anmeldung (EINSTIEG=1, V4-3b Einstieg) */
+/* Erfundene Testdaten: zwei Demo-Einträge (GET /api/demos) und die Antworten auf „Betrieb anlegen“ (POST /starten:
+   erst ein Fehler, dann ein angelegter Testbetrieb mit erfundenen Codes). Der Browser beantwortet beide selbst; der
+   Server sieht keine Registrierung. Kein Code wird abgeschickt, kein Demozugang geöffnet. */
+const TEST_DEMOS = [
+  { id: "abnahme-1", name: "Testbetrieb", rolle: "leitung", gruppe: "Testdaten", bestand: "abnahme", betrieb: 0, hinweis: "Erfundener Testzugang der Abnahme" },
+  { id: "abnahme-2", name: "Testbetrieb", rolle: "mitarbeiter", gruppe: "Testdaten", bestand: "abnahme", betrieb: 0, hinweis: "Erfundener Testzugang der Abnahme" },
+];
+const TEST_START = { zugaenge: [{ rolle: "leitung", code: "TEST-0000-0001" }, { rolle: "mitarbeiter", code: "TEST-0000-0002" }], testtage: 30 };
+const rgbaTeile = (s) => (String(s).match(/[\d.]+/g) || []).map(Number);
+const gleicheFarbe = (a, b) => { const x = rgbaTeile(a), y = rgbaTeile(b); return x.length === y.length && x.every((v, i) => Math.abs(v - y[i]) < 0.01); };
+
+/** Stellen mit Radiusstufe im Inline-Stil: Stufe und berechneter Radius der ersten gesetzten Ecke. */
+const STUFEN_MESSEN = () => [...document.querySelectorAll('[style*="--v4-r-"]')].filter((e) => e.getBoundingClientRect().width > 0).map((e) => {
+  const cs = getComputedStyle(e);
+  const stufe = (e.getAttribute("style").match(/--v4-r-([a-z]+)/) || [])[1];
+  const ecke = /--v4-r-/.test(e.style.borderTopLeftRadius) ? cs.borderTopLeftRadius : cs.borderTopRightRadius;
+  return { stufe, wert: ecke, text: (e.innerText || e.getAttribute("aria-label") || e.tagName).trim().slice(0, 24).split("\n")[0] };
+});
+
+async function einstiegSeite(w, t) {
+  const ctx = await browser.newContext({ viewport: { width: w, height: w < 700 ? 800 : 850 }, serviceWorkers: "block", colorScheme: t, hasTouch: w < 700 });
+  const p = await ctx.newPage();
+  const fehler = new Set();
+  p.on("pageerror", (x) => fehler.add(`pageerror ${String(x).slice(0, 120)}`));
+  p.on("console", (m) => { if (m.type() === "error" && !/favicon|Failed to load resource/.test(m.text())) fehler.add(`console ${m.text().slice(0, 120)}`); });
+  let starten = 0;
+  await p.route("**/api/demos", (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ demos: TEST_DEMOS }) }));
+  await p.route("**/starten", (r) => {
+    if (r.request().method() !== "POST") return r.continue();
+    starten++;
+    return starten === 1
+      ? r.fulfill({ status: 400, contentType: "application/json", body: JSON.stringify({ text: "Testantwort der Abnahme: nicht angelegt." }) })
+      : r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(TEST_START) });
+  });
+  await p.goto(BASE + "/", { waitUntil: "networkidle" });
+  await p.getByRole("button", { name: "Selbst starten" }).waitFor({ state: "visible", timeout: 20000 });
+  await p.waitForTimeout(2500);   // Startsequenz (Startbild) ausklingen lassen
+  return { ctx, p, fehler };
+}
+
+async function einstiegZustand(p, name, k) {
+  await p.waitForTimeout(450);
+  geprueft++;
+  const m = await p.evaluate(MESSEN);
+  let schlecht = false;
+  if (k.reflow && !reflowOk(m.gesamt, m.breite)) { schlecht = true; melde("reflow", `${name}: Seite ${m.gesamt - m.breite}px breiter als ${m.breite}px — ${m.taeter}`); }
+  if (k.ziele) {
+    const z = zielgroessenBefunde(m.ziele, 24);
+    if (z.length) { schlecht = true; melde("zielgroesse", `${name}: ${z.length} Ziele unter 24 px ohne Abstandsausnahme (z. B. ${z.slice(0, 3).map((x) => `${x.id} ${Math.round(x.w)}x${Math.round(x.h)}`).join("; ")})`); }
+  }
+  const st = await p.evaluate(STUFEN_MESSEN);
+  const falsch = st.filter((x) => x.wert !== V4_RADIEN[x.stufe]);
+  if (falsch.length) { schlecht = true; melde("radius", `${name}: ${falsch.length} von ${st.length} Stellen nicht im Radius ihrer Stufe (${falsch.slice(0, 3).map((x) => `${x.text} ${x.stufe} ${x.wert}`).join("; ")})`); }
+  if (!schlecht) beleg("einstieg", `${name}: Reflow${k.ziele ? " und Zielgröße" : ""} ohne Befund; ${st.length} Stellen mit Radiusstufe, alle gleich V4_RADIEN${k.ziele ? `; ${m.ziele.length} Ziele` : ""}`);
+  if (schlecht || process.env.BILDER_ALLE) await bild(p, name);
+}
+
+const { V4_RADIEN, V4_UEBERLAGERUNG } = await import(pathToFileURL(path.join(WT, "src", "v4", "tokens.js")).href);
+if (process.env.EINSTIEG && (KRITERIEN.includes("reflow") || KRITERIEN.includes("ziele"))) {
+  const konfig = [];
+  if (KRITERIEN.includes("reflow")) for (const w of BREITEN_REFLOW) for (const t of THEMEN) konfig.push({ w, t, reflow: true, ziele: false });
+  if (KRITERIEN.includes("ziele")) { const hit = konfig.find((k) => k.w === 390 && k.t === "light"); if (hit) hit.ziele = true; else konfig.push({ w: 390, t: "light", reflow: false, ziele: true }); }
+  for (const k of konfig) {
+    const { ctx, p, fehler } = await einstiegSeite(k.w, k.t);
+    const marke = `einstieg@${k.w}/${k.t}`;
+    const klick = async (loc, was) => { await loc.first().click({ timeout: 5000 }).catch(() => melde("klick", `${marke}: ${was} scheitert`)); };
+    await einstiegZustand(p, `${marke} Start`, k);
+    await klick(p.getByRole("button", { name: /Was kostet das/ }), "Was kostet das?");
+    await einstiegZustand(p, `${marke} Preise`, k);
+    await klick(p.getByRole("button", { name: "Zurück", exact: true }), "Zurück (Preise)");
+    await klick(p.getByRole("button", { name: "Selbst starten" }), "Selbst starten");
+    await einstiegZustand(p, `${marke} Registrierung`, k);
+    await p.locator("#betrieb-name").fill("Abnahme Testbetrieb").catch(() => melde("klick", `${marke}: Betriebsname scheitert`));
+    await klick(p.locator("button[aria-pressed]", { hasText: "Pflege" }), "Branche Pflege");
+    await klick(p.getByRole("button", { name: "Betrieb anlegen", exact: true }), "Betrieb anlegen (Fehler)");
+    await p.locator('[role="alert"]').first().waitFor({ state: "visible", timeout: 5000 }).catch(() => melde("einstieg", `${marke}: Fehlermeldung der Registrierung erscheint nicht`));
+    await einstiegZustand(p, `${marke} Registrierung Fehler`, k);
+    await klick(p.getByRole("button", { name: "Betrieb anlegen", exact: true }), "Betrieb anlegen (fertig)");
+    await p.getByText("TEST-0000-0001").waitFor({ state: "visible", timeout: 5000 }).catch(() => melde("einstieg", `${marke}: Registrierung fertig erscheint nicht`));
+    await einstiegZustand(p, `${marke} Registrierung fertig`, k);
+    await klick(p.getByRole("button", { name: "Mit der Organisationsleitung anmelden" }), "Mit der Organisationsleitung anmelden");
+    await p.locator("#code").waitFor({ state: "visible", timeout: 5000 }).catch(() => melde("einstieg", `${marke}: Anmeldung mit Code erscheint nicht`));
+    await einstiegZustand(p, `${marke} Anmeldung mit Code`, k);
+    await klick(p.getByRole("button", { name: "Zweiten Faktor einrichten oder verwalten" }), "Zweiten Faktor einrichten");
+    await einstiegZustand(p, `${marke} Zweiter Faktor`, k);
+    await klick(p.getByRole("button", { name: "Impressum", exact: true }), "Impressum");
+    const dlg = p.getByRole("dialog", { name: "Rechtliche Angaben" });
+    if (await dlg.waitFor({ state: "visible", timeout: 5000 }).then(() => true).catch(() => false)) {
+      await einstiegZustand(p, `${marke} Rechtsfenster`, k);
+      const r = await p.evaluate(() => {
+        const d = document.querySelector('[role="dialog"][aria-label="Rechtliche Angaben"]');
+        const codes = [...d.querySelectorAll("code")].map((c) => Math.round(c.getBoundingClientRect().height * 10) / 10);
+        return { grund: getComputedStyle(d).backgroundColor, codes, codeRadius: d.querySelector("code") ? getComputedStyle(d.querySelector("code")).borderTopLeftRadius : null };
+      });
+      const soll = V4_UEBERLAGERUNG[k.t === "dark" ? "dunkel" : "hell"];
+      if (!gleicheFarbe(r.grund, soll)) melde("einstieg", `${marke} Rechtsfenster: Überlagerung ${r.grund}, erwartet ${soll}`);
+      else beleg("einstieg", `${marke} Rechtsfenster: Überlagerung ${r.grund} (V4_UEBERLAGERUNG); Code-Auszeichnung ${r.codes.length}× Höhe ${r.codes.join("/")} px, Radius ${r.codeRadius} (Ausnahme)`);
+      await p.keyboard.press("Escape");
+      await dlg.waitFor({ state: "hidden", timeout: 5000 }).catch(() => melde("einstieg", `${marke}: Rechtsfenster schließt nicht mit Escape`));
+    } else melde("einstieg", `${marke}: Rechtsfenster öffnet nicht`);
+    for (const f of fehler) melde("konsole", `${marke}: ${f}`);
+    await ctx.close();
+  }
+}
+if (process.env.EINSTIEG && KRITERIEN.includes("fokus")) {
+  for (const w of [1280, 320]) {
+    const { ctx, p } = await einstiegSeite(w, "light");
+    for (const zustand of ["Start", "Registrierung"]) {
+      const marke = `einstieg@${w} ${zustand}`;
+      if (zustand === "Registrierung") await p.getByRole("button", { name: "Selbst starten" }).first().click({ timeout: 5000 }).catch(() => melde("klick", `${marke}: Selbst starten scheitert`));
+      await p.waitForTimeout(400);
+      await p.evaluate(() => { if (document.activeElement) document.activeElement.blur(); window.scrollTo(0, 0); });
+      let n = 0, ohneRing = 0, verdeckt = 0, draussen = 0; const beisp = [];
+      for (let i = 0; i < 30; i++) {
+        await p.keyboard.press("Tab");
+        await p.waitForTimeout(200);
+        const f = await p.evaluate(() => {
+          const e = document.activeElement;
+          if (!e || e === document.body || e === document.documentElement) return null;
+          const cs = getComputedStyle(e), r = e.getBoundingClientRect();
+          const treffer = [[r.left + r.width / 2, r.top + r.height / 2], [r.left + 2, r.top + 2], [r.right - 2, r.bottom - 2]]
+            .filter(([x, y]) => x >= 0 && y >= 0 && x < innerWidth && y < innerHeight)
+            .map(([x, y]) => { const h = document.elementFromPoint(x, y); return { frei: !h || h === e || e.contains(h) || h.contains(e) }; });
+          return { name: `${e.tagName.toLowerCase()}[${(e.getAttribute("aria-label") || e.innerText || "").trim().slice(0, 20).split("\n")[0]}]`,
+            stil: { outlineStyle: cs.outlineStyle, outlineWidth: cs.outlineWidth, outlineColor: cs.outlineColor, boxShadow: cs.boxShadow },
+            treffer, draussen: r.bottom < 0 || r.top > innerHeight || r.right < 0 || r.left > innerWidth };
+        });
+        if (!f) continue;
+        n++;
+        if (!fokusSichtbar(f.stil)) { ohneRing++; if (beisp.length < 3) beisp.push(f.name); }
+        if (f.draussen) draussen++; else if (!fokusNichtVerdeckt(f.treffer)) { verdeckt++; if (beisp.length < 6) beisp.push(`${f.name} verdeckt`); }
+      }
+      geprueft++;
+      if (n < 5) melde("fokus", `${marke}: nur ${n} Tab-Stopps erreicht`);
+      if (ohneRing) melde("fokus-sichtbar", `${marke}: ${ohneRing} von ${n} ohne sichtbaren Fokus (z. B. ${beisp.join("; ")})`);
+      if (verdeckt) melde("fokus-verdeckt", `${marke}: ${verdeckt} von ${n} verdeckt (z. B. ${beisp.join("; ")})`);
+      if (n >= 5 && !ohneRing && !verdeckt) beleg("fokus", `${marke}: ${n} Tab-Stopps, Fokus sichtbar, nichts verdeckt${draussen ? ` (${draussen} außerhalb des Fensters, rollt beim Weiter-Tabben)` : ""}`);
+      await bild(p, `fokus-${marke}`);
+    }
     await ctx.close();
   }
 }

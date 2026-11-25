@@ -1,0 +1,20 @@
+# =====================================================================
+#  FRAGMENT - gehoert in die Compose-Datei des CADDY auf dem VPS (nicht in
+#  deploy/compose.yml der App). Nur der volumes-Eintrag ist neu; alles andere
+#  der Caddy-Compose bleibt, wie es ist. Dienstname und Host-Pfad sind
+#  Platzhalter und muessen aus der echten Datei uebernommen werden
+#  (docs/DEPLOY-HAUPTWEBSITE.md, Abschnitt "Vorab").
+#
+#  ACHTUNG: Ein Bind-Mount kann nicht in einen laufenden Container eingehaengt
+#  werden. "docker compose up -d <dienst>" erstellt den Caddy-Container NEU:
+#  einige Sekunden Unterbrechung fuer ALLE Seiten (auch die App). Vorher
+#  pruefen, dass Caddys /data (Zertifikate) in einem Volume oder Bind-Mount
+#  liegt, nicht in der Container-Schicht - sonst gehen die Zertifikate verloren.
+#
+#  Kommt ohne Neuerstellung aus: Variante B in docs/DEPLOY-HAUPTWEBSITE.md.
+# =====================================================================
+services:
+  CADDY_DIENSTNAME:            # Name des Dienstes in der Caddy-Compose
+    volumes:
+      # WEB_DIR_HOST (Host) -> WEB_ROOT_CONTAINER (Container), nur lesen
+      - /opt/centric-website:/srv/centric-website:ro

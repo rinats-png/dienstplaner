@@ -669,10 +669,13 @@ export function bestandOhneModuleinstellungen(b) {
   return mandanten.every((m, i) => m === b.mandanten[i]) ? b : { ...b, mandanten };
 }
 
-/* Vergleich unabhängig von der Reihenfolge der Schlüssel — ein Client darf sie anders senden. */
+/* Vergleich unabhängig von der Reihenfolge der Schlüssel — ein Client darf sie anders senden. Listen zählen in ihrer
+   Reihenfolge. Für JSON-Werte total (wie JSON.stringify: undefined-Felder fallen weg); auch genutzt von modul-wege.mjs
+   und modul-pflegequal.mjs (AU-3, Review #491). */
 const stabil = (x) => (Array.isArray(x) ? x.map(stabil) : istObjekt(x)
   ? Object.fromEntries(Object.keys(x).sort().map((k) => [k, stabil(x[k])])) : x);
-const gleich = (a, b) => JSON.stringify(stabil(a)) === JSON.stringify(stabil(b));
+/** Inhaltsgleich, unabhängig von der Schlüsselreihenfolge. @param {any} a @param {any} b @returns {boolean} */
+export const gleich = (a, b) => JSON.stringify(stabil(a)) === JSON.stringify(stabil(b));
 const ohne = (o, felder) => Object.fromEntries(Object.entries(istObjekt(o) ? o : {}).filter(([k]) => !felder.includes(k)));
 
 /**
@@ -764,6 +767,11 @@ export function branchenmoduleZusammen(altM, neuM, sitzung, darfOrgEdit, liste =
       }
       if (vorher && vorher.an === wert.an && gleich(istObjekt(vorher.parameter) ? vorher.parameter : {}, parameter) && !neueBestaetigung)
         continue;                                                          // unverändert: Wann und Wer bleiben
+      /* L-2 (Audit 24.11.): Parameter und Bestätigung eines Moduls ändern sich nur, wenn das Modul wirken kann (Status der
+         Allowlist, Paket gebucht). Ausschalten ohne Parameteränderung bleibt immer möglich. Nicht still verworfen: Grund → 403. */
+      if (vorher && (neueBestaetigung || !gleich(istObjekt(vorher.parameter) ? vorher.parameter : {}, parameter))
+        && !(statusWirksam(mod.status) && modulGebucht(altM, id, liste)))
+        return { grund: `Branchenmodul ${mod.name}: Parameter und Bestätigung sind erst änderbar, wenn das Modul verfügbar und das Paket gebucht ist.` };
       /** @type {ModulEinstellung & { mitbestimmung?: any }} */
       const eintrag = { an: wert.an, geaendertAm: jetzt, geaendertVon: wer };
       /* Erstes echtes Einschalten: vom Server, danach behalten — Grundlage für Nur-Lesen (G3).
@@ -791,6 +799,8 @@ export function branchenmoduleZusammen(altM, neuM, sitzung, darfOrgEdit, liste =
     const neu = e.regelwerte;
     if (!istObjekt(neu)) return { grund: "Regelwerte: erwartet wird je Regel { pruefstatus, stufe, quelle, … }." };
     const ergebnis = altR ? { ...altR } : {};
+    /* Der Betrieb, wie er nach dem Schalter-Teil wäre: gespeicherte Pakete (Vertragsfeld), geprüfte Schalter. */
+    const sicht = { ...neuM, pakete: altM ? altM.pakete : undefined, einstellungen: e };
     for (const [id, w] of Object.entries(neu)) {
       const vorher = altR && hat(altR, id) ? altR[id] : null;
       if (w === null) {
@@ -802,6 +812,11 @@ export function branchenmoduleZusammen(altM, neuM, sitzung, darfOrgEdit, liste =
       if (vorher && gleich(ohne(vorher, REGELWERT_SERVER), inhalt)) continue;
       const fehler = pruefeRegelwert(id, w);
       if (fehler) return { grund: fehler };
+      /* L-2 (Audit 24.11.): Ein neuer oder geänderter Regelwert nur zu einer Regel eines Moduls, das im Betrieb wirkt (gebucht,
+         Status der Allowlist, eingeschaltet). Sonst schlüge ein gespeicherter Wert nach einem späteren Statuswechsel sofort
+         durch. Entfernen (null) und unverändert Zurückgeschicktes sind oben schon erledigt. Nicht still verworfen: Grund → 403. */
+      if (!liste.some((x) => x.regelIds.includes(id) && modulAktiv(sicht, x.id, liste)))
+        return { grund: `Regelwert ${String(id).slice(0, 60)}: Das Modul der Regel wirkt in diesem Betrieb nicht (nicht gebucht, aus oder in Vorbereitung) — Werte sind nicht änderbar.` };
       /** @type {Record<string, any>} */
       const eintrag = { ...inhalt, geaendertAm: jetzt, geaendertVon: wer };
       if (w.pruefstatus === "geprueft") { eintrag.geprueftAm = jetzt; eintrag.geprueftVon = wer; }

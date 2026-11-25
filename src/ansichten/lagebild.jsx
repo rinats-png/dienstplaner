@@ -4,7 +4,8 @@ import { useMemo } from "react";
 import { besetzung, befundeFuer, pruefen, simulation, aktive, abwesenheitAm, kontoSichtbar, stundenkonto, darfEinheit, personTag, sollAnzeige, BEDARF_OFFEN_TEXT } from "../lib/fachlogik.js";
 import { addDays, dow, pad, pISO } from "../regelwerk.js";
 import { zeitraumBisMonat, istVerfuegbar, ISTDATEN_TEXT } from "../istdaten.js";
-import { einheitAm, einheitDienst } from "../../server/lib/fachpruefung.mjs";
+import { einheitAm, einheitDienst, abweichendVomBetriebsmodell } from "../../server/lib/fachpruefung.mjs";
+import { schichtmodellHinweis } from "../lib/schichtmodell-schalter.js";
 import { H1, Btn, klickbar, Pill, Avatar, Card, CardHead } from "../ui/bausteine.jsx";
 import { Scrollbereich } from "../ui/scrollbereich.jsx";
 import { Abschnittskopf, Leitraster, Seitenkarte, Namenschip, Punkt, Kennzahlen } from "../gestalt/ansichten.jsx";
@@ -95,6 +96,9 @@ export function Lagebild({ sitz, oeffneTag, akt }) {
               {b.bedarfOffen && <div style={{ fontSize: 12, color: C.warn, marginTop: 4 }}>{BEDARF_OFFEN_TEXT}</div>}
               <div style={{ marginTop: 10 }}><Balken ist={b.anzahl} soll={b.bedarfOffen ? 0 : b.soll} tone={b.status} /></div>
               <div style={{ fontSize: 12, color: C.dim, marginTop: 10 }}>{e ? `${e.name} im Regeldienst` : "aus Abweichungen besetzt"}</div>
+              {/* IMP-6 Planwirkung (Vorgabe aus): „im Regeldienst“ meint die Folge der Einheit (Betriebsmodell). */}
+              {(() => { const t = e && schichtmodellHinweis(abweichendVomBetriebsmodell(m, e.id, [d0]));
+                return t && <div style={{ fontSize: 11.5, color: C.warn, marginTop: 4 }}>{t}</div>; })()}
               {b.qualFehlt && <div style={{ marginTop: 9 }}><Pill size="sm" tone="danger">Qualifikation fehlt</Pill></div>}
               {luecke && darfBesetzen && (
                 <div style={{ marginTop: 11 }}>
@@ -139,11 +143,14 @@ export function Lagebild({ sitz, oeffneTag, akt }) {
                   </th>))}</tr></thead>
                 <tbody>{m.einheiten.map((e) => (
                   <tr key={e.id}><td style={{ paddingRight: 18, whiteSpace: "nowrap", fontSize: 13.5 }}>
-                    <span style={{ width: 8, height: 8, borderRadius: 4, background: lesbar(e.farbe, 3), display: "inline-block", marginRight: 9 }} />{e.name}</td>
+                    <span style={{ width: 8, height: 8, borderRadius: "var(--v4-r-pille)", background: lesbar(e.farbe, 3), display: "inline-block", marginRight: 9 }} />{e.name}</td>
                     {woche.map((d) => <td key={d} style={{ padding: 3, textAlign: "center" }}>
                       <div style={{ display: "flex", justifyContent: "center" }}><Zelle da={map[einheitDienst(m, e.id, d)]} size={25} /></div></td>)}
                   </tr>))}</tbody>
               </table>
+              {/* IMP-6 Planwirkung (Vorgabe aus): die Zeilen sind die Folge der Einheit (Betriebsmodell); AUS: nichts. */}
+              {m.einheiten.map((e) => { const t = schichtmodellHinweis(abweichendVomBetriebsmodell(m, e.id, woche));
+                return t && <div key={e.id} style={{ fontSize: 11.5, color: C.warn, marginTop: 8 }}>{e.name}: {t}</div>; })}
             </Scrollbereich>
           </Card>
         </>}

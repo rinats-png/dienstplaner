@@ -188,6 +188,167 @@ describe("pruefeQuelle: Graph und Schema", () => {
   });
 });
 
+/* Review #477 H3: G8/G9 (werkzeug/release-pruefung.mjs) vergleichen prio exakt und lesen pr als Liste "#123".
+   Die Quelle muss das deshalb erzwingen; sonst umginge ein offenes Paket mit "p1" oder pr: "#85" die Gates. */
+describe("Schema prio und pr (Review #477 H3, fail-closed)", () => {
+  const paket = (id, o = {}) => ({ id, titel: id, strang: "acc45", prio: "P1", aufwandPT: { min: 1, max: 2 }, abhaengigkeiten: [], status: "BLOCKED", pr: [], ...o });
+  const UNGUELTIGE_PRIOS = ["p1", " P0", "P0 ", "P4", "P", "", null, 1, undefined];
+  const UNGUELTIGE_PR_EINTRAEGE = [["85"], [85], ["#0"], ["#012"], ["#12a"], [" #12"], [null], [{}], ["#1", "#1"]];
+
+  it("Konstanten: PRIOS = P0…P3, PR_MUSTER genau „#123“", () => {
+    expect([...BL.PRIOS]).toEqual(["P0", "P1", "P2", "P3"]);
+    expect(Object.isFrozen(BL.PRIOS)).toBe(true);
+    for (const x of ["#1", "#85", "#477"]) expect(BL.PR_MUSTER.test(x), x).toBe(true);
+    for (const x of ["85", "#0", "#01", "#1a", " #1", "#1 ", "#"]) expect(BL.PR_MUSTER.test(x), x).toBe(false);
+  });
+
+  it("pruefeQuelle: jede gültige Priorität P0–P3 ohne Fehler; jede andere (Schreibweise, Leerzeichen, fehlend) → Fehler", () => {
+    expect(BL.pruefeQuelle(BL.paketeAus(BL.PRIOS.map((prio) => paket(`A-${prio}`, { prio }))))).toEqual([]);
+    for (const prio of UNGUELTIGE_PRIOS) {
+      const f = BL.pruefeQuelle(BL.paketeAus([paket("X", prio === undefined ? { prio: undefined } : { prio })]));
+      expect(f.some((x) => x.startsWith("X: prio ")), JSON.stringify(prio) ?? "undefined").toBe(true);
+    }
+  });
+
+  it("pruefeQuelle: pr-Einträge nur „#123“ ohne Duplikate; leere Liste ist gültig", () => {
+    expect(BL.pruefeQuelle(BL.paketeAus([paket("A", { pr: [] }), paket("B", { pr: ["#85", "#477"] })]))).toEqual([]);
+    for (const pr of UNGUELTIGE_PR_EINTRAEGE) {
+      const f = BL.pruefeQuelle(BL.paketeAus([paket("X", { pr })]));
+      expect(f.some((x) => x.startsWith("X: pr ")), JSON.stringify(pr)).toBe(true);
+    }
+  });
+
+  it("pruefeRoh: pr muss in der Quelle stehen und eine Liste sein (Pakete ohne PR: pr: [])", () => {
+    expect(BL.pruefeRoh([paket("A"), paket("B", { pr: ["#1"] })])).toEqual([]);
+    const ohne = paket("X");
+    delete ohne.pr;
+    expect(BL.pruefeRoh([ohne])).toEqual(["X: pr fehlt (Pakete ohne PR: leere Liste [])"]);
+    for (const pr of ["#85", 85, {}, null, true]) expect(BL.pruefeRoh([paket("X", { pr })]), JSON.stringify(pr)).toEqual(["X: pr ist keine Liste"]);
+    expect(BL.pruefeRoh([null, "x"]).length).toBe(2);
+  });
+
+  it("Repo-Stand: alle Pakete haben gültige prio und pr (sonst wäre die Härtung nicht verhaltensneutral)", () => {
+    const roh = BL.quelleLesen().pakete;
+    expect(BL.pruefeRoh(roh)).toEqual([]);
+    for (const p of roh) {
+      expect(BL.PRIOS, p.id).toContain(p.prio);
+      for (const x of p.pr) expect(x, p.id).toMatch(BL.PR_MUSTER);
+    }
+  });
+
+  it("abweichungen (Kopie): ungültige prio und ungültiges pr werden gemeldet, ohne Absturz", async () => {
+    for (const [name, aendern, erwartet] of [
+      ["prio-klein", (p) => { p.prio = "p1"; }, "Quelle: WP-16: prio "],
+      ["prio-leer", (p) => { p.prio = " P1"; }, "Quelle: WP-16: prio "],
+      ["prio-fehlt", (p) => { delete p.prio; }, "Quelle: WP-16: prio "],
+      ["pr-text", (p) => { p.pr = "#85"; }, "Quelle: WP-16: pr ist keine Liste"],
+      ["pr-zahl", (p) => { p.pr = 85; }, "Quelle: WP-16: pr ist keine Liste"],
+      ["pr-fehlt", (p) => { delete p.pr; }, "Quelle: WP-16: pr fehlt"],
+      ["pr-ohne-raute", (p) => { p.pr = [85]; }, "Quelle: WP-16: pr "],
+    ]) {
+      const w = await kopie(`schema-${name}`);
+      await jsonAendern(w, (j) => aendern(j.pakete.find((p) => p.id === "WP-16")));
+      const f = BL.abweichungen(w);
+      expect(f.some((x) => x.startsWith(erwartet)), `${name}: ${f.join(" | ")}`).toBe(true);
+    }
+  });
+
+  it("Kommandozeile pruefen auf einer Kopie mit ungültiger prio oder pr: Rückgabe 1 und klare Meldung", async () => {
+    for (const [name, aendern, meldung] of [
+      ["cli-prio", (p) => { p.prio = "p0"; }, /ABWEICHUNG: Quelle: WP-16: prio "p0"/],
+      ["cli-pr", (p) => { p.pr = "#85"; }, /ABWEICHUNG: Quelle: WP-16: pr ist keine Liste/],
+    ]) {
+      const w = await kopie(name);
+      await mkdir(path.join(w, "werkzeug"), { recursive: true });
+      await copyFile(path.join(REPO, "werkzeug", "acc45-backlog.mjs"), path.join(w, "werkzeug", "acc45-backlog.mjs"));
+      await jsonAendern(w, (j) => aendern(j.pakete.find((p) => p.id === "WP-16")));
+      const r = spawnSync(process.execPath, [path.join(w, "werkzeug", "acc45-backlog.mjs"), "pruefen"], { cwd: w, encoding: "utf8" });
+      expect(r.status, name + r.stdout + r.stderr).toBe(1);
+      expect(r.stdout, name).toMatch(meldung);
+      // status-schreiben repariert nichts still: Abbruch mit Rückgabe 2
+      const s = spawnSync(process.execPath, [path.join(w, "werkzeug", "acc45-backlog.mjs"), "status-schreiben"], { cwd: w, encoding: "utf8" });
+      expect(s.status, name + s.stdout + s.stderr).toBe(2);
+      expect(s.stderr, name).toMatch(/Quelle ungültig/);
+    }
+  });
+
+  it("Auflage A1 (Review #483): status-schreiben mit fehlendem pr oder pr: null → Rückgabe 2, work-packages.json unverändert (kein stilles [])", async () => {
+    for (const [name, aendern] of [
+      ["roh-pr-fehlt", (p) => { delete p.pr; }],
+      ["roh-pr-null", (p) => { p.pr = null; }],
+    ]) {
+      const w = await kopie(name);
+      await mkdir(path.join(w, "werkzeug"), { recursive: true });
+      await copyFile(path.join(REPO, "werkzeug", "acc45-backlog.mjs"), path.join(w, "werkzeug", "acc45-backlog.mjs"));
+      await jsonAendern(w, (j) => aendern(j.pakete.find((p) => p.id === "WP-16")));
+      const vorher = await readFile(path.join(w, "docs/acc45/work-packages.json"), "utf8");
+      const s = spawnSync(process.execPath, [path.join(w, "werkzeug", "acc45-backlog.mjs"), "status-schreiben"], { cwd: w, encoding: "utf8" });
+      expect(s.status, name + s.stdout + s.stderr).toBe(2);
+      expect(s.stderr, name).toMatch(/Quelle ungültig:[\s\S]*WP-16: pr (fehlt|ist keine Liste)/);
+      expect(await readFile(path.join(w, "docs/acc45/work-packages.json"), "utf8"), name).toBe(vorher);
+    }
+  });
+});
+
+/* Review #483 (Opus) Folgebefund H2: G9 (release-pruefung.mjs) erkennt Befund-Pakete an strang und ID-Präfix. Die Quelle
+   erzwingt deshalb einen bekannten strang (kein stilles „acc45“ für einen fehlenden) und ein festes ID-Format. */
+describe("Schema strang und id (Review #483 H2, fail-closed)", () => {
+  const paket = (id, o = {}) => ({ id, titel: String(id), strang: "acc45", prio: "P1", aufwandPT: { min: 1, max: 2 }, abhaengigkeiten: [], status: "BLOCKED", pr: [], ...o });
+  const GUELTIG = ["WP-01", "WP-19.0", "E-21i", "V4-2b", "A11Y-1", "REL-0c", "WP-I12a", "ABNAHME-V4", "x_1"];
+  const UNGUELTIG = ["ABN‑1", "ABN–1", "ABN−1", "ABN 1", "ABN-1\u0000", "ABN​-1", "ＡBN-1", " WP-1", "WP-1 ",
+    "WP-1\n", "", "-WP", ".x", "WP/1", "Ä-1"];
+
+  it("ID_MUSTER: ASCII-Buchstabe/Ziffer am Anfang, dann nur A–Z, a–z, 0–9, Punkt, Unterstrich, Bindestrich", () => {
+    for (const id of GUELTIG) expect(BL.ID_MUSTER.test(id), id).toBe(true);
+    for (const id of UNGUELTIG) expect(BL.ID_MUSTER.test(id), JSON.stringify(id)).toBe(false);
+  });
+
+  it("pruefeQuelle: ungültige ID (auch kein Text) → Fehler; gültige IDs ohne Fehler", () => {
+    expect(BL.pruefeQuelle(BL.paketeAus(GUELTIG.map((id) => paket(id))))).toEqual([]);
+    for (const id of [...UNGUELTIG, null, 1]) {
+      const f = BL.pruefeQuelle(BL.paketeAus([paket(id)]));
+      expect(f.some((x) => /: id .* ungültig/.test(x)), JSON.stringify(id)).toBe(true);
+    }
+  });
+
+  it("fehlender strang wird nicht still zu „acc45“: pruefeQuelle meldet ihn; Tupelformat bleibt acc45", () => {
+    const ohne = paket("X");
+    delete ohne.strang;
+    const [p] = BL.paketeAus([ohne]);
+    expect(p.strang).toBeUndefined();
+    expect(BL.pruefeQuelle([p]).some((x) => x.startsWith("X: strang"))).toBe(true);
+    for (const strang of ["", null, "Folge", "folge "]) {
+      expect(BL.pruefeQuelle(BL.paketeAus([paket("X", { strang })])).some((x) => x.startsWith("X: strang")), JSON.stringify(strang)).toBe(true);
+    }
+    expect(BL.paketeAus([["WP-77", "Alt", "P2", 2, [], "B", "READY", "Akz", "Tests", "x.mjs"]])[0].strang).toBe("acc45");
+  });
+
+  it("Repo-Stand: jedes Paket trägt einen bekannten strang und eine gültige ID (Härtung verhaltensneutral)", () => {
+    const roh = BL.quelleLesen().pakete;
+    for (const p of roh) {
+      expect(BL.STRAENGE, p.id).toContain(p.strang);
+      expect(p.id, p.id).toMatch(BL.ID_MUSTER);
+    }
+  });
+
+  it("status-schreiben mit fehlendem strang oder Unicode-Bindestrich in der ID → Rückgabe 2, Quelle unverändert", async () => {
+    for (const [name, aendern, meldung] of [
+      ["roh-strang-fehlt", (p) => { delete p.strang; }, /WP-16: strang/],
+      ["roh-id-bindestrich", (p) => { p.id = "WP‑16"; }, /id "WP‑16" ungültig/],
+    ]) {
+      const w = await kopie(name);
+      await mkdir(path.join(w, "werkzeug"), { recursive: true });
+      await copyFile(path.join(REPO, "werkzeug", "acc45-backlog.mjs"), path.join(w, "werkzeug", "acc45-backlog.mjs"));
+      await jsonAendern(w, (j) => aendern(j.pakete.find((p) => p.id === "WP-16")));
+      const vorher = await readFile(path.join(w, "docs/acc45/work-packages.json"), "utf8");
+      const s = spawnSync(process.execPath, [path.join(w, "werkzeug", "acc45-backlog.mjs"), "status-schreiben"], { cwd: w, encoding: "utf8" });
+      expect(s.status, name + s.stdout + s.stderr).toBe(2);
+      expect(s.stderr, name).toMatch(meldung);
+      expect(await readFile(path.join(w, "docs/acc45/work-packages.json"), "utf8"), name).toBe(vorher);
+    }
+  });
+});
+
 describe("Prognose: Simulation, Konfliktzonen, Kalender", () => {
   const sz = { agenten: 2, ptJeAgentTag: 1, minDauerAT: 0.5, pt: "min", aufschlag: 1, warte: "min", appJsxNachWP39Frei: false };
   const p = (id, o = {}) => ({ id, titel: id, strang: "acc45", prio: "P1", aufwandPT: { min: 2, max: 2 }, abhaengigkeiten: [], status: "READY", konfliktzonen: [], ...o });

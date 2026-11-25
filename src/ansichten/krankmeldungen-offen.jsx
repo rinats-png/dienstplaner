@@ -12,6 +12,7 @@ import { C } from "../farben.js";
 import { fKurz } from "../lib/datum.js";
 import { KRANK_STATUS, krankSchrittErlaubt, fallOffen, meldendePerson, svZustaendig } from "../../server/lib/krankmeldung.mjs";
 import { krankRolle } from "../lib/berechtigung.js";
+import { sollAnzeige, BEDARF_OFFEN_TEXT } from "../lib/fachlogik.js";
 import { KLAERUNG_ROLLEN, ERSATZ_ROLLEN, KLAERUNG_HINWEIS, VORSCHLAG_HINWEIS, ersatzVorbereiten, klaerungAktuell, klaerungGekuerzt } from "../../server/lib/klaerung.mjs";
 
 /* RB-5 (Betreiberentscheidung 2026-11-11): Der veröffentlichte Plan bleibt bis zur endgültigen Bestätigung
@@ -48,7 +49,7 @@ export function ErsatzVorbereitet({ m, fallId, name, dienstName, oeffneTag }) {
           <div key={`${v.datum}|${v.dienstId}`} style={{ fontSize: 12.5, lineHeight: 1.5, padding: "6px 0", borderTop: `1px dashed ${C.lineSoft}` }}>
             <div style={{ fontWeight: 600 }}>{fKurz(v.datum)} · {dienstName(v.dienstId)}</div>
             <div style={{ color: C.dim }}>
-              Ohne Änderung: {b.ohne}/{b.soll}{b.fehlt > 0 ? ` · ${b.fehlt} fehlt` : " · besetzt"}{b.qualFehlt.length ? " · Qualifikation fehlt" : ""}</div>
+              Ohne Änderung: {b.ohne}/{sollAnzeige(b)}{b.bedarfOffen ? ` · ${BEDARF_OFFEN_TEXT}` : b.fehlt > 0 ? ` · ${b.fehlt} fehlt` : " · besetzt"}{b.qualFehlt.length ? " · Qualifikation fehlt" : ""}</div>
             <div>{v.direkt.length ? `Infrage: ${v.direkt.slice(0, 3).map((k) => name(k.personId)).join(", ")}` : "Niemand ohne Hindernis."}
               {v.nahe.length ? ` · Knapp (Ruhezeit): ${v.nahe.slice(0, 2).map((k) => name(k.personId)).join(", ")}` : ""}</div>
             {oeffneTag && <Btn size="sm" kind="quiet" onClick={() => oeffneTag(v.datum)}

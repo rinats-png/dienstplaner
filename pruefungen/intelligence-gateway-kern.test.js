@@ -226,9 +226,19 @@ describe("Anbieterausfall: Rückfall statt Ausnahme, Kernanwendung bleibt nutzba
   });
   it("Zeitüberschreitung: kein Wiederholen, keine weitere Stufe (WP-I18 G22); Rückfall KI_ZEIT; Abbruchsignal erreicht den Adapter", async () => {
     const t = bauen({ modus: "zeitueberschreitung", zeiten: { stufeMs: 40, deadlineMs: 1500 } });
-    const t0 = Date.now();
-    const r = await t.gw.ausfuehren(S.leitung, anfrage("F2"));
-    expect(Date.now() - t0).toBeLessThan(1200);
+    /* Vorgetäuschte Uhr statt Wandzeit (QS-2, Mittelpaket; frühere Grenze „< 1200 ms“): Die Stufenfrist (40 ms Uhrzeit)
+       wird nicht verkürzt, und der Rückfall kommt lange vor der Gesamtfrist (1500 ms). */
+    vi.useFakeTimers();
+    let r;
+    try {
+      let fertig = false;
+      const lauf = t.gw.ausfuehren(S.leitung, anfrage("F2")).then((x) => { fertig = true; return x; });
+      await vi.advanceTimersByTimeAsync(39);
+      expect(fertig).toBe(false);
+      await vi.advanceTimersByTimeAsync(61);               // 100 ms Uhrzeit
+      expect(fertig).toBe(true);
+      r = await lauf;
+    } finally { vi.useRealTimers(); }
     expect(r).toMatchObject({ status: "rueckfall", rueckfall: { code: "KI_ZEIT" } });
     expect(t.anbieter.aufrufe.length).toBe(1);   // vor WP-I18: 3 (eine je Stufe)
     expect(t.anbieter.aufrufe[0].stufe).toBe(1);
@@ -238,9 +248,19 @@ describe("Anbieterausfall: Rückfall statt Ausnahme, Kernanwendung bleibt nutzba
   it("ein Adapter, der das Abbruchsignal ignoriert und nie antwortet, blockiert das Gateway trotzdem nicht", async () => {
     const haengt = { id: "haengt", modellOrt: "extern", erzeuge: () => new Promise(() => {}) };
     const t = bauen({ anbieter: haengt, zeiten: { stufeMs: 30, deadlineMs: 600 } });
-    const t0 = Date.now();
-    const r = await t.gw.ausfuehren(S.leitung, anfrage("F2"));
-    expect(Date.now() - t0).toBeLessThan(900);
+    /* Vorgetäuschte Uhr statt Wandzeit (QS-2, Mittelpaket; frühere Grenze „< 900 ms“): Die Stufenfrist (30 ms Uhrzeit) beendet
+       den Vorgang, ohne auf den hängenden Adapter zu warten; weit vor der Gesamtfrist (600 ms). */
+    vi.useFakeTimers();
+    let r;
+    try {
+      let fertig = false;
+      const lauf = t.gw.ausfuehren(S.leitung, anfrage("F2")).then((x) => { fertig = true; return x; });
+      await vi.advanceTimersByTimeAsync(29);
+      expect(fertig).toBe(false);
+      await vi.advanceTimersByTimeAsync(71);               // 100 ms Uhrzeit
+      expect(fertig).toBe(true);
+      r = await lauf;
+    } finally { vi.useRealTimers(); }
     expect(r.rueckfall.code).toBe("KI_ZEIT");
   });
   it("globale Deadline: kein Aufruf mehr nach Ablauf", async () => {

@@ -21,6 +21,8 @@
 import * as PUF from "./stempelpuffer.js";
 import { mitEinmaligerAngabe } from "./module/ausnahmeweg.js";
 import { teilwegStart } from "./app/teilkonflikt.js";
+import { schichtmodellPflegeSetzen } from "./lib/schichtmodell-schalter.js";
+import { schichtmodellWirkungSetzen, schichtfolgeServerSetzen, schichtfolgeServerAktiv } from "../server/lib/fachpruefung.mjs";
 import { teilSpeichern, teilEntscheiden, sicherungInhalt, sitzungsAbdruck, ruhig as teilRuhig } from "./app/teilweg-steuerung.js";
 
 const SCHLUESSEL = "centric:token";
@@ -126,6 +128,9 @@ function sitzungEndet(gesendet) {
   if (!gesendet) return;
   for (const fn of [...sitzungsendeHoerer]) { try { fn(); } catch { /* ein Hörer hält die anderen nicht auf */ } }
 }
+
+/** Kennzeichen beim Schreiben: Die Oberfläche rechnet mit dem Dienst des Servers (Teilrollen, IMP-6). Ohne: keiner. */
+const schichtfolgeKopf = () => (schichtfolgeServerAktiv() ? { "x-centric-schichtfolge": "server" } : {});
 
 async function ruf(pfad, opt = {}) {
   const gesendet = token;
@@ -372,6 +377,13 @@ export async function lies() {
   }
   if (status !== 200) throw new Error(daten?.fehler || "Laden fehlgeschlagen.");
   etag = daten.etag;
+  /* IMP-6/P2-24 B: Pflege der Schichtmodelle nur, wenn der Server den Schalter meldet (fehlt die Angabe: aus). */
+  schichtmodellPflegeSetzen(daten.schichtmodellPflege === true);
+  /* IMP-6 Planwirkung (Vorgabe aus): Die Planrechnung der Oberfläche folgt den Schichtmodellen nur, wenn der Server es
+     meldet — er meldet es nur Rollen, die alle Zuordnungen sehen. Fehlt die Angabe: aus (bisheriger Stand). */
+  schichtmodellWirkungSetzen(daten.schichtmodellWirkung === true);
+  /* Teilrollen (Vorbedingung 1 vor AN): der vom Server gerechnete Dienst (fehlt die Angabe: keiner, bisheriger Stand). */
+  schichtfolgeServerSetzen(daten.schichtfolgeServer);
   /* Delta-Review #381 (9): frisch gelesen mit dem geprüften Merkmal — der Merker des Sitzungsendes ist erledigt. */
   if (!ausSpeicher && vorSitzungsende && gelesenFuer && token === gelesenFuer && vorSitzungsende.fuer === gelesenFuer)
     vorSitzungsende = null;
@@ -847,6 +859,18 @@ function kalendertagAngaben(f, d) {
   if (d && typeof d.feld === "string") f.feld = d.feld.slice(0, 200);
   if (d && typeof d.text === "string") f.text = d.text.slice(0, 500);
 }
+/* IMP-6 Oberfläche: Absagen zu Schichtmodellen und Zuordnungen, erkannt nur am stabilen Code des Servers — nie am Text.
+   422 MODELL_VERKUERZT_VERSATZ trägt Code, Feld und Text; die inhaltlichen 403 aus der Rechtekette (Überschneidung,
+   rückwirkend, Modell noch verwendet, Dienstart noch im Modell …) tragen SCHICHTMODELL_<Prüfcode>
+   (Serverbibliothek der Schichtzuordnung: SCHICHTMODELL_CODE_PRAEFIX, schichtmodellAbsageCode). Eine 403 ohne diesen Code
+   (älterer Server) bleibt wie bisher „keinRecht“ mit der Begründung (fail-safe). Kein Rollenproblem, und „Noch einmal
+   senden“ hülfe nicht (derselbe Stand). */
+const SCHICHTMODELL_CODE = "MODELL_VERKUERZT_VERSATZ";
+const SCHICHTMODELL_PRAEFIX = "SCHICHTMODELL_";
+/** Ist der Code einer 403 eine inhaltliche Absage zu Schichtmodellen? @param {unknown} code */
+export const istSchichtmodellCode = (code) => typeof code === "string" && code.length <= 60
+  && code.startsWith(SCHICHTMODELL_PRAEFIX) && /^[A-Z_]+$/.test(code);
+
 /** Bereich zu einem Feld des Servers („mandanten[0].abwesenheiten[2].bis" → „Abwesenheiten"), sonst null. */
 export function kalendertagBereich(feld) {
   const m = typeof feld === "string" ? /^mandanten\[\d+\]\.([a-z]+)/.exec(feld) : null;
@@ -859,17 +883,27 @@ function fehlerart(e, status) {
   /* Ein Stempel ist ein Beleg (WP-06): Die Kopie widerspricht dem gespeicherten Stand — kein Rollenproblem,
      sondern ein veralteter Bestand. Der Rat ist „neu laden", nicht „Rolle prüfen". */
   if (status === 403 && e && e.code === "STEMPEL_UNVERAENDERLICH") return "stempelStand";
+  if (status === 403 && e && istSchichtmodellCode(e.code)) return "schichtmodell";
   if (status === 403) return "keinRecht";
   if (status === 413) return "zuGross";
   /* P2-12 (Folgepunkt (1) Review #344): Ein Eintrag mit einem Kalendertag, den es nicht gibt (2026-02-30) — keine
      unbekannte Störung, und „Noch einmal senden" hülfe nicht (derselbe Stand, dasselbe 422). */
   if (status === 422 && e && e.code === KALENDERTAG_CODE) return "kalendertag";
+  if (status === 422 && e && e.code === SCHICHTMODELL_CODE) return "schichtmodell";
   if (status && status >= 500) return "server";
   if (e && (e.name === "AbortError" || e.name === "TimeoutError")) return "netz";   // Zeitgrenze (B-2)
   if (e && e.teilNetz) return "netz";   // WP-48.5: Teilweg ohne Antwort (Ausgang unklar)
   if (e && (e.name === "TypeError" || /fetch|network|Failed to fetch/i.test(String(e.message))))
     return "netz";
   return "unbekannt";
+}
+
+/** E1 (Review #397), B-P3-Paket: Begründung einer 403 (`text` der Absage, etwa „Einteilung am … nicht möglich:
+    Ruhezeit …"). Nur was der Server dieser Sitzung ohnehin sendet (er hält Fremdes dort schon neutral), nur als
+    Zeichenkette, gekürzt; angezeigt als Text. Gilt für Voll-PUT, Teilweg und Ausnahmeweg. Sonst null. */
+function grund403(status, daten) {
+  if (status !== 403 || !daten || typeof daten.text !== "string" || !daten.text.trim()) return null;
+  return daten.text.trim().slice(0, 500);
 }
 
 /* Der laufende Schreibvorgang, damit man auf ihn warten kann (schreibenAbschliessen). */
@@ -961,7 +995,7 @@ async function teilwegSchreiben(auftrag, beimSchliessen, vollGewuenscht, abbruch
         if (andereAnmeldung()) return { status: 401, daten: {} };
         try {
           const a = await ruf("bestand/teile", { method: "POST", ...(beimSchliessen ? { keepalive: true } : {}),
-            ...(abbruch ? { signal: abbruch.signal } : {}), body: JSON.stringify(rumpf) });
+            ...(abbruch ? { signal: abbruch.signal } : {}), headers: schichtfolgeKopf(), body: JSON.stringify(rumpf) });
           /* Für die jetzige Anmeldung ist der Ausgang unklar (gesendet wurde unter der vorherigen). */
           if (andereAnmeldung()) return { status: null, netz: true };
           return { status: a.status, daten: a.daten || {} };
@@ -1053,7 +1087,10 @@ async function teilwegSchreiben(auftrag, beimSchliessen, vollGewuenscht, abbruch
   const f = new Error(String((d.code === "PERSONALNUMMER_DOPPELT" ? d.text : null) || d.fehler || r.meldung
     || "Speichern fehlgeschlagen."));
   if (typeof d.code === "string") /** @type {any} */ (f).code = d.code;
-  if (a.status === 422 && d.code === KALENDERTAG_CODE) kalendertagAngaben(f, d);
+  if (a.status === 422 && (d.code === KALENDERTAG_CODE || d.code === SCHICHTMODELL_CODE)) kalendertagAngaben(f, d);
+  /* E1/B-P3: Begründung einer 403 auch auf dem Teilweg (wie beim Voll-PUT). */
+  const g = grund403(a.status, d);
+  if (g) /** @type {any} */ (f).grund = g;
   return { weiter: false, status: a.status, fehler: f };
 }
 
@@ -1182,10 +1219,11 @@ async function schreibenAusfuehren(beimSchliessen) {
       return;
     }
     /* Abgewiesen (403/409): Angabe verwerfen, lokale Änderung zurücknehmen — Neuladen (F2). */
-    const ausnahmeAbgewiesen = (text) => {
+    const ausnahmeAbgewiesen = (text, grund = null) => {
       if (einmalig === auftrag.ausnahme) einmalig = null;
       auftrag.ausnahme = null;
-      gescheitert = { auftrag, lage: { art: "ausnahmeZurueck", text, status, zeit: new Date().toISOString() } };
+      gescheitert = { auftrag, lage: { art: "ausnahmeZurueck", text, status, zeit: new Date().toISOString(),
+        ...(grund ? { grund } : {}) } };
       if (auftrag.onFehler) auftrag.onFehler(gescheitert.lage);
     };
     /* Review #381 (1): unmittelbar vor dem PUT (synchron bis zum fetch in ruf) — inzwischen anders angemeldet und
@@ -1196,7 +1234,7 @@ async function schreibenAusfuehren(beimSchliessen) {
     auftrag.putGesendet = true;
     const antwort = await ruf("bestand", { method: "PUT",
       ...(beimSchliessen ? { keepalive: true } : {}),
-      ...(abbruch ? { signal: abbruch.signal } : {}),
+      ...(abbruch ? { signal: abbruch.signal } : {}), headers: schichtfolgeKopf(),
       body: JSON.stringify({ bestand: hinaus, etag, durch: auftrag.durch }) });
     status = antwort.status;
     /* Delta-Review #381 (7): Die Antwort gehört zur Anmeldung, mit der der PUT hinausging. Gilt inzwischen eine andere,
@@ -1244,15 +1282,16 @@ async function schreibenAusfuehren(beimSchliessen) {
       else if (konfliktSperre && auftrag.onFehler) auftrag.onFehler(gescheitert.lage);
       return;
     }
-    if (status === 403 && auftrag.ausnahme) { ausnahmeAbgewiesen(String(daten?.fehler || "Abgewiesen.")); return; }
+    /* E1/B-P3: auch auf dem Ausnahmeweg die Begründung einer 403 mitgeben. */
+    if (status === 403 && auftrag.ausnahme) { ausnahmeAbgewiesen(String(daten?.fehler || "Abgewiesen."), grund403(status, daten)); return; }
     if (status !== 200) {
       const f = new Error(daten?.fehler || "Speichern fehlgeschlagen.");
       if (daten && typeof daten.code === "string") f.code = daten.code;
-      if (status === 422 && f.code === KALENDERTAG_CODE) kalendertagAngaben(f, daten);
+      if (status === 422 && (f.code === KALENDERTAG_CODE || f.code === SCHICHTMODELL_CODE)) kalendertagAngaben(f, daten);
       /* E1 (Review #397): Die Begründung einer 403 (`text`, etwa „Einteilung am … nicht möglich: Ruhezeit …") geht mit
-         in die Lage. Nur was der Server dieser Sitzung ohnehin sendet (er hält Fremdes dort schon neutral), nur als
-         Zeichenkette, gekürzt; angezeigt als Text. */
-      if (status === 403 && daten && typeof daten.text === "string" && daten.text.trim()) f.grund = daten.text.trim().slice(0, 500);
+         in die Lage (grund403). */
+      const g = grund403(status, daten);
+      if (g) f.grund = g;
       throw f;
     }
     etag = daten.etag;
@@ -1273,6 +1312,10 @@ async function schreibenAusfuehren(beimSchliessen) {
       /* Folgepunkt (1): Text des Servers (welcher Tag), Feld und Bereich — sonst wie bisher. */
       ? { art, text: String(e.text || e.message), status, zeit: new Date().toISOString(),
         feld: typeof e.feld === "string" ? e.feld : null, bereich: kalendertagBereich(e.feld) }
+      /* IMP-6 Oberfläche: Text des Servers (422 mit Feld, 403 als Begründung), Bereich „Schichtmodelle“. */
+      : art === "schichtmodell"
+        ? { art, text: String(e.text || e.grund || e.message), status, zeit: new Date().toISOString(),
+          feld: typeof e.feld === "string" ? e.feld : null, bereich: "Schichtmodelle" }
       : { art, text: String(e && e.message || e), status, zeit: new Date().toISOString(),
         ...(e && typeof e.grund === "string" ? { grund: e.grund } : {}) } };
     if (auftrag.onFehler) auftrag.onFehler({ ...gescheitert.lage, fehler: e });

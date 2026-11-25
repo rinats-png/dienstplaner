@@ -13,20 +13,54 @@
    Aufruf:  node werkzeug/ssot-abgleich.mjs [--json] [--pruefe] [--datei F] [--prs F]
      --prs F   PR-Liste aus Datei (JSON-Array) statt gh (für Prüfungen ohne Netz)
      --pruefe  Exit 1, wenn KORREKTUR oder BELEG_FEHLT vorliegen
+   Exit 2: abgebrochen (PR-Liste nicht ermittelbar, Option ohne Wert, ungültiger Eintrag im SSOT-Feld pr).
    ========================================================================== */
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { paketeFuerPr, brauchtPrBeleg, ERLEDIGT } from "./ssot-zuordnung.mjs";
+// Review #490 N1: eine Quelle für das PR-Format (kein Zyklus: acc45-backlog.mjs importiert nur node:*).
+import { PR_MUSTER } from "./acc45-backlog.mjs";
 
 const WURZEL = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const BASIS = "integration/release-v4";
 const SSOT_PFAD = "docs/acc45/work-packages.json";
 
-function argWert(name) {
-  const i = process.argv.indexOf(name);
-  return i >= 0 ? process.argv[i + 1] : undefined;
+/**
+ * Wert einer Option mit Wert (--datei, --prs). Review #490 N2: fehlt der Wert (Ende der Zeile, leer oder selbst eine
+ * Option), ist das ein Fehler. Es gibt keinen stillen Rückfall auf gh (Netz) oder auf den Standardpfad.
+ * Fehlt die Option ganz: undefined.
+ */
+export function argWert(name, argv = process.argv) {
+  const i = argv.indexOf(name);
+  if (i < 0) return undefined;
+  const wert = argv[i + 1];
+  if (typeof wert !== "string" || wert === "" || wert.startsWith("--")) throw new Error(`Option ${name} verlangt einen Wert`);
+  return wert;
+}
+
+/**
+ * Prüft alle Optionen der Befehlszeile gegen eine Liste (QS-2 Restpaket, Review #500). Eine unbekannte Option (z. B. `--prs=F` statt
+ * `--prs F`, `--pr F`) ist ein Fehler. Vorher wurde sie still ignoriert, und das Werkzeug fiel auf gh (Netz) bzw. den Standardpfad zurück.
+ * `flags` sind Schalter ohne Wert, `werte` Optionen mit Wert (der Wert selbst wird übersprungen; ihn prüft argWert).
+ * Review #501 H2: Eine doppelte Option (`--datei F --datei G`, auch ein doppelter Schalter) ist ein Fehler. Vorher nahm argWert still
+ * den ersten Wert. So gilt für argWert immer: höchstens ein Vorkommen.
+ * Rückgabe: die Argumente ohne Option (Positionsargumente).
+ */
+export function optionenPruefen(argv = process.argv, { flags = [], werte = [] } = {}) {
+  const rest = argv.slice(2);
+  const positionen = [];
+  const gesehen = new Set();
+  const einmal = (a) => { if (gesehen.has(a)) throw new Error(`Option ${a} doppelt angegeben (höchstens einmal erlaubt)`); gesehen.add(a); };
+  for (let i = 0; i < rest.length; i++) {
+    const a = rest[i];
+    if (werte.includes(a)) { einmal(a); i++; continue; }
+    if (flags.includes(a)) { einmal(a); continue; }
+    if (a.startsWith("-") && a !== "-") throw new Error(`Unbekannte Option ${a}`);
+    positionen.push(a);
+  }
+  return positionen;
 }
 
 /** SSOT aus Datei oder aus dem Integrationsbranch (nie aus dem Arbeitsbaum). */
@@ -86,12 +120,24 @@ export function gemergteUndPrs(datei) {
   return gemergteViaGh();
 }
 
+/**
+ * PR-Nummern aus dem SSOT-Feld pr. Review #490 N1: jeder Eintrag genau nach PR_MUSTER („#123“), wie das Schema
+ * (acc45-backlog pruefen) es verlangt; sonst Fehler (fail-closed). Gültige Daten: dieselben Nummern wie vorher.
+ */
+function ssotPrNummern(p) {
+  const felder = p.pr || [];
+  if (!Array.isArray(felder)) throw new Error(`Paket ${p.id}: Feld pr ist kein Array`);
+  const falsch = felder.filter((x) => typeof x !== "string" || !PR_MUSTER.test(x));
+  if (falsch.length) throw new Error(`Paket ${p.id}: ungültiger PR-Verweis im Feld pr ${JSON.stringify(falsch)} (Format "#123")`);
+  return new Set(felder.map((x) => x.slice(1)));
+}
+
 /** Klassifiziert alle Pakete. */
 export function abgleich(ssot, prs) {
   const zeilen = [];
   for (const p of ssot.pakete) {
     /* PR-Nummern aus der SSOT zählen, wenn der PR gemergt in die Integration ist. */
-    const ssotNummern = new Set((p.pr || []).map((x) => String(x).match(/\d+/)?.[0]).filter(Boolean));
+    const ssotNummern = ssotPrNummern(p);
     const treffer = prs.filter((pr) => ssotNummern.has(String(pr.number)) || paketeFuerPr([p.id], pr).length > 0);
     const erledigt = ERLEDIGT.includes(p.status);
     const prNummern = treffer.map((pr) => `#${pr.number}`);
@@ -118,7 +164,12 @@ function ausgabe(zeilen, alsJson) {
 const istHaupt = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (istHaupt) {
   let zeilen;
-  try { zeilen = abgleich(ssotLesen(argWert("--datei")), gemergteUndPrs(argWert("--prs"))); }
+  try {
+    optionenPruefen(process.argv, { flags: ["--json", "--pruefe"], werte: ["--datei", "--prs"] });   // unbekannte Option: Abbruch vor allem anderen
+    const datei = argWert("--datei");
+    const prsDatei = argWert("--prs");   // beide Optionen zuerst prüfen: kein Lesen, kein gh-Aufruf bei Fehlbedienung
+    zeilen = abgleich(ssotLesen(datei), gemergteUndPrs(prsDatei));
+  }
   catch (e) { console.error("SSOT-Abgleich ABGEBROCHEN: " + e.message); process.exit(2); }
   ausgabe(zeilen, process.argv.includes("--json"));
   const kritisch = zeilen.some((z) => z.klasse === "KORREKTUR" || z.klasse === "BELEG_FEHLT");

@@ -75,7 +75,7 @@ export function BetreiberDetail({ db, akt, mandantId, zurueck }) {
           <CardHead>Aktuelle Abrechnung</CardHead>
           <div style={{ padding: 22 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 9 }}>
-              <span style={{ width: 24, height: 24, borderRadius: 8, background: C.accentLight,
+              <span style={{ width: 24, height: 24, borderRadius: "var(--v4-r-klein)", background: C.accentLight,
                 color: C.accent, display: "flex", alignItems: "center", justifyContent: "center",
                 fontSize: 11, fontWeight: 700 }}><Icon n="kreis-haken" size={14} /></span>
               <span style={{ fontSize: 13.5, color: C.dim, flex: 1 }}>Grundgebühr {p.stufe.name}</span>
@@ -83,7 +83,7 @@ export function BetreiberDetail({ db, akt, mandantId, zurueck }) {
             </div>
             {p.zusatzPlaner > 0 && (
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 9 }}>
-                <span style={{ width: 24, height: 24, borderRadius: 8, background: C.bg,
+                <span style={{ width: 24, height: 24, borderRadius: "var(--v4-r-klein)", background: C.bg,
                   color: C.dim, display: "flex", alignItems: "center", justifyContent: "center",
                   fontSize: 11, fontWeight: 700 }}>+</span>
                 <span style={{ fontSize: 13.5, color: C.dim, flex: 1 }}>
@@ -92,7 +92,7 @@ export function BetreiberDetail({ db, akt, mandantId, zurueck }) {
               </div>)}
             {p.standortzuschlaege.posten.map((posten, i) => (
               <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 9 }}>
-                <span style={{ width: 24, height: 24, borderRadius: 8, background: C.bg,
+                <span style={{ width: 24, height: 24, borderRadius: "var(--v4-r-klein)", background: C.bg,
                   color: C.dim, display: "flex", alignItems: "center", justifyContent: "center",
                   fontSize: 11, fontWeight: 700 }}>+</span>
                 <span style={{ fontSize: 13.5, color: C.dim, flex: 1 }}>
@@ -102,7 +102,7 @@ export function BetreiberDetail({ db, akt, mandantId, zurueck }) {
               </div>))}
             {p.pakete.map((pk) => (
               <div key={pk.id} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 9 }}>
-                <span style={{ width: 24, height: 24, borderRadius: 8, background: C.bg,
+                <span style={{ width: 24, height: 24, borderRadius: "var(--v4-r-klein)", background: C.bg,
                   color: C.dim, display: "flex", alignItems: "center", justifyContent: "center",
                   fontSize: 11, fontWeight: 700 }}>+</span>
                 <span style={{ fontSize: 13.5, color: C.dim, flex: 1 }}>Paket {pk.name}

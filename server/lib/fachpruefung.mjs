@@ -29,6 +29,7 @@ import { schutzEinsatz, nachtFenster, nachtschwelle, nachtAnteil } from "./schut
 import { pad, pISO, addDays, dow, dauer, between, montag, fenster, verbindlichkeit, fehlendeKompetenzen,
   HOECHST_TAG } from "./regelwerk.mjs";
 import { BEFUND_KATALOG } from "./bestaetigungen.mjs";
+import { anzuwendendesModell, modellLage, modellVerzeichnisGemerkt, BETRIEB_MODELL, ZUORDNUNG_FELD, WIRKUNG_FELDER } from "./schichtmodell-kern.mjs";
 import { branchenBefunde } from "./branchenbefunde.mjs";
 
 const liste = (w) => (Array.isArray(w) ? w : []).filter((x) => x && typeof x === "object");
@@ -163,6 +164,268 @@ export function teilzeitDienst(m, p, datum, plan) {
   const versatz = (idStreu(p.id) % 997) / 997;
   return Math.floor((nr + 1 + versatz) * quote) > Math.floor((nr + versatz) * quote) ? plan : null;
 }
+/* ------------------------------------------------------------------------
+   PLANWIRKUNG DER SCHICHTMODELLE JE PERSON (IMP-6, ENTSCHEIDUNGSLISTE P2-4 Punkt 6) — Vorgabe AUS
+
+   Ist die Planwirkung aus (Vorgabe, auch ohne gesetzte Quelle), rechnet planDienst
+   wörtlich den bisherigen Ausdruck (Schichtfolge der Einheit mit Teilzeit) — die
+   Planrechnung bleibt byte-gleich (pruefungen/imp6-planwirkung.test.js, D3).
+   Ist sie an, gilt für jede Person und jeden Tag das zugeordnete Modell
+   (schichtmodell-kern.mjs, anzuwendendesModell):
+     Betriebsmodell (auch implizit: keine Zuordnung) → Schichtfolge der Einheit wie bisher
+     eigenes Modell → Zyklustag ab „Gültig ab“ mit Versatz (Kalendertage), Teilzeit über
+                      die Zyklustage des Modells (teilzeitModell)
+     „keine“ (Lücke, Q5) → kein Dienst aus einem Modell, nie still das Betriebsmodell
+     mehrdeutig → „uneindeutig“: kein Dienst, nie still ein Modell gewählt (Klärung)
+     ungültig → kein Dienst (Klärung)
+   Springer und Personen außerhalb des Schichtdiensts bekommen wie bisher keine Folge.
+   Abgeschlossene Monate rechnen weiter aus dem Eingefrorenen (istTag, Soll, Ist,
+   Zuschläge, Lohnexport) — die Wirkung ändert sie nicht.
+
+   Quelle des Schalters: CENTRIC_SCHICHTMODELL_WIRKUNG (server/lib/schalter.mjs,
+   schichtmodellWirkungAn). Diese Datei liest keine Umgebung (sie erreicht auch die
+   Oberfläche); wer die Wirkung einschaltet, setzt die Quelle mit
+   schichtmodellWirkungSetzen. Stand PR 2 (Verdrahtung): genau zwei Wege setzen sie —
+   der Server (server/lib/schichtmodell-wirkung.mjs, aus der Umgebung) und die
+   Oberfläche (src/speicher.js, allein aus `schichtmodellWirkung: true` der Antwort
+   von GET /api/bestand; nur Rollen mit vollständiger Sicht bekommen die Angabe).
+   ------------------------------------------------------------------------ */
+let wirkungQuelle = () => false;
+/** Quelle der Planwirkung setzen: eine Funktion (bei jedem Aufruf gelesen) oder ein Wert (nur genau true schaltet ein). */
+export function schichtmodellWirkungSetzen(quelle) {
+  wirkungQuelle = typeof quelle === "function" ? quelle : quelle === true ? () => true : () => false;
+}
+/** Ist die Planwirkung an? Nur genau true; eine werfende Quelle gilt als aus (fail-closed). */
+export function schichtmodellWirkungAktiv() {
+  try { return wirkungQuelle() === true; } catch { return false; }
+}
+
+/**
+ * Die Lage der Schichtfolge einer Person an einem Tag nach den zugeordneten Modellen (roh, vor Teilzeit und Abweichung),
+ * unabhängig vom Schalter (für Anzeige, Klärungsliste und Vorprüfung):
+ * - { art: "dienst", quelle: "betrieb" | "zuordnung", modellId, zuordnungId, dienstId (null = frei), nummer?, index?, laenge? }
+ * - { art: "ohne" }                     Springer oder nicht im Schichtdienst: keine Folge (wie bisher)
+ * - { art: "keine" }                    kein Modell an diesem Tag (Q5), nie still das Betriebsmodell
+ * - { art: "uneindeutig", zuordnungIds } mehrere Zuordnungen gelten (Klärung, kein Vorrang)
+ * - { art: "ungueltig", grund }          gespeicherte Zuordnung fehlerhaft (Klärung)
+ * @returns {{ art: string } & Record<string, any>}
+ */
+export function schichtmodellLageAm(m, p, d) {
+  if (p.springer || p.imSchichtdienst === false) return { art: "ohne" };
+  const r = anzuwendendesModell(m, p, d);
+  if (r.art === "mehrdeutig") return { art: "uneindeutig", zuordnungIds: r.zuordnungIds };
+  if (r.art !== "modell") return r;
+  if (r.quelle === "betrieb") {
+    const eid = einheitAm(p, d);
+    return { art: "dienst", quelle: "betrieb", modellId: BETRIEB_MODELL, zuordnungId: r.zuordnungId, dienstId: eid ? einheitDienst(m, eid, d) : null };
+  }
+  const l = modellLage(m, /** @type {any} */ (r), d);
+  const id = l.tage[l.index];
+  return { art: "dienst", quelle: "zuordnung", modellId: r.modellId, zuordnungId: r.zuordnungId, dienstId: id && id !== "-" ? id : null,
+    nummer: l.nummer, index: l.index, laenge: l.tage.length };
+}
+
+/** Teilzeit im eigenen Modell: dieselbe Regel wie teilzeitDienst, gezählt über die Zyklustage des Modells ab „Gültig ab“. */
+function teilzeitModell(m, p, datum, plan, l) {
+  const tz = p.teilzeit;
+  if (!tz || !tz.aktiv || !plan) return plan;
+  if (tz.modus === "wochentage") return (tz.wochentage || []).includes(dow(datum)) ? plan : null;
+  const soll = (m.einstellungen && m.einstellungen.sollWochenstunden) || 40;
+  const quote = Math.max(0.05, Math.min(1, (p.wochenstunden || soll) / soll));
+  if (quote >= 0.999) return plan;
+  const len = l.tage.length;
+  let gesamt = 0;
+  for (const t of l.tage) if (t && t !== "-") gesamt++;
+  if (!gesamt) return plan;
+  let vor = 0;
+  for (let i = 0; i < l.index; i++) { const t = l.tage[i]; if (t && t !== "-") vor++; }
+  const nr = Math.floor(l.nummer / len) * gesamt + vor;
+  const versatz = (idStreu(p.id) % 997) / 997;
+  return Math.floor((nr + 1 + versatz) * quote) > Math.floor((nr + versatz) * quote) ? plan : null;
+}
+
+/**
+ * Der Plandienst der Schichtfolge einer Person an einem Tag (mit Teilzeit, ohne Abweichung, Posten und Abwesenheit) —
+ * die eine Stelle, an der die Planrechnung (personTag, dienstAm, planTag, Postenbesetzung, Schutzrechnung) die
+ * Schichtfolge liest. Planwirkung aus: wörtlich der bisherige Ausdruck.
+ * @param {any} m Betrieb
+ * @param {any} p Person
+ * @param {string} d JJJJ-MM-TT
+ * @param {any} [eid] Einheit der Person an diesem Tag (Vorgabe einheitAm)
+ */
+export function planDienst(m, p, d, eid = einheitAm(p, d)) {
+  if (!schichtmodellWirkungAktiv()) {
+    /* Teilrollen (Vorbedingung 1 vor AN): Dienst des Servers, nur wenn speicher.js ihn aus der Antwort gesetzt hat. */
+    const s = serverFolgeAm(p, d);
+    if (s) return s.plan;
+    return eid && !p.springer && p.imSchichtdienst !== false ? teilzeitDienst(m, p, d, einheitDienst(m, eid, d)) : null;
+  }
+  const l = schichtmodellLageAm(m, p, d);
+  if (l.art !== "dienst" || !l.dienstId) return null;
+  if (l.quelle === "betrieb") return teilzeitDienst(m, p, d, l.dienstId);
+  return teilzeitModell(m, p, d, l.dienstId, { nummer: l.nummer, index: l.index, tage: modellVerzeichnisGemerkt(m).get(l.modellId).tage });
+}
+
+/**
+ * Die rohe Schichtfolge einer Person an einem Tag (vor Teilzeit, Abweichung, Abwesenheit) für Aktionen und Auswertungen
+ * der Oberfläche, die bisher die Folge der Einheit selbst rechneten (setzeAbweichung, mehrfachDienst, urlaubskonto,
+ * planVergleich, Ersatzvorschlag). `alt` ist genau der bisherige Ausdruck des Aufrufers.
+ * - Planwirkung AUS: alt() — wörtlich wie bisher.
+ * - AN, Betriebsmodell (auch implizit), Springer, nicht im Schichtdienst: alt() — AN = AUS ohne eigenes Modell.
+ * - AN, eigenes Modell: der Zyklustag des Modells (null = frei).
+ * - AN, „keine“ (Lücke, Q5), uneindeutig, ungültig: null — nie still das Betriebsmodell.
+ * @param {any} m Betrieb
+ * @param {any} p Person
+ * @param {string} d JJJJ-MM-TT
+ * @param {() => any} alt bisheriger Ausdruck
+ */
+export function schichtfolgeAm(m, p, d, alt) {
+  if (!schichtmodellWirkungAktiv()) {
+    const s = serverFolgeAm(p, d);                                            // Teilrollen: Dienst des Servers (sonst nie gesetzt)
+    return s ? s.roh : alt();
+  }
+  const l = schichtmodellLageAm(m, p, d);
+  if (l.art === "ohne" || (l.art === "dienst" && l.quelle === "betrieb")) return alt();
+  return l.art === "dienst" ? l.dienstId : null;
+}
+
+/* ------------------------------------------------------------------------
+   TEILROLLEN: DER VOM SERVER GERECHNETE DIENST (IMP-6, Vorbedingung 1 vor AN)
+
+   Beschäftigte, Schichtverantwortung und Betriebsrat sehen höchstens die eigene
+   Zuordnung (Q4) und rechnen deshalb nie selbst nach den Modellen. Bei AN liefert
+   GET /api/bestand ihnen `schichtfolgeServer` (server/lib/schichtfolge-teilrollen.mjs):
+     { von, bis, personen: { [personId]: Wert je Tag von … bis } }
+   Wert: null = Betriebsmodell an diesem Tag (bisheriger Ausdruck), "F"/"-" = Dienst
+   (roh = Plan), ["F", "-"] = [roh, Plan mit Teilzeit]. Nur Personen mit eigener
+   Zuordnung stehen darin; außerhalb des Fensters ist ihr Dienst „offen“: kein Dienst,
+   nie still das Betriebsmodell (Q5).
+   Gesetzt wird die Angabe allein von src/speicher.js aus der Antwort des Servers
+   (Wächter imp6-teilrollen S1). Ohne Angabe — immer bei AUS — rechnen planDienst
+   und schichtfolgeAm wörtlich wie bisher. Bei eingeschalteter eigener Rechnung
+   (volle Rollen) wirkt sie nicht.
+   ------------------------------------------------------------------------ */
+const FOLGE_TAG = /^\d{4}-\d{2}-\d{2}$/;
+const folgeWert = (v) => v === null || typeof v === "string"
+  || (Array.isArray(v) && v.length === 2 && typeof v[0] === "string" && typeof v[1] === "string");
+/** @type {null | { von: string, bis: string, personen: Map<string, any[]> }} */
+let serverFolge = null;
+/** Angabe des Servers prüfen und übernehmen; jede ungültige Form gilt als keine Angabe (fail-closed). */
+export function schichtfolgeServerSetzen(x) {
+  serverFolge = null;
+  if (!x || typeof x !== "object" || Array.isArray(x)) return;
+  const { von, bis, personen } = x;
+  if (typeof von !== "string" || typeof bis !== "string" || !FOLGE_TAG.test(von) || !FOLGE_TAG.test(bis) || von > bis) return;
+  if (!personen || typeof personen !== "object" || Array.isArray(personen)) return;
+  const n = between(von, bis) + 1;
+  const karte = new Map();
+  for (const [pid, reihe] of Object.entries(personen)) {
+    if (!Array.isArray(reihe) || reihe.length !== n || !reihe.every(folgeWert)) return;
+    karte.set(pid, reihe);
+  }
+  serverFolge = { von, bis, personen: karte };
+}
+/** Hat die Oberfläche den Dienst des Servers (und schickt deshalb beim Schreiben das Kennzeichen „server“)? */
+export function schichtfolgeServerAktiv() {
+  return serverFolge !== null && !schichtmodellWirkungAktiv();
+}
+const OFFEN = Object.freeze({ roh: null, plan: null, offen: true });
+const ohneStrich = (v) => (v === "-" ? null : v);
+/** Dienst des Servers für Person und Tag: undefined = keine Angabe (bisheriger Ausdruck). */
+function serverFolgeAm(p, d) {
+  if (serverFolge === null || !p) return undefined;
+  const reihe = serverFolge.personen.get(String(p.id));
+  if (!reihe) return undefined;
+  if (typeof d !== "string" || d < serverFolge.von || d > serverFolge.bis) return OFFEN;
+  const v = reihe[between(serverFolge.von, d)];
+  if (v === null || v === undefined) return undefined;
+  return typeof v === "string" ? { roh: ohneStrich(v), plan: ohneStrich(v), offen: false } : { roh: ohneStrich(v[0]), plan: ohneStrich(v[1]), offen: false };
+}
+/** Ist der Dienst dieser Person an diesem Tag für die Oberfläche unbekannt (außerhalb des Fensters, eigenes Modell)?
+ *  Dann löscht eine Aktion keine Abweichung als „Plan“, sondern speichert ausdrücklich; der Server entscheidet. */
+export function schichtfolgeOffen(p, d) {
+  if (schichtmodellWirkungAktiv()) return false;
+  const s = serverFolgeAm(p, d);
+  return !!(s && s.offen);
+}
+/** Folgt die Person nach ihren Zuordnungen immer dem Betriebsmodell (kein Feld, leer oder genau eine unbefristete
+ *  Zuordnung „betrieb“)? Dann rechnet jede Oberfläche ihren Dienst selbst richtig. */
+export function folgtNurBetriebsmodell(p) {
+  const z = p ? p[ZUORDNUNG_FELD] : undefined;
+  if (!Array.isArray(z) || !z.length) return true;
+  return z.length === 1 && !!z[0] && typeof z[0] === "object" && z[0].modellId === BETRIEB_MODELL
+    && (z[0].gueltigAb === null || z[0].gueltigAb === undefined) && (z[0].gueltigBis === null || z[0].gueltigBis === undefined);
+}
+
+/**
+ * Welche Felder ändern bei Planwirkung die Planrechnung mittelbar (Auslöser der Schutzrechnung, schutzdurchsetzung.mjs)?
+ * AUS: keine — die Modelle wirken nicht, die Nachrechnung bleibt wie bisher. AN: die Modelldefinitionen am Betrieb und
+ * die Zuordnungen an der Person. Eine Stelle, damit der Auslöser die Felder nicht selbst nennt.
+ * @returns {{ betrieb: string[], person: string[] }}
+ */
+export function schichtmodellPlanfelder() {
+  return schichtmodellWirkungAktiv() ? { betrieb: [...WIRKUNG_FELDER.betrieb], person: [...WIRKUNG_FELDER.person] } : { betrieb: [], person: [] };
+}
+
+/**
+ * Anzeigen je Einheit (Aushang, Monatsplan, Lagebild) zeigen die Folge der Einheit — das Betriebsmodell. Wie viele
+ * Personen dieser Einheit folgen an mindestens einem der Tage nicht dem Betriebsmodell (eigenes Modell, Lücke nach Q5,
+ * Klärung)? Planwirkung AUS: 0 ohne jede Rechnung (Anzeige wörtlich wie bisher). Nur eine Zahl, keine Namen.
+ * @param {any} m Betrieb
+ * @param {any} eid Einheit
+ * @param {string[]} tage JJJJ-MM-TT
+ */
+export function abweichendVomBetriebsmodell(m, eid, tage) {
+  if (!m || !Array.isArray(tage)) return 0;
+  if (!schichtmodellWirkungAktiv()) {
+    if (serverFolge === null) return 0;                                       // AUS: ohne jede Rechnung
+    /* Teilrollen: nach dem Dienst des Servers (eine Angabe oder „offen“ = nicht das Betriebsmodell). */
+    let t = 0;
+    for (const p of liste(m.personen)) {
+      if (!serverFolge.personen.has(String(p.id))) continue;
+      if (tage.some((d) => imDienst(p, d) && einheitAm(p, d) === eid && serverFolgeAm(p, d))) t++;
+    }
+    return t;
+  }
+  let n = 0;
+  for (const p of liste(m.personen)) {
+    if (!Array.isArray(p[ZUORDNUNG_FELD]) || !p[ZUORDNUNG_FELD].length) continue;            // implizit: Betriebsmodell
+    for (const d of tage) {
+      if (!imDienst(p, d) || einheitAm(p, d) !== eid) continue;
+      const l = schichtmodellLageAm(m, p, d);
+      if (l.art === "ohne" || (l.art === "dienst" && l.quelle === "betrieb")) continue;
+      n++;
+      break;
+    }
+  }
+  return n;
+}
+
+/** Höchstzahl der Tage je Person in schichtmodellKlaerungen (technische Grenze, etwa zehn Jahre). */
+const KLAERUNG_TAGE_MAX = 3700;
+/**
+ * Klärungsfälle der Modellzuordnung in einem Zeitraum (unabhängig vom Schalter): Tage, an denen für eine Person im
+ * Schichtdienst kein Modell eindeutig gilt („uneindeutig“) oder die gespeicherte Zuordnung fehlerhaft ist („ungueltig“).
+ * „keine“ (Q5) ist kein Klärungsfall. Nur Kennungen; höchstens `grenze` Einträge (danach `begrenzt`).
+ * @returns {{ faelle: { personId: string, datum: string, art: string, zuordnungIds?: any[], grund?: string }[], begrenzt: boolean }}
+ */
+export function schichtmodellKlaerungen(m, von, bis, grenze = 500) {
+  const faelle = [];
+  for (const p of liste(m && m.personen)) {
+    if (!Array.isArray(p[ZUORDNUNG_FELD]) || !p[ZUORDNUNG_FELD].length) continue;      // implizit: nie Klärung
+    let n = 0;
+    for (let d = von; d <= bis; d = addDays(d, 1)) {
+      if (++n > KLAERUNG_TAGE_MAX) return { faelle, begrenzt: true };       // Zeitraum ohne Grenze: nie endlos rechnen
+      if (!imDienst(p, d)) continue;
+      const l = schichtmodellLageAm(m, p, d);
+      if (l.art !== "uneindeutig" && l.art !== "ungueltig") continue;
+      if (faelle.length >= grenze) return { faelle, begrenzt: true };
+      faelle.push({ personId: String(p.id), datum: d, art: l.art, ...(l.zuordnungIds ? { zuordnungIds: l.zuordnungIds } : { grund: l.grund }) });
+    }
+  }
+  return { faelle, begrenzt: false };
+}
+
 /** Fehlt der Eintritt ausdrücklich (null oder leer, wie ihn Import und Einzelanlage seit IMP-1 anlegen)?
  *  Ein Bestand ganz ohne Feld (undefined, Altbestand vor IMP-1) zählt nicht dazu. */
 export const eintrittFehlt = (p) => !!p && (p.eintritt === null || p.eintritt === "");
@@ -186,10 +449,7 @@ export function dienstAm(m, p, d) {
   const ab = m.abweichungen && typeof m.abweichungen === "object" ? m.abweichungen[`${p.id}|${d}`] : undefined;
   let basis;
   if (ab !== undefined) basis = ab === "-" || ab === "" || ab === null ? null : ab;
-  else {
-    const eid = einheitAm(p, d);
-    basis = eid && !p.springer && p.imSchichtdienst !== false ? teilzeitDienst(m, p, d, einheitDienst(m, eid, d)) : null;
-  }
+  else basis = planDienst(m, p, d);                       // Schichtfolge (IMP-6: bei Planwirkung das zugeordnete Modell)
   if (!basis) return null;
   if (liste(m.abwesenheiten).some((a) => String(a.personId) === String(p.id) && a.von <= d && a.bis >= d)) return null;
   return basis;

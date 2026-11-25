@@ -117,7 +117,7 @@ jobs:
             VITE_ANWENDUNG_URL=${{ env.VITE_ANWENDUNG_URL }}
             VITE_KONTAKT_MAIL=${{ env.VITE_KONTAKT_MAIL }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-to: type=gha,mode=max,ignore-error=true
 
       # Der Container läuft hier genau so gehärtet wie später auf dem VPS.
       - name: Container starten
