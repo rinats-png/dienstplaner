@@ -228,3 +228,11 @@ bräuchten (nur dokumentiert): automatisches Vereinigen beim Serverstart aus ein
 `deploy/sicherung/README.md`, `deploy/compose.yml` (Kommentar), `.env.example`, `BEREITSTELLUNG.md` §5.4,
 `docs/BETRIEBSHANDBUCH.md`, `docs/BETRIEB-SICHERUNG.md` §7, `docs/acc45/ABNAHME-V4-EM6-ROLLBACK-CODES.md` (R-1),
 `pruefungen/be3-widerrufbuch-sicherung.test.js` (neu), `package.json`, `.github/workflows/pruefung.yml`.
+
+## 8. Nachtrag 2026-11-25 (N-9, Hostverlust, nur synthetisch)
+
+Der Test „BE-3: Hostverlust“ belegt nach `wiederherstellen --widerrufbuch-kopie` (`zustand/` leer, Kopie vorhanden):
+(a) beide wiederhergestellten Bücher (mit Siegelprüfung gelesen) enthalten genau die Einträge der Kopie, darunter den
+widerrufenen Code C1 und das widerrufene Konto A1; (b) `/gesund?detail=1` meldet `widerrufbuch` und `kontowiderrufbuch`
+mit Stufe `ok`; (c) der widerrufene Code wird nicht angenommen, das widerrufene Konto mit 401 abgewiesen, nicht
+widerrufene Zugänge bleiben gültig. Nur synthetische Daten, kein Statuswechsel.

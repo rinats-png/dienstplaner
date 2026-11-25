@@ -767,8 +767,21 @@ describe("BE-3: Hostverlust — Wiederherstellung mit --widerrufbuch-kopie", () 
     expect(mit.code, mit.aus).toBe(0);
     expect(mit.aus).toMatch(/zugang-widerrufe\.json: 1 Kopie\(n\), \d+ neu, \d+ Einträge \(neu aus den Kopien\)/);
     expect(mit.aus).toMatch(/konto-widerrufe\.json: 1 Kopie\(n\), \d+ neu, \d+ Einträge \(neu aus den Kopien\)/);
+    /* N-9 (a): Vollständigkeit — die wiederhergestellten Bücher (mit Siegelprüfung gelesen) enthalten genau die Einträge der Kopie. */
+    vergessen();
+    const wieder = await buecherLesen(ZUSTAND);
+    const kopie = await buecherLesen(kopieOrdner);
+    const schl = (o) => Object.keys(o).sort();
+    expect(schl(kopie.codes.eintraege), "Kopie der Codes enthält C1").toContain(C.C1.schluessel);
+    expect(schl(kopie.konten.konten), "Kopie der Konten enthält A1").toContain(M.kb.kontoKennung(K.A1.id));
+    expect(schl(wieder.codes.eintraege), "Codes: Einträge wie in der Kopie").toEqual(schl(kopie.codes.eintraege));
+    expect(schl(wieder.konten.konten), "Konten: Einträge wie in der Kopie").toEqual(schl(kopie.konten.konten));
     const s = await starten();
     try {
+      /* N-9 (b): Healthcheck nach dem simulierten Hostverlust — beide Widerrufbuch-Prüfungen ok. */
+      const g = await gesundDetail(s);
+      expect(g.pruefungen.widerrufbuch.stufe, "Healthcheck Codebuch nach Hostverlust").toBe("ok");
+      expect(g.pruefungen.kontowiderrufbuch.stufe, "Healthcheck Kontobuch nach Hostverlust").toBe("ok");
       expect(await codeAnmelden(s, "C1"), "C1 nach Hostverlust").not.toBe(200);
       expect(await kontoAnmelden(s, "A1"), "A1 nach Hostverlust").toBe(401);
       expect(await codeAnmelden(s, "C2")).toBe(200);
