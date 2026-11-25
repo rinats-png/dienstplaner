@@ -720,6 +720,95 @@ describe("deploy-smoke.mjs gegen server.mjs", () => {
   }, 30000);
 });
 
+/* ---------- RST-7: derselbe Smoke als Außenabruf mit Beobachtungsprotokoll ----------
+   Nach T0 ruft der Betreiber deploy-smoke.mjs von außen über die Domain auf (CENTRIC_SMOKE_BASIS), wiederholt bis
+   T0+24 h (Produktionsweg §3.6 Phase 3). Mit CENTRIC_SMOKE_PROTOKOLL hängt jeder Lauf eine JSON-Zeile an: Zeit,
+   Ergebnis, Stufe von /gesund, Namen der fehlgeschlagenen Prüfungen — ohne Basis, Host, Port oder Fehlermeldung
+   (öffentliches Repo, das Protokoll kann in die Ablage). Ohne die Variable bleibt der Lauf im Container wie bisher. */
+
+function smokeAsync(basis, extra = {}) {
+  return new Promise((fertig) => {
+    const k = spawn(process.execPath, ["--input-type=module", "-"],
+      { env: { ...process.env, CENTRIC_SMOKE_BASIS: basis, ...extra } });
+    let t = ""; k.stdout.on("data", (d) => { t += d; }); k.stderr.on("data", (d) => { t += d; });
+    k.on("close", (code) => fertig({ code, t }));
+    k.stdin.end(readFileSync(path.join(DEPLOY, "deploy-smoke.mjs")));
+  });
+}
+
+describe("RST-7: deploy-smoke.mjs als Außenabruf mit Beobachtungsprotokoll", () => {
+  it("echter Server: Stufe von /gesund in der Ausgabe; Protokollzeilen ok/fehlgeschlagen ohne Host und Port", async () => {
+    const statik = mkdtempSync(path.join(tmpdir(), "centric-rst7-statik-"));
+    const daten = mkdtempSync(path.join(tmpdir(), "centric-rst7-daten-"));
+    const ablage = mkdtempSync(path.join(tmpdir(), "centric-rst7-protokoll-"));
+    const protokoll = path.join(ablage, "beobachtung.jsonl");
+    mkdirSync(path.join(statik, "assets"));
+    writeFileSync(path.join(statik, "index.html"), '<!doctype html><script type="module" crossorigin src="/assets/index-probe.js"></script>');
+    writeFileSync(path.join(statik, "assets", "index-probe.js"), "console.log(1);\n".repeat(200));
+    const st = await serverStarten({ cwd: WURZEL,
+      env: { CENTRIC_STATIK: statik, CENTRIC_DATEN: daten, CENTRIC_ABLAGE: "dateien",
+        CENTRIC_PFEFFER: "smoke", NODE_ENV: "production", CENTRIC_AUFRAEUMEN: "aus" } });
+    const { kind, port } = st;
+    try {
+      const a = await smokeAsync(`http://127.0.0.1:${port}`, { CENTRIC_SMOKE_PROTOKOLL: protokoll });
+      expect(a.code, a.t).toBe(0);
+      expect(a.t).toMatch(/^ok {6}GET \/gesund: 200 \(Stufe (ok|warnung)\)$/m);
+      expect(a.t.match(/^ok /gm).length).toBe(11);
+      const b = await smokeAsync("http://127.0.0.1:1", { CENTRIC_SMOKE_PROTOKOLL: protokoll });
+      expect(b.code).toBe(1);
+      const roh = readFileSync(protokoll, "utf8");
+      expect(roh).not.toContain("127.0.0.1");
+      expect(roh).not.toContain(String(port));
+      const zeilen = roh.trim().split("\n").map((z) => JSON.parse(z));
+      expect(zeilen).toHaveLength(2);
+      expect(Object.keys(zeilen[0]).sort()).toEqual(["ergebnis", "fehler", "gesund", "zeit"]);
+      expect(zeilen[0].ergebnis).toBe("ok");
+      expect(["ok", "warnung"]).toContain(zeilen[0].gesund);
+      expect(zeilen[0].fehler).toEqual([]);
+      expect(Number.isNaN(Date.parse(zeilen[0].zeit))).toBe(false);
+      expect(zeilen[1].ergebnis).toBe("fehlgeschlagen");
+      expect(zeilen[1].gesund).toBeNull();
+      expect(zeilen[1].fehler).toContain("GET /gesund");
+      expect(zeilen[1].fehler).toContain("GET /");
+    } finally {
+      kind.kill();
+      for (const d of [statik, daten, ablage]) rmSync(d, { recursive: true, force: true });
+    }
+  }, 60000);
+
+  it("fehlender Sicherheitskopf und Stufe warnung landen namentlich im Protokoll; Protokoll nicht schreibbar → Exit 1", async () => {
+    const http = await import("node:http");
+    const js = "console.log(1);\n".repeat(200);
+    const koepfe = { "content-security-policy": "default-src 'self'", "x-content-type-options": "nosniff",
+      "x-frame-options": "DENY", "referrer-policy": "no-referrer", "permissions-policy": "camera=()" };
+    const srv = http.createServer((q, r) => {
+      if (q.url === "/gesund") { r.writeHead(200, { "content-type": "application/json" }); return r.end('{"status":"warnung"}'); }
+      if (q.url === "/") { r.writeHead(200, { "content-type": "text/html", ...koepfe });
+        return r.end('<script type="module" src="/assets/a.js"></script>'); }
+      if (q.url === "/assets/a.js") { r.writeHead(200, { "content-type": "text/javascript" }); return r.end(js); }
+      r.writeHead(401); r.end();
+    });
+    await new Promise((f) => srv.listen(0, "127.0.0.1", f));
+    const ablage = mkdtempSync(path.join(tmpdir(), "centric-rst7-protokoll-"));
+    const protokoll = path.join(ablage, "beobachtung.jsonl");
+    try {
+      const basis = `http://127.0.0.1:${srv.address().port}`;
+      const r = await smokeAsync(basis, { CENTRIC_SMOKE_PROTOKOLL: protokoll });
+      expect(r.code, r.t).toBe(1);
+      expect(r.t).toMatch(/^ok {6}GET \/gesund: 200 \(Stufe warnung\)$/m);
+      const [z] = readFileSync(protokoll, "utf8").trim().split("\n").map((x) => JSON.parse(x));
+      expect(z).toMatchObject({ ergebnis: "fehlgeschlagen", gesund: "warnung", fehler: ["Kopf strict-transport-security"] });
+      /* Protokoll nicht schreibbar (Verzeichnis statt Datei): kein stilles OK. */
+      const n = await smokeAsync(basis, { CENTRIC_SMOKE_PROTOKOLL: ablage });
+      expect(n.code).toBe(1);
+      expect(n.t).toMatch(/^FEHLER {2}Protokoll/m);
+    } finally {
+      srv.close();
+      rmSync(ablage, { recursive: true, force: true });
+    }
+  }, 60000);
+});
+
 describe("deploy-abgleich.mjs gegen eine echte Sicherung", { timeout: 60000 }, () => {
   it("gleich → 0; verändert oder fehlend → 1; Spur, Takt und aufraeumen:* zählen nicht", async () => {
     const daten = mkdtempSync(path.join(tmpdir(), "centric-abgleich-daten-"));

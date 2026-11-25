@@ -77,9 +77,9 @@ nach dem Kandidaten nur `docs/acc45/releases/` und `deploy/FREIGEGEBENE-IMAGES.m
 | 2 Bild-Digest, Liste, Freigabe | Bild aus `main` (schon vor Phase 0 gebaut); Listen-PR (Kandidat `aktiv`, voriges Bild `vorherig` oder `gesperrt`); Freigabedatei. Danach ändert HEAD seit dem Kandidaten nur diese Pfade | Claude: Listen-PR; Betreiber: Merge und Freigabedatei | G4, G7, G10 | [FREIGEGEBENE-IMAGES.md](../../deploy/FREIGEGEBENE-IMAGES.md), Produktionsweg §3.3a, §3.7 |
 | 2b Endprüfung | derselbe Aufruf mit `--nachweise docs/acc45/releases/<id>/nachweise`; **Exit 0** Pflicht (online, echte Uhr) | Claude, Betreiber | JSON im Release-PR | Abschnitt 6 |
 | 3 Deploy-Skript | erst `--trocken`, dann echt; Fehlerstrategie aus der Freigabedatei (`r0` oder `ruecksprung`; erste Auslieferung von `274bfa0`: nur `r0`, G7) | Betreiber | `betrieb-protokoll.log` | [BEREITSTELLUNG.md](../../BEREITSTELLUNG.md) Schritt 3, `deploy/deploy.sh` |
-| 4 Smoke | automatisch in `deploy.sh` (healthy, `deploy-smoke.mjs`, Log, Manifestabgleich); danach ein Abruf von außen über die Domain | `deploy.sh`, Betreiber | Ausgabe `SMOKE OK` | `deploy/deploy-smoke.mjs` |
+| 4 Smoke | automatisch in `deploy.sh` (healthy, `deploy-smoke.mjs`, Log, Manifestabgleich); danach derselbe Smoke von außen über die Domain (`CENTRIC_SMOKE_BASIS=https://<domain> node deploy/deploy-smoke.mjs`, RST-7) | `deploy.sh`, Betreiber | Ausgabe `SMOKE OK` (außen mit Stufe von `/gesund`) | `deploy/deploy-smoke.mjs` |
 | 5 Live-Abnahme | Go-Kriterien G-a bis G-f innerhalb 60 min | Betreiber | Vermerk mit Uhrzeit | Produktionsweg §3.6 Phase 2 |
-| 6 Beobachtung und Rückweg | 24 h Beobachtung (`/gesund`, Alarm); Rückweg nach Entscheidungsbaum: R0, Vorwärts-Reparatur, Datenrücksprung nur bei Datenschaden | Betreiber | Protokoll, ggf. Listenzeile `gesperrt` | Produktionsweg §3.4–3.6 |
+| 6 Beobachtung und Rückweg | 24 h Beobachtung (`/gesund`, Alarm; Außenabruf wiederholt mit `CENTRIC_SMOKE_PROTOKOLL=<datei>`, eine JSON-Zeile je Lauf, [RST-7-nachweis](RST-7-nachweis.md)); Rückweg nach Entscheidungsbaum: R0, Vorwärts-Reparatur, Datenrücksprung nur bei Datenschaden | Betreiber | Protokoll, ggf. Listenzeile `gesperrt` | Produktionsweg §3.4–3.6 |
 
 Bricht eine Phase ab, beginnt der Ablauf wieder bei Phase 0 mit einem neuen Kandidaten.
 
