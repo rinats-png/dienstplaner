@@ -3,7 +3,9 @@ name: centric-lean-delivery
 description: Steuert Centric-Aufgaben, Agenten, Reviews und Releases mit minimal notwendigem Aufwand. Anwenden bei Aufgabenvergabe, Planung, Implementierung, Review, Backlog-Pflege und Abschluss; verhindert Scope Creep und redundante Prozesse ohne Sicherheits- oder Freigaberegeln zu schwächen.
 ---
 
-# Centric Lean Delivery v1.1.0
+# Centric Lean Delivery v1.1.1
+
+Herkunft: Quellfassung v1.1.0 (rinats-png/CENTRIC-Lean-Delivery-Skill, Commit e1f688a5a991eb64358e1e8f6e579261fa5645f6, Blob e413a1bb6ce09ebe114274741b2dcb9ee9adff59) plus zwei projektspezifische Klarstellungen in §11 und §12 (Centric-Zusammenführung v1.1.1).
 
 ## Auftrag und Vorrang
 Liefere funktionierende, sichere, wartbare Produktinkremente bis zur zulässigen Integration und Auslieferung. Optimiere abgeschlossene Anforderungen und nutzbare Funktionen, nicht PR-Anzahl, Testanzahl oder erzeugte Dokumente.
@@ -92,13 +94,13 @@ Bewerte Wirkung anhand vorhandener Daten: abgeschlossene Pakete, nutzbare Funkti
 - Übergib bei Delegation nur Auftrag, Abnahmekriterien, Basis/Kopf, relevante Dateien, Einschränkungen und offene Fragen; keine vollständigen Transkripte oder Repo-Dumps.
 - Suche zuerst anhand konkreter Begriffe, Pfade, Symbole und bestehender SSOT-Einträge. Lies relevante Ausschnitte und deren Aufrufer, Tests und Schnittstellen; erweitere die Suche bei konkreten Lücken.
 - Nutze vorhandene Suchwerkzeuge; keine zusätzlichen Retrieval-Agenten, Scoring-Systeme, Indizes oder Caches. Nach wenigen erfolglosen Suchrunden Suchstrategie ändern oder konkrete Wissenslücke benennen, nicht blind weitersuchen.
-- Stoppe die Recherche, sobald der Auftrag fundiert bearbeitbar ist. Sicherheitsrelevante Datenflüsse, Abhängigkeiten, negative Tests und vorgeschriebene Prüfbereiche vollständig berücksichtigen; kein starres Suchlimit.
+- Stoppe die Recherche, sobald der Auftrag fundiert bearbeitbar ist. Sicherheitsrelevante Datenflüsse, Abhängigkeiten, negative Tests und vorgeschriebene Prüfbereiche vollständig berücksichtigen; kein starres Suchlimit. Bei offener sicherheitskritischer Informationslücke nicht mit dem bisherigen Stand weiterarbeiten, sondern gezielt weitersuchen oder den Blocker melden.
 - Wiederverwende bereits gelesene Informationen nur, solange Quelle und Stand unverändert und relevant sind. Bei geändertem Kopf oder unklarer Aktualität gezielt nachlesen.
 
 ## 12. Strategische Kontextkomprimierung und Kontinuität
 - Bei tatsächlichem Kontextdruck einen natürlichen Übergang nutzen: nach abgeschlossener Analyse mit festgehaltenem Plan, nach Integration oder vor einem anderen Arbeitspaket. Nicht nach starrer Zeit- oder Toolanzahl.
 - Vor Komprimierung die nötigen Fakten in vorhandenen zulässigen Strukturen sichern: Paket, Auftrag, Basis/Kopf, offene PRs und Auflagen, Betreiberentscheidungen, Freigabegrenzen, Belege, nächste Aktion, aktive Agenten und Sperren. Bestehende Informationen referenzieren statt duplizieren.
-- Nutze vorhandene SSOT und Nachweise als maßgebliche Quellen; für flüchtigen Sitzungsstand bestehende lokale Übergabestruktur. Keine zweite SSOT, keine neuen Memory-Dateien pro Aufgabe, keine automatischen Lernmechanismen. Keine Geheimnisse oder personenbezogenen Daten in öffentlichen Nachweisen.
+- Nutze vorhandene SSOT und Nachweise als maßgebliche Quellen; für flüchtigen Sitzungsstand bestehende lokale Übergabestruktur (bestehende Koordinator-Memory-Dateien, Lease, Weckruf-Prompts). Keine zweite SSOT, keine neuen Memory-Dateien pro Aufgabe, keine automatischen Lernmechanismen. Keine Geheimnisse oder personenbezogenen Daten in öffentlichen Nachweisen.
 - Komprimiere nur mit der verfügbaren nativen Funktion, wenn sinnvoll und zulässig. Keine erzwungene Komprimierung mitten in einer kritischen Änderung, einem Sicherheitsreview oder einer nicht gesicherten Übergabe; keine Hooks, Neustarts oder geänderten Kontextlimits allein dafür.
 - Nach Kontextwechsel die relevanten aktuellen Quellen und aktiven Aufträge abgleichen. Zusammenfassungen und alte Agentenberichte ersetzen weder aktuelle Git-/CI-Nachweise noch Betreiberfreigaben. Bei unklarem Stand gezielt verifizieren; nicht ungeprüft erneut starten, mergen oder veröffentlichen.
 
