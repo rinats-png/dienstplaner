@@ -4,7 +4,7 @@ Erzeugt von `werkzeug/acc45-backlog.mjs` aus `docs/acc45/work-packages.json` (ni
 
 **Kritischer Pfad gemeinsam** (offener Entwicklungsaufwand, ohne extern): WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **50–90 PT**
 **Ohne Intelligence:** WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 → WP-42a → WP-42 = **22,5–35 PT**
-**Offener Entwicklungsaufwand:** 367,4–629,2 PT in 144 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
+**Offener Entwicklungsaufwand:** 370,65–635,2 PT in 149 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
 
 WP-09 ist nur Livegang-Reihenfolge und zählt im Pfad nicht als Abhängigkeit. Der Graph zeigt nur offene Pakete.
 
@@ -62,14 +62,13 @@ flowchart LR
     SSOT_UK1["SSOT-UK1<br/>BLOCKED"]
     SSOT_UK2["SSOT-UK2<br/>BLOCKED"]
     RC_WECHSEL["RC-WECHSEL<br/>BLOCKED"]
-    K4_P1["K4-P1<br/>READY"]
     K4_P2["K4-P2<br/>READY"]
     K4_P5["K4-P5<br/>BLOCKED"]
     K4_P6["K4-P6<br/>BLOCKED"]
-    K4_P7["K4-P7<br/>BLOCKED"]
     K4_P8["K4-P8<br/>BLOCKED"]
     WEBSITE_W7["WEBSITE-W7<br/>BLOCKED"]
     WEBSITE_W8["WEBSITE-W8<br/>BLOCKED"]
+    WEBSITE_W8_1["WEBSITE-W8-1<br/>BLOCKED"]
   end
   subgraph wp19[WP-19-Module]
     WP_19_1["WP-19.1<br/>BLOCKED"]
@@ -129,6 +128,7 @@ flowchart LR
     V4_3b["V4-3b<br/>IN_PROGRESS"]
     V4_3c["V4-3c<br/>BLOCKED"]
     V4_3d["V4-3d<br/>BLOCKED"]
+    V4_4["V4-4<br/>IN_PROGRESS"]
     V4_5["V4-5<br/>BLOCKED"]
     V4_6["V4-6<br/>BLOCKED"]
     DEP_1["DEP-1<br/>REVIEW"]
@@ -159,8 +159,13 @@ flowchart LR
     GATE_DEPLOY_DIGEST["GATE-DEPLOY-DIGEST<br/>BLOCKED"]
     GATE_RUECKHALT_AU6["GATE-RUECKHALT-AU6<br/>BLOCKED"]
     GATE_VPS_SIGNATUR["GATE-VPS-SIGNATUR<br/>BLOCKED"]
+    K4_P1["K4-P1<br/>READY"]
     K4_P3["K4-P3<br/>READY"]
     K4_P4["K4-P4<br/>BLOCKED"]
+    K4_P7["K4-P7<br/>BLOCKED"]
+    V4_4c["V4-4c<br/>BLOCKED"]
+    V4_4e["V4-4e<br/>READY"]
+    V4_4d["V4-4d<br/>BLOCKED"]
   end
   subgraph extern[Extern/Entscheidungen]
     E_1["E-1<br/>BLOCKED"]
@@ -364,7 +369,9 @@ flowchart LR
   V4_3a --> V4_3c
   WP_40 --> V4_3c
   V4_3b --> V4_3d
+  V4_1 --> V4_4
   V4_3 --> V4_6
+  V4_4 --> V4_6
   V4_3a --> V4_6
   V4_3b --> V4_6
   V4_3c --> V4_6
@@ -377,6 +384,7 @@ flowchart LR
   RST_5 --> RST_6
   REL_2 --> RST_6
   WEBSITE_W3b --> WEBSITE_W4
+  V4_4 --> V4_4b
   GATE_EW1 --> GATE_EW2
   GATE_EW1 --> GATE_EW4
   GATE_EW1 --> GATE_EW5
@@ -400,6 +408,9 @@ flowchart LR
   K4_P1 --> K4_P5
   K4_P1 --> K4_P6
   WEBSITE_W4 --> WEBSITE_W7
+  V4_4 --> V4_4c
+  V4_4b --> V4_4d
+  V4_4e --> V4_4d
 ```
 
 | Paket | Strang | Prio | PT | Rest-PT | hängt ab von | Konfliktzonen | Modell | Status |
@@ -638,7 +649,7 @@ flowchart LR
 | V4-3d | folge | P3 | 2–5 | 2–5 | V4-3b | src/ansichten | sonnet | BLOCKED |
 | A11Y-1 | folge | P2 | 0,25–0,5 | 0 | – | src/ansichten | sonnet | INTEGRATED |
 | A11Y-2 | folge | P2 | 0,25–0,5 | 0 | A11Y-1 | src/ansichten | sonnet | INTEGRATED |
-| V4-4 | folge | P2 | 2–3 | 0 | V4-1, WP-33 | – | opus | INTEGRATED |
+| V4-4 | folge | P2 | 2–3 | 1–1,5 | V4-1, WP-33 | – | opus | IN_PROGRESS |
 | V4-5 | folge | P2 | 3–5 | 3–5 | V4-2 | – | opus | BLOCKED |
 | V4-6 | folge | P2 | 2–4 | 2–4 | V4-3, V4-4, V4-3a, V4-3b, V4-3c | – | opus | BLOCKED |
 | DEP-1 | folge | P2 | 0,5–1 | 0,1–0,2 | – | – | opus | REVIEW |
@@ -685,13 +696,17 @@ flowchart LR
 | SSOT-UK1 | acc45 | P2 | 0,5–1 | 0,5–1 | – | – | sonnet | BLOCKED |
 | SSOT-UK2 | acc45 | P2 | 0,25–0,5 | 0,25–0,5 | SSOT-UK1 | – | sonnet | BLOCKED |
 | RC-WECHSEL | acc45 | P1 | 0,5–1 | 0,5–1 | GATE-EW1, GATE-EW2, GATE-EW3, GATE-EW4, GATE-EW5, RST-5, RST-7 | – | opus | BLOCKED |
-| K4-P1 | acc45 | P1 | 0,5–1 | 0,5–1 | – | – | sonnet | READY |
+| K4-P1 | folge | P1 | 0,5–1 | 0,5–1 | – | – | sonnet | READY |
 | K4-P2 | acc45 | P2 | 0,5 | 0,5 | – | – | sonnet | READY |
 | K4-P3 | folge | P1 | 1–1,5 | 1–1,5 | – | – | sonnet | READY |
 | K4-P4 | folge | P1 | 1,5–2 | 1,5–2 | K4-P3 | – | opus | BLOCKED |
 | K4-P5 | acc45 | P2 | 1 | 1 | K4-P1 | – | sonnet | BLOCKED |
 | K4-P6 | acc45 | P2 | 0,25 | 0,25 | K4-P1 | – | haiku | BLOCKED |
-| K4-P7 | acc45 | P1 | 0,25 | 0,25 | – | – | haiku | BLOCKED |
+| K4-P7 | folge | P1 | 0,25 | 0,25 | – | – | haiku | BLOCKED |
 | K4-P8 | acc45 | P2 | 0,25 | 0,25 | – | – | opus | BLOCKED |
 | WEBSITE-W7 | acc45 | P2 | 0,5–1 | 0,5–1 | WEBSITE-W4 | – | sonnet | BLOCKED |
 | WEBSITE-W8 | acc45 | P2 | 0,25–0,5 | 0,25–0,5 | – | – | sonnet | BLOCKED |
+| V4-4c | folge | P2 | 1–2 | 1–2 | V4-4 | – | sonnet | BLOCKED |
+| V4-4e | folge | P2 | 0,5–1 | 0,5–1 | – | – | sonnet | READY |
+| V4-4d | folge | P2 | 0,5–1 | 0,5–1 | V4-4b, V4-4e | – | sonnet | BLOCKED |
+| WEBSITE-W8-1 | acc45 | P1 | 0,25–0,5 | 0,25–0,5 | – | – | sonnet | BLOCKED |
