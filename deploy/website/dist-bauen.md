@@ -37,10 +37,9 @@ ab, liegt es meist an einer anderen tar-/gzip-Version; die Summe, die ausgeliefe
 - `deploy/website/DIST-QUELLE.txt`: **optional** die Download-URL (nur `https://`, eine Zeile, ohne Anfuehrungszeichen und
   ohne Sonderzeichen wie `;`, `$`, Leerzeichen). Erlaubt ist nur der Host `raw.githubusercontent.com` (Allowlist im Skript); aktuell Branch `website/dist`. Leer = kein Download; dann muss die Datei
   `/root/centric-website-dist.tgz` auf dem Server liegen (oder der Pfad wird als Argument uebergeben).
-- Beide Dateien gehoeren in den Zweig `deploy/hauptwebsite-docker`; die Konsole holt sie mit `git clone`.
-  **Stand-Vermerk (Review #519 A3, 2026-11-24):** Das ist ein beweglicher Zweig und gilt noch nicht als festgelegt. Vor jeder
-  Auslieferung legt der Betreiber Zweig und Commit fest; die Anweisung nennt dann `ERWARTETER_KOPF=<KOPF>` als Pflicht
-  (siehe `docs/DEPLOY-HAUPTWEBSITE.md`, Kopf-Pinning) oder holt den Commit per SHA. Empfehlung: freigegebenen Kopf nennen.
+- Beide Dateien gehoeren zum freigegebenen Commit; die Konsole holt genau diesen Commit per `fetch` (kein beweglicher Zweig).
+  **Erledigt (Review #519 A3, W3b):** Die Anweisung nennt `ERWARTETER_KOPF=<KOPF>` als Pflicht (siehe
+  `docs/DEPLOY-HAUPTWEBSITE.md`, Kopf-Pinning); den Commit setzt der Betreiber vor jeder Auslieferung ein.
 - Die Veroeffentlichung des Archivs (Download-Ort) entscheidet der Betreiber; das Repository ist oeffentlich, das
   Archiv enthaelt nur die oeffentliche Website, keine Zugangsdaten oder Personendaten.
 

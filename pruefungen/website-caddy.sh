@@ -83,6 +83,7 @@ grep -q 'start-ok' "$W/koerper" || fehl "/ liefert nicht index.html"
 kopf_hat 'strict-transport-security:' "/"
 kopf_hat 'x-content-type-options: nosniff' "/"
 kopf_hat 'content-security-policy:' "/"
+kopf_hat 'cache-control: no-cache' "/ (CC-1)"
 if grep -i -q '^server:' "$W/kopf"; then fehl "Server-Kopfzeile vorhanden (soll entfernt sein)"; fi
 
 echo "== /assets/site.css (200)"
@@ -95,6 +96,7 @@ grep -q '404-seite' "$W/koerper" || fehl "404 liefert nicht dist/404.html"
 kopf_hat 'strict-transport-security:' "404"
 kopf_hat 'x-content-type-options: nosniff' "404"
 kopf_hat 'content-security-policy:' "404"
+kopf_hat 'cache-control: no-cache' "404 (CC-1)"
 if grep -i -q '^server:' "$W/kopf"; then fehl "Server-Kopfzeile auf dem 404 vorhanden"; fi
 
 echo "== www (301 auf die Hauptdomain)"
