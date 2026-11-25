@@ -34,3 +34,16 @@ Vorher: Test lädt `luckenursache.mjs` nicht (Modul fehlt), 0 Tests. Danach 17 v
 - Bei `fehlt > 1` ist `deckt` die Zählung, keine Kombination mehrerer Regelmengen (kleinste Ursache je Person, nicht die kleinste gemeinsame Menge für mehrere Personen). Die vollständige Minimalmengen-Suche braucht den Planer (WP-I7).
 - Ob eine Regel „entfallen darf“ (Rangfolge Gesetz > Besetzung > …), entscheidet der Planer-Kern; der Wege-Text mit Folgen („Mit 1 Person aus Wohnbereich 1 …“) und die Anzeige in `App.jsx` bleiben offen.
 - Offen für WP-I8 insgesamt: Varianten und Erfüllungsbericht (Zählwerte; brauchen den Plan aus WP-I7).
+
+## Nachbesserung nach Opus-Review #570 (neuer Commit)
+
+| Befund | Lösung | Test (rot → grün) | Mutation |
+|---|---|---|---|
+| 1 HOCH fail-open: `schutzOffen` (Stufe Hinweis, nicht bewertbar) zählte als „direkt“ | Jeder Befund mit Regelkennung `…Offen` (`schutzOffen`, künftig `vorgabeOffen`) hindert wie ein Befund ab „Achtung“ (`hindert`); nie `direkt` | U7 (demo1, Nachtdienst, Geburtsdaten entfernt: vorher `direkt 25`); die übrigen Tests setzen Geburtsdaten, sonst hindert `schutzOffen` jede Person | Offen-Regel entfernt: U7 rot |
+| 2 Qualifikationslücke überzeichnete `direkt`/`deckt` | Bei `qualFehlt` zählen nur Personen mit einer gültigen fehlenden Qualifikation; die übrigen stehen in `ohneQualifikation`; Ursache `qualifikationFehlt` ohne Wege | U8 (niemand hat sie: `direkt 0`; zwei Personen: höchstens 2) | Prüfung entfernt: U8 rot |
+| 3 Budget-Umgehung (`rest` 1e9 / MAX_SAFE_INTEGER) | Übergebenes Budget wird auf `PERSONEN_PRUEFUNGEN_MAX` gedeckelt | U9 (vorher 1859 Prüfungen) | Deckel entfernt: U9 rot |
+| Nebenpunkt: fehlende Felder | `betriebOk`: `einstellungen`, `abweichungen`, `abwesenheiten`, Person ohne `id` ⇒ `ok:false` statt TypeError | U9 | Prüfung entfernt: U9 rot |
+
+Offen (nach Merge von #566): Durchreichen des #566-Vorgaben-Budgets: nach Merge von #566 nachziehen (Rebase): ein gemeinsames `vorgabenBudget` je Einstieg und `automatisch` an `hindernisBefunde` durchreichen, dazu Test. Die Offen-Behandlung ist dafür bereits so gebaut, dass `vorgabeOffen` automatisch als Hindernis zählt.
+
+Hinweis für den späteren Aufrufer (WP-I7/I8): Der kalte Erstaufbau der Planrechnung (Zwischenspeicher je Bestand) kostet rund 2,5 s und ist nicht budgetiert; er fällt beim ersten Aufruf auf einem frischen Bestand an.

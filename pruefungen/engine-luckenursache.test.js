@@ -33,10 +33,14 @@ beforeAll(async () => {
 }, 120000);
 afterAll(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
+/** Geburtsdaten setzen: ohne sie ist die Schutzprüfung „nicht bewertbar“ (schutzOffen) und hindert jede Person (Review #570). */
+const mitGeburt = (m) => { m.personen.forEach((p, i) => { p.geburtstag = `19${70 + (i % 25)}-05-05`; }); return m; };
+const HINDERT = (b) => Einsatz.stufeRang(b.stufe) >= 2 || /Offen$/.test(b.regel);
+
 /** Demobetrieb mit einer Lücke im Frühdienst: hoher Bedarf, sechs freie Personen mit Spätdienst am Vortag
     (Ruhezeit 6,5 h), zwei freie Personen abwesend. */
 function mitLuecke() {
-  const m = structuredClone(B.find(([n]) => n.startsWith("demo1"))[1]);
+  const m = mitGeburt(structuredClone(B.find(([n]) => n.startsWith("demo1"))[1]));
   const fr = m.dienstarten.find((x) => x.id === "F"), sp = m.dienstarten.find((x) => x.id === "S");
   fr.mindest = { mo_do: 40, fr: 40, sa: 40, so: 40 };
   const frei = aktive(m, D).filter((p) => !personTag(m, p, D).dienstId);
@@ -54,7 +58,7 @@ function referenz(m, d, dienstId) {
   const je = [];
   for (const p of aktive(m, d)) {
     if (personTag(m, p, d).dienstId) continue;
-    je.push([...new Set(Einsatz.hindernisBefunde(m, p, d, da).filter((b) => Einsatz.stufeRang(b.stufe) >= 2).map((b) => b.regel))].sort());
+    je.push([...new Set(Einsatz.hindernisBefunde(m, p, d, da).filter(HINDERT).map((b) => b.regel))].sort());
   }
   return je;
 }
@@ -211,7 +215,7 @@ describe("U5: Datenschutz — nur Kennungen und Zahlen", () => {
     }
     for (const w of ["Krank", "krank", "Urlaub", "Schutzvorschrift", "abwesend (", "Ruhezeit nach"]) expect(s.includes(w), w).toBe(false);
     const erlaubt = new Set(["ok", "von", "bis", "luecken", "luckenGesamt", "abgeschnitten", "unvollstaendig", "datum", "dienst", "fehlt", "geprueft", "direkt",
-      "hindernisse", "regel", "personen", "kleinste", "regeln", "wege", "deckt", "ursache", "qualFehlt", "qid", "noetig", "ist"]);
+      "hindernisse", "regel", "personen", "kleinste", "regeln", "wege", "deckt", "ursache", "qualFehlt", "qid", "noetig", "ist", "ohneQualifikation"]);
     const keys = (o, acc = new Set()) => { if (Array.isArray(o)) o.forEach((x) => keys(x, acc)); else if (o && typeof o === "object") for (const k of Object.keys(o)) { acc.add(k); keys(o[k], acc); } return acc; };
     for (const k of keys(r)) expect(erlaubt.has(k), `Schlüssel ${k}`).toBe(true);
   });
@@ -234,5 +238,79 @@ describe("U6: rein und ohne Seiteneffekt", () => {
     const q = lies("server/lib/engine/luckenursache.mjs");
     expect(q).not.toMatch(/Date\.now|new Date\(|Math\.random|performance\.now|setTimeout|await |async /);
     expect(q).not.toMatch(/from\s+["'][^"']*(\/src\/|\.\.\/\.\.\/src|intelligence\/)/);
+  });
+});
+
+describe("U7 (Review #570): nicht bewertbar ist nie 'direkt'", () => {
+  /** Nachtdienst am Tag, hoher Bedarf, bei allen Personen das Geburtsdatum entfernt (JArbSchG nicht bewertbar). */
+  function nachtOhneGeburt() {
+    const m = structuredClone(B.find(([n]) => n.startsWith("demo1"))[1]);
+    const n = m.dienstarten.find((x) => x.id === "N");
+    n.mindest = { mo_do: 60, fr: 60, sa: 60, so: 60 };
+    for (const p of m.personen) { delete p.geburtstag; delete p.geburtsdatum; }
+    return m;
+  }
+  it("Befunde der Art 'Offen' (Stufe Hinweis) zählen als Hindernis, nicht als direkter Kandidat", () => {
+    const m = nachtOhneGeburt();
+    const da = m.dienstarten.find((x) => x.id === "N");
+    const offen = aktive(m, D).filter((p) => !personTag(m, p, D).dienstId
+      && Einsatz.hindernisBefunde(m, p, D, da).some((b) => /Offen$/.test(b.regel) && b.stufe === "hinweis"));
+    expect(offen.length).toBeGreaterThan(0);                       // Voraussetzung des Falls
+    const r = L.lueckenUrsache(structuredClone(m), D, "N");
+    const ohneAnderes = aktive(m, D).filter((p) => !personTag(m, p, D).dienstId
+      && Einsatz.hindernisBefunde(m, p, D, da).filter((b) => Einsatz.stufeRang(b.stufe) >= 2).length === 0
+      && !Einsatz.hindernisBefunde(m, p, D, da).some((b) => /Offen$/.test(b.regel))).length;
+    expect(r.direkt).toBe(ohneAnderes);
+    expect(r.hindernisse.some((h) => h.regel === "schutzOffen")).toBe(true);
+    if (ohneAnderes === 0) expect(r.ursache).not.toBe("direktMoeglich");
+  });
+});
+
+describe("U8 (Review #570): Qualifikationslücke zählt nur Personen mit der Qualifikation", () => {
+  function mitQualLuecke(vergeben) {
+    const m = mitGeburt(structuredClone(B.find(([n]) => n.startsWith("demo1"))[1]));
+    m.qualifikationen.push({ id: "qx-neu", name: "Testqualifikation", kurz: "QX" });
+    const fr = m.dienstarten.find((x) => x.id === "F");
+    fr.mindest = { mo_do: 0, fr: 0, sa: 0, so: 0 };
+    fr.mindestQual = { "qx-neu": 1 };
+    if (vergeben) for (const p of aktive(m, D).filter((x) => !personTag(m, x, D).dienstId).slice(0, vergeben)) p.qualifikationen = [...(p.qualifikationen || []), "qx-neu"];
+    return structuredClone(m);
+  }
+  it("niemand hat die Qualifikation: keine direkten Kandidaten, Ursache benennt die Qualifikation", () => {
+    const r = L.lueckenUrsache(mitQualLuecke(0), D, "F");
+    expect(r.qualFehlt.length).toBe(1);
+    expect(r.direkt).toBe(0);
+    expect(r.ursache).toBe("qualifikationFehlt");
+    expect(r.ohneQualifikation).toBeGreaterThan(0);
+    expect(r.wege).toEqual([]);
+  });
+  it("zwei Personen haben sie: nur diese zählen als direkt", () => {
+    const m = mitQualLuecke(2);
+    const r = L.lueckenUrsache(m, D, "F");
+    expect(r.direkt).toBeLessThanOrEqual(2);
+    expect(r.direkt).toBeGreaterThan(0);
+    expect(r.ursache).toBe("direktMoeglich");
+  });
+});
+
+describe("U9 (Review #570): Budget-Umgehung und unvollständige Betriebe", () => {
+  it("riesige endliche Budgets werden auf die Obergrenze gedeckelt", () => {
+    const { m } = mitLuecke();
+    for (const rest of [1e9, Number.MAX_SAFE_INTEGER]) {
+      const budget = { rest };
+      const r = L.konflikteMitUrsache(structuredClone(m), "2026-11-01", "2026-12-15", { budget });
+      const summe = r.luecken.reduce((a, l) => a + l.geprueft, 0);
+      expect(summe, String(rest)).toBeLessThanOrEqual(L.PERSONEN_PRUEFUNGEN_MAX);
+      expect(budget.rest).toBeLessThanOrEqual(L.PERSONEN_PRUEFUNGEN_MAX);
+    }
+  });
+  it("fehlende Felder: Fehlerobjekt statt TypeError", () => {
+    const { m } = mitLuecke();
+    const a = structuredClone(m); delete a.einstellungen;
+    expect(L.lueckenUrsache(a, D, "F")).toEqual({ ok: false, grund: "betriebUngueltig" });
+    const b = structuredClone(m); delete b.personen[0].id;
+    expect(L.lueckenUrsache(b, D, "F")).toEqual({ ok: false, grund: "betriebUngueltig" });
+    const c = structuredClone(m); delete c.abwesenheiten;
+    expect(L.konflikteMitUrsache(c, "2026-11-16", "2026-11-17")).toEqual({ ok: false, grund: "betriebUngueltig" });
   });
 });

@@ -34,7 +34,7 @@
    intelligence/.
    ========================================================================== */
 import { addDays } from "../regelwerk.mjs";
-import { aktive, besetzung, personTag } from "./plan.mjs";
+import { aktive, besetzung, personTag, qualGueltig } from "./plan.mjs";
 import { hindernisBefunde, stufeRang } from "./einsatz.mjs";
 
 /** Höchstzahl Personenprüfungen je äußerem Einstieg (ein Budget für alle Lücken). */
@@ -65,9 +65,21 @@ export function budgetNeu(personenPruefungen = PERSONEN_PRUEFUNGEN_MAX) {
 /** Verbraucht eine Prüfung; false, wenn das Budget erschöpft oder ungültig ist (kein NaN-/Überlauf-Umweg). */
 function verbrauchen(budget) {
   if (!budget || !Number.isInteger(budget.rest) || budget.rest <= 0) return false;
+  /* Übergebene Budgets sind nie größer als die Obergrenze (kein 1e9 als Umgehung). */
+  if (budget.rest > PERSONEN_PRUEFUNGEN_MAX) budget.rest = PERSONEN_PRUEFUNGEN_MAX;
   budget.rest -= 1;
   return true;
 }
+
+/** Betrieb mit allen Feldern, die die Einsatzprüfung liest; sonst Fehlerobjekt statt TypeError. */
+const betriebOk = (m) => !!m && typeof m === "object" && Array.isArray(m.personen) && Array.isArray(m.dienstarten)
+  && Array.isArray(m.abwesenheiten) && !!m.einstellungen && typeof m.einstellungen === "object"
+  && !!m.abweichungen && typeof m.abweichungen === "object"
+  && m.personen.every((p) => !!p && typeof p === "object" && p.id !== undefined && p.id !== null);
+/** Befund „nicht bewertbar“ (Daten fehlen: schutzOffen, künftig vorgabeOffen): Stufe Hinweis, aber nie stillschweigend zulässig. */
+const istOffen = (b) => /Offen$/.test(String(b.regel));
+/** Hindert der Befund den Einsatz? Ab „Achtung“ oder nicht bewertbar (fail closed). */
+const hindert = (b) => stufeRang(b.stufe) >= 2 || istOffen(b);
 
 const reihe = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 
@@ -79,14 +91,14 @@ const reihe = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
  * @param {{ budget?: { rest: number } }} [opt] budget: das eine Budget des äußeren Einstiegs
  */
 export function lueckenUrsache(m, d, dienstId, { budget = budgetNeu() } = {}) {
-  if (!m || typeof m !== "object" || !Array.isArray(m.personen) || !Array.isArray(m.dienstarten)) return { ok: false, grund: "betriebUngueltig" };
+  if (!betriebOk(m)) return { ok: false, grund: "betriebUngueltig" };
   if (!gueltigerTag(d)) return { ok: false, grund: "datumUngueltig" };
   const da = m.dienstarten.find((x) => x.id === dienstId);
   if (!da) return { ok: false, grund: "dienstUnbekannt" };
   const b = besetzung(m, d)[dienstId];
   const fehlt = b && b.diff < 0 && !b.bedarfOffen ? -b.diff : 0;
   const qualFehlt = b ? b.qual.filter((q) => !q.ok).map((q) => ({ qid: String(q.qid), noetig: q.noetig, ist: q.ist })) : [];
-  const aus = { datum: d, dienst: dienstId, fehlt, geprueft: 0, direkt: 0, hindernisse: [], kleinste: null, wege: [], ursache: "besetzt", unvollstaendig: false };
+  const aus = { datum: d, dienst: dienstId, fehlt, geprueft: 0, direkt: 0, ohneQualifikation: 0, hindernisse: [], kleinste: null, wege: [], ursache: "besetzt", unvollstaendig: false };
   if (qualFehlt.length) aus.qualFehlt = qualFehlt;
   if (fehlt === 0 && !qualFehlt.length) return aus;
 
@@ -96,7 +108,9 @@ export function lueckenUrsache(m, d, dienstId, { budget = budgetNeu() } = {}) {
     if (personTag(m, p, d).dienstId) continue;                  // hat schon einen Dienst
     if (!verbrauchen(budget)) { aus.unvollstaendig = true; break; }
     aus.geprueft++;
-    const regeln = [...new Set(hindernisBefunde(m, p, d, da).filter((x) => stufeRang(x.stufe) >= 2).map((x) => String(x.regel)))].sort(reihe);
+    /* Qualifikationslücke: nur Personen mit einer der fehlenden Qualifikationen können sie schließen. */
+    if (qualFehlt.length && !qualFehlt.some((q) => qualGueltig(m, p, q.qid))) { aus.ohneQualifikation++; continue; }
+    const regeln = [...new Set(hindernisBefunde(m, p, d, da).filter(hindert).map((x) => String(x.regel)))].sort(reihe);
     if (!regeln.length) { aus.direkt++; continue; }
     for (const r of regeln) zaehl.set(r, (zaehl.get(r) || 0) + 1);
     const k = regeln.join("|");
@@ -107,6 +121,7 @@ export function lueckenUrsache(m, d, dienstId, { budget = budgetNeu() } = {}) {
   if (aus.unvollstaendig) { aus.ursache = "unvollstaendig"; return aus; }        // keine Ursache behaupten, die nicht belegt ist
   if (aus.geprueft === 0) { aus.ursache = "keinPersonal"; return aus; }
   if (aus.direkt > 0) { aus.ursache = "direktMoeglich"; return aus; }
+  if (!mengen.size) { aus.ursache = qualFehlt.length ? "qualifikationFehlt" : "keinPersonal"; return aus; }
   aus.ursache = "hindernisse";
   const wege = [...mengen.values()]
     .sort((x, y) => x.regeln.length - y.regeln.length || y.personen - x.personen || reihe(x.regeln.join("|"), y.regeln.join("|")))
@@ -125,7 +140,7 @@ export function lueckenUrsache(m, d, dienstId, { budget = budgetNeu() } = {}) {
  * @param {{ budget?: { rest: number }, luckenMax?: number }} [opt]
  */
 export function konflikteMitUrsache(m, von, bis, { budget = budgetNeu(), luckenMax = LUECKEN_MAX } = {}) {
-  if (!m || typeof m !== "object" || !Array.isArray(m.personen) || !Array.isArray(m.dienstarten)) return { ok: false, grund: "betriebUngueltig" };
+  if (!betriebOk(m)) return { ok: false, grund: "betriebUngueltig" };
   if (!gueltigerTag(von) || !gueltigerTag(bis)) return { ok: false, grund: "datumUngueltig" };
   if (bis < von) return { ok: false, grund: "zeitraumUmgekehrt" };
   const tage = [];
