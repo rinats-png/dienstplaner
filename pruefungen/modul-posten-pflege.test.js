@@ -22,7 +22,7 @@ import {
 import { BRANCHENMODULE } from "../server/lib/branchenmodule.mjs";
 import { branchenbestand, schreibeAls as schreibeAlsEcht, SITZUNGEN } from "./hilfen/branchenbetrieb.mjs";
 import { bestandFuerRolle } from "../server/lib/rechte.mjs";
-import { PostenUebersicht, PostenPflege } from "../src/module/posten.jsx";
+import { PostenHinweise, PostenEinteilung, PostenPflege, postenSchreibeVon } from "../src/module/posten-pflege.js";
 import { MODUL_OBERFLAECHEN, pruefeOberflaechen } from "../src/module/index.js";
 import { modulKontext, postenSchreibenFuer } from "../src/module/zugriff.js";
 
@@ -110,6 +110,24 @@ describe("Unbekannter Posten im Postenplan (Server)", () => {
   it("neue Objekte und Einteilung im selben Speichern: der neue Posten ist bekannt", () => {
     const neu = { objekte: OBJEKTE, postenPlan: { [`a1|${T}`]: "po2" } };
     expect(postenZusammen(neu, { objekte: [], postenPlan: {} })).toEqual({});
+  });
+});
+
+describe("Ausnahmeweg und verwaiste Einteilungen (Server)", () => {
+  const T = "2026-11-10";
+  it("auf dem Ausnahmeweg Art. 16/17 prüft das Wertschema der Berichtigung, nicht der bekannte Posten (F6)", () => {
+    const alt = { objekte: OBJEKTE, postenPlan: { [`a1|${T}`]: "po1" } };
+    const neu = { ...alt, postenPlan: { [`a1|${T}`]: "GARBAGE" } };
+    expect(postenZusammen(neu, alt).grund).toMatch(/gibt es im Betrieb nicht/);
+    expect(postenZusammen(neu, alt, { bekannt: false })).toEqual({});
+  });
+  it("ein Posten, der aus den Objekten entfällt, darf keine Einteilung zurücklassen", () => {
+    const alt = { objekte: OBJEKTE, postenPlan: { [`a1|${T}`]: "po2" } };
+    const ohnePo2 = [{ ...OBJEKTE[0], posten: [OBJEKTE[0].posten[0]] }];
+    expect(postenZusammen({ objekte: ohnePo2, postenPlan: alt.postenPlan }, alt).grund).toMatch(/entfernter Posten/);
+    expect(postenZusammen({ objekte: ohnePo2, postenPlan: {} }, alt)).toEqual({});
+    /* ein Posten ohne Einteilung darf entfallen; Altbestand auf längst unbekannte Posten blockiert nicht */
+    expect(postenZusammen({ objekte: ohnePo2, postenPlan: { [`a1|${T}`]: "poAlt" } }, { objekte: ohnePo2, postenPlan: { [`a1|${T}`]: "poAlt" } })).toEqual({});
   });
 });
 
@@ -205,15 +223,15 @@ describe("Oberfläche", () => {
   const personen = [pers("a1"), pers("a2")];
   const markup = (el) => renderToStaticMarkup(el);
   it("Übersicht zeigt den Alleinarbeitshinweis in Worten", () => {
-    const html = markup(h(PostenUebersicht, { m, datum: heuteIso, dienstId: "F", personenImDienst: personen }));
+    const html = markup(h(PostenHinweise, { m, datum: heuteIso, dienstId: "F", personenImDienst: personen }));
     expect(html).toMatch(/Alleinarbeit/);
     expect(html).toMatch(/Gefährdungsbeurteilung/);
     expect(html).not.toMatch(/notsignal|notruf/i);
   });
   it("ohne Schreibweg keine Einteilungsfelder; mit Schreibweg je Person ein beschriftetes Auswahlfeld", () => {
-    const lesen = markup(h(PostenUebersicht, { m, datum: heuteIso, dienstId: "F", personenImDienst: personen }));
+    const lesen = markup(h(PostenEinteilung, { m, datum: heuteIso, personenImDienst: personen, schreibe: null }));
     expect(lesen).not.toMatch(/<select/);
-    const schreiben = markup(h(PostenUebersicht, { m, datum: heuteIso, dienstId: "F", personenImDienst: personen, schreibe: () => {} }));
+    const schreiben = markup(h(PostenEinteilung, { m, datum: heuteIso, personenImDienst: personen, schreibe: () => {} }));
     expect(schreiben.match(/<select/g)).toHaveLength(2);
     expect(schreiben).toMatch(/aria-label="Posten für Vera Musteraa?1/);
     expect(schreiben).toMatch(/<option value="po1" selected/);
@@ -236,12 +254,23 @@ describe("Oberfläche", () => {
     expect(html).toMatch(/Änderungen übernehmen/);
     expect(html).not.toMatch(/width:\s*\d{3,}px/);
   });
+  it("Schreibweg aus dem Kontext: nur mit Recht der Rolle und Aktion; nur die beiden Postenfelder", () => {
+    const gesetzt = [];
+    const akt = { setzeFeld: (feld, wert) => gesetzt.push([feld, wert]) };
+    expect(postenSchreibeVon({ postenSchreiben: false, akt })).toBeNull();
+    expect(postenSchreibeVon({ postenSchreiben: true })).toBeNull();
+    expect(postenSchreibeVon({ postenSchreiben: true, akt: {} })).toBeNull();
+    expect(postenSchreibeVon(null)).toBeNull();
+    const w = postenSchreibeVon({ postenSchreiben: true, akt });
+    w("name", "x"); w("einstellungen", {}); w("objekte", []); w("postenPlan", {});
+    expect(gesetzt).toEqual([["objekte", []], ["postenPlan", {}]]);
+  });
   it("Einhängepunkt: genau eine Oberfläche (Tag) mit Übersicht, Einteilung und Pflege; ohne Schreibweg nur Lesen", () => {
     expect(pruefeOberflaechen()).toEqual([]);
     const e = MODUL_OBERFLAECHEN.filter((x) => x.modul === "posten");
     expect(e.map((x) => x.ort)).toEqual(["tag"]);
     const k = { m, datum: heuteIso, dienstId: "F", personenImDienst: personen };
-    const mit = markup(e[0].ansicht({ ...k, postenSchreibe: () => {} }));
+    const mit = markup(e[0].ansicht({ ...k, postenSchreiben: true, akt: { setzeFeld: () => {} } }));
     expect(mit).toMatch(/Einteilung am/);
     expect(mit).toMatch(/Objekt hinzufügen/);
     const ohne = markup(e[0].ansicht(k));

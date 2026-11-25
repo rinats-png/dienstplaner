@@ -1870,12 +1870,12 @@
       "agent": "Agent E – Business Modules & Frontend",
       "modell": "sonnet + opus-review",
       "konfliktzonen": [],
-      "pr": [],
+      "pr": ["#569"],
       "nachweis": "docs/acc45/WP-19-1-nachweis.md",
       "akzeptanz": "laut WP19-MODULPLAN.md (Abschnitt des Moduls) und Produktentscheidungen 2026-11-03",
       "tests": "pruefungen/modul-<id>*.test.js, E2E in 19.13",
       "dateien": "siehe WP19-MODULPLAN.md Abschnitt 14",
-      "notiz": "PR #244 (WP-19 B1): Schreibwege bei Status geplant geschlossen (server/lib/modul-altwege.mjs); Status unverändert."
+      "notiz": "PR #569 (WP-19.1 Rest: Pflege, Einteilung, Alleinarbeit, Übernahme Bestand; Postenwechsel und SV-Schreibweg offen, Betreiberrückfragen). PR #244 (WP-19 B1): Schreibwege bei Status geplant geschlossen (server/lib/modul-altwege.mjs); Status unverändert."
     },
     {
       "id": "WP-19.2",

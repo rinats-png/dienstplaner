@@ -12,11 +12,12 @@ Pflege, Einteilungsoberfläche, Alleinarbeit, Übernahme Bestand). Ein Teil blei
 
 | Plan „Fehlt" | Ist vorher | Jetzt |
 |---|---|---|
-| Pflege Objekte/Posten | nur Server-Datenmodell | `PostenPflege` (Ort `betrieb`), Entwurf, `pruefeObjekte` vor Übernahme |
+| Pflege Objekte/Posten | nur Server-Datenmodell | `PostenPflege` (`src/module/posten-pflege.js`, am Ort `tag` unter der Übersicht), Entwurf, `pruefeObjekte` vor Übernahme |
 | Einteilungsoberfläche | nur Übersicht | Auswahlfeld je Person im Tagesbereich (nur mit Schreibweg) |
 | Alleinarbeit (P4) | Feld fehlte | `alleinarbeit`, `gefaehrdungsbeurteilung` (Verweistext), Hinweis bei Einzelbesetzung, ohne Namen, ohne Notsignal-Zusage |
 | Übernahme Bestand (G10 a) | fehlte | `objekteAusDienstarten`: nur Vorschlag, wiederholbar, ohne Pflicht |
-| unbekannter Posten (Negativtest Plan) | Server prüfte nur Kennungsform | neue/geänderte Einträge müssen auf einen Posten der Objekte zeigen; Altbestand blockiert nicht |
+| unbekannter Posten (Negativtest Plan) | Server prüfte nur Kennungsform | neue/geänderte Einträge müssen auf einen Posten der Objekte zeigen; Altbestand blockiert nicht; nicht auf dem Ausnahmeweg Art. 16/17 (dort prüft das Wertschema, F6) |
+| verwaiste Einteilung | Entfernen eines Posten über `objekte` ließ Einteilungen zurück | Server: ein Posten, der in diesem Schreibvorgang entfällt, darf keine Einteilung behalten (Review-Hinweis, billig) |
 | Aufwandsbudget (#561/#563/#566) | `postenLage` je Posten ein Durchlauf über alle Personen | ein Durchlauf über die Personen |
 | Postenwechsel im Dienst | fehlte | **nicht gebaut** (Rückfrage 1) |
 | SV schreibt Einteilung im Bereich | Server: Leitung vorbehalten | **unverändert geschlossen** (Rückfrage 2) |
@@ -35,22 +36,23 @@ Pflege, Einteilungsoberfläche, Alleinarbeit, Übernahme Bestand). Ein Teil blei
 2. **Darf die Schichtverantwortung im eigenen Bereich am Tag einteilen?** Plan-Lesart ja, Rechtematrix und Test: nein. Empfehlung: geschlossen lassen (Aufenthaltsort-Schutz). Alternative: wie `bereichsPlanSchicht` (nur eigener Bereich am Tag).
 3. P3-Aufwertung der Qualifikationshinweise und § 34a-Zuordnung bleiben bei Rechts-/Fachprüfung (unverändert).
 
-## Tests (TZ=UTC, `--maxWorkers=1`)
+## Aufbau nach Review #569 (V4-Pins)
 
-Rot vor dem Code: `modul-posten-pflege.test.js` 23 von 25 rot. Grün danach: 25/25.
+`pruefungen/v4-3b-branchenmodule.test.js` fixiert `kern.jsx` und `posten.jsx` byte-genau gegen die Basis. Deshalb:
+- `posten.jsx` ist **unverändert** (Basis). Alleinarbeit, Einteilung und Pflege stehen in der neuen Datei `src/module/posten-pflege.js` (kein JSX, zählt nicht zu den 13 Ansichtsdateien des V4-Inventars; nur Token `var(--v4-r-klein)`).
+- `kern.jsx` hat drei Ein-Zeilen-Änderungen (das Aktionsobjekt `akt` an die Oberflächen durchreichen). Der Test setzt genau diese Stellen in der Rückrechnung auf den Basistext zurück (`WP191_RUECK`, je genau einmal): Der Beleg „sonst byte-gleich zur Basis“ bleibt voll; Messwerte (876 Zeilen, 115 Inline-Stile, 13 Dateien) sind unverändert. Das ist die einzige Änderung an dieser Testdatei, nichts abgeschwächt.
+- Die Prüfung „bekannter Posten“ greift nicht auf dem Ausnahmeweg Art. 16/17 (`rechte.mjs`: `postenZusammen(…, { bekannt: moduldatenAusnahme === undefined })`). `modul-kern-nachtrag3` (F6) bleibt unverändert grün.
 
-| Datei | Ergebnis |
-|---|---|
-| modul-posten-pflege (neu), modul-posten, modul-kern-oberflaeche, modul-wachbuch, modul-objektbericht, branchen-app | 25, 20, 14, 35, 17, 3 grün |
-| modul-inert | 9 von 84 in 300 s Zeitgrenze durchgelaufen, kein Fehlschlag (Last des Rechners); Rest in CI |
-| v4-3b-querschnitt-1/-2, v4-3b-selbsttest | je 14 grün, Messwert unverändert (keine neue Ansichtsdatei) |
-| prozess-wachen | grün (Testdatei mit `// zeit-ok`) |
-| modul-rechte-wp19 | 54 grün |
-| modul-b1-schreibweg (16) mit modul-rechte-wp19 (54) | 70 grün |
-| eslint, `tsc -p jsconfig.json`, `verdrahtung-pruefen`, `acc45-backlog pruefen` | sauber |
+## Tests (TZ=UTC, `--maxWorkers=1`, einzeln, Ausgabe je Datei)
 
-Angepasste bestehende Tests (Begründung): `modul-posten.test.js` Zeile „WP-19 B1 … speichert keine Rolle“: der Fall „nur Postenplan ohne Objekte“ trägt jetzt `m.objekte = OBJEKTE`. Grund: Ein Eintrag auf einen unbekannten Posten wird nun schon vorher als „unbekannter Posten“ abgewiesen; die Absicht des Tests (Modulsperre bei Status geplant) bleibt unverändert und stärker nicht abgeschwächt. Die V4-Tests blieben unverändert, weil die Oberfläche in der vorhandenen Datei `posten.jsx` bleibt und nur Token (`var(--v4-r-klein)`) nutzt.
-`modul-kern-oberflaeche`: unverändert; deshalb hängt Pflege und Einteilung an der einen Posten-Oberfläche (Ort `tag`), nicht als zweiter Eintrag.
+Rot vor dem Code: `modul-posten-pflege.test.js` 23 von 25 rot.
+
+Alle `pruefungen/v4-3b-*.test.js` einzeln gelaufen, alle grün (betreiber 12, branchenmodule 12, einstellungen 10, einstieg 14, import 13, lage 8, personal 21, plan 11, querschnitt-1 14, querschnitt-2 14, selbsttest 14, speicherlage 12, telefonschale 13, zeit 8; `v4-3b-branchenmodule` zuvor 4 rot in CI, jetzt 12/12).
+Weiter grün: modul-kern-nachtrag 41, -2 37, -3 25 (F6 unverändert), -handler 3, -4 17, -4-handler 2, -5-handler 5, -5-speicher 6; modul-posten-pflege 28 (neu); modul-posten 20; modul-kern-oberflaeche 14; prozess-wachen 15; modul-rechte-wp19 54; modul-b1-schreibweg 16, modul-wachbuch 35, modul-objektbericht 17, branchen-app 3 (frühere Läufe). `modul-inert`: nur teilweise (Zeitgrenze, kein Fehlschlag), Rest CI. eslint, `tsc -p jsconfig.json`, `verdrahtung-pruefen`, `acc45-backlog pruefen` sauber.
+
+Angepasste bestehende Tests (Begründung):
+- `modul-posten.test.js`, Fall „WP-19 B1 … speichert keine Rolle“: der Fall „nur Postenplan“ trägt `m.objekte = OBJEKTE`. Grund: Ein Eintrag auf einen unbekannten Posten wird nun vor der Modulsperre abgewiesen; die Testabsicht (Modulsperre bei Status geplant) bleibt.
+- `v4-3b-branchenmodule.test.js`: Rückrechnung um die drei kern.jsx-Stellen erweitert (oben).
 
 ## Mutationen (je Schutz einzeln, Datei danach wiederhergestellt)
 
@@ -62,3 +64,7 @@ Angepasste bestehende Tests (Begründung): `modul-posten.test.js` Zeile „WP-19
 | 4 | Alleinarbeit ist Wahrheitswert | Prüfung aus | 1 rot |
 | 5 | Hinweis nur bei genau einer Person | `anzahl < 1` | 1 rot |
 | 6 | Einteilungsfelder nur mit Schreibweg | Bedingung entfernt | 2 rot |
+| 7 | verwaiste Einteilung beim Entfernen eines Posten (Review-Hinweis) | Prüfung aus | 1 rot |
+Ausnahmeweg-Umgehung der Bekannt-Prüfung: durch den unveränderten F6-Test und den neuen Fall `bekannt: false` belegt.
+
+Nicht blockierende Hinweise des Reviews: E2E und Postenwechsel/SV-Schreibweg bleiben offen (Rückfragen unverändert).

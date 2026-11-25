@@ -283,11 +283,8 @@ function Oberflaechen({ m, sitz, darf, kontext, liste, akt }) {
   /* Basiskontext der Ansichten (zugriff.js): Zugriffsstufen, Person, Qualifikationsprüfung, Personen, Dienstzeit — fail-closed. */
   /* Dienstzeit des Objektberichts (OB-2): nur aus der bestätigten Ist-Zeit (dienstzeit.js), nie aus dem Plan;
      modulKontext reicht sie nur bei Berichtszugriff „voll“ (Planung, Leitung) weiter. */
-  const basis = { m, heute: heuteTag(), darf,
+  const basis = { m, heute: heuteTag(), darf, akt,
     ...modulKontext({ sitz, kontext: { ...(kontext || {}), dienstzeit: objektberichtDienstzeit(m, sitz) } }) };
-  /* Schreibweg der Posten-Oberfläche: nur Leitung und Planung (zugriff.js) und nur die beiden Postenfelder; der Server prüft alles noch einmal. */
-  basis.postenSchreibe = basis.postenSchreiben && akt && typeof akt.setzeFeld === "function"
-    ? (feld, wert) => { if (feld === "objekte" || feld === "postenPlan") akt.setzeFeld(feld, wert); } : null;
   const rahmen = (x, inhalt, schluessel) => (
     <section key={schluessel} style={RAHMEN} aria-label={x.eintrag.titel}>
       <h3 style={{ margin: 0, fontSize: 15 }}>{x.eintrag.titel}</h3>

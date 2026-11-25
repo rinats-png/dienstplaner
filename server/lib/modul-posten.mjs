@@ -220,17 +220,28 @@ export function postenBefunde(m, da, d, person, personen, { auswerten, qualGuelt
  * (ein alter fehlerhafter Eintrag blockiert nicht den ganzen Betrieb).
  * @param {any} neuM
  * @param {any} [altM]
+ * @param {{ bekannt?: boolean }} [o] bekannt: false auf dem Ausnahmeweg Art. 16/17 (dort prüft das Wertschema der Berichtigung, F6)
  * @returns {{ grund?: string }}
  */
-export function postenZusammen(neuM, altM) {
+export function postenZusammen(neuM, altM, { bekannt = true } = {}) {
   if (!neuM || typeof neuM !== "object") return {};
   if (!(altM && gleich(neuM.objekte, altM.objekte))) {
     const f = pruefeObjekte(neuM.objekte);
     if (f) return { grund: f };
   }
   /* Neue oder geänderte Einteilungen müssen auf einen Posten der (neuen) Objekte zeigen; Altbestand blockiert nicht. */
-  const f2 = pruefePostenPlan(neuM.postenPlan, altM && altM.postenPlan, new Set(postenIndex(neuM).keys()));
-  return f2 ? { grund: f2 } : {};
+  const f2 = pruefePostenPlan(neuM.postenPlan, altM && altM.postenPlan, bekannt ? new Set(postenIndex(neuM).keys()) : null);
+  if (f2) return { grund: f2 };
+  /* Ein Posten, der aus den Objekten verschwindet, darf keine Einteilung zurücklassen (verwaiste Einteilung). */
+  if (bekannt && altM && istObjekt(neuM.postenPlan)) {
+    const jetzt = postenIndex(neuM);
+    const entfernt = [...postenIndex(altM).keys()].filter((id) => !jetzt.has(id));
+    if (entfernt.length) {
+      const weg = new Set(entfernt);
+      if (Object.values(neuM.postenPlan).some((v) => weg.has(v))) return { grund: "Postenplan: ein entfernter Posten hat noch Einteilungen — erst die Einteilungen lösen." };
+    }
+  }
+  return {};
 }
 
 /* ---- Pflege: reine Funktionen für die Oberfläche (nichts wird verändert, Ergebnis wird vom Server noch einmal geprüft) ---- */
