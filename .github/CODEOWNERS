@@ -1,0 +1,8 @@
+# Code-Inhaber (GitHub CODEOWNERS). Wirksam nur, wenn diese Datei auf dem Zielbranch liegt
+# UND die Regel "Code-Owner-Review erforderlich" im Ruleset aktiv ist (Betreiberhandlung).
+# Ein Konto gilt als Inhaber nur mit Schreibrecht im Repository.
+# Das Maschinenkonto (centric-dev-bot) steht bewusst NICHT hier: es darf eigene Aenderungen nicht freigeben.
+*                       @rinats-png
+/.github/               @rinats-png
+/werkzeug/release-pruefung.mjs  @rinats-png
+/docs/acc45/work-packages.json  @rinats-png
