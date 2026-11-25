@@ -121,3 +121,42 @@ describe("Erstanlage ohne ETag bleibt möglich", () => {
     expect(r2.ok).toBe(true);
   });
 });
+
+/* K4-P4 (Befund aus der Migrationsprobe auf dem synthetischen Altbestand K4-P3): Ein Raum in der Altform `bestand:<raum>`
+   (unzerlegt) meldet den Stand "alt". B-9-1 nahm nur Ziffern als ETag an — die App bekam "alt", schickte "alt" zurück und
+   erhielt für immer 409 mit demselben "alt": der Raum ließ sich nach dem Wechsel von 274bfa0 nie mehr speichern (274bfa0
+   kannte B-9-1 nicht). Jetzt gilt "alt" genau dann, wenn der Raum noch unzerlegt ist; danach ist "alt" veraltet (409). */
+describe("Altform (unzerlegt, Stand \"alt\"): speicherbar mit dem gelieferten ETag, danach nicht mehr", () => {
+  const RAUM_ALT = "etagpflicht-altform";
+  let TA;
+  beforeAll(async () => {
+    await laden().setJSON(`bestand:${RAUM_ALT}`, bestand());
+    const code = "ETAG-ALTF-0003";
+    await kontoSchreiben(laden(), ablageSchluessel(code), { name: "Test leitung", bestand: RAUM_ALT, rolle: "leitung", person: "el",
+      betrieb: 0, mandantId: "m-e", angelegt: "2026-01-01T00:00:00.000Z" });
+    const a = await anfrage("/api/anmelden", { rumpf: { zugangscode: code } });
+    expect(a.token, a.roh).toBeTruthy();
+    TA = a.token;
+  });
+  it("GET liefert \"alt\"; PUT mit \"alt\" schreibt (200, Raum zerlegt, ETag numerisch); ein zweites \"alt\" ist veraltet (409)", async () => {
+    const g = await lesen(TA);
+    expect(g.status, g.roh).toBe(200);
+    expect(g.etag).toBe("alt");
+    const w = await anfrage("/api/bestand", { methode: "PUT", token: TA, rumpf: { bestand: mit(g, "ALTFORM-GESPEICHERT"), etag: g.etag } });
+    expect(w.status, w.roh).toBe(200);
+    expect(String(w.etag)).toMatch(/^[0-9]+$/);
+    const danach = await lesen(TA);
+    expect(namen(danach)).toBe("ALTFORM-GESPEICHERT");
+    expect(String(danach.etag)).toMatch(/^[0-9]+$/);
+    expect(await laden().get(`kern:${RAUM_ALT}`, { type: "json" }), "zerlegt").toBeTruthy();
+    const w2 = await anfrage("/api/bestand", { methode: "PUT", token: TA, rumpf: { bestand: mit(g, "ALT-VERALTET"), etag: "alt" } });
+    expect(w2.status, w2.roh).toBe(409);
+    expect(namen(await lesen(TA))).toBe("ALTFORM-GESPEICHERT");
+  });
+  it("\"alt\" auf einem zerlegten Raum: 409, nichts geändert", async () => {
+    const g = await lesen(T);
+    const w = await anfrage("/api/bestand", { methode: "PUT", token: T, rumpf: { bestand: mit(g, "ALT-AUF-KERN"), etag: "alt" } });
+    expect(w.status, w.roh).toBe(409);
+    expect(namen(await lesen(T))).toBe(namen(g));
+  });
+});

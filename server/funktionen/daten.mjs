@@ -1669,8 +1669,12 @@ async function behandeln(req, context, ctx) {
         /* B-9-1: Ein Schreibvorgang ohne ETag überschrieb auf einem vorhandenen Bestand still
            jede fremde Änderung. Jetzt: Ohne ETag wird nur geschrieben, wenn es noch keinen
            Bestand gibt (Erstanlage). Sonst 409 mit dem aktuellen Stand zum Neuladen. Gilt nur für
-           diesen Endpunkt; interne Lese-Ändern-Schreiben-Abläufe halten ihre Sperre selbst. */
-        const etagGueltig = (typeof etag === "string" || typeof etag === "number") && /^[0-9]+$/.test(String(etag));
+           diesen Endpunkt; interne Lese-Ändern-Schreiben-Abläufe halten ihre Sperre selbst.
+           K4-P4: Ein Raum in der Altform (unzerlegt) meldet den Stand "alt" — der gilt als ETag genau dann, wenn der Raum
+           JETZT (unter der Sperre gelesen) noch unzerlegt ist; sonst wäre er nach dem Wechsel nie mehr speicherbar. Ist
+           er inzwischen zerlegt, ist "alt" veraltet: 409 hier bzw. Konflikt im Abgleich (bestand.mjs, ohne Basis). */
+        const etagGueltig = ((typeof etag === "string" || typeof etag === "number") && /^[0-9]+$/.test(String(etag)))
+          || (etag === "alt" && !!jetzt && jetzt.unzerlegt === true && jetzt.stand === "alt");
         if (!etagGueltig && jetzt && jetzt.bestand) {
           await protokoll("schreiben", ks, "konflikt", "ohne ETag auf vorhandenem Bestand", wer);
           return antwort({ fehler: "konflikt",
