@@ -25,6 +25,16 @@
      feste Saat; kein Schreiben in eine vorhandene, belegte Ablage; nichts im Repo; keine Zugangsdaten ausgeben.
    - Das Passwort und der Pfeffer der Konten sind feste Testwerte (SYNTH_*) — ohne Geheimniswert, nur für diese Ablage.
 
+   Grenzen, die zu wissen sind
+   - Endet der Prozess hart (Abbruch von außen, Stromausfall), läuft kein Aufräumen: ein Ordner %TEMP%/k4p3-alt-* und eine
+     halb geschriebene Ausgabe können bleiben. Eine Ausgabe ohne bestandenen Selbsttest nie verwenden; `pruefen <Ablage>`
+     ist die Gegenprobe.
+   - Fehlt der Stand 274bfa0 lokal, holt `git fetch --depth 1 origin <Kennung>` ihn (setzt im vollen Klon einen shallow-
+     Eintrag); git und tar haben eine Zeitgrenze von 120 s. Auf Linux/CI (flacher Checkout, GNU tar) bisher nicht belegt.
+   - Ein vorhandener leerer Ausgabeordner wird wiederverwendet; ein anderer Prozess könnte ihn zwischen Prüfung und
+     Schreiben füllen (Wettlauf). Für Sicherheit einen neuen Ordnernamen angeben (dann legt das Werkzeug ihn selbst an).
+   - Standardwerte: Saat 20261125, Größe 120 Personen im Raum alt-gross, 28 Tage.
+
    Aufruf (Ausgabe: absoluter Pfad, neu oder leer, außerhalb des Repos):
      node werkzeug/synthetischer-altbestand.mjs erzeugen <Ausgabe> --ja [--saat N] [--groesse N] [--tage N] [--ohne-zahlkennung]
      node werkzeug/synthetischer-altbestand.mjs pruefen <Ablage> [--ohne-zahlkennung]     (nur Selbsttest, schreibt nichts)
@@ -187,17 +197,24 @@ export function planBauen({ saat = DEFAULT_SAAT, groesse = 120, tage = 28, zahlk
  * @param {{ wurzel?: string, env?: Record<string, string|undefined> }} [o]
  * @returns {{ ok: boolean, grund?: string, pfad?: string, neu?: boolean }}
  */
+/** UNC-Pfad (Freigabe) oder Gerätepfad? Eigene Regelfunktion, damit sie ohne Dateisystem prüfbar ist. @param {string} p */
+export const uncPfad = (p) => /^[\\/]{2}/.test(p);
+
+/** Echter Pfad in der Betriebssystemfassung: löst auch 8.3-Kurznamen (Windows) auf. @param {string} p */
+const echterPfad = (p) => realpathSync.native(p);
+
 export function ausgabePruefen(ausgabe, { wurzel = WURZEL, env = process.env } = {}) {
   const nein = (/** @type {string} */ grund) => ({ ok: false, grund });
   if (typeof ausgabe !== "string" || !ausgabe.trim()) return nein("Ausgabe fehlt");
   if (ausgabe.includes("\0") || ausgabe.length > 240) return nein("Ausgabe ungültig (Zeichen oder Länge)");
-  if (/^[\\/]{2}/.test(ausgabe)) return nein("UNC-Pfade sind nicht zulässig");
+  if (uncPfad(ausgabe)) return nein("UNC-Pfade sind nicht zulässig");
   if (!path.isAbsolute(ausgabe)) return nein("Ausgabe muss ein absoluter Pfad sein");
   if (ausgabe.split(/[\\/]+/).includes("..")) return nein("Ausgabe darf kein „..“ enthalten");
   const pfad = path.resolve(ausgabe);
   if (path.parse(pfad).root === pfad) return nein("Wurzel eines Laufwerks ist kein Ziel");
   const gleichOderIn = (/** @type {string} */ a, /** @type {string} */ b) => {
-    const r = path.relative(a, b);
+    const gross = process.platform === "win32" ? (/** @type {string} */ x) => x.toLowerCase() : (/** @type {string} */ x) => x;
+    const r = path.relative(gross(a), gross(b));
     return r === "" || (!r.startsWith("..") && !path.isAbsolute(r));
   };
   if (gleichOderIn(path.resolve(wurzel), pfad)) return nein("Ausgabe liegt im Repo — dort entstehen keine Daten");
@@ -208,20 +225,20 @@ export function ausgabePruefen(ausgabe, { wurzel = WURZEL, env = process.env } =
     if (st.isSymbolicLink()) return nein("Ausgabe ist ein Verweis (Link/Junction)");
     if (!st.isDirectory()) return nein("Ausgabe ist kein Ordner");
     if (readdirSync(pfad).length > 0) return nein("Ausgabeordner muss neu oder leer sein");
-    echt = realpathSync(pfad);
+    echt = echterPfad(pfad);
   } else {
     const eltern = path.dirname(pfad);
     let pst = null;
     try { pst = lstatSync(eltern); } catch { /* fehlt */ }
+    if (pst && pst.isSymbolicLink()) return nein("Elternordner ist ein Verweis (Link/Junction)");
     if (!pst || !pst.isDirectory()) return nein("Elternordner der Ausgabe fehlt (es wird nur ein Ordner angelegt)");
-    if (pst.isSymbolicLink()) return nein("Elternordner ist ein Verweis (Link/Junction)");
-    echt = path.join(realpathSync(eltern), path.basename(pfad));
+    echt = path.join(echterPfad(eltern), path.basename(pfad));
   }
-  if (gleichOderIn(realpathSync(path.resolve(wurzel)), echt)) return nein("Ausgabe liegt im Repo — dort entstehen keine Daten");
+  if (gleichOderIn(echterPfad(path.resolve(wurzel)), echt)) return nein("Ausgabe liegt im Repo — dort entstehen keine Daten");
   const laufend = env.CENTRIC_DATEN;
   if (laufend) {
     let l = path.resolve(laufend);
-    try { l = realpathSync(l); } catch { /* nicht vorhanden */ }
+    try { l = echterPfad(l); } catch { /* nicht vorhanden */ }
     if (gleichOderIn(l, echt) || gleichOderIn(echt, l)) return nein("Ausgabe berührt die laufende Ablage (CENTRIC_DATEN)");
   }
   return { ok: true, pfad, neu: !st };
@@ -230,12 +247,12 @@ export function ausgabePruefen(ausgabe, { wurzel = WURZEL, env = process.env } =
 /* ------------------------------ Altstand holen (git archive) ---------------------------------------------------- */
 /** @param {string} ref @param {string} ziel */
 function altstandHolen(ref, ziel) {
-  const git = (/** @type {string[]} */ a) => spawnSync("git", a, { cwd: WURZEL, maxBuffer: 1 << 30 });
+  const git = (/** @type {string[]} */ a) => spawnSync("git", a, { cwd: WURZEL, maxBuffer: 1 << 30, timeout: 120000 });
   if (git(["cat-file", "-e", `${ref}^{commit}`]).status !== 0) git(["fetch", "--no-tags", "--depth", "1", "origin", ref]);
   if (git(["cat-file", "-e", `${ref}^{commit}`]).status !== 0) throw new Error(`Altstand ${ref} nicht verfügbar (git fetch origin ${ref})`);
   const a = git(["archive", "--format=tar", ref, "server/lib"]);
   if (a.status !== 0) throw new Error(`git archive fehlgeschlagen: ${String(a.stderr).slice(0, 200)}`);
-  const x = spawnSync("tar", ["-xf", "-"], { cwd: ziel, input: a.stdout, maxBuffer: 1 << 30 });
+  const x = spawnSync("tar", ["-xf", "-"], { cwd: ziel, input: a.stdout, maxBuffer: 1 << 30, timeout: 120000 });
   if (x.status !== 0) throw new Error(`tar fehlgeschlagen: ${String(x.stderr).slice(0, 200)}`);
 }
 
@@ -288,6 +305,7 @@ export function pruefeAblage(wurzel, { zahlkennung = true } = {}) {
   const dir = path.join(wurzel, "centric");
   if (!existsSync(dir)) return [...b, "Store centric fehlt"];
   /** @type {Map<string, any>} */ const daten = new Map();
+  /** @type {Map<string, any>} */ const metadaten = new Map();
   for (const name of readdirSync(dir)) {
     if (name.endsWith(".tmp")) { b.push(`Zwischendatei (.tmp): ${name}`); continue; }
     let key;
@@ -303,18 +321,30 @@ export function pruefeAblage(wurzel, { zahlkennung = true } = {}) {
     if (!u.metadata || typeof u.metadata !== "object") b.push(`Umschlag: metadata fehlt (${name})`);
     if (!("daten" in u)) b.push(`Umschlag: daten fehlen (${name})`);
     daten.set(key, u.daten);
+    metadaten.set(key, u.metadata);
   }
 
-  /* Texte: nur @example.invalid; keine langen Ziffernfolgen (außer in Hash-Feldern der Konten). */
-  const ZIFFERN_AUSNAHME = /^(account|kontoId|mitglied|raummitglied|mitgliedlauf|konto):/;
+  /* Texte, Objektschlüssel und Umschlag-Metadaten: nur @example.invalid; keine Telefon-/Kontonummern-artigen Ziffern.
+     Ausgenommen sind einzelne Hash- und Kennungsfelder der Konten (Feld für Feld, nicht ganze Schlüsselklassen). */
+  const ZIFFERN_FELD = /^(account:|kontoId:|mitglied:|mitgliedlauf:|raummitglied:)/;
+  const HASH_FELDER = new Set([".id", ".accountId", ".passwort", ".emailNorm", ".emailHash", ".generation", ".raum", ".mitgliedId", ".kontoId", ".schluessel"]);
+  const nummernartig = (/** @type {string} */ v) => {
+    const t = v.replace(/\d{4}-\d{2}-\d{2}(T[\d:.]+Z?)?/g, "").replace(/\d{1,2}:\d{2}(:\d{2}(\.\d+)?)?/g, "");
+    if (/\d{7,}/.test(t)) return true;
+    return (t.match(/\+?\d[\d ()./-]{5,}\d/g) || []).some((m) => m.replace(/\D/g, "").length >= 7);
+  };
+  const text = (/** @type {string} */ v, /** @type {string} */ key, /** @type {string} */ pfad) => {
+    for (const m of v.match(/[^\s@"',;]+@[^\s@"',;]+/g) || []) if (!m.endsWith(MAIL_ENDE)) { b.push(`Mailadresse nicht ${MAIL_ENDE}: in ${key} ${pfad}`); break; }
+    const feld = pfad.replace(/\[\d+\]/g, "");
+    if (!(ZIFFERN_FELD.test(key) && HASH_FELDER.has(feld.slice(feld.lastIndexOf(".")))) && nummernartig(v)) b.push(`lange Ziffernfolge oder Telefonnummer in ${key} ${pfad}`);
+  };
   const durchlauf = (/** @type {any} */ v, /** @type {string} */ key, /** @type {string} */ pfad) => {
-    if (typeof v === "string") {
-      for (const m of v.match(/[^\s@"',;]+@[^\s@"',;]+/g) || []) if (!m.endsWith(MAIL_ENDE)) { b.push(`Mailadresse nicht ${MAIL_ENDE}: in ${key} ${pfad}`); break; }
-      if (!ZIFFERN_AUSNAHME.test(key) && /\d{7,}/.test(v)) b.push(`lange Ziffernfolge in ${key} ${pfad}`);
-    } else if (Array.isArray(v)) v.forEach((x, i) => durchlauf(x, key, `${pfad}[${i}]`));
-    else if (v && typeof v === "object") for (const [k, x] of Object.entries(v)) durchlauf(x, key, `${pfad}.${k}`);
+    if (typeof v === "string") text(v, key, pfad);
+    else if (Array.isArray(v)) v.forEach((x, i) => durchlauf(x, key, `${pfad}[${i}]`));
+    else if (v && typeof v === "object") for (const [k, x] of Object.entries(v)) { text(k, key, `${pfad}.<Schlüssel>`); durchlauf(x, key, `${pfad}.${k}`); }
   };
   for (const [key, v] of daten) durchlauf(v, key, "");
+  for (const [key, m] of metadaten) durchlauf(m, key, ".<metadata>");
 
   /* Betriebe: Kern + Scherben und Altform. */
   /** @type {{ raum: string, form: string, wurzel: any }[]} */ const raeume = [];
@@ -334,6 +364,9 @@ export function pruefeAblage(wurzel, { zahlkennung = true } = {}) {
     }
     for (const m of w.mandanten) {
       if (!m || typeof m.name !== "string" || !m.name.startsWith(MARKE)) b.push(`Kennzeichnung ${MARKE} fehlt im Betriebsnamen (${r.raum})`);
+      for (const p of m.personen || []) {
+        if (!p || p.vorname !== "Testperson" || !/^Altbestand \d{3}$/.test(String(p.nachname))) b.push(`Personenname nicht aus der Positivliste (${r.raum})`);
+      }
       if (typeof m.id === "number") zahl++;
       else if (typeof m.id !== "string") b.push(`Betrieb ohne Kennung in ${r.raum}`);
       const n = (m.personen || []).length;

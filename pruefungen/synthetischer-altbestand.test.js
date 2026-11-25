@@ -16,7 +16,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
-  REF_PRODUKTION, GRENZEN, planBauen, saatPruefen, ausgabePruefen, erzeugen, baumHash, pruefeAblage,
+  REF_PRODUKTION, GRENZEN, planBauen, saatPruefen, ausgabePruefen, uncPfad, erzeugen, baumHash, pruefeAblage,
 } from "../werkzeug/synthetischer-altbestand.mjs";
 
 const WURZEL = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -27,6 +27,13 @@ let T;                 // Wegwerfwurzel
 let A, B, C, ZK;       // A, B: gleiche Saat; C: andere Saat; ZK: ohne Zahlkennung
 let ergA, ergB, ergC, ergZK;
 
+/** 8.3-Kurzname eines vorhandenen Pfads (nur Windows), sonst null. */
+const kurzname = (/** @type {string} */ p) => {
+  if (process.platform !== "win32") return null;
+  const r = spawnSync("cmd.exe", ["/d", "/s", "/c", `"for %I in ("${p}") do @echo %~sI"`], { encoding: "utf8", windowsVerbatimArguments: true });
+  const o = String(r.stdout || "").trim();
+  return o && o.includes("~") && o.toLowerCase() !== p.toLowerCase() ? o : null;
+};
 const befunde = (/** @type {string} */ d, o = {}) => pruefeAblage(d, o);
 const kopie = (/** @type {string} */ name) => { const z = path.join(T, name); cpSync(A, z, { recursive: true }); return z; };
 const dateien = (/** @type {string} */ d) => readdirSync(path.join(d, "centric"));
@@ -158,11 +165,74 @@ describe("Ausgabepfad: Schutz", () => {
       .rejects.toThrow(/Selbsttest/);
     expect(existsSync(d)).toBe(false);
   }, 300000);
+  for (const [name, aendern] of /** @type {[string, (z: string) => void][]} */ ([
+    ["Mail in Metadaten", (z) => { const p = path.join(z, "centric", nameVon("kern:alt-leer")); const u = JSON.parse(readFileSync(p, "utf8")); u.metadata.durch = "x@example.com"; writeFileSync(p, JSON.stringify(u)); }],
+    ["Telefonnummer im Zugangscode", (z) => { for (const n of readdirSync(path.join(z, "centric")).filter((x) => x.startsWith("konto%3A"))) { const p = path.join(z, "centric", n); const u = JSON.parse(readFileSync(p, "utf8")); u.daten.name = "Tel 000 0000 000"; writeFileSync(p, JSON.stringify(u)); } }],
+    ["Echtname in einer Person", (z) => { const p = path.join(z, "centric", nameVon("kern:alt-pflege")); const u = JSON.parse(readFileSync(p, "utf8")); u.daten.mandanten[0].personen[0].nachname = "Zufallsname"; writeFileSync(p, JSON.stringify(u)); }],
+  ])) {
+    it(`eingeschleustes Echt-Merkmal (${name}) gibt Fehler beim Erzeugen, Ausgabe entfernt`, async () => {
+      const d = path.join(T, `merkmal-${name.replace(/\W+/g, "-")}`);
+      await expect(erzeugen({ ausgabe: d, saat: 1, ...KLEIN, nachSchreiben: aendern })).rejects.toThrow(/Selbsttest/);
+      expect(existsSync(d)).toBe(false);
+    }, 300000);
+  }
   it("Größenbegrenzung: zu große Ausgabe bricht ab und räumt auf", async () => {
     const d = path.join(T, "gross");
     await expect(erzeugen({ ausgabe: d, saat: 1, ...KLEIN, maxBytes: 20000 })).rejects.toThrow(/Größe|Bytes/);
     expect(!existsSync(d) || readdirSync(d).length === 0).toBe(true);
   }, 300000);
+});
+
+describe("Ausgabepfad: Kurznamen, Verweise, laufende Ablage, UNC", () => {
+  it("UNC-Regel (ohne Dateisystem): Freigabe- und Gerätepfade ja, gewöhnliche nein", () => {
+    for (const p of ["\\\\srv\\frei\\x", "//srv/frei/x", "\\\\?\\C:\\x", "\\\\.\\pipe"]) expect(uncPfad(p), p).toBe(true);
+    for (const p of ["C:\\x", "/x", "/x/y", "x", ""]) expect(uncPfad(p), p).toBe(false);
+  });
+  it("8.3-Kurzname des Repos umgeht die Repo-Sperre nicht", (ctx) => {
+    const k = kurzname(WURZEL);
+    if (!k) { console.warn("ÜBERSPRUNGEN: keine 8.3-Kurznamen für das Repo verfügbar (nicht Windows oder auf dem Datenträger abgeschaltet)"); ctx.skip(); return; }
+    const r = ausgabePruefen(`${k}\\k4p3-im-repo-test`);
+    expect(r.ok).toBe(false);
+    expect(r.grund).toMatch(/Repo/);
+  });
+  it("8.3-Kurzname der laufenden Ablage (CENTRIC_DATEN) wird erkannt, in beide Richtungen", (ctx) => {
+    const lang = path.join(T, "lang-ordner-fuer-kurznamen");
+    mkdirSync(lang);
+    const k = kurzname(lang);
+    if (!k) { console.warn("ÜBERSPRUNGEN: keine 8.3-Kurznamen verfügbar"); ctx.skip(); return; }
+    expect(ausgabePruefen(path.join(lang, "unter"), { env: { CENTRIC_DATEN: k } }).ok).toBe(false);
+    expect(ausgabePruefen(`${k}\\unter`, { env: { CENTRIC_DATEN: lang } }).ok).toBe(false);
+  });
+  it("vorhandener leerer Ordner in Kurzform gegen laufende Ablage in Langform", (ctx) => {
+    const lang = path.join(T, "leerer-ordner-fuer-kurznamen");
+    mkdirSync(lang);
+    const k = kurzname(lang);
+    if (!k) { console.warn("ÜBERSPRUNGEN: keine 8.3-Kurznamen verfügbar"); ctx.skip(); return; }
+    expect(ausgabePruefen(k, { env: { CENTRIC_DATEN: lang } }).ok).toBe(false);
+  });
+  it("Ziel innerhalb der laufenden Ablage und Ziel über der laufenden Ablage abgewiesen", () => {
+    const d = path.join(T, "laufend2");
+    mkdirSync(d);
+    expect(ausgabePruefen(path.join(d, "neu"), { env: { CENTRIC_DATEN: d } }).ok).toBe(false);          // Ziel in der Ablage
+    expect(ausgabePruefen(d, { env: { CENTRIC_DATEN: path.join(d, "ablage") } }).ok).toBe(false);       // Ziel über der Ablage
+    expect(ausgabePruefen(path.join(T, "ganz-woanders"), { env: { CENTRIC_DATEN: d } }).ok).toBe(true);
+  });
+  it("Verweis (Junction) im Großelternpfad zum Repo wird erkannt", (ctx) => {
+    const link = path.join(T, "repo-link");
+    try { symlinkSync(WURZEL, link, "junction"); } catch { console.warn("ÜBERSPRUNGEN: kein Link möglich"); ctx.skip(); return; }
+    try {
+      const r = ausgabePruefen(path.join(link, "server", "k4p3-neu"));
+      expect(r.ok).toBe(false);
+      expect(r.grund).toMatch(/Repo/);
+    } finally { try { unlinkSync(link); } catch { rmdirSync(link); } }
+  });
+  it("Elternordner ist ein Verweis: Meldung nennt den Verweis", (ctx) => {
+    const ziel = path.join(T, "linkziel2"), link = path.join(T, "elternlink");
+    mkdirSync(ziel);
+    try { symlinkSync(ziel, link, "junction"); } catch { console.warn("ÜBERSPRUNGEN: kein Link möglich"); ctx.skip(); return; }
+    try { expect(ausgabePruefen(path.join(link, "neu")).grund).toMatch(/Verweis/); }
+    finally { try { unlinkSync(link); } catch { rmdirSync(link); } }
+  });
 });
 
 describe("Erzeugte Ablage: Gestalt und Randfälle", () => {
@@ -271,9 +341,9 @@ describe("Selbsttest: jede Verletzung der Gestalt wird gefunden", () => {
   einzel("Kern ohne Standzeiger", (d) => unlinkSync(path.join(d, "centric", nameVon("stand:alt-pflege:aktuell"))), /Standzeiger|stand/);
   einzel("Scherbe ohne Betrieb im Kern", (d) => writeFileSync(path.join(d, "centric", nameVon("scherbe:alt-pflege:gibt-es-nicht:2026-09")),
     JSON.stringify({ fassung: 1, etag: "x", typ: "json", metadata: {}, daten: { mandantId: "gibt-es-nicht", monat: "2026-09", felder: {} } })), /Scherbe/);
-  einzel("echte Mailadresse im Bestand", (d) => umschlagAendern(d, "kern:alt-pflege", (u) => { u.daten.mandanten[0].kontakt = "max.mustermann@gmx.de"; }), /Mail|Adresse/);
+  einzel("echte Mailadresse im Bestand", (d) => umschlagAendern(d, "kern:alt-pflege", (u) => { u.daten.mandanten[0].kontakt = "max.mustermann@example.com"; }), /Mail|Adresse/);
   einzel("lange Ziffernfolge (Telefon/IBAN-artig) im Bestand", (d) => umschlagAendern(d, "kern:alt-pflege",
-    (u) => { u.daten.mandanten[0].anschrift = "Tel 015112345678"; }), /Ziffern/);
+    (u) => { u.daten.mandanten[0].anschrift = "Tel 000000000"; }), /Ziffern/);
   einzel("Betriebsname nicht als synthetisch gekennzeichnet", (d) => umschlagAendern(d, "kern:alt-pflege", (u) => { u.daten.mandanten[0].name = "Haus Sonnenschein"; }), /synthetisch|Kennzeichnung/);
   einzel("Altform-Raum fehlt", (d) => unlinkSync(path.join(d, "centric", nameVon("bestand:alt-bestandsform"))), /Altform/);
   einzel("Zahl-Kennung fehlt", (d) => umschlagAendern(d, "kern:alt-sicherheit", (u) => { for (const m of u.daten.mandanten) m.id = String(m.id); }), /Zahl-Kennung/);
@@ -284,6 +354,17 @@ describe("Selbsttest: jede Verletzung der Gestalt wird gefunden", () => {
   einzel("Rolle kunde fehlt", (d) => { for (const n of dateien(d).filter((x) => x.startsWith("konto%3A"))) {
     const p = path.join(d, "centric", n); const u = JSON.parse(readFileSync(p, "utf8")); if (u.daten.rolle === "kunde") u.daten.rolle = "planer"; writeFileSync(p, JSON.stringify(u)); } }, /kunde/);
   einzel("Datei unterschreitet Zahl: kein leerer Betrieb", (d) => umschlagAendern(d, "kern:alt-leer", (u) => { u.daten.mandanten[0].personen = [{ id: "p1" }]; }), /leer/);
+  einzel("Mail in den Umschlag-Metadaten", (d) => umschlagAendern(d, "kern:alt-pflege", (u) => { u.metadata.durch = "x@example.com"; }), /Mail|Adresse/);
+  einzel("Mail als Objektschlüssel", (d) => umschlagAendern(d, "kern:alt-pflege", (u) => { u.daten.mandanten[0].notizen = { "x@example.com": 1 }; }), /Mail|Adresse/);
+  einzel("Domain nur example.com statt example.invalid", (d) => umschlagAendern(d, "kern:alt-pflege", (u) => { u.daten.mandanten[0].kontakt = "x@example.com"; }), /Mail|Adresse/);
+  einzel("Telefonnummer im Namen eines Zugangscodes", (d) => { for (const n of dateien(d).filter((x) => x.startsWith("konto%3A"))) {
+    const p = path.join(d, "centric", n); const u = JSON.parse(readFileSync(p, "utf8")); u.daten.name = "Tel 000000000"; writeFileSync(p, JSON.stringify(u)); } }, /Ziffern|Telefon/);
+  einzel("Telefonnummer mit Leerzeichen und Trennern", (d) => umschlagAendern(d, "kern:alt-pflege", (u) => { u.daten.mandanten[0].anschrift = "+00 000 0000 0000"; }), /Ziffern|Telefon/);
+  einzel("Telefonnummer mit Bindestrichen", (d) => umschlagAendern(d, "kern:alt-pflege", (u) => { u.daten.mandanten[0].anschrift = "000-0000-0000"; }), /Ziffern|Telefon/);
+  einzel("Vorname nicht aus der Positivliste", (d) => umschlagAendern(d, "kern:alt-pflege", (u) => { u.daten.mandanten[0].personen[0].vorname = "Zufall"; }), /Positivliste/);
+  einzel("Personenname nicht aus der Positivliste", (d) => umschlagAendern(d, "kern:alt-pflege", (u) => { u.daten.mandanten[0].personen[0].nachname = "Zufallsname"; }), /Positivliste/);
+  einzel("kein Konto im Zustand gesperrt oder eingeladen", (d) => { for (const n of dateien(d).filter((x) => x.startsWith("account%3A"))) {
+    const p = path.join(d, "centric", n); const u = JSON.parse(readFileSync(p, "utf8")); u.daten.status = "aktiv"; writeFileSync(p, JSON.stringify(u)); } }, /gesperrt|eingeladen/);
   einzel("Ablage-Wurzel fehlt", (d) => rmSync(d, { recursive: true, force: true }), /Wurzel|nicht vorhanden|Verzeichnis/);
 });
 
