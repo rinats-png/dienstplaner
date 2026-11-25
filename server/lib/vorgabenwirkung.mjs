@@ -192,10 +192,29 @@ const mass = (e) => {
 
 
 
+
+/** Ist die Vorgabe gültig beschrieben, aber über der Zeitraumgrenze (und rechnet deshalb im Plan nicht)? Ungültige Zeiträume/Muster gehören nicht hierher. */
+function ueberlangGueltig(v) {
+  const p = v.parameter || {};
+  if (v.regelart === "zaehlregel") {
+    const f = p.fenster;
+    if (!f || typeof f !== "object") return false;
+    if (f.art === "kalenderjahr") return true;
+    const n = Number(f.laenge);
+    return f.art === "rollierend" && Number.isInteger(n) && n >= 1 && ["tage", "wochen", "monate"].includes(f.einheit);
+  }
+  if (v.regelart === "musterregel") {
+    const halb = p.art === "hoechstensFolge" ? Number(p.max) + (Number(p.danachFrei) || 0) + 1 : Number(p.abstandTage === undefined ? 1 : p.abstandTage);
+    return Number.isInteger(halb) && halb >= 1;
+  }
+  return false;
+}
+
 /**
  * Einmal je Einstieg (Budget) und Vorgabenliste: Dienstart-Abbildung, Qualifikationsnamen, wirkende Vorgaben in stabiler Reihenfolge
  * (Priorität, Kennung) und die daraus gebauten Regeln. Gilt nur, solange Vorgabenliste und Dienstarten/Qualifikationen dieselben Objekte sind.
- * `ueberlang`: aktive Plan-Vorgaben (Muster, Block, Zählregel), die im Plan nicht gerechnet werden (Zeitraum über der Grenze): nie still „bestanden“.
+ * `ueberlang`: aktive Plan-Vorgaben (Muster, Block, Zählregel), die gültig beschrieben sind, im Plan aber nicht gerechnet werden (Zeitraum über
+ * der Grenze): nie still „bestanden“.
  */
 function vorbereiten(m, budget) {
   const gefunden = budget.vorbereitet.get(m.vorgaben);
@@ -203,7 +222,7 @@ function vorbereiten(m, budget) {
   const aktiv = aktiveVorgaben(m.vorgaben).filter((v) => v.staerke !== "wunsch");
   const sortiert = (l) => l.sort((a, b) => (a.prioritaet - b.prioritaet) || (String(a.id) < String(b.id) ? -1 : String(a.id) > String(b.id) ? 1 : 0));
   const wirkend = sortiert(aktiv.filter((v) => vorgabePlanwirkung(v).wirkt));
-  const ueberlang = sortiert(aktiv.filter((v) => VORGABEN_PLANARTEN.includes(v.regelart) && !vorgabePlanwirkung(v).wirkt));
+  const ueberlang = sortiert(aktiv.filter((v) => VORGABEN_PLANARTEN.includes(v.regelart) && !vorgabePlanwirkung(v).wirkt && ueberlangGueltig(v)));
   const kl = klassenAbbildung(m);
   /* Qualifikationsgruppe: Kennung, Kürzel oder Name einer Qualifikation des Betriebs → Kennung. */
   const qual = new Map();
@@ -223,6 +242,8 @@ function vorbereiten(m, budget) {
   return vb;
 }
 
+const TAG_MS = 86400000;
+
 /**
  * Die Befunde aktiver interner Vorgaben für die Einteilung von Person p in Dienstart da am Tag d.
  * `k.automatisch`: Die Einteilung geschieht ohne Mensch (Planungsassistent). Dann gilt fail-closed: Konnte eine Muss-Vorgabe nicht geprüft werden
@@ -230,9 +251,11 @@ function vorbereiten(m, budget) {
  * Teilzeitquote), ist „vorgabeOffen“ eine Achtung (die Person ist nicht „möglich“); im Warndialog bleibt es ein Hinweis, den der Mensch bewertet.
  * `k.abwesendAm(p, tag)`: Kennung der Abwesenheitsart oder null. Abwesende Tage sind im Plan der Vorgabe ohne Klasse (unbekannt, nie „frei“);
  * Urlaub und Krankheit werden aus Zählregeln herausgenommen (Zähler und Vergleichsgrundlage zugleich).
- * Teilzeit anteilig (Zählregel): Untergrenzen („mindestens“) werden mit der Teilzeitquote skaliert, solange die Vorgabe es nicht ausschließt
- * (`ausnahmen.teilzeitAnteilig === false`); Obergrenzen („höchstens“) nur, wenn die Vorgabe ausdrücklich anteilig gilt (`=== true`). Keine Rundung:
- * Liegt der Zählwert weniger als 1 neben einer nicht ganzzahligen Grenze, ist das Ergebnis offen („anteilig, nicht ganzzahlig“).
+ * Teilzeit anteilig (Zählregel): Grenzen werden NUR bei ausdrücklich anteilig geltender Vorgabe (`ausnahmen.teilzeitAnteilig === true`) mit der
+ * Teilzeitquote skaliert — ohne Angabe oder bei „nein“ nie (eine Betriebsvorgabe wird nicht ungefragt gelockert). Eine Mindestzahl freier Tage
+ * wird nie nach unten skaliert. Keine Rundung: Liegt der Zählwert weniger als 1 neben einer nicht ganzzahligen Grenze, ist das Ergebnis offen
+ * („anteilig, nicht ganzzahlig“).
+ * Rechenaufwand: Zählregeln rechnen mit Präfixsummen (linear in Fensterlänge und Stichtagen); das Budget zählt diesen Aufwand.
  * @param {any} m Betrieb
  * @param {any} p Person
  * @param {string} d Tag JJJJ-MM-TT
@@ -272,6 +295,15 @@ export function vorgabenBefunde(m, p, d, da, k) {
     }
     return e;
   };
+  /* Tage relativ zu d (Versatz in Tagen), einmal je Aufruf aufgebaut und von allen Vorgaben geteilt: kein Datum-Rechnen je Vorgabe und Tag. */
+  const bezug = Date.parse(d);
+  const eint = new Map();
+  const eintO = (o) => {
+    let e = eint.get(o);
+    if (!e) { const t = o === 0 ? d : addDays(d, o); const x = tag(t); e = { t, dienst: x.dienst, abw: x.abw }; eint.set(o, e); }
+    return e;
+  };
+  const versatz = (t) => Math.round((Date.parse(t) - bezug) / TAG_MS);
   for (let i = 0; i < pruef.length; i++) {
     const v = pruef[i];
     if (budget.ausgeschoepft) { ungeprueft(pruef.slice(i), "Rechenbudget aufgebraucht"); break; }
@@ -281,73 +313,90 @@ export function vorgabenBefunde(m, p, d, da, k) {
     try {
       const zaehl = v.regelart === "zaehlregel";
       const par = v.parameter || {};
-      /* Teilzeit anteilig (nur Zählregel; Schutzvorschriften bleiben unberührt, sie laufen nicht über Vorgaben). */
+      const ereignis = zaehl ? kl(par.ereignis) : null;
+      /* Teilzeit anteilig (nur Zählregel; Schutzvorschriften bleiben unberührt, sie laufen nicht über Vorgaben): nur bei ausdrücklichem „ja“;
+         eine Mindestzahl freier Tage wird nie nach unten skaliert. */
       let tzFaktor = 1;
-      if (zaehl) {
-        const flag = (v.ausnahmen || {}).teilzeitAnteilig;
-        if (par.richtung === "mindestens" ? flag !== false : flag === true) {
-          const q = teilzeitQuote(m, p);
-          if (q === null) { ungeprueft([v], "Teilzeitquote nicht bestimmbar"); continue; }
-          tzFaktor = q;
-        }
+      if (zaehl && (v.ausnahmen || {}).teilzeitAnteilig === true && !(par.richtung === "mindestens" && kleinText(ereignis) === "frei")) {
+        const q = teilzeitQuote(m, p);
+        if (q === null) { ungeprueft([v], "Teilzeitquote nicht bestimmbar"); continue; }
+        tzFaktor = q;
       }
       const fenster = fensterUm(v, d);
       const rollierend = zaehl && (par.fenster || {}).art === "rollierend";
-      const stichtage = [];
-      for (let s = d, n = rollierend ? zaehlFenster(par.fenster) : 1; stichtage.length < n; s = addDays(s, 1)) stichtage.push(s);
-      const kosten = 2 * (1 + Math.round((Date.parse(fenster.bis) - Date.parse(fenster.von)) / 86400000)) + 2 * (stichtage.length - 1);
+      const ns = rollierend ? zaehlFenster(par.fenster) : 1;
+      const vonO = versatz(fenster.von), bisO = versatz(fenster.bis), L = bisO - vonO + 1;
+      /* Kosten = tatsächliche Arbeit: Plantage zweimal (mit/ohne) plus ein Schritt je Stichtag (Präfixsummen). */
+      const kosten = 2 * L + 2 * (ns - 1);
       if (budget.rest < kosten) { budget.ausgeschoepft = true; ungeprueft(pruef.slice(i), "Rechenbudget aufgebraucht"); break; }
       budget.rest -= kosten;
-      const tageMit = {}, tageOhne = {};
-      const ereignis = zaehl ? kl(par.ereignis) : null;
-      const ereignisseMit = [], ereignisseOhne = [];
-      const ohneZaehlung = new Set();   // Urlaub/Krankheit: aus Zähler und Vergleichsgrundlage genommen
-      for (let t = fenster.von; t <= fenster.bis; t = addDays(t, 1)) {
-        let ohne;
-        if (t === d) ohne = "frei";
-        else {
-          const e = tag(t);
-          ohne = tagesklasse(e.dienst, e.abw !== null);
-          if (e.abw !== null && VORGABEN_ZAEHLUNG_OHNE.includes(String(e.abw))) ohneZaehlung.add(t);
-        }
-        const mit = t === d ? tagesklasse(da.id, false) : ohne;
-        /* Blockregel: Ein Tag ohne Dienst ist im Plan noch offen, nicht „frei“ (er kann später gefüllt werden) — erst zwei verschiedene
-           Dienste im Block verletzen. Die übrigen Regeln brauchen den freien Tag (Pause nach einem Block). */
-        const offenTag = v.regelart === "blockregel";
-        if (ohne !== undefined && !(offenTag && ohne === "frei")) tageOhne[t] = ohne;
-        if (mit !== undefined && !(offenTag && mit === "frei")) tageMit[t] = mit;
-        if (ereignis !== null) { if (ohne === ereignis) ereignisseOhne.push(t); if (mit === ereignis) ereignisseMit.push(t); }
-      }
       const basis = vb.regelFuer(v);
       const grenze0 = Number(par.grenze);
-      /* Grenze dieses Stichtags: anteilig zur Teilzeit, bei „mindestens“ zusätzlich nur für die anwesenden Tage des Fensters. */
-      const grenzeAm = (st) => {
-        if (!zaehl) return { eff: grenze0, ohneTage: 0 };
-        let eff = grenze0 * tzFaktor, ohneTage = 0;
-        if (par.richtung === "mindestens") {
-          const z = zeitraum(par.fenster, st);
-          let tage = 0;
-          for (let t = z.von; t <= z.bis; t = addDays(t, 1)) { tage++; if (ohneZaehlung.has(t)) ohneTage++; }
-          if (ohneTage && tage) eff = eff * ((tage - ohneTage) / tage);
-        }
-        return { eff: eff === grenze0 ? grenze0 : sauber(eff), ohneTage };
-      };
-      const rechne = (tage, ereignisse, stichtag, eff) => pruefeRegel(zaehl && eff !== grenze0
-        ? { ...basis, parameter: { ...basis.parameter, grenze: eff } } : basis, zaehl
-        ? { ereignisse, stichtag } : { tage, von: fenster.von, bis: fenster.bis, stichtag });
-      /* Zählregel: Jedes Fenster, das die Einteilung enthält, wird ausgewertet (Stichtage d … d+n−1), nicht nur das am Tag endende. */
+      const regelMit = (eff) => (zaehl && eff !== grenze0 ? { ...basis, parameter: { ...basis.parameter, grenze: eff } } : basis);
       let treffer = null, hinweis = "", unklar = false;
-      for (const st of stichtage) {
-        const { eff, ohneTage } = grenzeAm(st);
-        const mitE = rechne(tageMit, ereignisseMit, st, eff);
-        if (mitE.status !== "verletzt") continue;
-        const ohneE = rechne(tageOhne, ereignisseOhne, st, eff);
-        if (ohneE.status === "verletzt" && mass(mitE) <= mass(ohneE)) continue;
-        const ganz = Number.isInteger(eff);
-        if (zaehl && !ganz && Math.abs(Number((mitE.fakten || {}).anzahl) - eff) < 1) { unklar = true; continue; }   // keine stille Rundung: offen
-        treffer = mitE;
-        hinweis = zaehl ? `${eff !== grenze0 ? ` — anteilig: Grenze ${eff}${ganz ? "" : ", nicht ganzzahlig"}` : ""}${ohneTage ? " — ohne Urlaub und Krankheit" : ""}` : "";
-        break;
+
+      if (zaehl) {
+        /* Präfixsummen über das Fenster: Ereignisse mit/ohne die Einteilung und Urlaubs-/Krankheitstage. */
+        const pm = new Int32Array(L + 1), po = new Int32Array(L + 1), pa = new Int32Array(L + 1);
+        for (let j = 0; j < L; j++) {
+          const o = vonO + j;
+          let ohne, abwZ = 0;
+          if (o === 0) ohne = "frei";
+          else { const e = eintO(o); ohne = tagesklasse(e.dienst, e.abw !== null); if (e.abw !== null && VORGABEN_ZAEHLUNG_OHNE.includes(String(e.abw))) abwZ = 1; }
+          const mit = o === 0 ? tagesklasse(da.id, false) : ohne;
+          po[j + 1] = po[j] + (ohne === ereignis ? 1 : 0);
+          pm[j + 1] = pm[j] + (mit === ereignis ? 1 : 0);
+          pa[j + 1] = pa[j] + abwZ;
+        }
+        const hoechstens = par.richtung === "hoechstens";
+        const f = par.fenster || {};
+        const festLaenge = rollierend && (f.einheit === "tage" || f.einheit === "wochen") ? (f.einheit === "tage" ? Number(f.laenge) : 7 * Number(f.laenge)) : 0;
+        for (let so = 0; so < ns; so++) {
+          let wv, wb;
+          if (festLaenge) { wv = so - festLaenge + 1; wb = so; }
+          else { const z = zeitraum(f, so === 0 ? d : addDays(d, so)); wv = versatz(z.von); wb = versatz(z.bis); }
+          if (wv < vonO || wb > bisO || wb < wv) throw new Error("Fenster außerhalb des gelesenen Plans");
+          const a = wv - vonO, b = wb - vonO + 1;
+          const nMit = pm[b] - pm[a], nOhne = po[b] - po[a];
+          const tage = wb - wv + 1;
+          const ohneTage = hoechstens ? 0 : pa[b] - pa[a];
+          let eff = grenze0 * tzFaktor;
+          if (!hoechstens && ohneTage && tage) eff = eff * ((tage - ohneTage) / tage);
+          eff = eff === grenze0 ? grenze0 : sauber(eff);
+          const verletzt = (n) => (hoechstens ? n > eff : n < eff);
+          if (!verletzt(nMit)) continue;
+          const last = (n) => (hoechstens ? n : -n);
+          if (verletzt(nOhne) && last(nMit) <= last(nOhne)) continue;
+          const ganz = Number.isInteger(eff);
+          if (!ganz && Math.abs(nMit - eff) < 1) { unklar = true; continue; }   // keine stille Rundung: offen
+          /* Text und Bestätigung der Verletzung kommen vom Regelbaukasten (eine Prüflogik); nur der Kandidat wird dort gerechnet. */
+          const ereignisse = [];
+          for (let j = 0; j < L; j++) if (pm[j + 1] > pm[j]) ereignisse.push(vonO + j === 0 ? d : eintO(vonO + j).t);
+          const e = pruefeRegel(regelMit(eff), { ereignisse, stichtag: so === 0 ? d : addDays(d, so) });
+          if (e.status !== "verletzt") continue;
+          treffer = e;
+          hinweis = `${eff !== grenze0 ? ` — anteilig: Grenze ${eff}${ganz ? "" : ", nicht ganzzahlig"}` : ""}${ohneTage ? " — ohne Urlaub und Krankheit" : ""}`;
+          break;
+        }
+      } else {
+        const tageMit = {}, tageOhne = {};
+        for (let o = vonO; o <= bisO; o++) {
+          let ohne, t;
+          if (o === 0) { ohne = "frei"; t = d; }
+          else { const e = eintO(o); t = e.t; ohne = tagesklasse(e.dienst, e.abw !== null); }
+          const mit = o === 0 ? tagesklasse(da.id, false) : ohne;
+          /* Blockregel: Ein Tag ohne Dienst ist im Plan noch offen, nicht „frei“ (er kann später gefüllt werden) — erst zwei verschiedene
+             Dienste im Block verletzen. Die übrigen Regeln brauchen den freien Tag (Pause nach einem Block). */
+          const offenTag = v.regelart === "blockregel";
+          if (ohne !== undefined && !(offenTag && ohne === "frei")) tageOhne[t] = ohne;
+          if (mit !== undefined && !(offenTag && mit === "frei")) tageMit[t] = mit;
+        }
+        const rechne = (tage) => pruefeRegel(basis, { tage, von: fenster.von, bis: fenster.bis, stichtag: d });
+        const mitE = rechne(tageMit);
+        if (mitE.status === "verletzt") {
+          const ohneE = rechne(tageOhne);
+          if (!(ohneE.status === "verletzt" && mass(mitE) <= mass(ohneE))) treffer = mitE;
+        }
       }
       if (!treffer) { if (unklar) ungeprueft([v], "anteilig, nicht ganzzahlig"); continue; }
       const muss = v.staerke === "muss";

@@ -192,6 +192,10 @@ export function pruefeVorgabe(v) {
     if (!istObjekt(a) || Object.keys(a).some((k) => !["personen", "zeitraeume", "teilzeitAnteilig"].includes(k))) return `${wo}: Ausnahmen haben eine unbekannte Form.`;
     if (a.personen !== undefined && !idListe(a.personen, G.personen)) return `${wo}: Ausnahmen: Personen als Liste von Kennungen erwartet.`;
     if (a.teilzeitAnteilig !== undefined && typeof a.teilzeitAnteilig !== "boolean") return `${wo}: Ausnahmen: „Teilzeit anteilig" ist Ja oder Nein.`;
+    /* Eine Mindestzahl freier Tage (Frei-/Ruhetage) wird nie anteilig nach unten gesetzt (Betreiberentscheidung I5-2). */
+    if (a.teilzeitAnteilig === true && v.regelart === "zaehlregel" && istObjekt(v.parameter) && v.parameter.richtung === "mindestens"
+      && String(v.parameter.ereignis === undefined || v.parameter.ereignis === null ? "" : v.parameter.ereignis).trim().toLowerCase() === "frei")
+      return `${wo}: Eine Mindestzahl freier Tage gilt nie anteilig; „Teilzeit anteilig" ist hier nicht möglich.`;
     if (a.zeitraeume !== undefined && !(Array.isArray(a.zeitraeume) && a.zeitraeume.length <= G.zeitraeume
       && a.zeitraeume.every((z) => istObjekt(z) && Object.keys(z).every((k) => ["von", "bis"].includes(k)) && istTag(z.von) && istTag(z.bis) && z.von <= z.bis)))
       return `${wo}: Ausnahmen: Zeiträume als Liste mit Von und Bis erwartet.`;

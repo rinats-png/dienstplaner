@@ -49,8 +49,8 @@ describe("belastbarkeit und tagesReserve: EIN Budget je Aufruf", () => {
     expect(b.split("neuesVorgabenBudget()").length - 1).toBe(1);
     expect(b).toContain("tagesReserve(m, d, da.id, { vorgabenBudget })");
     const t = funktion(q, "export function tagesReserve(");
-    expect(t).toContain("{ vorgabenBudget: opt && opt.vorgabenBudget }");
-    expect(t).not.toContain("neuesVorgabenBudget(");
+    expect(t).toContain("(opt && opt.vorgabenBudget) || neuesVorgabenBudget()");
+    expect(t).toContain("{ vorgabenBudget }");
   });
 });
 
@@ -100,4 +100,50 @@ describe("planeMonat: erschöpftes Monatsbudget nennt den Grund „vorgabe“ be
     expect(lauf([]).offen.every((o) => o.grund === undefined)).toBe(true);
     vi.useRealTimers();
   }, 180000);
+});
+
+describe("Rechenaufwand: rollierende Zählregeln mit Fenster 61 Tage bleiben im Budgetziel (Review #566, Delta 2)", () => {
+  let F, B;
+  beforeAll(async () => {
+    vi.useFakeTimers({ now: new Date(FEST), toFake: ["Date"] });
+    vi.spyOn(Math, "random").mockImplementation(zufall(20261125));
+    F = await import("../src/lib/fachlogik.js");
+    B = betriebe(F);
+  }, 120000);
+  afterAll(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
+  const Z = (i, richtung, ereignis, grenze) => ({ id: `z${String(i).padStart(2, "0")}`, name: `Z${i}`, regelart: "zaehlregel",
+    parameter: { ereignis, fenster: { art: "rollierend", laenge: 61, einheit: "tage" }, richtung, grenze }, geltung: { art: "betrieb" }, bezug: "monat",
+    staerke: "muss", prioritaet: 1, grundlage: { art: "hausregel" }, status: "aktiv" });
+  const satz = (art) => Array.from({ length: 50 }, (_, i) => (art === "hoechstens" ? Z(i, "hoechstens", "F", 40 + i)
+    : art === "mindestens" ? Z(i, "mindestens", "frei", 10 + (i % 5)) : (i % 2 ? Z(i, "hoechstens", "N", 30 + i) : Z(i, "mindestens", "frei", 10 + (i % 5)))));
+  const zeit = (f) => { const t = process.hrtime.bigint(); f(); return Number(process.hrtime.bigint() - t) / 1e9; };
+
+  it("belastbarkeit(m, 4) auf demo1 mit 50 Muss-Zählregeln (höchstens, mindestens „frei“, Mischung): höchstens 5 s mehr als ohne Vorgaben (vor der Änderung +10 s bis +33 s)", () => {
+    const m = structuredClone(B.find(([n]) => n.startsWith("demo1"))[1]);
+    m.vorgaben = [];
+    F.belastbarkeit(m, 1);   // aufwärmen
+    const ohne = zeit(() => F.belastbarkeit(m, 4));
+    for (const art of ["hoechstens", "mindestens", "mischung"]) {
+      m.vorgaben = satz(art);
+      const mit = zeit(() => F.belastbarkeit(m, 4));
+      expect(mit - ohne, `${art}: mit ${mit.toFixed(1)} s, ohne ${ohne.toFixed(1)} s`).toBeLessThan(5);
+    }
+  }, 600000);
+  it("belastbarkeit und tagesReserve kennzeichnen ein aufgebrauchtes Vorgaben-Budget (vorgabenUnvollstaendig); ohne Vorgaben nie", () => {
+    const m = structuredClone(B.find(([n]) => n.startsWith("demo1"))[1]);
+    m.vorgaben = [];
+    expect(F.belastbarkeit(m, 1).every((w) => w.vorgabenUnvollstaendig === false && w.zeilen.every((z) => z.vorgabenUnvollstaendig === false))).toBe(true);
+    m.vorgaben = satz("mindestens");
+    const w = F.belastbarkeit(m, 1, { vorgabenBudget: neuesVorgabenBudget(5000) });
+    expect(w[0].vorgabenUnvollstaendig).toBe(true);
+    expect(w[0].zeilen.some((z) => z.vorgabenUnvollstaendig)).toBe(true);
+    const da = m.dienstarten.find((x) => x.id === "F");
+    const tag = new Date(FEST).toISOString().slice(0, 10);
+    expect(F.tagesReserve(m, tag, da.id, { vorgabenBudget: neuesVorgabenBudget(100) }).vorgabenUnvollstaendig).toBe(true);
+  }, 300000);
+  it("Prioritäten zeigt „Reserve evtl. zu hoch“ aus vorgabenUnvollstaendig (Text in den vorhandenen Bausteinen)", () => {
+    const q = quelle("src/ansichten/prioritaeten.jsx");
+    expect(q).toContain("Reserve evtl. zu hoch");
+    expect(q.split("vorgabenUnvollstaendig").length - 1).toBe(2);
+  });
 });

@@ -3583,14 +3583,16 @@ export function lohnausgabeText(m, ym) {
  */
 /* `opt.vorgabenBudget`: das Rechenbudget des äußeren Einstiegs (WP-I5, Review #566): belastbarkeit legt EINS für alle Tage und Dienste an. */
 export function tagesReserve(m, datum, dienstId, opt) {
+  const vorgabenBudget = (opt && opt.vorgabenBudget) || neuesVorgabenBudget();
   const b = besetzung(m, datum)[dienstId];
   if (!b) return null;
   const da = b.da;
   const puffer = b.anzahl - b.soll;                       // schon eingeteilte Reserve
   // Wer könnte einspringen, ohne gegen harte Regeln zu verstoßen?
-  const ersatz = ersatzVorschlaege(m, datum, dienstId, undefined, { vorgabenBudget: opt && opt.vorgabenBudget }).filter((x) => x.moeglich).length;
+  const ersatz = ersatzVorschlaege(m, datum, dienstId, undefined, { vorgabenBudget }).filter((x) => x.moeglich).length;
   const traegt = Math.max(0, puffer) + ersatz;
-  return { datum, dienstId, da, ist: b.anzahl, soll: b.soll, puffer, ersatz, traegt,
+  /* vorgabenUnvollstaendig: Das Vorgaben-Budget war aufgebraucht — weitere Personen zählen mit Hinweis als möglich, die Reserve kann zu hoch sein. */
+  return { datum, dienstId, da, ist: b.anzahl, soll: b.soll, puffer, ersatz, traegt, vorgabenUnvollstaendig: vorgabenBudget.ausgeschoepft,
     stufe: traegt >= 3 ? "robust" : traegt >= 1 ? "knapp" : "ohne Reserve" };
 }
 
@@ -3608,21 +3610,21 @@ export function belastbarkeit(m, wochen = 8, opt) {
     const von = addDays(start, w * 7);
     const zeilen = [];
     for (const da of dienste) {
-      let min = 99, minTag = null, summe = 0, tage = 0;
+      let min = 99, minTag = null, summe = 0, tage = 0, unvollstaendig = false;
       for (let i = 0; i < 7; i++) {
         const d = addDays(von, i);
         const r = tagesReserve(m, d, da.id, { vorgabenBudget });
         if (!r || r.soll === 0) continue;
-        tage++; summe += r.traegt;
+        tage++; summe += r.traegt; unvollstaendig = unvollstaendig || r.vorgabenUnvollstaendig === true;
         if (r.traegt < min) { min = r.traegt; minTag = d; }
       }
       if (!tage) continue;
       zeilen.push({ da, min: min === 99 ? 0 : min, minTag,
-        schnitt: Math.round((summe / tage) * 10) / 10,
+        schnitt: Math.round((summe / tage) * 10) / 10, vorgabenUnvollstaendig: unvollstaendig,
         stufe: min >= 3 ? "robust" : min >= 1 ? "knapp" : "ohne Reserve" });
     }
     const schwaechste = zeilen.slice().sort((a, b) => a.min - b.min)[0] || null;
-    out.push({ kw: w, von, bis: addDays(von, 6), zeilen, schwaechste,
+    out.push({ kw: w, von, bis: addDays(von, 6), zeilen, schwaechste, vorgabenUnvollstaendig: zeilen.some((z) => z.vorgabenUnvollstaendig),
       stufe: schwaechste ? schwaechste.stufe : "robust" });
   }
   return out;

@@ -620,35 +620,45 @@ describe("8. Entscheidungen 26.11.: Qualifikationsgruppe, Teilzeit anteilig, Abw
     const Z = (richtung, grenze, extra = {}) => V("z", { regelart: "zaehlregel", parameter: { ereignis: richtung === "mindestens" ? "frei" : "N", fenster: { art: "rollierend", laenge: 7, einheit: "tage" }, richtung, grenze }, ...extra });
     const tz = (stunden) => ({ id: "pp", teilzeit: { aktiv: true }, wochenstunden: stunden });
     const arbeit = { [add(TAG, 1)]: "S", [add(TAG, 2)]: "S", [add(TAG, 3)]: "S", [add(TAG, 4)]: "S" };   // „mindestens 4 freie Tage in 7“ reißt mit der Einteilung am Tag
-    it("Untergrenze („mindestens“) wird mit der Teilzeitquote skaliert: Vollzeit verletzt, 50 % (Grenze 2) nicht", () => {
+    it("Ohne ausdrückliches „Teilzeit anteilig: ja“ wird nie skaliert (auch nicht die Untergrenze); eine Mindestzahl freier Tage wird nie nach unten gesetzt, auch nicht bei „ja“", () => {
       expect(regeln(pruefeM([Z("mindestens", 4)], arbeit))).toEqual(["vorgabeMuss"]);
-      expect(regeln(pruefeM([Z("mindestens", 4)], arbeit, { p: { id: "pp", teilzeit: { aktiv: false }, wochenstunden: 20 } }))).toEqual(["vorgabeMuss"]);   // keine aktive Teilzeit
-      expect(pruefeM([Z("mindestens", 4)], arbeit, { p: tz(20) })).toEqual([]);
+      expect(regeln(pruefeM([Z("mindestens", 4)], arbeit, { p: tz(20) }))).toEqual(["vorgabeMuss"]);                  // Teilzeit, kein Flag: Grenze 4 bleibt
+      expect(regeln(pruefeM([Z("mindestens", 4, { ausnahmen: { teilzeitAnteilig: true } })], arbeit, { p: tz(20) }))).toEqual(["vorgabeMuss"]);   // frei: nie nach unten
+      expect(pruefeVorgabe(Z("mindestens", 4, { ausnahmen: { teilzeitAnteilig: true } }))).toMatch(/Mindestzahl freier Tage gilt nie anteilig/);
+      expect(pruefeVorgabe(Z("mindestens", 4, { ausnahmen: { teilzeitAnteilig: false } }))).toBeNull();
+      expect(pruefeVorgabe(Z("hoechstens", 3, { ausnahmen: { teilzeitAnteilig: true } }))).toBeNull();
     });
-    it("nicht ganzzahlige Grenze (60 % von 4 = 2,4): kein stilles Runden — knapp daneben ist offen, deutlich darunter ein Befund mit dem Hinweis „anteilig, nicht ganzzahlig“", () => {
-      const knapp = pruefeM([Z("mindestens", 4)], arbeit, { p: tz(24) });
+    it("nicht ganzzahlige Grenze (60 % von 3 = 1,8, nur bei „ja“): kein stilles Runden — knapp daneben ist offen, deutlich darüber ein Befund mit dem Hinweis „anteilig, nicht ganzzahlig“", () => {
+      const ja = { ausnahmen: { teilzeitAnteilig: true } };
+      const knapp = pruefeM([Z("hoechstens", 3, ja)], { [add(TAG, 1)]: "N" }, { da: "N", p: tz(24) });   // 2 bei Grenze 1,8
       expect(regeln(knapp)).toEqual(["vorgabeOffen"]);
       expect(knapp[0].text).toMatch(/anteilig, nicht ganzzahlig/);
-      const sehrWenig = { ...arbeit, [add(TAG, 5)]: "S", [add(TAG, -1)]: "S", [add(TAG, -2)]: "S" };
-      const b = pruefeM([Z("mindestens", 4)], sehrWenig, { p: tz(24) });
+      const b = pruefeM([Z("hoechstens", 3, ja)], { [add(TAG, 1)]: "N", [add(TAG, 2)]: "N" }, { da: "N", p: tz(24) });   // 3 bei Grenze 1,8
       expect(regeln(b)).toEqual(["vorgabeMuss"]);
-      expect(b[0].text).toMatch(/anteilig: Grenze 2.4, nicht ganzzahlig/);
+      expect(b[0].text).toMatch(/anteilig: Grenze 1.8, nicht ganzzahlig/);
+    });
+    it("Formular: ein nicht angehaktes Kästchen „Teilzeit anteilig“ speichert nichts und wirkt als „nicht anteilig“ — keine stille Lockerung", async () => {
+      const { formularZuVorgabe } = await import("../src/ansichten/vorgaben.jsx");
+      const m0 = { einheiten: [], personen: [] };
+      const basis = (anteilig) => ({ id: "tz-form", name: "Formular", beschreibung: "", regelart: "zaehlregel", parameter: {}, geltung: { art: "betrieb" }, bezug: "monat", staerke: "muss",
+        prioritaet: 1, grundlage: { art: "hausregel", fundstelle: "" }, ausnahmen: { personen: [], teilzeitAnteilig: anteilig }, status: "entwurf" });
+      const aus = (anteilig) => formularZuVorgabe(basis(anteilig), {}, m0).ausnahmen;
+      expect((aus(false) || {}).teilzeitAnteilig).toBeUndefined();
+      expect((aus(true) || {}).teilzeitAnteilig).toBe(true);
+      const nacht = { [add(TAG, 1)]: "N", [add(TAG, 2)]: "N" };
+      const mitAusnahmen = (anteilig) => Z("hoechstens", 3, { ausnahmen: aus(anteilig) || {} });
+      expect(pruefeM([mitAusnahmen(false)], nacht, { da: "N", p: tz(20) })).toEqual([]);                             // nicht angehakt: Grenze 3 gilt unverändert
+      expect(regeln(pruefeM([mitAusnahmen(true)], nacht, { da: "N", p: tz(20) }))).toEqual(["vorgabeMuss"]);         // angehakt: anteilig 1,5
     });
     it("Vorgabe schließt „anteilig“ aus (teilzeitAnteilig: nein): keine Skalierung, auch bei Untergrenzen", () => {
       expect(regeln(pruefeM([Z("mindestens", 4, { ausnahmen: { teilzeitAnteilig: false } })], arbeit, { p: tz(20) }))).toEqual(["vorgabeMuss"]);
     });
-    it("Obergrenze („höchstens“) wird NUR bei ausdrücklich anteilig geltender Vorgabe skaliert", () => {
-      const nacht = { [add(TAG, 1)]: "N", [add(TAG, 2)]: "N" };   // mit der Einteilung 3 Nächte
-      expect(pruefeM([Z("hoechstens", 3)], nacht, { da: "N", p: tz(20) })).toEqual([]);                                        // nicht anteilig: Grenze 3 bleibt, 3 ist erlaubt
-      expect(regeln(pruefeM([Z("hoechstens", 3, { ausnahmen: { teilzeitAnteilig: true } })], nacht, { da: "N", p: tz(20) }))).toEqual(["vorgabeMuss"]);   // 1,5: 3 liegt deutlich darüber
-      const knapp = pruefeM([Z("hoechstens", 3, { ausnahmen: { teilzeitAnteilig: true } })], { [add(TAG, 1)]: "N" }, { da: "N", p: tz(20) });   // 2 bei Grenze 1,5: knapp darüber
-      expect(regeln(knapp)).toEqual(["vorgabeOffen"]);
-      expect(knapp[0].text).toMatch(/anteilig, nicht ganzzahlig/);
-    });
-    it("Teilzeitquote nicht bestimmbar (aktive Teilzeit ohne Wochenstunden): offen, in der Automatik Achtung — nie geraten", () => {
+    it("Teilzeitquote nicht bestimmbar (aktive Teilzeit ohne Wochenstunden, Vorgabe gilt anteilig): offen, in der Automatik Achtung — nie geraten", () => {
       const p = { id: "pp", teilzeit: { aktiv: true } };
-      expect(pruefeM([Z("mindestens", 4)], arbeit, { p }).map((b) => [b.regel, b.stufe])).toEqual([["vorgabeOffen", "hinweis"]]);
-      expect(pruefeM([Z("mindestens", 4)], arbeit, { p, automatisch: true })[0].stufe).toBe("achtung");
+      const v = Z("hoechstens", 3, { ausnahmen: { teilzeitAnteilig: true } });
+      const nacht = { [add(TAG, 1)]: "N", [add(TAG, 2)]: "N" };
+      expect(pruefeM([v], nacht, { da: "N", p }).map((b) => [b.regel, b.stufe])).toEqual([["vorgabeOffen", "hinweis"]]);
+      expect(pruefeM([v], nacht, { da: "N", p, automatisch: true })[0].stufe).toBe("achtung");
     });
     it("Teilzeitquote: ohne Teilzeit 1, sonst Wochenstunden zur Soll-Wochenarbeitszeit, ohne Rundung und ohne Untergrenze", () => {
       expect(teilzeitQuote({}, { id: "x" })).toBe(1);
@@ -739,5 +749,65 @@ describe("8. Entscheidungen 26.11.: Qualifikationsgruppe, Teilzeit anteilig, Abw
       expect(pruefeM([jahr({ ausnahmen: { personen: ["pp"] } })], {})).toEqual([]);
       expect(pruefeM([V("g", { regelart: "grenzregel", parameter: { groesse: "x", hoechstens: 3 } })], {})).toEqual([]);
     });
+  });
+});
+
+describe("9. Zählregeln rechnen mit Präfixsummen: gleiches Ergebnis wie der Regelbaukasten", () => {
+  const rng = (seed) => () => { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296; };
+  it("300 Zufallsfälle (Richtung, Grenze, Fenster in Tagen/Wochen, Ereignis, Plan): Befund genau dann, wenn der Baukasten in einem der Fenster mit der Einteilung verletzt und die Einteilung die Verletzung herbeiführt oder vergrößert", async () => {
+    const { zaehlregel } = await import("../server/lib/regelbaukasten.mjs");
+    const { vorgabeAlsRegel } = await import("../server/lib/vorgaben.mjs");
+    const r = rng(20261126);
+    const wahl = (l) => l[Math.floor(r() * l.length)];
+    let befunde = 0;
+    for (let i = 0; i < 300; i++) {
+      const einheit = wahl(["tage", "wochen"]);
+      const laenge = einheit === "tage" ? 2 + Math.floor(r() * 9) : 1 + Math.floor(r() * 2);
+      const n = einheit === "tage" ? laenge : 7 * laenge;
+      const richtung = wahl(["hoechstens", "mindestens"]);
+      const ereignis = wahl(["N", "F", "frei"]);
+      const grenze = 1 + Math.floor(r() * 4);
+      const v = V("z", { regelart: "zaehlregel", parameter: { ereignis, fenster: { art: "rollierend", laenge, einheit }, richtung, grenze } });
+      const plan = {};
+      for (let o = -(n - 1); o <= n - 1; o++) if (o !== 0 && r() < 0.45) plan[add(TAG, o)] = wahl(["F", "S", "N"]);
+      const da = wahl(["F", "S", "N"]);
+      const regel = vorgabeAlsRegel(v, { wirkend: true });
+      const massDe = (e) => (richtung === "mindestens" ? -e.fakten.anzahl : e.fakten.anzahl);
+      let erwartet = false;
+      for (let so = 0; so < n && !erwartet; so++) {
+        const mitL = [], ohneL = [];
+        for (let o = -(n - 1); o <= n - 1; o++) {
+          const t = add(TAG, o);
+          const ohne = o === 0 ? "frei" : (plan[t] || "frei");
+          const mit = o === 0 ? da : ohne;
+          if (ohne === ereignis) ohneL.push(t);
+          if (mit === ereignis) mitL.push(t);
+        }
+        const st = add(TAG, so);
+        const mitE = zaehlregel(regel, { ereignisse: mitL, stichtag: st });
+        if (mitE.status !== "verletzt") continue;
+        const ohneE = zaehlregel(regel, { ereignisse: ohneL, stichtag: st });
+        if (!(ohneE.status === "verletzt" && massDe(mitE) <= massDe(ohneE))) erwartet = true;
+      }
+      const echt = nurVorgabe(pruefe([v], plan, { da })).length > 0;
+      expect(echt, `Fall ${i}: ${richtung} ${grenze} ${ereignis} ${laenge} ${einheit}, Dienst ${da}`).toBe(erwartet);
+      if (erwartet) befunde++;
+    }
+    expect(befunde, "die Fälle enthalten Befunde und Nicht-Befunde").toBeGreaterThan(20);
+    expect(befunde).toBeLessThan(280);
+  }, 120000);
+  it("Kalendermonat und Monate-Fenster laufen über denselben Weg (ein bzw. mehrere Stichtage, Fenster aus dem Baukasten)", () => {
+    const km = V("z", { regelart: "zaehlregel", parameter: { ereignis: "N", fenster: { art: "kalendermonat" }, richtung: "hoechstens", grenze: 2 } });
+    expect(nurVorgabe(pruefe([km], { "2026-11-01": "N", "2026-11-02": "N" }, { da: "N" }))).toHaveLength(1);
+    expect(nurVorgabe(pruefe([km], { "2026-11-01": "N" }, { da: "N" }))).toEqual([]);
+    const mo = V("z", { regelart: "zaehlregel", parameter: { ereignis: "N", fenster: { art: "rollierend", laenge: 1, einheit: "monate" }, richtung: "hoechstens", grenze: 2 } });
+    expect(nurVorgabe(pruefe([mo], { [add(TAG, -3)]: "N", [add(TAG, -9)]: "N" }, { da: "N" }))).toHaveLength(1);
+    expect(nurVorgabe(pruefe([mo], { [add(TAG, -3)]: "N" }, { da: "N" }))).toEqual([]);
+  });
+  it("ein ungültiger Zeitraum oder ein ungültiges Muster wird nicht als „über 62 Tage“ gemeldet (nur gültig beschriebene, aber zu lange)", () => {
+    const kaputt = V("z", { regelart: "zaehlregel", parameter: { ereignis: "N", fenster: { art: "unsinn" }, richtung: "hoechstens", grenze: 2 } });
+    expect(pruefe([kaputt], {}, { da: "N" })).toEqual([]);
+    const kaputtMuster = V("m", { parameter: { art: "hoechstensFolge", klassen: ["F"], max: "x", danachFrei: 0 } });
+    expect(pruefe([kaputtMuster], {})).toEqual([]);
   });
 });
