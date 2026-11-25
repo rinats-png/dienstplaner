@@ -45,7 +45,7 @@ import { istWiderrufen, widerrufen as widerrufbuchEintragen, gesperrtesKonto, ke
 import { SK_HOECHST_TAGE, SK_HOECHSTZAHL, SK_STANDARD_TAGE, SK_WARNUNG_PASSWORT, grundAusPruefung, raumIndex,
   schluesselDerZugaenge, schluesselWiderrufen, schluesselWiderrufenWenn, widerrufText } from "../lib/sicherungsschluessel.mjs";
 import { paketfelderGeprueft } from "../lib/paketstand.mjs";
-import { rechnungenPruefen, rechnungAltform } from "../lib/rechnungsausgang.mjs";
+import { rechnungenPruefen, rechnungAltform, altformFehler } from "../lib/rechnungsausgang.mjs";
 import { vertragsstandVon, paketAenderungen } from "../lib/paketstand.mjs";
 import { auswertungHolen } from "../lib/br-auswertung.mjs";
 import { stempelWiderspruch, stempelSichern, korrekturAnhaengen } from "../lib/stempelintegritaet.mjs";
@@ -817,6 +817,13 @@ async function behandeln(req, context, ctx) {
          Server. Einträge in Altform (ohne nummer und positionen, Prüfstände vor der Regel) bleiben unverändert. */
       if (neuerBestand.rechnungen !== undefined) {
         const altA = Array.isArray(neuerBestand.rechnungen) ? neuerBestand.rechnungen.filter(rechnungAltform) : [];
+        /* Review #542 A1: Altform eng begrenzt (keine Serverfelder, kein Status, flach, klein) — sie wird unveränderlich. */
+        const afI = altA.findIndex((x) => altformFehler(x));
+        if (afI >= 0) {
+          const af = altformFehler(altA[afI]);
+          return antwort({ fehler: "Der Bestand ist ungültig.", code: af.code, text: af.grund,
+            feld: `rechnungen[${neuerBestand.rechnungen.indexOf(altA[afI])}]` }, 422);
+        }
         const rgA = rechnungenPruefen(neuerBestand.rechnungen, altA, { mandanten: neuerBestand.mandanten, heute: heuteBerlin(), jetzt: new Date().toISOString() });
         if ("fehler" in rgA) return antwort({ fehler: "Der Bestand ist ungültig.", code: rgA.fehler.code, text: rgA.fehler.grund, feld: rgA.fehler.feld }, 422);
         neuerBestand = { ...neuerBestand, rechnungen: rgA.rechnungen };

@@ -16,7 +16,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { rechnungenPruefen, RECHNUNG_CODE, RECHNUNG_GRENZEN, SERVERFELDER } from "../server/lib/rechnungsausgang.mjs";
+import { rechnungenPruefen, altformFehler, RECHNUNG_CODE, RECHNUNG_GRENZEN, SERVERFELDER } from "../server/lib/rechnungsausgang.mjs";
 import { BRANCHENMODULE } from "../server/lib/branchenmodule.mjs";
 
 const HEUTE = "2026-11-25";
@@ -350,5 +350,59 @@ describe("L-4 Handler: bestand-anlegen, Prüfstände in Altform", { timeout: 120
     const boese = await anfrage("/api/bestand-anlegen", { methode: "POST", token, rumpf: { bestand: "rechnung-l4-alt2",
       inhalt: inhalt([{ nr: "R-1", betrag: 199 }, { nr: "R-2", positionen: [PAKETPOS] }]) } });
     expect(boese.status).toBe(422);
+  });
+});
+
+/* ======================================================================== */
+/* Review PR #542 (Auflagen A1, A2): laufende Nummer nur aus Rechnungen in Schemaform, Altform begrenzt, Storno centgenau. */
+describe("L-4 Review A1: laufende Nummer und Altform", () => {
+  it("Altform mit lfd zählt nicht: die nächste neue Rechnung bekommt 1 (keine Lücke)", () => {
+    const alt = [{ nr: "X", lfd: 5 }];
+    const e = rechnungenPruefen([rg("R-1"), ...alt], alt, O());
+    expect(e.rechnungen[0].lfd).toBe(1);
+  });
+  it("Altform mit lfd 2^53 vergiftet den Zähler nicht: zwei neue Rechnungen bekommen 1 und 2", () => {
+    const alt = [{ nr: "X", lfd: 2 ** 53 }];
+    const e = rechnungenPruefen([rg("R-1"), rg("R-2"), ...alt], alt, O());
+    expect(e.rechnungen.slice(0, 2).map((x) => x.lfd)).toEqual([1, 2]);
+  });
+  it("Zähler nach Rechnungen in Schemaform: lückenlos weiter; ein unsicherer Wert zählt nicht", () => {
+    const alt = [{ ...rg("R-1"), lfd: 1 }, { ...rg("R-2"), lfd: 2 }, { ...rg("R-3"), lfd: 2 ** 53 }];
+    const e = rechnungenPruefen([rg("R-4"), ...alt], alt, O());
+    expect(e.rechnungen[0].lfd).toBe(3);
+  });
+  it("doppelte Nummer im selben Anlegen: abgewiesen", () => {
+    expect(code(rechnungenPruefen([rg("R-1"), rg("R-1", { mandant: "b" })], [], O()))).toBe(RECHNUNG_CODE.UNVERAENDERLICH);
+  });
+  it("Altform in bestand-anlegen: Serverfelder, Status, Prototyp-Schlüssel, übergroß, HTML, verschachtelt, riesige Zahl: abgewiesen", () => {
+    const boese = [{ nr: "X", lfd: 1 }, { nr: "X", erstellt: "x" }, { nr: "X", datum: "2020-01-01" }, { nr: "X", status: "bezahlt" },
+      { nr: "X", bezahlt: true }, { nr: "X", storniert: true }, JSON.parse('{"nr":"X","__proto__":{"a":1}}'), { nr: "x".repeat(300000) },
+      { nr: "<img src=x onerror=alert(1)>" }, { nr: "X", tiefe: { a: 1 } }, { nr: "X", brutto: 1e308 }, { nr: "X", art: "storno" }];
+    for (const b of boese) expect(altformFehler(b), JSON.stringify(b).slice(0, 80)).not.toBeNull();
+    for (const ok of [{ nr: "R-1", betrag: 199 }, { id: "r1", betrag: 119 }, { id: "rg-eigen", mandantId: "m1", brutto: 100 }, { nr: 1 }])
+      expect(altformFehler(ok), JSON.stringify(ok)).toBeNull();
+  });
+});
+
+describe("L-4 Review A2: Storno centgenau", () => {
+  it("Storno mit einem Cent Abweichung: abgewiesen", () => {
+    const alt = [{ ...rg("R-1"), lfd: 1 }];
+    const st = rg("S-1", { art: "storno", bezug: "R-1", netto: -89.01, steuer: -16.91, brutto: -105.92 });
+    expect(code(rechnungenPruefen([st, ...alt], alt, O()))).toBe(RECHNUNG_CODE.STORNO);
+  });
+});
+
+describe("L-4 Review A1: Handler bestand-anlegen mit vergifteter Altform", { timeout: 120000 }, () => {
+  it("Altform mit lfd 2^53: 422, nichts angelegt; Altform ohne Serverfelder: neue Rechnungen lfd 1 und 2", async () => {
+    const zc = "RGL4-AAAA-0003";
+    await kontoSchreiben(laden(), ablageSchluessel(zc), { name: "betr", bestand: "rechnung-l4-betreiber3", rolle: "betreiber", person: null, betrieb: 0, angelegt: EIN });
+    const token = (await anfrage("/api/anmelden", { methode: "POST", rumpf: { zugangscode: zc } })).token;
+    const inhalt = (rechnungen) => ({ version: 9, stand: 1, session: null, rechnungen, mandanten: [betrieb("m1", "Testbetrieb Synth GmbH")] });
+    const r = await anfrage("/api/bestand-anlegen", { methode: "POST", token, rumpf: { bestand: "rechnung-l4-gift1", inhalt: inhalt([rg("R-1"), rg("R-2"), { nr: "X", lfd: 2 ** 53 }]) } });
+    expect(r.status, r.roh.slice(0, 300)).toBe(422);
+    expect(r.code).toBe(RECHNUNG_CODE.FORM);
+    const ok = await anfrage("/api/bestand-anlegen", { methode: "POST", token, rumpf: { bestand: "rechnung-l4-gift2", inhalt: inhalt([rg("R-1"), rg("R-2"), { nr: "X", betrag: 1 }]) } });
+    expect(ok.status, ok.roh.slice(0, 300)).toBe(200);
+    expect((await gespeichert("rechnung-l4-gift2")).map((x) => x.lfd)).toEqual([1, 2, undefined]);
   });
 });

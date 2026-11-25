@@ -336,12 +336,28 @@ Befund L-4 aus dem Audit Modul-inert (2026-11-24): Der Betreiber-PUT übernahm `
 Korrektur (kleinster sicherer Schnitt, G9): `server/lib/rechnungsausgang.mjs`, aufgerufen in `PUT /api/bestand` (nur Betreiber) und `POST /api/bestand-anlegen`.
 
 - Gespeicherte Rechnungen sind unveränderlich: nicht ändern, nicht löschen; die Reihenfolge bestimmt der Server. Sonst 422 `RECHNUNG_UNVERAENDERLICH`.
-- Neue Rechnungen: festes Schema (nur bekannte Felder, Typen, Wertebereiche, Längen, höchstens 16 KiB je Eintrag, höchstens 1000 neue je Vorgang), sonst 422 `RECHNUNG_FORM`. `lfd` (fortlaufend), `erstellt`, `datum` und `faellig` setzt der Server; mitgeschickte `lfd`/`erstellt` sind 422 `RECHNUNG_SERVERFELD`.
+- Neue Rechnungen: festes Schema (nur bekannte Felder, Typen, Wertebereiche, Längen, höchstens 16 KiB je Eintrag, höchstens 1000 neue je Vorgang), sonst 422 `RECHNUNG_FORM`. `lfd`, `erstellt`, `datum` und `faellig` setzt der Server; mitgeschickte `lfd`/`erstellt` sind 422 `RECHNUNG_SERVERFELD`.
+- `lfd` ist die höchste gespeicherte `lfd` einer Rechnung in Schemaform (mit `nummer` und `positionen`, sichere ganze Zahl bis 10^9) plus 1. Alteinträge zählen nicht. Lückenlos ist die Folge nur, solange alle Rechnungen über diesen Weg entstehen.
 - Paketpositionen nur mit `paketId`, nur für buchbare Pakete (Zustand 5), mit Abrechnungsgrund und ohne Pilot im Monat; sonst 422 `RECHNUNG_PAKET`. Heute ist kein Paket buchbar.
-- Storno nur als neue Gegenbuchung (`art: "storno"`, `bezug`, Beträge genau umgekehrt, einmal je Rechnung), sonst 422 `RECHNUNG_STORNO`. Ein Statusfeld gibt es nicht.
+- Storno nur als neue Gegenbuchung (`art: "storno"`, `bezug`, Netto, Steuer und Brutto centgenau umgekehrt, einmal je Rechnung, gleicher Betrieb), sonst 422 `RECHNUNG_STORNO`. Ein Statusfeld gibt es nicht.
 - Fehlerantwort und Serverprotokoll ohne Werte aus der Rechnung (nur Code, Grund, Feldpfad bzw. Anzahl und laufende Nummern).
-- Alteinträge ohne Schema (Testdaten) bleiben unverändert speicherbar. Die Betreiberkonsole löscht keine Rechnungen mehr („Alle löschen“ zeigt nur noch einen Hinweis; beim Löschen eines Mandanten bleiben seine Rechnungen).
+- Alteinträge: Gespeicherte bleiben unverändert speicherbar. `bestand-anlegen` übernimmt neue Einträge in Altform (ohne `nummer` und ohne `positionen`, etwa `{ nr, betrag }` der Prüfstände) nur eng begrenzt: höchstens 10 flache Felder, Text bis 200 Zeichen ohne `<` und `>`, Zahl bis 10 Mio., keine Server-, Status- oder Stornofelder, keine Prototyp-Schlüssel, höchstens 2 KiB. Sonst 422. Abgewiesen statt bereinigt, damit nichts still verändert wird.
+- Betreiberkonsole: „Alle löschen“ löscht nichts mehr und zeigt nur den Hinweis „Rechnungen werden aufbewahrt und hier nicht gelöscht.“ Die Abfrage beim Löschen eines Mandanten nennt, dass seine Rechnungen erhalten bleiben.
 
-Test: `pruefungen/rechnungsausgang-l4.test.js` (Angriffsliste A1–A16, rein und über den echten Handler), `pruefungen/modul-inert.test.js` P7.
+Test: `pruefungen/rechnungsausgang-l4.test.js` (rein und über den echten Handler, mit Mutationen belegt), `pruefungen/modul-inert.test.js` P7.
 
-Offen (Folgepaket): Rechnungen ganz auf dem Server erzeugen (Positionen und Beträge aus dem gespeicherten Vertragsstand statt aus der Übermittlung); Zahlungsstatus als eigene, nur anhängbare Buchung; Maskierung in `rechnungHTML`; `protokoll` des Betreibers ist weiter frei schreibbar.
+Was der Server NICHT prüft (Hinweise):
+
+- H1: Positionsbeträge, Mengen und Texte sind freie Texte. Der Server prüft nur Netto, Steuer und Brutto untereinander. Die Textregel „Branchenpaket“ ist trivial umgehbar (weicher Trennstrich, Leerzeichen, kyrillische Buchstaben, „Modul Sicherheitsdienst 79 €“). Das unterläuft G9 inhaltlich, bleibt aber eine bewusste Handlung des Betreibers von Hand.
+- H2: Nach dem Löschen eines Mandanten bleiben seine Rechnungen. Ein Storno ist danach nicht mehr möglich, weil der Betrieb nicht mehr im Raum steht.
+- H3: Der Knopf „Alle löschen“ bleibt sichtbar, als Gefahr-Knopf ohne Wirkung; die Ansicht ist per V4-3b-Fixture byte-genau eingefroren. Eine Storno-Aktion hat die Oberfläche nicht.
+- Aufbewahrung gegen Art. 17 DSGVO: nur ein Hinweis, rechtlich nicht abschließend geprüft. Eine Löschregel nach Ablauf der Aufbewahrungsfrist fehlt.
+
+Folgepakete (nicht umgesetzt):
+
+- P1, vor der ersten echten Abrechnung: Der Server erzeugt die Rechnung aus dem Vertragsstand; der Client liefert keine Positionen und Beträge mehr (schließt H1).
+- P1: `rechnungHTML` maskiert Namen, Anschrift und Positionstexte nicht (`src/lib/fachlogik.js`). Das Schema erlaubt `<`, `>` und `"`; `<img onerror>` und `<script>` werden angenommen und wirken im Word-Export. `rechnungPDF` maskiert runde Klammern und den Rückstrich nicht.
+- P1: Die Altform-Ausnahme in `bestand-anlegen` streichen und die Prüfstände (`rechte.mjs`, `pentest.mjs`, `vollausgabe.mjs` u. a.) auf Schemaform umstellen.
+- P2: Das Feld `protokoll` des Betreibers ist weiter frei schreibbar.
+- P2: Knopf „Alle löschen“ entfernen, Storno-Aktion in der Oberfläche (mit Anpassung der V4-3b-Fixture).
+- Hinweis: `pentest.mjs` (nicht in der CI) bricht beim Anlegen der Zugänge ab (409 „Raum ist noch nicht eingerichtet“), schon auf Basis 64451364, nicht aus diesem Paket.

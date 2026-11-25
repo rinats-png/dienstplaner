@@ -123,7 +123,7 @@ export function aktionenBetreiber(k) {
       }),
       loescheMandant: (id) => upd((s) => {
         const m = s.mandanten.find((x) => x.id === id);
-        if (window.prompt(`Löscht Mandant, Einheiten, Personal und Pläne unwiderruflich.\nZur Bestätigung den Namen eingeben:\n\n${m.name}`) !== m.name) {
+        if (window.prompt(`Löscht Mandant, Einheiten, Personal und Pläne unwiderruflich. Seine Rechnungen bleiben im Rechnungsausgang erhalten.\nZur Bestätigung den Namen eingeben:\n\n${m.name}`) !== m.name) {
           melde("Löschung abgebrochen."); return s; }
         /* Der Datenraum auf dem Server geht mit — Bestand, Monatsscherben,
            Sicherungen, Zugangscodes und offene Sitzungen. Vorher verschwand
@@ -183,8 +183,8 @@ export function aktionenBetreiber(k) {
           `Rechnungslauf ${monat}: ${neu.length} Rechnungen${nachsatz}`);
       }),
       /* MODINERT-L4: Rechnungen sind unveränderlich (Aufbewahrungspflicht; der Server nimmt keine Löschung an,
-         server/lib/rechnungsausgang.mjs). Der Knopf bleibt bis zum Folgepaket stehen und löscht nichts. */
-      rechnungenLeeren: () => melde("Rechnungen werden aufbewahrt und nicht gelöscht. Eine falsche Rechnung wird durch ein Storno ausgeglichen."),
+         server/lib/rechnungsausgang.mjs). Der Knopf bleibt bis zum Folgepaket stehen (Ansicht per V4-3b-Fixture eingefroren) und löscht nichts. */
+      rechnungenLeeren: () => melde("Rechnungen werden aufbewahrt und hier nicht gelöscht."),
       rechnungPDF: (rg) => {
         const bytes = rechnungPDF(rg);
         if (lade(`${rg.nummer}.pdf`, bytes, "application/pdf")) melde("PDF erstellt.");

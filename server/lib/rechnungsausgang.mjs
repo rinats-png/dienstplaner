@@ -21,7 +21,8 @@
      2. Neue Einträge prüft ein festes Schema: nur bekannte Felder, Typen,
         Wertebereiche, Längen, Größe. Unbekannte Felder (auch „__proto__“,
         „status“, „bezahlt“) sind 422.
-     3. Der Server setzt bei neuen Einträgen: `lfd` (fortlaufend, lückenlos),
+     3. Der Server setzt bei neuen Einträgen: `lfd` (fortlaufend: höchste gespeicherte lfd einer Rechnung in
+        Schemaform plus 1; Altform zählt nicht),
         `erstellt` (Zeitpunkt), `datum` (Servertag) und `faellig` (Servertag plus
         Zahlungsziel). Mitgeschickte `lfd`/`erstellt` sind 422.
      4. Paketpositionen (G9): eine Position mit `paketId` nur für ein buchbares
@@ -221,6 +222,32 @@ function paketFehler(r, feld, mandant, o) {
  */
 export const rechnungAltform = (x) => istObjekt(x) && !Object.hasOwn(x, "nummer") && !Object.hasOwn(x, "positionen");
 
+/** Eine Rechnung in Schemaform (nur sie zählt für die laufende Nummer). */
+const schemaform = (x) => istObjekt(x) && typeof x.nummer === "string" && Array.isArray(x.positionen);
+const LFD_MAX = 1000000000;
+
+/* Review #542 A1: eine Altform aus POST /api/bestand-anlegen wird danach unveränderlich gespeichert — sie bekommt deshalb
+   enge Grenzen: höchstens 10 flache Felder (Text bis 200 Zeichen ohne Steuerzeichen und ohne < >, Zahl bis 10 Mio.,
+   Wahrheitswert, null), keine Server-, Status- oder Stornofelder, keine Prototyp-Schlüssel, höchstens 2 KiB. Abgewiesen
+   statt bereinigt: ein stilles Entfernen änderte den Inhalt, den der Betreiber für unverändert hält. */
+const ALTFORM_VERBOTEN = new Set([...SERVERFELDER, "status", "bezahlt", "storniert", "art", "bezug", "__proto__", "constructor", "prototype"]);
+const ALTFORM_SCHLUESSEL = /^[A-Za-z][A-Za-z0-9]{0,39}$/;
+/** null oder { code, grund, feld } für einen Altform-Eintrag (feld relativ). */
+export function altformFehler(x) {
+  if (!schlicht(x)) return fehler(RECHNUNG_CODE.FORM, "Ein Alteintrag ist kein Objekt.", "");
+  const keys = Object.keys(x);
+  if (keys.length > 10) return fehler(RECHNUNG_CODE.FORM, "Ein Alteintrag hat zu viele Felder.", "");
+  for (const k of keys) {
+    if (ALTFORM_VERBOTEN.has(k) || !ALTFORM_SCHLUESSEL.test(k)) return fehler(RECHNUNG_CODE.FORM, "Ein Alteintrag enthält ein Feld, das nur der Server oder eine Buchung setzt.", "");
+    const v = x[k];
+    const ok = v === null || typeof v === "boolean" || (zahl(v) && Math.abs(v) <= RECHNUNG_GRENZEN.betrag)
+      || (text(v, 200) && !/[<>]/.test(v));
+    if (!ok) return fehler(RECHNUNG_CODE.FORM, "Ein Alteintrag enthält einen ungültigen Wert.", "");
+  }
+  if (stabil(x).length > 2048) return fehler(RECHNUNG_CODE.FORM, "Ein Alteintrag ist zu groß.", "");
+  return null;
+}
+
 /**
  * Prüft und ordnet `rechnungen` beim Schreiben.
  * @param {any} neu      die übermittelte Liste (nach der Rechtezusammenführung)
@@ -252,7 +279,9 @@ export function rechnungenPruefen(neu, alt, o) {
   const storniert = new Set(gespeichert.filter((x) => istObjekt(x) && x.art === "storno").map((x) => x.bezug));
   const nachNummer = new Map(gespeichert.filter(istObjekt).filter((x) => typeof x.nummer === "string").map((x) => [x.nummer, x]));
   const betriebe = new Map((Array.isArray(opt.mandanten) ? opt.mandanten : []).filter(istObjekt).map((m) => [m.id, m]));
-  let lfd = gespeichert.reduce((a, x) => (istObjekt(x) && Number.isInteger(x.lfd) && x.lfd > a ? x.lfd : a), 0);
+  /* Review #542 A1: der Zähler nur aus Rechnungen in Schemaform (nummer und positionen) mit sicherer ganzer Zahl —
+     eine Altform mit lfd (Lücke) oder lfd 2^53 (immer dieselbe Nummer) zählt nicht. */
+  let lfd = gespeichert.reduce((a, x) => (schemaform(x) && Number.isSafeInteger(x.lfd) && x.lfd > a && x.lfd <= LFD_MAX ? x.lfd : a), 0);
   const lfdVon = lfd + 1;
   const angehaengt = [];
   for (let i = 0; i < neu.length; i++) {
@@ -269,7 +298,8 @@ export function rechnungenPruefen(neu, alt, o) {
     if (r.art === "storno") {
       const ur = nachNummer.get(r.bezug);
       if (!ur || ur.art === "storno" || storniert.has(r.bezug) || ur.mandantId !== r.mandantId
-        || !["netto", "steuer", "brutto"].every((k) => zahl(ur[k]) && fast(r[k], -ur[k])))
+        /* Review #542 A2: centgenau, keine Toleranz. */
+        || !["netto", "steuer", "brutto"].every((k) => zahl(ur[k]) && Math.round(r[k] * 100) === -Math.round(ur[k] * 100)))
         return { fehler: fehler(RECHNUNG_CODE.STORNO, "Ein Storno bezieht sich auf genau eine gespeicherte, nicht stornierte Rechnung desselben Betriebs und kehrt ihre Beträge genau um.", `${feld}.bezug`) };
       storniert.add(r.bezug);
     }
