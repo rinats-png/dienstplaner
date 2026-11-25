@@ -98,7 +98,7 @@ kennungen_pruefen() {
   local kopie="$T/daten-kennungen"
   rm -rf "$kopie"
   cp -a "$T/daten" "$kopie"
-  docker run --rm --network none --read-only --tmpfs /tmp --cap-drop ALL     --security-opt no-new-privileges:true --user "$NUTZER"     -e CENTRIC_PFEFFER="$PFEFFER" -e CENTRIC_ABLAGE=dateien -e CENTRIC_APP=/app     -v "$kopie:/scratchpad/daten-mig-gate"     -v "$HIER/../../betriebskennungen-pruefen.mjs:/ci/deploy/betriebskennungen-pruefen.mjs:ro"     -v "$HIER/../../migrationsprobe-regeln.mjs:/ci/deploy/migrationsprobe-regeln.mjs:ro"     --entrypoint node "$BILD" /ci/deploy/betriebskennungen-pruefen.mjs /scratchpad/daten-mig-gate ||
+  docker run --rm --network none --read-only --tmpfs /tmp --cap-drop ALL     --security-opt no-new-privileges:true --user "$NUTZER"     -e CENTRIC_PFEFFER="$PFEFFER" -e CENTRIC_ABLAGE=dateien -e CENTRIC_APP=/app     -v "$kopie:/scratchpad/daten-mig-gate:ro"     -v "$HIER/../../betriebskennungen-pruefen.mjs:/ci/deploy/betriebskennungen-pruefen.mjs:ro"     -v "$HIER/../../migrationsprobe-regeln.mjs:/ci/deploy/migrationsprobe-regeln.mjs:ro"     --entrypoint node "$BILD" /ci/deploy/betriebskennungen-pruefen.mjs /scratchpad/daten-mig-gate ||
     fehl "S1: Betriebskennungen am Digest-Bild nicht in Ordnung"
   rm -rf "$kopie"
 }

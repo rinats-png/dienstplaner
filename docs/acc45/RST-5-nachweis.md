@@ -39,3 +39,8 @@ Gegenprobe Zahl als Kennung, sieben Mutationen). Rot vor der Änderung: 7 von 10
   (S1–S6 inklusive dieser Probe) läuft erst dann erstmals im Runner (WT-1 im TESTPLAN). Lokal ist nur Bash-Syntax und
   die Probe ohne Docker geprüft.
 - Bildbau, Digest und VPS: nicht Gegenstand.
+
+## Nachtrag (Review #565)
+- Die Datenkopie ist mit `:ro` eingehängt (nur lesend); Test `M-RO`.
+- Herkunft des Codes: Das Prüfskript und `migrationsprobe-regeln.mjs` kommen aus dem Checkout (eingehängt, `:ro`); nur die Ablage- und Bestandsschicht (`server/lib/ablage.mjs`, `bestand.mjs`) und node stammen aus dem Digest-Bild (`/app`). "Code des Digest-Bilds" gilt nur dafür.
+- Der neue Test ist über das bestehende Skript `pruefung:staging-o2` in der CI verdrahtet.

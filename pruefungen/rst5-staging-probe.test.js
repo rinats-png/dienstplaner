@@ -29,6 +29,7 @@ function befunde(sh) {
   if (!/--read-only/.test(fn) || !/--cap-drop ALL/.test(fn)) b.push("Probe nicht gehärtet");
   if (!/CENTRIC_APP=\/app/.test(fn)) b.push("CENTRIC_APP nicht auf /app");
   if (!/scratchpad\/daten-mig-gate/.test(fn)) b.push("Isolationspfad scratchpad/daten-mig-* fehlt");
+  if (!/-v "\$kopie:\/scratchpad\/daten-mig-gate:ro"/.test(fn)) b.push("Datenkopie nicht nur lesend eingehängt (:ro)");
   if (/CENTRIC_BASIS/.test(fn)) b.push("CENTRIC_BASIS gesetzt (Isolation)");
   if (!/betriebskennungen-pruefen\.mjs/.test(fn) || !/migrationsprobe-regeln\.mjs/.test(fn)) b.push("Skripte nicht eingehängt");
   if (!/\|\|\s*fehl\b/.test(fn) && !/fehl "/.test(fn)) b.push("Fehlschlag bricht nicht ab");
@@ -75,6 +76,7 @@ describe("RST-5 Mutationen: jede Verletzung macht die Verdrahtung rot", () => {
     const teil = SH.slice(i).replace("--network none", "");
     expect(befunde(SH.slice(0, i) + teil).join("\n")).toMatch(/network none/);
   });
+  it("M-RO: Datenkopie beschreibbar eingehängt", () => mut('-v "$kopie:/scratchpad/daten-mig-gate:ro"', '-v "$kopie:/scratchpad/daten-mig-gate"', /nur lesend/));
   it("M-BASIS: CENTRIC_BASIS gesetzt", () => mut("-e CENTRIC_APP=/app", "-e CENTRIC_APP=/app -e CENTRIC_BASIS=http://x", /Isolation/));
   it("M-ABBRUCH: Fehlschlag wird verschluckt", () => mut("||\n    fehl \"S1: Betriebskennungen", "|| true\n    echo \"S1: Betriebskennungen", /bricht nicht ab/));
   it("M-AUFRUF: Aufruf entfällt", () => {
