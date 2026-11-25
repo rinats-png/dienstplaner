@@ -4,7 +4,7 @@ Erzeugt von `werkzeug/acc45-backlog.mjs` aus `docs/acc45/work-packages.json` (ni
 
 **Kritischer Pfad gemeinsam** (offener Entwicklungsaufwand, ohne extern): WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **50–90 PT**
 **Ohne Intelligence:** WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 → WP-42a → WP-42 = **22,5–35 PT**
-**Offener Entwicklungsaufwand:** 363,55–623,5 PT in 139 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
+**Offener Entwicklungsaufwand:** 363,3–623,25 PT in 138 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
 
 WP-09 ist nur Livegang-Reihenfolge und zählt im Pfad nicht als Abhängigkeit. Der Graph zeigt nur offene Pakete.
 
@@ -153,7 +153,6 @@ flowchart LR
     GATE_RUECKHALT_AU6["GATE-RUECKHALT-AU6<br/>BLOCKED"]
     GATE_VPS_SIGNATUR["GATE-VPS-SIGNATUR<br/>BLOCKED"]
     K4_P1["K4-P1<br/>BLOCKED"]
-    K4_P7["K4-P7<br/>BLOCKED"]
     V4_4c["V4-4c<br/>BLOCKED"]
     V4_4d["V4-4d<br/>BLOCKED"]
   end
@@ -675,7 +674,7 @@ flowchart LR
 | K4-P4 | folge | P1 | 1,5–2 | 0 | K4-P3 | – | opus | INTEGRATED |
 | K4-P5 | acc45 | P2 | 1 | 1 | K4-P1 | – | sonnet | BLOCKED |
 | K4-P6 | acc45 | P2 | 0,25 | 0,25 | K4-P1 | – | haiku | BLOCKED |
-| K4-P7 | folge | P1 | 0,25 | 0,25 | – | – | haiku | BLOCKED |
+| K4-P7 | folge | P1 | 0,25 | 0 | – | – | haiku | INTEGRATED |
 | K4-P8 | acc45 | P2 | 0,25 | 0,25 | – | – | opus | BLOCKED |
 | WEBSITE-W7 | acc45 | P2 | 0,5–1 | 0,5–1 | WEBSITE-W4 | – | sonnet | BLOCKED |
 | WEBSITE-W8 | acc45 | P2 | 0,25–0,5 | 0,25–0,5 | – | – | sonnet | BLOCKED |

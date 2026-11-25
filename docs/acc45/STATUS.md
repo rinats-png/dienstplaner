@@ -18,17 +18,17 @@ oder `"teilweise"`, jeweils mit Beleg (PR, Commit, Nachweis). „Geplant“, „
 <!-- AUTO:BEGIN -->
 Erzeugt aus `docs/acc45/work-packages.json` (Schema 2) mit `node werkzeug/acc45-backlog.mjs status-schreiben` — nicht von Hand ändern.
 
-**Pakete gesamt:** 295 · BLOCKED 117 · READY 27 · IN_PROGRESS 20 · REVIEW 10 · INTEGRATED 118 · DONE 3
+**Pakete gesamt:** 295 · BLOCKED 116 · READY 27 · IN_PROGRESS 20 · REVIEW 10 · INTEGRATED 119 · DONE 3
 
 | Strang | Pakete | BLOCKED | READY | IN_PROGRESS | REVIEW | INTEGRATED | DONE | offener Aufwand PT |
 |---|---|---|---|---|---|---|---|---|
 | ACC45 | 143 | 42 | 5 | 7 | 3 | 84 | 2 | 74,1–126,65 |
 | WP-19-Module | 15 | 13 | 0 | 1 | 0 | 1 | 0 | 64,5–100,5 |
 | Intelligence | 40 | 20 | 0 | 7 | 0 | 13 | 0 | 181–320 |
-| Folgepakete | 62 | 24 | 6 | 5 | 7 | 20 | 0 | 43,95–76,35 |
+| Folgepakete | 62 | 23 | 6 | 5 | 7 | 21 | 0 | 43,7–76,1 |
 | Extern/Entscheidungen | 35 | 18 | 16 | 0 | 0 | 0 | 1 | 20,35–46,1 |
 
-Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **363,55–623,5 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
+Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **363,3–623,25 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
 
 **Kritische Pfade** (offener Aufwand, Mitte der Spanne maßgeblich):
 
@@ -84,7 +84,7 @@ RST-1 (folge, 0,5–1 PT) · RST-2 (folge, 2–3 PT) · RST-3 (folge, 1–2 PT) 
 
 WP-40 (acc45, 1,5–2,25 PT offen) · WP-28b (folge, 0,5–1 PT offen) · WP-I4 (intelligence, 4–7 PT offen) · WP-I19 (intelligence, 8–14 PT offen) · WP-I20 (intelligence, 8–14 PT offen) · WP-I24 (intelligence, 2,5–4,5 PT offen) · WP-I29 (intelligence, 9–15 PT offen) · WP-I30 (intelligence, 2–4 PT offen) · WP-I31 (intelligence, 4,5–7,5 PT offen) · IMP-6 (acc45, 1,5–2,5 PT offen) · IMP-8 (acc45, 1–1,5 PT offen) · WP-48-GB (acc45, 0,5–1,5 PT offen) · WP-ZEIT (acc45, 4,5–7,5 PT offen) · V4-1 (folge, 1–1,5 PT offen)
 
-### Integriert in `integration/centric-complete` (118)
+### Integriert in `integration/centric-complete` (119)
 
 | Paket | Beleg (PR, Merge-Commit) | Review |
 |---|---|---|
@@ -205,6 +205,7 @@ WP-40 (acc45, 1,5–2,25 PT offen) · WP-28b (folge, 0,5–1 PT offen) · WP-I4 
 | MODINERT-L4 Modul-inert L-4: Server prüft neue und geänderte Rechnungen (Betreiber-PUT speichert rechnungen ungeprüft) | PR #542 in integration/release-v4 (Merge-Commit 6a5ed7f4) | Opus-Review zu PR #542: MIT AUFLAGEN (A1 lfd/Altform, A2 Storno centgenau, A3 Doku); Opus-Delta-Check: FREIGEGEBEN ohne Auflagen |
 | K4-P3 K4 P-3: Synthetischer Altbestand-Generator (274bfa0-artige Ablage mit Grenzfällen) | PR #547 in integration/release-v4 (Merge-Commit f1e44eca) | Opus-Review MIT AUFLAGEN, danach Delta-Review FREIGABE auf Kopf dd7127ef (Hinweis N1, Altlast: Pfadauflösung verschluckt Fehler außer ENOENT; kein neues Paket) |
 | K4-P4 K4 P-4: Vorwärts-Reparatur-Probe (Kandidat A, dann Kandidat B auf demselben Bestand; Datenrücksprung mit neuer Epoche) | PR #556 in integration/release-v4 (Merge-Commit 1b091807) | Opus-Review zu PR #556: FREIGABE mit Auflagen (Rebase, zwei Formulierungen, erledigt), danach Delta-Check FREIGABE auf Kopf c26ed06e |
+| K4-P7 K4 P-7: Checklisten als Vorlagen (A.7 Nachweis der Strategie, B.7 Formblatt Datenübertragung, Ablauf Widerrufbuch-Probe Variante b) | PR #559 in integration/release-v4 (Merge-Commit 02993bca); Betreiber bestätigte Wortlaut und Zuschnitt N-7/N-9 am 2026-11-25 | Opus-Review zu PR #559: FREIGABE auf Kopf e6801af4 (Befunde Mittel 1/2 und Niedrig 1–6 in der Vorlage nachgezogen) |
 | V4-4e V4-4e: Kontrastprüfung auf ANGEMELDETEN Flächen wirksam machen (axe color-contrast bewertet dort praktisch keinen Knoten) | PR #539 in integration/release-v4 (Merge-Commit 64451364) | Sonnet-Review zu PR #539: MIT AUFLAGEN, danach zwei Delta-Checks, FREIGEGEBEN (unabhängig vom Schreiber) |
 
 ### Statusstufen
@@ -377,7 +378,7 @@ WP-40 (acc45, 1,5–2,25 PT offen) · WP-28b (folge, 0,5–1 PT offen) · WP-I4 
 | MODINERT-L4 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | K4-P3 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | K4-P4 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
-| K4-P7 | BLOCKED | ✓ | ✓ | ✓ | – | – | – | – |
+| K4-P7 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | V4-4e | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 <!-- AUTO:END -->
 
