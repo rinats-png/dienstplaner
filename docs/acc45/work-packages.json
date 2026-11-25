@@ -4,10 +4,10 @@
   "anzahl": 295,
   "statusZaehlung": {
     "BLOCKED": 117,
-    "READY": 29,
-    "IN_PROGRESS": 25,
+    "READY": 28,
+    "IN_PROGRESS": 21,
     "REVIEW": 10,
-    "INTEGRATED": 111,
+    "INTEGRATED": 116,
     "DONE": 3
   },
   "jeStrang": {
@@ -37,10 +37,10 @@
     },
     "folge": {
       "pakete": 62,
-      "offen": 49,
+      "offen": 44,
       "restPT": {
-        "min": 49.7,
-        "max": 85.35
+        "min": 47.2,
+        "max": 80.85
       }
     },
     "extern": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 369.3,
-    "max": 632.5
+    "min": 366.8,
+    "max": 628
   },
   "kritischerPfad": {
     "summe": 70,
@@ -7548,12 +7548,12 @@
       "prio": "P1",
       "aufwandPT": {"min":1.5,"max":3},
       "abhaengigkeiten": [],
-      "status": "IN_PROGRESS",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #535 (gemergt, Merge-Commit b015b349): Ausnahmeregel E1–E15 für v4-r1, --nachhol, Rückhalt (Gate-Werkzeug und Tests)"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #535: Prüfungen der Gate-Logik, CI des PR grün"},
+        "reviewt": {"wert":true,"beleg":"Unabhängige Reviews zu PR #535; Betreiber-Freigabe zum Merge 2026-11-25"},
+        "integriert": {"wert":true,"beleg":"PR #535 in integration/release-v4 (Merge-Commit b015b349)"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -7562,12 +7562,12 @@
       "agent": null,
       "modell": "opus",
       "konfliktzonen": [],
-      "pr": [],
-      "nachweis": "PR #535 (offen); SPEZ-UMSETZUNG 2026-11-24 Abschnitt 2 und Gate-Entwurf v2 (Scratchpad, nicht im Repo)",
+      "pr": ["#535"],
+      "nachweis": "PR #535 (gemergt, Merge-Commit b015b349, Betreiber-Genehmigung 2026-11-25); SPEZ-UMSETZUNG 2026-11-24 Abschnitt 2 und Gate-Entwurf v2 (Scratchpad, nicht im Repo)",
       "akzeptanz": "Die G6-Ausnahme gilt genau einmal, nur für v4-r1, nur vor T0 und nur bis 2026-12-31; ohne Ausnahmefeld verhält sich G6 byte-gleich zu vorher; alle anderen Gate-Regeln unverändert; unabhängiges Review ohne Blocker; Betreiber-Freigabe der Gate-Änderung; E14 anderweitig erfüllt (PR des Maschinenkontos)",
       "tests": "Unit (pruefungen/release-pruefung.test.js, Fixtures erstwechsel-*.json), Mutationsprotokoll",
       "dateien": "werkzeug/release-pruefung.mjs, pruefungen/release-pruefung.test.js, pruefungen/fixtures/",
-      "notiz": "Umfangsklasse: RELEASE-UMFANG.\nPrioritätsbegründung: P1: Release-Pfad v4-r1. Ohne die Erstwechsel-Ausnahme in G6 ist der erste Produktionswechsel mit der Regel widerrufbuchProbePflicht nicht freigabefähig (G6 NO-GO); die Gate-Regel selbst bleibt unverändert.\nPR #535 offen, Review nicht abgeschlossen (Stand im PR); Betreiber-Gate-Freigabe erst nach Review. Nichts davon ist integriert; Aussagen zu Tests und Mutationen stehen in der PR-Beschreibung und sind hier nicht geprüft. PR #535 ist mit dem Inhaber-Token angelegt; E14 (Vier-Augen) wird damit nicht erfüllt (fail-closed, gewollt). Strang: SPEZ-UMSETZUNG 2026-11-24 (Scratchpad, nicht im Repo) Abschnitt 7.4 nennt acc45; hier folge, wie bei REL-* und RST-*: offenes P1 blockiert G9 bis INTEGRATED. Das ist die strengere Wahl. Konfliktzone: werkzeug/release-pruefung.mjs (nur additive Änderungen). Quelle: Auftrag SSOT-Pakete 2 vom 2026-11-25 (Koordinator). Aufwand SCHÄTZUNG, nicht gemessen."
+      "notiz": "Umfangsklasse: RELEASE-UMFANG.\nPrioritätsbegründung: P1: Release-Pfad v4-r1. Ohne die Erstwechsel-Ausnahme in G6 ist der erste Produktionswechsel mit der Regel widerrufbuchProbePflicht nicht freigabefähig (G6 NO-GO); die Gate-Regel selbst bleibt unverändert.\n(Stand vor dem Merge, überholt durch den Nachtrag 2026-11-25 unten:) PR #535 offen, Review nicht abgeschlossen (Stand im PR); Betreiber-Gate-Freigabe erst nach Review. Nichts davon ist integriert; Aussagen zu Tests und Mutationen stehen in der PR-Beschreibung und sind hier nicht geprüft. PR #535 ist mit dem Inhaber-Token angelegt; E14 (Vier-Augen) wird damit nicht erfüllt (fail-closed, gewollt). Strang: SPEZ-UMSETZUNG 2026-11-24 (Scratchpad, nicht im Repo) Abschnitt 7.4 nennt acc45; hier folge, wie bei REL-* und RST-*: offenes P1 blockiert G9 bis INTEGRATED. Das ist die strengere Wahl. Konfliktzone: werkzeug/release-pruefung.mjs (nur additive Änderungen). Quelle: Auftrag SSOT-Pakete 2 vom 2026-11-25 (Koordinator). Aufwand SCHÄTZUNG, nicht gemessen.\nNachtrag 2026-11-25: Merge umfasst nur die Werkzeug-Änderung. Kein G6-GO, keine Produktionsfreigabe. Sechs Vorbedingungen bleiben: K-1 Bot-PR mit PR-Nummer in dieser SSOT (E14: `pr` war bis zu diesem Nachtrag leer, jetzt #535), CODEOWNERS im Kandidaten, Rulesets mit Code-Owner-Review, EW3-Patch/WT-1, Vier-Augen L-1, voller Klon ohne Graft/Replace/commit-graph."
     },
     {
       "id": "GATE-EW2",
@@ -7576,12 +7576,12 @@
       "prio": "P1",
       "aufwandPT": {"min":0.5,"max":1},
       "abhaengigkeiten": ["GATE-EW1"],
-      "status": "IN_PROGRESS",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #535 (gemergt, Merge-Commit b015b349): Ausnahmeregel E1–E15 für v4-r1, --nachhol, Rückhalt (Gate-Werkzeug und Tests)"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #535: Prüfungen der Gate-Logik, CI des PR grün"},
+        "reviewt": {"wert":true,"beleg":"Unabhängige Reviews zu PR #535; Betreiber-Freigabe zum Merge 2026-11-25"},
+        "integriert": {"wert":true,"beleg":"PR #535 in integration/release-v4 (Merge-Commit b015b349)"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -7590,12 +7590,12 @@
       "agent": null,
       "modell": "opus",
       "konfliktzonen": [],
-      "pr": [],
-      "nachweis": "PR #535 (offen); SPEZ-UMSETZUNG 2026-11-24 Abschnitt 3 (Scratchpad, nicht im Repo)",
+      "pr": ["#535"],
+      "nachweis": "PR #535 (gemergt, Merge-Commit b015b349, Betreiber-Genehmigung 2026-11-25); SPEZ-UMSETZUNG 2026-11-24 Abschnitt 3 (Scratchpad, nicht im Repo)",
       "akzeptanz": "--nachhol --release-id v4-r1 liest nur, online nur aus HEAD, Exit 0 nur online bei NACHHOL-GO; Abbruchtabelle (A-VOR, A-START, A-FRIST, A-BILD, A-REPO) wird maschinell geprüft; nach einem Abbruch keine neue Ausnahme (F10); Folge-Release ohne NACHHOL-GO ist in G6 NO-GO",
       "tests": "Unit (online mit temporärem Git-Repo, offline mit Fixture), Mutationen",
       "dateien": "werkzeug/release-pruefung.mjs, pruefungen/release-pruefung.test.js, pruefungen/fixtures/",
-      "notiz": "Umfangsklasse: RELEASE-UMFANG.\nPrioritätsbegründung: P1: Release-Pfad v4-r1. Ohne die Erstwechsel-Ausnahme in G6 ist der erste Produktionswechsel mit der Regel widerrufbuchProbePflicht nicht freigabefähig (G6 NO-GO); die Gate-Regel selbst bleibt unverändert. Der Nachhol-Modus ist die technische Durchsetzung der Nachholpflicht nach dem Erstwechsel.\nPR #535 offen, Review nicht abgeschlossen (Stand im PR); Betreiber-Gate-Freigabe erst nach Review. Nichts davon ist integriert; Aussagen zu Tests und Mutationen stehen in der PR-Beschreibung und sind hier nicht geprüft. PR #535 ist mit dem Inhaber-Token angelegt; E14 (Vier-Augen) wird damit nicht erfüllt (fail-closed, gewollt). Strang: SPEZ-UMSETZUNG 2026-11-24 (Scratchpad, nicht im Repo) Abschnitt 7.4 nennt acc45; hier folge, wie bei REL-* und RST-*: offenes P1 blockiert G9 bis INTEGRATED. Das ist die strengere Wahl. Quelle: Auftrag SSOT-Pakete 2 vom 2026-11-25 (Koordinator). Aufwand SCHÄTZUNG, nicht gemessen."
+      "notiz": "Umfangsklasse: RELEASE-UMFANG.\nPrioritätsbegründung: P1: Release-Pfad v4-r1. Ohne die Erstwechsel-Ausnahme in G6 ist der erste Produktionswechsel mit der Regel widerrufbuchProbePflicht nicht freigabefähig (G6 NO-GO); die Gate-Regel selbst bleibt unverändert. Der Nachhol-Modus ist die technische Durchsetzung der Nachholpflicht nach dem Erstwechsel.\n(Stand vor dem Merge, überholt durch den Nachtrag 2026-11-25 unten:) PR #535 offen, Review nicht abgeschlossen (Stand im PR); Betreiber-Gate-Freigabe erst nach Review. Nichts davon ist integriert; Aussagen zu Tests und Mutationen stehen in der PR-Beschreibung und sind hier nicht geprüft. PR #535 ist mit dem Inhaber-Token angelegt; E14 (Vier-Augen) wird damit nicht erfüllt (fail-closed, gewollt). Strang: SPEZ-UMSETZUNG 2026-11-24 (Scratchpad, nicht im Repo) Abschnitt 7.4 nennt acc45; hier folge, wie bei REL-* und RST-*: offenes P1 blockiert G9 bis INTEGRATED. Das ist die strengere Wahl. Quelle: Auftrag SSOT-Pakete 2 vom 2026-11-25 (Koordinator). Aufwand SCHÄTZUNG, nicht gemessen.\nNachtrag 2026-11-25: Merge umfasst nur die Werkzeug-Änderung. Kein G6-GO, keine Produktionsfreigabe. Sechs Vorbedingungen bleiben: K-1 Bot-PR mit PR-Nummer in dieser SSOT (E14: `pr` war bis zu diesem Nachtrag leer, jetzt #535), CODEOWNERS im Kandidaten, Rulesets mit Code-Owner-Review, EW3-Patch/WT-1, Vier-Augen L-1, voller Klon ohne Graft/Replace/commit-graph."
     },
     {
       "id": "GATE-EW3",
@@ -7623,7 +7623,7 @@
       "akzeptanz": "Der Betreiber übernimmt den Patch in .github/workflows/staging-gate.yml (Workflow-Änderungen macht nur der Betreiber, N-1); danach läuft der Testplan; das Staging-Gate bindet den exakten Digest (S1–S6, B-3); ohne die Übernahme bleibt G6 mit Ausnahme (E6/E7) NO-GO",
       "tests": "Unit (Patch-Test, wendet den Patch auf eine Kopie an), Testplan nach Übernahme",
       "dateien": "docs/acc45/workflow-patches/gate-ew3/, pruefungen/",
-      "notiz": "Umfangsklasse: RELEASE-UMFANG.\nPrioritätsbegründung: P1: Release-Pfad v4-r1. Ohne die Erstwechsel-Ausnahme in G6 ist der erste Produktionswechsel mit der Regel widerrufbuchProbePflicht nicht freigabefähig (G6 NO-GO); die Gate-Regel selbst bleibt unverändert. BLOCKED, weil der letzte Schritt eine Betreiberhandlung ist.\nPR #537 ist GEMERGT als Patchvorbereitung (Merge-Commit d699e1e8). Die Anwendung des Patches auf .github/workflows/staging-gate.yml ist eine Betreiberhandlung und offen. Status BLOCKED (nicht INTEGRATED), weil das Ziel des Pakets, das geänderte Staging-Gate, noch nicht besteht. Kein unabhängiges Review in der SSOT belegt (reviewt false). Folge nach der Übernahme: GATE-EW6. Quelle: Auftrag SSOT-Pakete 2 vom 2026-11-25 (Koordinator). Aufwand SCHÄTZUNG, nicht gemessen."
+      "notiz": "Umfangsklasse: RELEASE-UMFANG.\nPrioritätsbegründung: P1: Release-Pfad v4-r1. Ohne die Erstwechsel-Ausnahme in G6 ist der erste Produktionswechsel mit der Regel widerrufbuchProbePflicht nicht freigabefähig (G6 NO-GO); die Gate-Regel selbst bleibt unverändert. BLOCKED, weil der letzte Schritt eine Betreiberhandlung ist.\nPR #537 ist GEMERGT als Patchvorbereitung (Merge-Commit d699e1e8). Die Anwendung des Patches auf .github/workflows/staging-gate.yml ist eine Betreiberhandlung und offen. Status BLOCKED (nicht INTEGRATED), weil das Ziel des Pakets, das geänderte Staging-Gate, noch nicht besteht. Kein unabhängiges Review in der SSOT belegt (reviewt false). Folge nach der Übernahme: GATE-EW6. Quelle: Auftrag SSOT-Pakete 2 vom 2026-11-25 (Koordinator). Aufwand SCHÄTZUNG, nicht gemessen.\nNachtrag 2026-11-25 (Betreiber): Doppelprüfungen zwischen Staging-Gate und bestehender CI (Browserabnahme im Staging-Gate, Smoke/Geo, Rechte/Mandanten am Digest; S4–S6 bleiben) werden nur dokumentiert, nicht geändert. Keine eigenmächtigen Gate-Änderungen. EW3b zurückgestellt (nur bei nachgewiesener zwingender Anforderung erneut vorlegen)."
     },
     {
       "id": "GATE-EW4",
@@ -7632,12 +7632,12 @@
       "prio": "P1",
       "aufwandPT": {"min":0.5,"max":1},
       "abhaengigkeiten": ["GATE-EW1"],
-      "status": "IN_PROGRESS",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #535 (gemergt, Merge-Commit b015b349): Ausnahmeregel E1–E15 für v4-r1, --nachhol, Rückhalt (Gate-Werkzeug und Tests)"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #535: Prüfungen der Gate-Logik, CI des PR grün"},
+        "reviewt": {"wert":true,"beleg":"Unabhängige Reviews zu PR #535; Betreiber-Freigabe zum Merge 2026-11-25"},
+        "integriert": {"wert":true,"beleg":"PR #535 in integration/release-v4 (Merge-Commit b015b349)"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -7646,12 +7646,12 @@
       "agent": null,
       "modell": "opus",
       "konfliktzonen": [],
-      "pr": [],
-      "nachweis": "PR #535 (offen); SPEZ-UMSETZUNG 2026-11-24 Abschnitt 8 (Scratchpad, nicht im Repo) und Gate-Entwurf A.2 (Scratchpad)",
+      "pr": ["#535"],
+      "nachweis": "PR #535 (gemergt, Merge-Commit b015b349, Betreiber-Genehmigung 2026-11-25); SPEZ-UMSETZUNG 2026-11-24 Abschnitt 8 (Scratchpad, nicht im Repo) und Gate-Entwurf A.2 (Scratchpad)",
       "akzeptanz": "Freigabedatei bindet schnittCommit; E13 prüft Kandidat und Schnittstand streng (fail-closed); fehlende oder abweichende Bindung ist NO-GO; Tests je Abweichung",
       "tests": "Unit (Fixtures)",
       "dateien": "werkzeug/release-pruefung.mjs, pruefungen/release-pruefung.test.js, pruefungen/fixtures/",
-      "notiz": "Umfangsklasse: RELEASE-UMFANG.\nPrioritätsbegründung: P1: Release-Pfad v4-r1. Ohne die Erstwechsel-Ausnahme in G6 ist der erste Produktionswechsel mit der Regel widerrufbuchProbePflicht nicht freigabefähig (G6 NO-GO); die Gate-Regel selbst bleibt unverändert.\nPR #535 offen, Review nicht abgeschlossen (Stand im PR); Betreiber-Gate-Freigabe erst nach Review. Nichts davon ist integriert; Aussagen zu Tests und Mutationen stehen in der PR-Beschreibung und sind hier nicht geprüft. PR #535 ist mit dem Inhaber-Token angelegt; E14 (Vier-Augen) wird damit nicht erfüllt (fail-closed, gewollt). Strang: SPEZ-UMSETZUNG 2026-11-24 (Scratchpad, nicht im Repo) Abschnitt 7.4 nennt acc45; hier folge, wie bei REL-* und RST-*: offenes P1 blockiert G9 bis INTEGRATED. Das ist die strengere Wahl. Quelle: Auftrag SSOT-Pakete 2 vom 2026-11-25 (Koordinator). Aufwand SCHÄTZUNG, nicht gemessen."
+      "notiz": "Umfangsklasse: RELEASE-UMFANG.\nPrioritätsbegründung: P1: Release-Pfad v4-r1. Ohne die Erstwechsel-Ausnahme in G6 ist der erste Produktionswechsel mit der Regel widerrufbuchProbePflicht nicht freigabefähig (G6 NO-GO); die Gate-Regel selbst bleibt unverändert.\n(Stand vor dem Merge, überholt durch den Nachtrag 2026-11-25 unten:) PR #535 offen, Review nicht abgeschlossen (Stand im PR); Betreiber-Gate-Freigabe erst nach Review. Nichts davon ist integriert; Aussagen zu Tests und Mutationen stehen in der PR-Beschreibung und sind hier nicht geprüft. PR #535 ist mit dem Inhaber-Token angelegt; E14 (Vier-Augen) wird damit nicht erfüllt (fail-closed, gewollt). Strang: SPEZ-UMSETZUNG 2026-11-24 (Scratchpad, nicht im Repo) Abschnitt 7.4 nennt acc45; hier folge, wie bei REL-* und RST-*: offenes P1 blockiert G9 bis INTEGRATED. Das ist die strengere Wahl. Quelle: Auftrag SSOT-Pakete 2 vom 2026-11-25 (Koordinator). Aufwand SCHÄTZUNG, nicht gemessen.\nNachtrag 2026-11-25: Merge umfasst nur die Werkzeug-Änderung. Kein G6-GO, keine Produktionsfreigabe. Sechs Vorbedingungen bleiben: K-1 Bot-PR mit PR-Nummer in dieser SSOT (E14: `pr` war bis zu diesem Nachtrag leer, jetzt #535), CODEOWNERS im Kandidaten, Rulesets mit Code-Owner-Review, EW3-Patch/WT-1, Vier-Augen L-1, voller Klon ohne Graft/Replace/commit-graph."
     },
     {
       "id": "GATE-EW5",
@@ -7660,12 +7660,12 @@
       "prio": "P1",
       "aufwandPT": {"min":0.5,"max":1},
       "abhaengigkeiten": ["GATE-EW1","GATE-EW2","GATE-EW4"],
-      "status": "IN_PROGRESS",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #535 (gemergt, Merge-Commit b015b349): Ausnahmeregel E1–E15 für v4-r1, --nachhol, Rückhalt (Gate-Werkzeug und Tests)"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #535: Prüfungen der Gate-Logik, CI des PR grün"},
+        "reviewt": {"wert":true,"beleg":"Unabhängige Reviews zu PR #535; Betreiber-Freigabe zum Merge 2026-11-25"},
+        "integriert": {"wert":true,"beleg":"PR #535 in integration/release-v4 (Merge-Commit b015b349)"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -7674,12 +7674,12 @@
       "agent": null,
       "modell": "sonnet",
       "konfliktzonen": [],
-      "pr": [],
-      "nachweis": "PR #535 (offen); das Runbook RUNBOOK-ERSTWECHSEL-V4R1.md liegt im PR #535, nicht in der Integration",
+      "pr": ["#535"],
+      "nachweis": "PR #535 (gemergt, Merge-Commit b015b349, Betreiber-Genehmigung 2026-11-25); das Runbook RUNBOOK-ERSTWECHSEL-V4R1.md liegt im PR #535, nicht in der Integration",
       "akzeptanz": "RELEASE-PROZESS (Begriffe S/M/T0, Staging-Regel, Freigabedatei, G6-Ausnahme, Abschnitt Erstwechsel) und Runbook N0–N5 mit Abbruchtabelle und Vorfallvorlage stimmen mit dem Werkzeug überein; keine Abweichung zur Abbruchtabelle der Gate-Konfiguration; Gegenlesen ohne Befund",
       "tests": "doku-Test, Gegenlesen (Opus)",
       "dateien": "docs/acc45/RELEASE-PROZESS.md, docs/acc45/RUNBOOK-ERSTWECHSEL-V4R1.md",
-      "notiz": "Umfangsklasse: RELEASE-UMFANG.\nPrioritätsbegründung: P1: Release-Pfad v4-r1. Ohne die Erstwechsel-Ausnahme in G6 ist der erste Produktionswechsel mit der Regel widerrufbuchProbePflicht nicht freigabefähig (G6 NO-GO); die Gate-Regel selbst bleibt unverändert. Ohne Runbook fehlt dem Betreiber der geprüfte Ablauf des ersten Wechsels.\nPR #535 offen, Review nicht abgeschlossen (Stand im PR); Betreiber-Gate-Freigabe erst nach Review. Nichts davon ist integriert; Aussagen zu Tests und Mutationen stehen in der PR-Beschreibung und sind hier nicht geprüft. PR #535 ist mit dem Inhaber-Token angelegt; E14 (Vier-Augen) wird damit nicht erfüllt (fail-closed, gewollt). Strang: SPEZ-UMSETZUNG 2026-11-24 (Scratchpad, nicht im Repo) Abschnitt 7.4 nennt acc45; hier folge, wie bei REL-* und RST-*: offenes P1 blockiert G9 bis INTEGRATED. Das ist die strengere Wahl. Quelle: Auftrag SSOT-Pakete 2 vom 2026-11-25 (Koordinator). Aufwand SCHÄTZUNG, nicht gemessen."
+      "notiz": "Umfangsklasse: RELEASE-UMFANG.\nPrioritätsbegründung: P1: Release-Pfad v4-r1. Ohne die Erstwechsel-Ausnahme in G6 ist der erste Produktionswechsel mit der Regel widerrufbuchProbePflicht nicht freigabefähig (G6 NO-GO); die Gate-Regel selbst bleibt unverändert. Ohne Runbook fehlt dem Betreiber der geprüfte Ablauf des ersten Wechsels.\n(Stand vor dem Merge, überholt durch den Nachtrag 2026-11-25 unten:) PR #535 offen, Review nicht abgeschlossen (Stand im PR); Betreiber-Gate-Freigabe erst nach Review. Nichts davon ist integriert; Aussagen zu Tests und Mutationen stehen in der PR-Beschreibung und sind hier nicht geprüft. PR #535 ist mit dem Inhaber-Token angelegt; E14 (Vier-Augen) wird damit nicht erfüllt (fail-closed, gewollt). Strang: SPEZ-UMSETZUNG 2026-11-24 (Scratchpad, nicht im Repo) Abschnitt 7.4 nennt acc45; hier folge, wie bei REL-* und RST-*: offenes P1 blockiert G9 bis INTEGRATED. Das ist die strengere Wahl. Quelle: Auftrag SSOT-Pakete 2 vom 2026-11-25 (Koordinator). Aufwand SCHÄTZUNG, nicht gemessen.\nNachtrag 2026-11-25: Merge umfasst nur die Werkzeug-Änderung. Kein G6-GO, keine Produktionsfreigabe. Sechs Vorbedingungen bleiben: K-1 Bot-PR mit PR-Nummer in dieser SSOT (E14: `pr` war bis zu diesem Nachtrag leer, jetzt #535), CODEOWNERS im Kandidaten, Rulesets mit Code-Owner-Review, EW3-Patch/WT-1, Vier-Augen L-1, voller Klon ohne Graft/Replace/commit-graph."
     },
     {
       "id": "GATE-EW6",
@@ -8108,12 +8108,12 @@
       "prio": "P1",
       "aufwandPT": {"min":1,"max":1.5},
       "abhaengigkeiten": [],
-      "status": "READY",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #547 (gemergt, Merge-Commit f1e44eca): werkzeug/synthetischer-altbestand.mjs und -schreiber.mjs"},
+        "lokalGetestet": {"wert":true,"beleg":"pruefungen/synthetischer-altbestand.test.js: 78 Tests grün, Mutationen je Schutz einzeln; CI des PR 27 Checks grün. Die Tests laufen in der CI NICHT (Workflow-Schritt fehlt, Ausnahme `vorlaeufig` in ci-abdeckung-ausnahmen.json); migrationsprobe-lokal nicht ausgeführt"},
+        "reviewt": {"wert":true,"beleg":"Opus-Review MIT AUFLAGEN, danach Delta-Review FREIGABE auf Kopf dd7127ef (Hinweis N1, Altlast: Pfadauflösung verschluckt Fehler außer ENOENT; kein neues Paket)"},
+        "integriert": {"wert":true,"beleg":"PR #547 in integration/release-v4 (Merge-Commit f1e44eca)"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -8122,12 +8122,12 @@
       "agent": null,
       "modell": "sonnet",
       "konfliktzonen": [],
-      "pr": [],
-      "nachweis": "Entwurf Wiederherstellung und K4 2026-11-24 (Scratchpad, nicht im Repo) Teil C; Basis pruefungen/migrationsprobe-saat.mjs und werkzeug/pilot-seeds.mjs",
+      "pr": ["#547"],
+      "nachweis": "Entwurf Wiederherstellung und K4 2026-11-24 (Scratchpad, nicht im Repo) Teil C; Basis pruefungen/migrationsprobe-saat.mjs und werkzeug/pilot-seeds.mjs; PR #547 (gemergt, Merge-Commit f1e44eca)",
       "akzeptanz": "Erzeugt eine 274bfa0-artige Ablage (mehrere Räume, Personen, Krank-Abwesenheiten, Stempel, Konten mit @example.invalid, Grenzfälle: Zahl-Kennung, leere Listen, Altform bestand:), geschrieben mit dem 274bfa0-Code per git archive; nur synthetische Daten",
       "tests": "Unit",
       "dateien": "werkzeug/, pruefungen/",
-      "notiz": "Umfangsklasse: SICHERHEIT-QUALITAET.\nPrioritätsbegründung: P1: Betreibervorgabe 2026-11-24: keine produktive Migration ohne geprüfte Sicherung, erfolgreiche Migrationsprobe und nachvollziehbare Wiederherstellungsstrategie; die Ablage ist der Eingang der Migrationsprobe K4-P4.\nÜberschneidung: RST-5 nennt ebenfalls einen synthetischen 274bfa0-Bestand für das Staging-Gate. Nicht mit RST-5 zusammengelegt; ob RST-5 den Generator nutzt, entscheidet der Koordinator. K4-Grundregel: Der Betreiber beantwortet die Fragen F-1 bis F-6 selbst; es gelten keine Annahmen. Echtdaten nur in einer gesondert abgesicherten lokalen Umgebung, nie an KI-Dienste, öffentliche Runner, Cloud-Dienste oder öffentliche Repo-Bereiche; öffentliche Runner nur mit synthetischen Daten. Reihenfolge laut Entwurf: P-1, P-3, P-2, P-6, P-4, P-5, P-7/P-8. Quelle: Auftrag SSOT-Pakete 2 vom 2026-11-25 (Koordinator). Aufwand SCHÄTZUNG, nicht gemessen."
+      "notiz": "Umfangsklasse: SICHERHEIT-QUALITAET.\nPrioritätsbegründung: P1: Betreibervorgabe 2026-11-24: keine produktive Migration ohne geprüfte Sicherung, erfolgreiche Migrationsprobe und nachvollziehbare Wiederherstellungsstrategie; die Ablage ist der Eingang der Migrationsprobe K4-P4.\nÜberschneidung: RST-5 nennt ebenfalls einen synthetischen 274bfa0-Bestand für das Staging-Gate. Nicht mit RST-5 zusammengelegt; ob RST-5 den Generator nutzt, entscheidet der Koordinator. K4-Grundregel: Der Betreiber beantwortet die Fragen F-1 bis F-6 selbst; es gelten keine Annahmen. Echtdaten nur in einer gesondert abgesicherten lokalen Umgebung, nie an KI-Dienste, öffentliche Runner, Cloud-Dienste oder öffentliche Repo-Bereiche; öffentliche Runner nur mit synthetischen Daten. Reihenfolge laut Entwurf: P-1, P-3, P-2, P-6, P-4, P-5, P-7/P-8. Quelle: Auftrag SSOT-Pakete 2 vom 2026-11-25 (Koordinator). Aufwand SCHÄTZUNG, nicht gemessen.\nNachtrag 2026-11-25: Workflow-Schritt `npm run pruefung:k4-altbestand` bleibt Patch-Vorschlag für den Betreiber (Workflow-Änderungen bündelt der Betreiber). Nächstes Paket: K4-P4."
     },
     {
       "id": "K4-P4",
