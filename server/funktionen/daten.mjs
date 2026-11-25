@@ -1,6 +1,6 @@
 import { getStore } from "../lib/ablage.mjs";
 import { createHash, randomBytes } from "node:crypto";
-import { bremse, lastbremse, entlasten, vermerkeZuruecknehmen, kennung, kennungPerson, kennungRaum, kennungCode, stempelDeckel, herkunft, herkunftErlaubt, zuVielAntwort,
+import { bremse, lastbremse, entlasten, vermerkeZuruecknehmen, kennung, kennungPerson, kennungBetrieb, kennungRaum, kennungCode, stempelDeckel, herkunft, herkunftErlaubt, zuVielAntwort,
   protokoll, notbremse, notentlasten, lesenGrenze, gueltigeDurchlassen, sperrversuchZaehlen,
   sperrAuswertungBeginnen, sperrAuswertungenAbwarten } from "../lib/schutz.mjs";
 import { ereignis } from "../lib/gesund-zaehler.mjs";
@@ -578,7 +578,11 @@ async function behandeln(req, context, ctx) {
       }
       if (!frisch(sB)) return neuAnmelden();
       const kS = kennung(req, sB);
-      const bS = await bremse("zugaenge", kS);
+      /* R-A2-1 (Bewertung ABN-A2 §3.5, X-Z aus PR #277): Die Leitung zählt gegen `zugang-sperren` je BETRIEB — dieselben
+         Zahlen wie `zugaenge`, aber ohne dessen installationsweite Gesamtgrenze. Vorher konnten Leitungen aus ≥ 4
+         Betrieben diese Grenze füllen und damit das Zurückziehen eines verlorenen Zugangs überall verhindern. Gezählt
+         wird weiter erst nach Rolle und frischer Anmeldung. Der Betreiber bleibt bei `zugaenge` (mit Gesamtgrenze). */
+      const bS = sB.rolle === "betreiber" ? await bremse("zugaenge", kS) : await bremse("zugang-sperren", kennungBetrieb(sB));
       if (!bS.frei) { await protokoll("zugaenge", kS, "gebremst", bS.grund);
         return zuVielAntwort(bS.wartet); }
 
