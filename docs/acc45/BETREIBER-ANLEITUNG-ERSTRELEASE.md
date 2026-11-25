@@ -51,7 +51,10 @@ Claude startet nie einen Deploy-Workflow und greift nie auf den VPS zu ([RELEASE
 2. Gehen Sie nur weiter, wenn „Weiter nur wenn“ erfüllt ist. Sonst: **STOPP**. Ändern Sie nichts. Melden Sie die Ausgabe.
 3. Nie `cat .env`. Nie Werte aus der `.env`, keine Passwörter, keine privaten Schlüssel in Chat, Repository oder Log.
 4. Keine Daten löschen. Kein `docker compose down -v`, kein `rm` in `data/` oder `zustand/`, kein `docker rmi` ohne
-   eigene Freigabe.
+   eigene Freigabe. **Einzige Ausnahme (Betreiberentscheidung 2026-11-25, K4 Pfad 0):** der kontrollierte Neustart-Schritt
+   „`data/` beiseitelegen“ (verschieben auf demselben Datenträger, kein `rm`), und nur nach geprüfter Sicherung, bestandener
+   Bestandsverifikation und gesonderter Produktionsfreigabe. Löschen des beiseitegelegten Bestands braucht eine eigene
+   spätere Freigabe. Ablauf: [Vorlage K4-NEUSTART-NACHWEIS](vorlagen/K4-NEUSTART-NACHWEIS.md), [Runbook](RUNBOOK-ERSTWECHSEL-V4R1.md) Abschnitt 8.
 5. Keine Migration ohne Freigabe in der Freigabedatei (G5).
 6. **R0 (Dienst anhalten) ist kein vollständiger Rücksprung.** Das Integrationsbild schreibt beim ersten Start in
    `data/` und legt `zustand/` an (Produktionsweg §3.2, W-1 bis W-9). Ein vollständiger Rücksprung auf `274bfa0` ist

@@ -90,3 +90,6 @@ Beobachtungsprotokoll“:
         env: { CENTRIC_SMOKE_BASIS: "${{ env.VITE_ANWENDUNG_URL }}" }   # vorhandene Variable des Workflows
         run: node deploy/deploy-smoke.mjs | tee -a "$GITHUB_STEP_SUMMARY"
 ```
+
+## Hinweis (Review-Befund niedrig)
+`CENTRIC_SMOKE_PROTOKOLL` nicht in die `.env` des Servers eintragen: `deploy.sh` führt den Smoke im Container aus, und `compose.yml` lädt `env_file: .env`. Ist der Pfad dort nicht beschreibbar, endet der Smoke mit Exit 1 und der Deploy würde abbrechen. Die Variable gehört nur in den Aufruf von außen.

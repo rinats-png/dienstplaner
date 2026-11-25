@@ -104,6 +104,9 @@ describe("K4-P7: Vorlage Neustart-Nachweis", () => {
     expect(t).toMatch(/[Gg]esonderte Produktionsfreigabe/);
     expect(t).toMatch(/Neustart wird NICHT durchgeführt/);
     expect(t).toMatch(/RUNBOOK-ERSTWECHSEL-V4R1\.md/);
+    expect(t).toMatch(/nicht\s+gelöscht/);
+    expect(t).toMatch(/zustand\/[^\n]*nie/);
+    expect(t).toMatch(/[Ww]iderrufene Zugangscodes bleiben ungültig/);
   });
   it("Verweise zeigen auf vorhandene Dateien; keine Hosts, Digests, Codes oder Schlüssel", () => {
     const t = lies(VORLAGE);

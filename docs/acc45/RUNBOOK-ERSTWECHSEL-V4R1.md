@@ -214,3 +214,13 @@ den echten Büchern; Freigabedatei **ohne** Ausnahme; Endprüfung Exit 0. Ist di
 - Wiederanlauf (W-VOR / W-NACH / W-REPO) und Bedingungen:
 - Vier-Augen-Vermerk (Prüfer, Datum):
 ```
+
+## 8. Pfad 0: kontrollierter Neustart mit sauberem Bestand (Betreiberentscheidung 2026-11-25)
+
+Dieser Abschnitt ändert **keine** Gate-Regel (Werkzeug maßgeblich). Er genehmigt keinen Wechsel: Die Durchführung braucht die gesonderte Produktionsfreigabe des Betreibers. Nachweise, Bestandsverifikation V-1…V-8 und Neustart-Schritte S-1…S-9 stehen in der Vorlage [K4-NEUSTART-NACHWEIS](vorlagen/K4-NEUSTART-NACHWEIS.md).
+
+- **Neustart-Schritt:** Nach geprüfter Sicherung (Kopie außer Haus), bestandener Bestandsverifikation und nachgewiesenem Weg für Betreiberzugang und Pflicht-2FA wird `data/` **beiseitegelegt** (verschoben, nicht gelöscht). T0 beginnt mit leerem `data/`. `CENTRIC_PFEFFER`, Serverkonfiguration und Schlüssel bleiben unverändert. Alte Kontodateien werden nicht übernommen.
+- **Ausnahme zu Regel 4 der Betreiberanleitung:** gilt nur für dieses Beiseitelegen. Kein `rm`, kein `docker compose down -v`.
+- **Abbruch vor T0 (A-VOR bei Pfad 0):** Lief noch kein V4-Container, wird das leere `data/` beiseitegelegt und das ursprüngliche `data/` zurückgelegt; dann startet `deploy.sh` `274bfa0` wieder (sonst R0). Nachweis 5.3 wie bisher. Gibt es Zweifel, ob V4 gestartet ist (Buch vorhanden, Startzeile ≥ 1), gilt Abschnitt 4 (verbraucht).
+- **Ab T0:** `data/` und `zustand/` werden nie zurückgesetzt. Widerrufene Zugangscodes bleiben ungültig. Rückweg nach einem Fehler: R0 und Vorwärts-Reparatur (Abschnitt 6).
+- **Widerspruch in der Bestandsverifikation** (Fremdnutzung, echte Personendaten, Demozugang mit fremden Konten, Sicherung nicht wiederherstellbar): Neustart wird nicht durchgeführt, Befund melden.

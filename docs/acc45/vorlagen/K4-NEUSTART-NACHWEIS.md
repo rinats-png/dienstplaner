@@ -26,14 +26,16 @@ Ja/Nein wird eingetragen. Nie `cat .env`, nie eine Datei öffnen, nie Werte anze
 
 | Nr | Prüfpunkt | Weg (nur Zahl/Ja-Nein als Ausgabe) | Erwartung | Ergebnis |
 |---|---|---|---|---|
-| V-1 | Bestand zählen (Räume, lesbar, Fehler, Mandanten, Konten) | `deploy/sicherung/hilfen/bestaende-zaehlen.mjs` im laufenden Bild, ohne Netz (`--network none`), Daten nur lesend (`:ro`), Aufruf wie in [BETRIEB-SICHERUNG](../../BETRIEB-SICHERUNG.md) beschrieben. Die letzte Ausgabezeile ist JSON mit `bestaende`, `lesbar`, `fehler`, `mandanten`, `konten`. Die erste Zeile nennt den Datenpfad: nicht übernehmen. | `fehler` 0, Exit 0 | [Zahlen] |
-| V-2 | Demoräume | Anzahl Dateien mit Namensanfang `kern%3Ademo-` im Speicherordner `centric` der Ablage: `ls <data>/centric \| grep -c '^kern%3Ademo-'` | [Zahl]; jeder Wert > 0 ist zu erklären | [Zahl] |
+| V-1 | Bestand zählen (Räume, lesbar, Fehler, Mandanten, Konten) | `deploy/sicherung/hilfen/bestaende-zaehlen.mjs` im laufenden Bild, ohne Netz (`--network none`), Daten nur lesend (`:ro`), Aufruf nach dem Muster in `deploy/sicherung/wiederherstellung-probe.sh` (Zeile mit `bestaende-zaehlen.mjs`; Mounts und Pfade dort ablesen). Das Skript liegt nicht im Bild, es wird eingebunden; der Lauf im echten Bild ist nicht belegt. Die letzte Ausgabezeile ist JSON mit `bestaende`, `lesbar`, `fehler`, `mandanten`, `konten`. Die erste Zeile nennt den Datenpfad: nicht übernehmen. | `fehler` 0, Exit 0 | [Zahlen] |
+| V-2 | Demoräume | Anzahl Dateien mit Namensanfang `kern%3Ademo-` im Speicherordner `centric` der Ablage: `ls <data>/centric \| grep -cE '^(kern|bestand)%3Ademo-'` (zerlegte und unzerlegte Räume) | [Zahl]; jeder Wert > 0 ist zu erklären | [Zahl] |
 | V-3 | Demokonten | `grep -lE '"demo": ?true' <data>/centric/account%3A*.json \| wc -l` (nur die Zahl) | [Zahl]; jeder Wert > 0 ist zu erklären | [Zahl] |
 | V-4 | Selbstregistrierung und Demo (Schalter) | je Schalter nur Ja/Nein, ob gesetzt: `grep -c '^CENTRIC_PUBLIC_REGISTRATION=true' .env`. In `274bfa0` hat `/api/demos` keinen Schalter; V-2/V-3 sind dafür maßgeblich | Selbstregistrierung nein; Demo laut V-2/V-3 | [ja/nein] |
 | V-5 | Hinweise auf externe Nutzung (Betreiberaussage F2–F4 vom 2026-11-25 gegen Befund) | Betreiber bestätigt: nie andere Personen, nur erfundene Daten, nur eigene oder künstliche Mailadressen. Sichtprüfung nur lokal, kein Wortlaut in dieses Formular | Aussage und V-1…V-4 widersprechen sich nicht | [bestätigt | Widerspruch] |
 | V-6 | Datenkategorien (Gesundheitsbezug: Krankmeldungen, echte Personalnummern, Mailklassen) | Mit den Zahlen aus V-1 nicht zählbar. Zähler K4-P2 (Heuristik-Zähler, SSOT: READY, P2) ist dafür vorgesehen. Bis dahin: Betreiber-Sichtprüfung lokal, Ergebnis nur [ja/nein: „nichts erkennbar Echtes"] | nichts erkennbar Echtes | [ja/nein] |
-| V-7 | Betreiberkonfiguration vorhanden (Ja/Nein, nie Werte) | `CENTRIC_PFEFFER` gesetzt; `CENTRIC_ADMIN` gesetzt; Verzeichnis `zustand/` vorhanden und Eigentümer/Rechte wie im Runbook | `CENTRIC_PFEFFER` ja; `CENTRIC_ADMIN` ja (sonst Abschnitt 3 nicht erfüllt) | [ja/nein je Punkt] |
+| V-7 | Betreiberkonfiguration vorhanden (Ja/Nein, nie Werte) | `CENTRIC_PFEFFER` gesetzt; `CENTRIC_ADMIN` gesetzt (je `grep -c '^NAME=.' .env`, nur die Zahl, nie die Zeile); Verzeichnis `zustand/` vorhanden und Eigentümer/Rechte wie im Runbook | `CENTRIC_PFEFFER` ja; `CENTRIC_ADMIN` ja (sonst Abschnitt 3 nicht erfüllt) | [ja/nein je Punkt] |
 | V-8 | Sicherbarkeit und Wiederherstellbarkeit des Altbestands | `ablage-sicherung pruefen` auf der Sicherung: „In Ordnung: N Dateien" (nur N); `probe-status.json`: `ergebnis`, `abweichend`, `fehlend` (Frist ≤ 35 Tage, G6) | „In Ordnung", `ok`, 0, 0 | [N, Datum] |
+
+`<data>`, `<repo>`, `<digest>` vor dem Einfügen ersetzen. Bei sehr vielen Konten statt des Globs `ls <data>/centric | grep -c '^account%3A'` verwenden.
 
 **Widerspruchsregel:** Zeigt eine Zeile V-1…V-8 einen Widerspruch (Lesefehler, unerklärte Demoräume/-konten, Hinweis auf
 Fremdnutzung oder Echtdaten, Sicherung nicht „In Ordnung", Betreiberkonfiguration fehlt), gilt: **Der Neustart wird NICHT
@@ -90,7 +92,7 @@ gelöscht**. Er bleibt mindestens bis `NACHHOL-GO` für `v4-r1` erhalten. Kein `
 | S-1 | Abschnitte 1–3 und N-1…N-4, N-5n…N-11 vollständig ohne Widerspruch | dieses Formular | [ ] |
 | S-2 | Dienst anhalten; Sicherung des Altbestands erneut geprüft („In Ordnung") und außer Haus vorhanden | N-2 | [ ] |
 | S-3 | `data/` beiseitelegen, neues leeres `data/` (Eigentümer, Rechte wie bisher). **Vor** `deploy.sh`, weil `deploy.sh` den aktuellen Stand sichert und am Ende dagegen abgleicht | [Datum, Ort des beiseitegelegten Bestands: nicht im Formular] | [ ] |
-| S-4 | `zustand/`: neu und leer, uid 1000, 700. Ab T0 wird `zustand/` nie zurückgespielt und nie geleert, nur vereinigt | Vermerk | [ ] |
+| S-4 | `zustand/`: neu und leer, uid 1000, 700. Ist `zustand/` vor T0 nicht leer, wird der Inhalt ebenfalls beiseitegelegt, nicht geleert. Ab T0 wird `zustand/` nie zurückgespielt und nie geleert, nur vereinigt | Vermerk | [ ] |
 | S-5 | Serverkonfiguration, Schlüssel, Proxy und Zugangsschutz unverändert; **`CENTRIC_PFEFFER` unverändert**; kein Aufräumen von Bildern | Vermerk | [ ] |
 | S-6 | Start nach Runbook (`deploy.sh` mit freigegebenem Digest, Vier-Augen-Schritt laut Runbook). T0 = erster Start auf leerem `data/` | Runbook | [ ] |
 | S-7 | Betreiberzugang neu anlegen (Abschnitt 3), Betreiber-2FA einrichten, Anmeldung mit Faktor geprüft | [ja/nein] | [ ] |
@@ -98,19 +100,18 @@ gelöscht**. Er bleibt mindestens bis `NACHHOL-GO` für `v4-r1` erhalten. Kein `
 | S-9 | Ab T0: Widerrufbücher stündlich außer Haus (Erstlauf ≤ T0 + 2 h), weiter nach Runbook N2–N5 | Runbook | [ ] |
 
 Bei Abbruch vor T0 startet `274bfa0` auf dem **leeren** Bestand, nicht auf dem Altbestand; der beiseitegelegte Bestand
-müsste von Hand zurückgelegt werden. Dieser Abbruchfall ist in der Abbruchtabelle des Runbooks (A-VOR) noch nicht für
-Pfad 0 beschrieben (offene Frage 2).
+müsste von Hand zurückgelegt werden. Dieser Abbruchfall ist im Runbook Abschnitt 8 (Pfad 0) beschrieben: leeres `data/` beiseitelegen, ursprüngliches `data/` zurücklegen, dann `274bfa0` starten.
 
 ## 5. Offene Fragen (nur Betreiber oder Server belegbar, nichts angenommen)
 
 1. Gibt es in Produktion `demo-*`-Räume oder Demokonten, und sind `CENTRIC_ADMIN` und `zustand/` vorhanden (V-2, V-3, V-7)?
-2. Runbook und Betreiberanleitung beschreiben den Neustart-Schritt und den Abbruch vor T0 auf leerem Bestand noch nicht;
-   die Ausnahme zu Regel 4 der Betreiberanleitung (Beiseitelegen statt `rm`) ist entschieden, aber dort noch nicht eingetragen.
+2. Erledigt: Neustart-Schritt, Abbruch vor T0 und die Ausnahme zu Regel 4 stehen im Runbook Abschnitt 8 und in der Betreiberanleitung Regel 4.
 3. Verhalten der Werkzeuge `ablage-sicherung` und `deploy-abgleich` bei leerer Ablage ist nicht belegt (G6 verlangt für die
    Sicherung außer Haus `dateien` > 0): Reihenfolge so wählen, dass die Nachweise den Altbestand belegen.
 4. Z-A2 (Neuanlage des Betreiberzugangs auf leerer Ablage) ist nicht als eigener Staging-Schritt belegt.
 5. V-6 (Datenkategorien) braucht den Zähler K4-P2 oder eine Betreiber-Sichtprüfung.
-6. Der Betreiber bestätigt den Zuschnitt von N-7 und N-9 (nur synthetisch) und den Wortlaut dieser Vorlage.
+6. `CENTRIC_ADMIN` bleibt neben benannten Konten dauerhaft als Generalschlüssel gültig. Nach S-7 entscheidet der Betreiber, ob der Ursprungsschlüssel entfernt oder bewusst behalten wird. Fehlt er heute (weil der Betreiber der App-Warnung gefolgt ist), endet Z-A1 in „kein Neustart“; das kollidiert mit S-5 („Konfiguration unverändert“) und braucht dann vorab eine eigene Betreiberentscheidung.
+7. Der Betreiber bestätigt den Zuschnitt von N-7 und N-9 (nur synthetisch) und den Wortlaut dieser Vorlage.
 
 ## 6. Abschluss
 
