@@ -5,6 +5,13 @@
 > Halter und Epoche stehen nie verlässlich in diesem Dokument: maßgeblich ist allein `node werkzeug/koordination.mjs status`
 > (dazu `leerlauf`). Epochenangaben in den Nachträgen unten sind historisch. Betriebsregeln: Abschnitt „Koordinationsregel“.
 
+## Nachtrag 2026-11-25 (Lauf 05:33Z, nur lesende Prüfung und Statuspflege, Branch `ccr-a5d550e1-k6zmh0`)
+
+- **Integrationskopf:** `integration/release-v4` `6445136` (Merge #539, V4-4-Folge; davor #540 SSOT Pakete 2, #541). Branch vor Arbeitsbeginn auf `origin/integration/release-v4` gesetzt.
+- **Lease:** Epoche 25 (`hauptchat-e25`) aktiv, erneuert 05:13Z, gültig bis 08:13Z. Dieser Lauf hat keine Lease übernommen und nichts geschrieben außer diesem Nachtrag (Schutz gegen doppelte Koordination).
+- **Offene PRs gegen `integration/release-v4`, die der Hauptchat bearbeitet:** #542 (L-4 Rechnungen, 05:07Z), #535 (GATE-EW1/EW2/EW4 Erstwechsel). Übrige unverändert: Dependabot #496/#497/#498/#406/#407/#400, Doku #480, Drafts #479/#468/#327/#177/#175; Entwurf #489 nach `main` nur mit Betreiberfreigabe.
+- **Hintergrundausführung:** stündliche Cloud-Routine besteht weiter (siehe Nachtrag 23.11.); keine Einrichtung durch den Betreiber nötig. Keine neu abgeschlossenen PT behauptet, kein Betreiberentscheid neu nötig.
+
 ## Nachtrag 2026-11-24 (Nachtlauf, nur lesende Prüfung und Statuspflege, Branch `ccr-a5d550e1-wkkibk`)
 
 - **Integrationskopf:** `integration/release-v4` `4eae5d8` (Merge #506, Doku). Davor #507 (`eb88621`): Tiefendeckel an allen Rumpflesern (WP-19.5, Review #505 A1), Tests in `modul-tiefendeckel-leser.test.js`. Branch vor Arbeitsbeginn auf `origin/integration/release-v4` gesetzt.
