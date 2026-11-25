@@ -7186,8 +7186,8 @@
       "abhaengigkeiten": [],
       "status": "READY",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"Branch acc45/release/abn-s2-de-rst3: werkzeug/review-nachweis.mjs (zeile nur mit Reviewbericht und Positivform, sammelliste mit SHA-256, pruefen), Test pruefungen/review-nachweis.test.js (in pruefung:acc45-werkzeuge); Abgleich und Workflow-Patch-Vorschlag in docs/acc45/RST-3-nachweis.md; G2 und Workflows unveraendert"},
+        "lokalGetestet": {"wert":true,"beleg":"lokal 2026-11-25 (Windows, TZ=UTC, --maxWorkers=1): review-nachweis 7/7 (vorher Import rot), release-pruefung 300/301 (1 Artefakt der node_modules-Junction im Worktree, nicht der Aenderung), acc45-werkzeuge, prozess-wachen, verdrahtung, doku gruen; 6 Mutationen je Schutz rot"},
         "reviewt": {"wert":false,"beleg":null},
         "integriert": {"wert":false,"beleg":null},
         "stagingGeprueft": {"wert":false,"beleg":null},
@@ -7438,8 +7438,8 @@
       "abhaengigkeiten": [],
       "status": "READY",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"Branch acc45/release/abn-s2-de-rst3: CC-1 Cache-Control no-cache im Snippet von deploy/website/centric-dienstplanung.de.caddy, Klonanweisung Ablauf A und B auf festen Commit <KOPF> mit ERWARTETER_KOPF-Pflicht (docs/DEPLOY-HAUPTWEBSITE.md, dist-bauen.md), Rauchtest website-caddy.sh prueft CC-1, CSP-1 entschieden und unveraendert; Workflow-Punkte (CI-Verdrahtung website-caddy.sh, shellcheck deploy/website) nur als Patch-Vorschlag in docs/acc45/WEBSITE-W3b-nachweis.md (Betreiber, N-1)"},
+        "lokalGetestet": {"wert":true,"beleg":"lokal 2026-11-25 (Windows, TZ=UTC, --maxWorkers=1): website-kopfzeilen 22/22 (vorher 5 rot); 6 Mutationen je Schutz rot; Docker-Rauchtest website-caddy.sh nicht lokal gelaufen (nur im Runner/CI nach Betreiber-Patch)"},
         "reviewt": {"wert":false,"beleg":null},
         "integriert": {"wert":false,"beleg":null},
         "stagingGeprueft": {"wert":false,"beleg":null},
@@ -7791,7 +7791,7 @@
       "akzeptanz": "Betreiberhandlung mit Nachweis: (S2-d) Alarm oder tägliche Auswertung auf anmelden gebremst (gesamt) ist eingerichtet, ein Lesenachweis liegt vor; (S2-e) Betriebsregel „frische Betreibersitzung vor Eingriffen“ ist schriftlich bestätigt; CENTRIC_VERTRAUTE_PROXYS ist in der Betriebsumgebung korrekt gesetzt (nur die feste Adresse des Proxys) und nachgewiesen, ohne Hosts oder Adressen im Repo",
       "tests": "Nachweis durch den Betreiber (Lesen, keine Angriffstests)",
       "dateien": "Betriebsumgebung des Betreibers (keine Repo-Dateien)",
-      "notiz": "Umfangsklasse: SICHERHEIT-QUALITAET.\nPrioritätsbegründung: P1: Diese Auflagen sind die Bedingung, unter der die Bewertung die Annahme von ABN-S2 für Pilot Form I vorschlägt. Ist die Vertrauensliste leer, teilen alle Nutzer eine Herkunft, und 9 Fehlversuche einer Person sperren Betreiber-Neuanmeldung und Einlösen. Ohne Nachweis fehlt die Grundlage der Annahme.\nBETREIBERHANDLUNG, Claude kann sie nicht ausführen (Status READY heißt: der Betreiber kann beginnen; das Status-Schema bleibt unverändert). Keine Angriffstests gegen die Produktion. Verwandt mit E-12 (CENTRIC_VERTRAUTE_PROXYS, Caddy, Branch-Schutz): E-12 bleibt unverändert; hier steht nur der Nachweis für ABN-S2. Die Annahme selbst ist eine Betreiberentscheidung (ENTSCHEIDUNGSLISTE), nicht Inhalt dieses Pakets. Quelle: Auftrag SSOT-Pakete 2 vom 2026-11-25 (Koordinator). Aufwand SCHÄTZUNG, nicht gemessen."
+      "notiz": "Umfangsklasse: SICHERHEIT-QUALITAET.\nPrioritätsbegründung: P1: Diese Auflagen sind die Bedingung, unter der die Bewertung die Annahme von ABN-S2 für Pilot Form I vorschlägt. Ist die Vertrauensliste leer, teilen alle Nutzer eine Herkunft, und 9 Fehlversuche einer Person sperren Betreiber-Neuanmeldung und Einlösen. Ohne Nachweis fehlt die Grundlage der Annahme.\nBETREIBERHANDLUNG, Claude kann sie nicht ausführen (Status READY heißt: der Betreiber kann beginnen; das Status-Schema bleibt unverändert). Keine Angriffstests gegen die Produktion. Verwandt mit E-12 (CENTRIC_VERTRAUTE_PROXYS, Caddy, Branch-Schutz): E-12 bleibt unverändert; hier steht nur der Nachweis für ABN-S2. Die Annahme selbst ist eine Betreiberentscheidung (ENTSCHEIDUNGSLISTE), nicht Inhalt dieses Pakets. Quelle: Auftrag SSOT-Pakete 2 vom 2026-11-25 (Koordinator). Aufwand SCHÄTZUNG, nicht gemessen. Nachtrag 2026-11-25 (Release-Buendel): Repo-Anteil abgeglichen, nur der Alarmschluessel anmelden/gebremst (gesamt) per Test gebunden (abn-a2-s2-sicherheit.test.js, S2-2); S2-d, S2-e und der Wert CENTRIC_VERTRAUTE_PROXYS bleiben Betreiberhandlung mit Nachweis, Vorlage und Rueckfragen in docs/acc45/ABN-S2-de-nachweis.md. Stufen unveraendert."
     },
     {
       "id": "ABN-S2-H",

@@ -2,7 +2,7 @@
 // Browser, ohne Caddy, ohne Netz. Der Prüfsatz W2 (e2e/website-pruefsatz.spec.mjs, e2e/website.mjs) bedient die Seiten
 // mit einem eigenen Dateiserver und kennt keine Sicherheitsheader; diese Prüfung hält deshalb die Kopfpolitik der
 // echten Auslieferung (Site-Datei) fest. Den Lauf mit echtem Caddy macht pruefungen/website-caddy.sh (Docker, nicht Teil
-// dieser Prüfung). Befund CC-1 (kein Cache-Control) wird als Ist-Zustand festgehalten, nicht geändert.
+// dieser Prüfung). Befund CC-1 (kein Cache-Control) ist in W3b behoben (no-cache im Snippet); CSP-1 bleibt als begründeter Ist-Zustand.
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -152,11 +152,48 @@ describe("Content-Security-Policy: keine externen Quellen", () => {
   });
 });
 
-describe("Zwischenspeicher (Befund CC-1)", () => {
-  // Ist-Zustand am 2026-11-24 (Live: kein Cache-Control, nur ETag und Last-Modified, Browser entscheidet nach Heuristik).
-  // Die App-Site setzt no-cache. Ob die Website no-cache (HTML) oder eine Frist für /assets/* bekommt, entscheidet der
-  // Betreiber; diese Prüfung ändert nichts und wird bei einer bewussten Änderung der Site-Datei angepasst.
-  it("BEFUND CC-1: die Site-Datei setzt kein Cache-Control (weder für HTML noch für assets)", () => {
-    expect(CODE).not.toMatch(/cache-control/i);
+describe("Zwischenspeicher (Befund CC-1, behoben in W3b)", () => {
+  // Die App-Site setzt no-cache; die Website bekommt dasselbe: der Browser fragt jedes Mal mit ETag/Last-Modified nach
+  // (kein veralteter Stand nach einer Auslieferung, kein Datenverbrauch bei unverändertem Stand). Eine Frist für
+  // /assets/* wäre eine Optimierung und braucht Dateinamen mit Prüfsumme; sie ist nicht entschieden und nicht gesetzt.
+  it("das Snippet setzt Cache-Control no-cache (Hauptpfad und über das Snippet auch die Fehlerseite)", () => {
+    expect(wert("Cache-Control")).toBe("no-cache");
+    expect(FEHLER).toMatch(/^\s*import centric_website_kopf\s*$/m);
+  });
+  it("es gibt genau eine Cache-Control-Zeile und keine Frist (max-age, immutable, public)", () => {
+    expect(CODE.match(/cache-control/gi)).toHaveLength(1);
+    expect(CODE).not.toMatch(/immutable|s-maxage|stale-while/i);
+    expect(wert("Cache-Control")).not.toMatch(/max-age|immutable|public/i);
+  });
+});
+
+describe("Rauchtest mit echtem Caddy prüft CC-1 auf / und auf der Fehlerseite", () => {
+  it("website-caddy.sh verlangt cache-control: no-cache für / und 404", () => {
+    const sh = readFileSync(path.join(WURZEL, "pruefungen", "website-caddy.sh"), "utf8");
+    expect(sh).toContain(`kopf_hat 'cache-control: no-cache' "/ (CC-1)"`);
+    expect(sh).toContain(`kopf_hat 'cache-control: no-cache' "404 (CC-1)"`);
+  });
+});
+
+describe("Klonanweisung (Review #519 A3): fester Kopf statt beweglichem Zweig", () => {
+  const DOKU = readFileSync(path.join(WURZEL, "docs", "DEPLOY-HAUPTWEBSITE.md"), "utf8").replace(/\r\n/g, "\n");
+  const ABLAUF_A = DOKU.slice(DOKU.indexOf("## Ablauf A"), DOKU.indexOf("## Ablauf B"));
+  const BEFEHLE = (ABLAUF_A.match(/```\n([\s\S]*?)\n```/) || [])[1] || "";
+  it("der Befehlsblock holt den Commit <KOPF> (kein --branch) und prüft ihn", () => {
+    expect(BEFEHLE).toContain("<KOPF>");
+    expect(BEFEHLE).not.toMatch(/--branch/);
+    expect(BEFEHLE).toMatch(/git -C \/root\/cs fetch --depth 1 \S+ <KOPF>/);
+    expect(BEFEHLE).toMatch(/checkout --detach FETCH_HEAD/);
+  });
+  it("die Konsole wird nur mit ERWARTETER_KOPF=<KOPF> gestartet", () => {
+    expect(BEFEHLE).toMatch(/^ERWARTETER_KOPF=<KOPF> bash \/root\/cs\/deploy\/website\/website-konsole\.sh$/m);
+    expect(BEFEHLE).not.toMatch(/^bash \/root\/cs\/deploy\/website\/website-konsole\.sh/m);
+  });
+  it("kein beweglicher Zweig als Quelle in Doku und Bauanleitung", () => {
+    const BAU = readFileSync(path.join(WURZEL, "deploy", "website", "dist-bauen.md"), "utf8");
+    expect(DOKU).not.toContain("--branch deploy/hauptwebsite-docker");
+    expect(DOKU, "auch Ablauf B holt einen festen Commit").not.toMatch(/git clone[^\n]*--branch/);
+    expect(DOKU).toMatch(/git fetch --depth 1 --filter=blob:none \S+ <KOPF>/);
+    expect(BAU).not.toMatch(/gehoeren in den Zweig/);
   });
 });

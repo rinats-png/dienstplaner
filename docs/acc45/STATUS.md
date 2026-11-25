@@ -215,7 +215,7 @@ WP-40 (acc45, 1,5–2,25 PT offen) · WP-28b (folge, 0,5–1 PT offen) · WP-I4 
 
 ✓ belegt · T teilweise (z. B. nur Server-Teilumfang) · – nicht erreicht oder nicht belegt. „Staging“, „Freigabe“ und
 „prod.“ stehen nur mit Beleg auf ✓. Gezeigt sind alle Pakete mit mindestens einer erreichten Stufe; alle übrigen
-94 offenen Entwicklungspakete stehen auf allen Stufen auf „–“.
+92 offenen Entwicklungspakete stehen auf allen Stufen auf „–“.
 
 | Paket | Status | impl. | lokal | Review | integr. | Staging | Freigabe | prod. |
 |---|---|---|---|---|---|---|---|---|
@@ -372,8 +372,10 @@ WP-40 (acc45, 1,5–2,25 PT offen) · WP-28b (folge, 0,5–1 PT offen) · WP-I4 
 | REL-0c | BLOCKED | T | – | – | – | – | – | – |
 | REL-1 | REVIEW | ✓ | ✓ | – | – | – | – | – |
 | DRIFT-D1-D3 | INTEGRATED | ✓ | ✓ | T | ✓ | – | – | – |
+| RST-3 | READY | ✓ | ✓ | – | – | – | – | – |
 | RST-5 | READY | ✓ | ✓ | – | – | – | – | – |
 | RST-7 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
+| WEBSITE-W3b | READY | ✓ | ✓ | – | – | – | – | – |
 | V4-4b | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | GATE-EW1 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | GATE-EW2 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |

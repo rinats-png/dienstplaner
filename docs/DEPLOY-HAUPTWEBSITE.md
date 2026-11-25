@@ -3,9 +3,9 @@
 > **Stand der Uebernahme (Paket W3, 2026-11-24):** Diese Anleitung und `deploy/website/` stammen vom Zweig
 > `deploy/hauptwebsite-auflagen` (Kopf 39f1d48e). Die Website-Quelle liegt seit Paket W1 im Ordner `website/` dieses
 > Repositories (Bau: `CENTRIC_OUT=<Temp-Ordner> python build.py`; `website/DIST-SHA256` listet die Pruefsumme jeder
-> gebauten Datei). Offen, Betreiberentscheidung: (1) Der Klonbefehl unten nennt noch den Zweig `deploy/hauptwebsite-docker`;
-> er muss auf den Zweig zeigen, der diese Dateien traegt (nach dem Zusammenfuehren: der freigegebene Stand), und
-> `<KOPF>` muss danach neu gesetzt werden. (2) Cache-Control: die Site-Datei setzt keines (Befund CC-1, Live ebenso).
+> gebauten Datei). Offen, Betreiberentscheidung: (1) Der Klonbefehl holt seit W3b einen festen Commit `<KOPF>` statt
+> eines Zweigs (der freigegebene Kopf wird vor jeder Auslieferung eingesetzt). (2) Cache-Control: seit W3b setzt die Site-Datei
+> `no-cache` (Befund CC-1 behoben; Live erst nach einer Auslieferung).
 > (3) Eine Auslieferung gibt es nur nach ausdruecklicher Freigabe des Betreibers.
 >
 > **Nacharbeit zu Review #519 (2026-11-24):** Vor jeder Auslieferung sind die Punkte im Abschnitt "Grenzen und offene Punkte
@@ -26,14 +26,14 @@ URL in `deploy/website/DIST-QUELLE.txt` (nach Veroeffentlichung durch den Betrei
 `deploy/website/DIST-SHA256.txt`; Bauen und Aktualisieren: `deploy/website/dist-bauen.md`.
 
 ```
-rm -rf /root/cs && git clone --depth 1 --branch deploy/hauptwebsite-docker https://github.com/rinats-png/dienstplaner.git /root/cs && git -C /root/cs rev-parse HEAD
-bash /root/cs/deploy/website/website-konsole.sh
+rm -rf /root/cs && git init -q /root/cs && git -C /root/cs fetch --depth 1 https://github.com/rinats-png/dienstplaner.git <KOPF> && git -C /root/cs checkout --detach FETCH_HEAD && git -C /root/cs rev-parse HEAD
+ERWARTETER_KOPF=<KOPF> bash /root/cs/deploy/website/website-konsole.sh
 ```
 
-**Kopf-Pinning (A1; Pflicht, Review #519 A3):** Der Klonbefehl holt einen Zweig (`--branch deploy/hauptwebsite-docker`), und
-ein Zweig kann sich aendern. Vor jeder Auslieferung legt der Betreiber Zweig und Commit fest. Die Anweisung enthaelt
-dann `ERWARTETER_KOPF=<KOPF>` als feste Zeile (Pflicht, nicht optional) oder holt den Commit per SHA. Empfehlung
-(die Festlegung ist Betreiberentscheidung): den freigegebenen Kopf nennen und `ERWARTETER_KOPF` immer mitgeben. Der erste Befehl zeigt den Commit-Hash des Klons; er muss mit dem in der Anweisung genannten
+**Kopf-Pinning (A1; Pflicht, Review #519 A3, erledigt in W3b):** Der Befehl holt keinen beweglichen Zweig mehr, sondern genau
+einen Commit (`fetch --depth 1 ... <KOPF>`, `checkout --detach FETCH_HEAD`), und die Konsole startet nur mit
+`ERWARTETER_KOPF=<KOPF>` (Pflicht in der Anweisung). Den freigegebenen Commit setzt der Betreiber vor jeder Auslieferung
+anstelle von `<KOPF>` ein (volle 40 Zeichen; eine Auslieferung gibt es nur nach seiner ausdruecklichen Freigabe). Der erste Befehl zeigt den Commit-Hash des Klons; er muss mit dem in der Anweisung genannten
 `<KOPF>` uebereinstimmen (Platzhalter: der Hash wird nach dem letzten Push in die Anweisung eingesetzt). Stimmt er nicht:
 nicht weitermachen. `website-konsole.sh` zeigt den Stand noch einmal als `Skriptstand: <hash>` und in der Zusammenfassung
 als Kurz-Hash; `JA` gilt nur, wenn dieser Kurz-Hash mit der Anweisung uebereinstimmt. Wer den Abgleich vom Skript
@@ -59,7 +59,7 @@ Danach, unabhaengig davon:
 ## Ablauf B: Fallback mit SSH und scp (Schritt fuer Schritt)
 
 1. Laptop: `python build.py`, packen, Pruefsumme, `scp` des `.tgz` - siehe `deploy/website/dist-bauen.md`.
-2. VPS: `sha256sum -c` (Pflicht von Hand: Ablauf B vergleicht die Summe nicht selbst mit `deploy/website/DIST-SHA256.txt`, anders als `website-konsole.sh`), entpacken nach `~/website-dist`; Skripte aus dem oeffentlichen Repo: `git clone --depth 1 --filter=blob:none --sparse --branch deploy/hauptwebsite-docker https://github.com/rinats-png/dienstplaner.git ~/centric-src && cd ~/centric-src && git sparse-checkout set deploy/website && cd deploy/website` (der Zweig ist beweglich: danach `git -C ~/centric-src rev-parse HEAD` mit dem Kopf der Anweisung vergleichen, Pflicht; oder den Commit per SHA holen)
+2. VPS: `sha256sum -c` (Pflicht von Hand: Ablauf B vergleicht die Summe nicht selbst mit `deploy/website/DIST-SHA256.txt`, anders als `website-konsole.sh`), entpacken nach `~/website-dist`; Skripte aus dem oeffentlichen Repo: `git init -q ~/centric-src && cd ~/centric-src && git sparse-checkout set deploy/website && git fetch --depth 1 --filter=blob:none https://github.com/rinats-png/dienstplaner.git <KOPF> && git checkout --detach FETCH_HEAD && git rev-parse HEAD && cd deploy/website` (fester Commit statt beweglichem Zweig; der angezeigte Hash muss `<KOPF>` aus der Anweisung entsprechen, Pflicht)
 3. Vorpruefung (rein lesend): `sudo -E ./website-vorpruefung.sh` - erwartet `OK`-Zeilen fuer alle vier Mounts, `import`-Zeile, App-Datei, am Ende `VARIANTE B PASST`. Bei `ABWEICHUNG`: nicht weitermachen, Ausgabe melden.
 4. Ausfuehren: `sudo -E ./website-ausliefern.sh ~/website-dist` (legt `/opt/proxy/sites/centric-website` selbst an; ohne `sudo -E` meldet es "Kein Schreibrecht ... mit sudo -E ausfuehren"; findet sudo `docker` nicht: `sudo -E env "PATH=$PATH" ./website-ausliefern.sh ~/website-dist`).
 5. Erfolg: Zeilen `Versuch n: Hauptdomain 200, App 200, Hauptdomain/unbekannt 404`, dann `FERTIG` mit Stempel. Bei jedem Fehler rollt das Skript selbst zurueck und nennt die App-Antwort (soll 200).
@@ -103,8 +103,13 @@ nicht gemacht; Nachverfolgung ohne Nummer in `docs/acc45/ENTSCHEIDUNGSLISTE.md`,
    gepinnten `CADDY_BILD` ergaenzen. Bis dahin: vor jeder Auslieferung von Hand ausfuehren und das Ergebnis vermerken.
 2. **shellcheck fuer `deploy/website/*.sh`** (Review #519 A4). `betrieb-deploy.yml` prueft nur `deploy/*.sh` (nicht rekursiv).
    Empfehlung: `deploy/website/*.sh` aufnehmen (`shellcheck -x --source-path=SCRIPTDIR`, wegen `# shellcheck source=website-lib.sh`). Der Kommentar in `betrieb-deploy.yml` (Zeile 5) sagt "alle Skripte unter deploy/", die Pruefung in Zeile 31 erfasst aber nur `deploy/*.sh`; Kommentar oder Muster angleichen (Betreiberzone, hier nicht geaendert).
-3. **Fester Zweig/Kopf** (Review #519 A3). Siehe Kopf-Pinning oben: Zweig und Commit festlegen, `ERWARTETER_KOPF` als Pflicht in der
-   Anweisung. Gilt auch fuer `deploy/website/dist-bauen.md` Abschnitt 3.
+3. **Fester Zweig/Kopf** (Review #519 A3): **erledigt in W3b** (Klonbefehl holt `<KOPF>`, `ERWARTETER_KOPF` Pflicht; Test
+   `pruefungen/website-kopfzeilen.test.js`). Gilt auch fuer `deploy/website/dist-bauen.md` Abschnitt 3.
+4. **CC-1 Cache-Control:** **erledigt in W3b** (`no-cache` im Kopf-Snippet der Site-Datei, auch auf der Fehlerseite; Pruefung im
+   Test und im Rauchtest `website-caddy.sh`). **CSP-1** (`style-src 'unsafe-inline'`) bleibt bewusst unveraendert: bekannt und in
+   der Site-Datei begruendet (style-Attribute); entschieden: so belassen, bis die Quelle keine style-Attribute mehr nutzt.
+
+Punkte 1 und 2 sind Workflow-Aenderungen (Betreiber, N-1); der Patch-Vorschlag steht in `docs/acc45/WEBSITE-W3b-nachweis.md`.
 
 ## Rueckfall Variante A (nur nach gesonderter Freigabe)
 

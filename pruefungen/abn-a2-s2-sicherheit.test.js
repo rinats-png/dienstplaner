@@ -530,6 +530,13 @@ describe("ABN-S2: Anmeldeflut aus vielen Herkünften (vorbestehend) — Ist-Verh
     const b = await anmelden(codeB);
     expect(b.status, "Befund S-2: die Betreiber-Neuanmeldung wartet (anmelden:gesamt 400/300 s voll)").toBe(429);
     expect(b.token).toBeUndefined();
+    /* S2-d (Auflage Pilot Form I): Der Alarm des Betreibers sucht in der Spur nach „anmelden · gebremst (gesamt)“.
+       Der Schlüssel muss über den echten Weg entstehen, sonst bliebe die Auflage ein stiller Leerlauf. */
+    const spur = await SCH.spurLesen(1);
+    const alarm = spur.filter((z) => z.art === "anmelden" && z.ausgang === "gebremst" && /\(gesamt\)$/.test(z.zusatz || ""));
+    expect(alarm.length, "Alarmschlüssel „anmelden · gebremst (gesamt)“ steht in der Spur").toBeGreaterThan(0);
+    expect(alarm[0].zusatz).toBe("ungewöhnlich hohes Aufkommen (gesamt)");
+    expect(JSON.stringify(alarm), "kein Zugangscode und keine Herkunft in der Alarmzeile").not.toMatch(/FLUT-|10\.8\d\./);
     const ein = await anfrage(einladung, "/api/einladung/annehmen", { rumpf: { einladung: einl.einladung } });
     expect(ein.status, "Befund S-2: Einlösen einer gültigen Einladung wartet").toBe(429);
     const l = await anmelden(leitung.code);

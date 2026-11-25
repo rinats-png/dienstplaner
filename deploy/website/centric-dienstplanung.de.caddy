@@ -18,6 +18,8 @@
 #  <style>-Block, keine externen Ressourcen (nur 'self'); style-src
 #  'unsafe-inline' wegen vereinzelter style="..."-Attribute, data: nur fuer
 #  Bilder. Das Kontaktformular baut eine mailto:-Nachricht (kein Versand).
+#  CSP-1 (style-src unsafe-inline) ist bekannt und mit den style-Attributen begruendet; nicht geaendert.
+#  Cache-Control no-cache (CC-1) steht im Snippet und gilt damit auch fuer die Fehlerseite.
 # =====================================================================
 
 # WWW-BEGIN
@@ -36,6 +38,9 @@ www.centric-dienstplanung.de {
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "DENY"
 		Referrer-Policy "strict-origin-when-cross-origin"
+		# CC-1 (W3b): wie die App-Site no-cache. Der Browser fragt jedes Mal mit ETag/Last-Modified nach; nach einer
+		# Auslieferung zeigt er nie einen veralteten Stand. Eine Frist fuer /assets/* braeuchte Dateinamen mit Pruefsumme.
+		Cache-Control "no-cache"
 		Permissions-Policy "geolocation=(), camera=(), microphone=(), payment=(), usb=()"
 		Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'"
 		-Server
