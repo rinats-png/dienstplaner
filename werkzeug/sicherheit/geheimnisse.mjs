@@ -69,6 +69,11 @@ export const FREIGABEN = [
      Folgecommit setzt die Zeile zusammen; der Verlauf ist ohne Force-Push
      nicht umschreibbar. Eng: nur dieser Commit × diese Datei × PEM. */
   { commit: "b8e67eddfe1ee371d897d01da9288d89df0a7e56", datei: "pruefungen/inventur-install.test.js", regel: "privater Schlüssel (PEM)", grund: "Testtext (nur PEM-Kopfzeile), kein Schlüsselmaterial; Verlauf nicht umschreibbar" },
+  /* Erster Commit von PR #537 (GATE-EW3, Zweig acc45/gate/ew3-staging-patch): Prüfwert GHCR_TOKEN: "GEHEIM-TOKEN-…"
+     als Umgebung eines Tests, der belegt, dass der Nachweis KEINE Umgebungswerte übernimmt — erfundener Text, kein
+     Token (geprüft 2026-11-24 mit git show). Der Folgecommit baut den Wert zur Laufzeit; der Verlauf ist ohne
+     Force-Push nicht umschreibbar. Eng: nur dieser Commit × diese Datei × diese Regel. */
+  { commit: "9ca6d3dff01a87d3e6e40d48eb58ec8ad6469bc4", datei: "pruefungen/workflow-patch-ew3.test.js", regel: "Zuweisung Geheimnis-Variable", grund: "erfundener Prüfwert eines Negativtests, kein Token; Verlauf nicht umschreibbar" },
 ];
 
 /** Freigabe für einen einzelnen Treffer { commit, datei, regel } oder undefined.
