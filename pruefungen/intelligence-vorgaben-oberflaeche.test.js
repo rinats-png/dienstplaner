@@ -83,7 +83,7 @@ describe("WP-I4 Teil 3: Planung liest, Leitung ändert; deaktivieren statt lösc
     expect(t(V("a", "aktiv", { aktiviertAm: "2026-11-01T00:00:00.000Z" }))).not.toContain("Löschen");
     expect(DEAKT(t(V("a", "aktiv")))).toBe(true);
     expect(t(V("i", "inaktiv", { aktiviertAm: "2026-11-01T00:00:00.000Z" }))).not.toContain("Löschen");
-    expect(t(V("i", "inaktiv"))).toContain("Löschen");
+    expect(t(V("i", "inaktiv"))).not.toContain("Löschen");   // Altbestand ohne Marke: deaktiviert, nicht löschbar (Review #561, Befund 3)
   });
 });
 

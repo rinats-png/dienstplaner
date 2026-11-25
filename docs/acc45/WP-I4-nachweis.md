@@ -91,3 +91,27 @@ Test vor Aktivieren entfällt 4 rot · Löschen aktiver Vorgabe erlaubt 8 · Pro
 5. Löschen ganzer Betriebe/Datenschutzläufe (Art. 17) betrifft die Vorgaben mit dem Betrieb; nichts Neues eingebaut.
 
 Lokale Gesamtläufe Teil 3 (TZ=UTC, `--maxWorkers=1`): `pruefungen/intelligence*`, `rechtematrix*`, `sicht*`, `art9-katalog`, `modul-kern*`, `modul-integritaet-quer`, `abnahme-c-module`, `v4-3b-einstellungen`, `wp48-rundweg`, `einstellungen*`, `stufen*`: 61 Dateien, 2499 Tests grün. Vollregression in CI.
+
+## Nachbesserung nach Review #561 (Befund → Fix → Test → Mutation)
+
+Stufe L3, SICHERHEIT-QUALITAET, kleinster Umfang. Tests zuerst: `pruefungen/intelligence-vorgaben-aufwand.test.js` (16 Tests). Rot vor dem Code: der Lauf mit den Parametern 1e9/1e15 hing (der Befund selbst, Abbruch von Hand, verwaister Worker beendet); nach dem Code 16 grün.
+
+| Nr. | Befund | Fix | Test | Mutation (rot) |
+|---|---|---|---|---|
+| 1 HOCH | Parameter ohne Obergrenze, Beispielfälle in Parametergröße, synchron je aktive Vorgabe (DoS) | `VORGABEN_PARAMETER_GRENZE` (Zählgrenze, Folge-Maximum, Danach-frei je 366, Personen 300; ganze Zahlen, nur Zahlentyp) in `pruefeVorgabe` (`groessenFehler`); `beispielFaelle` erzeugt bei unzulässiger Größe nichts (Selbstschutz); je Anfrage kumulierter Aufwand `VORGABEN_AUFWAND_JE_ANFRAGE` (50000 Einheiten, geschätzt vor dem Rechnen, Summe über alle zu testenden Vorgaben) und Zeitbudget `VORGABEN_ZEITBUDGET_MS` (2000 ms, vor jedem Testlauf); Abweisung mit Text (Schreibweg antwortet wie alle fachlichen Abweisungen mit 403, nicht 422) | 1e5, 1e9, 1e15, NaN, ±Infinity, negativ, gebrochen für Zähl-, Muster-, Besetzungs-, Paarregel in unter 200 ms abgewiesen; 200 riesige Vorgaben in einer Anfrage schnell abgewiesen; Obergrenze selbst gültig; Gesamtbudget und Zeitbudget | Grenze entfernt 2 rot · Selbstschutz entfernt: Lauf hängt (rot per Zeitüberschreitung) · Aufwandsdeckel entfernt 1 · Zeitbudget entfernt 1 |
+| 2 MITTEL | `betriebWiederherstellen` übernahm `vorgaben` (in `VOLL_BETRIEB`) aus der Sicherung an `vorgabenZusammen` vorbei | Muster der Branchenmodule: Vorgaben des laufenden Betriebs gelten weiter (fehlt das Feld heute, kommt keines zurück); das Modulprotokoll blieb schon über `MODULEINSTELLUNGEN_FELDER`; weicht die Sicherung ab, nennt die Betriebsprotokollzeile der Wiederherstellung die Auslassung | 3 Tests: heutige Vorgaben + Protokoll bleiben, kein Feld heute = keines danach, gleiche Vorgaben = keine Zeile | Übernahme aus der Sicherung 2 rot · Protokollzeile fehlt 2 |
+| 3 MITTEL | Altbestand `inaktiv` ohne `aktiviertAm` war löschbar | Löschen nur bei `status === "entwurf"` und ohne `aktiviertAm` (Server und Oberfläche `loeschbar`); Deaktivieren trägt fehlendes `aktiviertAm/-Von` aus `geaendertAm/-Von` des Vorzustands nach (sonst `jetzt`) | 4 Tests (inaktiv ohne Marke nicht löschbar, Entwurf löschbar, Marke nachgetragen, Marke = jetzt) | Server `!== "aktiv"` 1 rot · Marke nicht nachgetragen 2 · Oberfläche 1 |
+| 4 NIEDRIG | Kopf von `intelligence-vorgaben-teil3.test.js` nannte Abschnitt 6 | Abschnitt 7 | | |
+
+Angepasster bestehender Test (nur aus Befund 3, nicht abgeschwächt, sondern an die strengere Regel angepasst): `intelligence-vorgaben-oberflaeche.test.js`, „nur einen nie aktiven Entwurf löschen“: `V("i","inaktiv")` ohne Marke bietet jetzt kein „Löschen“ an (vorher ja).
+
+Altbestand: keine bestehende Vorgabe in Tests oder Seeds liegt über den neuen Grenzen; unveränderter Altbestand wird ohnehin nicht neu geprüft (nur Neues/Geändertes).
+
+Offene Punkte (nicht Teil dieses PR, nichts geändert):
+- Die vorhandenen Beispielfälle können bei Zählregeln mit Grenze über 31 (Ereignisse nur im März-Fenster) und bei Mustern „Höchstens in Folge“ (Block am Zeitraumanfang = offen) ihren eigenen Test nicht bestehen; solche Vorgaben bleiben nach 1.5 nicht aktivierbar. Das ist der Zustand vor dieser Änderung; bessere Beispielfälle sind eigener Schritt (WP-I8/I9).
+- Abweisung des Schreibwegs ist wie bisher 403 mit Text; ein eigener 422 bräuchte eine Änderung im Handler (`daten.mjs`), die hier nicht vorgenommen wurde.
+
+### Hinweis für WP-I5/WP-I7
+Jede Intelligence-Berechnung braucht eine kumulierte Aufwandsgrenze je Anfrage (Summe über alle Vorgaben und Fälle) und ein Zeitbudget, nicht nur Grenzen je Parameter; sonst blockiert eine Anfrage mit `org.edit` die Ereignisschleife für alle Mandanten. Wiederherstellen (und jeder andere Weg, der Betriebsdaten ersetzt) darf Schutzregeln des normalen Schreibwegs (Löschsperre, Server-Test, Stufengrenze) nicht umgehen: neue Betriebsfelder mit Schutzlogik in `VOLL_BETRIEB` müssen in `betriebWiederherstellen` ausdrücklich „gilt weiter wie heute“ erhalten. Die Aufwandsschätzung (`vorgabeTestAufwand`) ist eine Schätzung der Beispielfallgröße; neue Regelarten müssen sie mitführen.
+
+Lokale Läufe der Nachbesserung (TZ=UTC, `--maxWorkers=1`): `intelligence-vorgaben*`, `rechtematrix*`, `sicherungen.test.js`, `wiederherstellen-ui`, `modul-kern*`, `modul-integritaet-quer`, `entwuerfe`, `rb1-plan-publish`, `sicht*`, `einstellungen*`, `stufen*`: 29 Dateien, 1556 Tests grün. Vollregression in CI.

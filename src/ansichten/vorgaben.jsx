@@ -176,7 +176,7 @@ export function InterneVorgaben({ sitz, akt }) {
 }
 
 /** Nur ein Entwurf, der nie aktiv war, lässt sich löschen; alles Übrige wird deaktiviert (Nachweis der Änderungen, Server erzwingt es). */
-const loeschbar = (v) => v.status !== "aktiv" && !v.aktiviertAm;
+const loeschbar = (v) => v.status === "entwurf" && !v.aktiviertAm;
 
 function VorgabenInnen({ sitz, akt, lesend }) {
   const m = sitz.mandant;

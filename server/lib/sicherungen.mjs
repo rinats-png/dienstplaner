@@ -209,8 +209,10 @@ export function betriebWiederherstellen(jetzt, sicherung, sitzung,
     return rein;
   });
 
+  /* Interne Vorgaben (WP-I4, Review #561 Befund 2): gelten weiter, wie sie heute sind (unten). Weicht die Sicherung ab, steht das im Protokoll. */
+  const vorgabenAbweichend = JSON.stringify(aus.vorgaben) !== JSON.stringify(alt.vorgaben);
   const eintrag = { id: `w-${marke || "?"}`, zeit: heute.toLocaleString("de-DE", { timeZone: "Europe/Berlin" }),
-    text: `Betrieb aus der Sicherung ${marke || "?"} wiederhergestellt` };
+    text: `Betrieb aus der Sicherung ${marke || "?"} wiederhergestellt${vorgabenAbweichend ? " · interne Vorgaben aus dem aktuellen Stand behalten (nicht aus der Sicherung)" : ""}` };
   const zurueck = { ...aus, id: alt.id, personen,
     protokoll: [eintrag, ...(Array.isArray(alt.protokoll) ? alt.protokoll : [])],
     aenderungen: alt.aenderungen };
@@ -248,6 +250,9 @@ export function betriebWiederherstellen(jetzt, sicherung, sitzung,
     }
     if ((zurueck.einstellungen && typeof zurueck.einstellungen === "object") || Object.keys(z).length) zurueck.einstellungen = z;
   }
+  /* Interne Vorgaben (WP-I4): wie die Branchenmodule — sie gelten weiter, wie sie heute sind, samt Modulprotokoll (oben). Aus der Sicherung
+     käme sonst eine Vorgabe an der Löschsperre, am Server-Test und an der Stufengrenze von vorgabenZusammen vorbei. */
+  if ("vorgaben" in alt) zurueck.vorgaben = alt.vorgaben; else delete zurueck.vorgaben;
   /* Moduldaten (zweiter Opus-Review M3, Betreiber-Ergänzung A4):
      - Die Daten eines Moduls, das heute nur lesbar ist (G3), kommen aus dem jetzigen Stand —
        sonst wäre Wiederherstellen ein Umweg am Nur-Lesen vorbei (ohne Ausnahmeweg, ohne Protokoll).

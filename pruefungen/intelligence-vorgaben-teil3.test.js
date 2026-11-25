@@ -8,7 +8,7 @@
    1.5 Der Server erzwingt „erst testen, dann aktivieren“.
    Dazu die drei Befunde aus dem Review von #555 (Typprüfung, Bezüge, bekannt = nur der übermittelte Stand).
 
-   Die Wege über den echten Handler: intelligence-vorgaben-wege.test.js (Abschnitt 6). Synthetische Daten.
+   Die Wege über den echten Handler: intelligence-vorgaben-wege.test.js (Abschnitt 7). Synthetische Daten.
    ========================================================================== */
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";

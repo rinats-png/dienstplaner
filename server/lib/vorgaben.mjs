@@ -35,6 +35,16 @@ export const VORGABEN_GRENZEN_FELD = Object.freeze({
   einheiten: 50, gruppen: 20, gruppeLaenge: 40, personen: 300, zeitraeume: 20, idLaenge: 30,
 });
 
+/** Obergrenzen der Parameter, die Beispielfälle in ihrer Größe bestimmen (Review #561, Befund 1: Denial of Service).
+ *  Fachlich: höchstens 366 Ereignisse je Zeitraum, Folgen bis 366 Tage, bis 300 Personen (wie die Grenze der Personenlisten).
+ *  Technisch: Der Baukasten wertet höchstens MAX_TAGE (800) Tage aus; 366 + 1 + 366 + 1 bleibt darunter. */
+export const VORGABEN_PARAMETER_GRENZE = Object.freeze({ zaehlGrenze: 366, folgeMax: 366, danachFrei: 366, personen: 300 });
+/** Kumulierter Aufwand der Testläufe einer Anfrage (Einheiten = erzeugte Tage, Ereignisse und Personen der Beispielfälle). Eine einzelne
+ *  größte Vorgabe kostet rund 1500, die Grenze lässt also gut dreißig davon in einer Anfrage zu. */
+export const VORGABEN_AUFWAND_JE_ANFRAGE = 50000;
+/** Zeitbudget aller Testläufe einer Anfrage in Millisekunden (Schutz des Ereignisschleife); wird vor jedem Testlauf geprüft. */
+export const VORGABEN_ZEITBUDGET_MS = 2000;
+
 /** Aktive Vorgaben je Preisstufe (E-21, Plan 10.2). Unbekannte Stufe: die kleinste (fail closed). */
 export const VORGABEN_STUFENGRENZE = Object.freeze({ basis: 5, pro: 25, enterprise: Infinity });
 /** @param {any} tarifId @returns {number} */
@@ -66,6 +76,35 @@ const ID = /^[a-z0-9][a-z0-9-]{0,29}$/;
 const textOk = (s, max) => typeof s === "string" && s.length <= max;
 const idListe = (l, max) => Array.isArray(l) && l.length <= max && l.every((x) => typeof x === "string" && x.length >= 1 && x.length <= 60)
   && new Set(l).size === l.length;
+
+const ganzIn = (x, von, bis) => typeof x === "number" && Number.isInteger(x) && x >= von && x <= bis;
+/** Größenbestimmende Parameter: Abweisungstext oder null. Nur, was gesetzt ist, wird geprüft; ob es fehlt, prüft der Baukasten. */
+function groessenFehler(v) {
+  const G = VORGABEN_PARAMETER_GRENZE, p = (v && v.parameter) || {};
+  const zahl = (name, x, von, bis) => (x === undefined || ganzIn(x, von, bis) ? null : `${name} ist eine ganze Zahl von ${von} bis ${bis} (höchstens ${bis}).`);
+  switch (v && v.regelart) {
+    case "zaehlregel": return zahl("Grenze", p.grenze, 0, G.zaehlGrenze);
+    case "musterregel": return zahl("Höchstens in Folge", p.max, 1, G.folgeMax) || zahl("Danach frei", p.danachFrei, 0, G.danachFrei);
+    case "besetzungsregel":
+      for (const a of Array.isArray(p.anforderungen) ? p.anforderungen : []) {
+        if (a && (a.art === "anzahl" || a.art === "anzahlMit")) { const f = zahl("Mindestens", a.min, 0, G.personen); if (f) return f; }
+      }
+      return null;
+    case "paarregel": return zahl("Mindestens", p.min, 0, G.personen);
+    default: return null;
+  }
+}
+/** Geschätzter Aufwand des Testlaufs (Größe der Beispielfälle), ohne sie zu erzeugen. Nur für geprüfte Vorgaben. */
+export function vorgabeTestAufwand(v) {
+  const p = (v && v.parameter) || {};
+  switch (v && v.regelart) {
+    case "zaehlregel": return 2 * (Number(p.grenze) + 2);
+    case "musterregel": return 2 * ((Number(p.max) || 0) + (Number(p.danachFrei) || 0) + 3);
+    case "besetzungsregel": return 2 * (((p.anforderungen && p.anforderungen[0] && Number(p.anforderungen[0].min)) || 0) + 2);
+    case "paarregel": return 2 * ((p.min === undefined ? 1 : Number(p.min)) + 2);
+    default: return 10;
+  }
+}
 
 /** Die Regelkennung im Baukasten — Großbuchstaben, damit sie dem Kennungsformat des Bestätigungsprotokolls entspricht. */
 export const vorgabeRegelId = (v) => `VORGABE-${String(v && v.id).toUpperCase()}`;
@@ -144,6 +183,8 @@ export function pruefeVorgabe(v) {
       return `${wo}: Ausnahmen: Zeiträume als Liste mit Von und Bis erwartet.`;
   }
 
+  const gf = groessenFehler(v);
+  if (gf) return `${wo}: ${gf}`;
   /* Der Baukasten ist der Prüfer der Parameter: Er wirft bei unvollständigen Parametern und bei Personenmerkmalen. */
   try { pruefeRegel(vorgabeAlsRegel({ ...v, gueltigAb: null, gueltigBis: null }, { wirkend: true }), {}); }
   catch (e) { return `${wo}: ${String((e && e.message) || e).replace(/^Regelbaukasten:\s*/, "").slice(0, 200)}`; }
@@ -184,7 +225,7 @@ export const aktiveVorgaben = (liste) => (Array.isArray(liste) ? liste : []).fil
  * @param {{ darfOrgEdit: boolean, person: any, tarif?: any, jetzt: string }} ktx
  * @returns {{ grund?: string, mandant?: any }}
  */
-export function vorgabenZusammen(altM, neuM, { darfOrgEdit, person, tarif, jetzt }) {
+export function vorgabenZusammen(altM, neuM, { darfOrgEdit, person, tarif, jetzt, zeitBudgetMs = VORGABEN_ZEITBUDGET_MS }) {
   if (!istObjekt(neuM)) return { mandant: neuM };
   const hatAlt = !!altM && Object.prototype.hasOwnProperty.call(altM, "vorgaben");
   const alt = Array.isArray(altM && altM.vorgaben) ? altM.vorgaben : [];
@@ -216,6 +257,8 @@ export function vorgabenZusammen(altM, neuM, { darfOrgEdit, person, tarif, jetzt
 
   const ids = new Set();
   const aus = [];
+  let aufwand = 0;
+  const start = performance.now();
   /* Bezüge nur zum eigenen Betrieb (der übermittelte Betrieb, damit eine im selben Schritt angelegte Einheit oder Person zählt). */
   const kennungen = (l) => new Set((Array.isArray(l) ? l : []).filter(istObjekt).map((x) => String(x.id)));
   const bekannt = { einheiten: kennungen(neuM.einheiten), personen: kennungen(neuM.personen) };
@@ -230,6 +273,11 @@ export function vorgabenZusammen(altM, neuM, { darfOrgEdit, person, tarif, jetzt
     /* „Erst testen, dann aktivieren" erzwingt der Server: Wer aktiv wird oder als aktive Vorgabe geändert wird, muss den Testlauf
        mit den Beispielfällen bestehen (nicht nur die Oberfläche). Deaktivieren und Entwürfe sind nicht daran gebunden. */
     if (v.status === "aktiv") {
+      /* Kumulierter Deckel je Anfrage (Summe über alle Testläufe) und Zeitbudget, bevor gerechnet wird. */
+      aufwand += vorgabeTestAufwand(k);
+      if (aufwand > VORGABEN_AUFWAND_JE_ANFRAGE)
+        return { grund: `Vorgaben: Der Rechenaufwand für die Tests ist in einer Anfrage zu groß (Grenze ${VORGABEN_AUFWAND_JE_ANFRAGE}); bitte weniger Vorgaben auf einmal aktivieren oder ändern.` };
+      if (performance.now() - start >= zeitBudgetMs) return { grund: "Vorgaben: Die Tests dauern zu lange; bitte weniger Vorgaben auf einmal aktivieren oder ändern." };
       const t = vorgabeTestlauf(k);
       if (!t.ok) return { grund: `Vorgabe ${String(v.name || v.id).slice(0, 30)}: Vor dem Aktivieren muss der Test bestanden sein (${t.fehler || "Test nicht bestanden"}).` };
     }
@@ -239,13 +287,15 @@ export function vorgabenZusammen(altM, neuM, { darfOrgEdit, person, tarif, jetzt
     /* Auch eine deaktivierte Vorgabe behält, wann und von wem sie aktiviert wurde: Daran hängt, dass sie nicht gelöscht werden kann (Teil 3). */
     else if (vorher) {
       if (vorher.aktiviertAm) st.aktiviertAm = vorher.aktiviertAm;
+      else if (vorher.status === "aktiv") st.aktiviertAm = vorher.geaendertAm || jetzt;   // Altbestand ohne Marke: war aktiv, das bleibt nachweisbar (Review #561, Befund 3)
       if (vorher.aktiviertVon !== undefined) st.aktiviertVon = vorher.aktiviertVon;
+      else if (vorher.status === "aktiv") st.aktiviertVon = vorher.geaendertVon === undefined ? null : vorher.geaendertVon;
     }
     aus.push(st);
   }
-  /* Deaktivieren statt Löschen (Entscheidung 2026-11-25, 1.3): Nur ein Entwurf, der nie aktiv war, lässt sich entfernen. */
+  /* Deaktivieren statt Löschen (Entscheidung 2026-11-25, 1.3): Nur ein Entwurf, der nie aktiv war, lässt sich entfernen (inaktiv ohne Marke gilt als früher aktiv). */
   for (const [id, vorher] of altMap) {
-    if (ids.has(id) || (vorher.status !== "aktiv" && !vorher.aktiviertAm)) continue;
+    if (ids.has(id) || (vorher.status === "entwurf" && !vorher.aktiviertAm)) continue;
     return { grund: `Vorgabe ${String(vorher.name || id).slice(0, 30)}: Eine Vorgabe, die aktiv ist oder war, wird deaktiviert und nicht gelöscht (Nachweis der Änderungen).` };
   }
   const grenze = vorgabenGrenze(tarif);
@@ -386,6 +436,7 @@ const addT = (tag, n) => { const d = new Date(`${tag}T00:00:00Z`); d.setUTCDate(
  */
 export function beispielFaelle(v) {
   const p = (v && v.parameter) || {};
+  if (groessenFehler(v)) return null;   // Selbstschutz: nie Listen in der Größe ungeprüfter Parameter anlegen
   const tage = (start, klassen) => Object.fromEntries(klassen.map((k, i) => [addT(start, i), k]));
   switch (v && v.regelart) {
     case "zaehlregel": {
