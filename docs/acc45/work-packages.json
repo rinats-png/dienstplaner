@@ -3,9 +3,9 @@
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
   "anzahl": 295,
   "statusZaehlung": {
-    "BLOCKED": 114,
+    "BLOCKED": 113,
     "READY": 27,
-    "IN_PROGRESS": 22,
+    "IN_PROGRESS": 23,
     "REVIEW": 10,
     "INTEGRATED": 119,
     "DONE": 3
@@ -23,8 +23,8 @@
       "pakete": 15,
       "offen": 14,
       "restPT": {
-        "min": 64.5,
-        "max": 100.5
+        "min": 62.5,
+        "max": 97.5
       }
     },
     "intelligence": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 357.3,
-    "max": 612.25
+    "min": 355.3,
+    "max": 609.25
   },
   "kritischerPfad": {
     "summe": 67,
@@ -1856,10 +1856,10 @@
       "prio": "P1",
       "aufwandPT": {"min":4,"max":6},
       "abhaengigkeiten": ["WP-19.0"],
-      "status": "BLOCKED",
+      "status": "IN_PROGRESS",
       "stufen": {
-        "implementiert": {"wert":"teilweise","beleg":"Server-Teilumfang #49 (ee38af2)"},
-        "lokalGetestet": {"wert":"teilweise","beleg":"Server-Teilumfang #49 (ee38af2)"},
+        "implementiert": {"wert":"teilweise","beleg":"Server-Teilumfang #49 (ee38af2); Rest lokal: Pflege, Einteilung, Alleinarbeit, Übernahme Bestand, unbekannter Posten (docs/acc45/WP-19-1-nachweis.md); offen: Postenwechsel im Dienst, SV-Schreibweg (Betreiberrückfragen)"},
+        "lokalGetestet": {"wert":"teilweise","beleg":"pruefungen/modul-posten-pflege.test.js und Regression, siehe docs/acc45/WP-19-1-nachweis.md"},
         "reviewt": {"wert":"teilweise","beleg":"Server-Teilumfang #49 (ee38af2)"},
         "integriert": {"wert":"teilweise","beleg":"Server-Teilumfang #49 (ee38af2)"},
         "stagingGeprueft": {"wert":false,"beleg":null},
@@ -1870,12 +1870,12 @@
       "agent": "Agent E – Business Modules & Frontend",
       "modell": "sonnet + opus-review",
       "konfliktzonen": [],
-      "pr": [],
-      "nachweis": "docs/acc45/WP19-MODULPLAN.md",
+      "pr": ["#569"],
+      "nachweis": "docs/acc45/WP-19-1-nachweis.md",
       "akzeptanz": "laut WP19-MODULPLAN.md (Abschnitt des Moduls) und Produktentscheidungen 2026-11-03",
       "tests": "pruefungen/modul-<id>*.test.js, E2E in 19.13",
       "dateien": "siehe WP19-MODULPLAN.md Abschnitt 14",
-      "notiz": "PR #244 (WP-19 B1): Schreibwege bei Status geplant geschlossen (server/lib/modul-altwege.mjs); Status unverändert."
+      "notiz": "PR #569 (WP-19.1 Rest: Pflege, Einteilung, Alleinarbeit, Übernahme Bestand; Postenwechsel und SV-Schreibweg offen, Betreiberrückfragen). PR #244 (WP-19 B1): Schreibwege bei Status geplant geschlossen (server/lib/modul-altwege.mjs); Status unverändert."
     },
     {
       "id": "WP-19.2",

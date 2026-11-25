@@ -33,6 +33,11 @@ export function berichtZugriffFuer(rolle) {
   return rolle === "leitung" || rolle === "planer" ? "voll" : "keiner";
 }
 
+/** Schreibweg der Posten-Oberfläche (Objekte, Einteilung): wie am Server nur Leitung und Planung. Alles andere: nein (fail-closed). @param {any} rolle */
+export function postenSchreibenFuer(rolle) {
+  return rolle === "leitung" || rolle === "planer";
+}
+
 /**
  * Der Basiskontext für die Moduloberflächen.
  * @param {{ sitz?: any, kontext?: any }} o
@@ -48,6 +53,7 @@ export function modulKontext({ sitz, kontext } = {}) {
   return {
     wachbuchZugriff: wachbuchZugriffFuer(rolle),
     berichtZugriff,
+    postenSchreiben: postenSchreibenFuer(rolle),
     person: person && person.id !== undefined && person.id !== null ? String(person.id) : null,
     eigeneEinheit: eigene,
     personen: m && Array.isArray(m.personen) ? m.personen.filter(istObjekt) : [],

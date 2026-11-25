@@ -75,6 +75,23 @@ const ATTRIBUTE_BASIS = {
   [M("wachbuch")]: [1, "e507dc5a72656be411d2b69f0ce59ebeb5943cbc788834ac09730e380c8e715d"],
 };
 
+/** WP-19.1: die drei einzigen Änderungen an den 13 Basisdateien außer dem Radius — kern.jsx reicht das Aktionsobjekt `akt`
+ *  an die Moduloberflächen (Schreibweg der Posten-Pflege, posten-pflege.js; Rechte prüft der Server). Die Rückrechnung
+ *  setzt genau diese Stellen auf den Basistext zurück (je genau einmal): Der Beleg „sonst byte-gleich zur Basis“ bleibt voll. */
+const WP191_RUECK = {
+  [M("kern")]: [
+    ["function Oberflaechen({ m, sitz, darf, kontext, liste, akt }) {", "function Oberflaechen({ m, sitz, darf, kontext, liste }) {"],
+    ["const basis = { m, heute: heuteTag(), darf, akt,\n", "const basis = { m, heute: heuteTag(), darf,\n"],
+    ["<Oberflaechen m={m} sitz={sitz} darf={darf} kontext={kontext} liste={liste} akt={akt} />", "<Oberflaechen m={m} sitz={sitz} darf={darf} kontext={kontext} liste={liste} />"],
+  ],
+};
+/** Setzt die WP-19.1-Stellen zurück; jede muss genau einmal vorkommen (sonst bleibt der Text, die Prüfsumme fällt auf). */
+function ohneWp191(datei, text) {
+  let t = text;
+  for (const [neu, alt] of WP191_RUECK[datei] || []) if (t.split(neu).length === 2) t = t.replace(neu, () => alt);
+  return t;
+}
+
 /** Heutiger Quelltext einer Datei mit den alten Werten der Tabelle zurückgesetzt. */
 function rueckgerechnet(datei, tabelle = BRANCHENMODULE_ZUORDNUNG, text = lies(datei)) {
   const stellen = tabelle[datei] || [];
@@ -83,7 +100,7 @@ function rueckgerechnet(datei, tabelle = BRANCHENMODULE_ZUORDNUNG, text = lies(d
     const st = stellen[i++];
     return st && st.stufe === stufe ? `borderRadius: ${st.alt}` : m;   // Fehler fällt über die Prüfsumme auf
   });
-  return { text: aus, ersetzt: i };
+  return { text: ohneWp191(datei, aus), ersetzt: i };
 }
 
 /* Render der echten Komponente (wie pruefungen/modul-abnahme-oberflaeche.test.js): Prüfliste mit Modulen
