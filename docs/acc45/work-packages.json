@@ -3,9 +3,9 @@
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
   "anzahl": 295,
   "statusZaehlung": {
-    "BLOCKED": 115,
+    "BLOCKED": 114,
     "READY": 27,
-    "IN_PROGRESS": 21,
+    "IN_PROGRESS": 22,
     "REVIEW": 10,
     "INTEGRATED": 119,
     "DONE": 3
@@ -31,8 +31,8 @@
       "pakete": 40,
       "offen": 27,
       "restPT": {
-        "min": 177,
-        "max": 313
+        "min": 175,
+        "max": 309
       }
     },
     "folge": {
@@ -53,13 +53,13 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 359.3,
-    "max": 616.25
+    "min": 357.3,
+    "max": 612.25
   },
   "kritischerPfad": {
-    "summe": 70,
-    "min": 50,
-    "max": 90,
+    "summe": 67,
+    "min": 48,
+    "max": 86,
     "kette": [
       "WP-I4",
       "WP-I5",
@@ -2332,7 +2332,7 @@
       "prio": "P2",
       "aufwandPT": {"min":4,"max":8},
       "abhaengigkeiten": ["WP-I3","WP-I4"],
-      "status": "BLOCKED",
+      "status": "IN_PROGRESS",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
         "lokalGetestet": {"wert":false,"beleg":null},

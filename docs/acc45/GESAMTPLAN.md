@@ -25,26 +25,26 @@ die sich mit dem Backlog ändern.
 <!-- AUTO:BEGIN kennzahlen -->
 Erzeugt aus `docs/acc45/work-packages.json` (Schema 2) mit `node werkzeug/acc45-backlog.mjs status-schreiben` — nicht von Hand ändern.
 
-**Pakete gesamt:** 295 · BLOCKED 115 · READY 27 · IN_PROGRESS 21 · REVIEW 10 · INTEGRATED 119 · DONE 3
+**Pakete gesamt:** 295 · BLOCKED 114 · READY 27 · IN_PROGRESS 22 · REVIEW 10 · INTEGRATED 119 · DONE 3
 
 | Strang | Pakete | BLOCKED | READY | IN_PROGRESS | REVIEW | INTEGRATED | DONE | offener Aufwand PT |
 |---|---|---|---|---|---|---|---|---|
 | ACC45 | 143 | 42 | 5 | 7 | 3 | 84 | 2 | 74,1–126,65 |
 | WP-19-Module | 15 | 13 | 0 | 1 | 0 | 1 | 0 | 64,5–100,5 |
-| Intelligence | 40 | 19 | 0 | 8 | 0 | 13 | 0 | 177–313 |
+| Intelligence | 40 | 18 | 0 | 9 | 0 | 13 | 0 | 175–309 |
 | Folgepakete | 62 | 23 | 6 | 5 | 7 | 21 | 0 | 43,7–76,1 |
 | Extern/Entscheidungen | 35 | 18 | 16 | 0 | 0 | 0 | 1 | 20,35–46,1 |
 
-Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **359,3–616,25 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
+Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **357,3–612,25 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
 
 **Kritische Pfade** (offener Aufwand, Mitte der Spanne maßgeblich):
 
-- gemeinsam: WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **50–90 PT**
+- gemeinsam: WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **48–86 PT**
 - ohne Intelligence: WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 → WP-42a → WP-42 = **22,5–35 PT**
 - ACC45: WP-21 → WP-42a → WP-42 = **14–20 PT**
 - Folgepakete: V4-1 → V4-3a → V4-3b → V4-3d = **5,2–10,3 PT**
 - WP-19: WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 = **18,5–28,5 PT**
-- Intelligence: WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **50–90 PT**
+- Intelligence: WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **48–86 PT**
 <!-- AUTO:END kennzahlen -->
 
 ## 3. Abhängigkeitsgraph (Überblick)
@@ -102,7 +102,7 @@ ACC45 nie), darin die längste Restkette.
 | 2 | 2026-11-11 | WP-19.3 (opus) · WP-19.10 (sonnet) · WP-19.5 (sonnet + opus-review) · WP-19.11 (sonnet) · WP-19.12 (sonnet; App.jsx) · WP-07b (opus; daten.mjs, stempelintegritaet.mjs) · WP-24b (opus) · WP-19.13 (opus (Rechte/Daten) / sonnet) · WP-14c (opus; App.jsx, daten.mjs) · WP-44 (opus) · WP-19.R (sonnet + opus-review) · IMP-6 (sonnet) · WP-15 (opus; App.jsx, daten.mjs) · WP-16b (opus; daten.mjs) · WP-40 (sonnet; App.jsx) · ABN-S2 (opus) · WP-48 (opus; daten.mjs, rechte.mjs, App.jsx, stempelintegritaet.mjs) · WP-30 (sonnet) · GATE-EW3 (sonnet) · K4-P1 (sonnet) · REL-2 (opus) · WP-42a (opus) · REL-3 (opus) | E-8 |
 | 3 | 2026-11-18 | V4-3a (opus; App.jsx) · WR-5 (sonnet; daten.mjs) · RST-2 (opus) · V4-3b (sonnet; src/ansichten) · SSOT-UK1 (sonnet) · V4-3 (opus; App.jsx) · V4-3c (sonnet) · V4-4 (opus) · WEBSITE-W4 (sonnet) · WP-ZEIT (opus; daten.mjs, rechte.mjs) · IMP-7 (sonnet) · DEP-3 (opus) · V4-5 (opus) · WP-36 (sonnet) · WR-7 (opus; daten.mjs) · WEBSITE-W5 (sonnet) · V4-3d (sonnet; src/ansichten) · WP-ST1 (opus) · ABN-A2-Folge (opus) · ABN-A3 (opus) · ABN-C1 (opus) · ABN-S2-b (opus) · ABN-S2-de (haiku) · ABN-S2-H (haiku) · BE-3 (sonnet) · DEP-1 (opus) · DEP-2 (opus) | E-1 · E-2 · E-3 · E-4 · E-5 · E-6 · E-18 |
 | 4 | 2026-11-25 | DEP-4 (opus) · FREIGABE-S2 (sonnet) · GATE-DEPLOY-DIGEST (opus) · GATE-EW6 (sonnet) · GATE-RUECKHALT-AU6 (opus) · GATE-VPS-SIGNATUR (opus) · IMP-8 (haiku) · K4-P2 (sonnet) · K4-P5 (sonnet) · K4-P6 (haiku) · K4-P8 (opus) · MODINERT-L3 (sonnet) · OPT-2 (opus; daten.mjs) · RB-P217 (sonnet + opus) · RC-WECHSEL (opus) · REL-0c (opus) · REL-4 (sonnet) · RST-1 (sonnet (Text) + opus (Gegenlesen)) · RST-3 (sonnet) · RST-4 (sonnet) · RST-6 (opus) · RST-8 (opus) · RST-9 (sonnet) · SI-P6b (opus; daten.mjs) · SSOT-UK2 (sonnet) · V4-4c (sonnet) · V4-4d (sonnet) · V4-6 (opus) · WEBSITE-W6 (opus) · WEBSITE-W7 (sonnet) | – |
-| 5 | 2026-12-02 | WEBSITE-W8 (sonnet) · WEBSITE-W8-1 (sonnet) · WP-09 (opus) · WP-19-B6 (sonnet) · WP-34 (sonnet) · WR-4 (opus; daten.mjs) · WP-I31 (sonnet + opus-review) · WP-I4 (sonnet + opus-review; App.jsx, rechte.mjs) · WR-8 (sonnet; daten.mjs) · WR-9 (opus; daten.mjs) · WP-I5 (sonnet; App.jsx) · WP-I23 (haiku + sonnet) · WP-I25 (sonnet) · WP-I19 (sonnet + opus-review; App.jsx) · WP-I7 (sonnet) · WP-I1 (sonnet + opus-review) · WP-I16 (opus; App.jsx, rechte.mjs) | E-17 |
+| 5 | 2026-12-02 | WEBSITE-W8 (sonnet) · WEBSITE-W8-1 (sonnet) · WP-09 (opus) · WP-19-B6 (sonnet) · WP-34 (sonnet) · WR-4 (opus; daten.mjs) · WP-I31 (sonnet + opus-review) · WP-I4 (sonnet + opus-review; App.jsx, rechte.mjs) · WR-8 (sonnet; daten.mjs) · WR-9 (opus; daten.mjs) · WP-I5 (sonnet; App.jsx) · WP-I23 (haiku + sonnet) · WP-I25 (sonnet) · WP-I7 (sonnet) · WP-I19 (sonnet + opus-review; App.jsx) · WP-I1 (sonnet + opus-review) · WP-I16 (opus; App.jsx, rechte.mjs) | E-17 |
 | 6 | 2026-12-09 | WP-I28 (sonnet; App.jsx) · WP-I8 (sonnet; App.jsx) | – |
 | 7 | 2026-12-16 | WP-PILOT (sonnet) · WP-I20 (sonnet + opus-review; App.jsx) · WP-I26 (sonnet) · WP-I9 (sonnet + opus-review; App.jsx) · WP-42 (opus) · WP-I29 (sonnet; App.jsx) | E-23 |
 | 8 | 2026-12-23 | WP-I22 (sonnet; App.jsx) · WP-I33 (sonnet; App.jsx) · WP-I18 (sonnet) · WP-I27 (opus) · WP-I32 (sonnet; App.jsx) | E-24 |
@@ -201,9 +201,9 @@ Treiberkette A (realistisch): OPT-4 (wartet auf Zone daten.mjs) → WR-9 (wartet
 
 | Szenario | Rest-PT (Entwicklung) | Untergrenze Arbeit ÷ Kapazität | Simulierte Dauer | fertig am |
 |---|---|---|---|---|
-| optimistisch | 356,3 | 8,9 AT | **13 AT** | **2026-11-20** |
-| realistisch | 484 | 26,9 AT | **45 AT** | **2027-01-11** |
-| bei Problemen | 764,7 | 72,8 AT | **112 AT** | **2027-04-16** |
+| optimistisch | 354,3 | 8,9 AT | **13 AT** | **2026-11-20** |
+| realistisch | 481 | 26,7 AT | **45 AT** | **2027-01-11** |
+| bei Problemen | 759,7 | 72,4 AT | **110 AT** | **2027-04-14** |
 
 Treiberkette B (realistisch): WP-I30 (wartet auf Zone App.jsx) → WP-I37
 
@@ -211,9 +211,9 @@ Treiberkette B (realistisch): WP-I30 (wartet auf Zone App.jsx) → WP-I37
 
 | Szenario | Rest-PT (Entwicklung) | Untergrenze Arbeit ÷ Kapazität | Simulierte Dauer | fertig am |
 |---|---|---|---|---|
-| optimistisch | 359,3 | 9 AT | **53 AT** | **2027-01-21** |
-| realistisch | 487,8 | 27,1 AT | **92 AT** | **2027-03-17** |
-| bei Problemen | 770,3 | 73,4 AT | **135 AT** | **2027-05-21** |
+| optimistisch | 357,3 | 8,9 AT | **53 AT** | **2027-01-21** |
+| realistisch | 484,8 | 26,9 AT | **92 AT** | **2027-03-17** |
+| bei Problemen | 765,3 | 72,9 AT | **135 AT** | **2027-05-21** |
 
 | Szenario | Produktiv-Deploy (E-23) | C1: ACC45 + WP-19 produktionsreif (Pilot E-24 bestanden) | C2: Intelligence produktionsreif (WP-I37) |
 |---|---|---|---|
