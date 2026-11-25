@@ -2,7 +2,8 @@
    INTERNE VORGABEN — Verwaltung (WP-I4, Block K)
 
    Verwaltung → Betrieb → Interne Vorgaben. Die Leitung legt betriebliche Regeln
-   an, testet sie und aktiviert sie; Planung, Schichtverantwortung und Betriebsrat bekommen den Abschnitt nicht. Ohne KI: Jede Regelart
+   an, testet sie und aktiviert sie; die Planung liest sie nur (Entscheidung 2026-11-25); Schichtverantwortung, Beschäftigte und
+   Betriebsrat bekommen den Abschnitt nicht. Aktive Vorgaben werden deaktiviert, nicht gelöscht. Ohne KI: Jede Regelart
    des Regelbaukastens hat Auswahlfelder. Der Server prüft Form, Recht (org.edit)
    und Stufengrenze und setzt Wann/Wer; hier steht nur die Bedienung.
 
@@ -164,15 +165,20 @@ export function Formular({ m, start, onSpeichern, onAbbruch }) {
 
 /**
  * @param {{ sitz: any, akt: any }} props
- * Nur für org.edit (Leitung, Kundenrolle): für alle anderen Rollen entsteht nichts (der Server liefert ihnen das Feld
- * ohnehin nicht). Die Hooks stehen in der inneren Komponente.
+ * org.edit (Leitung, Kundenrolle): verwalten. Planung (staff.edit, ohne org.edit): nur lesen, und nur wenn der Server das Feld liefert.
+ * Für alle anderen Rollen entsteht nichts (der Server liefert ihnen das Feld ohnehin nicht). Die Hooks stehen in der inneren Komponente.
  */
 export function InterneVorgaben({ sitz, akt }) {
-  if (!sitz || !sitz.mandant || !darf(sitz, "org.edit")) return null;
-  return <VorgabenInnen sitz={sitz} akt={akt} />;
+  if (!sitz || !sitz.mandant) return null;
+  if (darf(sitz, "org.edit")) return <VorgabenInnen sitz={sitz} akt={akt} lesend={false} />;
+  if (darf(sitz, "staff.edit") && Array.isArray(sitz.mandant.vorgaben)) return <VorgabenInnen sitz={sitz} akt={akt} lesend />;
+  return null;
 }
 
-function VorgabenInnen({ sitz, akt }) {
+/** Nur ein Entwurf, der nie aktiv war, lässt sich löschen; alles Übrige wird deaktiviert (Nachweis der Änderungen, Server erzwingt es). */
+const loeschbar = (v) => v.status !== "aktiv" && !v.aktiviertAm;
+
+function VorgabenInnen({ sitz, akt, lesend }) {
   const m = sitz.mandant;
   const liste = Array.isArray(m.vorgaben) ? m.vorgaben : [];
   const grenze = vorgabenGrenze(m.tarif);
@@ -197,15 +203,16 @@ function VorgabenInnen({ sitz, akt }) {
       <CardHead right={<Pill tone={voll ? "accent" : undefined}>{grenzeText}</Pill>}>Interne Vorgaben</CardHead>
       <div style={{ padding: 22, display: "grid", gap: 14 }}>
         <div style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.55, maxWidth: 760 }}>
-          Betriebliche Regeln, die CENTRIC zusätzlich zu Gesetz und Tarif prüfen kann, etwa „zwei freie Wochenenden im Monat“. Eine Vorgabe wird angelegt,
-          getestet und erst dann aktiviert. Sie ersetzt nie ein Gesetz. Aktive Vorgaben sind gespeichert und rechenbar; ihre Wirkung im Planungsassistenten,
+          Betriebliche Regeln, die CENTRIC zusätzlich zu Gesetz und Tarif prüfen kann, etwa „zwei freie Wochenenden im Monat“. {lesend
+            ? "Sie können die Vorgaben einsehen; anlegen, testen, aktivieren und ändern darf nur die Leitung. "
+            : "Eine Vorgabe wird angelegt, getestet und erst dann aktiviert; eine aktive Vorgabe wird deaktiviert, nicht gelöscht. "}Sie ersetzt nie ein Gesetz. Aktive Vorgaben sind gespeichert und rechenbar; ihre Wirkung im Planungsassistenten,
           in der Ersatzsuche und in der Selbstplanung folgt in einem eigenen Schritt. Der Test rechnet Beispielfälle durch, nicht den echten Plan.
           {Number.isFinite(grenze) && ` In dieser Preisstufe sind bis zu ${grenze} aktive Vorgaben möglich.`}
         </div>
-        {liste.length === 0 && !bearbeite && <Leer titel="Noch keine Vorgaben" text="Legen Sie die erste interne Vorgabe an." />}
+        {liste.length === 0 && !bearbeite && <Leer titel="Noch keine Vorgaben" text={lesend ? "Die Leitung hat noch keine interne Vorgabe angelegt." : "Legen Sie die erste interne Vorgabe an."} />}
         {liste.map((v) => {
           const t = test[v.id];
-          if (bearbeite && bearbeite.id === v.id) return <Formular key={v.id} m={m} start={bearbeite} onSpeichern={speichern} onAbbruch={() => setBearbeite(null)} />;
+          if (!lesend && bearbeite && bearbeite.id === v.id) return <Formular key={v.id} m={m} start={bearbeite} onSpeichern={speichern} onAbbruch={() => setBearbeite(null)} />;
           const darfAktivieren = !!t && t.ok && !(voll && v.status !== "aktiv");
           return (
             <div key={v.id} className="karte-still" style={{ borderRadius: "var(--r)", padding: 16, display: "grid", gap: 8 }}>
@@ -225,7 +232,7 @@ function VorgabenInnen({ sitz, akt }) {
                       <li key={e.id}>{e.erwartet === "erfuellt" ? "Beispiel, das die Vorgabe erfüllt" : "Beispiel, das sie verletzt"}: {e.status === "erfuellt" ? "erfüllt" : e.status === "verletzt" ? "verletzt" : e.status}
                         {e.stimmt === false ? " (nicht wie erwartet)" : ""}</li>))}</ul></>}
                 </div>)}
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {!lesend && <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <Btn size="sm" onClick={() => setBearbeite({ ...v, parameter: v.parameter || {} })}>Bearbeiten</Btn>
                   <Btn size="sm" onClick={() => testen(v)}>Testen</Btn>
                   {v.status === "aktiv"
@@ -233,13 +240,13 @@ function VorgabenInnen({ sitz, akt }) {
                     : <Btn size="sm" kind="primary" disabled={!darfAktivieren} onClick={() => akt.vorgabeStatus(v.id, "aktiv")}
                       title={!t ? "Zuerst testen." : !t.ok ? "Der Test ist nicht bestanden." : voll ? "Die Grenze der Preisstufe ist erreicht." : undefined}>Aktivieren</Btn>}
                   <span style={{ flex: 1 }} />
-                  <Btn size="sm" kind="danger" onClick={() => akt.vorgabeLoeschen(v.id)}>Löschen</Btn>
-              </div>
+                  {loeschbar(v) && <Btn size="sm" kind="danger" onClick={() => akt.vorgabeLoeschen(v.id)}>Löschen</Btn>}
+              </div>}
             </div>);
         })}
-        {bearbeite && !liste.some((x) => x.id === bearbeite.id)
+        {!lesend && bearbeite && !liste.some((x) => x.id === bearbeite.id)
           ? <Formular m={m} start={bearbeite} onSpeichern={speichern} onAbbruch={() => setBearbeite(null)} />
-          : !bearbeite && <div><Btn kind="primary" onClick={() => setBearbeite(leer())}>Neue Vorgabe</Btn></div>}
+          : !lesend && !bearbeite && <div><Btn kind="primary" onClick={() => setBearbeite(leer())}>Neue Vorgabe</Btn></div>}
       </div>
     </Card>);
 }

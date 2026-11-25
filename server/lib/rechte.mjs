@@ -683,12 +683,8 @@ function bestandFuerRolleKern(bestand, sitzung) {
     for (const feld of OBEN_FELDER) if (Object.prototype.hasOwnProperty.call(bestand, feld)) aus[feld] = bestand[feld];
     const eigenerV = eigenerMandant(bestand, sitzung);
     if (eigenerV) aus.mandanten = [betriebSichtVoll(eigenerV, sitzung)];
-    /* Interne Vorgaben (WP-I4): nur wer org.edit hat (Leitung, Kundenrolle) liest sie; die Planung bekommt das Feld nicht. */
-    if (aus.mandanten && !darf(rolle, "org.edit")) {
-      const ohneVorgaben = { ...aus.mandanten[0] };
-      delete ohneVorgaben.vorgaben;
-      aus.mandanten = [ohneVorgaben];
-    }
+    /* Interne Vorgaben (WP-I4, Betreiberentscheidung 2026-11-25, 1.1): Planung und Leitung lesen die Vorgaben des eigenen Betriebs;
+       geschrieben werden sie nur mit org.edit (vorgabenZusammen). */
     /* Die Kosten des eigenen Betriebs (B2): Wer billing.view hat — Leitung,
        Kundenrolle —, bekommt die Preisgrundlage nur lesend: Tarif,
        Preisgestaltung und Rabatt des eigenen Betriebs, oben nur den Eintrag

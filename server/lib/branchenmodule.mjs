@@ -840,6 +840,10 @@ export function branchenmoduleZusammen(altM, neuM, sitzung, darfOrgEdit, liste =
   return fertig();
 }
 
+/** Interne Vorgaben (WP-I4, vorgaben.mjs): Art des Eintrags im Modulprotokoll → Text der Zeile im Betriebsprotokoll. */
+const VORGABEN_PROTOKOLL_TEXT = Object.freeze({ "vorgabe-angelegt": "angelegt", "vorgabe-aktiviert": "aktiviert", "vorgabe-deaktiviert": "deaktiviert",
+  "vorgabe-geaendert": "geändert", "vorgabe-geloescht": "gelöscht (Entwurf)" });
+
 /**
  * Zeilen für das Betriebsprotokoll des Servers zu den neuen Einträgen im
  * Modulprotokoll — nur Modul bzw. Regel und Art. Keine Person, keine
@@ -874,6 +878,7 @@ export function modulProtokollZeilen(altB, neuB) {
       else if (x.art === "ausgeschaltet") zeilen.push(`Branchenmodul ${kennung(x.modul)} ausgeschaltet`);
       else if (x.art === "mitbestimmung") zeilen.push(`Branchenmodul ${kennung(x.modul)}: Mitbestimmung erneut bestätigt`);
       else if (x.art === "parameter") zeilen.push(`Branchenmodul ${kennung(x.modul)}: Parameter geändert`);
+      else if (x.modul === "vorgaben" && VORGABEN_PROTOKOLL_TEXT[x.art]) zeilen.push(`Interne Vorgabe ${kennung(x.regelId)} ${VORGABEN_PROTOKOLL_TEXT[x.art]}`);
       else if (x.art === "moduldaten-loeschung" || x.art === "moduldaten-berichtigung") {
         const n = Number.isInteger(x.anzahl) && x.anzahl > 0 ? x.anzahl : 0;
         zeilen.push(`Branchenmodul ${kennung(x.modul)}: Datenschutz-${x.art === "moduldaten-loeschung" ? "Löschung (Art. 17 DSGVO)" : "Berichtigung (Art. 16 DSGVO)"}, `
@@ -965,7 +970,7 @@ function eingeschaltetSeit(e) {
 
 /* Positivkatalog des Modulprotokolls für den Betriebsrat und die Auskunft (M4/A5): kein Grund, kein
    Aktenzeichen, kein Freitext außer der Mitbestimmungsgrundlage (G6/G7, Einordnung FN-33). */
-const PROTOKOLL_POSITIV = Object.freeze(["art", "modul", "regelId", "feld", "anzahl", "stufe", "pruefstatus", "grundlage", "am", "von"]);
+const PROTOKOLL_POSITIV = Object.freeze(["art", "modul", "regelId", "feld", "anzahl", "stufe", "pruefstatus", "grundlage", "am", "von", "version", "felder"]);
 /** Das Modulprotokoll ohne Felder außerhalb des Positivkatalogs. */
 export function modulprotokollPositiv(liste) {
   return (Array.isArray(liste) ? liste : []).filter(istObjekt)
@@ -981,7 +986,7 @@ export function modulprotokollPositiv(liste) {
  * @param {any} e einstellungen
  * @param {string} rolle
  */
-export function moduleinstellungenSicht(e, rolle) {
+export function moduleinstellungenSicht(e, rolle, vorgabenBetriebsrat = false) {
   if (!istObjekt(e)) return e;
   const aus = { ...e };
   /* Löschvermerke (gehasht) braucht keine eingeschränkte Rolle. */
@@ -989,7 +994,9 @@ export function moduleinstellungenSicht(e, rolle) {
   /* Der Betriebsrat prüft Einführung und Anwendung technischer Einrichtungen (§ 87 Abs. 1 Nr. 6 BetrVG):
      Aktivierungsstand, Bestätigung und Protokoll — das Protokoll nach Positivkatalog (ohne Grund/Aktenzeichen). */
   if (rolle === "betriebsrat") {
-    if (hat(e, "modulprotokoll")) aus.modulprotokoll = modulprotokollPositiv(e.modulprotokoll);
+    /* Das Protokoll der internen Vorgaben (WP-I4): nur bei offenem Schalter (AUS, Entscheidung 2026-11-25, 1.2), dann ohne Person. */
+    if (hat(e, "modulprotokoll")) aus.modulprotokoll = modulprotokollPositiv(e.modulprotokoll.filter((x) => !istObjekt(x) || x.modul !== "vorgaben" || vorgabenBetriebsrat === true)
+      .map((x) => (istObjekt(x) && x.modul === "vorgaben" ? ohne(x, ["von"]) : x)));
     return aus;
   }
   delete aus.modulprotokoll;

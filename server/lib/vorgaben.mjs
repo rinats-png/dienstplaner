@@ -22,6 +22,7 @@
    Rein: keine Ablage; einzige Uhr: `jetzt` wird übergeben (Server stempelt).
    ========================================================================== */
 import { pruefeRegel, testlauf, REGELARTEN_ALLE } from "./regelbaukasten-erweitert.mjs";
+import { MODULPROTOKOLL_GRENZE, modulprotokollFaellig } from "./branchenmodule.mjs";
 
 export const VORGABEN_REGELARTEN = REGELARTEN_ALLE;
 export const VORGABEN_STAERKEN = Object.freeze(["muss", "soll", "wunsch"]);
@@ -40,6 +41,11 @@ export const VORGABEN_STUFENGRENZE = Object.freeze({ basis: 5, pro: 25, enterpri
 export function vorgabenGrenze(tarifId) {
   return Object.prototype.hasOwnProperty.call(VORGABEN_STUFENGRENZE, tarifId) ? VORGABEN_STUFENGRENZE[tarifId] : VORGABEN_STUFENGRENZE.basis;
 }
+
+/** Betriebsrat (Betreiberentscheidung 2026-11-25, 1.2): vorläufig keine Sicht (Variante A). Die Lesesicht ohne Personenbezug (Ziel B)
+ *  ist gebaut und getestet, aber AUS, bis die rechtliche Rückmeldung vorliegt; sie ist NICHT rechtlich freigegeben. Einschalten ist
+ *  eine bewusste Codeänderung dieser einen Konstante (kein Betriebs- oder Umgebungsschalter, den jemand versehentlich setzt). */
+export const VORGABEN_BETRIEBSRAT_LESEN = false;
 
 const FELDER = ["id", "name", "beschreibung", "regelart", "parameter", "geltung", "gueltigAb", "gueltigBis", "bezug", "staerke",
   "prioritaet", "grundlage", "ausnahmen", "status"];
@@ -144,6 +150,22 @@ export function pruefeVorgabe(v) {
   return null;
 }
 
+/**
+ * Die Vorgaben in der Sicht des Betriebsrats (Entscheidung 2026-11-25, 1.2). Solange der Schalter AUS ist: leer. Eingeschaltet: Zahl und Text
+ * ohne Personenbezug (keine Personenkennungen in Geltung und Ausnahmen, keine Stempel-Personen).
+ * @param {any} liste @param {boolean} [offen]
+ */
+export function vorgabenBetriebsratSicht(liste, offen = VORGABEN_BETRIEBSRAT_LESEN) {
+  if (offen !== true || !Array.isArray(liste)) return [];
+  const nimm = (o, felder) => Object.fromEntries(felder.filter((f) => o && Object.prototype.hasOwnProperty.call(o, f)).map((f) => [f, o[f]]));
+  return liste.filter(istObjekt).map((v) => ({
+    ...nimm(v, ["id", "name", "beschreibung", "regelart", "parameter", "bezug", "staerke", "prioritaet", "status", "gueltigAb", "gueltigBis", "version", "geaendertAm", "aktiviertAm"]),
+    ...(istObjekt(v.geltung) ? { geltung: nimm(v.geltung, ["art", "einheiten", "gruppen"]) } : {}),
+    ...(istObjekt(v.grundlage) ? { grundlage: nimm(v.grundlage, ["art", "fundstelle"]) } : {}),
+    ...(istObjekt(v.ausnahmen) ? { ausnahmen: nimm(v.ausnahmen, ["zeitraeume", "teilzeitAnteilig"]) } : {}),
+  }));
+}
+
 /** Aktive Vorgaben. */
 export const aktiveVorgaben = (liste) => (Array.isArray(liste) ? liste : []).filter((v) => istObjekt(v) && v.status === "aktiv");
 
@@ -205,20 +227,60 @@ export function vorgabenZusammen(altM, neuM, { darfOrgEdit, person, tarif, jetzt
     const vorher = altMap.get(v.id);
     const k = ohneStempel(v);
     if (vorher && gleich(k, ohneStempel(vorher))) { aus.push(vorher); continue; }
+    /* „Erst testen, dann aktivieren" erzwingt der Server: Wer aktiv wird oder als aktive Vorgabe geändert wird, muss den Testlauf
+       mit den Beispielfällen bestehen (nicht nur die Oberfläche). Deaktivieren und Entwürfe sind nicht daran gebunden. */
+    if (v.status === "aktiv") {
+      const t = vorgabeTestlauf(k);
+      if (!t.ok) return { grund: `Vorgabe ${String(v.name || v.id).slice(0, 30)}: Vor dem Aktivieren muss der Test bestanden sein (${t.fehler || "Test nicht bestanden"}).` };
+    }
     const st = { ...k, geaendertAm: jetzt, geaendertVon: person === undefined || person === null ? null : String(person),
       version: vorher && Number.isInteger(vorher.version) && vorher.version >= 1 ? vorher.version + 1 : 1 };
     if (v.status === "aktiv" && !(vorher && vorher.status === "aktiv")) { st.aktiviertAm = jetzt; st.aktiviertVon = st.geaendertVon; }
-    else if (v.status === "aktiv" && vorher) {
+    /* Auch eine deaktivierte Vorgabe behält, wann und von wem sie aktiviert wurde: Daran hängt, dass sie nicht gelöscht werden kann (Teil 3). */
+    else if (vorher) {
       if (vorher.aktiviertAm) st.aktiviertAm = vorher.aktiviertAm;
       if (vorher.aktiviertVon !== undefined) st.aktiviertVon = vorher.aktiviertVon;
     }
     aus.push(st);
   }
+  /* Deaktivieren statt Löschen (Entscheidung 2026-11-25, 1.3): Nur ein Entwurf, der nie aktiv war, lässt sich entfernen. */
+  for (const [id, vorher] of altMap) {
+    if (ids.has(id) || (vorher.status !== "aktiv" && !vorher.aktiviertAm)) continue;
+    return { grund: `Vorgabe ${String(vorher.name || id).slice(0, 30)}: Eine Vorgabe, die aktiv ist oder war, wird deaktiviert und nicht gelöscht (Nachweis der Änderungen).` };
+  }
   const grenze = vorgabenGrenze(tarif);
   const aktivNeu = aktiveVorgaben(aus).length;
   if (aktivNeu > grenze && aktivNeu > aktiveVorgaben(alt).length)
     return { grund: `In dieser Preisstufe sind höchstens ${grenze} aktive Vorgaben möglich (derzeit ${aktivNeu}).` };
-  return { mandant: { ...neuM, vorgaben: aus } };
+
+  /* Änderungsprotokoll: im Modulprotokoll des Betriebs (Aufbewahrung, Obergrenze und Löschweg wie dort); nur Art, Kennung, Zeit, Person,
+     Version und die Namen der geänderten Felder — keine Werte. Die Person ist die Kennung, die der Server schon an der Vorgabe führt. */
+  const wer = person === undefined || person === null ? null : String(person);
+  const ereignisse = [];
+  for (const v of aus) {
+    const vorher = altMap.get(v.id);
+    if (vorher === v) continue;
+    const e = { modul: "vorgaben", regelId: vorgabeRegelId(v), am: jetzt, von: wer, version: v.version };
+    if (!vorher) {
+      ereignisse.push({ art: "vorgabe-angelegt", ...e });
+      if (v.status === "aktiv") ereignisse.push({ art: "vorgabe-aktiviert", ...e });
+      continue;
+    }
+    const felder = FELDER.filter((f) => f !== "id" && f !== "status" && !gleich(v[f], vorher[f]));
+    if (vorher.status !== "aktiv" && v.status === "aktiv") ereignisse.push({ art: "vorgabe-aktiviert", ...e });
+    else if (vorher.status === "aktiv" && v.status !== "aktiv") ereignisse.push({ art: "vorgabe-deaktiviert", ...e });
+    else ereignisse.push({ art: "vorgabe-geaendert", ...e, felder });
+  }
+  for (const [id, vorher] of altMap) if (!ids.has(id)) ereignisse.push({ art: "vorgabe-geloescht", modul: "vorgaben", regelId: vorgabeRegelId(vorher), am: jetzt, von: wer, version: vorher.version });
+  if (!ereignisse.length) return { mandant: { ...neuM, vorgaben: aus } };
+  const einst = istObjekt(neuM.einstellungen) ? neuM.einstellungen : {};
+  let bisher = Array.isArray(einst.modulprotokoll) ? einst.modulprotokoll : [];
+  /* An der Grenze zuerst nach geprüfter Frist fällige Einträge entfernen (heute keine: Regel ungeprüft, FN-32); sonst bleibt die Grenze eine
+     Sperre — außer fürs Deaktivieren, das immer geht. */
+  if (bisher.length + ereignisse.length > MODULPROTOKOLL_GRENZE) bisher = modulprotokollFaellig({ einstellungen: { modulprotokoll: bisher } }, jetzt.slice(0, 10)).rest;
+  if (bisher.length + ereignisse.length > MODULPROTOKOLL_GRENZE && ereignisse.some((x) => x.art !== "vorgabe-deaktiviert"))
+    return { grund: `Modulprotokoll: Die Grenze von ${MODULPROTOKOLL_GRENZE} Einträgen ist erreicht. Deaktivieren geht weiter; alles andere wieder, sobald ältere Einträge nach einer geprüften Aufbewahrungsregel entfallen dürfen.` };
+  return { mandant: { ...neuM, vorgaben: aus, einstellungen: { ...einst, modulprotokoll: [...bisher, ...ereignisse] } } };
 }
 
 /** Streng nur, wenn neu oder geändert (Altbestand bleibt stehen). */
@@ -236,7 +298,8 @@ function pruefeVorgabeKurz(v, altMap, bekannt) {
  *  Was die gespeicherte Vorgabe schon nannte, bleibt zulässig (eine inzwischen gelöschte Kennung blockiert keine Änderung); neu hinzukommen darf nur Bekanntes. */
 function pruefeBezuege(v, bekannt, vorher) {
   const wo = `Vorgabe ${String(v.name || v.id || "").slice(0, 30)}`.trim();
-  const frueher = (...pfad) => new Set(pfad.reduce((o, k) => (o && o[k]) || [], vorher || {}).map(String));
+  /* Altbestand muss keine Liste tragen (Review #555): nur eine Liste zählt, alles andere ist leer. */
+  const frueher = (...pfad) => { const l = pfad.reduce((o, k) => (o && o[k]) || [], vorher || {}); return new Set(Array.isArray(l) ? l.map(String) : []); };
   const fremd = (liste, menge, alt) => Array.isArray(liste) && liste.some((x) => !menge.has(String(x)) && !alt.has(String(x)));
   if (fremd(v.geltung && v.geltung.einheiten, bekannt.einheiten, frueher("geltung", "einheiten"))) return `${wo}: Geltung nennt eine Einheit, die es in diesem Betrieb nicht gibt.`;
   if (fremd(v.geltung && v.geltung.personen, bekannt.personen, frueher("geltung", "personen"))) return `${wo}: Geltung nennt eine Person, die es in diesem Betrieb nicht gibt.`;

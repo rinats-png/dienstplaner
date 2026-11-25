@@ -26,6 +26,7 @@ import { RUNDENKOPF, nichtUebernommenNormal } from "./selbstplanung.mjs";
 import { BEFUND_KATALOG } from "./bestaetigungen.mjs";
 import { planFreigabeAktiv, istEntwurfstag, laufenderTag } from "./planfreigabe.mjs";
 import { moduleinstellungenSicht } from "./branchenmodule.mjs";
+import { vorgabenBetriebsratSicht, VORGABEN_BETRIEBSRAT_LESEN } from "./vorgaben.mjs";
 import { abschlussStatus } from "./monatsabschluss.mjs";
 import { istBetriebsSchluessel, istMonatsSchluessel } from "./isteinfrieren.mjs";
 
@@ -655,7 +656,7 @@ export const BETRIEB = {
   /* Einstellungen: alles wie bisher; nur die Branchenmodule (WP-19.0) gekürzt — Beschäftigte und
      Schichtverantwortung ohne Wer, Mitbestimmungsgrundlage und Modulprotokoll, der Betriebsrat ganz
      (moduleinstellungenSicht, server/lib/branchenmodule.mjs; RECHTEMATRIX ²⁹). */
-  einstellungen: [R((w, ctx) => moduleinstellungenSicht(w, ctx.rolle)), R((w, ctx) => moduleinstellungenSicht(w, ctx.rolle))],
+  einstellungen: [R((w, ctx) => moduleinstellungenSicht(w, ctx.rolle, ctx.vorgabenBetriebsrat)), R((w, ctx) => moduleinstellungenSicht(w, ctx.rolle, ctx.vorgabenBetriebsrat))],
   /* Die Oberfläche richtet Navigation und Knöpfe danach (darf → m.matrix). */
   matrix: [VOLL, VOLL],
   briefing: [VOLL, VOLL], aufgaben: [VOLL, VOLL], qualifikationen: [VOLL, VOLL],
@@ -748,10 +749,11 @@ export const BETRIEB = {
   rotationen: [R(rotationEigene), WEG],
   /* Pflegequalifikation (WP-19, modul-pflegequal.mjs): Niveaus je Betrieb (Konfiguration, keine Personendaten). Fail-closed. */
   pflegeNiveaus: [WEG, WEG],
-  /* Interne Vorgaben (WP-I4, vorgaben.mjs): Beschäftigte, Schichtverantwortung und Betriebsrat nichts (Mitbestimmung nach
-     § 87 BetrVG offen: eine Lesesicht des Betriebsrats gibt es nicht). Planung sieht das Feld nicht (rechte.mjs nimmt es aus der
-     Sicht); nur org.edit (Leitung, Kundenrolle) liest und schreibt. */
-  vorgaben: [WEG, WEG],
+  /* Interne Vorgaben (WP-I4, vorgaben.mjs): Beschäftigte und Schichtverantwortung nichts. Planung und Leitung lesen den eigenen
+     Betrieb (Betreiberentscheidung 2026-11-25, 1.1); ändern darf nur org.edit (Leitung, Kundenrolle). Betriebsrat: vorläufig nichts
+     (Mitbestimmung nach § 87 BetrVG, rechtliche Rückmeldung offen); die Lesesicht ohne Personenbezug steht hinter
+     VORGABEN_BETRIEBSRAT_LESEN (AUS, 1.2), das Protokoll der Vorgaben ebenso (moduleinstellungenSicht). */
+  vorgaben: [WEG, R((w, ctx) => vorgabenBetriebsratSicht(w, ctx.vorgabenBetriebsrat))],
   /* Mehrere Schichtmodelle je Betrieb (IMP-6 Teil 2, schichtzuordnung.mjs): vollständig nur Planung, Leitung und
      Kundenrolle; sie wirken noch nicht auf die Planrechnung. Beschäftigte und Schichtverantwortung (SCHICHT übernimmt die
      Spalte) seit IMP-6 Q4 nur die Modelle ihrer eigenen Zuordnungen ohne Stempel; der Betriebsrat nichts. */
@@ -800,7 +802,8 @@ function leerFuer(feld, wert) {
 }
 
 /** Der Betrieb in der Sicht der Rolle. Unbekannte Felder fallen weg. */
-export function betriebSicht(m, sitzung) {
+/** @param {any} m @param {any} sitzung @param {{ vorgabenBetriebsrat?: boolean }} [optionen] nur für Tests: den Schalter der Betriebsrat-Sicht der Vorgaben setzen */
+export function betriebSicht(m, sitzung, optionen) {
   if (!m || typeof m !== "object") return m;
   const rolle = sitzung.rolle;
   const spalte = rolle === "betriebsrat" ? 1 : 0;
@@ -808,6 +811,7 @@ export function betriebSicht(m, sitzung) {
     rolle, ich: sitzung.person,
     entwurfVerbergen: rolle === "mitarbeiter" && planFreigabeAktiv(m), betrieb: m, laufenderTag: laufenderTag(),
     nurStatus: new Set(liste(m.qualifikationen).filter((q) => q && q.nurStatus).map((q) => q.id)),
+    vorgabenBetriebsrat: optionen && typeof optionen.vorgabenBetriebsrat === "boolean" ? optionen.vorgabenBetriebsrat : VORGABEN_BETRIEBSRAT_LESEN,
   };
   const aus = {};
   for (const [feld, wert] of Object.entries(m)) {

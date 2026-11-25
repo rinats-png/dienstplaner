@@ -360,8 +360,8 @@ export function Einstellungen({ sitz, akt, gehZu }) {
           </Zeile>
         </Card>)}
 
-      {/* WP-I4: interne Vorgaben verwalten — nur org.edit (Leitung, Kundenrolle); der Server entscheidet ebenso. */}
-      {sitz.mandant && darf(sitz, "org.edit") && <InterneVorgaben sitz={sitz} akt={akt} />}
+      {/* WP-I4: interne Vorgaben — verwalten nur org.edit (Leitung, Kundenrolle), lesen die Planung; die Komponente und der Server entscheiden ebenso. */}
+      {sitz.mandant && <InterneVorgaben sitz={sitz} akt={akt} />}
 
       {/* ------------- Sicherungen: Liste und Zurückspielen (WP-25) ------------- */}
       {sitz.mandant && SP.angemeldet() && darfSicherungenSehen(serverRolle) && (

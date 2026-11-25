@@ -44,14 +44,50 @@ Einziger Aufrufer ist `vorgabenZusammen` in `rechte.mjs` (Voll-PUT und Teilweg l
 
 ## Offene Betreiberfragen (nichts davon entschieden, keine Annahme eingebaut)
 
-1. Darf die Planung die Vorgaben lesen oder ändern? Heute nein (Planung bekommt das Feld nicht).
-2. Betriebsratssicht (§ 87 BetrVG): BLOCKED; heute keine Sicht.
-3. Protokoll für Löschen/Deaktivieren? Heute nur Wann/Wer/Version der letzten Änderung, kein Verlauf.
-4. Tarif `pro` = Grenze 25 bestätigen.
-5. Server-Erzwingung der Regel „erst testen, dann aktivieren“ (heute nur Oberfläche; der Server prüft Form, Recht, Grenze).
+1. Planung: entschieden 2026-11-25 (1.1 B): liest, ändert nicht (Teil 3).
+2. Betriebsratssicht: vorläufig keine (1.2 A); Lesesicht hinter Schalter AUS gebaut (Teil 3).
+3. Protokoll: entschieden (1.3 C), gebaut in Teil 3.
+4. Grenze 25: vorläufig bestätigt (1.4 A), zentral.
+5. Server-Erzwingung „erst testen“: entschieden (1.5 B), gebaut in Teil 3.
 
 Wirkung im Plan (Planungsassistent, Ersatzsuche, Selbstplanung) ist WP-I5 und nicht Teil von I4.
 
 ## Tests (lokal, gezielt, TZ=UTC, `--maxWorkers=1`)
 
 `pruefungen/intelligence*`, `rechtematrix*`, `einstellungen*`, `stufen*`: 41 Dateien, 2012 Tests grün (Vorgaben-Dateien: bezuege 8, oberfläche 11, wege +1). Vollregression in CI.
+
+## Teil 3 (Betreiberentscheidungen 2026-11-25, Basis PR #555)
+
+Stufe L3, SICHERHEIT-QUALITAET. Nur synthetische Daten, kein produktives KI-Verhalten. Plan-Probelauf (Variante C, 1.5) kommt mit WP-I8/I9 und ist nicht gebaut.
+
+| Punkt | Umsetzung | Beleg |
+|---|---|---|
+| 1.1 B Planung liest, nur `org.edit` ändert | `rechte.mjs`: Planung bekommt `vorgaben` des eigenen Betriebs (Vollsicht hat keine Einheitsbeschränkung, Zuständigkeit = Betrieb); Schreiben unverändert nur `org.edit` (Feld sonst wirkungslos); Oberfläche lesend (`lesend`), RECHTEMATRIX.md Zeile und Fußnote 30, `rechtematrix.test.js` Zelle PL | Wege 1, 2; Oberfläche; Matrix |
+| 1.2 Betriebsrat AUS, Ziel B hinter Schalter | `VORGABEN_BETRIEBSRAT_LESEN = false` (eine Konstante in `vorgaben.mjs`, Einschalten = bewusste Codeänderung); `vorgabenBetriebsratSicht` (Zahl/Text, ohne Personenkennungen in Geltung/Ausnahmen, ohne Stempel-Personen); Protokolleinträge der Vorgaben für BR nur bei EIN, dann ohne Person (`moduleinstellungenSicht`). Nicht rechtlich freigegeben, nicht aktiviert | Teil-3-Test (AUS und EIN per Testparameter an `betriebSicht`) |
+| 1.3 C Deaktivieren, Protokoll | Löschen nur für einen nie aktiven Entwurf (`status != aktiv` und kein `aktiviertAm`); `aktiviertAm/-Von` bleiben beim Deaktivieren erhalten (Fund durch Test). Protokoll im bestehenden Modulprotokoll (`modul: "vorgaben"`; Art, Kennung `VORGABE-<ID>`, Zeit, Person, Version, Namen geänderter Felder, keine Werte), zusätzlich Zeile im Betriebsprotokoll (`modulProtokollZeilen`). Aufbewahrung/Obergrenze/Löschweg unverändert die des Modulprotokolls (`MODULPROTOKOLL_FRIST`, vorläufig ungeprüft FN-32: löscht heute nichts); an der Obergrenze sind nur Anlegen/Aktivieren/Ändern gesperrt, Deaktivieren geht immer | Teil-3-Test, Wege 7 |
+| 1.4 A Grenze 25 für `pro` | Bereits zentral: `VORGABEN_STUFENGRENZE` in `vorgaben.mjs`, von `src/stufen.js` und der Oberfläche nur gelesen; nur belegt/getestet | Teil-3-Test „zentral“ |
+| 1.5 B Server erzwingt „erst testen“ | `vorgabenZusammen`: jede neue oder geänderte aktive Vorgabe muss den Testlauf mit Beispielfällen bestehen (`vorgabeTestlauf`), sonst 403 mit Text; Entwurf und Deaktivieren frei | Teil-3-Test, Wege 7 |
+| Review #555 (1) | `frueher` in `pruefeBezuege` prüft `Array.isArray` (kein Programmfehler bei Altbestand ohne Liste) | Teil-3-Test |
+| Review #555 (2) | Test über den echten Handler mit zweitem Betrieb im selben Raum (Einheit/Person des anderen Betriebs abgewiesen) | Wege 7 |
+| Review #555 (3) | Test „im selben Schritt gelöschte Person, zugleich genannt“ abgewiesen (Mutation `bekannt = alt ∪ neu`) | Teil-3-Test |
+
+### Rot → grün
+Neu `pruefungen/intelligence-vorgaben-teil3.test.js` (22 Tests; vor dem Code 15 rot, Rest grün, weil Review-Befund 3 und Grenze schon erfüllt waren), `intelligence-vorgaben-wege.test.js` Abschnitt 7 (+7 Tests, Fixture: zweiter Betrieb mit eigener Einheit/Person), `intelligence-vorgaben-oberflaeche.test.js` (+3 Tests; 4 rot vor dem Code).
+
+### Angepasste bestehende Tests (jeweils wegen der Entscheidung, nicht abgeschwächt)
+- `intelligence-vorgaben.test.js`: „Planung bekommt nichts“ → Planung liest (1.1), die übrigen drei Rollen unverändert; „Stufenwechsel nach unten“ verringert per Deaktivieren statt Löschen; „Löschen durch die Leitung“ → Entwurf löschbar, aktive abgewiesen (1.3).
+- `intelligence-vorgaben-wege.test.js`: Lesen je Rolle (PL/DP lesen), „Löschen geht“ → aktive Vorgabe nicht löschbar, Altbestand-Test (Planung liest).
+- `intelligence-vorgaben-oberflaeche.test.js`: Planung bekommt den Abschnitt (lesend); Einhängung ohne `darf(org.edit)` in `einstellungen.jsx` (die Komponente entscheidet).
+- `rechtematrix.test.js`: Zelle PL der Zeile „Vorgabe: Person in der Geltung“ 0 → 1.
+
+### Mutationen (je Schutz einzeln, alle rot, danach zurückgesetzt; Läufe nacheinander)
+Test vor Aktivieren entfällt 4 rot · Löschen aktiver Vorgabe erlaubt 8 · Protokoll nicht angehängt 10 · `frueher` ohne Typprüfung 1 · `bekannt = alt ∪ neu` 1 · Aktivierungsstempel gehen beim Deaktivieren verloren 1 · Deaktivieren an der Protokollgrenze gesperrt 1 · Betriebsrat-Schalter EIN 6 · BR sieht Protokoll der Vorgaben trotz AUS 2 · BR-Sicht mit Personen 1 · Beschäftigte sehen Vorgaben 5 · Planung liest nicht (Strip zurück) 4 · Planung darf schreiben 8 · Betriebsprotokoll-Zeile fehlt 1 · Oberfläche bietet Löschen immer an 1 · Oberfläche: Planung bearbeitet 2.
+
+### Offene Fragen (nichts erfunden)
+1. Regelarten/Parameter ohne Beispielfälle (z. B. Besetzungsregel „Anteil mit Merkmal“) lassen sich nach 1.5 nicht aktivieren (wie schon die Oberfläche); Beispielfälle dafür wären ein eigener kleiner Schritt (WP-I8/I9 Probelauf).
+2. Löschfrist des Modulprotokolls (und damit der Vorgaben-Einträge) ist vorläufig ungeprüft (FN-32): bis zur Bestätigung löscht der Lauf nichts; Obergrenze 2000 Einträge je Betrieb bleibt die Sperre.
+3. Planung = Rolle `planer` mit `staff.edit` (ohne Einheitsbeschränkung): „innerhalb ihrer Zuständigkeit“ als „eigener Betrieb“ gelesen; soll die Planung auf eigene Einheiten beschränkt werden, wäre das eine neue Entscheidung.
+4. Betriebsrat Ziel B: Einschalten braucht die rechtliche Rückmeldung (nicht behauptet).
+5. Löschen ganzer Betriebe/Datenschutzläufe (Art. 17) betrifft die Vorgaben mit dem Betrieb; nichts Neues eingebaut.
+
+Lokale Gesamtläufe Teil 3 (TZ=UTC, `--maxWorkers=1`): `pruefungen/intelligence*`, `rechtematrix*`, `sicht*`, `art9-katalog`, `modul-kern*`, `modul-integritaet-quer`, `abnahme-c-module`, `v4-3b-einstellungen`, `wp48-rundweg`, `einstellungen*`, `stufen*`: 61 Dateien, 2499 Tests grün. Vollregression in CI.

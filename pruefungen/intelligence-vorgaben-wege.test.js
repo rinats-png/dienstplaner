@@ -3,9 +3,9 @@
 
    Mit Dateiablage und echten Sitzungen; die Rümpfe sind absichtlich manipuliert. Geprüft wird:
 
-   1. Lesen je Rolle: nur org.edit (Leitung, Kundenrolle, Demo-Leitung) bekommt die Vorgaben; Planung, Demo-Planung,
-      Schichtverantwortung, Beschäftigte, Betriebsrat und der Betreiber bekommen weder Text noch Zahl; ein anderer Betrieb
-      im selben Raum sieht nur die eigenen.
+   1. Lesen je Rolle: org.edit (Leitung, Kundenrolle, Demo-Leitung) und die Planung (auch Demo) lesen die Vorgaben des eigenen
+      Betriebs (Teil 3, Entscheidung 2026-11-25); Schichtverantwortung, Beschäftigte, Betriebsrat und der Betreiber bekommen weder
+      Text noch Zahl; ein anderer Betrieb im selben Raum sieht nur die eigenen.
    2. Schreiben je Rolle mit gefälschten Rümpfen (neue aktive Vorgabe mit gefälschtem Wer/Wann/Version, leere Liste,
       geänderter Status, Unsinn statt Liste): org.edit schreibt und der Server setzt Wann/Wer/Version; jede andere Rolle
       ändert nichts. Eine veraltete Kopie der Planung (leere Vorgaben), die sonst Erlaubtes ändert, scheitert nicht
@@ -15,6 +15,8 @@
    4. Rundweg: unveränderter Rückweg ändert nichts (mit und ohne Vorgaben, Altbestand ohne das Feld bekommt keines).
    5. Teilweg: POST /api/bestand/teile ist nie großzügiger als der Voll-PUT (gleicher Status und gleicher Stand).
    6. Anderer Betrieb: keine Wirkung auf fremde Vorgaben.
+   7. (Teil 3) Deaktivieren statt Löschen mit Änderungsprotokoll, serverseitig erzwungener Test vor dem Aktivieren, Bezüge zu einem
+      zweiten Betrieb im selben Raum, Protokoll der Vorgaben nur für Leitung und Planung (nicht Betriebsrat, Beschäftigte).
 
    Aufruf: npx vitest run pruefungen/intelligence-vorgaben-wege.test.js
    ========================================================================== */
@@ -54,6 +56,8 @@ const ROLLEN = {
 };
 const ORG_EDIT = ["LT", "KU", "DL"];
 const OHNE_ORG_EDIT = ["PL", "SV", "MA", "BR", "DP"];
+const LESEN = ["LT", "KU", "DL", "PL", "DP"];
+const KEIN_LESEN = ["SV", "MA", "BR"];
 const MARKE = "GEHEIM-PERSON-4711";
 const MARKE2 = "FREMDER-BETRIEB-0815";
 
@@ -70,11 +74,11 @@ function bestand({ mit = true, tarif = "pro" } = {}) {
   const einheiten = [{ id: "e1", name: "WB 1", versatzTage: 0 }, { id: "e2", name: "WB 2", versatzTage: 0 }];
   const betrieb = (id, name, vorgaben) => ({
     id, name, branche: "pflege", bundesland: "BE", einheitLabel: "Wohnbereich", status: "aktiv", stichtag: null, laeuftAb: null, pakete: [], matrix: null,
-    einheiten: kopie(einheiten), dienstarten: [{ id: "F", name: "Früh", start: "06:00", ende: "14:00", pause: 30 }],
+    einheiten: [...kopie(einheiten), ...(id === "m2" ? [{ id: "z9", name: "Nur Haus 2", versatzTage: 0 }] : [])], dienstarten: [{ id: "F", name: "Früh", start: "06:00", ende: "14:00", pause: 30 }],
     zyklus: ["F", "F", "-"], anker: "2026-01-05", zyklusLaenge: 3, gruppen: [], versatzTageVon: {},
     zuschlaege: [], einstellungen: { ruhezeit: 11, maxFolge: 6 }, rollennamen: {}, briefing: [], aufgaben: [], qualifikationen: [],
     genehmigungsstufen: [], tarifwerk: null, version: 9, stand: 1,
-    personen: [person("m0", "mitarbeiter", "e1"), person("a1", "mitarbeiter", "e1"), person("r1", "betriebsrat", "ALLE"), person("s1", "subplaner", "e1"),
+    personen: [...(id === "m2" ? [person("z-fremd", "mitarbeiter", "e1")] : []), person("m0", "mitarbeiter", "e1"), person("a1", "mitarbeiter", "e1"), person("r1", "betriebsrat", "ALLE"), person("s1", "subplaner", "e1"),
       person("p1", "planer", "ALLE"), person("l1", "leitung", "ALLE")],
     abweichungen: {}, planstaende: {}, freigaben: {}, unterschreitungen: [], belegung: {}, therapie: {}, aushang: [], monatsabschluss: {},
     istEingefroren: {}, standorte: [], abwesenheiten: [], krankmeldungen: [], anfragen: [], wuensche: [], einspruenge: [], ausschreibungen: [],
@@ -136,16 +140,16 @@ async function schreibeAls(raum, token, k, aendern, { roh } = {}) {
 }
 
 describe("1. Lesen je Rolle", () => {
-  it("nur org.edit bekommt die Vorgaben; alle anderen weder Text noch Zahl noch Personen", async () => {
+  it("Leitung und Planung bekommen die eigenen Vorgaben; alle anderen weder Text noch Zahl noch Personen", async () => {
     const { token } = await neuerRaum();
-    for (const k of ORG_EDIT) {
+    for (const k of LESEN) {
       const g = await anfrage("/api/bestand", { token: token[k] });
       const v = g.bestand.mandanten[0].vorgaben;
       expect(v, k).toHaveLength(1);
       expect(JSON.stringify(v), k).toContain(MARKE);
       expect(JSON.stringify(g), k).not.toContain(MARKE2);
     }
-    for (const k of [...OHNE_ORG_EDIT]) {
+    for (const k of KEIN_LESEN) {
       const g = await anfrage("/api/bestand", { token: token[k] });
       expect(g.status, k).toBe(200);
       const s = JSON.stringify(g);
@@ -217,13 +221,15 @@ describe("2. Schreiben je Rolle mit manipulierten Rümpfen", () => {
       /* Die bestehende Vorgabe bleibt unberührt (Stempel und Version aus dem gespeicherten Stand). */
       expect(m1.vorgaben.find((v) => v.id === "alt")).toEqual(GESPEICHERT()[0]);
     });
-    it(`${k}: Änderung zählt die Version hoch, behält den ersten Aktivierer; Löschen geht`, async () => {
+    it(`${k}: Änderung zählt die Version hoch, behält den ersten Aktivierer; Löschen einer aktiven Vorgabe geht nicht`, async () => {
       const { raum, token } = await neuerRaum();
       await schreibeAls(raum, token, k, (m) => { m.vorgaben[0].prioritaet = 5; m.vorgaben[0].version = 1; m.vorgaben[0].aktiviertVon = "fremd"; });
       const { m1 } = await gespeichert(raum);
       expect(m1.vorgaben[0]).toMatchObject({ prioritaet: 5, version: 4, aktiviertVon: "l1", aktiviertAm: "2026-11-01T10:00:00.000Z", geaendertVon: ROLLEN[k].person });
-      await schreibeAls(raum, token, k, (m) => { m.vorgaben = []; });
-      expect((await gespeichert(raum)).m1.vorgaben).toEqual([]);
+      /* Teil 3: Eine aktive Vorgabe wird deaktiviert, nicht gelöscht. */
+      const weg = await schreibeAls(raum, token, k, (m) => { m.vorgaben = []; });
+      expect(weg.status).toBeGreaterThanOrEqual(400);
+      expect((await gespeichert(raum)).m1.vorgaben).toHaveLength(1);
     });
   }
 
@@ -352,12 +358,12 @@ describe("4. Rundweg", () => {
       expect(Object.prototype.hasOwnProperty.call(m1, "vorgaben"), k).toBe(false);
     }
   });
-  it("Altbestand: die Leitung legt die erste Vorgabe an, die Planung sieht sie danach nicht", async () => {
+  it("Altbestand: die Leitung legt die erste Vorgabe an, die Planung liest sie danach, Beschäftigte, Schichtverantwortung und Betriebsrat nicht", async () => {
     const { raum, token } = await neuerRaum({ mit: false });
     const a = await schreibeAls(raum, token, "LT", (m) => { m.vorgaben = [V("erste", "entwurf")]; });
     expect(a.status).toBe(200);
-    const g = await anfrage("/api/bestand", { token: token.PL });
-    expect(JSON.stringify(g)).not.toContain("Vorgabe erste");
+    expect(JSON.stringify(await anfrage("/api/bestand", { token: token.PL }))).toContain("Vorgabe erste");
+    for (const k of KEIN_LESEN) expect(JSON.stringify(await anfrage("/api/bestand", { token: token[k] })), k).not.toContain("Vorgabe erste");
   });
 });
 
@@ -396,4 +402,97 @@ describe("5. Teilweg (POST /api/bestand/teile) ist nie großzügiger als der Vol
       if (neu) { expect(neu.geaendertVon).toBe(ROLLEN[k].person); expect(neu.version).toBe(1); }
     });
   }
+});
+
+describe("7. Teil 3: Deaktivieren, Protokoll, Test vor dem Aktivieren, Bezüge zum zweiten Betrieb", () => {
+  const protokollVorgaben = (m) => ((m.einstellungen && m.einstellungen.modulprotokoll) || []).filter((x) => x.modul === "vorgaben");
+  it("Leitung deaktiviert: Status inaktiv, Protokoll mit wer/wann/was/Version, ohne Name, Text oder Person aus der Vorgabe", async () => {
+    for (const k of ["LT", "KU"]) {
+      const { raum, token } = await neuerRaum();
+      const a = await schreibeAls(raum, token, k, (m) => { m.vorgaben[0].status = "inaktiv"; });
+      expect(a.status, JSON.stringify(a).slice(0, 200)).toBe(200);
+      const { m1 } = await gespeichert(raum);
+      expect(m1.vorgaben[0]).toMatchObject({ id: "alt", status: "inaktiv", version: 4 });
+      const eintraege = protokollVorgaben(m1);
+      expect(eintraege).toHaveLength(1);
+      expect(eintraege[0]).toMatchObject({ art: "vorgabe-deaktiviert", regelId: "VORGABE-ALT", von: ROLLEN[k].person, version: 4 });
+      expect(Date.parse(eintraege[0].am)).toBeGreaterThan(Date.parse("2026-11-01"));
+      const s = JSON.stringify(eintraege);
+      for (const marke of [MARKE, "Freie Wochenenden", "Überstunden"]) expect(s, marke).not.toContain(marke);
+    }
+  });
+  it("Anlegen und Aktivieren, Ändern: je ein Eintrag; ein Rundweg erzeugt keinen", async () => {
+    const { raum, token } = await neuerRaum();
+    await schreibeAls(raum, token, "LT", () => {});
+    expect(protokollVorgaben((await gespeichert(raum)).m1)).toEqual([]);
+    await schreibeAls(raum, token, "LT", (m) => { m.vorgaben.push(V("neu", "aktiv")); });
+    expect(protokollVorgaben((await gespeichert(raum)).m1).map((x) => x.art)).toEqual(["vorgabe-angelegt", "vorgabe-aktiviert"]);
+    await schreibeAls(raum, token, "LT", (m) => { m.vorgaben.find((v) => v.id === "neu").prioritaet = 9; });
+    expect(protokollVorgaben((await gespeichert(raum)).m1).at(-1)).toMatchObject({ art: "vorgabe-geaendert", felder: ["prioritaet"], version: 2 });
+  });
+  it("ein Entwurf darf gelöscht werden (Eintrag gelöscht), eine früher aktive Vorgabe nicht", async () => {
+    const { raum, token } = await neuerRaum();
+    await schreibeAls(raum, token, "LT", (m) => { m.vorgaben.push(V("skizze", "entwurf")); });
+    const b = await schreibeAls(raum, token, "LT", (m) => { m.vorgaben = m.vorgaben.filter((v) => v.id !== "skizze"); });
+    expect(b.status).toBe(200);
+    expect(protokollVorgaben((await gespeichert(raum)).m1).at(-1)).toMatchObject({ art: "vorgabe-geloescht", regelId: "VORGABE-SKIZZE" });
+    await schreibeAls(raum, token, "LT", (m) => { m.vorgaben[0].status = "inaktiv"; });
+    const c = await schreibeAls(raum, token, "LT", (m) => { m.vorgaben = []; });
+    expect(c.status).toBeGreaterThanOrEqual(400);
+    expect(JSON.stringify(c)).toMatch(/deaktiviert/);
+    expect((await gespeichert(raum)).m1.vorgaben.map((v) => v.id)).toEqual(["alt"]);
+  });
+  it("ein vom Client mitgeschicktes Protokoll zählt nicht (weder Ergänzen noch Kürzen noch Ersetzen)", async () => {
+    const { raum, token } = await neuerRaum();
+    await schreibeAls(raum, token, "LT", (m) => { m.vorgaben.push(V("neu", "entwurf")); });
+    const vorher = protokollVorgaben((await gespeichert(raum)).m1);
+    expect(vorher).toHaveLength(1);
+    await schreibeAls(raum, token, "LT", (m) => {
+      m.vorgaben[0].prioritaet = 3;
+      m.einstellungen.modulprotokoll = [{ art: "vorgabe-geloescht", modul: "vorgaben", regelId: "VORGABE-ERFUNDEN", am: "2026-01-01T00:00:00.000Z", von: "fremd" }];
+    });
+    const nachher = protokollVorgaben((await gespeichert(raum)).m1);
+    expect(JSON.stringify(nachher)).not.toContain("ERFUNDEN");
+    expect(nachher[0]).toEqual(vorher[0]);
+    expect(nachher.at(-1)).toMatchObject({ art: "vorgabe-geaendert", regelId: "VORGABE-ALT" });
+    /* Die Planung kann es ebensowenig fälschen (Feld wirkungslos). */
+    await schreibeAls(raum, token, "PL", (m) => { m.einstellungen.modulprotokoll = []; m.vorgaben = []; });
+    expect(protokollVorgaben((await gespeichert(raum)).m1)).toEqual(nachher);
+  });
+  it("Aktivieren ohne bestehbaren Test lehnt der Server ab (über den echten Weg), als Entwurf geht es", async () => {
+    const OHNE = (id, status) => V(id, status, { regelart: "besetzungsregel", parameter: { anforderungen: [{ art: "quoteMit", merkmal: "fachkraft", min: 0.5 }] } });
+    const { raum, token } = await neuerRaum();
+    const vorher = await gespeichert(raum);
+    const a = await schreibeAls(raum, token, "LT", (m) => { m.vorgaben.push(OHNE("unprobiert", "aktiv")); });
+    expect(a.status).toBeGreaterThanOrEqual(400);
+    expect(JSON.stringify(a)).toMatch(/Test/);
+    expect((await gespeichert(raum)).m1.vorgaben).toEqual(vorher.m1.vorgaben);
+    expect((await schreibeAls(raum, token, "LT", (m) => { m.vorgaben.push(OHNE("unprobiert", "entwurf")); })).status).toBe(200);
+    const b = await schreibeAls(raum, token, "LT", (m) => { m.vorgaben.find((v) => v.id === "unprobiert").status = "aktiv"; });
+    expect(b.status).toBeGreaterThanOrEqual(400);
+    expect((await gespeichert(raum)).m1.vorgaben.find((v) => v.id === "unprobiert").status).toBe("entwurf");
+  });
+  it("zweiter Betrieb im selben Raum: Einheit und Person des anderen Betriebs werden abgewiesen, die eigenen gehen", async () => {
+    const { raum, token } = await neuerRaum({ rollen: ["LT"] });
+    const vorher = await gespeichert(raum);
+    for (const aendern of [(m) => { m.vorgaben.push(V("x1", "entwurf", { geltung: { art: "einheit", einheiten: ["z9"] } })); },
+      (m) => { m.vorgaben.push(V("x2", "entwurf", { geltung: { art: "personen", personen: ["z-fremd"] } })); },
+      (m) => { m.vorgaben.push(V("x3", "entwurf", { ausnahmen: { personen: ["z-fremd"] } })); }]) {
+      const a = await schreibeAls(raum, token, "LT", aendern);
+      expect(a.status).toBeGreaterThanOrEqual(400);
+      expect((await gespeichert(raum)).m1.vorgaben).toEqual(vorher.m1.vorgaben);
+    }
+    const gut = await schreibeAls(raum, token, "LT", (m) => { m.vorgaben.push(V("x4", "entwurf", { geltung: { art: "einheit", einheiten: ["e2"] } })); });
+    expect(gut.status).toBe(200);
+  });
+  it("das Protokoll der Vorgaben sehen Leitung und Planung (Betrieb), nicht Beschäftigte, Schichtverantwortung und Betriebsrat (Schalter AUS)", async () => {
+    const { raum, token } = await neuerRaum();
+    await schreibeAls(raum, token, "LT", (m) => { m.vorgaben[0].status = "inaktiv"; });
+    for (const k of KEIN_LESEN) {
+      const j = JSON.stringify(await anfrage("/api/bestand", { token: token[k] }));
+      for (const marke of ["VORGABE-ALT", "vorgabe-deaktiviert", MARKE, "Freie Wochenenden"]) expect(j, `${k}: ${marke}`).not.toContain(marke);
+    }
+    const j = JSON.stringify(await anfrage("/api/bestand", { token: token.PL }));
+    expect(j).toContain("Freie Wochenenden");
+  });
 });
