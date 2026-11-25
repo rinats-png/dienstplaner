@@ -1,22 +1,22 @@
 /* V4-4: Visuelle QA der App-Oberfläche in Hell und Dunkel (Projekt "v4-visuell", playwright.config.mjs).
-   Geprüft je Ansicht (Anmeldung, Dienstplan, Mitarbeiter, Abwesenheiten, Einstellungen, Pakete) bei 375 px (Telefon) und
+   Geprüft je Ansicht (Anmeldung, Dienstplan, Mitarbeiter, Abwesenheiten, Einstellungen, Pakete; Beschäftigte: vier Reiter der Telefonschale) bei 375 px (Telefon) und
    1280 px (Desktop), je Hell und Dunkel — mit den erfundenen Testdaten des Testservers (e2e/global-setup.mjs):
      K  axe color-contrast (WCAG 1.4.3), alle Funde gelten, außer als bekannt geführt (VISUELL_BEKANNT, V4-4-BEFUNDE.md)
      L  keine waagerechte Bildlaufleiste der Seite
      A  kein Hauptelement außerhalb der Breite und kein abgeschnittener Text (overflow hidden ohne Auslassungspunkte)
      U  keine Überlappung bedienbarer Elemente (ohne feste Leisten und ohne Elemente in waagerechten Bildlaufflächen)
-     F  Fokus sichtbar (Umriss oder Schatten) mit >= 3:1 gegen die Fläche dahinter (WCAG 1.4.11), je Ansicht Stichprobe
+     F  Fokus sichtbar (Umriss oder Schatten) mit >= 3:1 gegen die Fläche dahinter (WCAG 1.4.11), je Ansicht drei gezielte Elemente (erstes, erstes im Hauptinhalt, letztes)
    Keine Pixelvergleiche und keine Bilder im Repo; Bilder nur zur Ansicht mit V4_VISUELL_BILDER=1 (e2e/ergebnisse, ignoriert).
    Selbsttest: Auf der Anmeldeseite wird je Prüfung ein Fehler absichtlich eingebaut; die Prüfung muss anschlagen (Beweis
    durch Mutation, bei jedem Lauf). Die Token-Nutzung (keine harten Farben im Quelltext) sichern die Wächter
    pruefung:v4-tokens und pruefungen/v4-3b-*.test.js; hier sichert v4-variablen.spec.mjs die Variablen je Thema.
-   Laufzeit: je Thema und Breite eine Anmeldung der Leitung und eine der Betreiberrolle (Bremse „anmelden-code“ 20 je 300 s
+   Laufzeit: je Thema eine Anmeldung der Leitung, eine der Beschäftigten und eine der Betreiberrolle (Bremse „anmelden-code“ 20 je 300 s
    und Code, Pool je Test: anmelden() in hilfen.mjs). Aufruf einzeln: npx playwright test --project=v4-visuell. */
 import { mkdirSync } from "node:fs";
 import { test, expect, anmelden, geheZu } from "./hilfen.mjs";
 import { BETREIBER_VAR } from "./umgebung.mjs";
-import { VISUELL_BREITEN, VISUELL_THEMEN, VISUELL_ANSICHTEN, VISUELL_BETREIBER_ANSICHT, VISUELL_BEKANNT, BILDER_ORDNER,
-  bekannterBefund, layoutMessen, fokusMessen, FOKUS_STICHPROBE } from "./v4-visuell.mjs";
+import { VISUELL_BREITEN, VISUELL_THEMEN, VISUELL_ANSICHTEN, VISUELL_BETREIBER_ANSICHT, VISUELL_BEKANNT, BILDER_ORDNER, VISUELL_BESCHAEFTIGTE_BREITEN, VISUELL_BESCHAEFTIGTE_ANSICHTEN,
+  bekannterBefund, layoutMessen, fokusMessen, FOKUS_AUSWAHL } from "./v4-visuell.mjs";
 
 /* Parallel: Die Flächen lesen nur; jeder Arbeiter hat seinen eigenen Raum (e2e/umgebung.mjs), zwei Arbeiter halbieren die Laufzeit. */
 test.describe.configure({ timeout: 150_000, mode: "parallel" });
@@ -47,8 +47,8 @@ async function flaechePruefen(page, { mitFokus = true } = {}) {
   if (!(await page.locator("#v4-visuell-ruhe").count())) await page.evaluate((css) => { const st = document.createElement("style"); st.id = "v4-visuell-ruhe"; st.textContent = css; document.head.appendChild(st); }, OHNE_UEBERGANG);
   const funde = { kontrast: await kontrastFunde(page), layout: await page.evaluate(layoutMessen), fokus: [] };
   if (mitFokus) {
-    for (const n of FOKUS_STICHPROBE) {
-      const f = await page.evaluate(fokusMessen, n);
+    for (const wahl of FOKUS_AUSWAHL) {
+      const f = await page.evaluate(fokusMessen, wahl);
       if (!f) break;
       if (!f.fokussiert) funde.fokus.push(`${f.bezeichnung}: erhielt keinen Fokus`);
       else if (!f.art) funde.fokus.push(`${f.bezeichnung}: kein Fokuszeichen (kein Umriss, kein Schatten)`);
@@ -162,6 +162,24 @@ for (const t of VISUELL_THEMEN) {
       }
     }
     expect(alle, `Leitung ${t.thema}`).toEqual([]);
+  });
+
+  /* Beschäftigte (wichtigster Nutzer, Telefon): Telefonschale mit vier Reitern; 375 und 1024 px im selben Lauf. */
+  test(`Beschäftigte ${t.thema}: Heute, Mein Plan, Anliegen, Mehr bei 375 und 1024 px`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: VISUELL_BESCHAEFTIGTE_BREITEN[0].w, height: VISUELL_BESCHAEFTIGTE_BREITEN[0].h });
+    await themaWaehlen(page, t);
+    await anmelden(page, "mitarbeiter");
+    await themaGilt(page, t.thema);
+    const alle = [];
+    for (const b of VISUELL_BESCHAEFTIGTE_BREITEN) {
+      await breiteSetzen(page, b);
+      for (const [flaeche, reiter] of VISUELL_BESCHAEFTIGTE_ANSICHTEN) {
+        await geheZu(page, reiter);
+        await bildAblegen(page, `${flaeche}-${b.id}-${t.thema}`);
+        alle.push(...bewerten(await flaechePruefen(page), { flaeche, viewport: b.id, thema: t.thema }, testInfo).map((x) => `[${flaeche} ${b.id}] ${x}`));
+      }
+    }
+    expect(alle, `Beschäftigte ${t.thema}`).toEqual([]);
   });
 
   test(`Betreiber ${t.thema}: Pakete bei 375 und 1280 px`, async ({ page }, testInfo) => {
