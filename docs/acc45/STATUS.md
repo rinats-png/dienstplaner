@@ -18,17 +18,17 @@ oder `"teilweise"`, jeweils mit Beleg (PR, Commit, Nachweis). „Geplant“, „
 <!-- AUTO:BEGIN -->
 Erzeugt aus `docs/acc45/work-packages.json` (Schema 2) mit `node werkzeug/acc45-backlog.mjs status-schreiben` — nicht von Hand ändern.
 
-**Pakete gesamt:** 262 · BLOCKED 98 · READY 24 · IN_PROGRESS 19 · REVIEW 10 · INTEGRATED 108 · DONE 3
+**Pakete gesamt:** 291 · BLOCKED 114 · READY 31 · IN_PROGRESS 23 · REVIEW 11 · INTEGRATED 109 · DONE 3
 
 | Strang | Pakete | BLOCKED | READY | IN_PROGRESS | REVIEW | INTEGRATED | DONE | offener Aufwand PT |
 |---|---|---|---|---|---|---|---|---|
-| ACC45 | 127 | 31 | 1 | 7 | 3 | 83 | 2 | 66,1–112,65 |
+| ACC45 | 144 | 42 | 7 | 7 | 3 | 83 | 2 | 75,1–128,4 |
 | WP-19-Module | 15 | 13 | 0 | 1 | 0 | 1 | 0 | 64,5–100,5 |
 | Intelligence | 40 | 20 | 0 | 7 | 0 | 13 | 0 | 181–320 |
-| Folgepakete | 45 | 16 | 7 | 4 | 7 | 11 | 0 | 42,2–71,6 |
+| Folgepakete | 57 | 21 | 8 | 8 | 8 | 12 | 0 | 46,8–80,3 |
 | Extern/Entscheidungen | 35 | 18 | 16 | 0 | 0 | 0 | 1 | 20,35–46,1 |
 
-Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **353,8–604,75 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
+Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **367,4–629,2 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
 
 **Kritische Pfade** (offener Aufwand, Mitte der Spanne maßgeblich):
 
@@ -72,16 +72,31 @@ Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **353,8–604,
 | DEP-1 Abhängigkeit: web-push 4 Migration | REVIEW | `acc45/dep/dep-1-web-push-4` | Quelle: Bewertung offener Dependabot-PRs #400 bis #407 vom 2026-11-20 (nur lesend erhoben, Basis integration/release-v4 @ 105f6c83); Aufwand ist eine SCHÄTZUNG der Bewertung, nicht belegt. Der Dependabot-PR wird nicht geschlossen; Schließen entscheidet der Betreiber. Befund: web-push 4.0.0 hat nur benannte Exporte; server/lib/webpush.mjs:62-64 nutzt webpush.default.setVapidDetails, mit v4 ein TypeError, den das catch still zu {ok:false, klasse:temporaer, fehler:netz} macht (Push würde lautlos nie zugestellt). CI bleibt grün, weil pruefungen/mail-push-anbieter.test.js:23 web-push mit { default: {...} } mockt. pushziel.mjs (Review S1) begründet den Parser-Gleichlauf mit url.parse in 3.6.x; v4 nutzt new URL, Begründung und sicherheit-intern.test.js neu bewerten (SI-01). Neue transitive Abhängigkeit proxy-agent-negotiate 1.1.0 prüfen. Ohne VAPID-Schlüssel endet sendePush vor dem Import (trocken), daher aktuell kein sichtbarer Schaden. Aufwand SCHÄTZUNG 0,5 bis 1 PT plus Sicherheitsreview (Opus). Dependabot-PR #404, nicht mergen (funktionaler Defekt); Schließen entscheidet der Betreiber. |
 | DEP-2 Abhängigkeit: Vitest 5 Migration | REVIEW | `acc45/dep/dep-2-vitest-5` | Quelle: Bewertung offener Dependabot-PRs #400 bis #407 vom 2026-11-20 (nur lesend erhoben, Basis integration/release-v4 @ 105f6c83); Aufwand ist eine SCHÄTZUNG der Bewertung, nicht belegt. Der Dependabot-PR wird nicht geschlossen; Schließen entscheidet der Betreiber. Vitest 5 entfernt die sequential-Optionen (zugunsten von concurrent); der Lauf von PR #405 scheitert mit describe.sequential is not a function in abnahme-a-ablauf.test.js:115, die rund 190 Folgeschritte wurden übersprungen (der Lauf belegt nichts über den Rest der Suite). Betroffen: 12 Stellen in 6 Dateien (abnahme-a-ablauf, erstleitung-abbruch, erstleitung-betreiber-put, erstleitung-entscheidungen, erstleitung, konto-parallel). Node 22 und Vite 6.4.5 passen. Aufwand SCHÄTZUNG 0,5 bis 1 PT. Opus-Review Pflicht (Prüfwerkzeug, kritischer Pfad). Dependabot-PR #405, nicht mergen. |
 | REL-1 Release-Automatisierung Stufe 1: Release-Gates (Werkzeug), Lückenanalyse, Release-Richtlinie | REVIEW | `acc45/release/rel-1-gates` | Betreiberauftrag Release-Automatisierung 2026-11-20 (Zielablauf Entwicklung → Review → CI → Integration → Release-Prüfung → Deployment → Live-Abnahme). Kein VPS, kein Workflow-Start, keine Workflow-Änderung. Aufwand SCHÄTZUNG. Nachtrag 2026-11-22: Endurteil #427 MIT AUFLAGEN (A1–A5), Nachweis docs/acc45/REVIEW-NACHWEIS-2026-11-22.md; Auflagen A1/A2/A4/A5 umgesetzt im Branch acc45/release/rel1-auflagen (A3: #473); Stufe reviewt bleibt false bis zum Delta-Review. Nachtrag 2026-11-22 (Gate-Härtung, Branch acc45/release/gate-haertung-prio-pr): Review-Befunde #477 H3 und #473 H1/H2/H4/H5 fail-closed umgesetzt (G8/G9: unbekannte oder fehlende prio blockiert, ungültiges pr eines offenen Blocker-Pakets NO-GO; ssotPrs nur mit ssotPakete, nur "#123", nur sichere Ganzzahlen, jeder Eintrag im pr eines genannten Pakets; acc45-backlog pruefen lehnt ungültige prio und pr ab). Keine Verhaltensänderung für die heutigen Daten. Stufe reviewt unverändert. Nachtrag 2026-11-22 (Gate-Härtung G9 Strang/ID, Branch acc45/release/gate-haertung-g9-strang): Folgebefunde aus Review #483 H2/H3/H4 fail-closed umgesetzt (G9: Befund per strang folge oder ID-Präfix ABN-/V4- nach NFKC, Groß-/Kleinschreibung, Unicode-Bindestrich; offenes P0/P1-Paket mit fehlendem/unbekanntem strang oder ID außerhalb ^[A-Za-z0-9][A-Za-z0-9._-]*$ NO-GO; G8/G9: Paket ohne Objektform NO-GO; acc45-backlog pruefen: strang Pflicht ohne Standardwert, ID-Format; ssot-belege: PR_MUSTER aus acc45-backlog, exakter Duplikatvergleich, ungültiger Verweis Rückgabe 1 ohne Datenänderung). Alle 246 Pakete geprüft: G8/G9 auf heutigen Daten unverändert. Stufe reviewt unverändert. Nachtrag 2026-11-22 (Review #486, nur Text, Beleg docs/acc45/RELEASE-PROZESS.md G9): H-a: Die NFKC- und Bindestrich-Normalisierung in idNormal ist wirkungslos, weil ID_MUSTER vorher jede ID außerhalb von ASCII ablehnt (solche IDs: NO-GO „ID ungültig“, nicht „Befund-Paket erkannt“); die Doku sagt das jetzt. H-b (offen, vorbestehend): jede ID mit dem exakten Präfix REL- wird als Ausnahme behandelt, z. B. REL-ABN-1 mit strang acc45 und prio P1 ergibt G9 GO; Folgepaket vorgeschlagen: REL-Ausnahme nur für bekannte REL-IDs. H-d: main()-Exitcode-Test für ssot-belege nur als Folgepaket genannt. Kein Code geändert. Nachtrag 2026-11-23 (Gate-Härtung REL-Ausnahme, Branch acc45/release/gate-haertung-rel-ausnahme, für den nächsten Kandidaten; release/rc-2026-11-22 unverändert): H-b fail-closed umgesetzt: die G9-Ausnahme gilt nur für die bekannten REL-Pakete (REL_AUSNAHME_IDS: REL-0, REL-0c, REL-1, REL-2, REL-3, REL-4); jedes andere offene P0/P1-Paket mit exaktem Präfix REL- (z. B. REL-ABN-1, jeder strang) ist NO-GO, auch mit Annahme; ein Test bindet die Liste an die REL-Pakete der SSOT. H-d: Test ruft ssot-belege --anwenden als Prozess auf einer Wegwerf-Kopie auf (neue Option --prs, PR-Liste aus Datei), ungültiger Verweis: Rückgabe 1, SSOT-Datei byte-gleich. H-e: ssotPrBelege liest pr genau nach PR_MUSTER. G9 auf dem Repository-Stand vorher/nachher byte-gleich (Befund-Paketsatz und Blocker identisch). Stufe reviewt unverändert. Nachtrag 2026-11-23 (Review #490 N1/N2, Branch acc45/werkzeug/ssot-abgleich-n1-n2, für den nächsten Kandidaten; release/rc-2026-11-22 unverändert): N1: abgleich() in ssot-abgleich.mjs liest das SSOT-Feld pr genau nach PR_MUSTER (gemeinsame Quelle acc45-backlog.mjs, kein Duplikat); ein ungültiger Eintrag („#0“, „#012“, „#12a“, Zahl, kein Array) bricht ab (fail-closed, Rückgabe 2 in ssot-abgleich und ssot-belege, SSOT-Datei unverändert). Gültige Daten: Ausgabe von ssot-abgleich (JSON und Text) auf allen pr-Einträgen des Repository-Stands byte-gleich zu vorher. N2: Option mit Wert (--prs, --datei) ohne Wert, mit leerem Wert oder mit einer Option als Wert ergibt Fehler und Rückgabe 2 in beiden Werkzeugen, kein stiller Rückfall auf gh (Netz) oder Standardpfad; ssot-belege meldet Abbruch jetzt mit Rückgabe 2 (Rückgaben 0/1/2/3). Tests: pruefungen/ssot-belege.test.js (CLI als Prozess auf Wegwerf-Kopie), Mutationen je Regel rot. Stufe reviewt unverändert. |
+| V4-4b V4-4-Folge: visuelle QA für die Rolle Beschäftigte, gezielte Fokusauswahl, Breite 1024 px, Grenzen ehrlich | REVIEW | `–` | Umfangsklasse: RELEASE-UMFANG.
+Prioritätsbegründung: P2: Qualitätsprüfung der Oberfläche; sie blockiert den Release nicht und ist keine Sicherheitsfrage.
+PR #539 ist offen und nicht gemergt; Nummer und Kopf werden erst nach dem Merge als pr geführt. Status REVIEW heißt: Änderung liegt als offener PR zur Prüfung vor, nichts davon ist integriert. Quelle: Auftrag SSOT-Pakete 2 vom 2026-11-25 (Koordinator). Aufwand SCHÄTZUNG, nicht gemessen. |
+| GATE-EW1 G6-Erstwechsel-Ausnahme erstwechselAusnahme.widerrufbuchProbe (E1–E15, Konfiguration, Schema, Fixtures, Tests, Mutationsprotokoll) | IN_PROGRESS | `–` | Umfangsklasse: RELEASE-UMFANG.
+Prioritätsbegründung: P1: Release-Pfad v4-r1. Ohne die Erstwechsel-Ausnahme in G6 ist der erste Produktionswechsel mit der Regel widerrufbuchProbePflicht nicht freigabefähig (G6 NO-GO); die Gate-Regel selbst bleibt unverändert.
+PR #535 offen, Review Runde 2 NICHT FREIGEGEBEN (BL-3 …); Betreiber-Gate-Freigabe erst nach Review. Nichts davon ist integriert; Aussagen zu Tests und Mutationen stehen in der PR-Beschreibung und sind hier nicht geprüft. PR #535 ist mit dem Inhaber-Token angelegt; E14 (Vier-Augen) wird damit nicht erfüllt (fail-closed, gewollt). Strang: SPEZ-UMSETZUNG 2026-11-24 Abschnitt 7.4 nennt acc45; hier folge, wie bei REL-* und RST-*: offenes P1 blockiert G9 bis INTEGRATED. Das ist die strengere Wahl. Konfliktzone: werkzeug/release-pruefung.mjs (nur additive Änderungen). Quelle: Auftrag SSOT-Pakete 2 vom 2026-11-25 (Koordinator). Aufwand SCHÄTZUNG, nicht gemessen. |
+| GATE-EW2 Nachhol-Modus --nachhol (A-Zeitplan, Abbruchtabelle), Folge-Release-Rückhalt in G6, E15 (Sperre nach T0) | IN_PROGRESS | `–` | Umfangsklasse: RELEASE-UMFANG.
+Prioritätsbegründung: P1: Release-Pfad v4-r1. Ohne die Erstwechsel-Ausnahme in G6 ist der erste Produktionswechsel mit der Regel widerrufbuchProbePflicht nicht freigabefähig (G6 NO-GO); die Gate-Regel selbst bleibt unverändert. Der Nachhol-Modus ist die technische Durchsetzung der Nachholpflicht nach dem Erstwechsel.
+PR #535 offen, Review Runde 2 NICHT FREIGEGEBEN (BL-3 …); Betreiber-Gate-Freigabe erst nach Review. Nichts davon ist integriert; Aussagen zu Tests und Mutationen stehen in der PR-Beschreibung und sind hier nicht geprüft. PR #535 ist mit dem Inhaber-Token angelegt; E14 (Vier-Augen) wird damit nicht erfüllt (fail-closed, gewollt). Strang: SPEZ-UMSETZUNG 2026-11-24 Abschnitt 7.4 nennt acc45; hier folge, wie bei REL-* und RST-*: offenes P1 blockiert G9 bis INTEGRATED. Das ist die strengere Wahl. Quelle: Auftrag SSOT-Pakete 2 vom 2026-11-25 (Koordinator). Aufwand SCHÄTZUNG, nicht gemessen. |
+| GATE-EW4 Commit-Bindung: schnittCommit, Bindung des Kandidaten an den Schnittstand, E13 | IN_PROGRESS | `–` | Umfangsklasse: RELEASE-UMFANG.
+Prioritätsbegründung: P1: Release-Pfad v4-r1. Ohne die Erstwechsel-Ausnahme in G6 ist der erste Produktionswechsel mit der Regel widerrufbuchProbePflicht nicht freigabefähig (G6 NO-GO); die Gate-Regel selbst bleibt unverändert.
+PR #535 offen, Review Runde 2 NICHT FREIGEGEBEN (BL-3 …); Betreiber-Gate-Freigabe erst nach Review. Nichts davon ist integriert; Aussagen zu Tests und Mutationen stehen in der PR-Beschreibung und sind hier nicht geprüft. PR #535 ist mit dem Inhaber-Token angelegt; E14 (Vier-Augen) wird damit nicht erfüllt (fail-closed, gewollt). Strang: SPEZ-UMSETZUNG 2026-11-24 Abschnitt 7.4 nennt acc45; hier folge, wie bei REL-* und RST-*: offenes P1 blockiert G9 bis INTEGRATED. Das ist die strengere Wahl. Quelle: Auftrag SSOT-Pakete 2 vom 2026-11-25 (Koordinator). Aufwand SCHÄTZUNG, nicht gemessen. |
+| GATE-EW5 RELEASE-PROZESS und Runbook Erstwechsel v4-r1 (docs/acc45/RUNBOOK-ERSTWECHSEL-V4R1.md) | IN_PROGRESS | `–` | Umfangsklasse: RELEASE-UMFANG.
+Prioritätsbegründung: P1: Release-Pfad v4-r1. Ohne die Erstwechsel-Ausnahme in G6 ist der erste Produktionswechsel mit der Regel widerrufbuchProbePflicht nicht freigabefähig (G6 NO-GO); die Gate-Regel selbst bleibt unverändert. Ohne Runbook fehlt dem Betreiber der geprüfte Ablauf des ersten Wechsels.
+PR #535 offen, Review Runde 2 NICHT FREIGEGEBEN (BL-3 …); Betreiber-Gate-Freigabe erst nach Review. Nichts davon ist integriert; Aussagen zu Tests und Mutationen stehen in der PR-Beschreibung und sind hier nicht geprüft. PR #535 ist mit dem Inhaber-Token angelegt; E14 (Vier-Augen) wird damit nicht erfüllt (fail-closed, gewollt). Strang: SPEZ-UMSETZUNG 2026-11-24 Abschnitt 7.4 nennt acc45; hier folge, wie bei REL-* und RST-*: offenes P1 blockiert G9 bis INTEGRATED. Das ist die strengere Wahl. Quelle: Auftrag SSOT-Pakete 2 vom 2026-11-25 (Koordinator). Aufwand SCHÄTZUNG, nicht gemessen. |
 
-### Bereit zum Start (8)
+### Bereit zum Start (15)
 
-RST-1 (folge, 0,5–1 PT) · RST-2 (folge, 2–3 PT) · RST-3 (folge, 1–2 PT) · RST-5 (folge, 2,5–4 PT) · RST-7 (folge, 2–3 PT) · RST-9 (folge, 1–1,5 PT) · FREIGABE-S2 (folge, 0,5–1 PT) · WEBSITE-W3b (acc45, 0,5 PT)
+RST-1 (folge, 0,5–1 PT) · RST-2 (folge, 2–3 PT) · RST-3 (folge, 1–2 PT) · RST-5 (folge, 2,5–4 PT) · RST-7 (folge, 2–3 PT) · RST-9 (folge, 1–1,5 PT) · FREIGABE-S2 (folge, 0,5–1 PT) · WEBSITE-W3b (acc45, 0,5 PT) · ABN-S2-de (acc45, 0,25–0,5 PT) · ABN-S2-H (acc45, 0,25–0,5 PT) · MODINERT-L4 (acc45, 0,5–1 PT) · MODINERT-L3 (acc45, 0,25–0,5 PT) · K4-P1 (acc45, 0,5–1 PT) · K4-P2 (acc45, 0,5 PT) · K4-P3 (folge, 1–1,5 PT)
 
-### In Arbeit, fortsetzbar (14)
+### In Arbeit, fortsetzbar (15)
 
-WP-40 (acc45, 1,5–2,25 PT offen) · WP-28b (folge, 0,5–1 PT offen) · WP-I4 (intelligence, 4–7 PT offen) · WP-I19 (intelligence, 8–14 PT offen) · WP-I20 (intelligence, 8–14 PT offen) · WP-I24 (intelligence, 2,5–4,5 PT offen) · WP-I29 (intelligence, 9–15 PT offen) · WP-I30 (intelligence, 2–4 PT offen) · WP-I31 (intelligence, 4,5–7,5 PT offen) · IMP-6 (acc45, 1,5–2,5 PT offen) · IMP-8 (acc45, 1–1,5 PT offen) · WP-48-GB (acc45, 0,5–1,5 PT offen) · WP-ZEIT (acc45, 4,5–7,5 PT offen) · V4-1 (folge, 1–1,5 PT offen)
+WP-40 (acc45, 1,5–2,25 PT offen) · WP-28b (folge, 0,5–1 PT offen) · WP-I4 (intelligence, 4–7 PT offen) · WP-I19 (intelligence, 8–14 PT offen) · WP-I20 (intelligence, 8–14 PT offen) · WP-I24 (intelligence, 2,5–4,5 PT offen) · WP-I29 (intelligence, 9–15 PT offen) · WP-I30 (intelligence, 2–4 PT offen) · WP-I31 (intelligence, 4,5–7,5 PT offen) · IMP-6 (acc45, 1,5–2,5 PT offen) · IMP-8 (acc45, 1–1,5 PT offen) · WP-48-GB (acc45, 0,5–1,5 PT offen) · WP-ZEIT (acc45, 4,5–7,5 PT offen) · V4-1 (folge, 1–1,5 PT offen) · GATE-EW1 (folge, 0,75–1,5 PT offen)
 
-### Integriert in `integration/centric-complete` (108)
+### Integriert in `integration/centric-complete` (109)
 
 | Paket | Beleg (PR, Merge-Commit) | Review |
 |---|---|---|
@@ -191,6 +206,7 @@ WP-40 (acc45, 1,5–2,25 PT offen) · WP-28b (folge, 0,5–1 PT offen) · WP-I4 
 | V4-2d V4: Fokus beim Öffnen der Seitenleisten-Schublade per Tastatur (WCAG 2.4.3) | #432 in integration/release-v4 (02988d05), CI grün auf exaktem Kopf, Merge mit Kopf-Pin | Opus-Review #432 (FREIGABE, 2 Hinweise NIEDRIG) am 2026-11-20 |
 | A11Y-1 A11y-Folgepunkt F1 (Review #442): Arbeitstag-Knöpfe und Nachtbalken der Personalakte zugänglich (WCAG 4.1.2, 1.4.11) | #445 in integration/release-v4 (bf253963), CI 23/23 auf exaktem Kopf, Merge mit Kopf-Pin | Opus-Review #445 (FREIGABE) am 2026-11-21 |
 | A11Y-2 A11y-Folgepunkt (Review #445): Nachtbalken der Personalakte – aktueller Monat nicht nur über Farbe, Monatswerte als erreichbarer Text (WCAG 1.4.1, 1.3.1, 4.1.2) | #454 in integration/release-v4 (Merge 0d2d7ddf, Kopf 3737aec2, 2026-11-21) | Review #454 am 2026-11-21 (Koordinator: reviewt, 3 Hinweise, gemergt); Befunde niedrig (Testfall „keine Angabe“, Wortlaut „markiert“) im Nachzug acc45/nachzug/a11y2-g7-ssot |
+| V4-4 V4: Visuelle QA hell/dunkel in der CI | PR #538 gemergt, Merge-Commit 4c18ac77 in integration/release-v4 | – |
 | REL-0 VPS-Zugang und Inventur: Forced-Command-Zugang nur für die lesende Produktionsinventur V-1 bis V-9 (Phase 1), Konto ohne Docker-Rechte mit root-Sammler (Phase 2, Entwurf) | #428 in integration/release-v4 (092be6e2), CI grün auf exaktem Kopf, Merge mit Kopf-Pin | Opus-Review #428 (FREIGABE nach AUF-1..3, H-a..H-d) am 2026-11-20 |
 | DRIFT-D1-D3 Drift Detection D1–D3 (Sicherheit, Regelwerk, Wiederherstellung/Löschfristen) | PR #517 (97b08961) und #520 (3b91fb9d) in integration/release-v4 | D1/D2: Sonnet-Review FREIGABE (a64c38a966d6b29ef, unabhängig). D3: Opus-Review im ersten Durchgang nicht freigegeben (Registry-Zeile 45), im finalen Kopf 4b8848e0 behoben; Delta vom Koordinator geprüft, kein zweiter Opus-Durchgang. |
 
@@ -198,7 +214,7 @@ WP-40 (acc45, 1,5–2,25 PT offen) · WP-28b (folge, 0,5–1 PT offen) · WP-I4 
 
 ✓ belegt · T teilweise (z. B. nur Server-Teilumfang) · – nicht erreicht oder nicht belegt. „Staging“, „Freigabe“ und
 „prod.“ stehen nur mit Beleg auf ✓. Gezeigt sind alle Pakete mit mindestens einer erreichten Stufe; alle übrigen
-77 offenen Entwicklungspakete stehen auf allen Stufen auf „–“.
+103 offenen Entwicklungspakete stehen auf allen Stufen auf „–“.
 
 | Paket | Status | impl. | lokal | Review | integr. | Staging | Freigabe | prod. |
 |---|---|---|---|---|---|---|---|---|
@@ -327,6 +343,7 @@ WP-40 (acc45, 1,5–2,25 PT offen) · WP-28b (folge, 0,5–1 PT offen) · WP-I4 
 | WP-ST1 | BLOCKED | T | T | – | – | – | – | – |
 | QS-4 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | QS-5 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
+| ABN-A2 | BLOCKED | ✓ | ✓ | ✓ | T | – | – | – |
 | ABN-A3 | BLOCKED | ✓ | ✓ | T | T | – | – | – |
 | ABN-A4 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | ABN-B3 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
@@ -346,12 +363,14 @@ WP-40 (acc45, 1,5–2,25 PT offen) · WP-28b (folge, 0,5–1 PT offen) · WP-I4 
 | V4-3b | IN_PROGRESS | T | T | T | T | – | – | – |
 | A11Y-1 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | A11Y-2 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
+| V4-4 | INTEGRATED | ✓ | ✓ | – | ✓ | – | – | – |
 | DEP-1 | REVIEW | ✓ | ✓ | – | – | – | – | – |
 | DEP-2 | REVIEW | ✓ | ✓ | – | – | – | – | – |
 | REL-0 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | REL-0c | BLOCKED | T | – | – | – | – | – | – |
 | REL-1 | REVIEW | ✓ | ✓ | – | – | – | – | – |
 | DRIFT-D1-D3 | INTEGRATED | ✓ | ✓ | T | ✓ | – | – | – |
+| GATE-EW3 | BLOCKED | ✓ | – | – | T | – | – | – |
 <!-- AUTO:END -->
 
 ## Klärungen und Widersprüche (2026-11-03)
