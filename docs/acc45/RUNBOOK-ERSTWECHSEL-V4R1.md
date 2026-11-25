@@ -47,7 +47,7 @@ Keine Personendaten, keine Hostnamen, keine Schlüssel in den Dateien dieses Run
 | N2 | ≤ T0 + 2 h | Betreiber | `widerrufbuch-sicherung.sh --erster-lauf` ⇒ Exit 0; Cron aktiv |
 | N3 | nach ≥ 2 stündlichen Läufen, ≤ T0 + 24 h | Betreiber | `widerrufbuch-probe.sh` ⇒ Exit 0 |
 | N3a | sofort nach N3, ≤ T0 + 24 h | Betreiber | lokale Verifikation: `verifikation.json` (Formular 5.2) |
-| N4 | Merge ≤ T0 + 48 h | Betreiber gibt Dateien, Claude legt PR an, Betreiber gibt als Code-Owner frei und merged | Ablage: `t0.json`, `widerrufbuch-status.json`, `widerrufbuch-probe-status.json`, `verifikation.json`, `endpruefung.json` |
+| N4 | Merge ≤ T0 + 48 h | Betreiber gibt Dateien, Claude legt PR an, Betreiber gibt als Code-Owner frei und merged | Ablage: `t0.json`, `widerrufbuch-status.json`, `widerrufbuch-probe-status.json`, `verifikation.json`, `endpruefung.json`. **Nach dem Merge die Ablage nicht mehr ändern:** die Repo-Frist zählt je Datei den letzten Commit; eine spätere Änderung verschiebt die Frist und kann alle Folge-Releases blockieren (A-REPO) |
 | N5 | nach N4 | Claude, Betreiber liest | `node werkzeug/release-pruefung.mjs --nachhol --release-id v4-r1` ⇒ `NACHHOL-GO` |
 
 Statusdateien entstehen nur aus echten Läufen auf dem VPS. Claude ändert keine Werte. `endpruefung.json` ist die
@@ -102,7 +102,18 @@ G6 NO-GO, solange `v4-r1.freigabe.json` nicht in HEAD liegt — auch ein V3-Hotf
 Ausnahme nicht (mehr), ist sie nur zulässig, wenn die Ausnahme nie genutzt wurde: keine frühere Fassung mit
 `erstwechselAusnahme` und nie eine Datei unter `v4-r1/nachhol/` oder `v4-r1/abbruch-*` (HEAD und Geschichte), sonst NO-GO.
 Die Rückhaltprüfung eines Folge-Release online liest die Nachhol-Ablage aus HEAD; dieser HEAD muss in `origin/main`
-liegen (sonst `--nachhol` NO-GO und damit Rückhalt NO-GO).
+liegen (sonst `--nachhol` NO-GO und damit Rückhalt NO-GO). Die Spurensuche selbst prüft `origin/main` nicht eigens: die
+Endprüfung jedes Release verlangt in G10 ohnehin, dass HEAD genau der Kopf von `origin/main` ist.
+
+**„Eingetragen“ gilt als „genutzt“ (fail-closed):** Trug irgendeine frühere Fassung von `v4-r1.freigabe.json` die
+`erstwechselAusnahme`, oder lag je eine Datei unter `v4-r1/nachhol/` oder `v4-r1/abbruch-*` (auch `abbruch-A-VOR.json`),
+dann ist jeder Release ≠ v4-r1 nach Entfernen der Ausnahme für immer G6 NO-GO — auch nach einem A-VOR-Abbruch ohne
+V4-Start, obwohl die Ausnahme nach F10 dann nicht verbraucht ist. Der Weg bleibt: v4-r1 mit der Ausnahme abschließen
+(`NACHHOL-GO`). Einziger anderer Ausweg ist eine Codeänderung am Werkzeug mit Review und Gate-Freigabe.
+
+**Voller Klon Pflicht:** Endprüfung und `--nachhol` laufen nur in einem vollständigen Klon. In einem flachen Klon
+(`git rev-parse --is-shallow-repository` = `true`) sind E15, Rückhalt und `--nachhol` NO-GO mit `FLACHER-KLON`.
+Ein fehlendes Git-Objekt einer früheren Fassung gilt nicht als Löschung, sondern als „nicht ermittelbar“ ⇒ NO-GO.
 
 Abbruch vor dem Start aus Codeursache: neuer Kandidat; der alte steht in der Freigabeliste `gesperrt` mit Grund, der mit
 `A-VOR` beginnt, und hat einen A-VOR-Nachweis „kein Start“. Die Release-ID bleibt `v4-r1` (andere IDs haben keine Ausnahme).
@@ -118,6 +129,10 @@ grep -c "env digest=<V4-Digest>" betrieb-protokoll.log
 # 4: Bindung an das Protokoll
 sha256sum betrieb-protokoll.log
 ```
+
+**Annahmen des Werkzeugs (online):** Das Artefakt `staging-nachweis` lädt `gh api …/artifacts/<id>/zip` in den
+Speicher (Puffer höchstens 512 MB; ZIP höchstens 1000 Einträge, 10 MB je Eintrag, 50 MB entpackt). Ein größeres
+Artefakt scheitert ⇒ E7 NO-GO.
 
 ## 5. Formulare
 

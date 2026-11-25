@@ -3512,5 +3512,86 @@ describe("GATE-EW1/EW2: Erstwechsel-Ausnahme der Widerrufbuch-Probe (G6) und Nac
       writeFileSync(join(w, ABLAGE + "endpruefung.json"), JSON.stringify({ ...ep, gesamt: undefined }).replace("{", '{"__proto__":{"gesamt":"GO"},'));
       nachholNein(fx2, "A-FRIST");
     });
+
+    /* ---------------------------------------- Delta-Review #535 Runde 3: AF-1 flacher Klon, AF-2 fehlendes Objekt */
+    const v4r2 = (r) => { r.schreib("docs/acc45/releases/v4-r2.freigabe.json", { ...FREIGABE, releaseId: "v4-r2" }); r.commit("v4-r2"); };
+    const g6r2 = (wurzel, r) => {
+      const e = sammeln({ wurzel, offline: false, kandidatSha: r.m, basisSha: r.basis, releaseId: "v4-r2", digest: D, jetztMs: JETZT_MS, gh: () => { throw new Error("kein Netz"); } });
+      return gateVon(auswerten(e), "G6").gruende.filter((x) => /v4-r1/.test(x)).join(" | ");
+    };
+    const flachKlonen = (r) => {
+      const flach = mkdtempSync(join(tmpdir(), "ew-flach-"));
+      rmSync(flach, { recursive: true, force: true });
+      const k = spawnSync("git", ["clone", "-q", "--depth", "1", "file://" + r.repo.replace(/\\/g, "/"), flach], { encoding: "utf8" });
+      if (k.status !== 0) throw new Error(k.stderr);
+      return flach;
+    };
+    it("Runde 3 A2/A3: ohne Spur kein Rückhalt-Grund; Fassung mit Ausnahme nur im Seitenzweig (merge -s ours) oder umbenannt ⇒ Spur", () => {
+      const r = repoBauen();
+      try {
+        r.schreib(FREIGABE_PFAD, FREIGABE); r.commit("v4-r1 ohne Ausnahme"); v4r2(r);
+        expect(g6r2(r.repo, r)).toBe("");
+        r.g("checkout", "-q", "-b", "seite");
+        r.schreib(FREIGABE_PFAD, r.fr(r.m)); r.commit("Seite: Ausnahme");
+        r.g("checkout", "-q", "main"); r.g("merge", "-q", "-s", "ours", "seite", "-m", "ours");
+        expect(g6r2(r.repo, r)).toMatch(/Spuren/);
+      } finally { weg(r); }
+      const r2 = repoBauen();
+      try {
+        r2.schreib(FREIGABE_PFAD, r2.fr(r2.m)); r2.commit("mit Ausnahme");
+        r2.g("mv", FREIGABE_PFAD, "docs/acc45/releases/v4-r1.alt.json"); r2.commit("umbenannt");
+        r2.schreib(FREIGABE_PFAD, FREIGABE); r2.commit("neu ohne"); v4r2(r2);
+        expect(g6r2(r2.repo, r2)).toMatch(/Spuren/);
+      } finally { weg(r2); }
+    }, 180_000);
+    it("AF-1: flacher Klon (--depth 1) ⇒ Rückhalt, E15 und --nachhol NO-GO mit FLACHER-KLON (fail-closed)", () => {
+      const r = repoBauen();
+      let flach = null;
+      try {
+        r.schreib(FREIGABE_PFAD, r.fr(r.m)); r.commit("mit Ausnahme");
+        r.schreib(FREIGABE_PFAD, FREIGABE); r.commit("ohne"); v4r2(r);
+        flach = flachKlonen(r);
+        expect(g6r2(flach, r)).toMatch(/FLACHER-KLON/);
+        rmSync(flach, { recursive: true, force: true });
+        r.schreib(FREIGABE_PFAD, r.fr(r.m)); r.commit("wieder mit Ausnahme");
+        flach = flachKlonen(r);
+        const { e15 } = r.lauf({ wurzel: flach });
+        expect(e15).toMatch(/FLACHER-KLON/);
+        const d = nachholSammeln(flach, "v4-r1", { gh: () => { throw new Error("kein Netz"); } });
+        expect(d.flach).toBe(true);
+        expect(nachholPruefen(d).gruende.join(" ")).toMatch(/FLACHER-KLON/);
+        expect(nachholSammeln(r.repo, "v4-r1", { gh: () => { throw new Error("kein Netz"); } }).flach).toBe(false);
+      } finally { weg(r); if (flach) rmSync(flach, { recursive: true, force: true }); }
+    }, 180_000);
+    it("AF-2: fehlendes Objekt einer früheren Fassung ist keine Löschung ⇒ nicht ermittelbar ⇒ NO-GO (Rückhalt und E15)", () => {
+      const r = repoBauen();
+      try {
+        r.schreib(FREIGABE_PFAD, r.fr(r.m)); const c1 = r.commit("mit Ausnahme");
+        const blob = r.g("rev-parse", `${c1}:${FREIGABE_PFAD}`);
+        r.schreib(FREIGABE_PFAD, FREIGABE); r.commit("ohne"); v4r2(r);
+        rmSync(join(r.repo, ".git/objects", blob.slice(0, 2), blob.slice(2)), { force: true });
+        expect(g6r2(r.repo, r)).toMatch(/nicht ermittelbar/);
+      } finally { weg(r); }
+      const r2 = repoBauen();
+      try {
+        const m1 = "d".repeat(40);
+        r2.schreib(FREIGABE_PFAD, r2.fr(m1)); const c1 = r2.commit("Freigabe M1");
+        const blob = r2.g("rev-parse", `${c1}:${FREIGABE_PFAD}`);
+        r2.schreib(FREIGABE_PFAD, r2.fr(r2.m)); r2.commit("Freigabe M");
+        rmSync(join(r2.repo, ".git/objects", blob.slice(0, 2), blob.slice(2)), { force: true });
+        expect(r2.lauf().e15).toMatch(/frühere Kandidaten .* nicht ermittelbar/);
+        // eine spätere echte Löschung heilt das fehlende Objekt nicht
+        r2.g("rm", "-q", FREIGABE_PFAD); r2.commit("gelöscht");
+        r2.schreib(FREIGABE_PFAD, r2.fr(r2.m)); r2.commit("wieder da");
+        expect(r2.lauf().e15).toMatch(/frühere Kandidaten .* nicht ermittelbar/); // fehlendes Objekt bleibt in der Geschichte
+      } finally { weg(r2); }
+      const r3 = repoBauen();
+      try {
+        r3.schreib(FREIGABE_PFAD, r3.fr(r3.m)); r3.commit("Freigabe M");
+        r3.g("rm", "-q", FREIGABE_PFAD); r3.commit("gelöscht");
+        r3.schreib(FREIGABE_PFAD, r3.fr(r3.m)); r3.commit("wieder da");
+        expect(r3.lauf().e15).not.toMatch(/nicht ermittelbar/); // Löschungs-Commit ist kein Lesefehler
+      } finally { weg(r3); }
+    }, 240_000);
   });
 });

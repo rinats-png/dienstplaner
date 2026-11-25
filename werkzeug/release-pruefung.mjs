@@ -1197,7 +1197,7 @@ export function erstwechselPruefen(k, konfig = KONFIG_STANDARD) {
   // hebt den Verbrauch nicht auf): jede Datei der Nachhol-Ablage (t0.json …) und jede Abbruchdatei außer A-VOR = Start
   // erfolgt. A-VOR verbraucht nur nicht, wenn der Nachweis maschinell „kein Start“ belegt, unverändert und noch vorhanden ist.
   const anzahl = (p) => historie.filter((x) => x === p).length;
-  pruef("E15", historie === null ? ["Dateien des Release in HEAD oder ihre Geschichte nicht ermittelbar (fail-closed)"] : [
+  pruef("E15", historie === null ? [ew.flach === true ? FLACH : "Dateien des Release in HEAD oder ihre Geschichte nicht ermittelbar (fail-closed)"] : [
     ...[...new Set([...releaseDateien, ...historie])].filter((p) => p.startsWith(relVerz)).map((p) => {
       const rest = p.slice(relVerz.length);
       const verbraucht = `${p}: V4-Start erfolgt oder Abbruch nach T0 — Ausnahme verbraucht; reguläre Probe Pflicht (F10)`;
@@ -1331,6 +1331,7 @@ export function nachholPruefen(d, konfig = KONFIG_STANDARD) {
   const relVerz = `${konfig.freigabeVerzeichnis}/${d.releaseId}/`;
   if (!Array.isArray(d.releaseDateien)) nein("A-FRIST", "Dateien des Release in HEAD nicht ermittelbar (fail-closed)");
   // Hinweis Review #535: online muss der gelesene HEAD in origin/main liegen (sonst gilt kein Nachweis als gemergt)
+  if (d.online === true && d.flach !== false) nein("A-FRIST", FLACH);
   if (d.online === true && d.headInMain !== true) nein("A-FRIST", "HEAD liegt nicht in origin/main (oder nicht ermittelbar) — Nachweise nicht belegt");
   for (const p of Array.isArray(d.releaseDateien) ? d.releaseDateien : []) {
     const m = p.startsWith(relVerz) && !ABBRUCH_VOR.test(p.slice(relVerz.length)) ? /^abbruch-([^/]*)\.json$/.exec(p.slice(relVerz.length)) : null;
@@ -1927,6 +1928,19 @@ function nachweiseLesen(verz) {
 
 /** Relativer Repo-Pfad ohne „..“, „.“, leere Teile oder Sonderzeichen (Pfade aus der Freigabedatei). */
 const pfadSicher = (p) => typeof p === "string" && /^[A-Za-z0-9._/-]+$/.test(p) && p.split("/").every((x) => x && x !== "." && x !== "..");
+/** Delta-Review #535 AF-1: flacher Klon (Geschichte unvollständig)? Jeder Fehler gilt als flach (fail-closed). */
+function flacherKlon(w) { try { return git(w, ["rev-parse", "--is-shallow-repository"]) !== "false"; } catch { return true; } }
+const FLACH = "FLACHER-KLON: Geschichte unvollständig (voller Klon nötig, fail-closed)";
+/**
+ * Delta-Review #535 AF-2: Inhalt jeder früheren Fassung einer Datei in der Geschichte von HEAD (--full-history). Ein Commit,
+ * in dessen Baum die Datei fehlt (Löschung), wird übersprungen; jeder andere Lesefehler (z. B. fehlendes Objekt) wirft.
+ */
+function fassungenLesen(w, pfad) {
+  return git(w, ["log", "--full-history", "--no-renames", "--format=%H", "HEAD", "--", pfad]).split("\n").filter(Boolean).flatMap((sha) => {
+    if (!git(w, ["ls-tree", sha, "--", pfad])) return []; // Datei fehlt in diesem Commit: Löschung
+    return [ausfuehren.exec("git", ["show", `${sha}:${pfad}`], ausfuehrOptionen(w, { stdio: ["ignore", "pipe", "ignore"] }))];
+  });
+}
 /** Nachweise eines Abbruchs vor dem V4-Start (F10, OFFEN-1): docs/acc45/releases/<id>/abbruch-A-VOR[-n].json */
 const ABBRUCH_VOR = /^abbruch-A-VOR(?:-[1-9]\d{0,2})?\.json$/;
 
@@ -1961,13 +1975,12 @@ function erstwechselSammeln(e, kq, hq, { online, wurzel: w, gh, ghRoh, fx }, kon
   // F10: jeder Pfad, der in der Geschichte von HEAD je unter docs/acc45/releases/<id>/ lag (Löschen hebt den Verbrauch nicht auf).
   // Review #535 BL-1: --full-history, sonst folgt git bei einem Merge nur dem Elter ohne die Datei (Merge lässt sie fallen).
   const voll = ["--full-history", "--no-renames"];
-  ew.releaseHistorie = versuch(() => git(w, ["log", ...voll, "--format=", "--name-only", "HEAD", "--", relVerz]).split("\n").filter(Boolean));
+  ew.flach = flacherKlon(w);
+  ew.releaseHistorie = ew.flach ? null : versuch(() => git(w, ["log", ...voll, "--format=", "--name-only", "HEAD", "--", relVerz]).split("\n").filter(Boolean));
   // Review #535 BL-2: frühere Kandidaten = kandidatCommit jeder früheren Fassung der Freigabedatei mit Ausnahme und jede
   // frühere Zeile aktiv der Freigabeliste mit einem Commit außerhalb vorV4Commits (Geschichte von HEAD)
-  ew.fruehereKandidaten = versuch(() => {
-    const fassungen = (pfad) => git(w, ["log", ...voll, "--format=%H", "HEAD", "--", pfad]).split("\n").filter(Boolean)
-      .map((sha) => { try { return ausfuehren.exec("git", ["show", `${sha}:${pfad}`], ausfuehrOptionen(w, { stdio: ["ignore", "pipe", "ignore"] })); } catch { return null; } })
-      .filter((t) => t !== null); // Löschungen haben keinen Inhalt
+  ew.fruehereKandidaten = ew.flach ? null : versuch(() => {
+    const fassungen = (pfad) => fassungenLesen(w, pfad);
     const aus = new Set();
     for (const t of fassungen(`${konfig.freigabeVerzeichnis}/${e.releaseId}.freigabe.json`)) {
       const f = jsonLesen(t).wert;
@@ -2033,6 +2046,7 @@ function nachholDaten(q, releaseId, { online, wurzel: w, gh, fx }, konfig) {
     return { ...d, mergedAt: n.mergedAt ?? null, t0MergedAt: n.t0MergedAt ?? null,
       endStand: { istVorfahr: n.endpruefungIstVorfahr, listeSha256: liste ? sha256(Buffer.from(liste)) : null } };
   }
+  d.flach = flacherKlon(w);
   if (!istObjekt(freigabe?.erstwechselAusnahme)) return d; // nichts zu prüfen, keine Netzabfrage
   const versuch = (f) => { try { return f(); } catch { return null; } };
   const voll = ["--full-history", "--no-renames"];
@@ -2091,13 +2105,11 @@ function ausnahmeSpur(hq, releaseId, { online, wurzel: w, fx }, konfig) {
     historie = Array.isArray(n.historie) ? n.historie : null;
     frueher = typeof n.fruehereAusnahme === "boolean" ? n.fruehereAusnahme : null;
   } else {
+    if (flacherKlon(w)) return FLACH;
     try {
       const voll = ["--full-history", "--no-renames"];
       historie = git(w, ["log", ...voll, "--format=", "--name-only", "HEAD", "--", relVerz]).split("\n").filter(Boolean);
-      const datei = `${verz}/${releaseId}.freigabe.json`;
-      frueher = git(w, ["log", ...voll, "--format=%H", "HEAD", "--", datei]).split("\n").filter(Boolean).some((sha) => {
-        let t = null;
-        try { t = ausfuehren.exec("git", ["show", `${sha}:${datei}`], ausfuehrOptionen(w, { stdio: ["ignore", "pipe", "ignore"] })); } catch { return false; }
+      frueher = fassungenLesen(w, `${verz}/${releaseId}.freigabe.json`).some((t) => {
         const f = jsonLesen(t).wert;
         if (!istObjekt(f)) throw new Error("frühere Fassung unlesbar");
         return f.erstwechselAusnahme !== undefined;
