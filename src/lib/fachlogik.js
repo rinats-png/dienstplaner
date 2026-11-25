@@ -1219,7 +1219,7 @@ export const offeneErfassung = (m, p, bis) => {
 
 /** Die Befunde als Text — für alle Stellen, die nur den Wortlaut brauchen. */
 /* Nur was ab „Achtung" wiegt; ein Hinweis (etwa „nicht bewertbar") hindert nicht. */
-export const hindernisse = (m, p, d, da) => hindernisBefunde(m, p, d, da).filter((b) => stufeRang(b.stufe) >= 2).map((b) => b.text);
+export const hindernisse = (m, p, d, da, opt) => hindernisBefunde(m, p, d, da, opt).filter((b) => stufeRang(b.stufe) >= 2).map((b) => b.text);
 
 /** Der erste harte Schutzbefund (sperrt: true) oder null. Die Planungsaktionen
     prüfen ihn selbst noch einmal — der Warndialog ist nicht die einzige
@@ -1593,7 +1593,8 @@ export function planeMonat(m, ym, grenzen = {}) {
         const kand = ersatzVorschlaege(arbeit, d, da.id, ctx)
           .filter((x) => x.moeglich && (jePerson[x.person.id] || 0) < maxProPerson);
         if (!kand.length) {
-          offen.push({ datum: d, dienstId: da.id, fehlt: Math.max(0, -b.diff), qualFehlt: b.qualFehlt });
+          /* Grund „vorgabe“, wenn das Monatsbudget der Vorgaben aufgebraucht ist: Der Rest bleibt wegen der Rechengrenze offen (nicht wegen fehlender Personen). */
+          offen.push({ datum: d, dienstId: da.id, fehlt: Math.max(0, -b.diff), qualFehlt: b.qualFehlt, ...(ctx.vorgabenBudget.ausgeschoepft ? { grund: "vorgabe" } : {}) });
           break;
         }
         const beste = kand[0];
@@ -3580,13 +3581,14 @@ export function lohnausgabeText(m, ym) {
  * Mindestbesetzung unterschritten wird? Zählt echte Reserve, nicht Hoffnung:
  * Springer werden mitgerechnet, wenn sie an dem Tag frei und einsetzbar sind.
  */
-export function tagesReserve(m, datum, dienstId) {
+/* `opt.vorgabenBudget`: das Rechenbudget des äußeren Einstiegs (WP-I5, Review #566): belastbarkeit legt EINS für alle Tage und Dienste an. */
+export function tagesReserve(m, datum, dienstId, opt) {
   const b = besetzung(m, datum)[dienstId];
   if (!b) return null;
   const da = b.da;
   const puffer = b.anzahl - b.soll;                       // schon eingeteilte Reserve
   // Wer könnte einspringen, ohne gegen harte Regeln zu verstoßen?
-  const ersatz = ersatzVorschlaege(m, datum, dienstId).filter((x) => x.moeglich).length;
+  const ersatz = ersatzVorschlaege(m, datum, dienstId, undefined, { vorgabenBudget: opt && opt.vorgabenBudget }).filter((x) => x.moeglich).length;
   const traegt = Math.max(0, puffer) + ersatz;
   return { datum, dienstId, da, ist: b.anzahl, soll: b.soll, puffer, ersatz, traegt,
     stufe: traegt >= 3 ? "robust" : traegt >= 1 ? "knapp" : "ohne Reserve" };
@@ -3596,7 +3598,9 @@ export function tagesReserve(m, datum, dienstId) {
  * Belastbarkeit über einen Zeitraum: welche Woche und welcher Dienst bricht
  * zuerst. Bewusst als Wochenbild — der Planer denkt in Wochen, nicht in Tagen.
  */
-export function belastbarkeit(m, wochen = 8) {
+export function belastbarkeit(m, wochen = 8, opt) {
+  /* EIN Vorgaben-Budget je Aufruf (nicht je Tag und Dienst); wer eines übergibt (Test), bekommt kein neues. */
+  const vorgabenBudget = (opt && opt.vorgabenBudget) || neuesVorgabenBudget();
   const start = montag(heute());
   const dienste = m.dienstarten.filter((d) => !d.posten && d.form !== "ruf");
   const out = [];
@@ -3607,7 +3611,7 @@ export function belastbarkeit(m, wochen = 8) {
       let min = 99, minTag = null, summe = 0, tage = 0;
       for (let i = 0; i < 7; i++) {
         const d = addDays(von, i);
-        const r = tagesReserve(m, d, da.id);
+        const r = tagesReserve(m, d, da.id, { vorgabenBudget });
         if (!r || r.soll === 0) continue;
         tage++; summe += r.traegt;
         if (r.traegt < min) { min = r.traegt; minTag = d; }

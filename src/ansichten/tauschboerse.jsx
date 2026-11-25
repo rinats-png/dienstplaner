@@ -3,6 +3,7 @@ import { useState } from "react";
 import { darfEntscheiden, hindernisse, personTag } from "../lib/fachlogik.js";
 import { einheitAm, imDienst } from "../../server/lib/fachpruefung.mjs";
 import { addDays } from "../regelwerk.js";
+import { neuesVorgabenBudget } from "../../server/lib/vorgabenwirkung.mjs";
 import { heute, fLang, fKurz } from "../lib/datum.js";
 import { H1, Btn, Card, CardHead, Pill, Leer, Lab, Field, Sel, Inp } from "../ui/bausteine.jsx";
 import { darf } from "../lib/berechtigung.js";
@@ -16,6 +17,7 @@ import { NUM } from "../ui/thema.js";
    TAUSCHBÖRSE — offene Gesuche ohne festen Partner
    ========================================================================== */
 export function Tauschboerse({ sitz, akt }) {
+  const vorgabenBudget = neuesVorgabenBudget();   // ein Vorgaben-Budget je Renderdurchlauf (Review #566), nicht je Eintrag
   const m = sitz.mandant;
   const ich = sitz.person;
   const map = Object.fromEntries(m.dienstarten.map((d) => [d.id, d]));
@@ -80,7 +82,7 @@ export function Tauschboerse({ sitz, akt }) {
                       {a.interessenten.map((iid) => {
                         const ip = m.personen.find((x) => x.id === iid);
                         if (!ip) return null;
-                        const konflikt = da ? hindernisse(m, ip, a.von, da).length > 0 : false;
+                        const konflikt = da ? hindernisse(m, ip, a.von, da, { vorgabenBudget }).length > 0 : false;
                         return (
                           <Btn key={iid} size="sm" kind={konflikt ? "danger" : "ok"}
                             title={konflikt ? "Einteilung würde Vorgaben verletzen" : "Tausch mit dieser Person bestätigen"}
