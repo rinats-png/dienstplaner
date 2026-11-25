@@ -178,7 +178,7 @@ describe("V4-3b Querschnitt Teil 1: Messung", () => {
     const e = jeHauptansicht(inv)[ZEILE];
     expect(e.dateien).toBe(33);
     expect(e.sichtbar).toBe(24);
-    expect(e.zeilen).toBe(6391);
+    expect(e.zeilen).toBe(6408); /* V4-3d-B1: +17 Zeilen in src/ui/bausteine.jsx (vorher 6391) */
     expect(e.farbLiterale).toBe(10);
     expect(e.farbrein).toBe(19);
     expect(e.inlineStil).toBe(428);

@@ -4,7 +4,8 @@ import React, { useId } from "react";
 import { C, avatarToene } from "../farben.js";
 import { Icon } from "../gestalt/icons.jsx";
 import { Pille, Trend } from "../gestalt/bausteine.jsx";
-import { lesbar, NUM } from "./thema.js";
+import { kontrastVon } from "../gestalt/lesbar.js";
+import { istDunkel, lesbar, NUM } from "./thema.js";
 
 /** Einheitlicher Leerzustand — mit Symbol, Erklärung und optionalem Weg. */
 export const Leer = ({ titel, text, symbol = "kreis-leer", aktion }) => (
@@ -118,6 +119,22 @@ export const Filterleiste = ({ suche, setSuche, platzhalter = "Suchen …", labe
     {rechts && <div style={{ marginLeft: "auto", display: "flex", gap: 9, alignItems: "center",
       flexWrap: "wrap" }}>{rechts}</div>}
   </div>);
+/* V4-3d-B1: Schrift der Planzelle auf der Tönung der Dienstfarbe (Deckkraft 28/255, siehe Hintergrund unten). Dunkel wie
+   `lesbar`. Hell wird die Farbe zum Schwarz hin abgedunkelt, bis sie auf der Tönung über JEDER Zellenfläche des Plans (Karte,
+   Grund, Wochenende/Feiertag, Heute) mindestens 4,5:1 erreicht (WCAG 1.4.3; 4,55 als Reserve gegen Rundung im Browser).
+   Reicht die Farbe schon, bleibt sie unverändert. Nur Darstellung. */
+const planzellenSchrift = (farbe, mindestDunkel) => {
+  if (istDunkel()) return lesbar(farbe, mindestDunkel);
+  const kan = (x) => [1, 3, 5].map((i) => parseInt(x.slice(i, i + 2), 16));
+  const hex = (r) => "#" + r.map((v) => Math.round(v).toString(16).padStart(2, "0")).join("");
+  if (!/^#[0-9a-f]{6}$/i.test(farbe)) return farbe;
+  const a = 0x1C / 255, f = kan(farbe);
+  const toene = [C.flaeche, C.bg, C.flaecheStill, C.accentLight].map((g) => hex(f.map((v, i) => v * a + kan(g)[i] * (1 - a))));
+  const reicht = (c) => toene.every((t) => kontrastVon(c, t) >= 4.55);
+  if (reicht(farbe)) return farbe;
+  for (let t = 0.02; t <= 1.0001; t += 0.02) { const c = hex(f.map((v) => v * (1 - t))); if (reicht(c)) return c; }
+  return hex([0, 0, 0]);
+};
 /** Verdichtete Planzelle: Dienst und Person in einem Block statt zwei Zeilen. */
 export const Planzelle = ({ da, unten, aktiv, ausfall, onClick, title }) => {
   /* Die leere Zelle trägt keinen Text. Ohne eigene Beschriftung meldet eine
@@ -128,7 +145,7 @@ export const Planzelle = ({ da, unten, aktiv, ausfall, onClick, title }) => {
   return (
     <div {...klickbar(onClick, title || `${da.name}${unten ? ` · ${unten}` : ""}`)}
       title={title || `${da.name}${unten ? ` · ${unten}` : ""}`} className="planzelle"
-      style={{ background: `${da.farbe}1C`, color: lesbar(da.farbe, 5.4), cursor: onClick ? "pointer" : "default",
+      style={{ background: `${da.farbe}1C`, color: planzellenSchrift(da.farbe, 5.4), cursor: onClick ? "pointer" : "default",
         minHeight: 34, outline: aktiv ? `2px solid ${C.accent}` : "none",
         textDecoration: ausfall ? "line-through" : "none", opacity: ausfall ? .5 : 1 }}>
       <div className="oben">{da.kurz}</div>

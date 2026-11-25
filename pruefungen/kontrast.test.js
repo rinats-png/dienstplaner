@@ -316,3 +316,70 @@ describe("Eingabefelder: Rahmen mindestens 3:1 (1.4.11)", () => {
     });
   }
 });
+
+/* --------------------------------------------------------------------------
+   V4-3d-B1: Planzelle (Dienstplan) — Schrift auf der Tönung der Dienstfarbe, hell und dunkel
+
+   Befund B1 (docs/acc45/V4-4-BEFUNDE.md): Die Planzelle legt `${farbe}1C` (Deckkraft 28/255) über die Zellenfläche und
+   setzt die Schrift in dieselbe Farbe. Im hellen Erscheinungsbild blieb die Farbe unverändert; Nacht (#7C3AED) und
+   Spät (#B03A0A) lagen dadurch auf Wochenend-, Feiertags- und Heute-Zellen bei 4,0 bis 4,3 : 1. Diese Prüfung rendert die
+   echte Zelle und rechnet die Schrift gegen die Mischfläche über JEDER Zellenfläche des Plans nach.
+   -------------------------------------------------------------------------- */
+import { createElement as hEl } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { C } from "../src/farben.js";
+import { Planzelle } from "../src/ui/bausteine.jsx";
+import { dunkelSetzen } from "../src/ui/thema.js";
+/* Eigene Gegenrechnung (unabhängig von der Umsetzung): Tönung `farbe` mit Deckkraft `a` über `grund`. */
+const ueberFlaeche = (farbe, grund, a) => "#" + [1, 3, 5].map((i) => Math.round(parseInt(farbe.slice(i, i + 2), 16) * a + parseInt(grund.slice(i, i + 2), 16) * (1 - a)).toString(16).padStart(2, "0")).join("");
+
+describe("V4-3d-B1 Planzelle: Schrift auf der Tönung ≥ 4,5:1 (alle Dienstfarben, hell und dunkel)", () => {
+  /* Alle Dienstfarben aus dem Quelltext: jede `farbe: "#…"` in fachlogik.js und mandant-anlage.js, außer den bekannten
+     Nicht-Dienstfarben (Einheit/Standort #0369A1, Wunschart #2E6B4F und #8A5A00). Eine neue Farbe wird so mitgeprüft. */
+  const NICHT_DIENST = new Set(["#0369A1", "#2E6B4F", "#8A5A00"]);
+  const aus = (d) => (readFileSync(new URL(`../src/lib/${d}`, import.meta.url), "utf8").match(/farbe: *"(#[0-9A-Fa-f]{6})"/g) || [])
+    .map((s) => s.match(/#[0-9A-Fa-f]{6}/)[0].toUpperCase());
+  const DIENSTFARBEN = [...new Set([...aus("fachlogik.js"), ...aus("mandant-anlage.js")])].filter((f) => !NICHT_DIENST.has(f)).sort();
+  const FLAECHEN = (pal) => ({ Karte: pal.flaeche, Grund: pal.bg, "Wochenende/Feiertag": pal.flaecheStill, Heute: pal.accentLight });
+  const DECKKRAFT = 0x1C / 255;
+
+  const zellenSchrift = (farbe) => {
+    const html = renderToStaticMarkup(hEl(Planzelle, { da: { kurz: "N", name: "Nachtdienst", farbe }, unten: "1 ab" }));
+    return /color:(#[0-9a-f]{6})/i.exec(html)[1];
+  };
+  const mitThema = (dunkel, fn) => {
+    const alt = { ...C };
+    try { if (dunkel) Object.assign(C, C_DUNKEL); else Object.assign(C, C_HELL); dunkelSetzen(dunkel); return fn(); }
+    finally { dunkelSetzen(false); Object.assign(C, alt); }
+  };
+
+  it("die Dienstfarben werden gelesen (F, S, N, Posten, Zwischendienst, Rufbereitschaft, Mandantenvorlagen)", () => {
+    expect(DIENSTFARBEN).toEqual(expect.arrayContaining(["#1D4ED8", "#B03A0A", "#7C3AED", "#2C6B63", "#446F0D", "#8A5309"]));
+    expect(DIENSTFARBEN.length).toBeGreaterThanOrEqual(9);
+  });
+
+  for (const dunkel of [false, true]) {
+    for (const farbe of DIENSTFARBEN) {
+      it(`${dunkel ? "dunkel" : "hell"} ${farbe}: Schrift ≥ 4,5:1 auf der Tönung über jeder Zellenfläche`, () => {
+        mitThema(dunkel, () => {
+          const schrift = zellenSchrift(farbe);
+          for (const [name, grund] of Object.entries(FLAECHEN(C))) {
+            const kontrast = kontrastVon(schrift, ueberFlaeche(farbe, grund, DECKKRAFT));
+            expect(kontrast, `${name} ${grund}: ${schrift} ${kontrast.toFixed(2)}`).toBeGreaterThanOrEqual(4.5);
+          }
+        });
+      });
+    }
+  }
+
+  it("hell: eine Farbe, die schon trägt, bleibt unverändert (Frühdienst #1D4ED8)", () => {
+    mitThema(false, () => expect(zellenSchrift("#1D4ED8").toLowerCase()).toBe("#1d4ed8"));
+  });
+  it("hell: Nacht und Spät werden abgedunkelt, die Tönung (Hintergrund) bleibt die Dienstfarbe", () => {
+    mitThema(false, () => {
+      expect(zellenSchrift("#7C3AED").toLowerCase()).not.toBe("#7c3aed");
+      expect(zellenSchrift("#B03A0A").toLowerCase()).not.toBe("#b03a0a");
+      expect(renderToStaticMarkup(hEl(Planzelle, { da: { kurz: "N", name: "N", farbe: "#7C3AED" } }))).toContain("background:#7C3AED1C");
+    });
+  });
+});
