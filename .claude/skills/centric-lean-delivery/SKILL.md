@@ -88,9 +88,24 @@ Integration ist kein Deployment. Keine Risikoannahme oder Veröffentlichung durc
 Nutze vorhandenes Berichtsformat. Nenne Ergebnis, Beleg (PR/Kopf/CI/Review), verbleibenden Blocker oder Betreiberhandlung und nächsten sinnvollen Schritt. Keine neue Berichtsdatei für jeden Kleinstfix.
 Bewerte Wirkung anhand vorhandener Daten: abgeschlossene Pakete, nutzbare Funktionen, Review-Nacharbeit, Zeit bis Integration und Release. Keine Durchsatzversprechen ohne Messung.
 
-## 11. Kontext und Arbeitsstand (Prinzipien aus ECC, angepasst)
-Übernommen sind nur drei Prinzipien (ECC `skills/strategic-compact`, `skills/iterative-retrieval`, Memory-Persistenz); Originale geprüft, keine Hooks, Skripte, Subagenten, Abhängigkeiten oder Installation.
-- Gezielt suchen: Mit den für den Auftrag relevanten Dateien, Schnittstellen, Tests und SSOT-Einträgen beginnen. Den Suchbereich nur bei einer benannten Informationslücke erweitern (Begriffe der Codebasis lernen, bestätigt Irrelevantes ausschließen). Nach höchstens drei Suchrunden mit dem besten Stand weiterarbeiten und fehlenden Kontext offen nennen; bei offener sicherheitskritischer Lücke nicht damit weiterarbeiten, sondern weitersuchen oder den Blocker melden. Keine Rechercheagenten, Bewertungssysteme oder Retrieval-Infrastruktur. Sicherheitskritische Abhängigkeiten (Aufrufer, Rechte-, Mandanten-, Daten- und Freigabepfade) bleiben immer im Blick; Kontextoptimierung ist kein Grund, sie auszulassen.
-- Komprimieren nur an Arbeitsübergängen (nach Planung, Paketabschluss, verworfenem Ansatz, Themenwechsel) und nur, wenn technisch verfügbar. Nie mitten in einer komplexen Implementierung oder einem Sicherheitsreview. Vorher sichern, was nur im Gespräch steht: Betreiberentscheidungen, laufende Pakete, offene Reviews, Freigaben, Kopf-SHAs, nächster Schritt.
-- Arbeitsstand dauerhaft halten: ausschließlich in vorhandenen Strukturen (SSOT, PR-Text, Review-Nachweise, bestehende Koordinator-Memory-Dateien, Lease, Weckruf-Prompts). Keine neue parallele Informationsquelle, kein neues Gedächtnissystem.
-- Nutzen nur an vorhandenen Durchflussdaten messen (zusammen mit §10).
+## 11. Kontext gezielt beschaffen (Iterative Retrieval)
+- Übergib bei Delegation nur Auftrag, Abnahmekriterien, Basis/Kopf, relevante Dateien, Einschränkungen und offene Fragen; keine vollständigen Transkripte oder Repo-Dumps.
+- Suche zuerst anhand konkreter Begriffe, Pfade, Symbole und bestehender SSOT-Einträge. Lies relevante Ausschnitte und deren Aufrufer, Tests und Schnittstellen; erweitere die Suche bei konkreten Lücken.
+- Nutze vorhandene Suchwerkzeuge; keine zusätzlichen Retrieval-Agenten, Scoring-Systeme, Indizes oder Caches. Nach wenigen erfolglosen Suchrunden Suchstrategie ändern oder konkrete Wissenslücke benennen, nicht blind weitersuchen.
+- Stoppe die Recherche, sobald der Auftrag fundiert bearbeitbar ist. Sicherheitsrelevante Datenflüsse, Abhängigkeiten, negative Tests und vorgeschriebene Prüfbereiche vollständig berücksichtigen; kein starres Suchlimit.
+- Wiederverwende bereits gelesene Informationen nur, solange Quelle und Stand unverändert und relevant sind. Bei geändertem Kopf oder unklarer Aktualität gezielt nachlesen.
+
+## 12. Strategische Kontextkomprimierung und Kontinuität
+- Bei tatsächlichem Kontextdruck einen natürlichen Übergang nutzen: nach abgeschlossener Analyse mit festgehaltenem Plan, nach Integration oder vor einem anderen Arbeitspaket. Nicht nach starrer Zeit- oder Toolanzahl.
+- Vor Komprimierung die nötigen Fakten in vorhandenen zulässigen Strukturen sichern: Paket, Auftrag, Basis/Kopf, offene PRs und Auflagen, Betreiberentscheidungen, Freigabegrenzen, Belege, nächste Aktion, aktive Agenten und Sperren. Bestehende Informationen referenzieren statt duplizieren.
+- Nutze vorhandene SSOT und Nachweise als maßgebliche Quellen; für flüchtigen Sitzungsstand bestehende lokale Übergabestruktur. Keine zweite SSOT, keine neuen Memory-Dateien pro Aufgabe, keine automatischen Lernmechanismen. Keine Geheimnisse oder personenbezogenen Daten in öffentlichen Nachweisen.
+- Komprimiere nur mit der verfügbaren nativen Funktion, wenn sinnvoll und zulässig. Keine erzwungene Komprimierung mitten in einer kritischen Änderung, einem Sicherheitsreview oder einer nicht gesicherten Übergabe; keine Hooks, Neustarts oder geänderten Kontextlimits allein dafür.
+- Nach Kontextwechsel die relevanten aktuellen Quellen und aktiven Aufträge abgleichen. Zusammenfassungen und alte Agentenberichte ersetzen weder aktuelle Git-/CI-Nachweise noch Betreiberfreigaben. Bei unklarem Stand gezielt verifizieren; nicht ungeprüft erneut starten, mergen oder veröffentlichen.
+
+## 13. Schleifen erkennen und gültige Nachweise nutzen
+- Wenn dieselbe Suche, Prüfung oder Delegation ohne neue Information wiederholt wird, benenne die konkrete offene Frage und ändere den Ansatz oder warte auf das erforderliche Ereignis. Keine neuen Agenten allein zur Fortschrittskontrolle.
+- Bei wachsendem Kontext nur relevante neue Informationen weitergeben; keine vollständige Wiederholung früherer Berichte. Bestehende notwendige Lease- und Betriebsregeln bleiben bestehen.
+- Vor erneutem Lesen oder Testen prüfen, ob ein belastbarer Nachweis bereits vorliegt. Nutze vorhandene Git-SHAs, CI-Laufdaten und Review-Belege; keine eigene Hash-Cache-Infrastruktur.
+- Wiederverwendung nur bei nachgewiesener Gültigkeit für den betreffenden Anspruch: relevante Eingaben, Code, Abhängigkeiten, Konfiguration, Umgebung und Prüfumfang unverändert bzw. nach bestehender Policy zulässig. Bei unbekannter Gültigkeit, Änderungen mit Auswirkungen oder vorgeschriebener unabhängiger Reproduktion erneut prüfen.
+- Keine Wiederverwendung älterer CI-Ergebnisse als Ersatz für erforderliche CI am exakten Kopf; keine Verlängerung von Nachweisfristen und keine Übertragung von Staging-/Release-Nachweisen auf andere Digests oder Kandidaten.
+- Kein automatischer Abbruch notwendiger Arbeit wegen Kontextdruck, Wiederholungszahl oder Ressourcenlast. Bei Blockade Ursache, fehlenden Nachweis und nächsten zulässigen Schritt benennen.
