@@ -337,3 +337,18 @@ describe("L-4 Handler: POST /api/bestand-anlegen mit eigenem Inhalt", { timeout:
     expect(g[0].datum).not.toBe("2001-01-01");
   });
 });
+
+describe("L-4 Handler: bestand-anlegen, Prüfstände in Altform", { timeout: 120000 }, () => {
+  it("A15 Altform-Einträge ({ nr, betrag }) im Inhalt: 200, unverändert gespeichert; eine Paketposition daneben: 422", async () => {
+    const zc = "RGL4-AAAA-0002";
+    await kontoSchreiben(laden(), ablageSchluessel(zc), { name: "betr", bestand: "rechnung-l4-betreiber2", rolle: "betreiber", person: null, betrieb: 0, angelegt: EIN });
+    const token = (await anfrage("/api/anmelden", { methode: "POST", rumpf: { zugangscode: zc } })).token;
+    const inhalt = (rechnungen) => ({ version: 9, stand: 1, session: null, rechnungen, mandanten: [betrieb("m1", "Testbetrieb Synth GmbH")] });
+    const ok = await anfrage("/api/bestand-anlegen", { methode: "POST", token, rumpf: { bestand: "rechnung-l4-alt1", inhalt: inhalt([{ nr: "R-1", betrag: 199 }]) } });
+    expect(ok.status, ok.roh.slice(0, 300)).toBe(200);
+    expect(await gespeichert("rechnung-l4-alt1")).toEqual([{ nr: "R-1", betrag: 199 }]);
+    const boese = await anfrage("/api/bestand-anlegen", { methode: "POST", token, rumpf: { bestand: "rechnung-l4-alt2",
+      inhalt: inhalt([{ nr: "R-1", betrag: 199 }, { nr: "R-2", positionen: [PAKETPOS] }]) } });
+    expect(boese.status).toBe(422);
+  });
+});

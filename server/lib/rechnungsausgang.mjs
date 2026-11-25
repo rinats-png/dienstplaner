@@ -215,6 +215,13 @@ function paketFehler(r, feld, mandant, o) {
 }
 
 /**
+ * Altform (Testdaten vor dieser Regel, etwa { nr, betrag }): ein Objekt ohne `nummer` und ohne `positionen`. Es trägt
+ * keine Position und damit kein Paket. POST /api/bestand-anlegen übernimmt solche Einträge unverändert wie
+ * gespeicherte (Rückwärtskompatibilität der Prüfstände); alles andere gilt als neue Rechnung.
+ */
+export const rechnungAltform = (x) => istObjekt(x) && !Object.hasOwn(x, "nummer") && !Object.hasOwn(x, "positionen");
+
+/**
  * Prüft und ordnet `rechnungen` beim Schreiben.
  * @param {any} neu      die übermittelte Liste (nach der Rechtezusammenführung)
  * @param {any} alt      die gespeicherte Liste (fehlend: leer)

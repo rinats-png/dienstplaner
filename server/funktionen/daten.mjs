@@ -45,7 +45,7 @@ import { istWiderrufen, widerrufen as widerrufbuchEintragen, gesperrtesKonto, ke
 import { SK_HOECHST_TAGE, SK_HOECHSTZAHL, SK_STANDARD_TAGE, SK_WARNUNG_PASSWORT, grundAusPruefung, raumIndex,
   schluesselDerZugaenge, schluesselWiderrufen, schluesselWiderrufenWenn, widerrufText } from "../lib/sicherungsschluessel.mjs";
 import { paketfelderGeprueft } from "../lib/paketstand.mjs";
-import { rechnungenPruefen } from "../lib/rechnungsausgang.mjs";
+import { rechnungenPruefen, rechnungAltform } from "../lib/rechnungsausgang.mjs";
 import { vertragsstandVon, paketAenderungen } from "../lib/paketstand.mjs";
 import { auswertungHolen } from "../lib/br-auswertung.mjs";
 import { stempelWiderspruch, stempelSichern, korrekturAnhaengen } from "../lib/stempelintegritaet.mjs";
@@ -813,9 +813,11 @@ async function behandeln(req, context, ctx) {
       /* Dienstarten (A-4): jede Dienstart braucht eine gültige Mindestbesetzung (ganze Zahlen ab 0) — sonst 422. */
       const daA = dienstartenFehler(neuerBestand, null);
       if (daA) return antwort({ fehler: "Der Bestand ist ungültig.", text: daA.grund, feld: daA.feld }, 422);
-      /* MODINERT-L4: Rechnungen im eigenen Inhalt gelten als neu — dasselbe Schema, dieselbe Paketregel, Serverfelder vom Server. */
+      /* MODINERT-L4: Rechnungen im eigenen Inhalt gelten als neu — dasselbe Schema, dieselbe Paketregel, Serverfelder vom
+         Server. Einträge in Altform (ohne nummer und positionen, Prüfstände vor der Regel) bleiben unverändert. */
       if (neuerBestand.rechnungen !== undefined) {
-        const rgA = rechnungenPruefen(neuerBestand.rechnungen, [], { mandanten: neuerBestand.mandanten, heute: heuteBerlin(), jetzt: new Date().toISOString() });
+        const altA = Array.isArray(neuerBestand.rechnungen) ? neuerBestand.rechnungen.filter(rechnungAltform) : [];
+        const rgA = rechnungenPruefen(neuerBestand.rechnungen, altA, { mandanten: neuerBestand.mandanten, heute: heuteBerlin(), jetzt: new Date().toISOString() });
         if ("fehler" in rgA) return antwort({ fehler: "Der Bestand ist ungültig.", code: rgA.fehler.code, text: rgA.fehler.grund, feld: rgA.fehler.feld }, 422);
         neuerBestand = { ...neuerBestand, rechnungen: rgA.rechnungen };
       }
