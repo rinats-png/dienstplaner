@@ -305,6 +305,15 @@ describe("3. Obergrenzen und geschlossenes Schema (Leitung, über PUT)", () => {
       (m) => { m.vorgaben.push(V("pers", "entwurf", { name: "Keine Krankheitstage" })); }])
       expect((await abgewiesen(aendern)).status).toBeGreaterThanOrEqual(400);
   });
+  it("Bezüge: unbekannte Einheit oder Person (Geltung, Ausnahmen) abgewiesen, bekannte gehen (WP-I4 Rest)", async () => {
+    for (const aendern of [(m) => { m.vorgaben.push(V("b1", "entwurf", { geltung: { art: "einheit", einheiten: ["e1", "e99"] } })); },
+      (m) => { m.vorgaben.push(V("b2", "entwurf", { geltung: { art: "personen", personen: ["a1", "x99"] } })); },
+      (m) => { m.vorgaben.push(V("b3", "entwurf", { ausnahmen: { personen: ["x99"] } })); }])
+      expect((await abgewiesen(aendern)).status).toBeGreaterThanOrEqual(400);
+    const { raum, token } = await neuerRaum({ rollen: ["LT"] });
+    const a = await schreibeAls(raum, token, "LT", (m) => { m.vorgaben.push(V("gut", "entwurf", { geltung: { art: "einheit", einheiten: ["e1", "e2"] }, ausnahmen: { personen: ["a1"] } })); });
+    expect(a.status, JSON.stringify(a).slice(0, 200)).toBe(200);
+  });
   it("__proto__ im rohen JSON ist ein unbekanntes Feld und wird abgewiesen", async () => {
     const a = await abgewiesen(() => {}, { roh: (rumpf) => {
       rumpf.bestand.mandanten[0].vorgaben.push(V("proto", "entwurf"));

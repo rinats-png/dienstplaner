@@ -194,8 +194,11 @@ export function vorgabenZusammen(altM, neuM, { darfOrgEdit, person, tarif, jetzt
 
   const ids = new Set();
   const aus = [];
+  /* Bezüge nur zum eigenen Betrieb (der übermittelte Betrieb, damit eine im selben Schritt angelegte Einheit oder Person zählt). */
+  const kennungen = (l) => new Set((Array.isArray(l) ? l : []).filter(istObjekt).map((x) => String(x.id)));
+  const bekannt = { einheiten: kennungen(neuM.einheiten), personen: kennungen(neuM.personen) };
   for (const v of neu) {
-    const f = pruefeVorgabeKurz(v, altMap);
+    const f = pruefeVorgabeKurz(v, altMap, bekannt);
     if (f) return { grund: f };
     if (ids.has(v.id)) return { grund: `Vorgabe ${String(v.id).slice(0, 30)}: Kennung kommt doppelt vor.` };
     ids.add(v.id);
@@ -219,14 +222,26 @@ export function vorgabenZusammen(altM, neuM, { darfOrgEdit, person, tarif, jetzt
 }
 
 /** Streng nur, wenn neu oder geändert (Altbestand bleibt stehen). */
-function pruefeVorgabeKurz(v, altMap) {
+function pruefeVorgabeKurz(v, altMap, bekannt) {
   if (!istObjekt(v)) return "Vorgabe: erwartet wird ein Datensatz.";
   const vorher = altMap.get(v.id);
   const k = { ...v }; for (const f of VORGABEN_SERVERFELDER) delete k[f];
   const kv = vorher ? { ...vorher } : null;
   if (kv) for (const f of VORGABEN_SERVERFELDER) delete kv[f];
   if (kv && JSON.stringify(k) === JSON.stringify(kv)) return null;
-  return pruefeVorgabe(k);
+  return pruefeVorgabe(k) || pruefeBezuege(k, bekannt, vorher);
+}
+
+/** Einheiten und Personen in Geltung und Ausnahmen müssen dem eigenen Betrieb gehören (nicht aus einem anderen Betrieb, nicht erfunden).
+ *  Was die gespeicherte Vorgabe schon nannte, bleibt zulässig (eine inzwischen gelöschte Kennung blockiert keine Änderung); neu hinzukommen darf nur Bekanntes. */
+function pruefeBezuege(v, bekannt, vorher) {
+  const wo = `Vorgabe ${String(v.name || v.id || "").slice(0, 30)}`.trim();
+  const frueher = (...pfad) => new Set(pfad.reduce((o, k) => (o && o[k]) || [], vorher || {}).map(String));
+  const fremd = (liste, menge, alt) => Array.isArray(liste) && liste.some((x) => !menge.has(String(x)) && !alt.has(String(x)));
+  if (fremd(v.geltung && v.geltung.einheiten, bekannt.einheiten, frueher("geltung", "einheiten"))) return `${wo}: Geltung nennt eine Einheit, die es in diesem Betrieb nicht gibt.`;
+  if (fremd(v.geltung && v.geltung.personen, bekannt.personen, frueher("geltung", "personen"))) return `${wo}: Geltung nennt eine Person, die es in diesem Betrieb nicht gibt.`;
+  if (fremd(v.ausnahmen && v.ausnahmen.personen, bekannt.personen, frueher("ausnahmen", "personen"))) return `${wo}: Ausnahmen nennen eine Person, die es in diesem Betrieb nicht gibt.`;
+  return null;
 }
 
 /* --------------------------------------------------------------------------

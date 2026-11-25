@@ -2306,7 +2306,7 @@
       "abhaengigkeiten": ["WP-I3","WP-22"],
       "status": "IN_PROGRESS",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":false,"beleg":"Teil 2 lokal (Branch intelligence/wp-i4-teil-2): Bezüge zum eigenen Betrieb, Ausnahmezeiträume in der Oberfläche; Betriebsratssicht und Fragen 1,3,4,5 offen (docs/acc45/WP-I4-nachweis.md)"},
         "lokalGetestet": {"wert":false,"beleg":null},
         "reviewt": {"wert":false,"beleg":null},
         "integriert": {"wert":false,"beleg":"Teilumfang in PR #256 integriert; der PR-Titel nennt nur einen Teil des Pakets. Koordinator prüft, was noch offen ist."},

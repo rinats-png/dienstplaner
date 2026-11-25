@@ -11,6 +11,7 @@ import { createElement as h } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { readFileSync } from "node:fs";
 import { InterneVorgaben } from "../src/ansichten/vorgaben.jsx";
+import { pruefeVorgabe } from "../server/lib/vorgaben.mjs";
 import { vorgabenGrenze, VORGABEN_STUFENGRENZE } from "../src/stufen.js";
 
 const V = (id, status, extra = {}) => ({ id, name: `Vorgabe ${id}`, regelart: "grenzregel", parameter: { groesse: "Überstunden", hoechstens: 10 },
@@ -73,5 +74,45 @@ describe("Einhängung in die Einstellungen", () => {
     const q = lies("../src/app/aktionen/einstellungen.js");
     for (const a of ["vorgabeSpeichern", "vorgabeStatus", "vorgabeLoeschen"]) expect(q.includes(a + ": ("), a).toBe(true);
     expect(lies("../src/app/aktionen/stammdaten.js")).not.toContain("vorgabe");
+  });
+});
+
+describe("WP-I4 Rest: Ausnahmezeiträume und verwaiste Bezüge", () => {
+  it("das Formular bietet Ausnahmezeiträume (Von/Bis) an", async () => {
+    const t = renderToStaticMarkup(h(InterneVorgaben, { sitz: sitz([V("a", "entwurf")]), akt: { ...AKT } }));
+    expect(t).not.toContain("Zeitraum hinzufügen"); /* nur im Formular, nicht in der Liste */
+    const { Formular } = await import("../src/ansichten/vorgaben.jsx");
+    const f = renderToStaticMarkup(h(Formular, { m: sitz([]).mandant, start: V("a", "entwurf"), onSpeichern() {}, onAbbruch() {} }));
+    expect(f).toContain("Zeitraum hinzufügen");
+  });
+  it("bestehende Ausnahmezeiträume werden angezeigt und gehen beim Speichern nicht verloren", async () => {
+    const { Formular } = await import("../src/ansichten/vorgaben.jsx");
+    const start = V("a", "entwurf", { ausnahmen: { zeitraeume: [{ von: "2026-12-24", bis: "2026-12-26" }] } });
+    const f = renderToStaticMarkup(h(Formular, { m: sitz([]).mandant, start, onSpeichern() {}, onAbbruch() {} }));
+    expect(f).toContain('value="2026-12-24"');
+    expect(f).toContain('value="2026-12-26"');
+  });
+  it("gespeichert wird die bereinigte Vorgabe: verwaiste Kennungen entfernt, Ausnahmezeiträume und Teilzeit bleiben", async () => {
+    const { formularZuVorgabe } = await import("../src/ansichten/vorgaben.jsx");
+    const m = sitz([]).mandant;
+    const zr = [{ von: "2026-12-24", bis: "2026-12-26" }];
+    const v = V("a", "entwurf", { geltung: { art: "personen", personen: ["p1", "weg"] }, ausnahmen: { personen: ["weg"], zeitraeume: zr, teilzeitAnteilig: true } });
+    const r = formularZuVorgabe(v, { groesse: "Überstunden", hoechstens: "10" }, m);
+    expect(r.geltung).toEqual({ art: "personen", personen: ["p1"] });
+    expect(r.ausnahmen).toEqual({ zeitraeume: zr, teilzeitAnteilig: true });
+    expect(pruefeVorgabe(r)).toBeNull();
+    const nurVerwaist = formularZuVorgabe(V("b", "entwurf", { geltung: { art: "einheit", einheiten: ["weg"] } }), { groesse: "Überstunden", hoechstens: "10" }, m);
+    expect(pruefeVorgabe(nurVerwaist), "nichts übrig: Speichern bleibt gesperrt").toMatch(/Einheit/);
+  });
+  it("verwaiste Kennungen (gelöschte Einheit oder Person) werden bereinigt", async () => {
+    const { bezuegeBereinigen } = await import("../src/ansichten/vorgaben.jsx");
+    const m = sitz([]).mandant;
+    const v = V("a", "entwurf", { geltung: { art: "personen", personen: ["p1", "weg"] }, ausnahmen: { personen: ["weg"], teilzeitAnteilig: true } });
+    const r = bezuegeBereinigen(v, m);
+    expect(r.geltung.personen).toEqual(["p1"]);
+    expect(r.ausnahmen.personen).toEqual([]);
+    expect(r.ausnahmen.teilzeitAnteilig).toBe(true);
+    const e = bezuegeBereinigen(V("b", "entwurf", { geltung: { art: "einheit", einheiten: ["e1", "weg"] } }), m);
+    expect(e.geltung.einheiten).toEqual(["e1"]);
   });
 });
