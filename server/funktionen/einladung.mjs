@@ -142,7 +142,14 @@ export default async (req) => {
         let bn = null;
         if (mitNachweis) {
           bn = await bremse("einladung-nachweis", k);
-          if (!bn.frei) { await protokoll("einladung", k, "gebremst", bn.grund); return zuVielAntwort(bn.wartet); }
+          if (!bn.frei) {
+            /* Abgewiesen, also nicht verglichen: auch der Gesamtvermerk dieses Aufrufs zurück (Review #536, R-A2-1R).
+               Sonst ließen parallele Anfragen EINER Leitung, die alle an der eigenen Sperre abprallen, ihre
+               Gesamtvermerke stehen und füllten die Rategrenze für alle. Raumzähler und Sperre bleiben. */
+            await vermerkeZuruecknehmen({ zurueck: bn.vermerke });
+            await protokoll("einladung", k, "gebremst", bn.grund);
+            return zuVielAntwort(bn.wartet);
+          }
         }
         const bz = await bremse("einladung", k);
         if (!bz.frei) {

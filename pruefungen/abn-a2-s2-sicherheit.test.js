@@ -70,11 +70,11 @@ async function raumAnlegen(raum) {
 
 let codeNr = 0;
 /** Ein Zugangscode direkt in der Ablage (wie /api/zugaenge ihn anlegt). */
-async function codeAnlegen(raum, rolle, personId, { demo = false } = {}) {
+async function codeAnlegen(raum, rolle, personId, { demo = false, mandantId = `m-${raum}`, betrieb = 0 } = {}) {
   codeNr += 1;
   const code = `PRUF-${String(codeNr).padStart(4, "0")}-ABNS`;
   await kontoSchreiben(laden(), ablageSchluessel(code), { name: "Pruefung", bestand: raum, rolle, person: personId,
-    betrieb: 0, mandantId: rolle === "betreiber" ? null : `m-${raum}`, demo, angelegt: "2026-01-01T00:00:00.000Z" });
+    betrieb, mandantId: rolle === "betreiber" ? null : mandantId, demo, angelegt: "2026-01-01T00:00:00.000Z" });
   return code;
 }
 async function anmelden(code, ip) {
@@ -358,6 +358,80 @@ describe("R-A2-1 behoben: Leitungen anderer Betriebe sperren weder Einladen noch
     expect((await zurueckziehen(b.token)).status).not.toBe(429);
     /* Eigene Sperre beim Zurückziehen sperrt das eigene Einladen nicht (vorher derselbe Raumzähler `zugaenge`). */
     expect((await einladen(a.token, { personId: "z1" })).status).toBe(200);
+  });
+
+  it("A2-5f: zwei Betriebe in EINEM Raum — Zurückziehen zählt je Betrieb, Ausstellen je Raum (Review #536, Mutanten f/h)", async () => {
+    const raum = "abn-r1-f-zwei";
+    const betrieb = (m) => ({ id: m, name: `Betrieb ${m}`, status: "aktiv", tarif: "pro", einheiten: [{ id: "e1" }],
+      standorte: [], dienstarten: [{ id: "F", name: "F" }],
+      personen: [person("l1", "leitung"), ...Array.from({ length: 12 }, (_, i) => person(`z${i + 1}`, "mitarbeiter"))],
+      abweichungen: {}, anfragen: [], notrufe: [], nachrichten: [], dienstbuch: [], abwesenheiten: [] });
+    await B.bestandSchreiben(laden(), raum, { version: 9, stand: 1, session: null,
+      mandanten: [betrieb("m-f-a"), betrieb("m-f-b")] }, { durch: "Pruefung" });
+    const anmeldenAls = async (mandantId, nr) => {
+      const code = await codeAnlegen(raum, "leitung", "l1", { mandantId, betrieb: nr });
+      const a = await anmelden(code);
+      expect(a.status, a.roh).toBe(200);
+      return { token: a.token, code };
+    };
+    const a = await anmeldenAls("m-f-a", 0);
+    const b = await anmeldenAls("m-f-b", 1);
+    /* Zurückziehen je Betrieb: Die Sperre von A trifft B im selben Raum nicht. */
+    const za = [];
+    for (let i = 0; i < 11; i++) za.push((await zurueckziehen(a.token)).status);
+    expect(za[10]).toBe(429);
+    const zb = await zurueckziehen(b.token);
+    expect(zb.status, `B zieht zurück: ${zb.roh}`).not.toBe(429);
+    /* Ausstellen je Raum (Rateschutz wie vorher): Zehn Aufrufe von A verbrauchen auch das Kontingent von B. */
+    const ea = [];
+    for (let i = 1; i <= 10; i++) ea.push((await einladen(a.token, { personId: `z${i}` })).status);
+    expect(ea, JSON.stringify(ea)).toEqual(Array(10).fill(200));
+    const eb = await einladen(b.token, { personId: "z1" });
+    expect(eb.status, `B im selben Raum: ${eb.roh}`).toBe(429);
+  });
+});
+
+describe("R-A2-1: gleichzeitige Anfragen (Review #536, Proben G1–G3)", () => {
+  const parallel = (n, f) => Promise.all(Array.from({ length: n }, (_, i) => f(i)));
+
+  it("G3: EINE Leitung schickt 60 Einladungen und 60 Rückzüge gleichzeitig → fremde Leitung lädt ein und zieht zurück, Betreiber zieht zurück (vorher alle 429)", async () => {
+    await raumAnlegen("abn-g3-angreifer");
+    await raumAnlegen("abn-g3-opfer");
+    const t = await sitzung("abn-g3-angreifer", "leitung", "l1");
+    const o = await sitzung("abn-g3-opfer", "leitung", "l1");
+    const betreiber = await sitzung("abn-g3-betreiber", "betreiber", null);
+    await parallel(60, (i) => einladen(t.token, { personId: `z${(i % 30) + 1}` }));
+    await parallel(60, () => zurueckziehen(t.token));
+    const e = await einladen(o.token, { personId: "z1" });
+    expect(e.status, `fremde Leitung lädt ein: ${e.roh}`).toBe(200);
+    expect((await zurueckziehen(o.token)).status, "fremde Leitung zieht zurück").not.toBe(429);
+    expect((await zurueckziehen(betreiber.token)).status, "Betreiber zieht zurück").not.toBe(429);
+  });
+
+  it("G1: EINE Leitung schickt 60 falsche Nachweise gleichzeitig → keiner wird ausgestellt; die Leitung eines anderen Raums stellt mit richtigem Nachweis aus", async () => {
+    await raumAnlegen("abn-g1-angreifer");
+    await raumAnlegen("abn-g1-opfer");
+    const t = await sitzung("abn-g1-angreifer", "leitung", "l1");
+    const o = await sitzung("abn-g1-opfer", "leitung", "l1");
+    vi.setSystemTime(Date.now() + 6 * 60 * 1000);
+    const st = await parallel(60, (i) => einladen(t.token, { personId: "z1",
+      bestaetigung: { zugangscode: `FALS-PARX-${String(i).padStart(4, "0")}` } }));
+    expect(st.some((x) => x.status === 200 || x.einladung), "kein falscher Nachweis stellt aus").toBe(false);
+    const mit = await einladen(o.token, { personId: "z1", bestaetigung: { zugangscode: o.code } });
+    expect(mit.status, `anderer Raum mit richtigem Nachweis: ${mit.roh}`).toBe(200);
+  });
+
+  it("G2: kein Freikaufen — richtige und falsche Nachweise im Wechsel: höchstens 10 Versuche je Fenster werden verglichen", async () => {
+    await raumAnlegen("abn-g2");
+    const l = await sitzung("abn-g2", "leitung", "l1");
+    vi.setSystemTime(Date.now() + 6 * 60 * 1000);
+    const st = [];
+    for (let i = 0; i < 30; i++) {
+      const bestaetigung = { zugangscode: i % 2 === 0 ? l.code : `FALS-WECH-${String(i).padStart(4, "0")}` };
+      st.push((await einladen(l.token, { personId: `z${(i % 30) + 1}`, bestaetigung })).status);
+    }
+    expect(st.filter((x) => x !== 429).length, JSON.stringify(st)).toBeLessThanOrEqual(10);
+    expect(st.slice(10).every((x) => x === 429), JSON.stringify(st)).toBe(true);
   });
 });
 

@@ -1094,7 +1094,10 @@ export async function bremse(art, kennung, ziel, optionen = {}) {
          Sperre: Scheitert es, bleibt der Speicherzähler die einzige
          Erinnerung (catch unten). */
       await zaehlerLeeren(s, art, kennung, fenster);
-      return { frei: false, wartet: dauer, grund: "zu viele Versuche", stufe };
+      /* `vermerke`: die Ziel-/Gesamtvermerke dieses abgewiesenen Aufrufs (R-A2-1R, Review #536). Bewusst NICHT
+         `zurueck` — bestehende Aufrufer (vermerkeZuruecknehmen/entlasten mit einem gesperrten Ergebnis) bleiben
+         unverändert; nur wer ausdrücklich will, nimmt sie zurück (einladung.mjs). */
+      return { frei: false, wartet: dauer, grund: "zu viele Versuche", stufe, vermerke: zurueck };
     }
     /* Gelegentlich aufräumen, damit die Vermerke nicht mitwachsen. */
     if (Math.random() < 0.02) alteFensterRaeumen(s, art, fenster).catch(() => {});
