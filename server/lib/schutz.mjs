@@ -306,6 +306,10 @@ async function zaehlerLeeren(s, art, kennung, fenster) {
   await atomarLoeschen([laufend, vorig]);
 }
 
+/** Die Zahlen der Art `zugaenge`; R-A2-1 übernimmt sie unverändert für Einladen und Zurückziehen (siehe GRENZEN). */
+const ZUGAENGE_ZAHLEN = Object.freeze({ versuche: 10, fenster: 600, sperre: 1800, steigend: true, max: 86400,
+  failClosed: true });
+
 /** Grenzen je Endpunkt: wie viele Versuche in wie vielen Sekunden. */
 export const GRENZEN = {
   /* steigend: die Sperre verdoppelt sich mit jeder Wiederholung
@@ -318,7 +322,19 @@ export const GRENZEN = {
   anmelden:   { versuche: 8,   fenster: 300,  sperre: 300,  steigend: true, max: 7200, failClosed: true, stufeVerfall: 3600 },
   demo:       { versuche: 20,  fenster: 300,  sperre: 300,  failClosed: true },
   einrichten: { versuche: 5,   fenster: 600,  sperre: 1800, steigend: true, max: 86400, failClosed: true },
-  zugaenge:   { versuche: 10,  fenster: 600,  sperre: 1800, steigend: true, max: 86400, failClosed: true },
+  zugaenge:   { ...ZUGAENGE_ZAHLEN },
+  /* R-A2-1 (docs/acc45/SICHERHEITSBEWERTUNG-ABN-A2-S2.md §3.5): Einladen und Zurückziehen durch die Leitung zählen
+     nicht mehr in `zugaenge` und damit nicht mehr in dessen installationsweiter Gesamtgrenze (WEITERE.zugaenge), die
+     jetzt nur noch die Betreiberwege speisen. Dieselben Zahlen wie `zugaenge` — keine neue Grenze, nur getrennte Zähler:
+       einladung           Ausstellen je RAUM (kennung), jeder Aufruf nach der Rollenprüfung (wie bisher `zugaenge`).
+       einladung-nachweis  nur Aufrufe MIT Nachweis (Zugangscode, Passwort, Code aus der App), je Raum; trägt die
+                           installationsweite Rategrenze WEITERE["einladung-nachweis"]. Ein stimmender Nachweis nimmt
+                           seinen Gesamtvermerk zurück (vermerkeZuruecknehmen): Dort bleiben nur Fehlversuche.
+       zugang-sperren      Zurückziehen durch die Leitung je BETRIEB (kennungBetrieb), OHNE installationsweite Grenze —
+                           ein sicherheitskritischer Widerruf hängt nicht davon ab, was andere Betriebe tun. */
+  einladung:            { ...ZUGAENGE_ZAHLEN },
+  "einladung-nachweis": { ...ZUGAENGE_ZAHLEN },
+  "zugang-sperren":     { ...ZUGAENGE_ZAHLEN },
   lesen:      { versuche: 300, fenster: 60,   sperre: 60 },
   /* Abrufe eines Kalender-Feeds je GEHEIMNIS (WP-47b). Eigene Art, damit ein
      Kalender-Abruf nicht das Lesen der Anwendung bremst und umgekehrt. 30 je
@@ -476,7 +492,12 @@ export function lesenGrenze(bytes) {
 export const WEITERE = {
   anmelden: { ziel: { versuche: 40, fenster: 300 }, gesamt: { versuche: 400, fenster: 300 } },
   einrichten: { gesamt: { versuche: 20, fenster: 600 } },
+  /* Seit R-A2-1 nur noch Betreiberwege (/api/zugaenge, Raumweg, Übersicht, Zurückziehen durch den Betreiber). */
   zugaenge: { gesamt: { versuche: 40, fenster: 600 } },
+  /* R-A2-1: installationsweite Rategrenze für Nachweise beim Ausstellen einer Einladung — derselbe Wert wie bisher
+     (40 je 10 Minuten), aber ein eigener Zähler: Fehlversuche füllen ihn, gelungene Nachweise nehmen ihren Vermerk
+     zurück, Aufrufe ohne Nachweis zählen nicht. Restrisiko (Fehlversuche aus ≥ 4 Räumen): Bewertung §3.5. */
+  "einladung-nachweis": { gesamt: { versuche: 40, fenster: 600 } },
   /* Auch insgesamt gedeckelt — ein verteilter Ansturm soll nicht durchkommen. */
   starten: { gesamt: { versuche: 60, fenster: 3600 } },
   /* Zwei weitere Dimensionen für die Registrierung: dieselbe Adresse aus
@@ -515,6 +536,13 @@ export function kennungPerson(sitzung) {
   const s = sitzung || {};
   const wer = s.person !== null && s.person !== undefined ? `p:${s.person}` : `r:${s.rolle || "?"}`;
   return `s:${kurz(s.bestand ?? "")}:${kurz(`${String(s.mandantId ?? s.betrieb ?? "")}|${wer}`)}`;
+}
+
+/** Die Kennung eines BETRIEBS innerhalb eines Raums (Hashwert): für Zähler, die alle Personen eines Betriebs teilen,
+    aber kein anderer Betrieb (R-A2-1, übernommen aus PR #277). */
+export function kennungBetrieb(sitzung) {
+  const s = sitzung || {};
+  return `s:${kurz(s.bestand ?? "")}:b:${kurz(String(s.mandantId ?? s.betrieb ?? ""))}`;
 }
 
 /** Die Kennung eines Raums/Betriebs für Lastgrenzen (Hashwert, kein Klartext). */
@@ -1066,7 +1094,10 @@ export async function bremse(art, kennung, ziel, optionen = {}) {
          Sperre: Scheitert es, bleibt der Speicherzähler die einzige
          Erinnerung (catch unten). */
       await zaehlerLeeren(s, art, kennung, fenster);
-      return { frei: false, wartet: dauer, grund: "zu viele Versuche", stufe };
+      /* `vermerke`: die Ziel-/Gesamtvermerke dieses abgewiesenen Aufrufs (R-A2-1R, Review #536). Bewusst NICHT
+         `zurueck` — bestehende Aufrufer (vermerkeZuruecknehmen/entlasten mit einem gesperrten Ergebnis) bleiben
+         unverändert; nur wer ausdrücklich will, nimmt sie zurück (einladung.mjs). */
+      return { frei: false, wartet: dauer, grund: "zu viele Versuche", stufe, vermerke: zurueck };
     }
     /* Gelegentlich aufräumen, damit die Vermerke nicht mitwachsen. */
     if (Math.random() < 0.02) alteFensterRaeumen(s, art, fenster).catch(() => {});

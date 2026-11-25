@@ -6,6 +6,7 @@ import { defineConfig } from "@playwright/test";
 import { BASIS, VIEWPORTS, RAEUME_HOECHSTENS } from "./e2e/umgebung.mjs";
 import { ZONEN_PROJEKTE, ZONEN_SPEC, ZONEN_VIEWPORT } from "./e2e/zonen.mjs";
 import { WEBSITE_SPEC } from "./e2e/website.mjs";
+import { VISUELL_SPEC } from "./e2e/v4-visuell.mjs";
 
 export default defineConfig({
   testDir: "./e2e",
@@ -43,7 +44,7 @@ export default defineConfig({
   projects: [
     ...VIEWPORTS.map((v) => ({
       name: v.id,
-      testIgnore: [ZONEN_SPEC, WEBSITE_SPEC],
+      testIgnore: [ZONEN_SPEC, WEBSITE_SPEC, VISUELL_SPEC],
       use: { browserName: "chromium", viewport: { width: v.w, height: v.h }, hasTouch: v.w < 1000 },
     })),
     ...ZONEN_PROJEKTE.map((z) => ({
@@ -53,5 +54,7 @@ export default defineConfig({
     })),
     /* WEBSITE-W2: Prüfsatz der statisch gebauten Website (e2e/website-pruefsatz.spec.mjs); die Breiten setzt die Spec selbst. */
     { name: "website", testMatch: WEBSITE_SPEC, use: { browserName: "chromium", viewport: { width: 1280, height: 800 } } },
+    /* V4-4: visuelle QA der App in Hell und Dunkel (e2e/v4-visuell.spec.mjs); Breite und Thema setzt die Spec selbst. */
+    { name: "v4-visuell", testMatch: VISUELL_SPEC, testIgnore: [ZONEN_SPEC, WEBSITE_SPEC], use: { browserName: "chromium", viewport: { width: 1280, height: 800 } } },
   ],
 });

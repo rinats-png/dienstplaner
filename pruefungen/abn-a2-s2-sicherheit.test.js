@@ -15,7 +15,9 @@
            Zurückziehen von Zugängen und den Betreiberwegen).
            A2-1, A2-2, A2-4: rot vor der Behebung, grün danach.
            A2-3: Rateschutz für die Leitung bleibt unverändert (vorher/nachher grün).
-           A2-5: Restrisiko R-A2-1 (Leitungen aus ≥ 4 Räumen) — Ist-Verhalten festgehalten.
+           A2-5a..d: R-A2-1 behoben (Leitungen aus ≥ 4 Räumen sperren Einladen,
+           Zurückziehen und Betreiberwege anderer nicht mehr); A2-5c hält den Rest
+           fest (falsche Nachweise füllen die Rategrenze 40/600 s).
    ABN-S2  Anmeldeflut aus vielen Herkünften (vorbestehend, keine Behebung in
            diesem Paket). S2-1..S2-3 halten das Ist-Verhalten fest und belegen
            die Grenzen des Angriffs (kein Zugang, kein Orakel, Fensterende,
@@ -68,11 +70,11 @@ async function raumAnlegen(raum) {
 
 let codeNr = 0;
 /** Ein Zugangscode direkt in der Ablage (wie /api/zugaenge ihn anlegt). */
-async function codeAnlegen(raum, rolle, personId, { demo = false } = {}) {
+async function codeAnlegen(raum, rolle, personId, { demo = false, mandantId = `m-${raum}`, betrieb = 0 } = {}) {
   codeNr += 1;
   const code = `PRUF-${String(codeNr).padStart(4, "0")}-ABNS`;
   await kontoSchreiben(laden(), ablageSchluessel(code), { name: "Pruefung", bestand: raum, rolle, person: personId,
-    betrieb: 0, mandantId: rolle === "betreiber" ? null : `m-${raum}`, demo, angelegt: "2026-01-01T00:00:00.000Z" });
+    betrieb, mandantId: rolle === "betreiber" ? null : mandantId, demo, angelegt: "2026-01-01T00:00:00.000Z" });
   return code;
 }
 async function anmelden(code, ip) {
@@ -126,6 +128,11 @@ describe("Grenzwerte, auf die sich die Bewertung stützt (Ist-Stand, unveränder
   it("zugaenge 10/600 s, Sperre 1800 s steigend bis 86 400 s, fail-closed; Gesamt 40/600 s; anmelden 8/300 s, Gesamt 400/300 s; Dienst-Deckel 1200/300 s", () => {
     expect(SCH.GRENZEN.zugaenge).toMatchObject({ versuche: 10, fenster: 600, sperre: 1800, steigend: true, max: 86400, failClosed: true });
     expect(SCH.WEITERE.zugaenge.gesamt).toEqual({ versuche: 40, fenster: 600 });
+    /* R-A2-1: eigene Zähler für Einladen und Zurückziehen mit genau den Zahlen von `zugaenge` (keine neue Grenze). */
+    for (const art of ["einladung", "einladung-nachweis", "zugang-sperren"]) expect(SCH.GRENZEN[art], art).toEqual(SCH.GRENZEN.zugaenge);
+    expect(SCH.WEITERE["einladung-nachweis"]).toEqual({ gesamt: { versuche: 40, fenster: 600 } });
+    expect(SCH.WEITERE.einladung).toBeUndefined();
+    expect(SCH.WEITERE["zugang-sperren"]).toBeUndefined();
     expect(SCH.GRENZEN.anmelden).toMatchObject({ versuche: 8, fenster: 300, sperre: 300, steigend: true, max: 7200 });
     expect(SCH.WEITERE.anmelden.gesamt).toEqual({ versuche: 400, fenster: 300 });
     expect(SCH.SPERRVERSUCHE.gesamt).toEqual({ versuche: 1200, fenster: 300 });
@@ -233,24 +240,242 @@ describe("ABN-A2: Einladungsbremse — Rollen ohne Rollenvergabe sperren niemand
     expect(e.status, `Leitung frei: ${e.roh}`).toBe(200);
   });
 
-  it("A2-5 Restrisiko R-A2-1 (Ist-Verhalten, festgehalten): Leitungen aus vier Räumen füllen die Gesamtgrenze — eine fremde Leitung und der Betreiber warten bis zum Fensterende", async () => {
+});
+
+describe("R-A2-1 behoben: Leitungen anderer Betriebe sperren weder Einladen noch Zurückziehen noch Betreiberwege", () => {
+  /** Vier Räume mit je einer Leitung; `alt`: Anmeldung älter als fünf Minuten (Ausstellen verlangt dann einen Nachweis). */
+  async function vierLeitungen(praefix) {
+    const l = [];
     for (let r = 1; r <= 4; r++) {
-      const raum = `abn-a2-leit-${r}`;
+      const raum = `${praefix}-${r}`;
       await raumAnlegen(raum);
-      const s = await sitzung(raum, "leitung", "l1");
-      for (let i = 1; i <= 12; i++) await einladen(s.token, { personId: `z${i}` });
+      l.push(await sitzung(raum, "leitung", "l1"));
     }
-    const ziel = "abn-a2-leit-opfer";
-    await raumAnlegen(ziel);
-    const leitung = await sitzung(ziel, "leitung", "l1");
-    const betreiber = await sitzung("abn-a2-betreiber-2", "betreiber", null);
-    const e = await einladen(leitung.token, { personId: "z1" });
-    expect(e.status, "Gesamtgrenze zugaenge (40/600 s) erschöpft").toBe(429);
-    expect((await zurueckziehen(betreiber.token)).status).toBe(429);
-    /* Nach dem Fenster (gleitend: laufendes + voriges) ist alles wieder frei. */
+    return l;
+  }
+  /** Opfer: Leitung eines fünften Betriebs (eine ältere und eine junge Sitzung) und der Betreiber. */
+  async function opfer(raum, betreiberRaum) {
+    await raumAnlegen(raum);
+    const alt = await sitzung(raum, "leitung", "l1");
+    const betreiber = await sitzung(betreiberRaum, "betreiber", null);
+    return { alt, betreiber };
+  }
+  const nachweis = (s) => ({ zugangscode: s.code });
+
+  it("A2-5a: vier Leitungen laden je 12× ein (junge Anmeldung) und ziehen je 12× zurück → fremde Leitung lädt ein (mit und ohne Nachweis) und zieht zurück, der Betreiber zieht zurück", async () => {
+    const leit = await vierLeitungen("abn-r1-a");
+    const o = await opfer("abn-r1-a-opfer", "abn-r1-a-betreiber");
+    for (const s of leit) {
+      const st = [];
+      for (let i = 1; i <= 12; i++) st.push((await einladen(s.token, { personId: `z${i}` })).status);
+      /* Je Raum unverändert: zehn Einladungen, dann die eigene Sperre (R-A2-2, nicht Gegenstand dieses Pakets). */
+      expect(st).toEqual([...Array(10).fill(200), 429, 429]);
+      const zs = [];
+      for (let i = 0; i < 12; i++) zs.push((await zurueckziehen(s.token)).status);
+      /* Zurückziehen je Betrieb: 10 frei, dann die eigene Sperre — Zahlen wie `zugaenge`. */
+      expect(zs.slice(0, 10).every((x) => x !== 429), JSON.stringify(zs)).toBe(true);
+      expect(zs.slice(10)).toEqual([429, 429]);
+    }
+    /* Ältere Sitzung des Opfers: Ausstellen nur mit Nachweis. */
+    vi.setSystemTime(Date.now() + 6 * 60 * 1000);
+    const mit = await einladen(o.alt.token, { personId: "z1", bestaetigung: nachweis(o.alt) });
+    expect(mit.status, `fremde Leitung mit Nachweis: ${mit.roh}`).toBe(200);
+    const jung = await sitzung("abn-r1-a-opfer", "leitung", "l1");
+    const ohne = await einladen(jung.token, { personId: "z2" });
+    expect(ohne.status, `fremde Leitung, junge Anmeldung: ${ohne.roh}`).toBe(200);
+    const z = await zurueckziehen(jung.token);
+    expect(z.status, `fremde Leitung zieht zurück: ${z.roh}`).not.toBe(429);
+    const zb = await zurueckziehen(o.betreiber.token);
+    expect(zb.status, `Betreiber zieht zurück: ${zb.roh}`).not.toBe(429);
+  });
+
+  it("A2-5b: vier Leitungen stellen je 10 Einladungen mit RICHTIGEM Nachweis aus → gelungene Nachweise füllen die Rategrenze nicht; fremde Leitung mit Nachweis 200", async () => {
+    const leit = await vierLeitungen("abn-r1-b");
+    const o = await opfer("abn-r1-b-opfer", "abn-r1-b-betreiber");
+    vi.setSystemTime(Date.now() + 6 * 60 * 1000);
+    for (const s of leit) {
+      const st = [];
+      for (let i = 1; i <= 10; i++) st.push((await einladen(s.token, { personId: `z${i}`, bestaetigung: nachweis(s) })).status);
+      expect(st).toEqual(Array(10).fill(200));
+    }
+    const mit = await einladen(o.alt.token, { personId: "z1", bestaetigung: nachweis(o.alt) });
+    expect(mit.status, `fremde Leitung mit Nachweis: ${mit.roh}`).toBe(200);
+    expect((await zurueckziehen(o.betreiber.token)).status).not.toBe(429);
+  });
+
+  it("A2-5e: Rückfragen ohne Nachweis und Nachweise, die an der eigenen Raumsperre abprallen, zählen nicht in der Rategrenze — fremde Leitung mit Nachweis 200", async () => {
+    const leit = await vierLeitungen("abn-r1-e");
+    const o = await opfer("abn-r1-e-opfer", "abn-r1-e-betreiber");
+    vi.setSystemTime(Date.now() + 6 * 60 * 1000);
+    for (const s of leit) {
+      const st = [];
+      for (let i = 0; i < 10; i++) st.push((await einladen(s.token, { personId: "z1" })).status);
+      expect(st, "Rückfragen (Nachweis fehlt)").toEqual(Array(10).fill(403));
+      const gesperrt = [];
+      for (let i = 0; i < 10; i++) {
+        gesperrt.push((await einladen(s.token, { personId: "z1",
+          bestaetigung: { zugangscode: `FALS-SPXX-${String(i).padStart(4, "0")}` } })).status);
+      }
+      expect(gesperrt, "eigene Raumsperre: nicht verglichen").toEqual(Array(10).fill(429));
+    }
+    const mit = await einladen(o.alt.token, { personId: "z1", bestaetigung: nachweis(o.alt) });
+    expect(mit.status, `fremde Leitung mit Nachweis: ${mit.roh}`).toBe(200);
+  });
+
+  it("A2-5c Rest (Ist, festgehalten): vier Leitungen schicken je 10 FALSCHE Nachweise → nur das Ausstellen MIT Nachweis wartet installationsweit (≤ 600 s); ohne Nachweis, Zurückziehen und Betreiber frei", async () => {
+    const leit = await vierLeitungen("abn-r1-c");
+    const o = await opfer("abn-r1-c-opfer", "abn-r1-c-betreiber");
+    vi.setSystemTime(Date.now() + 6 * 60 * 1000);
+    for (const s of leit) {
+      const st = [];
+      for (let i = 0; i < 10; i++) {
+        st.push((await einladen(s.token, { personId: "z1",
+          bestaetigung: { zugangscode: `FALS-CHXX-${String(i).padStart(4, "0")}` } })).status);
+      }
+      expect(st).toEqual(Array(10).fill(403));
+    }
+    const mit = await einladen(o.alt.token, { personId: "z1", bestaetigung: nachweis(o.alt) });
+    expect(mit.status, "Rategrenze für Nachweise (40/600 s) voll — Restrisiko, Bewertung §3.5").toBe(429);
+    expect(Number(mit.retryAfter)).toBeLessThanOrEqual(600);
+    /* Das Opfer versucht es während der Wartezeit noch zehnmal: Das darf seinen eigenen Raumzähler nicht füllen. */
+    for (let i = 0; i < 10; i++) expect((await einladen(o.alt.token, { personId: "z1", bestaetigung: nachweis(o.alt) })).status).toBe(429);
+    const jung = await sitzung("abn-r1-c-opfer", "leitung", "l1");
+    const ohne = await einladen(jung.token, { personId: "z2" });
+    expect(ohne.status, `ohne Nachweis (junge Anmeldung) frei: ${ohne.roh}`).toBe(200);
+    expect((await zurueckziehen(jung.token)).status).not.toBe(429);
+    expect((await zurueckziehen(o.betreiber.token)).status).not.toBe(429);
+    /* Die Wartezeit hat den Raumzähler des Opfers nicht verbraucht: Nach dem Fenster stellt die ältere Sitzung aus. */
     neuesFenster();
-    const leitung2 = await sitzung(ziel, "leitung", "l1");
-    expect((await einladen(leitung2.token, { personId: "z2" })).status).toBe(200);
+    const danach = await einladen(o.alt.token, { personId: "z3", bestaetigung: nachweis(o.alt) });
+    expect(danach.status, danach.roh).toBe(200);
+  });
+
+  it("A2-5d: Zurückziehen zählt je Betrieb — die Sperre einer Leitung trifft eine andere nicht; Einladen und Zurückziehen teilen keinen Zähler mehr", async () => {
+    const [a, b] = await vierLeitungen("abn-r1-d");
+    const za = [];
+    for (let i = 0; i < 11; i++) za.push((await zurueckziehen(a.token)).status);
+    expect(za[10]).toBe(429);
+    expect((await zurueckziehen(b.token)).status).not.toBe(429);
+    /* Eigene Sperre beim Zurückziehen sperrt das eigene Einladen nicht (vorher derselbe Raumzähler `zugaenge`). */
+    expect((await einladen(a.token, { personId: "z1" })).status).toBe(200);
+  });
+
+  it("A2-5g: eine Abweisung im Sperrpfad nimmt nur IHRE Gesamtvermerke zurück — die von anderen gefüllte Rategrenze bleibt voll (Delta-Review #536, Mutant c)", async () => {
+    const leit = await vierLeitungen("abn-r1-g");
+    await raumAnlegen("abn-r1-g-fuenf");
+    const fuenf = await sitzung("abn-r1-g-fuenf", "leitung", "l1");
+    await raumAnlegen("abn-r1-g-opfer");
+    const opferL = await sitzung("abn-r1-g-opfer", "leitung", "l1");
+    vi.setSystemTime(Date.now() + 6 * 60 * 1000);
+    /* Raum 5: zehn Einladungen mit RICHTIGEM Nachweis — Raumzähler `einladung-nachweis` voll, Gesamtgrenze leer. */
+    for (let i = 1; i <= 10; i++) expect((await einladen(fuenf.token, { personId: `z${i}`, bestaetigung: nachweis(fuenf) })).status).toBe(200);
+    const falsch = (s, i) => einladen(s.token, { personId: "z1", bestaetigung: { zugangscode: `FALS-GXXX-${String(i).padStart(4, "0")}` } });
+    /* Drei Räume je 10, der vierte 9 falsche Nachweise: 39 Gesamtvermerke. */
+    for (const [n, s] of leit.entries()) for (let i = 0; i < (n === 3 ? 9 : 10); i++) expect((await falsch(s, i)).status).toBe(403);
+    /* Raum 5, Aufruf 11 mit Nachweis: Abweisung im Sperrpfad von `einladung-nachweis` (nimmt nur den eigenen Vermerk zurück). */
+    expect((await einladen(fuenf.token, { personId: "z11", bestaetigung: nachweis(fuenf) })).status).toBe(429);
+    /* Der 40. Fehlversuch füllt die Rategrenze. */
+    expect((await falsch(leit[3], 9)).status).toBe(403);
+    const mit = await einladen(opferL.token, { personId: "z1", bestaetigung: nachweis(opferL) });
+    expect(mit.status, `Rategrenze bleibt voll: ${mit.roh}`).toBe(429);
+  });
+
+  it("A2-5h: der Raumzähler `einladung-nachweis` für sich — weder eine Abweisung noch ein richtiger Nachweis setzt ihn zurück (Delta-Review #536, Mutanten d/d2)", async () => {
+    await raumAnlegen("abn-r1-h-a");
+    await raumAnlegen("abn-r1-h-b");
+    const a = await sitzung("abn-r1-h-a", "leitung", "l1");
+    const b = await sitzung("abn-r1-h-b", "leitung", "l1");
+    vi.setSystemTime(Date.now() + 6 * 60 * 1000);
+    const falsch = (s, i) => einladen(s.token, { personId: "z1", bestaetigung: { zugangscode: `FALS-HXXX-${String(i).padStart(4, "0")}` } });
+    /* Direkt am Zähler prüfen, damit der zweite Zähler `einladung` die Eigenschaft nicht verdeckt. */
+    const raumZaehler = (raum) => SCH.bremse("einladung-nachweis", SCH.kennung(null, { bestand: raum }));
+    /* d2: 9 falsche + 1 richtiger Nachweis = 10 gezählte Versuche; der richtige entlastet den Raumzähler NICHT. */
+    for (let i = 0; i < 9; i++) expect((await falsch(a, i)).status).toBe(403);
+    expect((await einladen(a.token, { personId: "z2", bestaetigung: nachweis(a) })).status).toBe(200);
+    const za = await raumZaehler("abn-r1-h-a");
+    expect(za.frei, `11. Versuch am Raumzähler A: ${JSON.stringify(za)}`).toBe(false);
+    /* d: 10 falsche, der 11. wird an `einladung-nachweis` abgewiesen; Sperre und Zähler bleiben bestehen. */
+    for (let i = 0; i < 10; i++) expect((await falsch(b, i)).status).toBe(403);
+    const elf = await falsch(b, 10);
+    expect(elf.status).toBe(429);
+    expect(Number(elf.retryAfter)).toBeGreaterThan(1700);
+    const zb = await raumZaehler("abn-r1-h-b");
+    expect(zb.frei, `Raumzähler B nach der Abweisung: ${JSON.stringify(zb)}`).toBe(false);
+    expect(zb.grund).toBe("gesperrt");
+  });
+
+  it("A2-5f: zwei Betriebe in EINEM Raum — Zurückziehen zählt je Betrieb, Ausstellen je Raum (Review #536, Mutanten f/h)", async () => {
+    const raum = "abn-r1-f-zwei";
+    const betrieb = (m) => ({ id: m, name: `Betrieb ${m}`, status: "aktiv", tarif: "pro", einheiten: [{ id: "e1" }],
+      standorte: [], dienstarten: [{ id: "F", name: "F" }],
+      personen: [person("l1", "leitung"), ...Array.from({ length: 12 }, (_, i) => person(`z${i + 1}`, "mitarbeiter"))],
+      abweichungen: {}, anfragen: [], notrufe: [], nachrichten: [], dienstbuch: [], abwesenheiten: [] });
+    await B.bestandSchreiben(laden(), raum, { version: 9, stand: 1, session: null,
+      mandanten: [betrieb("m-f-a"), betrieb("m-f-b")] }, { durch: "Pruefung" });
+    const anmeldenAls = async (mandantId, nr) => {
+      const code = await codeAnlegen(raum, "leitung", "l1", { mandantId, betrieb: nr });
+      const a = await anmelden(code);
+      expect(a.status, a.roh).toBe(200);
+      return { token: a.token, code };
+    };
+    const a = await anmeldenAls("m-f-a", 0);
+    const b = await anmeldenAls("m-f-b", 1);
+    /* Zurückziehen je Betrieb: Die Sperre von A trifft B im selben Raum nicht. */
+    const za = [];
+    for (let i = 0; i < 11; i++) za.push((await zurueckziehen(a.token)).status);
+    expect(za[10]).toBe(429);
+    const zb = await zurueckziehen(b.token);
+    expect(zb.status, `B zieht zurück: ${zb.roh}`).not.toBe(429);
+    /* Ausstellen je Raum (Rateschutz wie vorher): Zehn Aufrufe von A verbrauchen auch das Kontingent von B. */
+    const ea = [];
+    for (let i = 1; i <= 10; i++) ea.push((await einladen(a.token, { personId: `z${i}` })).status);
+    expect(ea, JSON.stringify(ea)).toEqual(Array(10).fill(200));
+    const eb = await einladen(b.token, { personId: "z1" });
+    expect(eb.status, `B im selben Raum: ${eb.roh}`).toBe(429);
+  });
+});
+
+describe("R-A2-1: gleichzeitige Anfragen (Review #536, Proben G1–G3)", () => {
+  const parallel = (n, f) => Promise.all(Array.from({ length: n }, (_, i) => f(i)));
+
+  it("G3: EINE Leitung schickt 60 Einladungen und 60 Rückzüge gleichzeitig → fremde Leitung lädt ein und zieht zurück, Betreiber zieht zurück (vorher alle 429)", async () => {
+    await raumAnlegen("abn-g3-angreifer");
+    await raumAnlegen("abn-g3-opfer");
+    const t = await sitzung("abn-g3-angreifer", "leitung", "l1");
+    const o = await sitzung("abn-g3-opfer", "leitung", "l1");
+    const betreiber = await sitzung("abn-g3-betreiber", "betreiber", null);
+    await parallel(60, (i) => einladen(t.token, { personId: `z${(i % 30) + 1}` }));
+    await parallel(60, () => zurueckziehen(t.token));
+    const e = await einladen(o.token, { personId: "z1" });
+    expect(e.status, `fremde Leitung lädt ein: ${e.roh}`).toBe(200);
+    expect((await zurueckziehen(o.token)).status, "fremde Leitung zieht zurück").not.toBe(429);
+    expect((await zurueckziehen(betreiber.token)).status, "Betreiber zieht zurück").not.toBe(429);
+  });
+
+  it("G1: EINE Leitung schickt 60 falsche Nachweise gleichzeitig → keiner wird ausgestellt; die Leitung eines anderen Raums stellt mit richtigem Nachweis aus", async () => {
+    await raumAnlegen("abn-g1-angreifer");
+    await raumAnlegen("abn-g1-opfer");
+    const t = await sitzung("abn-g1-angreifer", "leitung", "l1");
+    const o = await sitzung("abn-g1-opfer", "leitung", "l1");
+    vi.setSystemTime(Date.now() + 6 * 60 * 1000);
+    const st = await parallel(60, (i) => einladen(t.token, { personId: "z1",
+      bestaetigung: { zugangscode: `FALS-PARX-${String(i).padStart(4, "0")}` } }));
+    expect(st.some((x) => x.status === 200 || x.einladung), "kein falscher Nachweis stellt aus").toBe(false);
+    const mit = await einladen(o.token, { personId: "z1", bestaetigung: { zugangscode: o.code } });
+    expect(mit.status, `anderer Raum mit richtigem Nachweis: ${mit.roh}`).toBe(200);
+  });
+
+  it("G2: kein Freikaufen — richtige und falsche Nachweise im Wechsel: höchstens 10 Versuche je Fenster werden verglichen", async () => {
+    await raumAnlegen("abn-g2");
+    const l = await sitzung("abn-g2", "leitung", "l1");
+    vi.setSystemTime(Date.now() + 6 * 60 * 1000);
+    const st = [];
+    for (let i = 0; i < 30; i++) {
+      const bestaetigung = { zugangscode: i % 2 === 0 ? l.code : `FALS-WECH-${String(i).padStart(4, "0")}` };
+      st.push((await einladen(l.token, { personId: `z${(i % 30) + 1}`, bestaetigung })).status);
+    }
+    expect(st.filter((x) => x !== 429).length, JSON.stringify(st)).toBeLessThanOrEqual(10);
+    expect(st.slice(10).every((x) => x === 429), JSON.stringify(st)).toBe(true);
   });
 });
 

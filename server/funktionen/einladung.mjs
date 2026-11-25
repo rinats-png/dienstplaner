@@ -1,5 +1,5 @@
 import { getStore } from "../lib/ablage.mjs";
-import { bremse, kennung, kennungPerson, herkunftErlaubt, zuVielAntwort, protokoll } from "../lib/schutz.mjs";
+import { bremse, vermerkeZuruecknehmen, kennung, kennungPerson, herkunftErlaubt, zuVielAntwort, protokoll } from "../lib/schutz.mjs";
 import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
 import { bestandLesenStreng } from "../lib/bestand.mjs";
 import { wirksameRolle } from "../lib/rechte.mjs";
@@ -30,13 +30,13 @@ import { einladungAusstellen, einladungEinloesen, einladungenListe, einladungWid
    Genaue Pfade schlagen das Präfix /api/* von daten.mjs (server.mjs, routeFuer).
 
    Bremsen: Ausstellen zählt vor der Rollenprüfung nur gegen `schreiben` je
-   Person (Lastgrenze); erst nach der Rollenprüfung gegen `zugaenge` (10 je
-   10 Minuten je Raum, steigend; ABN-A2). Wer viele Personen auf einmal einlädt — etwa beim
-   Start eines Betriebs —, läuft nach zehn Einladungen in die Sperre (N4):
+   Person (Lastgrenze); erst nach der Rollenprüfung gegen `einladung` (10 je
+   10 Minuten je Raum, steigend; ABN-A2, Zahlen wie `zugaenge`). Wer viele Personen auf einmal einlädt — etwa beim
+   Start eines Betriebs —, läuft nach zehn Einladungen in die Sperre (N4, R-A2-2):
    Bedienhinweis im Nachweis; für Sammeleinladungen bleibt der Weg über den
-   Betreiber (/api/zugaenge, bis zu 20 je Aufruf). Dazu kommt die
-   installationsweite Gesamtgrenze WEITERE.zugaenge (40 je 10 Minuten über
-   alle Betriebe, geteilt mit /api/zugaenge).
+   Betreiber (/api/zugaenge, bis zu 20 je Aufruf). Installationsweit zählen nur
+   noch FALSCHE Nachweise (`einladung-nachweis`, 40 je 10 Minuten, eigener
+   Zähler); die Gesamtgrenze von /api/zugaenge teilen Einladungen nicht mehr (R-A2-1).
    ========================================================================== */
 
 const store = () => getStore({ name: "centric", consistency: "strong" });
@@ -124,15 +124,45 @@ export default async (req) => {
           await protokoll("einladung", k, "abgewiesen", v.grund, wer);
           return antwort({ fehler: v.fehler }, v.status);
         }
-        /* ABN-A2: Die Einladungsbremse `zugaenge` (je Raum, 10/600 s, Sperre 1800 s steigend, fail-closed, dazu
-           WEITERE.zugaenge 40/600 s installationsweit) zählt erst NACH der Rollenprüfung — Zahlen unverändert. Vorher
-           füllten Absagen an Beschäftigte, SV, Betriebsrat, Demo und Betreiber den Raumzähler und die Gesamtgrenze
-           (Aussperren der Leitung, mandantenübergreifend auch Zurückziehen und Betreiberwege). Vor der Rollenprüfung
-           wird kein Geheimnis verglichen (N-1); der Rateschutz für Nachweise bleibt derselbe Zähler. */
-        const bz = await bremse("zugaenge", k);
-        if (!bz.frei) { await protokoll("einladung", k, "gebremst", bz.grund); return zuVielAntwort(bz.wartet); }
+        /* ABN-A2: Die Einladungsbremse zählt erst NACH der Rollenprüfung. Vorher füllten Absagen an Beschäftigte, SV,
+           Betriebsrat, Demo und Betreiber den Raumzähler und die Gesamtgrenze. Vor der Rollenprüfung wird kein
+           Geheimnis verglichen (N-1).
+           R-A2-1 (Bewertung §3.5): eigene Zähler statt `zugaenge`, Zahlen unverändert (schutz.mjs, GRENZEN):
+             - `einladung-nachweis` nur bei einem Nachweis: je Raum und installationsweit (40/600 s). Zuerst, damit eine
+               volle Gesamtgrenze nicht den Raumzähler des Opfers hochtreibt (wie bisher prüft bremse() die Gesamtgrenze
+               vor dem eigenen Zähler).
+             - `einladung` je Raum für JEDEN Aufruf (10/600 s, Sperre 1800 s steigend) — der Rateschutz je Raum ist
+               derselbe wie vorher, auch die Rückfrage ohne Nachweis zählt weiter mit.
+           Gelungene Einladungen, Rückfragen und Aufrufe ohne Nachweis erreichen damit keine installationsweite Grenze
+           mehr; die Gesamtgrenze von `zugaenge` (Betreiberwege, Zurückziehen durch den Betreiber) sehen sie nie. */
+        const best = rumpf.bestaetigung && typeof rumpf.bestaetigung === "object" ? rumpf.bestaetigung : {};
+        /* Streng: Jede nicht leere Zeichenkette gilt als Nachweis und zählt als Versuch (aus PR #277). */
+        const mitNachweis = ["zweifaktor", "zugangscode", "passwort"]
+          .some((x) => typeof best[x] === "string" && best[x] !== "");
+        let bn = null;
+        if (mitNachweis) {
+          bn = await bremse("einladung-nachweis", k);
+          if (!bn.frei) {
+            /* Abgewiesen, also nicht verglichen: auch der Gesamtvermerk dieses Aufrufs zurück (Review #536, R-A2-1R).
+               Sonst ließen parallele Anfragen EINER Leitung, die alle an der eigenen Sperre abprallen, ihre
+               Gesamtvermerke stehen und füllten die Rategrenze für alle. Raumzähler und Sperre bleiben. */
+            await vermerkeZuruecknehmen({ zurueck: bn.vermerke });
+            await protokoll("einladung", k, "gebremst", bn.grund);
+            return zuVielAntwort(bn.wartet);
+          }
+        }
+        const bz = await bremse("einladung", k);
+        if (!bz.frei) {
+          /* Nicht verglichen: kein Rateversuch, also auch kein Vermerk in der Gesamtgrenze. */
+          await vermerkeZuruecknehmen(bn);
+          await protokoll("einladung", k, "gebremst", bz.grund);
+          return zuVielAntwort(bz.wartet);
+        }
         /* B1: frische Bestätigung — erst, wenn die Sitzung überhaupt ausstellen dürfte. */
         const f = await frischeBestaetigung(ablage, { sitzung: s, bestaetigung: rumpf.bestaetigung, k });
+        /* Stimmt der Nachweis, war es kein Rateversuch: nur den eigenen Gesamtvermerk dieses Aufrufs zurücknehmen. Die
+           Raumzähler bleiben (Rateschutz je Raum unverändert); falsche Nachweise bleiben überall gezählt. */
+        if (f.ok) await vermerkeZuruecknehmen(bn);
         if (!f.ok) {
           await protokoll("einladung", k, "abgewiesen", f.grund, wer);
           return antwort({ fehler: f.fehler, ...("bestaetigung" in f ? { bestaetigung: f.bestaetigung } : {}) },

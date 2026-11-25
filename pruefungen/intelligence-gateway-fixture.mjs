@@ -1,11 +1,12 @@
 /* Gemeinsame Prüfdaten für die Gateway-Tests (WP-I13/I15): ein Betrieb voller Personendaten, Rollen-Sitzungen, Faktenquelle. */
-import { randomBytes } from "node:crypto";
+import { createHash } from "node:crypto";
 import { erzeugeSchluesselbund, SCHLUESSEL_NAMEN } from "../server/lib/intelligence/gateway/schluessel.mjs";
 import { erzeugeRegistry } from "../server/lib/intelligence/gateway/registry.mjs";
 
 export const SCHLUESSEL = Buffer.from("5b0e9c1d7a3f48e26c1b9d0a4e7f3c2b8a6d1e9f0c3b7a5d2e8f1c4b6a9d0e3f", "hex");
-/** WP-I18: MAC-Schlüssel nur zur Laufzeit erzeugt (kein Schlüssel im Repo), für den ganzen Testlauf fest. */
-export const MAC_LAUFZEIT = randomBytes(32).toString("hex");
+/** WP-I18: MAC-Schlüssel nur zur Laufzeit abgeleitet (kein Schlüssel im Repo). Absichtlich NICHT zufällig: Ein zufälliger Schlüssel machte die gespeicherten MACs
+    (je 64 Hex) zufällig und die Markerprüfung über den Speicher traf in rund 0,19 % der Läufe „0151“ (CI #539). Gleicher Lauf, gleiches Ergebnis. */
+export const MAC_LAUFZEIT = createHash("sha256").update("rr-test-fixture-mac-laufzeit-v1").digest("hex");
 /** WP-I18 (G21): Schlüsselbund aus Platzhaltern — Alias-Schlüssel wie bisher SCHLUESSEL, MAC getrennt. */
 export const schluesselbundTest = ({ alias = SCHLUESSEL, mac = MAC_LAUFZEIT, macVorher } = {}) => {
   const hex = (x) => (typeof x === "string" ? x : Buffer.from(x).toString("hex"));

@@ -10,16 +10,30 @@ import { describe, it, expect, afterAll } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { execFileSync } from "node:child_process";
 import { fingerprintBilden, erzeugeErgebnisSpeicher, FINGERPRINT_TEILE, ergebnisSchluessel, kontextSchluessel, paketHash, kontextAusPaket } from "../server/lib/intelligence/gateway/ergebnis.mjs";
 import { erzeugeGateway } from "../server/lib/intelligence/gateway/gateway.mjs";
 import { erzeugeAttrappe } from "../server/lib/intelligence/gateway/attrappe.mjs";
 import { Limits } from "../server/lib/intelligence/gateway/limits.mjs";
 import { erzeugeAudit } from "../server/lib/intelligence/gateway/audit.mjs";
 import { sperrlisteBilden } from "../server/lib/intelligence/leckpruefung.mjs";
-import { SCHLUESSEL, VERSIONEN, ZR, bestand, sitzung, S, vollQuelle, VERBOTEN_IM_PAKET, fold, schluesselbundTest, registryTest } from "./intelligence-gateway-fixture.mjs";
+import { MAC_LAUFZEIT, SCHLUESSEL, VERSIONEN, ZR, bestand, sitzung, S, vollQuelle, VERBOTEN_IM_PAKET, fold, schluesselbundTest, registryTest } from "./intelligence-gateway-fixture.mjs";
 
 const TAG = 86400_000;
 const T0 = Date.UTC(2026, 10, 15, 10, 0, 0);
+
+/** Markerprüfung über den ganzen Speicher: gibt jeden verbotenen Marker samt Umgebung zurück (leer = sauber). */
+const NUR_IM_PAKET = ["notiz", "grund", "anmerkung", "raum-a"];
+const verbotenImSpeicher = (eintraege) => {
+  const roh = fold(JSON.stringify(eintraege));
+  const aus = [];
+  for (const v of VERBOTEN_IM_PAKET.filter((x) => !NUR_IM_PAKET.includes(x))) {
+    const i = roh.indexOf(fold(v));
+    if (i >= 0) aus.push(`${v} im Speicher, Umgebung: ${JSON.stringify(roh.slice(Math.max(0, i - 60), i + 40))}`);
+  }
+  return aus;
+};
 
 /** Ablage im Speicher mit dem Interface von ablage.mjs (get/setJSON/delete/list). */
 function speicherStore() {
@@ -331,8 +345,7 @@ describe("Im Gateway: Treffer statt Anbieteraufruf", () => {
     const r = await t.gw.ausfuehren(S.leitung, anf());
     expect(r.status).toBe("fertig");
     expect(r.ctxId).toBe("ctx-00000001");
-    const roh = fold(JSON.stringify([...t.store.m.entries()]));
-    for (const v of VERBOTEN_IM_PAKET.filter((x) => !["notiz", "grund", "anmerkung", "raum-a"].includes(x))) { const i = roh.indexOf(fold(v)); expect(i < 0, `${v} im Speicher, Umgebung: ${i < 0 ? "" : JSON.stringify(roh.slice(Math.max(0, i - 60), i + 40))}`).toBe(true); }
+    expect(verbotenImSpeicher([...t.store.m.entries()])).toEqual([]);
     const ktx = [...t.store.m.entries()].find(([k]) => k.startsWith("ki:ktx:"))[1];
     expect(JSON.stringify(ktx)).not.toMatch(/[PEOD]_[BCDFGHJKLMNPQRSTVWXZ]{8}/);
     expect(JSON.stringify([...t.store.m.entries()].find(([k]) => k.startsWith("ki:erg:"))[1])).toMatch(/P_[BCDFGHJKLMNPQRSTVWXZ]{8}/);   // Alias-Form
@@ -346,6 +359,22 @@ describe("Im Gateway: Treffer statt Anbieteraufruf", () => {
     for (const id of ids) expect(id).toMatch(/^[A-Za-z0-9_-]{16}$/);
     expect(new Set(ids).size).toBe(200);
     for (let p = 0; p < 16; p++) expect(new Set(ids.map((id) => id[p])).size, `Stelle ${p} der ctxId ist fest`).toBeGreaterThan(1);
+  });
+  it("Markerprüfung bleibt scharf: echte Kennungen im Speicher (Telefon, E-Mail, Klarname, Kennung) werden gefunden", () => {
+    /* Mutationsprobe als Dauertest: eine gelockerte Prüfung (z. B. leere Markerliste oder falsche Faltung) fällt hier auf. */
+    expect(verbotenImSpeicher([["ki:ktx:x", { text: "ok" }]])).toEqual([]);
+    for (const echt of ["Tel. +49 1511234567", "Rufnummer 0151 1234567", "lena.brandt@sonnenhof.example", "Piotr Kowalski", "Kurt", "100234"]) {
+      expect(verbotenImSpeicher([["ki:ktx:x", { text: echt }]]).length, echt).toBeGreaterThan(0);
+    }
+  });
+  it("Zufallsfreier Speicher: der MAC-Schlüssel der Fixture ist in jedem Prozess gleich, die Markerprüfung hat keinen Zufallstreffer (Ursache „0151“ in einer MAC, CI #539)", () => {
+    /* Ursache: Der MAC-Schlüssel der Fixture wurde je Prozess zufällig gezogen; die beiden gespeicherten MACs (je 64 Hex)
+       trafen in rund 0,19 % der Läufe den Marker „0151“ (Hex-Zeichen 0–9a–f). Fester, abgeleiteter Schlüssel: gleicher Lauf, gleiches Ergebnis. */
+    const fremd = execFileSync(process.execPath, ["--input-type=module", "-e",
+      "import('./pruefungen/intelligence-gateway-fixture.mjs').then((m) => process.stdout.write(m.MAC_LAUFZEIT))"],
+    { cwd: path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."), encoding: "utf8" });
+    expect(fremd).toBe(MAC_LAUFZEIT);
+    expect(MAC_LAUFZEIT).toMatch(/^[0-9a-f]{64}$/);
   });
   it("Speicherausfall bricht den Vorgang nicht: Antwort kommt, nur ohne Treffer", async () => {
     const t = bauen();
