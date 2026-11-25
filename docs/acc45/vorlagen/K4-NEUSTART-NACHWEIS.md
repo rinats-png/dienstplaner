@@ -10,7 +10,7 @@ Vorlage. Eintragen: nur Zahlen, Ja/Nein, Datum, Rolle. Nie Hosts, Adressen, Schl
 Betriebsnamen, Mailadressen, Domänen, Pfade mit Personenbezug. Alles in `[…]` ist auszufüllen und nicht vorbelegt. Wo
 etwas fehlt: „nicht erhoben" und der Grund, keine Schätzung.
 
-**Stand der Texte:** Entwurf. Die Bestätigung des Wortlauts durch den Betreiber steht aus (Akzeptanz K4-P7).
+**Stand der Texte:** vom Betreiber bestätigt (2026-11-25), einschließlich des Zuschnitts von N-7 und N-9 (nur synthetisch, Variante A). Das ist keine Produktionsfreigabe und keine Genehmigung zur Datenänderung.
 
 ## 0. Kopf
 
@@ -58,9 +58,9 @@ wo „Repo" steht.
 | N-5 | (Migrationsprobe K4 auf Echtkopie) entfällt bei Pfad 0; ersetzt durch N-5n | – | – | – | – | entfällt |
 | N-5n | Synthetische Migrationsprobe mit dem konkreten Kandidaten plus Neustart-Vermerk | `migration.bericht` (Kurzbericht ohne Personenbezug; Vorlage-Form: K4-P6, nur der erforderliche Umfang) | Betreiber/Claude (synthetisch) | ≤ 7 Tage vor T0 | Probe Exit 0; Startprotokoll ohne `WARNUNG`; Vermerk „Neustart auf leerem Bestand nach geprüfter Sicherung" | [ ] |
 | N-6 | (Kompatibilitätsprobe K6 mit Altdaten) entfällt bei Pfad 0 | – | – | – | – | entfällt |
-| N-7 | Datenrücksprung mit neuer Schlüsselepoche, nur synthetisch | Ausgabe „Schlüsselepoche erneuert", Bücher-Zahlen > 0, Dauer | Betreiber/Claude | mit N-5n | Code aus Probe bleibt 403; Dauer gemessen. Zuschnitt (nur synthetisch) bestätigt der Betreiber | [ ] |
+| N-7 | Datenrücksprung mit neuer Schlüsselepoche, nur synthetisch | Ausgabe „Schlüsselepoche erneuert", Bücher-Zahlen > 0, Dauer | Betreiber/Claude | mit N-5n | Code aus Probe bleibt 403; Dauer gemessen. Funktionsnachweis: K4-P4 ([K4-P4-nachweis.md](../K4-P4-nachweis.md), Schritte 3 und 3b). Die Dauer wird aus der Restore-Probe N-3 als **Richtwert** übernommen und ausdrücklich so gekennzeichnet. Kein zusätzlicher Rücksprung-Lauf auf dem Produktionsserver (Betreiber 2026-11-25) | [ ] |
 | N-8 | Vorwärts-Reparatur-Probe | Nachweis K4-P4 ([K4-P4-nachweis.md](../K4-P4-nachweis.md), Repo) | Claude (CI, synthetisch) | vor T0 | Kandidat B startet auf Daten von Kandidat A; Bücher bleiben; Abgleich ohne Fehler | [ ] |
-| N-9 | Hostverlust, nur synthetisch | Bericht | Betreiber/Claude | mit N-5n | Bücher vollständig, `/gesund` ok. Zuschnitt bestätigt der Betreiber | [ ] |
+| N-9 | Hostverlust, nur synthetisch | Bericht | Betreiber/Claude | mit N-5n | Bücher vollständig, `/gesund` ok. Nachweis synthetisch im Test „BE-3: Hostverlust“ (`pruefungen/be3-widerrufbuch-sicherung.test.js`): Bücher gleich der Kopie, `/gesund` meldet beide Widerrufbücher `ok`, zuvor widerrufene Codes und Konten bleiben abgewiesen. Kein echter Hostverlust-Test auf dem Server (Betreiber 2026-11-25) | [ ] |
 | N-10 | Widerrufbuch-Probe Variante b | Staging-Nachweis S1–S6 und Ausnahmeobjekt vor T0; nach T0 Nachhol-Dateien (Ablauf N0–N5 im [Runbook](../RUNBOOK-ERSTWECHSEL-V4R1.md)); Fristen laut Runbook | Betreiber (Lauf, Dateien), Claude (Prüfung) | vor T0; Probe ≤ T0 + 24 h; Repo ≤ T0 + 48 h | Endprüfung Exit 0; `NACHHOL-GO` | [ ] |
 | N-11 | Stoppbedingungen bestätigt | Abbruchtabelle (Runbook Abschnitt 6) gelesen und bestätigt | Betreiber | vor T0 | schriftlich | [ ] |
 | N-12 | (Löschvermerk Prüfkopie, Formblatt B.7) entfällt: es gibt keine Prüfkopie und keine Datenübertragung | – | – | – | – | entfällt |
@@ -111,7 +111,7 @@ müsste von Hand zurückgelegt werden. Dieser Abbruchfall ist im Runbook Abschni
 4. Z-A2 (Neuanlage des Betreiberzugangs auf leerer Ablage) ist nicht als eigener Staging-Schritt belegt.
 5. V-6 (Datenkategorien) braucht den Zähler K4-P2 oder eine Betreiber-Sichtprüfung.
 6. `CENTRIC_ADMIN` bleibt neben benannten Konten dauerhaft als Generalschlüssel gültig. Nach S-7 entscheidet der Betreiber, ob der Ursprungsschlüssel entfernt oder bewusst behalten wird. Fehlt er heute (weil der Betreiber der App-Warnung gefolgt ist), endet Z-A1 in „kein Neustart“; das kollidiert mit S-5 („Konfiguration unverändert“) und braucht dann vorab eine eigene Betreiberentscheidung.
-7. Der Betreiber bestätigt den Zuschnitt von N-7 und N-9 (nur synthetisch) und den Wortlaut dieser Vorlage.
+7. Erledigt (Betreiber 2026-11-25): Wortlaut dieser Vorlage und Zuschnitt von N-7 und N-9 (nur synthetisch, Variante A) sind bestätigt.
 
 ## 6. Abschluss
 
