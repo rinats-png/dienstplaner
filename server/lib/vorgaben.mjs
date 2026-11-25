@@ -171,15 +171,15 @@ export function pruefeVorgabe(v) {
   if (v.gueltigAb && v.gueltigBis && v.gueltigAb > v.gueltigBis) return `${wo}: Gültig ab liegt nach gültig bis.`;
 
   const geltung = v.geltung;
-  if (!istObjekt(geltung) || !VORGABEN_GELTUNG.includes(geltung.art)) return `${wo}: Geltung ist Betrieb, Einheit, Personengruppe oder einzelne Personen.`;
+  if (!istObjekt(geltung) || !VORGABEN_GELTUNG.includes(geltung.art)) return `${wo}: Geltung ist Betrieb, Einheit, Qualifikationsgruppe oder einzelne Personen.`;
   if (Object.keys(geltung).some((k) => !["art", "einheiten", "gruppen", "personen"].includes(k))) return `${wo}: Geltung hat unbekannte Felder.`;
   if (geltung.einheiten !== undefined && !idListe(geltung.einheiten, G.einheiten)) return `${wo}: Einheiten als Liste von Kennungen erwartet.`;
   if (geltung.gruppen !== undefined && !(Array.isArray(geltung.gruppen) && geltung.gruppen.length <= G.gruppen
-    && geltung.gruppen.every((x) => typeof x === "string" && x.trim() && x.length <= G.gruppeLaenge && !VERBOTEN.test(x)))) return `${wo}: Personengruppen als kurze Texte ohne Personenmerkmal erwartet.`;
+    && geltung.gruppen.every((x) => typeof x === "string" && x.trim() && x.length <= G.gruppeLaenge && !VERBOTEN.test(x)))) return `${wo}: Qualifikationsgruppen (Namen von Qualifikationen) als kurze Texte ohne Personenmerkmal erwartet.`;
   if (geltung.personen !== undefined && !idListe(geltung.personen, G.personen)) return `${wo}: Personen als Liste von Kennungen erwartet.`;
   const hat = (k) => Array.isArray(geltung[k]) && geltung[k].length > 0;
   if (geltung.art === "einheit" && !hat("einheiten")) return `${wo}: Bei Geltung „Einheit" fehlt die Einheit.`;
-  if (geltung.art === "gruppe" && !hat("gruppen")) return `${wo}: Bei Geltung „Personengruppe" fehlt die Gruppe.`;
+  if (geltung.art === "gruppe" && !hat("gruppen")) return `${wo}: Bei Geltung „Qualifikationsgruppe" fehlt die Qualifikation.`;
   if (geltung.art === "personen" && !hat("personen")) return `${wo}: Bei Geltung „einzelne Personen" fehlt die Person.`;
 
   const g = v.grundlage;

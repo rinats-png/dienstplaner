@@ -16,7 +16,7 @@
    ========================================================================== */
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { readFileSync } from "node:fs";
-import { vorgabenBefunde, vorgabePlanwirkung, neuesVorgabenBudget, VORGABEN_BEFUNDART, VORGABEN_PLANARTEN } from "../server/lib/vorgabenwirkung.mjs";
+import { vorgabenBefunde, vorgabePlanwirkung, neuesVorgabenBudget, VORGABEN_BEFUNDART, VORGABEN_PLANARTEN, teilzeitQuote, tagesklasse, VORGABEN_ZAEHLUNG_OHNE } from "../server/lib/vorgabenwirkung.mjs";
 import { pruefeVorgabe, vorgabeTestlauf, VORGABEN_WIRKUNG_GRENZE } from "../server/lib/vorgaben.mjs";
 import { BEFUND_KATALOG, sperrtBefund } from "../server/lib/bestaetigungen.mjs";
 import { SPERR_REGELN } from "../src/warnstufen.js";
@@ -68,14 +68,15 @@ describe("1. Eine Vorgabe gegen eine Einteilung", () => {
     expect(nurVorgabe(pruefe([V("a", { gueltigBis: TAG })], plan))).toHaveLength(1);
     expect(pruefe([V("a", { gueltigBis: add(TAG, -1) })], plan)).toEqual([]);
   });
-  it("Geltung: Betrieb alle, Einheit nur die genannte, Personen nur die genannten; Personengruppe wirkt (noch) nicht", () => {
+  it("Geltung: Betrieb alle, Einheit nur die genannte, Personen nur die genannten; Qualifikationsgruppe nur mit der Qualifikation (Betrieb ohne sie: offen)", () => {
     const plan = { [add(TAG, -1)]: "N" };
     expect(nurVorgabe(pruefe([V("a", { geltung: { art: "einheit", einheiten: ["e1"] } })], plan, { einheitAm: () => "e1" }))).toHaveLength(1);
     expect(pruefe([V("a", { geltung: { art: "einheit", einheiten: ["e1"] } })], plan, { einheitAm: () => "e2" })).toEqual([]);
     expect(pruefe([V("a", { geltung: { art: "einheit", einheiten: ["e1"] } })], plan)).toEqual([]);   // Einheit unbekannt: nicht raten
     expect(nurVorgabe(pruefe([V("a", { geltung: { art: "personen", personen: ["pp"] } })], plan))).toHaveLength(1);
     expect(pruefe([V("a", { geltung: { art: "personen", personen: ["andere"] } })], plan)).toEqual([]);
-    expect(pruefe([V("a", { geltung: { art: "gruppe", gruppen: ["Nachtwache"] } })], plan)).toEqual([]);
+    /* Gruppenname unbekannt im Betrieb: nie still „gilt nicht“, sondern offen (Hinweis). */
+    expect(pruefe([V("a", { geltung: { art: "gruppe", gruppen: ["Nachtwache"] } })], plan).map((b) => b.regel)).toEqual(["vorgabeOffen"]);
   });
   it("Ausnahmen: genannte Person und genannter Zeitraum sind ausgenommen", () => {
     const plan = { [add(TAG, -1)]: "N" };
@@ -152,8 +153,8 @@ describe("2. Was im Plan wirkt (eine Stelle für Rechnung und Verwaltung)", () =
       expect(w.grund).toMatch(/Testlauf/);
     }
   });
-  it("Personengruppen und große Zeiträume wirken nicht, mit Grund", () => {
-    expect(vorgabePlanwirkung(V("a", { geltung: { art: "gruppe", gruppen: ["x"] } })).wirkt).toBe(false);
+  it("Qualifikationsgruppen wirken; große Zeiträume wirken nicht, mit Grund", () => {
+    expect(vorgabePlanwirkung(V("a", { geltung: { art: "gruppe", gruppen: ["x"] } })).wirkt).toBe(true);
     const z = (fenster) => V("z", { regelart: "zaehlregel", parameter: { ereignis: "N", fenster, richtung: "hoechstens", grenze: 3 } });
     expect(vorgabePlanwirkung(z({ art: "kalendermonat" })).wirkt).toBe(true);
     expect(vorgabePlanwirkung(z({ art: "kalenderjahr" })).wirkt).toBe(false);
@@ -571,6 +572,172 @@ describe("7. Review-Befunde PR #566: ein Budget je Einstieg, fail-closed, Fenste
       const { m, p } = werkstatt([], { [add(TAG, -1)]: "F" });
       delete m.vorgaben;
       expect(vorgabenBefunde(m, p, TAG, daF(m), { dienstAm: () => "F" })).toEqual([]);
+    });
+  });
+});
+
+describe("8. Entscheidungen 26.11.: Qualifikationsgruppe, Teilzeit anteilig, Abwesenheit, Zeiträume über der Grenze", () => {
+  const QUALS = [{ id: "q1", name: "Fachkraft", kurz: "FK" }, { id: "q2", name: "Praxisanleitung", kurz: "PA" }];
+  /** Prüfung mit Betrieb (Dienstarten, Qualifikationen, Soll-Wochenstunden) und Person mit eigenen Feldern. */
+  const pruefeM = (vorgaben, plan, { p = P, da = "F", d = TAG, abw = {}, automatisch, quals = QUALS } = {}) =>
+    vorgabenBefunde({ dienstarten: DA, qualifikationen: quals, vorgaben, einstellungen: { sollWochenstunden: 40 } }, p, d, dienst(da),
+      { dienstAm: (x, t) => plan[t] || null, abwesendAm: (x, t) => abw[t] || null, automatisch });
+  const nachtFrueh = { [add(TAG, -1)]: "N" };   // verletzt „nach Nachtdienst kein Frühdienst“ (V-Standard)
+  const regeln = (l) => l.map((b) => b.regel);
+
+  describe("Qualifikationsgruppe (Geltung „Personengruppe“ über die strukturierten Qualifikationen der Person)", () => {
+    const gr = (...gruppen) => V("g", { geltung: { art: "gruppe", gruppen } });
+    it("die Vorgabe gilt für Personen mit der Qualifikation (Name, Kürzel oder Kennung, ohne Groß-/Kleinschreibung), nicht für Personen ohne sie", () => {
+      const mit = { id: "pp", qualifikationen: ["q1"] }, ohne = { id: "pp", qualifikationen: ["q2"] }, keine = { id: "pp" };
+      for (const name of ["Fachkraft", "fk", "Q1"]) {
+        expect(regeln(pruefeM([gr(name)], nachtFrueh, { p: mit })), name).toEqual(["vorgabeMuss"]);
+        expect(pruefeM([gr(name)], nachtFrueh, { p: ohne }), name).toEqual([]);
+        expect(pruefeM([gr(name)], nachtFrueh, { p: keine }), name).toEqual([]);
+      }
+    });
+    it("unbekannter Gruppenname: nie still „gilt nicht“, sondern offen (Hinweis; Automatik bei Muss: Achtung); eine bekannte Gruppe der Person gilt trotzdem", () => {
+      const p = { id: "pp", qualifikationen: ["q2"] };
+      const h = pruefeM([gr("Gibt-es-nicht")], nachtFrueh, { p });
+      expect(h).toHaveLength(1);
+      expect(h[0]).toMatchObject({ regel: "vorgabeOffen", stufe: "hinweis" });
+      expect(h[0].text).toMatch(/Qualifikationsgruppe im Betrieb unbekannt/);
+      expect(pruefeM([gr("Gibt-es-nicht")], nachtFrueh, { p, automatisch: true })[0]).toMatchObject({ regel: "vorgabeOffen", stufe: "achtung" });
+      expect(pruefeM([{ ...gr("Gibt-es-nicht"), staerke: "soll" }], nachtFrueh, { p, automatisch: true })[0].stufe).toBe("hinweis");
+      expect(regeln(pruefeM([gr("Gibt-es-nicht", "Praxisanleitung")], nachtFrueh, { p }))).toEqual(["vorgabeMuss"]);
+      expect(regeln(pruefeM([gr("Gibt-es-nicht", "Fachkraft")], nachtFrueh, { p }))).toEqual(["vorgabeOffen"]);   // Person nicht in der bekannten Gruppe: unbekannte könnte sie enthalten
+    });
+    it("Betrieb ohne Qualifikationen: jede Gruppe ist unbekannt (offen); Oberfläche und Meldungen sagen „Qualifikationsgruppe“, nie eine allgemeine Gruppierung", () => {
+      expect(regeln(pruefeM([gr("Fachkraft")], nachtFrueh, { p: { id: "pp", qualifikationen: ["q1"] }, quals: [] }))).toEqual(["vorgabeOffen"]);
+      const ui = readFileSync("src/ansichten/vorgaben.jsx", "utf8");
+      expect(ui).toContain("Qualifikationsgruppe(n)");
+      expect(ui).toContain("Qualifikationsgruppen");
+      expect(ui).toMatch(/keine allgemeine Gruppierung/);
+      expect(ui).not.toContain("Personengruppe");
+    });
+  });
+
+  describe("Teilzeit anteilig (Zählregel; keine Rundung; Schutzvorschriften unberührt)", () => {
+    const Z = (richtung, grenze, extra = {}) => V("z", { regelart: "zaehlregel", parameter: { ereignis: richtung === "mindestens" ? "frei" : "N", fenster: { art: "rollierend", laenge: 7, einheit: "tage" }, richtung, grenze }, ...extra });
+    const tz = (stunden) => ({ id: "pp", teilzeit: { aktiv: true }, wochenstunden: stunden });
+    const arbeit = { [add(TAG, 1)]: "S", [add(TAG, 2)]: "S", [add(TAG, 3)]: "S", [add(TAG, 4)]: "S" };   // „mindestens 4 freie Tage in 7“ reißt mit der Einteilung am Tag
+    it("Untergrenze („mindestens“) wird mit der Teilzeitquote skaliert: Vollzeit verletzt, 50 % (Grenze 2) nicht", () => {
+      expect(regeln(pruefeM([Z("mindestens", 4)], arbeit))).toEqual(["vorgabeMuss"]);
+      expect(regeln(pruefeM([Z("mindestens", 4)], arbeit, { p: { id: "pp", teilzeit: { aktiv: false }, wochenstunden: 20 } }))).toEqual(["vorgabeMuss"]);   // keine aktive Teilzeit
+      expect(pruefeM([Z("mindestens", 4)], arbeit, { p: tz(20) })).toEqual([]);
+    });
+    it("nicht ganzzahlige Grenze (60 % von 4 = 2,4): kein stilles Runden — knapp daneben ist offen, deutlich darunter ein Befund mit dem Hinweis „anteilig, nicht ganzzahlig“", () => {
+      const knapp = pruefeM([Z("mindestens", 4)], arbeit, { p: tz(24) });
+      expect(regeln(knapp)).toEqual(["vorgabeOffen"]);
+      expect(knapp[0].text).toMatch(/anteilig, nicht ganzzahlig/);
+      const sehrWenig = { ...arbeit, [add(TAG, 5)]: "S", [add(TAG, -1)]: "S", [add(TAG, -2)]: "S" };
+      const b = pruefeM([Z("mindestens", 4)], sehrWenig, { p: tz(24) });
+      expect(regeln(b)).toEqual(["vorgabeMuss"]);
+      expect(b[0].text).toMatch(/anteilig: Grenze 2.4, nicht ganzzahlig/);
+    });
+    it("Vorgabe schließt „anteilig“ aus (teilzeitAnteilig: nein): keine Skalierung, auch bei Untergrenzen", () => {
+      expect(regeln(pruefeM([Z("mindestens", 4, { ausnahmen: { teilzeitAnteilig: false } })], arbeit, { p: tz(20) }))).toEqual(["vorgabeMuss"]);
+    });
+    it("Obergrenze („höchstens“) wird NUR bei ausdrücklich anteilig geltender Vorgabe skaliert", () => {
+      const nacht = { [add(TAG, 1)]: "N", [add(TAG, 2)]: "N" };   // mit der Einteilung 3 Nächte
+      expect(pruefeM([Z("hoechstens", 3)], nacht, { da: "N", p: tz(20) })).toEqual([]);                                        // nicht anteilig: Grenze 3 bleibt, 3 ist erlaubt
+      expect(regeln(pruefeM([Z("hoechstens", 3, { ausnahmen: { teilzeitAnteilig: true } })], nacht, { da: "N", p: tz(20) }))).toEqual(["vorgabeMuss"]);   // 1,5: 3 liegt deutlich darüber
+      const knapp = pruefeM([Z("hoechstens", 3, { ausnahmen: { teilzeitAnteilig: true } })], { [add(TAG, 1)]: "N" }, { da: "N", p: tz(20) });   // 2 bei Grenze 1,5: knapp darüber
+      expect(regeln(knapp)).toEqual(["vorgabeOffen"]);
+      expect(knapp[0].text).toMatch(/anteilig, nicht ganzzahlig/);
+    });
+    it("Teilzeitquote nicht bestimmbar (aktive Teilzeit ohne Wochenstunden): offen, in der Automatik Achtung — nie geraten", () => {
+      const p = { id: "pp", teilzeit: { aktiv: true } };
+      expect(pruefeM([Z("mindestens", 4)], arbeit, { p }).map((b) => [b.regel, b.stufe])).toEqual([["vorgabeOffen", "hinweis"]]);
+      expect(pruefeM([Z("mindestens", 4)], arbeit, { p, automatisch: true })[0].stufe).toBe("achtung");
+    });
+    it("Teilzeitquote: ohne Teilzeit 1, sonst Wochenstunden zur Soll-Wochenarbeitszeit, ohne Rundung und ohne Untergrenze", () => {
+      expect(teilzeitQuote({}, { id: "x" })).toBe(1);
+      expect(teilzeitQuote({ einstellungen: { sollWochenstunden: 38.5 } }, { teilzeit: { aktiv: true }, wochenstunden: 19.25 })).toBe(0.5);
+      expect(teilzeitQuote({}, { teilzeit: { aktiv: true }, wochenstunden: 2 })).toBe(0.05);
+      expect(teilzeitQuote({}, { teilzeit: { aktiv: true }, wochenstunden: 1 })).toBe(0.025);
+      expect(teilzeitQuote({}, { teilzeit: { aktiv: true }, wochenstunden: 50 })).toBe(1);
+      expect(teilzeitQuote({}, { teilzeit: { aktiv: true } })).toBeNull();
+    });
+    it("Schutzvorschriften bleiben unberührt: die Ruhezeitprüfung der Einteilung ist mit und ohne Vorgabe dieselbe", async () => {
+      const F = await import("../src/lib/fachlogik.js");
+      const E = await import("../server/lib/engine/einsatz.mjs");
+      const B = betriebe(F);
+      const bauen = (vorgaben) => {
+        const m = structuredClone(B.find(([n]) => n.startsWith("demo1"))[1]);
+        m.abwesenheiten = []; m.vorgaben = vorgaben;
+        const p = m.personen.find((x) => x.rolle === "mitarbeiter" && !(x.teilzeit && x.teilzeit.aktiv) && !x.springer);
+        p.teilzeit = { aktiv: true, modus: "quote" }; p.wochenstunden = 20;
+        for (let i = -20; i <= 20; i++) m.abweichungen[`${p.id}|${add(TAG, i)}`] = "-";
+        m.abweichungen[`${p.id}|${add(TAG, -1)}`] = "N";
+        return { m, p };
+      };
+      const ohne = bauen([]), mit = bauen([Z("mindestens", 4, { ausnahmen: { teilzeitAnteilig: true } })]);
+      const nurSchutz = (x) => E.hindernisBefunde(x.m, x.p, TAG, x.m.dienstarten.find((d) => d.id === "F")).filter((b) => b.art !== "vorgabe").map((b) => [b.regel, b.stufe, b.sperrt]);
+      expect(nurSchutz(mit)).toEqual(nurSchutz(ohne));
+      expect(nurSchutz(mit).some((b) => b[0] === "ruhezeitGesetz")).toBe(true);
+    });
+  });
+
+  describe("Abwesenheit: Urlaub und Krankheit aus der Zählung genommen, nie als Ruhezeit oder Freizeit gewertet", () => {
+    const Zf = (extra = {}) => V("z", { regelart: "zaehlregel", parameter: { ereignis: "frei", fenster: { art: "rollierend", laenge: 7, einheit: "tage" }, richtung: "mindestens", grenze: 4 }, ...extra });
+    const plan = { [add(TAG, 4)]: "S", [add(TAG, 5)]: "S" };
+    const urlaub = { [add(TAG, 1)]: "urlaub", [add(TAG, 2)]: "krank", [add(TAG, 3)]: "urlaub" };
+    it("Urlaub/Krankheit zählen nicht als freie Tage, und die Vergleichsgrundlage sinkt mit (Zähler und Grenze aus demselben Zeitraum): Befund nennt es", () => {
+      const b = pruefeM([Zf()], plan, { abw: urlaub });
+      expect(regeln(b)).toEqual(["vorgabeMuss"]);
+      expect(b[0].text).toMatch(/ohne Urlaub und Krankheit/);
+      expect(b[0].text).toMatch(/anteilig: Grenze 2\.2857/);
+    });
+    it("derselbe Plan mit einer anderen Abwesenheit (Schulung) bleibt ohne Herausnahme (keine Skalierung der Grenze)", () => {
+      const schulung = Object.fromEntries(Object.keys(urlaub).map((t) => [t, "schulung"]));
+      const b = pruefeM([Zf()], plan, { abw: schulung });
+      expect(regeln(b)).toEqual(["vorgabeMuss"]);
+      expect(b[0].text).not.toMatch(/ohne Urlaub und Krankheit/);
+    });
+    it("Verdrahtung: hindernisBefunde reicht die Abwesenheiten des Betriebs an die Prüfung (Urlaub im Plan wird herausgenommen)", async () => {
+      const F = await import("../src/lib/fachlogik.js");
+      const E = await import("../server/lib/engine/einsatz.mjs");
+      const B = betriebe(F);
+      const m = structuredClone(B.find(([n]) => n.startsWith("demo1"))[1]);
+      m.vorgaben = [Zf()];
+      const p = m.personen.find((x) => x.rolle === "mitarbeiter" && !(x.teilzeit && x.teilzeit.aktiv) && !x.springer);
+      m.abwesenheiten = [{ id: "u-test", personId: p.id, art: "urlaub", von: add(TAG, 1), bis: add(TAG, 3) }];
+      for (let i = -20; i <= 20; i++) m.abweichungen[`${p.id}|${add(TAG, i)}`] = "-";
+      m.abweichungen[`${p.id}|${add(TAG, 4)}`] = "S"; m.abweichungen[`${p.id}|${add(TAG, 5)}`] = "S";
+      const b = E.hindernisBefunde(m, p, TAG, m.dienstarten.find((x) => x.id === "F")).filter((x) => x.art === "vorgabe");
+      expect(b.map((x) => x.regel)).toEqual(["vorgabeMuss"]);
+      expect(b[0].text).toMatch(/ohne Urlaub und Krankheit/);
+    });
+    it("Tagesklasse: ein abwesender Tag hat keine Klasse (unbekannt), nie „frei“; ohne Abwesenheit ohne Dienst „frei“", () => {
+      expect(tagesklasse(null, true)).toBeUndefined();
+      expect(tagesklasse("F", true)).toBeUndefined();
+      expect(tagesklasse(null, false)).toBe("frei");
+      expect(tagesklasse("", false)).toBe("frei");
+      expect(tagesklasse("N", false)).toBe("N");
+      expect(VORGABEN_ZAEHLUNG_OHNE).toEqual(["urlaub", "krank"]);
+    });
+    it("Muster: ein abwesender Tag nach dem Block gilt nicht als freier Tag — das Ergebnis bleibt offen statt erfüllt (kein Befund, aber auch kein stilles „bestanden“)", () => {
+      const folge = V("folge", { parameter: { art: "hoechstensFolge", klassen: ["F"], max: 2, danachFrei: 1 } });
+      expect(pruefeM([folge], { [add(TAG, 1)]: "S" }, { da: "F" }).map((b) => b.regel)).toEqual(["vorgabeMuss"]);   // Einteilung F, danach Dienst S statt frei
+      expect(pruefeM([folge], {}, { da: "F", abw: { [add(TAG, 1)]: "urlaub" } })).toEqual([]);                       // Urlaub danach: unbekannt, kein Befund
+    });
+  });
+
+  describe("Zählregeln und Muster über der Grenze (62 Tage) gelten nie still als bestanden", () => {
+    const jahr = (extra = {}) => V("j", { regelart: "zaehlregel", parameter: { ereignis: "N", fenster: { art: "kalenderjahr" }, richtung: "hoechstens", grenze: 60 }, ...extra });
+    it("wirkt im Plan nicht (WP-I7, Aggregate) — die Prüfung meldet es als „nicht vollständig geprüft“ mit Grund, in der Automatik bei Muss als Achtung", () => {
+      const b = pruefeM([jahr()], {});
+      expect(b.map((x) => [x.regel, x.stufe])).toEqual([["vorgabeOffen", "hinweis"]]);
+      expect(b[0].text).toMatch(/Zeitraum über 62 Tage/);
+      expect(pruefeM([jahr()], {}, { automatisch: true })[0].stufe).toBe("achtung");
+      expect(pruefeM([jahr({ staerke: "soll" })], {}, { automatisch: true })[0].stufe).toBe("hinweis");
+      const lang = V("m", { parameter: { art: "hoechstensFolge", klassen: ["F"], max: 40, danachFrei: 0 } });
+      expect(regeln(pruefeM([lang], {}))).toEqual(["vorgabeOffen"]);
+    });
+    it("gilt die Vorgabe für die Person gar nicht (andere Person, Ausnahme), bleibt es still; Testlauf-Regelarten bleiben wie dokumentiert nur im Testlauf", () => {
+      expect(pruefeM([jahr({ geltung: { art: "personen", personen: ["andere"] } })], {})).toEqual([]);
+      expect(pruefeM([jahr({ ausnahmen: { personen: ["pp"] } })], {})).toEqual([]);
+      expect(pruefeM([V("g", { regelart: "grenzregel", parameter: { groesse: "x", hoechstens: 3 } })], {})).toEqual([]);
     });
   });
 });

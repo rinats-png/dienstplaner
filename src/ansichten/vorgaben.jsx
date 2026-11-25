@@ -29,7 +29,7 @@ const STAERKE_TEXT = { muss: "Muss", soll: "Soll", wunsch: "Wunsch" };
 const STAERKE_HILFE = { muss: "Ein Verstoß ist eine Achtung und braucht eine Bestätigung.", soll: "Ziel beim Planen; eine Abweichung ist ein Hinweis.", wunsch: "Wird nur berücksichtigt, wenn es geht." };
 const GRUNDLAGE_TEXT = { hausregel: "Hausregel", betriebsvereinbarung: "Betriebsvereinbarung", tarif: "Tarifvertrag" };
 const BEZUG_TEXT = { woche: "Woche", monat: "Monat", quartal: "Quartal", rotation: "Schichtrotation" };
-const GELTUNG_TEXT = { betrieb: "ganzer Betrieb", einheit: "Einheit(en)", gruppe: "Personengruppe(n)", personen: "einzelne Personen" };
+const GELTUNG_TEXT = { betrieb: "ganzer Betrieb", einheit: "Einheit(en)", gruppe: "Qualifikationsgruppe(n)", personen: "einzelne Personen" };
 const STATUS_TEXT = { entwurf: "Entwurf", aktiv: "aktiv", inaktiv: "inaktiv" };
 const WAHL_TEXT = { hoechstens: "höchstens", mindestens: "mindestens", kalendermonat: "Kalendermonat", kalenderjahr: "Kalenderjahr", rollierend: "rollierend",
   tage: "Tage", wochen: "Wochen", monate: "Monate", anzahl: "Personen insgesamt", anzahlMit: "Personen mit Merkmal", quoteMit: "Anteil mit Merkmal (0 bis 1)",
@@ -125,8 +125,9 @@ export function Formular({ m, start, onSpeichern, onAbbruch }) {
           <label key={e.id} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13.5, minHeight: 24 }}>
             <input type="checkbox" checked={(v.geltung.einheiten || []).includes(e.id)} onChange={() => liste("einheiten", e.id)} />{e.name || e.id}</label>))}</div></Field>)}
       {v.geltung.art === "gruppe" && (
-        <Field label="Personengruppen" hint="Mit Komma trennen, z. B. Vollzeit, Fachkräfte."><Inp value={(v.geltung.gruppen || []).join(", ")}
-          onChange={(e) => setz("geltung", { ...v.geltung, gruppen: e.target.value.split(",").map((x) => x.trim()).filter(Boolean) })} /></Field>)}
+        <Field label="Qualifikationsgruppen" hint="Gilt für Personen mit der gewählten Qualifikation (keine allgemeine Gruppierung). Ohne die Qualifikation gilt die Vorgabe für die Person nicht."><div style={box}>{(m.qualifikationen || []).map((q) => (
+          <label key={q.id} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13.5, minHeight: 24 }}>
+            <input type="checkbox" checked={(v.geltung.gruppen || []).includes(q.id)} onChange={() => liste("gruppen", q.id)} />{q.name || q.kurz || q.id}</label>))}</div></Field>)}
       {v.geltung.art === "personen" && (
         <Field label="Personen"><div style={box}>{personen.map((p) => (
           <label key={p.id} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13.5, minHeight: 24 }}>

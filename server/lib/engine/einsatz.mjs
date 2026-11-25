@@ -152,7 +152,7 @@ export function hindernisBefunde(m, p, d, da, opt) {
   /* Branchenmodule (WP-19): Hinweise mit eigener Regelkennung aus dem Register. */
   for (const b of bis(["branche"])) push(b.stufe, b.text, b.quelle, b.art, b.regel, /** @type {any} */ (b).regelId || null);
   /* Interne Vorgaben des Betriebs (WP-I5): Muss = Achtung mit Bestätigung, Soll = Hinweis, sperrt nie; Budget je Anfrage. */
-  for (const b of vorgabenBefunde(m, p, d, da, { dienstAm: (x, t) => personTag(m, x, t).dienstId || null, einheitAm, budget: opt && opt.vorgabenBudget, automatisch: !!(opt && opt.vorgabenAutomatisch) }))
+  for (const b of vorgabenBefunde(m, p, d, da, { dienstAm: (x, t) => personTag(m, x, t).dienstId || null, einheitAm, abwesendAm: (x, t) => { const ab = abwesenheitAm(m, x.id, t); return ab ? ab.art : null; }, budget: opt && opt.vorgabenBudget, automatisch: !!(opt && opt.vorgabenAutomatisch) }))
     push(b.stufe, b.text, b.quelle, b.art, b.regel, b.regelId);
   // Dienste in Folge (Einstellung des Betriebs; nur die Oberfläche)
   let lauf = 0;
