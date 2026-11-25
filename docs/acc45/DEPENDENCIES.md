@@ -4,7 +4,7 @@ Erzeugt von `werkzeug/acc45-backlog.mjs` aus `docs/acc45/work-packages.json` (ni
 
 **Kritischer Pfad gemeinsam** (offener Entwicklungsaufwand, ohne extern): WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **50–90 PT**
 **Ohne Intelligence:** WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 → WP-42a → WP-42 = **22,5–35 PT**
-**Offener Entwicklungsaufwand:** 369,55–633 PT in 146 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
+**Offener Entwicklungsaufwand:** 369,3–632,5 PT in 146 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
 
 WP-09 ist nur Livegang-Reihenfolge und zählt im Pfad nicht als Abhängigkeit. Der Graph zeigt nur offene Pakete.
 
@@ -157,7 +157,7 @@ flowchart LR
     GATE_DEPLOY_DIGEST["GATE-DEPLOY-DIGEST<br/>BLOCKED"]
     GATE_RUECKHALT_AU6["GATE-RUECKHALT-AU6<br/>BLOCKED"]
     GATE_VPS_SIGNATUR["GATE-VPS-SIGNATUR<br/>BLOCKED"]
-    K4_P1["K4-P1<br/>READY"]
+    K4_P1["K4-P1<br/>IN_PROGRESS"]
     K4_P3["K4-P3<br/>READY"]
     K4_P4["K4-P4<br/>BLOCKED"]
     K4_P7["K4-P7<br/>BLOCKED"]
@@ -690,7 +690,7 @@ flowchart LR
 | SSOT-UK1 | acc45 | P2 | 0,5–1 | 0,5–1 | – | – | sonnet | BLOCKED |
 | SSOT-UK2 | acc45 | P2 | 0,25–0,5 | 0,25–0,5 | SSOT-UK1 | – | sonnet | BLOCKED |
 | RC-WECHSEL | acc45 | P1 | 0,5–1 | 0,5–1 | GATE-EW1, GATE-EW2, GATE-EW3, GATE-EW4, GATE-EW5, RST-5, RST-7 | – | opus | BLOCKED |
-| K4-P1 | folge | P1 | 0,5–1 | 0,5–1 | – | – | sonnet | READY |
+| K4-P1 | folge | P1 | 0,5–1 | 0,25–0,5 | – | – | sonnet | IN_PROGRESS |
 | K4-P2 | acc45 | P2 | 0,5 | 0,5 | – | – | sonnet | READY |
 | K4-P3 | folge | P1 | 1–1,5 | 1–1,5 | – | – | sonnet | READY |
 | K4-P4 | folge | P1 | 1,5–2 | 1,5–2 | K4-P3 | – | opus | BLOCKED |
