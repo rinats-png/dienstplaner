@@ -210,6 +210,16 @@ describe("Ausgabepfad: Kurznamen, Verweise, laufende Ablage, UNC", () => {
     if (!k) { console.warn("ÜBERSPRUNGEN: keine 8.3-Kurznamen verfügbar"); ctx.skip(); return; }
     expect(ausgabePruefen(k, { env: { CENTRIC_DATEN: lang } }).ok).toBe(false);
   });
+  it("CENTRIC_DATEN existiert noch nicht: vorhandener Vorfahr in Kurz- oder Langform zählt", (ctx) => {
+    const lang = path.join(T, "vorfahr-fuer-kurznamen");
+    mkdirSync(lang);
+    const k = kurzname(lang);
+    if (!k) { console.warn("ÜBERSPRUNGEN: keine 8.3-Kurznamen verfügbar"); ctx.skip(); return; }
+    const BS = String.fromCharCode(92);
+    expect(ausgabePruefen(path.join(lang, "ablage-neu"), { env: { CENTRIC_DATEN: `${k}${BS}ablage-neu` } }).ok).toBe(false);   // Ziel gleich der (fehlenden) Ablage, Kurzform gegen Langform
+    expect(ausgabePruefen(`${k}${BS}neu-ziel`, { env: { CENTRIC_DATEN: path.join(lang, "neu-ziel", "ablage") } }).ok).toBe(false); // Ziel über der (fehlenden) Ablage
+    expect(ausgabePruefen(path.join(T, "ganz-anders-neu"), { env: { CENTRIC_DATEN: `${k}${BS}noch-nicht` } }).ok).toBe(true);
+  });
   it("Ziel innerhalb der laufenden Ablage und Ziel über der laufenden Ablage abgewiesen", () => {
     const d = path.join(T, "laufend2");
     mkdirSync(d);
@@ -361,6 +371,11 @@ describe("Selbsttest: jede Verletzung der Gestalt wird gefunden", () => {
     const p = path.join(d, "centric", n); const u = JSON.parse(readFileSync(p, "utf8")); u.daten.name = "Tel 000000000"; writeFileSync(p, JSON.stringify(u)); } }, /Ziffern|Telefon/);
   einzel("Telefonnummer mit Leerzeichen und Trennern", (d) => umschlagAendern(d, "kern:alt-pflege", (u) => { u.daten.mandanten[0].anschrift = "+00 000 0000 0000"; }), /Ziffern|Telefon/);
   einzel("Telefonnummer mit Bindestrichen", (d) => umschlagAendern(d, "kern:alt-pflege", (u) => { u.daten.mandanten[0].anschrift = "000-0000-0000"; }), /Ziffern|Telefon/);
+  for (const [name, wert] of [["zu kurz (2 Ziffern)", "Altbestand 12"], ["zu lang (4 Ziffern)", "Altbestand 0012"], ["Zusatz am Ende", "Altbestand 012 x"], ["Zusatz am Anfang", "x Altbestand 012"]]) {
+    einzel(`Nachname ${name} verletzt die Positivliste ^Altbestand \d{3}$`, (d) => umschlagAendern(d, "kern:alt-pflege", (u) => { u.daten.mandanten[0].personen[0].nachname = wert; }), /Positivliste/);
+  }
+  einzel("7 Ziffern in der Mailadresse eines Kontos (account:.email)", (d) => { for (const n of dateien(d).filter((x) => x.startsWith("account%3A"))) {
+    const p = path.join(d, "centric", n); const u = JSON.parse(readFileSync(p, "utf8")); u.daten.email = "konto1234567@example.invalid"; writeFileSync(p, JSON.stringify(u)); } }, /Ziffern|Telefon/);
   einzel("Vorname nicht aus der Positivliste", (d) => umschlagAendern(d, "kern:alt-pflege", (u) => { u.daten.mandanten[0].personen[0].vorname = "Zufall"; }), /Positivliste/);
   einzel("Personenname nicht aus der Positivliste", (d) => umschlagAendern(d, "kern:alt-pflege", (u) => { u.daten.mandanten[0].personen[0].nachname = "Zufallsname"; }), /Positivliste/);
   einzel("kein Konto im Zustand gesperrt oder eingeladen", (d) => { for (const n of dateien(d).filter((x) => x.startsWith("account%3A"))) {

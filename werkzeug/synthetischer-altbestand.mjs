@@ -203,6 +203,20 @@ export const uncPfad = (p) => /^[\\/]{2}/.test(p);
 /** Echter Pfad in der Betriebssystemfassung: löst auch 8.3-Kurznamen (Windows) auf. @param {string} p */
 const echterPfad = (p) => realpathSync.native(p);
 
+/** Wie echterPfad, aber auch für einen Pfad, der noch nicht existiert: der tiefste vorhandene Vorfahr wird aufgelöst,
+ *  der fehlende Rest angehängt (so zählt ein Kurzname im vorhandenen Teil richtig). @param {string} p @returns {string} */
+function echterPfadAuchFehlend(p) {
+  const rest = [];
+  let a = path.resolve(p);
+  for (;;) {
+    try { return path.join(realpathSync.native(a), ...rest.reverse()); } catch { /* nicht vorhanden: eine Ebene höher */ }
+    const hoeher = path.dirname(a);
+    if (hoeher === a) return path.resolve(p);
+    rest.push(path.basename(a));
+    a = hoeher;
+  }
+}
+
 export function ausgabePruefen(ausgabe, { wurzel = WURZEL, env = process.env } = {}) {
   const nein = (/** @type {string} */ grund) => ({ ok: false, grund });
   if (typeof ausgabe !== "string" || !ausgabe.trim()) return nein("Ausgabe fehlt");
@@ -238,7 +252,7 @@ export function ausgabePruefen(ausgabe, { wurzel = WURZEL, env = process.env } =
   const laufend = env.CENTRIC_DATEN;
   if (laufend) {
     let l = path.resolve(laufend);
-    try { l = echterPfad(l); } catch { /* nicht vorhanden */ }
+    l = echterPfadAuchFehlend(l);
     if (gleichOderIn(l, echt) || gleichOderIn(echt, l)) return nein("Ausgabe berührt die laufende Ablage (CENTRIC_DATEN)");
   }
   return { ok: true, pfad, neu: !st };
