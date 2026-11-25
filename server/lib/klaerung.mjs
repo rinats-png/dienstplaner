@@ -42,6 +42,7 @@
 import { addDays } from "./regelwerk.mjs";
 import { personTag, besetzung } from "./engine/plan.mjs";
 import { ersatzKandidaten, KANDIDATEN_MAX } from "./engine/ersatzfakten.mjs";
+import { neuesVorgabenBudget } from "./vorgabenwirkung.mjs";
 import { fallOffen, svZustaendig } from "./krankmeldung.mjs";
 
 export const KLAERUNG_HINWEIS = "Besetzung klärungsbedürftig";
@@ -166,12 +167,13 @@ export function ersatzVorbereiten(m, wahl = {}) {
   const gedacht = { ...r, abwesenheiten: [...r.abwesenheiten, ...aktuell.filter((k) => tagGueltig(k.datum))
     .map((k, i) => ({ id: `klaerung-gedacht-${i}`, personId: k.personId, art: "abwesend", von: k.datum, bis: k.datum }))] };
   const aus = [];
+  const vorgabenBudget = neuesVorgabenBudget();   // WP-I5: ein Budget für alle vorbereiteten Dienste dieses Einstiegs
   for (const k of marker.slice(0, max)) {
     try {
       const vor = besetzung(r, k.datum)[k.dienstId];
       const nach = besetzung(gedacht, k.datum)[k.dienstId];
       if (!vor || !nach) continue;
-      const kand = ersatzKandidaten(gedacht, k.datum, k.dienstId);
+      const kand = ersatzKandidaten(gedacht, k.datum, k.dienstId, { vorgabenBudget });
       aus.push({ fallId: k.fallId, personId: k.personId, datum: k.datum, dienstId: k.dienstId, hinweis: VORSCHLAG_HINWEIS,
         besetzung: { soll: nach.soll, jetzt: vor.anzahl, ohne: nach.anzahl,
           /* ABN-A4: Bedarf nicht festgelegt (Dienstart ohne gültiges mindest): kein Fehlbetrag erfunden (nie NaN). */

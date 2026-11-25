@@ -45,6 +45,7 @@ export { verteilung, planKennzahlen } from "../../server/lib/engine/kennzahlen.m
 /* WP-I12a: Einsatzprüfung und Ersatzsuche stehen ebenfalls im Rechenkern. Der Client hängt die Regelkennung des Regelregisters ein (Frage 6). */
 export { SCHUTZ_QUELLE_NEUTRAL, SCHUTZ_QUELLE_EINSCHRAENKUNG, einschr, nachtJahr, FENSTER, fensterVon, verfuegbarFuer, wochenStundenGeplant, hindernisBefunde, ersatzVorschlaege } from "../../server/lib/engine/einsatz.mjs";
 import { SCHUTZ_QUELLE_NEUTRAL, nachtJahr, wochenStundenGeplant, hindernisBefunde, ersatzVorschlaege, regelIdHakenSetzen } from "../../server/lib/engine/einsatz.mjs";
+import { neuesVorgabenBudget } from "../../server/lib/vorgabenwirkung.mjs";
 import { krankSchrittErlaubt } from "../../server/lib/krankmeldung.mjs";
 regelIdHakenSetzen(regelIdFuerBefund);
 
@@ -1563,7 +1564,8 @@ export function planeMonat(m, ym, grenzen = {}) {
   const [y, mo] = ym.split("-").map(Number);
   const n = dim_(y, mo - 1);
   const maxProPerson = grenzen.maxProPerson || 3;
-  const ctx = { konten: new Map(), einspruenge: {}, nachtAnzahl: new Map() };
+  /* WP-I5: ein Budget für den ganzen Monat (nicht je Suchschritt); ohne Mensch: ungeprüfte Muss-Vorgaben lassen die Lücke offen. */
+  const ctx = { konten: new Map(), einspruenge: {}, nachtAnzahl: new Map(), vorgabenBudget: neuesVorgabenBudget(), vorgabenAutomatisch: true };
   const jahr = Number(ym.slice(0, 4));
   for (const p of m.personen) {
     ctx.konten.set(p.id, stundenkonto(m, p, ym));

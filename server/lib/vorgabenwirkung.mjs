@@ -80,9 +80,14 @@ export function vorgabePlanwirkung(v) {
   return { wirkt: true, grund: null };
 }
 
-/** Ein neues Rechenbudget für eine Anfrage (Tagesabfragen; deterministisch). */
+/**
+ * Ein neues Rechenbudget für EINEN äußeren Einstieg (Tagesabfragen; deterministisch). Es wird vom Einstieg angelegt und durch
+ * ersatzKandidaten → ersatzVorschlaege → hindernisBefunde → vorgabenBefunde weitergereicht; wer eines bekommt, legt kein zweites an.
+ * `cache` (Plan je Betriebsstand) und `vorbereitet` (Dienstart-Abbildung, Regeln, Reihenfolge je Vorgabenliste) gehören dazu:
+ * einmal je Einstieg gerechnet, nicht je Aufruf und Person.
+ */
 export function neuesVorgabenBudget(aufwand = VORGABEN_WIRKUNG_GRENZE.aufwand) {
-  return { rest: aufwand, cache: new Map(), ausgeschoepft: false };
+  return { rest: aufwand, cache: new WeakMap(), vorbereitet: new WeakMap(), ausgeschoepft: false };
 }
 
 const kleinText = (s) => String(s === undefined || s === null ? "" : s).trim().toLowerCase();
@@ -124,58 +129,100 @@ function giltFuer(v, p, d, einheitAm) {
 function fensterUm(v, d) {
   const p = v.parameter || {};
   if (v.regelart === "blockregel") { const mo = addDays(d, -dow(d)); return { von: mo, bis: addDays(mo, 6) }; }
-  if (v.regelart === "zaehlregel") return zeitraum(p.fenster, d);
+  if (v.regelart === "zaehlregel") {
+    /* Rollierend: Jedes Fenster, das den Tag d enthält, endet an einem Stichtag von d bis d+n−1 — alle werden ausgewertet,
+       der Plan wird von d−(n−1) bis d+(n−1) gebraucht. Kalendermonat: das eine Fenster des Tages. */
+    const n = p.fenster && p.fenster.art === "rollierend" ? zaehlFenster(p.fenster) : null;
+    return n ? { von: addDays(d, -(n - 1)), bis: addDays(d, n - 1) } : zeitraum(p.fenster, d);
+  }
   const halb = p.art === "hoechstensFolge" ? Number(p.max) + (Number(p.danachFrei) || 0) + 1 : Number(p.abstandTage === undefined ? 1 : p.abstandTage);
   return { von: addDays(d, -halb), bis: addDays(d, halb) };
 }
 
-/** Wie schwer die Verletzung wiegt (größer = schlimmer): Zahl der Verstöße, bei Zählregeln die Anzahl (bei „mindestens“ umgekehrt). */
+/** Wie schwer die Verletzung wiegt (größer = schlimmer): Summe der Verstoßlängen in Tagen (ein Verstoß ohne Länge zählt 1), bei Zählregeln
+    die Anzahl (bei „mindestens“ umgekehrt). Länge statt Zahl: Eine Einteilung, die zwei zu lange Folgen zu einer noch längeren verbindet,
+    senkt die Zahl der Verstöße, vergrößert aber die Verletzung. */
 const mass = (e) => {
   const f = e.fakten || {};
-  if (Array.isArray(f.verstoesse)) return f.verstoesse.length;
+  if (Array.isArray(f.verstoesse)) return f.verstoesse.reduce((summe, x) => summe + (x && Number.isFinite(x.laenge) && x.laenge > 0 ? x.laenge : 1), 0);
   return Number.isFinite(f.anzahl) ? (f.richtung === "mindestens" ? -f.anzahl : f.anzahl) : 0;
 };
 
+
+/**
+ * Einmal je Einstieg (Budget) und Vorgabenliste: Dienstart-Abbildung, wirkende Vorgaben in stabiler Reihenfolge (Priorität, Kennung)
+ * und die daraus gebauten Regeln. Gilt nur, solange Vorgabenliste und Dienstarten dieselben Objekte sind (sonst neu).
+ */
+function vorbereiten(m, budget) {
+  const gefunden = budget.vorbereitet.get(m.vorgaben);
+  if (gefunden && gefunden.dienstarten === m.dienstarten) return gefunden;
+  const wirkend = aktiveVorgaben(m.vorgaben).filter((v) => v.staerke !== "wunsch" && vorgabePlanwirkung(v).wirkt)
+    .sort((a, b) => (a.prioritaet - b.prioritaet) || (String(a.id) < String(b.id) ? -1 : String(a.id) > String(b.id) ? 1 : 0));
+  const kl = klassenAbbildung(m);
+  const regeln = new Map();
+  const vb = { dienstarten: m.dienstarten, wirkend, kl,
+    regelFuer(v) {
+      if (!regeln.has(v)) regeln.set(v, vorgabeAlsRegel({ ...v, gueltigAb: null, gueltigBis: null, parameter: parameterKanonisch(v, kl) }, { wirkend: true }));
+      return regeln.get(v);
+    } };
+  budget.vorbereitet.set(m.vorgaben, vb);
+  return vb;
+}
+
 /**
  * Die Befunde aktiver interner Vorgaben für die Einteilung von Person p in Dienstart da am Tag d.
+ * `k.automatisch`: Die Einteilung geschieht ohne Mensch (Planungsassistent). Dann gilt fail-closed: Konnte eine Muss-Vorgabe nicht geprüft werden
+ * (Budget, Fehler, Obergrenze), ist „vorgabeOffen“ eine Achtung (die Person ist nicht „möglich“); im Warndialog bleibt es ein Hinweis, den der Mensch bewertet.
  * @param {any} m Betrieb
  * @param {any} p Person
  * @param {string} d Tag JJJJ-MM-TT
  * @param {any} da Dienstart
- * @param {{ dienstAm: (p: any, d: string) => any, einheitAm?: (p: any, d: string) => any, budget?: ReturnType<typeof neuesVorgabenBudget> }} k
+ * @param {{ dienstAm: (p: any, d: string) => any, einheitAm?: (p: any, d: string) => any, budget?: ReturnType<typeof neuesVorgabenBudget>, automatisch?: boolean }} k
  * @returns {{ regel: string, stufe: string, text: string, quelle: string, art: string, regelId: string | null }[]}
  */
 export function vorgabenBefunde(m, p, d, da, k) {
-  const liste = aktiveVorgaben(m && m.vorgaben);
-  if (!liste.length || !p || !da || typeof k.dienstAm !== "function") return [];
+  if (!m || !Array.isArray(m.vorgaben) || !p || !da || typeof k.dienstAm !== "function") return [];
   const G = VORGABEN_WIRKUNG_GRENZE;
   const budget = k.budget || neuesVorgabenBudget();
-  const wirkend = liste.filter((v) => v.staerke !== "wunsch" && vorgabePlanwirkung(v).wirkt)
-    .sort((a, b) => (a.prioritaet - b.prioritaet) || (String(a.id) < String(b.id) ? -1 : String(a.id) > String(b.id) ? 1 : 0));
-  if (!wirkend.length) return [];
+  const vb = vorbereiten(m, budget);
+  if (!vb.wirkend.length) return [];
+  const kl = vb.kl;
   const aus = /** @type {{ regel: string, stufe: string, text: string, quelle: string, art: string, regelId: string | null }[]} */ ([]);
-  let offen = wirkend.length > G.aktive;
-  if (budget.ausgeschoepft) offen = true;
-  const kl = klassenAbbildung(m);
+  let offen = false, offenMuss = false;
+  /** Diese Vorgaben bleiben ungeprüft: offen; „Muss“ nur, wenn eine davon hier gelten würde. */
+  const ungeprueft = (liste) => {
+    offen = true;
+    if (offenMuss) return;
+    try { offenMuss = liste.some((x) => x.staerke === "muss" && giltFuer(x, p, d, k.einheitAm)); } catch { offenMuss = true; }
+  };
+  const pruef = vb.wirkend.slice(0, G.aktive);
+  if (vb.wirkend.length > G.aktive) ungeprueft(vb.wirkend.slice(G.aktive));
   const klasseVonId = (id) => (id === null || id === undefined || id === "" ? "frei" : String(id));
-  for (const v of wirkend.slice(0, G.aktive)) {
-    if (budget.ausgeschoepft) { offen = true; break; }
+  let plan = budget.cache.get(m);
+  if (!plan) { plan = new Map(); budget.cache.set(m, plan); }
+  for (let i = 0; i < pruef.length; i++) {
+    const v = pruef[i];
+    if (budget.ausgeschoepft) { ungeprueft(pruef.slice(i)); break; }
     if (!giltFuer(v, p, d, k.einheitAm)) continue;
     try {
       const fenster = fensterUm(v, d);
-      const kosten = 2 * (1 + Math.round((Date.parse(fenster.bis) - Date.parse(fenster.von)) / 86400000));
-      if (budget.rest < kosten) { budget.ausgeschoepft = true; offen = true; break; }
+      const zaehl = v.regelart === "zaehlregel";
+      const rollierend = zaehl && ((v.parameter || {}).fenster || {}).art === "rollierend";
+      const stichtage = [];
+      for (let s = d, n = rollierend ? zaehlFenster(v.parameter.fenster) : 1; stichtage.length < n; s = addDays(s, 1)) stichtage.push(s);
+      const kosten = 2 * (1 + Math.round((Date.parse(fenster.bis) - Date.parse(fenster.von)) / 86400000)) + 2 * (stichtage.length - 1);
+      if (budget.rest < kosten) { budget.ausgeschoepft = true; ungeprueft(pruef.slice(i)); break; }
       budget.rest -= kosten;
       const tageMit = {}, tageOhne = {};
-      const ereignis = v.regelart === "zaehlregel" ? kl((v.parameter || {}).ereignis) : null;
+      const ereignis = zaehl ? kl((v.parameter || {}).ereignis) : null;
       const ereignisseMit = [], ereignisseOhne = [];
       for (let t = fenster.von; t <= fenster.bis; t = addDays(t, 1)) {
         let ohne;
         if (t === d) ohne = "frei";
         else {
           const key = `${p.id}|${t}`;
-          if (!budget.cache.has(key)) budget.cache.set(key, klasseVonId(k.dienstAm(p, t)));
-          ohne = budget.cache.get(key);
+          if (!plan.has(key)) plan.set(key, klasseVonId(k.dienstAm(p, t)));
+          ohne = plan.get(key);
         }
         const mit = t === d ? klasseVonId(da.id) : ohne;
         /* Blockregel: Ein Tag ohne Dienst ist im Plan noch offen, nicht „frei“ (er kann später gefüllt werden) — erst zwei verschiedene
@@ -185,20 +232,32 @@ export function vorgabenBefunde(m, p, d, da, k) {
         if (!(offenTag && mit === "frei")) tageMit[t] = mit;
         if (ereignis !== null) { if (ohne === ereignis) ereignisseOhne.push(t); if (mit === ereignis) ereignisseMit.push(t); }
       }
-      const regel = vorgabeAlsRegel({ ...v, gueltigAb: null, gueltigBis: null, parameter: parameterKanonisch(v, kl) }, { wirkend: true });
-      const rechne = (tage, ereignisse) => pruefeRegel(regel, v.regelart === "zaehlregel"
-        ? { ereignisse, stichtag: d } : { tage, von: fenster.von, bis: fenster.bis, stichtag: d });
-      const mitE = rechne(tageMit, ereignisseMit);
-      if (mitE.status !== "verletzt") continue;
-      const ohneE = rechne(tageOhne, ereignisseOhne);
-      if (ohneE.status === "verletzt" && mass(mitE) <= mass(ohneE)) continue;
+      const regel = vb.regelFuer(v);
+      const rechne = (tage, ereignisse, stichtag) => pruefeRegel(regel, zaehl
+        ? { ereignisse, stichtag } : { tage, von: fenster.von, bis: fenster.bis, stichtag });
+      /* Zählregel: Jedes Fenster, das die Einteilung enthält, wird ausgewertet (Stichtage d … d+n−1), nicht nur das am Tag endende. */
+      let treffer = null;
+      for (const st of stichtage) {
+        const mitE = rechne(tageMit, ereignisseMit, st);
+        if (mitE.status !== "verletzt") continue;
+        const ohneE = rechne(tageOhne, ereignisseOhne, st);
+        if (ohneE.status === "verletzt" && mass(mitE) <= mass(ohneE)) continue;
+        treffer = mitE;
+        break;
+      }
+      if (!treffer) continue;
       const muss = v.staerke === "muss";
       aus.push({ regel: muss ? "vorgabeMuss" : "vorgabeSoll", stufe: muss ? "achtung" : "hinweis",
-        text: `Interne Vorgabe „${String(v.name).slice(0, 80)}“: ${String(mitE.text).replace(`${v.name}: `, "")}`,
+        text: `Interne Vorgabe „${String(v.name).slice(0, 80)}“: ${String(treffer.text).replace(`${v.name}: `, "")}`,
         quelle: `Interne Vorgabe (${GRUNDLAGE[(v.grundlage || {}).art] || "Hausregel"})`, art: "vorgabe", regelId: vorgabeRegelId(v) });
-    } catch { offen = true; }
+    } catch { offen = true; if (v.staerke === "muss") offenMuss = true; }
   }
-  if (offen) aus.push({ regel: "vorgabeOffen", stufe: "hinweis", text: "Interne Vorgaben konnten hier nicht vollständig geprüft werden.",
-    quelle: "Interne Vorgabe", art: "vorgabe", regelId: null });
+  if (offen) {
+    const hart = k.automatisch === true && offenMuss;
+    aus.push({ regel: "vorgabeOffen", stufe: hart ? "achtung" : "hinweis",
+      text: hart ? "Interne Vorgaben konnten hier nicht vollständig geprüft werden (Muss-Vorgabe offen); der Planungsassistent teilt hier nicht automatisch ein."
+        : "Interne Vorgaben konnten hier nicht vollständig geprüft werden (Rechengrenze oder Fehler). Die Einteilung ist nicht vollständig geprüft; bitte selbst gegen die Vorgaben prüfen.",
+      quelle: "Interne Vorgabe", art: "vorgabe", regelId: null });
+  }
   return aus;
 }

@@ -15,6 +15,7 @@
    Aufruf: npx vitest run pruefungen/intelligence-vorgaben-wirkung.test.js
    ========================================================================== */
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
+import { readFileSync } from "node:fs";
 import { vorgabenBefunde, vorgabePlanwirkung, neuesVorgabenBudget, VORGABEN_BEFUNDART, VORGABEN_PLANARTEN } from "../server/lib/vorgabenwirkung.mjs";
 import { pruefeVorgabe, vorgabeTestlauf, VORGABEN_WIRKUNG_GRENZE } from "../server/lib/vorgaben.mjs";
 import { BEFUND_KATALOG, sperrtBefund } from "../server/lib/bestaetigungen.mjs";
@@ -371,5 +372,205 @@ describe("6. Rest-Befunde aus dem Delta von #561", () => {
     expect(() => { e = vorgabeTestlauf(v, /** @type {any} */ ("keine-liste")); }).not.toThrow();   // der Baukasten wirft „Fälle fehlen“
     expect(e).toMatchObject({ ok: false, ergebnisse: [] });
     expect(e.fehler).toMatch(/nicht gerechnet/);
+  });
+});
+
+describe("7. Review-Befunde PR #566: ein Budget je Einstieg, fail-closed, Fenster, Maß, Mandantengrenze", () => {
+  let F, E, K, B;
+  beforeAll(async () => {
+    vi.useFakeTimers({ now: new Date(FEST), toFake: ["Date"] });
+    vi.spyOn(Math, "random").mockImplementation(zufall(20261125));
+    F = await import("../src/lib/fachlogik.js");
+    E = await import("../server/lib/engine/einsatz.mjs");
+    K = await import("../server/lib/engine/ersatzfakten.mjs");
+    B = betriebe(F);
+  }, 120000);
+  afterAll(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
+
+  /** Demobetrieb mit einer freigeräumten Person (alle Tage im Umfeld frei), danach gesetzte Dienste. */
+  function werkstatt(vorgaben, plan = {}) {
+    const m = structuredClone(B.find(([n]) => n.startsWith("demo1"))[1]);
+    m.abwesenheiten = [];
+    m.vorgaben = vorgaben;
+    const p = m.personen.find((x) => x.rolle === "mitarbeiter" && !(x.teilzeit && x.teilzeit.aktiv) && !x.springer);
+    for (let i = -20; i <= 20; i++) m.abweichungen[`${p.id}|${add(TAG, i)}`] = "-";
+    for (const [t, id] of Object.entries(plan)) m.abweichungen[`${p.id}|${t}`] = id;
+    return { m, p };
+  }
+  const grosse = (n = 50) => Array.from({ length: n }, (_, i) => V(`g${String(i).padStart(2, "0")}`, { parameter: { art: "hoechstensFolge", klassen: ["F"], max: 29, danachFrei: 0 } }));
+  const vorgabeBef = (l) => l.filter((b) => b.art === "vorgabe");
+
+  describe("Befund 2: ein Budget je äußerem Einstieg, kein stilles Neuanlegen", () => {
+    it("ersatzKandidaten: mehrere Aufrufe mit EINEM Budget verbrauchen zusammen nie mehr als das Budget (Suche und Nachprüfung teilen es)", () => {
+      const { m } = werkstatt(grosse());
+      const start = 20000;
+      const budget = neuesVorgabenBudget(start);
+      for (let i = 0; i < 4; i++) K.ersatzKandidaten(m, TAG, "F", { vorgabenBudget: budget });
+      expect(budget.rest).toBeGreaterThanOrEqual(0);
+      expect(budget.ausgeschoepft, "das gemeinsame Budget wurde wirklich verbraucht (kein zweites angelegt)").toBe(true);
+    });
+    it("ersatzVorschlaege und hindernisBefunde benutzen ein übergebenes Budget, statt es durch ein neues zu ersetzen", () => {
+      const { m } = werkstatt(grosse());
+      const a = neuesVorgabenBudget(30000);
+      E.ersatzVorschlaege(m, TAG, "F", undefined, { vorgabenBudget: a });
+      expect(a.rest).toBeLessThan(30000);
+      const c = neuesVorgabenBudget(30000);
+      E.ersatzVorschlaege(m, TAG, "F", { vorgabenBudget: c, konten: new Map(), einspruenge: {}, nachtAnzahl: new Map(), median: 0, nachtMittel: 0 });
+      expect(c.rest).toBeLessThan(30000);
+      const b = neuesVorgabenBudget(30000);
+      E.hindernisBefunde(m, m.personen[0], TAG, m.dienstarten.find((x) => x.id === "F"), { vorgabenBudget: b });
+      expect(b.rest).toBeLessThan(30000);
+    });
+    it("planeMonat: ein Budget für den ganzen Monat — ist es verbraucht, wird nichts mehr eingeteilt (nicht je Suchschritt frisch)", () => {
+      const lauf = (vorgaben) => {
+        const m = structuredClone(B.find(([n]) => n.startsWith("demo1"))[1]);
+        m.abwesenheiten = []; m.vorgaben = vorgaben;
+        m.dienstarten = m.dienstarten.filter((x) => x.id === "F");
+        m.personen = m.personen.filter((x) => x.rolle === "mitarbeiter" && !(x.teilzeit && x.teilzeit.aktiv) && !x.springer).slice(0, 4);
+        m.abweichungen = {};
+        for (const p of m.personen) for (let i = 1; i <= 30; i++) m.abweichungen[`${p.id}|2026-11-${String(i).padStart(2, "0")}`] = "-";
+        return F.planeMonat(m, "2026-11", { maxProPerson: 31 });
+      };
+      const ohne = lauf([]);
+      const mit = lauf(grosse());
+      expect(ohne.gesetzt.length).toBeGreaterThan(10);
+      expect(mit.gesetzt.length, "nach Verbrauch des Monatsbudgets bleibt der Rest offen").toBeLessThan(ohne.gesetzt.length);
+      expect(mit.offen.length).toBeGreaterThan(0);
+    }, 120000);
+    it("Vorbereitung einmal je Einstieg: Dienstart-Abbildung und Regeln werden über Aufrufe und Personen wiederverwendet", () => {
+      const budget = neuesVorgabenBudget();
+      const vorgaben = [V("a")];
+      const m = { dienstarten: DA, vorgaben };
+      const k = { dienstAm: () => null, budget };
+      vorgabenBefunde(m, P, TAG, dienst("F"), k);
+      const erste = budget.vorbereitet.get(vorgaben);
+      expect(erste).toBeTruthy();
+      vorgabenBefunde(m, { id: "andere" }, add(TAG, 3), dienst("F"), k);
+      expect(budget.vorbereitet.get(vorgaben)).toBe(erste);
+      /* neue Dienstarten (anderer Betriebsstand) → neu vorbereitet */
+      vorgabenBefunde({ dienstarten: [...DA], vorgaben }, P, TAG, dienst("F"), k);
+      expect(budget.vorbereitet.get(vorgaben)).not.toBe(erste);
+    });
+  });
+
+  describe("Befund 3: Automatik fail-closed, Mensch entscheidet mit Kennzeichnung, stabile Prüfreihenfolge", () => {
+    const viele = (n) => Array.from({ length: n }, (_, i) => V(`v${String(i).padStart(3, "0")}`));
+    const plan = { [add(TAG, -1)]: "S" };
+    const offenBefund = (automatisch, vorgaben) => vorgabenBefunde({ dienstarten: DA, vorgaben }, P, TAG, dienst("F"),
+      { dienstAm: (x, t) => plan[t] || null, budget: neuesVorgabenBudget(10), automatisch }).find((b) => b.regel === "vorgabeOffen");
+    it("Automatik + ungeprüfte Muss-Vorgabe = Achtung (Grund-Kennung „vorgabe“); ohne Automatik nur Hinweis, deutlich „nicht vollständig geprüft“", () => {
+      const hart = offenBefund(true, viele(10));
+      expect(hart).toMatchObject({ stufe: "achtung", art: "vorgabe" });
+      expect(grundKennung(hart)).toBe("vorgabe");
+      expect(sperrtBefund(hart.regel)).toBe(false);
+      const weich = offenBefund(false, viele(10));
+      expect(weich.stufe).toBe("hinweis");
+      expect(weich.text).toMatch(/nicht vollständig geprüft/);
+      expect(weich.text).toMatch(/bitte selbst/);
+    });
+    it("Automatik: nur ungeprüfte Soll-Vorgaben bleiben ein Hinweis (nichts Verbindliches blieb offen)", () => {
+      expect(offenBefund(true, viele(10).map((v) => ({ ...v, staerke: "soll" }))).stufe).toBe("hinweis");
+    });
+    it("Automatik: eine fehlerhaft rechnende Muss-Vorgabe oder die Überschreitung der Obergrenze lässt nicht einteilen", () => {
+      const kaputt = V("k", { parameter: { art: "verbotenFolge", von: [], dann: ["F"] } });
+      const o1 = vorgabenBefunde({ dienstarten: DA, vorgaben: [kaputt] }, P, TAG, dienst("F"), { dienstAm: () => null, automatisch: true });
+      expect(o1.map((b) => [b.regel, b.stufe])).toEqual([["vorgabeOffen", "achtung"]]);
+      const o2 = vorgabenBefunde({ dienstarten: DA, vorgaben: viele(VORGABEN_WIRKUNG_GRENZE.aktive + 3) }, P, TAG, dienst("F"), { dienstAm: () => null, automatisch: true });
+      expect(o2.find((b) => b.regel === "vorgabeOffen").stufe).toBe("achtung");
+    });
+    it("Ersatzsuche: Automatik teilt niemanden ein, dessen Muss-Vorgaben ungeprüft blieben; der Mensch sieht „möglich“ mit Kennzeichnung", () => {
+      const { m } = werkstatt(grosse());
+      const mensch = E.ersatzVorschlaege(m, TAG, "F");
+      const auto = E.ersatzVorschlaege(m, TAG, "F", undefined, { vorgabenAutomatisch: true });
+      const moegl = (l) => l.filter((k) => k.moeglich).length;
+      expect(moegl(auto)).toBeLessThan(moegl(mensch));
+      expect(auto.some((k) => k.hindernisse.some((h) => /nicht automatisch ein/.test(h)))).toBe(true);
+      expect(mensch.some((k) => k.moeglich && k.gruende.some((g) => /nicht vollständig geprüft; bitte selbst/.test(g)))).toBe(true);
+    });
+    it("Ersatzsuche prüft nach stabilem Schlüssel (Personenkennung), nicht nach Eingabereihenfolge: dieselben Personen bleiben ungeprüft", () => {
+      const { m } = werkstatt(grosse());
+      const ungeprueft = (mm) => new Set(E.ersatzVorschlaege(mm, TAG, "F").filter((k) => k.gruende.some((g) => /nicht vollständig geprüft/.test(g))).map((k) => String(k.person.id)));
+      const a = ungeprueft(m);
+      expect(a.size, "das Budget reicht nur für einen Teil").toBeGreaterThan(0);
+      expect(a.size).toBeLessThan(m.personen.length);
+      const umgekehrt = { ...m, personen: [...m.personen].reverse() };
+      expect([...ungeprueft(umgekehrt)].sort()).toEqual([...a].sort());
+    });
+    it("Selbstplanung: die Übernahme prüft mit einem Budget und fail-closed ohne ausdrückliche Auswahl (Quelle)", () => {
+      const q = readFileSync("src/app/aktionen/planung.js", "utf8");
+      expect(q).toContain("const vorgabenBudget = neuesVorgabenBudget();");
+      expect(q).toContain("hindernisBefunde(m, p, e.datum, da, { vorgabenBudget, vorgabenAutomatisch: !gewaehlt })");
+    });
+  });
+
+  describe("Befund 4: Zählregel mit rollierendem Fenster prüft jedes Fenster, das die Einteilung enthält", () => {
+    const Z = (grenze = 3, fenster = { art: "rollierend", laenge: 7, einheit: "tage" }) =>
+      V("z", { regelart: "zaehlregel", parameter: { ereignis: "N", fenster, richtung: "hoechstens", grenze } });
+    it("„höchstens 3 N in 7 Tagen“: N am 18.–20. geplant, N am 17. wird eingeteilt → Befund (späteres Fenster)", () => {
+      expect(pruefeVorgabe(Z())).toBeNull();
+      const plan = { [add(TAG, 1)]: "N", [add(TAG, 2)]: "N", [add(TAG, 3)]: "N" };
+      expect(nurVorgabe(pruefe([Z()], plan, { da: "N" })).map((b) => b.regel)).toEqual(["vorgabeMuss"]);
+    });
+    it("liegen dieselben drei N davor, gibt es den Befund wie bisher; nur zwei danach: keiner; 7 Tage später liegt in keinem Fenster mit dem Tag", () => {
+      expect(nurVorgabe(pruefe([Z()], { [add(TAG, -1)]: "N", [add(TAG, -2)]: "N", [add(TAG, -3)]: "N" }, { da: "N" }))).toHaveLength(1);
+      expect(nurVorgabe(pruefe([Z()], { [add(TAG, 1)]: "N", [add(TAG, 2)]: "N" }, { da: "N" }))).toEqual([]);
+      expect(nurVorgabe(pruefe([Z()], { [add(TAG, 7)]: "N", [add(TAG, 8)]: "N", [add(TAG, 9)]: "N" }, { da: "N" }))).toEqual([]);
+    });
+    it("eine schon bestehende Verletzung wird der Einteilung nicht angelastet; die Mehr-Last durch sie schon", () => {
+      const vor = { [add(TAG, 1)]: "N", [add(TAG, 2)]: "N", [add(TAG, 3)]: "N", [add(TAG, 4)]: "N" };   // 4 N in einem Fenster: schon verletzt
+      expect(nurVorgabe(pruefe([Z()], vor, { da: "F" }))).toEqual([]);
+      expect(nurVorgabe(pruefe([Z()], vor, { da: "N" }))).toHaveLength(1);   // ein weiteres N macht es schlimmer
+    });
+    it("Kalendermonat ist unverändert (ein Fenster); die Fensterlänge bleibt begrenzt, das Budget wird für alle Stichtage belastet", () => {
+      const km = Z(3, { art: "kalendermonat" });
+      const plan = { "2026-11-01": "N", "2026-11-02": "N", "2026-11-03": "N" };
+      expect(nurVorgabe(pruefe([km], plan, { da: "N" }))).toHaveLength(1);
+      const budget = neuesVorgabenBudget();
+      pruefe([Z()], {}, { da: "N", budget });
+      /* 7 Tage rollierend: Plan von d−6 bis d+6 (13 Tage, je zweimal) plus 6 weitere Stichtage */
+      expect(VORGABEN_WIRKUNG_GRENZE.aufwand - budget.rest).toBe(2 * 13 + 2 * 6);
+      expect(vorgabePlanwirkung(Z(3, { art: "rollierend", laenge: 63, einheit: "tage" })).wirkt).toBe(false);
+    });
+  });
+
+  describe("Befund 5: das Maß der Verletzung ist die Länge, nicht die Zahl der Verstöße", () => {
+    const folge = V("folge", { parameter: { art: "hoechstensFolge", klassen: ["F"], max: 3, danachFrei: 0 } });
+    const lauf = (tage, d) => nurVorgabe(pruefe([folge], Object.fromEntries(tage.map((t) => [t, "F"])), { d, da: "F" }));
+    it("verbindet eine Einteilung zwei zu lange Folgen (4 + 4) zu einer längeren (9), gibt es einen Befund, obwohl die Zahl der Verstöße sinkt", () => {
+      const d = TAG;
+      const vor = [-4, -3, -2, -1].map((i) => add(d, i));
+      const nach = [1, 2, 3, 4].map((i) => add(d, i));
+      expect(lauf([...vor, ...nach], d)).toHaveLength(1);
+    });
+    it("verbindet die Einteilung nichts und verlängert sie keine zu lange Folge, bleibt es ohne Befund", () => {
+      const d = TAG;
+      expect(lauf([add(d, -3), add(d, -2)], d)).toEqual([]);
+      expect(lauf([add(d, 5), add(d, 6), add(d, 7), add(d, 8), add(d, 9)], d)).toEqual([]);
+    });
+  });
+
+  describe("Mandantengrenze: Vorgaben wirken nur im eigenen Betrieb", () => {
+    const folge = { art: "hoechstensFolge", klassen: ["F"], max: 1, danachFrei: 0 };
+    const daF = (m) => m.dienstarten.find((x) => x.id === "F");
+    it("Vorgaben eines anderen Betriebs haben keine Wirkung, auch nicht über ein geteiltes Budget oder dieselbe Personenkennung", () => {
+      const plan = { [add(TAG, -1)]: "F" };
+      const fremd = werkstatt([V("fremd", { parameter: folge })], plan);
+      const eigen = werkstatt([], plan);
+      const budget = neuesVorgabenBudget();
+      expect(vorgabeBef(E.hindernisBefunde(fremd.m, fremd.p, TAG, daF(fremd.m), { vorgabenBudget: budget })).map((b) => b.regel)).toEqual(["vorgabeMuss"]);
+      expect(fremd.p.id, "gleiche Personenkennung in beiden Betrieben (Klon)").toBe(eigen.p.id);
+      expect(vorgabeBef(E.hindernisBefunde(eigen.m, eigen.p, TAG, daF(eigen.m), { vorgabenBudget: budget }))).toEqual([]);
+      expect(vorgabeBef(E.hindernisBefunde(eigen.m, eigen.p, TAG, daF(eigen.m)))).toEqual([]);
+    });
+    it("Vorgabe mit fremder Personenkennung (Geltung „Personen“) trifft niemanden des Betriebs", () => {
+      const { m, p } = werkstatt([V("fremd", { geltung: { art: "personen", personen: ["gibt-es-hier-nicht"] }, parameter: folge })], { [add(TAG, -1)]: "F" });
+      expect(vorgabeBef(E.hindernisBefunde(m, p, TAG, daF(m)))).toEqual([]);
+      for (const k of E.ersatzVorschlaege(m, TAG, "F")) expect(k.hindernisse.join(" ")).not.toMatch(/Interne Vorgabe des Betriebs/);
+    });
+    it("ohne eigenes Feld m.vorgaben wird nichts gerechnet", () => {
+      const { m, p } = werkstatt([], { [add(TAG, -1)]: "F" });
+      delete m.vorgaben;
+      expect(vorgabenBefunde(m, p, TAG, daF(m), { dienstAm: () => "F" })).toEqual([]);
+    });
   });
 });

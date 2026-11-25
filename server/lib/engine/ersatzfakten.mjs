@@ -82,13 +82,14 @@ export function ruheIst(m, p, d, da, { zeitumstellung = false } = {}) {
  *   nahe: { personId: string, hinderung: string, spielraumMin: number, ruheVorMin: number|null, punkte: number }[],
  *   andere: number }}
  */
-export function ersatzKandidaten(m, d, dienstId) {
+export function ersatzKandidaten(m, d, dienstId, opt) {
   const da = dienstart(m, dienstId);
   const aus = { datum: d, dienst: dienstId, direkt: [], nahe: [], andere: 0 };
   if (!da) return aus;
   const grenzeMin = (Number((m.einstellungen || {}).ruhezeit) || RUHEZEIT_GESETZ) * 60;
-  const vorgabenBudget = neuesVorgabenBudget();   // WP-I5: ein Budget für die Nachprüfung aller Kandidaten (die Suche hat ihr eigenes)
-  for (const k of ersatzVorschlaege(m, d, dienstId)) {
+  /* WP-I5: EIN Budget für Suche und Nachprüfung; der äußere Einstieg (mehrere Dienste) übergibt seines in opt.vorgabenBudget. */
+  const vorgabenBudget = (opt && opt.vorgabenBudget) || neuesVorgabenBudget();
+  for (const k of ersatzVorschlaege(m, d, dienstId, undefined, { vorgabenBudget })) {
     if (k.moeglich) { aus.direkt.push({ personId: String(k.person.id), punkte: k.punkte }); continue; }
     const ernst = hindernisBefunde(m, k.person, d, da, { vorgabenBudget }).filter((b) => stufeRang(b.stufe) >= 2);
     const nurRuhe = ernst.length > 0 && ernst.every((b) => RUHE_REGELN.includes(b.regel));
