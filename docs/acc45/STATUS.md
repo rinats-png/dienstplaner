@@ -18,25 +18,25 @@ oder `"teilweise"`, jeweils mit Beleg (PR, Commit, Nachweis). „Geplant“, „
 <!-- AUTO:BEGIN -->
 Erzeugt aus `docs/acc45/work-packages.json` (Schema 2) mit `node werkzeug/acc45-backlog.mjs status-schreiben` — nicht von Hand ändern.
 
-**Pakete gesamt:** 295 · BLOCKED 115 · READY 27 · IN_PROGRESS 21 · REVIEW 10 · INTEGRATED 119 · DONE 3
+**Pakete gesamt:** 295 · BLOCKED 114 · READY 27 · IN_PROGRESS 22 · REVIEW 10 · INTEGRATED 119 · DONE 3
 
 | Strang | Pakete | BLOCKED | READY | IN_PROGRESS | REVIEW | INTEGRATED | DONE | offener Aufwand PT |
 |---|---|---|---|---|---|---|---|---|
 | ACC45 | 143 | 42 | 5 | 7 | 3 | 84 | 2 | 74,1–126,65 |
-| WP-19-Module | 15 | 13 | 0 | 1 | 0 | 1 | 0 | 64,5–100,5 |
+| WP-19-Module | 15 | 12 | 0 | 2 | 0 | 1 | 0 | 62,5–97,5 |
 | Intelligence | 40 | 19 | 0 | 8 | 0 | 13 | 0 | 177–313 |
 | Folgepakete | 62 | 23 | 6 | 5 | 7 | 21 | 0 | 43,7–76,1 |
 | Extern/Entscheidungen | 35 | 18 | 16 | 0 | 0 | 0 | 1 | 20,35–46,1 |
 
-Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **359,3–616,25 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
+Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **357,3–613,25 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
 
 **Kritische Pfade** (offener Aufwand, Mitte der Spanne maßgeblich):
 
 - gemeinsam: WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **50–90 PT**
-- ohne Intelligence: WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 → WP-42a → WP-42 = **22,5–35 PT**
+- ohne Intelligence: WP-16 → WP-19.7 → WP-19.6 → WP-19.13 → WP-42a → WP-42 = **21–33,5 PT**
 - ACC45: WP-21 → WP-42a → WP-42 = **14–20 PT**
 - Folgepakete: V4-1 → V4-3a → V4-3b → V4-3d = **5,2–10,3 PT**
-- WP-19: WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 = **18,5–28,5 PT**
+- WP-19: WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 = **16,5–25,5 PT**
 - Intelligence: WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **50–90 PT**
 
 ### In Arbeit / Review
@@ -53,6 +53,7 @@ Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **359,3–616,
 | WP-16b Spur: ältere Spur-Zeilen nennen noch den Tag (Datenschutz nach WP-14b M1) | REVIEW | `acc45/time/wp16b-spur-tag` | SCHÄTZUNG. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Code integriert per Direkt-Merge 594f32c3, PR-Beleg fehlt. Altzeilen beim Lesen geschwärzt (server/lib/schutz.mjs spurFuerBetreiber); offen nur die Frage, ob die Ablage zusätzlich bereinigt wird (wp16c-fragen.md). Abgleich 2026-11-13 (docs/acc45/DIREKTMERGE-ABGLEICH-2026-11-13.md, Betreiberentscheidung 2026-11-13 Punkt 2): Direkt-Merge nicht anerkannt: Review nur durch Aussage im Merge-Commit belegt, nachzuholen: Review. Nachholreview 2026-11-13 (docs/acc45/NACHHOLREVIEW-STEMPELKETTE-2026-11-13.md, Abschnitt 2): Direkt-Merge anerkannt für den Teilumfang (Bedingungen a bis e belegt), Status bleibt REVIEW; offen: Frage, ob die Ablage zusätzlich bereinigt wird, Staging. Nachtrag 2026-11-18 (SSOT-Klassifizierung): Status REVIEW (laut Nachholreview: keine Statusänderung über REVIEW hinaus). Direkt-Merge 594f32c3 ist anerkannt (Teilumfang, Bedingungen a bis e belegt). Offen: ob die Ablage zusätzlich bereinigt wird (wp16c-fragen.md) und Staging; stagingGeprueft, fachlichFreigegeben, produktiv: nein. |
 | WP-28b Lasttest-Befund 6: Sicherung bricht unter Last mit ENOENT ab (Wiederholung greift nicht); Auswertung des Nachlaufs S2/S5 | IN_PROGRESS | `acc45/infra/wp28b-nachlauf` | Stand 2026-11-18 (Abend), maßgeblich vor den folgenden Sätzen: Der Befund 6 (ENOENT-Abbruch) ist seit PR #100 und #110 behoben und mit PR #362 (8895842c) zusätzlich abgesichert (wp28b-sicherung-klammer.test.js, Zustandstest der Klammer des Schreib-Halts mit Mutationen); die Lücke lag in der Prüfung, nicht im Code. Mit Schreib-Halt (WP-28c) liegt die Messung bei 1000 von 1000 bei 105 Schreibvorgängen/s. Offen bleibt: (1) Nachlauf S2/S5 (E-20, Handstart durch den Betreiber), (2) Docker-Bildbau und restic-Ende-zu-Ende in der CI nicht belegt, (3) ohne Schreib-Halt nur ein ruhiges Fenster. Die Akzeptanz (Nachlauf S2/S5 ausgewertet und in wp28-nachweis.md nachgetragen) ist nicht erfüllt, deshalb bleibt der Status IN_PROGRESS. Ältere Fassung der Notiz: NICHT ERLEDIGT, fail-closed Teilfix (PR #100). Unter Dauerlast gelingt die Sicherung ohne Schreib-Halt weiterhin nicht zuverlässig (ca. 17 Schreibvorgänge/s auf 3000 Dateien: 1 von 14; mit der Vorgabe-Ruhezeit von 1 s schon bei 8/s keine). Die Ruhezeit senkt das Risiko halber Mehrdatei-Transaktionen in der Sicherung, garantiert aber keine transaktionsübergreifende Konsistenz. Offen: (1) Nachlauf S2/S5 (E-20, Handstart durch den Betreiber); (2) nach Reparatur der CI-Basis (PR #102 / fix/ci-baseline) die blockierten Prüfungen nachholen: Docker-Bildbau, Betrieb-Sicherung-Ende-zu-Ende, die Fachprüfungen hinter dem Typen-Schritt; (3) Folgepaket WP-28c (koordinierter Schreib-Halt). Nachtrag 2026-11-18 (SSOT-Klassifizierung): Punkt (2) ist überholt oder unsicher: PR #102 (CI-Basis) ist gemergt (2026-11-07, integration/release-v4), die Bedingung „nach Reparatur der CI-Basis“ ist erfüllt; ob die blockierten Prüfungen (Docker-Bildbau, Betrieb-Sicherung-Ende-zu-Ende, Fachprüfungen hinter dem Typen-Schritt) inzwischen nachgeholt wurden, ist nicht belegt. Punkte (1) und (3) unverändert offen. |
 | WP-07b Stempel-Sonderfall „500 nach Speicherung“ (clientEventId, sechs Szenarien) | REVIEW | `acc45/time/wp07b-500-nach-speicherung` | SCHÄTZUNG; Konfliktzone Stempelpfade: nicht gleichzeitig mit WP-14c/WP-19.7/WP-19.6. Abgleich 2026-11-12 (6c195b66, docs/acc45/BEREITSCHAFTSANALYSE-2026-11-12.md): Prüfung integriert per Direkt-Merge 594f32c3, PR-Beleg fehlt. Abgleich 2026-11-13 (docs/acc45/DIREKTMERGE-ABGLEICH-2026-11-13.md, Betreiberentscheidung 2026-11-13 Punkt 2): Direkt-Merge nicht anerkannt: Review nur durch Aussage im Merge-Commit belegt, nachzuholen: Review. Nachholreview 2026-11-13 (docs/acc45/NACHHOLREVIEW-STEMPELKETTE-2026-11-13.md, Abschnitt 3): Direkt-Merge anerkannt, Status bleibt REVIEW; offen: echter 500 nach dem Schreiben unter Last (Staging/VPS). Nachtrag 2026-11-18 (SSOT-Klassifizierung): Status REVIEW (laut Nachholreview: kein Paket wird INTEGRATED; Präzedenz WP-15 und WP-16c bleiben REVIEW). Direkt-Merge 594f32c3 ist anerkannt (Teilumfang, Betreiberregel 2026-11-13 Punkt 2). Restpunkt N-07b-1: echter 500 nach dem Schreiben unter Last (Last-500) auf Staging/VPS; stagingGeprueft, fachlichFreigegeben, produktiv: nein. |
+| WP-19.1 Modul Posten (Sicherheitsdienst) | IN_PROGRESS | `acc45/frontend/wp19-1-posten` | PR #244 (WP-19 B1): Schreibwege bei Status geplant geschlossen (server/lib/modul-altwege.mjs); Status unverändert. |
 | WP-19.13 WP-19 Modulabnahme (E2E, Viewports, Rollenmatrix, Status „vorlaeufig“) | IN_PROGRESS | `acc45/qa/wp19-13-modulabnahme` | Stand (automatisch): Teilumfang nach #243, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). |
 | WP-I4 Interne Vorgaben: Verwaltung | IN_PROGRESS | `intelligence/wp-i4-interne-vorgaben-verwalt` | SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). Stand (automatisch): Teilumfang nach #256, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). Offene Betreiberfragen: (1) Darf die Planung die Vorgaben lesen und ändern? (2) Welche Betriebsratssicht, falls überhaupt (§ 87 BetrVG, BLOCKED auf Betreiber)? (3) Braucht es ein Protokoll für Löschen/Deaktivieren? (4) Tarif 'pro' = Grenze 25 des Business-Tarifs bestätigen? (5) Muss eine geänderte Vorgabe neu getestet werden (nur die Oberfläche erzwingt, nicht der Server)? Nachtrag 2026-11-18 (SSOT-Klassifizierung): Feld pr um #177 ergänzt (älterer Entwurf „Interne Vorgaben Verwaltung“, offen, nicht gemergt; der gemergte Teil ist #256).
 Nachtrag 2026-11-25 (Betreiber): Antworten auf die fünf Fragen: 1.1 B (Planung liest innerhalb ihrer Zuständigkeit, nur berechtigte Leitungen ändern); 1.2 vorläufig A, Ziel B (Betriebsrat Leserecht auf Vorgaben und relevante Änderungsprotokolle; produktive Aktivierung erst nach rechtlicher Rückmeldung, Schalter AUS); 1.3 C (Deaktivieren statt Löschen, Änderungsprotokoll, gesetzliche Lösch- und Aufbewahrungspflichten bleiben); 1.4 A (Grenze 25 für `pro` vorläufig, zentral konfigurierbar); 1.5 B jetzt (serverseitige Validierung und Prüfung), C Plan-Probelauf im Umfang WP-I8/I9. |
@@ -83,9 +84,9 @@ Nachtrag 2026-11-25 (Review PR #540: Status korrigiert): Status IN_PROGRESS, int
 
 RST-1 (folge, 0,5–1 PT) · RST-2 (folge, 2–3 PT) · RST-3 (folge, 1–2 PT) · RST-5 (folge, 2,5–4 PT) · RST-9 (folge, 1–1,5 PT) · FREIGABE-S2 (folge, 0,5–1 PT) · WEBSITE-W3b (acc45, 0,5 PT) · ABN-S2-de (acc45, 0,25–0,5 PT) · ABN-S2-H (acc45, 0,25–0,5 PT) · MODINERT-L3 (acc45, 0,25–0,5 PT) · K4-P2 (acc45, 0,5 PT)
 
-### In Arbeit, fortsetzbar (15)
+### In Arbeit, fortsetzbar (16)
 
-WP-40 (acc45, 1,5–2,25 PT offen) · WP-28b (folge, 0,5–1 PT offen) · WP-I4 (intelligence, 4–7 PT offen) · WP-I16 (intelligence, 4–7 PT offen) · WP-I19 (intelligence, 8–14 PT offen) · WP-I20 (intelligence, 8–14 PT offen) · WP-I24 (intelligence, 2,5–4,5 PT offen) · WP-I29 (intelligence, 9–15 PT offen) · WP-I30 (intelligence, 2–4 PT offen) · WP-I31 (intelligence, 4,5–7,5 PT offen) · IMP-6 (acc45, 1,5–2,5 PT offen) · IMP-8 (acc45, 1–1,5 PT offen) · WP-48-GB (acc45, 0,5–1,5 PT offen) · WP-ZEIT (acc45, 4,5–7,5 PT offen) · V4-1 (folge, 1–1,5 PT offen)
+WP-40 (acc45, 1,5–2,25 PT offen) · WP-28b (folge, 0,5–1 PT offen) · WP-19.1 (wp19, 2–3 PT offen) · WP-I4 (intelligence, 4–7 PT offen) · WP-I16 (intelligence, 4–7 PT offen) · WP-I19 (intelligence, 8–14 PT offen) · WP-I20 (intelligence, 8–14 PT offen) · WP-I24 (intelligence, 2,5–4,5 PT offen) · WP-I29 (intelligence, 9–15 PT offen) · WP-I30 (intelligence, 2–4 PT offen) · WP-I31 (intelligence, 4,5–7,5 PT offen) · IMP-6 (acc45, 1,5–2,5 PT offen) · IMP-8 (acc45, 1–1,5 PT offen) · WP-48-GB (acc45, 0,5–1,5 PT offen) · WP-ZEIT (acc45, 4,5–7,5 PT offen) · V4-1 (folge, 1–1,5 PT offen)
 
 ### Integriert in `integration/centric-complete` (119)
 
@@ -274,7 +275,7 @@ WP-40 (acc45, 1,5–2,25 PT offen) · WP-28b (folge, 0,5–1 PT offen) · WP-I4 
 | WP-07b | REVIEW | ✓ | ✓ | ✓ | – | – | – | – |
 | WP-S1 | INTEGRATED | ✓ | ✓ | – | ✓ | – | – | – |
 | WP-19.0 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
-| WP-19.1 | BLOCKED | T | T | T | T | – | – | – |
+| WP-19.1 | IN_PROGRESS | T | T | T | T | – | – | – |
 | WP-19.2 | BLOCKED | T | T | ✓ | – | – | – | – |
 | WP-19.3 | BLOCKED | T | T | ✓ | – | – | – | – |
 | WP-19.4 | BLOCKED | T | T | T | T | – | – | – |

@@ -10,6 +10,7 @@
    Orte und was der Kontext dort enthält (kern.jsx baut ihn):
      betrieb    { m, heute, darf }
      tag        dazu { datum, dienstId, einheitId, personenImDienst: Person[] }
+     (alle Orte: postenSchreibe(feld, wert) nur für Leitung und Planung, sonst fehlt es — Posten-Pflege und -Einteilung)
      dienstart  dazu { da } — je Dienstart des Betriebs
 
    Gezeigt wird eine Oberfläche nur, wenn ihr Modul im Betrieb wirkt
@@ -20,10 +21,10 @@
 
    Kein JSX in dieser Datei (createElement), damit sie überall lesbar ist.
    ========================================================================== */
-import { createElement as h } from "react";
+import { createElement as h, Fragment } from "react";
 import { BRANCHENMODULE, modulVon, modulAktiv, modulNurLesen, modulParameter } from "../../server/lib/branchenmodule.mjs";
 import { kompetenzStand } from "../../server/lib/regelwerk.mjs";
-import { PostenUebersicht } from "./posten.jsx";
+import { PostenUebersicht, PostenPflege } from "./posten.jsx";
 import { WachbuchTages } from "./wachbuch.jsx";
 import { ObjektberichtVorschau } from "./objektbericht.jsx";
 import { BereitschaftsUebersicht } from "./bereitschaftsdienst.jsx";
@@ -47,8 +48,11 @@ const dienstzeiten = (m) => Object.fromEntries((Array.isArray(m && m.dienstarten
 
 /** @type {readonly ModulOberflaeche[]} */
 export const MODUL_OBERFLAECHEN = Object.freeze([
+  /* Eine Oberfläche je Modul (Vertrag der Liste): Übersicht und Einteilung am Tag, darunter die Pflege der Objekte und Posten. */
   { modul: "posten", ort: "tag", titel: "Posten je Objekt",
-    ansicht: (k) => h(PostenUebersicht, { m: k.m, datum: k.datum, dienstId: k.dienstId, personenImDienst: k.personenImDienst }) },
+    ansicht: (k) => h(Fragment, null,
+      h(PostenUebersicht, { m: k.m, datum: k.datum, dienstId: k.dienstId, personenImDienst: k.personenImDienst, schreibe: k.postenSchreibe || null }),
+      h(PostenPflege, { m: k.m, schreibe: k.postenSchreibe || null })) },
   { modul: "wachbuch", ort: "tag", titel: "Wachbuch",
     ansicht: (k) => h(WachbuchTages, { m: k.m, datum: k.datum, zugriff: k.wachbuchZugriff || "keiner", person: k.person || null, eigeneEinheit: k.eigeneEinheit || null }) },
   { modul: "objektbericht", ort: "betrieb", titel: "Objektbericht (Vorschau)",

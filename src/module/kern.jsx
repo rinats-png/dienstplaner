@@ -270,7 +270,7 @@ function RegelwertZeile({ m, regel, darfSchalten, setzeRegelwert }) {
 }
 
 /** Moduloberflächen an den Einhängepunkten (./index.js). */
-function Oberflaechen({ m, sitz, darf, kontext, liste }) {
+function Oberflaechen({ m, sitz, darf, kontext, liste, akt }) {
   const dienstarten = (Array.isArray(m.dienstarten) ? m.dienstarten : []).filter((d) => d && d.id);
   const einheiten = (Array.isArray(m.einheiten) ? m.einheiten : []).filter((e) => e && e.id);
   const [tag, setTag] = useState(heuteTag());
@@ -285,6 +285,9 @@ function Oberflaechen({ m, sitz, darf, kontext, liste }) {
      modulKontext reicht sie nur bei Berichtszugriff „voll“ (Planung, Leitung) weiter. */
   const basis = { m, heute: heuteTag(), darf,
     ...modulKontext({ sitz, kontext: { ...(kontext || {}), dienstzeit: objektberichtDienstzeit(m, sitz) } }) };
+  /* Schreibweg der Posten-Oberfläche: nur Leitung und Planung (zugriff.js) und nur die beiden Postenfelder; der Server prüft alles noch einmal. */
+  basis.postenSchreibe = basis.postenSchreiben && akt && typeof akt.setzeFeld === "function"
+    ? (feld, wert) => { if (feld === "objekte" || feld === "postenPlan") akt.setzeFeld(feld, wert); } : null;
   const rahmen = (x, inhalt, schluessel) => (
     <section key={schluessel} style={RAHMEN} aria-label={x.eintrag.titel}>
       <h3 style={{ margin: 0, fontSize: 15 }}>{x.eintrag.titel}</h3>
@@ -348,7 +351,7 @@ export function BranchenModule({ sitz, akt, darf, kontext, liste = BRANCHENMODUL
         </div>)}
       <div>
         <h3 style={{ margin: "8px 0 4px", fontSize: 16 }}>Moduloberflächen</h3>
-        <Oberflaechen m={m} sitz={sitz} darf={darf} kontext={kontext} liste={liste} />
+        <Oberflaechen m={m} sitz={sitz} darf={darf} kontext={kontext} liste={liste} akt={akt} />
       </div>
     </section>);
 }
