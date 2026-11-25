@@ -16,8 +16,9 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { zusammenfuehren, bestandFuerRolle, rollenwechselErlaubt } from "../server/lib/rechte.mjs";
 import { kiBetriebsratPauseAn } from "../server/lib/schalter.mjs";
 import { betriebWiederherstellen } from "../server/lib/sicherungen.mjs";
+import { auskunftBauen } from "../server/lib/auskunft.mjs";
 import {
-  KI_FUNKTIONEN, KI_ROLLEN_AUSLOESEN, KI_GESPERRT, intelligenceErlaubt, intelligenceEntscheidung, kiSteuerungLesen,
+  KI_FUNKTIONEN, kiBrPauseAktiv, KI_ROLLEN_AUSLOESEN, KI_GESPERRT, intelligenceErlaubt, intelligenceEntscheidung, kiSteuerungLesen,
   kiSteuerungVerwerfen, kiSteuerungAnwenden, kiSteuerungProtokollZeilen, kiSteuerungSicht, KI_PROTOKOLL_GRENZE, betriebsratKontenZeilen,
 } from "../server/lib/ki-steuerung.mjs";
 import { FUNKTIONEN_IDS } from "../server/lib/intelligence/schemas.mjs";
@@ -376,14 +377,101 @@ describe("Betriebsrat-Pause", () => {
     expect(zusammenfuehren(b, null, SITZ.betriebsrat)).toBeNull();
     expect(zusammenfuehren(b, { mandanten: [] }, SITZ.betriebsrat)).toBeNull();
   });
-  it("Pause setzen: nur der Betriebsrat — die Leitung und alle anderen nie (auch nicht mit anderen Änderungen zusammen)", () => {
+  it("Pause setzen: nur der Betriebsrat (mit Schalter, eigener Weg) — alle anderen nie (auch nicht mit anderen Änderungen zusammen)", () => {
     const b = bereit();
-    for (const k of ["leitung", "planer", "kunde", "leitungDemo", "subplaner", "mitarbeiter", "betreiber"]) {
+    for (const k of ["planer", "kunde", "leitungDemo", "subplaner", "mitarbeiter", "betreiber"]) {
       const r = schreibe(k, setze({ pause: { aktiv: true } }), b);
       expect(KI(r.bestand).pause, k).toBeUndefined();
       const r2 = schreibe(k, setze({ pause: { aktiv: true }, betrieb: { an: true }, funktionen: { F3: { an: true } } }), b);
       expect(KI(r2.bestand).pause, k).toBeUndefined();
     }
+  });
+  it("Pause setzen: die Leitung setzt `pause` nie (auch nicht mit dem Schalter) — ihre eigene Pause ist `leitungPause`", () => {
+    const r = schreibe("leitung", setze({ pause: { aktiv: true } }), bereit());
+    expect(KI(r.bestand).pause).toBeUndefined();
+  });
+  it("Leitung setzt eine EIGENE Pause (leitungPause, Betreiberentscheidung 2026-11-26): ohne den Schalter, vonRolle leitung, Server stempelt, alle Funktionen gesperrt", () => {
+    ohneSchalter(undefined, () => {
+      const r = schreibe("leitung", setze({ leitungPause: { aktiv: true, am: "1999", vonRolle: "betriebsrat", vonPerson: "x", nr: 77 } }), bereit());
+      expect(r.abgewiesen, r.grund).toBe(false);
+      const p = KI(r.bestand).leitungPause;
+      expect(p).toMatchObject({ aktiv: true, vonRolle: "leitung", vonPerson: "l1", nr: 1 });
+      expect(p.am).not.toBe("1999");
+      expect(KI(r.bestand).pause).toBeUndefined();
+      expect(KI(r.bestand).protokoll.at(-1)).toMatchObject({ art: "leitungspause-gesetzt", vonRolle: "leitung" });
+      for (const f of ["F3", "F15"]) for (const rolle of KI_ROLLEN_AUSLOESEN) expect(intelligenceErlaubt(r.m, f, rolle, AN), `${f} ${rolle}`).toBe(false);
+    });
+  });
+  it("leitungPause: nur die Leitung (nicht Demo) setzt und hebt auf; der Betriebsrat und alle anderen nie; Aufheben nur mit gesehenem am+nr", () => {
+    const b = bereit();
+    for (const k of ["planer", "kunde", "leitungDemo", "subplaner", "mitarbeiter", "betreiber", "betriebsrat"]) {
+      expect(KI(schreibe(k, setze({ leitungPause: { aktiv: true } }), b).bestand).leitungPause, k).toBeUndefined();
+    }
+    const gesetzt = schreibe("leitung", setze({ leitungPause: { aktiv: true } }), b).bestand;
+    const aufh = (bst) => ({ leitungPause: { aktiv: false, am: KI(bst).leitungPause.am, nr: KI(bst).leitungPause.nr } });
+    for (const k of ["planer", "kunde", "leitungDemo", "subplaner", "mitarbeiter", "betreiber", "betriebsrat"])
+      expect(KI(schreibe(k, setze(aufh(gesetzt)), gesetzt).bestand).leitungPause.aktiv, k).toBe(true);
+    expect(KI(schreibe("leitung", setze({ leitungPause: { aktiv: false } }), gesetzt).bestand).leitungPause.aktiv).toBe(true);     // blind
+    expect(KI(schreibe("leitung", setze({ leitungPause: { aktiv: false, am: KI(gesetzt).leitungPause.am, nr: 9 } }), gesetzt).bestand).leitungPause.aktiv).toBe(true);
+    const auf = schreibe("leitung", setze(aufh(gesetzt)), gesetzt);
+    expect(KI(auf.bestand).leitungPause).toMatchObject({ aktiv: false, vonRolle: "leitung", nr: 2 });
+    expect(KI(auf.bestand).protokoll.at(-1)).toMatchObject({ art: "leitungspause-aufgehoben" });
+    expect(intelligenceErlaubt(auf.m, "F3", "leitung", AN)).toBe(true);
+    expect(KI(schreibe("leitung", setze({ leitungPause: { aktiv: true } }), gesetzt).bestand).leitungPause.nr).toBe(1);   // schon aktiv: keine neue nr
+  });
+  it("Nr. 2 (1): eine Leitungspause überschreibt eine bestehende Betriebsrat-Pause nicht (Herkunft, Stempel, Wirkung bleiben)", () => {
+    const brPause = schreibe("betriebsrat", setze({ pause: { aktiv: true } }), bereit()).bestand;
+    const vorher = KI(brPause).pause;
+    const beide = schreibe("leitung", setze({ leitungPause: { aktiv: true }, pause: { aktiv: true, am: "1999", nr: 5 } }), brPause);
+    expect(beide.abgewiesen, beide.grund).toBe(false);
+    expect(KI(beide.bestand).pause).toEqual(vorher);                              // unverändert, vonRolle betriebsrat
+    expect(KI(beide.bestand).pause.vonRolle).toBe("betriebsrat");
+    expect(KI(beide.bestand).leitungPause).toMatchObject({ aktiv: true, vonRolle: "leitung", nr: 1 });
+  });
+  it("Nr. 2 (2): das Aufheben der Leitungspause beseitigt eine bestehende Betriebsrat-Pause nicht — und umgekehrt; Intelligence ist pausiert, solange EINE aktiv ist", () => {
+    const br = schreibe("betriebsrat", setze({ pause: { aktiv: true } }), bereit()).bestand;
+    const beide = schreibe("leitung", setze({ leitungPause: { aktiv: true } }), br).bestand;
+    const ohneLeitung = schreibe("leitung", setze({ leitungPause: { aktiv: false, am: KI(beide).leitungPause.am, nr: KI(beide).leitungPause.nr } }), beide);
+    expect(KI(ohneLeitung.bestand).leitungPause.aktiv).toBe(false);
+    expect(KI(ohneLeitung.bestand).pause).toEqual(KI(br).pause);
+    expect(KI(ohneLeitung.bestand).pause.aktiv).toBe(true);
+    expect(intelligenceErlaubt(ohneLeitung.m, "F3", "leitung", AN)).toBe(false);                  // BR-Pause hält
+    /* umgekehrt: die Leitung hebt die BR-Pause auf, ihre eigene bleibt */
+    const ohneBr = schreibe("leitung", setze(frei(beide)), beide);
+    expect(KI(ohneBr.bestand).pause.aktiv).toBe(false);
+    expect(KI(ohneBr.bestand).leitungPause).toEqual(KI(beide).leitungPause);
+    expect(intelligenceErlaubt(ohneBr.m, "F3", "leitung", AN)).toBe(false);                       // Leitungspause hält
+    /* beide aufgehoben: frei */
+    const frei2 = schreibe("leitung", setze({ leitungPause: { aktiv: false, am: KI(ohneBr.bestand).leitungPause.am, nr: KI(ohneBr.bestand).leitungPause.nr } }), ohneBr.bestand);
+    expect(intelligenceErlaubt(frei2.m, "F3", "leitung", AN)).toBe(true);
+    /* Aufheben beider in einer Anfrage */
+    const beideAuf = schreibe("leitung", setze({ ...frei(beide), leitungPause: { aktiv: false, am: KI(beide).leitungPause.am, nr: KI(beide).leitungPause.nr } }), beide);
+    expect(KI(beideAuf.bestand).pause.aktiv).toBe(false);
+    expect(KI(beideAuf.bestand).leitungPause.aktiv).toBe(false);
+  });
+  it("ein unlesbarer Stand der Leitungspause pausiert (fail closed), sperrt aber keine Betriebsrat-Konten; die Leitung hebt ihn ohne Stempel auf", () => {
+    const b = kopie(bereit()); b.mandanten[0].einstellungen.kiSteuerung.leitungPause = "kaputt";
+    expect(intelligenceErlaubt(b.mandanten[0], "F3", "leitung", AN)).toBe(false);
+    expect(kiBrPauseAktiv(b.mandanten[0].einstellungen)).toBe(false);
+    const auf = schreibe("leitung", setze({ ...KI(b), leitungPause: { aktiv: false } }), b);
+    expect(auf.abgewiesen, auf.grund).toBe(false);
+    expect(KI(auf.bestand).leitungPause.aktiv).toBe(false);
+  });
+  it("Nr. 2 (3): die Konten-Sperre greift NUR bei aktiver Betriebsrat-Pause, nicht bei einer reinen Leitungspause", () => {
+    const nurLeitung = schreibe("leitung", setze({ leitungPause: { aktiv: true } }), bereit()).bestand;
+    const aendern = (bst) => { const n = kopie(bst); n.mandanten[0].personen.find((x) => x.id === "r1").rolle = "mitarbeiter"; return n; };
+    expect(rollenwechselErlaubt(nurLeitung, aendern(nurLeitung), SITZ.leitung).ok).toBe(true);
+    expect(kiBrPauseAktiv(nurLeitung.mandanten[0].einstellungen)).toBe(false);
+    const br = schreibe("betriebsrat", setze({ pause: { aktiv: true } }), bereit()).bestand;
+    expect(rollenwechselErlaubt(br, aendern(br), SITZ.leitung).ok).toBe(false);
+    const beide = schreibe("leitung", setze({ leitungPause: { aktiv: true } }), br).bestand;
+    expect(rollenwechselErlaubt(beide, aendern(beide), SITZ.leitung).ok).toBe(false);
+    /* Leitungspause aufgehoben, BR-Pause besteht weiter: weiter gesperrt */
+    const nurBr = schreibe("leitung", setze({ leitungPause: { aktiv: false, am: KI(beide).leitungPause.am, nr: KI(beide).leitungPause.nr } }), beide).bestand;
+    expect(rollenwechselErlaubt(nurBr, aendern(nurBr), SITZ.leitung).ok).toBe(false);
+    /* BR-Pause aufgehoben, Leitungspause besteht weiter: frei */
+    const nurL = schreibe("leitung", setze(frei(beide)), beide).bestand;
+    expect(rollenwechselErlaubt(nurL, aendern(nurL), SITZ.leitung).ok).toBe(true);
   });
   it("Pause aufheben: nur die Leitung (Rolle leitung, nicht Demo) — Betriebsrat, Planung und alle anderen nie; Protokoll nennt die Rolle", () => {
     const pausiert = schreibe("betriebsrat", setze({ pause: { aktiv: true } }), bereit()).bestand;
@@ -602,5 +690,19 @@ describe("Rollenvergabe (roles.assign) hebelt die Betriebsrat-Pause nicht aus", 
     expect(z.join()).not.toMatch(/r1|r2|V\w+ N/);
     expect(betriebsratKontenZeilen(alt, alt)).toEqual([]);
     expect(betriebsratKontenZeilen(null, null)).toEqual([]);
+  });
+});
+
+describe("Art. 15 DSGVO: die Personenkennung im Pausenstand (Betreiberentscheidung 2026-11-26, Nr. 4: nur geprüft)", () => {
+  it("die eigene Auskunft eines Betriebsratsmitglieds enthält weder die Steuerung noch die Personenkennung der Pause (Stand der Prüfung, keine Rechtsbewertung)", () => {
+    const b = schreibe("betriebsrat", setze({ pause: { aktiv: true } }), bereit()).bestand;
+    expect(KI(b).pause.vonPerson).toBe("r1");                                   // die Kennung liegt in der Ablage
+    const m = b.mandanten[0];
+    const eigeneSicht = bestandFuerRolle(b, SITZ.mitarbeiter).mandanten[0];
+    for (const [umfang, sicht] of [["selbst", eigeneSicht], ["selbst", null]]) {
+      const a = auskunftBauen(m, m.personen.find((x) => x.id === "r1"), { raum: "r", erstellt: "2026-11-26T10:00:00.000Z", umfang, eigeneSicht: sicht });
+      const text = JSON.stringify(a);
+      expect(text).not.toMatch(/kiSteuerung|vonPerson|pause-gesetzt|betriebsratFrage/);
+    }
   });
 });

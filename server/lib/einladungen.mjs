@@ -78,7 +78,7 @@ import { tokenAusstellen, tokenAnsehen, tokenEinloesen } from "./token.mjs";
 import { kontoLesenStreng, kontoSchreiben, alleKontenStreng } from "./konten.mjs";
 import { ablageSchluessel, altHash, neuHash, gleich } from "./codes.mjs";
 import { darfVergeben } from "./rollenvergabe.mjs";
-import { kiPauseAktiv } from "./ki-steuerung.mjs";
+import { kiBrPauseAktiv } from "./ki-steuerung.mjs";
 import { darf, eigenerMandant, wirksameRolle, sitzungsRolleBekannt } from "./rechte.mjs";
 import { aktivePerson } from "./personengueltig.mjs";
 import { heuteBerlin } from "./zeiterfassung.mjs";
@@ -333,7 +333,7 @@ export async function einladungAusstellen(store, { sitzung: s, bestand, personId
   const urteil = darfVergeben(vergeber, p.rolle, null);
   if (!urteil.ok) return nein(403, urteil.grund, `rolle nicht vergebbar (${p.rolle})`);
   /* WP-I16: Bei aktiver Pause der Intelligence-Funktionen entsteht kein neuer Betriebsrat-Zugang (wie betriebsratKontenSperre). */
-  if (p.rolle === "betriebsrat" && kiPauseAktiv(m.einstellungen && typeof m.einstellungen === "object" ? m.einstellungen : null))
+  if (p.rolle === "betriebsrat" && kiBrPauseAktiv(m.einstellungen && typeof m.einstellungen === "object" ? m.einstellungen : null))
     return nein(403, PAUSE_BETRIEBSRAT, "betriebsrat bei pause");
 
   const ziel = { raum: s.bestand, betrieb: Number(s.betrieb ?? 0), mandantId: m.id, person: String(p.id) };
@@ -575,7 +575,7 @@ export async function einladungEinloesen(store, { einladung, bestandLesen, jetzt
       if (p.rolle !== e.rolle)
         return abschluss(nein(409, "Die Rolle hat sich seit der Einladung geändert. Bitte neu einladen lassen.", "rolle geändert"));
       /* WP-I16: auch das Einlösen einer früher ausgestellten Einladung legt bei aktiver Pause keinen Betriebsrat-Zugang an. */
-      if (e.rolle === "betriebsrat" && kiPauseAktiv(m.einstellungen && typeof m.einstellungen === "object" ? m.einstellungen : null))
+      if (e.rolle === "betriebsrat" && kiBrPauseAktiv(m.einstellungen && typeof m.einstellungen === "object" ? m.einstellungen : null))
         return abschluss(nein(403, PAUSE_BETRIEBSRAT, "betriebsrat bei pause"));
 
       const ziel = { raum: e.bestand, betrieb: bindung.betrieb, mandantId: bindung.mandantId, person: e.person };
