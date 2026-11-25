@@ -2,5 +2,9 @@
   {
     "skript": "pruefung:serverlauf",
     "grund": "Entwicklungs-Abkürzung ohne Docker: startet 25-mal einen frischen Server (rund 3,5 Minuten) und wiederholt Prüfungen, die in der CI bereits als vitest-Skripte oder gegen das Docker-Bild laufen; im Workflow steht die Auslassung ausdrücklich begründet."
+  },
+  {
+    "skript": "pruefung:k4-altbestand",
+    "grund": "K4-P3: Schritt in .github/workflows/pruefung.yml fehlt noch, weil Workflow-Änderungen der Betreiber gebündelt macht (Patch-Vorschlag in der PR-Beschreibung); danach diesen Eintrag entfernen."
   }
 ]
