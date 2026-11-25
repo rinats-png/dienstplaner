@@ -24,6 +24,7 @@ Lokal gemessen unter Windows (Node 24), je Skript einzeln. Die CI (Ubuntu, Node 
 | `pruefung:pilot-tagesbericht` | ja | Werkzeug auf synthetischen Eingaben, kein Netz | 6 s |
 | `pruefung:serverlauf` | nein | Entwicklungs-Abkürzung: startet 25-mal einen frischen Server und wiederholt Prüfungen, die in der CI bereits als vitest-Skripte (z. B. `pruefung:sicht-schicht`, `pruefung:fachpruefung`) oder gegen das Docker-Bild laufen; der Workflow nennt die Auslassung ausdrücklich. Mit gut 3 Minuten außerdem die längste Einzelposition. Alle 25 Läufe lokal bestanden. | 208 s |
 | `pruefung:darstellung` | ja | seit PR #183 im Workflow (zusammen mit `pruefung:geraete`), damit keine Ausnahme mehr nötig | nicht gemessen |
+| `pruefung:k4-altbestand` | nein | vorläufig (K4-P3, `"vorlaeufig": true`): Schritt in `pruefung.yml` fehlt noch, weil Workflow-Änderungen der Betreiber gebündelt macht; bis dahin läuft der Test nur lokal (ein Prozess, rund 40 s, braucht das Objekt 274bfa0 per `git fetch`/`git archive` und `tar`). Nach dem Einbau Ausnahme entfernen. | nicht gemessen in der CI |
 
 `pruefung:serverlauf` steht zu Recht in der Sammelzeile (für Entwickler ohne Docker), ist aber in der CI
 bewusst ersetzt. Die Sammelzeile wurde nicht verändert.
