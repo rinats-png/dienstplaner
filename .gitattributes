@@ -9,3 +9,6 @@
 *.mjs text eol=lf
 *.js  text eol=lf
 *.sh  text eol=lf
+
+# GATE-EW3: Workflow-Patch und Vollfassung zeichengenau (git apply, Web-Editor), unabhaengig von core.autocrlf.
+docs/acc45/workflow-patches/** text eol=lf

@@ -53,7 +53,13 @@ async function scan(eintraege, freigaben = FREIGABEN) {
 
 describe("Geheimnis-Werkzeug: Freigabe für Commit b8e67edd ist eng", () => {
   it("Eintrag existiert mit vollständigem SHA, genau dieser Datei, genau der PEM-Regel und Grund", () => {
-    const e = FREIGABEN.filter((g) => g.commit);
+    // Commit-gebundene Freigaben: genau diese Liste (jede weitere braucht hier einen Eintrag). 9ca6d3df: PR #537 (GATE-EW3),
+    // erfundener Prüfwert eines Negativtests, Folgecommit baut ihn zur Laufzeit.
+    expect(FREIGABEN.filter((g) => g.commit).map((g) => `${g.commit}|${g.datei}|${g.regel}`)).toEqual([
+      `${SHA}|${DATEI}|${PEM}`,
+      "9ca6d3dff01a87d3e6e40d48eb58ec8ad6469bc4|pruefungen/workflow-patch-ew3.test.js|Zuweisung Geheimnis-Variable",
+    ]);
+    const e = FREIGABEN.filter((g) => g.commit === SHA);
     expect(e).toHaveLength(1);
     expect(e[0]).toMatchObject({ commit: SHA, datei: DATEI, regel: PEM });
     expect(e[0].commit).toMatch(/^[0-9a-f]{40}$/);
