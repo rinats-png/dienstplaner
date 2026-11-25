@@ -7242,8 +7242,8 @@
       "abhaengigkeiten": [],
       "status": "READY",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"Branch acc45/release/rst5-staging-probe: deploy/sicherung/ci/widerrufbuch-staging.sh (Betriebskennungen am Digest-Bild, Teil von S1), Test pruefungen/rst5-staging-probe.test.js; Abgleich (GATE-EW3 S1-S6, K4-P3/P4, Rechte/Mandanten nur dokumentiert) in docs/acc45/RST-5-nachweis.md; keine Workflow-Aenderung"},
+        "lokalGetestet": {"wert":true,"beleg":"lokal 2026-11-25 (Windows, TZ=UTC, --maxWorkers=1): rst5-staging-probe 10/10 (vorher 7 rot), workflow-patch-ew3 und betriebskennungen-pruefen gruen, zusammen 51/51; 7 Mutationen je Schutz rot; Docker-Teil nur im Runner nach Patch-Uebernahme"},
         "reviewt": {"wert":false,"beleg":null},
         "integriert": {"wert":false,"beleg":null},
         "stagingGeprueft": {"wert":false,"beleg":null},

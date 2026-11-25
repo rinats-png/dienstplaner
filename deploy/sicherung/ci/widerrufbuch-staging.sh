@@ -91,16 +91,28 @@ starten() { # nummer
 anhalten() { docker stop -t 20 "$NAME" >/dev/null; aufraeumen; }
 pruefen() { docker exec "$NAME" node /ci/widerrufbuch-staging.mjs pruefen "$1"; }
 bestanden() { printf 'ok\n' >"$WB_PROBEN/$1"; printf '✔ %s\n' "$*"; }
+# RST-5: Betriebskennungen (K4-Zusatzpunkt) am EXAKTEN Digest: Code des Digest-Bilds liest eine Wegwerfkopie des
+# synthetischen Altbestands, nur lesend, ohne Netz; jede Kennung (m.id) muss eine Zeichenkette sein. Läuft VOR dem ersten
+# Start des Digest-Bilds und ist Teil von S1 (keine eigene Marke: der Nachweis kennt genau S1–S6).
+kennungen_pruefen() {
+  local kopie="$T/daten-kennungen"
+  rm -rf "$kopie"
+  cp -a "$T/daten" "$kopie"
+  docker run --rm --network none --read-only --tmpfs /tmp --cap-drop ALL     --security-opt no-new-privileges:true --user "$NUTZER"     -e CENTRIC_PFEFFER="$PFEFFER" -e CENTRIC_ABLAGE=dateien -e CENTRIC_APP=/app     -v "$kopie:/scratchpad/daten-mig-gate"     -v "$HIER/../../betriebskennungen-pruefen.mjs:/ci/deploy/betriebskennungen-pruefen.mjs:ro"     -v "$HIER/../../migrationsprobe-regeln.mjs:/ci/deploy/migrationsprobe-regeln.mjs:ro"     --entrypoint node "$BILD" /ci/deploy/betriebskennungen-pruefen.mjs /scratchpad/daten-mig-gate ||
+    fehl "S1: Betriebskennungen am Digest-Bild nicht in Ordnung"
+  rm -rf "$kopie"
+}
 
 # === S1 Migration und erster Start ===========================================
 einmal "$ALT_BILD" altbestand
+kennungen_pruefen
 [[ -z "$(find "$T/zustand" -mindepth 1 -print -quit)" ]] || fehl "S1: Zustandsverzeichnis vor dem ersten Start nicht leer"
 starten 1
 for b in zugang-widerrufe.json konto-widerrufe.json; do [[ -s "$T/zustand/$b" ]] || fehl "S1: Buch $b fehlt nach dem ersten Start"; done
 pruefen s1
 anhalten
 cp -a "$T/daten" "$T/daten-s1"
-bestanden S1 "Migration 274bfa0 → Digest: beide Bücher entstanden, kein WARNUNG, Codes und Konten melden sich an"
+bestanden S1 "Migration 274bfa0 → Digest: Betriebskennungen Zeichenketten, beide Bücher entstanden, kein WARNUNG, Codes und Konten melden sich an"
 
 # === S2 Widerruf über die API, Kontosperre ===================================
 starten 2
