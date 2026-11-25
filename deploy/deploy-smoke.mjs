@@ -20,14 +20,30 @@
    „SMOKE OK“ oder „SMOKE FEHLGESCHLAGEN“. Exit 0 nur, wenn alles stimmt.
 
    Basis: CENTRIC_SMOKE_BASIS (Vorgabe http://127.0.0.1:3000).
+
+   Außenabruf und Beobachtung (RST-7): Derselbe Smoke läuft von außen über
+   die Domain (CENTRIC_SMOKE_BASIS=https://<domain>, Produktionsweg §3.6
+   Phasen 2 und 3, bis T0+24 h wiederholt). Die Zeile zu /gesund nennt die
+   Stufe, die /gesund nach außen zeigt (ok oder warnung; kritisch = 503).
+   Mit CENTRIC_SMOKE_PROTOKOLL=<datei> hängt jeder Lauf genau eine
+   JSON-Zeile an: {zeit, ergebnis, gesund, fehler} — fehler sind nur die
+   Namen der Prüfungen. Keine Basis, kein Host, kein Port, keine
+   Fehlermeldung (das Protokoll darf in die Ablage). Ist die Datei nicht
+   beschreibbar, schlägt der Lauf fehl. Ohne die Variable (deploy.sh im
+   Container) wird nichts geschrieben.
    ========================================================================== */
+
+import { appendFileSync } from "node:fs";
 
 const BASIS = (process.env.CENTRIC_SMOKE_BASIS || "http://127.0.0.1:3000").replace(/\/+$/, "");
 const ZEIT = 10_000;
+const PROTOKOLL = process.env.CENTRIC_SMOKE_PROTOKOLL || "";
 let fehler = 0;
+const namen = [];
+let stufe = null;
 
 const ok = (t) => console.log(`ok      ${t}`);
-const schlecht = (t) => { fehler++; console.log(`FEHLER  ${t}`); };
+const schlecht = (t, name) => { fehler++; namen.push(name); console.log(`FEHLER  ${t}`); };
 
 async function holen(pfad, init = {}) {
   return fetch(BASIS + pfad, { redirect: "manual", signal: AbortSignal.timeout(ZEIT), ...init });
@@ -38,11 +54,17 @@ async function status(name, pfad, init, soll) {
     const r = await holen(pfad, init);
     await r.arrayBuffer().catch(() => {});
     if (r.status === soll) ok(`${name}: ${r.status}`);
-    else schlecht(`${name}: ${r.status}, erwartet ${soll}`);
-  } catch (e) { schlecht(`${name}: ${e && e.message ? e.message : e}`); }
+    else schlecht(`${name}: ${r.status}, erwartet ${soll}`, name);
+  } catch (e) { schlecht(`${name}: ${e && e.message ? e.message : e}`, name); }
 }
 
-await status("GET /gesund", "/gesund", {}, 200);
+try {
+  const r = await holen("/gesund");
+  const text = await r.text().catch(() => "");
+  try { const s = JSON.parse(text).status; if (typeof s === "string" && /^[a-z]{1,20}$/.test(s)) stufe = s; } catch { /* keine Stufe */ }
+  if (r.status === 200) ok(`GET /gesund: 200 (Stufe ${stufe ?? "unbekannt"})`);
+  else schlecht(`GET /gesund: ${r.status}, erwartet 200 (Stufe ${stufe ?? "unbekannt"})`, "GET /gesund");
+} catch (e) { schlecht(`GET /gesund: ${e && e.message ? e.message : e}`, "GET /gesund"); }
 await status("GET /api/bestand ohne Sitzung", "/api/bestand", {}, 401);
 await status("PUT /api/bestand ohne Sitzung", "/api/bestand",
   { method: "PUT", headers: { "content-type": "application/json" }, body: "{}" }, 401);
@@ -52,7 +74,7 @@ await status("POST /api/stempeln ohne Sitzung", "/api/stempeln",
 try {
   const r = await holen("/");
   const html = await r.text();
-  if (r.status !== 200) schlecht(`GET /: ${r.status}`);
+  if (r.status !== 200) schlecht(`GET /: ${r.status}`, "GET /");
   const k = (n) => r.headers.get(n) || "";
   const koepfe = [
     ["content-security-policy", (w) => w.length > 0],
@@ -64,19 +86,25 @@ try {
   ];
   for (const [n, pruef] of koepfe) {
     if (pruef(k(n))) ok(`Kopf ${n}`);
-    else schlecht(`Kopf ${n} fehlt oder unpassend: "${k(n)}"`);
+    else schlecht(`Kopf ${n} fehlt oder unpassend: "${k(n)}"`, `Kopf ${n}`);
   }
   const m = html.match(/<script[^>]+src="(\/assets\/[^"]+\.js)"/);
-  if (!m) schlecht("Bundle: kein /assets/*.js in /");
+  if (!m) schlecht("Bundle: kein /assets/*.js in /", "Bundle");
   else {
     const b = await holen(m[1]);
     const typ = b.headers.get("content-type") || "";
     const inhalt = await b.arrayBuffer();
     if (b.status === 200 && /javascript/.test(typ) && inhalt.byteLength > 1000)
       ok(`Bundle ${m[1]} (${inhalt.byteLength} Bytes)`);
-    else schlecht(`Bundle ${m[1]}: ${b.status}, ${typ}, ${inhalt.byteLength} Bytes`);
+    else schlecht(`Bundle ${m[1]}: ${b.status}, ${typ}, ${inhalt.byteLength} Bytes`, "Bundle");
   }
-} catch (e) { schlecht(`GET /: ${e && e.message ? e.message : e}`); }
+} catch (e) { schlecht(`GET /: ${e && e.message ? e.message : e}`, "GET /"); }
+
+if (PROTOKOLL) {
+  const zeile = { zeit: new Date().toISOString(), ergebnis: fehler ? "fehlgeschlagen" : "ok", gesund: stufe, fehler: namen };
+  try { appendFileSync(PROTOKOLL, JSON.stringify(zeile) + "\n"); }
+  catch (e) { schlecht(`Protokoll nicht geschrieben: ${e && e.code ? e.code : e}`, "Protokoll"); }
+}
 
 console.log(fehler ? `SMOKE FEHLGESCHLAGEN (${fehler})` : "SMOKE OK");
 process.exitCode = fehler ? 1 : 0;
