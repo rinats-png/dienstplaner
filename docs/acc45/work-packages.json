@@ -5,9 +5,9 @@
   "statusZaehlung": {
     "BLOCKED": 117,
     "READY": 28,
-    "IN_PROGRESS": 21,
+    "IN_PROGRESS": 20,
     "REVIEW": 10,
-    "INTEGRATED": 116,
+    "INTEGRATED": 117,
     "DONE": 3
   },
   "jeStrang": {
@@ -37,10 +37,10 @@
     },
     "folge": {
       "pakete": 62,
-      "offen": 44,
+      "offen": 43,
       "restPT": {
-        "min": 47.2,
-        "max": 80.85
+        "min": 45.95,
+        "max": 79.35
       }
     },
     "extern": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 366.8,
-    "max": 628
+    "min": 365.55,
+    "max": 626.5
   },
   "kritischerPfad": {
     "summe": 70,
@@ -2323,7 +2323,7 @@
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block K)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). Stand (automatisch): Teilumfang nach #256, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). Offene Betreiberfragen: (1) Darf die Planung die Vorgaben lesen und ändern? (2) Welche Betriebsratssicht, falls überhaupt (§ 87 BetrVG, BLOCKED auf Betreiber)? (3) Braucht es ein Protokoll für Löschen/Deaktivieren? (4) Tarif 'pro' = Grenze 25 des Business-Tarifs bestätigen? (5) Muss eine geänderte Vorgabe neu getestet werden (nur die Oberfläche erzwingt, nicht der Server)? Nachtrag 2026-11-18 (SSOT-Klassifizierung): Feld pr um #177 ergänzt (älterer Entwurf „Interne Vorgaben Verwaltung“, offen, nicht gemergt; der gemergte Teil ist #256)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). Stand (automatisch): Teilumfang nach #256, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). Offene Betreiberfragen: (1) Darf die Planung die Vorgaben lesen und ändern? (2) Welche Betriebsratssicht, falls überhaupt (§ 87 BetrVG, BLOCKED auf Betreiber)? (3) Braucht es ein Protokoll für Löschen/Deaktivieren? (4) Tarif 'pro' = Grenze 25 des Business-Tarifs bestätigen? (5) Muss eine geänderte Vorgabe neu getestet werden (nur die Oberfläche erzwingt, nicht der Server)? Nachtrag 2026-11-18 (SSOT-Klassifizierung): Feld pr um #177 ergänzt (älterer Entwurf „Interne Vorgaben Verwaltung“, offen, nicht gemergt; der gemergte Teil ist #256).\nNachtrag 2026-11-25 (Betreiber): Antworten auf die fünf Fragen: 1.1 B (Planung liest innerhalb ihrer Zuständigkeit, nur berechtigte Leitungen ändern); 1.2 vorläufig A, Ziel B (Betriebsrat Leserecht auf Vorgaben und relevante Änderungsprotokolle; produktive Aktivierung erst nach rechtlicher Rückmeldung, Schalter AUS); 1.3 C (Deaktivieren statt Löschen, Änderungsprotokoll, gesetzliche Lösch- und Aufbewahrungspflichten bleiben); 1.4 A (Grenze 25 für `pro` vorläufig, zentral konfigurierbar); 1.5 B jetzt (serverseitige Validierung und Prüfung), C Plan-Probelauf im Umfang WP-I8/I9."
     },
     {
       "id": "WP-I5",
@@ -2659,7 +2659,7 @@
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block P)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). PR #238 (WP-I16 Teil 1: Steuerung und Transparenz, Betrieb, Betriebsrat-Pause, Schalter aus): offen, Freigabe ausstehend, nicht gemergt. Grund: neues Schreibrecht für den Betriebsrat (nur kiSteuerung.pause.aktiv über PUT /api/bestand) und akzeptiertes Restrisiko (Leitung hält roles.assign und kann die Betriebsrat-Rolle vergeben und damit die Pause aufheben). Betreiberentscheidungen: Recht freigeben; Minderung des roles.assign-Umwegs (bestehende BR-Mitglieder benachrichtigen, BR-Konto vor der Pause vorausgesetzt, Rollenvergabe Betriebsrat durch Leitung untersagen); Plan-Lücken: wer bestätigt, direktes BR-Recht, Ja-nach-Nein durch Leitung, Frage vor Einschalten Pflicht, Beschäftigteninformation, Notschalter, KI-Kennzeichnung. Entscheidungsstand 2026-11-14 (Statusstufe entschieden, keine Freigabe zur Produktion): Betreiber 2026-11-14: Betriebsrat-Schreibrecht (PR #238) ist NICHT freigegeben. Weiter offen: KI-Pause aktivieren und aufheben (wer darf was), wer BR-Konten zuweist, Umgehung der Pause über die Rollenvergabe durch die Leitung (roles.assign). PR #238 bleibt angehalten. Nachtrag 2026-11-18 (SSOT-Klassifizierung): Feld pr um #238 ergänzt (offen, angehalten, nicht gemergt)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). PR #238 (WP-I16 Teil 1: Steuerung und Transparenz, Betrieb, Betriebsrat-Pause, Schalter aus): offen, Freigabe ausstehend, nicht gemergt. Grund: neues Schreibrecht für den Betriebsrat (nur kiSteuerung.pause.aktiv über PUT /api/bestand) und akzeptiertes Restrisiko (Leitung hält roles.assign und kann die Betriebsrat-Rolle vergeben und damit die Pause aufheben). Betreiberentscheidungen: Recht freigeben; Minderung des roles.assign-Umwegs (bestehende BR-Mitglieder benachrichtigen, BR-Konto vor der Pause vorausgesetzt, Rollenvergabe Betriebsrat durch Leitung untersagen); Plan-Lücken: wer bestätigt, direktes BR-Recht, Ja-nach-Nein durch Leitung, Frage vor Einschalten Pflicht, Beschäftigteninformation, Notschalter, KI-Kennzeichnung. Entscheidungsstand 2026-11-14 (Statusstufe entschieden, keine Freigabe zur Produktion): Betreiber 2026-11-14: Betriebsrat-Schreibrecht (PR #238) ist NICHT freigegeben. Weiter offen: KI-Pause aktivieren und aufheben (wer darf was), wer BR-Konten zuweist, Umgehung der Pause über die Rollenvergabe durch die Leitung (roles.assign). PR #238 bleibt angehalten. Nachtrag 2026-11-18 (SSOT-Klassifizierung): Feld pr um #238 ergänzt (offen, angehalten, nicht gemergt).\nNachtrag 2026-11-25 (Betreiber): P2-8: Variante A als technisches Ziel: Betriebsrat darf Intelligence in seinem Zuständigkeitsbereich pausieren; jede Änderung protokolliert; Rollenvergabe darf die Schutzmaßnahme nicht umgehen; normale Dienstplanung bleibt funktionsfähig; Wiederaktivierung durch die Leitung unter den geltenden Freigaberegeln. Produktive Rechte und endgültige Wiederaktivierungsregeln erst nach rechtlicher Prüfung (Schalter AUS)."
     },
     {
       "id": "WP-I17",
@@ -6363,7 +6363,7 @@
       "akzeptanz": "Option A / restic-Sicherung der Widerrufbücher außer Haus mit Vereinigung, Alterswarnung und Probe; Probe mit echtem restic in der CI (INFRA §8 B-1) und produktives Ziel stehen aus",
       "tests": "pruefung:be3-widerrufbuch-sicherung, pruefung:staging-o2",
       "dateien": "werkzeug/ablage-sicherung.mjs, deploy/sicherung/, docs/acc45/INFRA-VORBEREITUNG-STAGING-BACKUP.md, docs/acc45/EINRICHTUNGSKETTE-IONOS.md",
-      "notiz": "Von Hand angelegt (2026-11-17): Die frühere Aussage „BE-3: offen, nicht begonnen“ ist überholt (PR #313, #316, #319). Review: nicht belegt (reviewt false). Stufe entschieden laut Betreiberentscheidung 2026-11-14 (ENTSCHEIDUNGSLISTE.md); eine Entscheidung ist keine Produktionsfreigabe. Nicht belegt: stagingGeprueft, fachlichFreigegeben, produktiv aktiviert. Priorität, Strang und Aufwand sind eine vorläufige Einordnung nach docs/acc45/BACKLOG-PHASEN.md, vom Betreiber nicht bestätigt; Aufwand ist eine SCHÄTZUNG. Nachtrag 2026-11-18 (SSOT-Klassifizierung): B-1 (Widerrufbuch-Job und Probe mit echtem restic in der CI, B3-8) ist erledigt durch PR #325 (88511380, Vorfahr von integration/release-v4). Status BLOCKED (Korrektur 2026-11-18, zuvor IN_PROGRESS); Grund: P3-6, P3-7, P3-8 (Speicherziel, Zugangsdaten, Kosten, Löschschutz, Aufbewahrung) sind Betreiberfreigaben und nicht entschieden. Der Rest ist nur Betreiberfreigabe (P3-6 bis P3-8 in ENTSCHEIDUNGSLISTE.md); keine Agentenarbeit ohne diese Entscheidungen."
+      "notiz": "Von Hand angelegt (2026-11-17): Die frühere Aussage „BE-3: offen, nicht begonnen“ ist überholt (PR #313, #316, #319). Review: nicht belegt (reviewt false). Stufe entschieden laut Betreiberentscheidung 2026-11-14 (ENTSCHEIDUNGSLISTE.md); eine Entscheidung ist keine Produktionsfreigabe. Nicht belegt: stagingGeprueft, fachlichFreigegeben, produktiv aktiviert. Priorität, Strang und Aufwand sind eine vorläufige Einordnung nach docs/acc45/BACKLOG-PHASEN.md, vom Betreiber nicht bestätigt; Aufwand ist eine SCHÄTZUNG. Nachtrag 2026-11-18 (SSOT-Klassifizierung): B-1 (Widerrufbuch-Job und Probe mit echtem restic in der CI, B3-8) ist erledigt durch PR #325 (88511380, Vorfahr von integration/release-v4). Status BLOCKED (Korrektur 2026-11-18, zuvor IN_PROGRESS); Grund: P3-6, P3-7, P3-8 (Speicherziel, Zugangsdaten, Kosten, Löschschutz, Aufbewahrung) sind Betreiberfreigaben und nicht entschieden. Der Rest ist nur Betreiberfreigabe (P3-6 bis P3-8 in ENTSCHEIDUNGSLISTE.md); keine Agentenarbeit ohne diese Entscheidungen.\nNachtrag 2026-11-25 (Betreiber): Verbindlich: Widerrufbücher sichern; ab T0 wird der Sicherheitszustand (`zustand/`) nie zurückgesetzt, widerrufene Codes bleiben ungültig. K4 Pfad 0."
     },
     {
       "id": "V4-0",
@@ -7259,7 +7259,7 @@
       "akzeptanz": "Gate nur im Runner und nur mit synthetischen Daten; Migrationsprobe W-1…W-9 mit synthetischem 274bfa0-Bestand; betriebskennungen-pruefen; Rechte- und Mandanten-Proben; Widerrufbuch-Funktionstest; Nachweis-JSON mit exaktem Digest; Gate grün auf Fixture-Digest im Test; keine Rechte außer contents/packages: read; lokaler Skriptlauf erzeugt dieselbe Fixture; STAGING_GATE_AKTIV nicht gesetzt",
       "tests": "Unit (Workflow-Strukturtest), Fixture, lokaler Skriptlauf",
       "dateien": ".github/workflows/staging-gate.yml, werkzeug/, pruefungen/",
-      "notiz": "Umfangsklasse: TECHN-ABHAENGIGKEIT. Prioritätsbegründung: P1: Ohne Probe der Migration W-1…W-9 auf einem alten Bestand und ohne Bindung des Nachweises an den exakten Digest ist der erste V4-Wechsel nicht sicher belegbar (Voraussetzung N-2/N-9 laut Koordinator-Vorgabe). Umfang: Das Gate läuft nur im Runner und nur mit synthetischen Daten: Bild mit synthetischem 274bfa0-Bestand starten, Migrationsprobe W-1…W-9, betriebskennungen-pruefen, Rechte- und Mandanten-Proben, Widerrufbuch-Funktionstest auf Staging, Nachweis-JSON mit exaktem Digest. Enthält auch die synthetische Migrationsprobe lokal als Skript (alten Stand erzeugen, Kandidat starten, Regeln prüfen; Quelle Freigabemodell-Vorschlag S-3, Bezug docs/acc45/EINRICHTUNGSKETTE-IONOS.md Abschnitt 1a); dafür wird kein eigenes Paket FREIGABE-S3 angelegt (gleiche Aufgabe, gleiche Fixture). Aktivierung (STAGING_GATE_AKTIV): Betreiberhandlung nach Stufe 1 (B2 = ja entschieden, noch nicht wirksam; N-9: nur nach belegter Digest-Bindung); wird hier nicht gesetzt. Workflow-Änderung nur als eigener PR mit Sicherheitsreview; Merge durch den Betreiber. Echte Datenkopie (P1-0) bleibt Betreiberhandlung. Reviewbedarf: Opus Sicherheit. Quelle: Release-Stillstand-Analyse 2026-11-24 (Abschnitt 7) und Koordinator-Vorgabe 2026-11-24. Aufwand SCHÄTZUNG, nicht gemessen. Konfliktzone (Dateien, nicht im SSOT-Zonenvokabular): .github/workflows/staging-gate.yml, werkzeug/, pruefungen/."
+      "notiz": "Umfangsklasse: TECHN-ABHAENGIGKEIT. Prioritätsbegründung: P1: Ohne Probe der Migration W-1…W-9 auf einem alten Bestand und ohne Bindung des Nachweises an den exakten Digest ist der erste V4-Wechsel nicht sicher belegbar (Voraussetzung N-2/N-9 laut Koordinator-Vorgabe). Umfang: Das Gate läuft nur im Runner und nur mit synthetischen Daten: Bild mit synthetischem 274bfa0-Bestand starten, Migrationsprobe W-1…W-9, betriebskennungen-pruefen, Rechte- und Mandanten-Proben, Widerrufbuch-Funktionstest auf Staging, Nachweis-JSON mit exaktem Digest. Enthält auch die synthetische Migrationsprobe lokal als Skript (alten Stand erzeugen, Kandidat starten, Regeln prüfen; Quelle Freigabemodell-Vorschlag S-3, Bezug docs/acc45/EINRICHTUNGSKETTE-IONOS.md Abschnitt 1a); dafür wird kein eigenes Paket FREIGABE-S3 angelegt (gleiche Aufgabe, gleiche Fixture). Aktivierung (STAGING_GATE_AKTIV): Betreiberhandlung nach Stufe 1 (B2 = ja entschieden, noch nicht wirksam; N-9: nur nach belegter Digest-Bindung); wird hier nicht gesetzt. Workflow-Änderung nur als eigener PR mit Sicherheitsreview; Merge durch den Betreiber. Echte Datenkopie (P1-0) bleibt Betreiberhandlung. Reviewbedarf: Opus Sicherheit. Quelle: Release-Stillstand-Analyse 2026-11-24 (Abschnitt 7) und Koordinator-Vorgabe 2026-11-24. Aufwand SCHÄTZUNG, nicht gemessen. Konfliktzone (Dateien, nicht im SSOT-Zonenvokabular): .github/workflows/staging-gate.yml, werkzeug/, pruefungen/.\nNachtrag 2026-11-25 (Betreiber): Verbindlich für v4-r1 (kleinerer Umfang bei Neustart: synthetischer Bestand, kein Altbestandsabgleich). K4 Pfad 0."
     },
     {
       "id": "RST-6",
@@ -7315,7 +7315,7 @@
       "akzeptanz": "Skript für Außenabruf /gesund und Sicherheitskopfzeilen; Beobachtungsprotokoll 24 h; Rücksprung-Probe A→B→A in CI mit synthetischen Daten; Wiederherstellungs- und Vorwärts-Reparaturnachweis; Probe beweist Rücksprung nur ab dem zweiten Wechsel; R0 unverändert",
       "tests": "Unit, shellcheck, CI-Probe",
       "dateien": "deploy/, pruefungen/",
-      "notiz": "Umfangsklasse: TECHN-ABHAENGIGKEIT. Prioritätsbegründung: P1 gilt nur für den Wiederherstellungs- und Vorwärts-Reparaturnachweis: Vor dem ersten Produktionswechsel muss belegt sein, dass Wiederherstellung und Vorwärts-Reparatur funktionieren (Voraussetzung laut Koordinator-Vorgabe; G7 verlangt eine belegte Rückwegstrategie). Umfang: Skript für Außenabruf /gesund und Sicherheitskopfzeilen, Beobachtungsprotokoll 24 h, Rücksprung-Probe A→B→A in CI mit synthetischen Daten (Vorbereitung E-14), Wiederherstellungs- und Vorwärts-Reparaturnachweis. Die Probe A→B→A beweist den Rücksprung erst ab dem zweiten Wechsel und trägt die P1 nicht; R0 bleibt unverändert. Aufwand und Umfang hängen vom Entwurf wiederherstellung-k4-entwurf-2026-11-24.md ab (liegt im Scratchpad des Koordinators, entsteht noch, nicht im Repo): Aufwand nach Vorlage des Entwurfs neu schätzen. Ausführung auf dem VPS bleibt Betreiberhandlung. Reviewbedarf: Opus. Abweichung von der Analyse-Arbeitspriorität: Die Release-Stillstand-Analyse empfahl „SSOT-Prio P2 wegen G9“; das wäre eine G9-Umgehung und ist laut Betreiber verboten. Die Priorität hier ist fachlich begründet. Quelle: Release-Stillstand-Analyse 2026-11-24 (Abschnitt 7) und Koordinator-Vorgabe 2026-11-24. Aufwand SCHÄTZUNG, nicht gemessen. Konfliktzone (Dateien, nicht im SSOT-Zonenvokabular): deploy/, pruefungen/."
+      "notiz": "Umfangsklasse: TECHN-ABHAENGIGKEIT. Prioritätsbegründung: P1 gilt nur für den Wiederherstellungs- und Vorwärts-Reparaturnachweis: Vor dem ersten Produktionswechsel muss belegt sein, dass Wiederherstellung und Vorwärts-Reparatur funktionieren (Voraussetzung laut Koordinator-Vorgabe; G7 verlangt eine belegte Rückwegstrategie). Umfang: Skript für Außenabruf /gesund und Sicherheitskopfzeilen, Beobachtungsprotokoll 24 h, Rücksprung-Probe A→B→A in CI mit synthetischen Daten (Vorbereitung E-14), Wiederherstellungs- und Vorwärts-Reparaturnachweis. Die Probe A→B→A beweist den Rücksprung erst ab dem zweiten Wechsel und trägt die P1 nicht; R0 bleibt unverändert. Aufwand und Umfang hängen vom Entwurf wiederherstellung-k4-entwurf-2026-11-24.md ab (liegt im Scratchpad des Koordinators, entsteht noch, nicht im Repo): Aufwand nach Vorlage des Entwurfs neu schätzen. Ausführung auf dem VPS bleibt Betreiberhandlung. Reviewbedarf: Opus. Abweichung von der Analyse-Arbeitspriorität: Die Release-Stillstand-Analyse empfahl „SSOT-Prio P2 wegen G9“; das wäre eine G9-Umgehung und ist laut Betreiber verboten. Die Priorität hier ist fachlich begründet. Quelle: Release-Stillstand-Analyse 2026-11-24 (Abschnitt 7) und Koordinator-Vorgabe 2026-11-24. Aufwand SCHÄTZUNG, nicht gemessen. Konfliktzone (Dateien, nicht im SSOT-Zonenvokabular): deploy/, pruefungen/.\nNachtrag 2026-11-25 (Betreiber): Verbindlich für v4-r1 (Post-Deploy-, Rückweg- und A→B→A-Probe). K4 Pfad 0."
     },
     {
       "id": "RST-8",
@@ -8052,7 +8052,7 @@
       "prio": "P1",
       "aufwandPT": {"min":0.5,"max":1},
       "abhaengigkeiten": [],
-      "status": "IN_PROGRESS",
+      "status": "BLOCKED",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
         "lokalGetestet": {"wert":false,"beleg":null},
@@ -8062,8 +8062,8 @@
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
       },
-      "branch": "acc45/release/k4-p1-schwaerzungs-wrapper",
-      "agent": "codex-cloud (extern, Betreiberauftrag 2026-11-25)",
+      "branch": null,
+      "agent": null,
       "modell": "sonnet",
       "konfliktzonen": [],
       "pr": [],
@@ -8071,7 +8071,7 @@
       "akzeptanz": "Wrapper liest die Ausgaben von K4a/K4c/K4d und Startprotokoll, ersetzt Raumschlüssel stabil durch R01…, Zuordnung nur lokal in einer Datei mit Modus 600, kürzt Fehlertexte auf Klassen, entfernt Pfade, Mailadressen und lange Ziffernfolgen, lässt nur Positivlisten-Zeilen zu (sonst [ENTFERNT]); Tests mit Lockvogel-Namen; Review (Opus)",
       "tests": "Unit (Lockvogel-Namen)",
       "dateien": "werkzeug/k4-bericht.mjs, pruefungen/",
-      "notiz": "Umfangsklasse: SICHERHEIT-QUALITAET.\nPrioritätsbegründung: P1: Betreibervorgabe 2026-11-24: keine produktive Migration ohne geprüfte Sicherung, erfolgreiche Migrationsprobe und nachvollziehbare Wiederherstellungsstrategie; ohne Wrapper darf kein K4-Bericht den lokalen Rechner verlassen (Datenschutz).\nReview Opus. K4-Grundregel: Der Betreiber beantwortet die Fragen F-1 bis F-6 selbst; es gelten keine Annahmen. Echtdaten nur in einer gesondert abgesicherten lokalen Umgebung, nie an KI-Dienste, öffentliche Runner, Cloud-Dienste oder öffentliche Repo-Bereiche; öffentliche Runner nur mit synthetischen Daten. Reihenfolge laut Entwurf: P-1, P-3, P-2, P-6, P-4, P-5, P-7/P-8. Strang folge (Review PR #540): Release-Pfad-Pakete stehen einheitlich in folge, gleiche Begründung wie K4-P3/K4-P4 (Betreibervorgabe 2026-11-24: keine produktive Migration ohne Sicherung, Probe, Strategie); offenes P1 blockiert G9 bis INTEGRATED. Quelle: Auftrag SSOT-Pakete 2 vom 2026-11-25 (Koordinator). Aufwand SCHÄTZUNG, nicht gemessen.\nReserviert (2026-11-25): Bearbeitung durch zusätzlichen externen Codex-Cloud-Agenten auf Branch acc45/release/k4-p1-schwaerzungs-wrapper; Auftragstext liegt beim Betreiber; unabhängiger Opus-Review durch den Koordinator vor Merge; keine Produktionsdaten/Secrets an den Agenten."
+      "notiz": "Umfangsklasse: SICHERHEIT-QUALITAET.\nPrioritätsbegründung: P1: Betreibervorgabe 2026-11-24: keine produktive Migration ohne geprüfte Sicherung, erfolgreiche Migrationsprobe und nachvollziehbare Wiederherstellungsstrategie; ohne Wrapper darf kein K4-Bericht den lokalen Rechner verlassen (Datenschutz).\nReview Opus. K4-Grundregel: Der Betreiber beantwortet die Fragen F-1 bis F-6 selbst; es gelten keine Annahmen. Echtdaten nur in einer gesondert abgesicherten lokalen Umgebung, nie an KI-Dienste, öffentliche Runner, Cloud-Dienste oder öffentliche Repo-Bereiche; öffentliche Runner nur mit synthetischen Daten. Reihenfolge laut Entwurf: P-1, P-3, P-2, P-6, P-4, P-5, P-7/P-8. Strang folge (Review PR #540): Release-Pfad-Pakete stehen einheitlich in folge, gleiche Begründung wie K4-P3/K4-P4 (Betreibervorgabe 2026-11-24: keine produktive Migration ohne Sicherung, Probe, Strategie); offenes P1 blockiert G9 bis INTEGRATED. Quelle: Auftrag SSOT-Pakete 2 vom 2026-11-25 (Koordinator). Aufwand SCHÄTZUNG, nicht gemessen.\nReserviert (2026-11-25): Bearbeitung durch zusätzlichen externen Codex-Cloud-Agenten auf Branch acc45/release/k4-p1-schwaerzungs-wrapper; Auftragstext liegt beim Betreiber; unabhängiger Opus-Review durch den Koordinator vor Merge; keine Produktionsdaten/Secrets an den Agenten.\nNachtrag 2026-11-25 (Betreiber): Reservierung für den externen Agenten freigegeben; Codex ist bis auf Weiteres vollständig zurückgestellt, es wurde keine Sitzung gestartet (kein Branch, kein PR). Paket zurückgestellt für spätere Kundenmigrationen (K4 Pfad 0: kontrollierter Neustart mit sauberem Bestand, kein Altbestandsbericht für v4-r1). Paket bleibt bestehen und wird nicht herabgestuft; G9 meldet es als offenes P1-Paket. Entscheidungstext für `akzeptierteBefunde` (nur Vorschlag, keine Annahme, keine Risikoannahme durch Claude): ENTSCHEIDUNGSLISTE.md, Nachtrag 2026-11-25 (b)."
     },
     {
       "id": "K4-P2",
@@ -8136,12 +8136,12 @@
       "prio": "P1",
       "aufwandPT": {"min":1.5,"max":2},
       "abhaengigkeiten": ["K4-P3"],
-      "status": "BLOCKED",
+      "status": "INTEGRATED",
       "stufen": {
         "implementiert": {"wert":true,"beleg":"Branch acc45/release/k4-p4-vorwaerts-reparatur: pruefungen/k4-p4-vorwaerts-reparatur.test.js; Befunde B1 (daten.mjs, ETag alt bei unzerlegtem Raum) und B2 (Migrationsprobe je Betrieb); docs/acc45/K4-P4-nachweis.md"},
         "lokalGetestet": {"wert":true,"beleg":"lokal 2026-11-25 (Windows, TZ=UTC, --maxWorkers=1): k4-p4-vorwaerts-reparatur 4/4, etag-pflicht 18/18, migrationsprobe-lokal 25/25; Mutationen M1, M2, M4, M5 rot; M3, M6 durch zweite Schicht gedeckt (Nachweis)"},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "reviewt": {"wert":true,"beleg":"Opus-Review zu PR #556: FREIGABE mit Auflagen (Rebase, zwei Formulierungen, erledigt), danach Delta-Check FREIGABE auf Kopf c26ed06e"},
+        "integriert": {"wert":true,"beleg":"PR #556 in integration/release-v4 (Merge-Commit 1b091807)"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -8150,12 +8150,12 @@
       "agent": null,
       "modell": "opus",
       "konfliktzonen": [],
-      "pr": [],
-      "nachweis": "docs/acc45/K4-P4-nachweis.md; Entwurf Wiederherstellung und K4 2026-11-24 (Scratchpad, nicht im Repo) Teil C",
+      "pr": ["#556"],
+      "nachweis": "docs/acc45/K4-P4-nachweis.md; Entwurf Wiederherstellung und K4 2026-11-24 (Scratchpad, nicht im Repo) Teil C; PR #556 (gemergt, Merge-Commit 1b091807); docs/acc45/K4-P4-nachweis.md",
       "akzeptanz": "CI-Test (nur synthetisch, öffentlicher Runner zulässig): Ablage aus K4-P3, Start Kandidat A, Widerruf/2FA/Plan schreiben, Stopp, Start Kandidat B (gleicher Stand, simulierter Fix), Abgleich ohne Fehler, Bücher bleiben, Migrationsprobe Exit 0; zweiter Fall: Datenrücksprung K7 mit neuer Schlüsselepoche",
       "tests": "CI-Test (synthetisch)",
       "dateien": "pruefungen/, werkzeug/",
-      "notiz": "Umfangsklasse: SICHERHEIT-QUALITAET.\nPrioritätsbegründung: P1: Betreibervorgabe 2026-11-24: keine produktive Migration ohne geprüfte Sicherung, erfolgreiche Migrationsprobe und nachvollziehbare Wiederherstellungsstrategie; dieses Paket belegt die Vorwärts-Reparatur, weil R0 kein Rollback ist.\nÜberschneidung: RST-7 nennt den Wiederherstellungs- und Vorwärts-Reparaturnachweis und die A→B→A-Probe. Nicht zusammengelegt; der Koordinator entscheidet, ob P-4 Teil von RST-7 wird. Entwurf Opus, Umsetzung Sonnet. K4-Grundregel: Der Betreiber beantwortet die Fragen F-1 bis F-6 selbst; es gelten keine Annahmen. Echtdaten nur in einer gesondert abgesicherten lokalen Umgebung, nie an KI-Dienste, öffentliche Runner, Cloud-Dienste oder öffentliche Repo-Bereiche; öffentliche Runner nur mit synthetischen Daten. Reihenfolge laut Entwurf: P-1, P-3, P-2, P-6, P-4, P-5, P-7/P-8. Quelle: Auftrag SSOT-Pakete 2 vom 2026-11-25 (Koordinator). Aufwand SCHÄTZUNG, nicht gemessen."
+      "notiz": "Umfangsklasse: SICHERHEIT-QUALITAET.\nPrioritätsbegründung: P1: Betreibervorgabe 2026-11-24: keine produktive Migration ohne geprüfte Sicherung, erfolgreiche Migrationsprobe und nachvollziehbare Wiederherstellungsstrategie; dieses Paket belegt die Vorwärts-Reparatur, weil R0 kein Rollback ist.\nÜberschneidung: RST-7 nennt den Wiederherstellungs- und Vorwärts-Reparaturnachweis und die A→B→A-Probe. Nicht zusammengelegt; der Koordinator entscheidet, ob P-4 Teil von RST-7 wird. Entwurf Opus, Umsetzung Sonnet. K4-Grundregel: Der Betreiber beantwortet die Fragen F-1 bis F-6 selbst; es gelten keine Annahmen. Echtdaten nur in einer gesondert abgesicherten lokalen Umgebung, nie an KI-Dienste, öffentliche Runner, Cloud-Dienste oder öffentliche Repo-Bereiche; öffentliche Runner nur mit synthetischen Daten. Reihenfolge laut Entwurf: P-1, P-3, P-2, P-6, P-4, P-5, P-7/P-8. Quelle: Auftrag SSOT-Pakete 2 vom 2026-11-25 (Koordinator). Aufwand SCHÄTZUNG, nicht gemessen.\nNachtrag 2026-11-25 (Betreiber): Der CI-Schritt `npm run pruefung:k4-vorwaerts-reparatur` ist Patch-Vorschlag für den Betreiber (Workflow-Änderung); bis dahin Ausnahme `vorlaeufig` in ci-abdeckung-ausnahmen.json. Befunde B1 (ETag \"alt\", Produktfehler) und B2 (Migrationsprobe je Betrieb) behoben. Verbindlich für v4-r1 (K4 Pfad 0)."
     },
     {
       "id": "K4-P5",
@@ -8183,7 +8183,7 @@
       "akzeptanz": "Schalter-Vorgaben, feste Reihenfolge, Stopp bei jedem Exit ≠ erwartet, Ausgabe direkt durch den Wrapper aus K4-P1; Docker-Desktop-tauglich; läuft nur lokal beim Betreiber",
       "tests": "Unit (Attrappe), shellcheck",
       "dateien": "werkzeug/, deploy/ nur lesen",
-      "notiz": "Umfangsklasse: SICHERHEIT-QUALITAET.\nPrioritätsbegründung: P2: Der Ablauf ist mit der Ablaufkarte (B.6) auch von Hand möglich; das Skript senkt das Fehlerrisiko.\nK4-Grundregel: Der Betreiber beantwortet die Fragen F-1 bis F-6 selbst; es gelten keine Annahmen. Echtdaten nur in einer gesondert abgesicherten lokalen Umgebung, nie an KI-Dienste, öffentliche Runner, Cloud-Dienste oder öffentliche Repo-Bereiche; öffentliche Runner nur mit synthetischen Daten. Reihenfolge laut Entwurf: P-1, P-3, P-2, P-6, P-4, P-5, P-7/P-8. Quelle: Auftrag SSOT-Pakete 2 vom 2026-11-25 (Koordinator). Aufwand SCHÄTZUNG, nicht gemessen."
+      "notiz": "Umfangsklasse: SICHERHEIT-QUALITAET.\nPrioritätsbegründung: P2: Der Ablauf ist mit der Ablaufkarte (B.6) auch von Hand möglich; das Skript senkt das Fehlerrisiko.\nK4-Grundregel: Der Betreiber beantwortet die Fragen F-1 bis F-6 selbst; es gelten keine Annahmen. Echtdaten nur in einer gesondert abgesicherten lokalen Umgebung, nie an KI-Dienste, öffentliche Runner, Cloud-Dienste oder öffentliche Repo-Bereiche; öffentliche Runner nur mit synthetischen Daten. Reihenfolge laut Entwurf: P-1, P-3, P-2, P-6, P-4, P-5, P-7/P-8. Quelle: Auftrag SSOT-Pakete 2 vom 2026-11-25 (Koordinator). Aufwand SCHÄTZUNG, nicht gemessen.\nNachtrag 2026-11-25 (Betreiber): Für spätere Kundenmigrationen zurückgestellt (K4 Pfad 0). Nicht gelöscht, nicht herabgestuft."
     },
     {
       "id": "K4-P6",
@@ -8211,7 +8211,7 @@
       "akzeptanz": "Vorlage nach Ablaufkarte B.6 plus JSON-Schema; Prüfer lehnt Klarnamen-Muster ab; Test",
       "tests": "Unit",
       "dateien": "docs/acc45/vorlagen/, pruefungen/",
-      "notiz": "Umfangsklasse: TECHN-ABHAENGIGKEIT.\nPrioritätsbegründung: P2: Vorlage; sie blockiert nichts außer der Form des Berichts.\nK4-Grundregel: Der Betreiber beantwortet die Fragen F-1 bis F-6 selbst; es gelten keine Annahmen. Echtdaten nur in einer gesondert abgesicherten lokalen Umgebung, nie an KI-Dienste, öffentliche Runner, Cloud-Dienste oder öffentliche Repo-Bereiche; öffentliche Runner nur mit synthetischen Daten. Reihenfolge laut Entwurf: P-1, P-3, P-2, P-6, P-4, P-5, P-7/P-8. Quelle: Auftrag SSOT-Pakete 2 vom 2026-11-25 (Koordinator). Aufwand SCHÄTZUNG, nicht gemessen."
+      "notiz": "Umfangsklasse: TECHN-ABHAENGIGKEIT.\nPrioritätsbegründung: P2: Vorlage; sie blockiert nichts außer der Form des Berichts.\nK4-Grundregel: Der Betreiber beantwortet die Fragen F-1 bis F-6 selbst; es gelten keine Annahmen. Echtdaten nur in einer gesondert abgesicherten lokalen Umgebung, nie an KI-Dienste, öffentliche Runner, Cloud-Dienste oder öffentliche Repo-Bereiche; öffentliche Runner nur mit synthetischen Daten. Reihenfolge laut Entwurf: P-1, P-3, P-2, P-6, P-4, P-5, P-7/P-8. Quelle: Auftrag SSOT-Pakete 2 vom 2026-11-25 (Koordinator). Aufwand SCHÄTZUNG, nicht gemessen.\nNachtrag 2026-11-25 (Betreiber): Umfang auf den tatsächlich erforderlichen Teil für v4-r1 begrenzt (K4 Pfad 0: Neustart-Nachweis statt Altbestandsbericht); Rest für spätere Kundenmigrationen."
     },
     {
       "id": "K4-P7",
@@ -8239,7 +8239,7 @@
       "akzeptanz": "Checklisten liegen als Doku-Vorlagen im Repo; der Betreiber hat den Text bestätigt; das ausgefüllte Formblatt Datenübertragung liegt außerhalb des öffentlichen Repos",
       "tests": "doku-Test",
       "dateien": "docs/acc45/vorlagen/",
-      "notiz": "Umfangsklasse: SICHERHEIT-QUALITAET.\nPrioritätsbegründung: P1: Betreibervorgabe 2026-11-24: keine produktive Migration ohne geprüfte Sicherung, erfolgreiche Migrationsprobe und nachvollziehbare Wiederherstellungsstrategie; die Checkliste A.7 ist der prüfbare Nachweis der Strategie.\nBLOCKED auf die Bestätigung der Texte durch den Betreiber. K4-Grundregel: Der Betreiber beantwortet die Fragen F-1 bis F-6 selbst; es gelten keine Annahmen. Echtdaten nur in einer gesondert abgesicherten lokalen Umgebung, nie an KI-Dienste, öffentliche Runner, Cloud-Dienste oder öffentliche Repo-Bereiche; öffentliche Runner nur mit synthetischen Daten. Reihenfolge laut Entwurf: P-1, P-3, P-2, P-6, P-4, P-5, P-7/P-8. Strang folge (Review PR #540): Release-Pfad-Pakete stehen einheitlich in folge, gleiche Begründung wie K4-P3/K4-P4 (Betreibervorgabe 2026-11-24: keine produktive Migration ohne Sicherung, Probe, Strategie); offenes P1 blockiert G9 bis INTEGRATED. Quelle: Auftrag SSOT-Pakete 2 vom 2026-11-25 (Koordinator). Aufwand SCHÄTZUNG, nicht gemessen."
+      "notiz": "Umfangsklasse: SICHERHEIT-QUALITAET.\nPrioritätsbegründung: P1: Betreibervorgabe 2026-11-24: keine produktive Migration ohne geprüfte Sicherung, erfolgreiche Migrationsprobe und nachvollziehbare Wiederherstellungsstrategie; die Checkliste A.7 ist der prüfbare Nachweis der Strategie.\nBLOCKED auf die Bestätigung der Texte durch den Betreiber. K4-Grundregel: Der Betreiber beantwortet die Fragen F-1 bis F-6 selbst; es gelten keine Annahmen. Echtdaten nur in einer gesondert abgesicherten lokalen Umgebung, nie an KI-Dienste, öffentliche Runner, Cloud-Dienste oder öffentliche Repo-Bereiche; öffentliche Runner nur mit synthetischen Daten. Reihenfolge laut Entwurf: P-1, P-3, P-2, P-6, P-4, P-5, P-7/P-8. Strang folge (Review PR #540): Release-Pfad-Pakete stehen einheitlich in folge, gleiche Begründung wie K4-P3/K4-P4 (Betreibervorgabe 2026-11-24: keine produktive Migration ohne Sicherung, Probe, Strategie); offenes P1 blockiert G9 bis INTEGRATED. Quelle: Auftrag SSOT-Pakete 2 vom 2026-11-25 (Koordinator). Aufwand SCHÄTZUNG, nicht gemessen.\nNachtrag 2026-11-25 (Betreiber): Verbindlich für v4-r1; nur die notwendigen Teile (Neustart-Checkliste, Nachweis der Strategie, Bestandsverifikation lesend). K4 Pfad 0."
     },
     {
       "id": "K4-P8",
@@ -8267,7 +8267,7 @@
       "akzeptanz": "Nur Text: Vorschlag, welche Felder die Freigabedatei und das Gate für Wiederherstellung und Abbruch führen; Umsetzung erst nach Freigabe; keine Änderung an werkzeug/release-pruefung.mjs",
       "tests": "keine (nur Text)",
       "dateien": "docs/acc45/",
-      "notiz": "Umfangsklasse: TECHN-ABHAENGIGKEIT.\nPrioritätsbegründung: P2: Entscheidungsvorlage; sie ändert kein Gate.\nBLOCKED auf Betreiberentscheidung. K4-Grundregel: Der Betreiber beantwortet die Fragen F-1 bis F-6 selbst; es gelten keine Annahmen. Echtdaten nur in einer gesondert abgesicherten lokalen Umgebung, nie an KI-Dienste, öffentliche Runner, Cloud-Dienste oder öffentliche Repo-Bereiche; öffentliche Runner nur mit synthetischen Daten. Reihenfolge laut Entwurf: P-1, P-3, P-2, P-6, P-4, P-5, P-7/P-8. Quelle: Auftrag SSOT-Pakete 2 vom 2026-11-25 (Koordinator). Aufwand SCHÄTZUNG, nicht gemessen."
+      "notiz": "Umfangsklasse: TECHN-ABHAENGIGKEIT.\nPrioritätsbegründung: P2: Entscheidungsvorlage; sie ändert kein Gate.\nBLOCKED auf Betreiberentscheidung. K4-Grundregel: Der Betreiber beantwortet die Fragen F-1 bis F-6 selbst; es gelten keine Annahmen. Echtdaten nur in einer gesondert abgesicherten lokalen Umgebung, nie an KI-Dienste, öffentliche Runner, Cloud-Dienste oder öffentliche Repo-Bereiche; öffentliche Runner nur mit synthetischen Daten. Reihenfolge laut Entwurf: P-1, P-3, P-2, P-6, P-4, P-5, P-7/P-8. Quelle: Auftrag SSOT-Pakete 2 vom 2026-11-25 (Koordinator). Aufwand SCHÄTZUNG, nicht gemessen.\nNachtrag 2026-11-25 (Betreiber): Für spätere Kundenmigrationen zurückgestellt (K4 Pfad 0). Nicht gelöscht, nicht herabgestuft."
     },
     {
       "id": "WEBSITE-W7",
