@@ -4,19 +4,19 @@
   "anzahl": 295,
   "statusZaehlung": {
     "BLOCKED": 117,
-    "READY": 32,
+    "READY": 30,
     "IN_PROGRESS": 24,
-    "REVIEW": 11,
-    "INTEGRATED": 108,
+    "REVIEW": 10,
+    "INTEGRATED": 111,
     "DONE": 3
   },
   "jeStrang": {
     "acc45": {
       "pakete": 143,
-      "offen": 58,
+      "offen": 57,
       "restPT": {
-        "min": 74.6,
-        "max": 127.65
+        "min": 74.1,
+        "max": 126.65
       }
     },
     "wp19": {
@@ -37,10 +37,10 @@
     },
     "folge": {
       "pakete": 62,
-      "offen": 51,
+      "offen": 49,
       "restPT": {
-        "min": 50.550000000000004,
-        "max": 87.05
+        "min": 49.95,
+        "max": 85.85
       }
     },
     "extern": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 370.65000000000003,
-    "max": 635.2
+    "min": 369.55,
+    "max": 633
   },
   "kritischerPfad": {
     "summe": 70,
@@ -7520,12 +7520,12 @@
       "prio": "P2",
       "aufwandPT": {"min":0.5,"max":1},
       "abhaengigkeiten": ["V4-4"],
-      "status": "REVIEW",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #539 (gemergt, Merge-Commit 64451364): Rolle Beschäftigte (Telefonschale, 375 und 1024 px), gezielte Fokusauswahl, Kontrast auf angemeldeten Flächen; e2e/v4-visuell.*, pruefungen/v4-visuell-qa.test.js, docs/acc45/V4-4-BEFUNDE.md"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #539: pruefungen/v4-visuell-qa.test.js und Selbsttest mit Mutation je Prüfung (auch auf angemeldeter Fläche); Befunde und Grenzen in docs/acc45/V4-4-BEFUNDE.md; CI des PR: 26 Checks pass"},
+        "reviewt": {"wert":true,"beleg":"Sonnet-Review zu PR #539: MIT AUFLAGEN, danach zwei Delta-Checks, FREIGEGEBEN (unabhängig vom Schreiber)"},
+        "integriert": {"wert":true,"beleg":"PR #539 in integration/release-v4 (Merge-Commit 64451364)"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -7534,12 +7534,12 @@
       "agent": null,
       "modell": "sonnet",
       "konfliktzonen": [],
-      "pr": [],
-      "nachweis": "docs/acc45/V4-4-BEFUNDE.md; PR #539 (offen)",
+      "pr": ["#539"],
+      "nachweis": "docs/acc45/V4-4-BEFUNDE.md; PR #539 (gemergt, Merge-Commit 64451364); PR #543 (gemergt, Merge-Commit 03b8e8a3, Befund B1)",
       "akzeptanz": "Prüfsatz v4-visuell deckt die Rolle Beschäftigte, eine gezielte Fokusauswahl (statt Stichprobe 0/3/7) und die Breite 1024 px ab; Grenzen stehen in V4-4-BEFUNDE.md; Selbsttest bleibt grün",
       "tests": "Unit, E2E (Projekt v4-visuell)",
       "dateien": "e2e/v4-visuell.*, pruefungen/v4-visuell-qa.test.js, docs/acc45/V4-4-BEFUNDE.md",
-      "notiz": "Umfangsklasse: RELEASE-UMFANG.\nPrioritätsbegründung: P2: Qualitätsprüfung der Oberfläche; sie blockiert den Release nicht und ist keine Sicherheitsfrage.\nPR #539 ist offen und nicht gemergt; Nummer und Kopf werden erst nach dem Merge als pr geführt. Status REVIEW heißt: Änderung liegt als offener PR zur Prüfung vor, nichts davon ist integriert. Quelle: Auftrag SSOT-Pakete 2 vom 2026-11-25 (Koordinator). Aufwand SCHÄTZUNG, nicht gemessen."
+      "notiz": "Umfangsklasse: RELEASE-UMFANG.\nPrioritätsbegründung: P2: Qualitätsprüfung der Oberfläche; sie blockiert den Release nicht und ist keine Sicherheitsfrage.\nPR #539 ist offen und nicht gemergt; Nummer und Kopf werden erst nach dem Merge als pr geführt. Status REVIEW heißt: Änderung liegt als offener PR zur Prüfung vor, nichts davon ist integriert. Quelle: Auftrag SSOT-Pakete 2 vom 2026-11-25 (Koordinator). Aufwand SCHÄTZUNG, nicht gemessen.\nNachtrag 2026-11-25 (Nachtrag 2): PR #539 gemergt (64451364); Status INTEGRATED. Akzeptanz erfüllt: Prüfsatz v4-visuell deckt Beschäftigte, gezielte Fokusauswahl und 1024 px ab; Grenzen stehen in V4-4-BEFUNDE.md; Selbsttest grün. Die Rechneransicht der Beschäftigten und 1024 px für die Leitung bleiben Grenzen (V4-4-BEFUNDE.md). Befund B1 (Planzellen-Kontrast hell, Nachtdienst/Spätdienst u. a.) behoben durch PR #543 (Merge 03b8e8a3): `planzellenSchrift` in `src/ui/bausteine.jsx`; Byte-Pin Zeile Plan/Dienstplan 6391 ⇒ 6408; Review Sonnet MIT AUFLAGEN (Doku), Merge nach Doku-Fix. Folgehinweise nur als Notiz, kein Paket: `src/ansichten/wunschdienste.jsx:118` (gleiche Technik, Fläche zuerst prüfen), Palettenfarbe #878C93, Glas-Karte über Verlauf, `.unten`-Teilstring-Muster in `VISUELL_BEKANNT`, optionaler Test „nicht dunkler als nötig“. B1 hat kein eigenes SSOT-Paket (V4-3d-B1 ist nur ein Branchname)."
     },
     {
       "id": "GATE-EW1",
@@ -7828,12 +7828,12 @@
       "prio": "P2",
       "aufwandPT": {"min":0.5,"max":1},
       "abhaengigkeiten": [],
-      "status": "READY",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #542 (gemergt, Merge-Commit 6a5ed7f4): server/lib/rechnungsausgang.mjs; Aufruf im Betreiber-PUT (daten.mjs) und in bestand-anlegen; Paketkennung (paketId) an Paketpositionen; Rechnungen unveränderlich, Storno nur als centgenaue Gegenbuchung"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #542: pruefungen/rechnungsausgang-l4.test.js, modul-inert.test.js (P7), g9-nachtrag.test.js; Test zuerst rot; Mutationen M1–M11 und MA1a–MA2 je rot; CI des PR: 27 Checks pass"},
+        "reviewt": {"wert":true,"beleg":"Opus-Review zu PR #542: MIT AUFLAGEN (A1 lfd/Altform, A2 Storno centgenau, A3 Doku); Opus-Delta-Check: FREIGEGEBEN ohne Auflagen"},
+        "integriert": {"wert":true,"beleg":"PR #542 in integration/release-v4 (Merge-Commit 6a5ed7f4)"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -7842,12 +7842,12 @@
       "agent": null,
       "modell": "opus",
       "konfliktzonen": [],
-      "pr": [],
-      "nachweis": "Audit Modul-inert 2026-11-24, Abschnitt 7 L-4 (Scratchpad); server/lib/rechte.mjs BETREIBER_FELDER",
+      "pr": ["#542"],
+      "nachweis": "PR #542 (gemergt, Merge-Commit 6a5ed7f4); server/lib/rechnungsausgang.mjs; pruefungen/rechnungsausgang-l4.test.js; docs/acc45/SICHERHEIT-INTERN-2026-11.md",
       "akzeptanz": "MUSS VOR der ersten echten Abrechnung geschlossen sein (Auftrag SSOT-Pakete 2; Audit Modul-inert 2026-11-24, Reihenfolge der Fixes). Der Server nimmt neue oder geänderte Rechnungen nur an, wenn Paketpositionen zu einem buchbaren Paket mit Abrechnungsgrund gehören und im Zeitraum kein Pilot gilt (die Position braucht dafür eine Paketkennung); Test: Betreiber-PUT mit Position „Branchenpaket Sicherheitsdienst“ bei Zustand 1 wird abgewiesen oder die Position entfernt; langfristig serverseitige, unveränderliche Abrechnung (G9-Paketentscheidung)",
       "tests": "Unit (Handler-Test Betreiber-PUT)",
       "dateien": "server/lib/rechte.mjs, server/lib/paketstand.mjs, src/paketlogik.js, pruefungen/",
-      "notiz": "Umfangsklasse: SICHERHEIT-QUALITAET.\nPrioritätsbegründung: P2 heute: Nur der Betreiber kann schreiben (kein Kunde), es gibt keine automatische Berechnung, die Pilotkonzepte sehen keine Abrechnung vor, und das Audit stuft L-4 als mittel und nicht release-blockierend ein. WIRD P1, sobald ein Pilot mit Abrechnung oder die erste echte Abrechnung geplant ist; dann per SSOT-PR anheben. UNSICHER: Der Betreiber sollte bestätigen, dass im Pilot nicht abgerechnet wird.\nVorgabe aus dem Auftrag SSOT-Pakete 2: keine echte Abrechnung, solange dieses Paket nicht INTEGRATED ist; Annahme laut Testdaten-Vorgabe 2026-11-06, Betreiber bestätigt. Kennung im Audit: L-4 (nicht zu verwechseln mit den Lücken L-1 bis L-3 aus PR #535). Bei Anhebung auf P1 (Pilot mit Abrechnung) den Strang mit auf folge ändern; sonst hat das Paket keine G9-Wirkung (das Präfix MODINERT- zählt in acc45 nicht). Quelle: Auftrag SSOT-Pakete 2 vom 2026-11-25 (Koordinator). Aufwand SCHÄTZUNG, nicht gemessen."
+      "notiz": "Umfangsklasse: SICHERHEIT-QUALITAET.\nPrioritätsbegründung: P2 heute: Nur der Betreiber kann schreiben (kein Kunde), es gibt keine automatische Berechnung, die Pilotkonzepte sehen keine Abrechnung vor, und das Audit stuft L-4 als mittel und nicht release-blockierend ein. WIRD P1, sobald ein Pilot mit Abrechnung oder die erste echte Abrechnung geplant ist; dann per SSOT-PR anheben. UNSICHER: Der Betreiber sollte bestätigen, dass im Pilot nicht abgerechnet wird.\nVorgabe aus dem Auftrag SSOT-Pakete 2: keine echte Abrechnung, solange dieses Paket nicht INTEGRATED ist. Annahme laut Testdaten-Vorgabe 2026-11-06: im Pilot Form I wird nicht abgerechnet; die Betreiberbestätigung steht aus. Kennung im Audit: L-4 (nicht zu verwechseln mit den Lücken L-1 bis L-3 aus PR #535). Bei Anhebung auf P1 (Pilot mit Abrechnung) den Strang mit auf folge ändern; sonst hat das Paket keine G9-Wirkung (das Präfix MODINERT- zählt in acc45 nicht). Quelle: Auftrag SSOT-Pakete 2 vom 2026-11-25 (Koordinator). Aufwand SCHÄTZUNG, nicht gemessen.\nNachtrag 2026-11-25 (Nachtrag 2): PR #542 gemergt (6a5ed7f4); Status INTEGRATED nur für den in #542 abgedeckten Umfang: serverseitige Validierung und Unveränderlichkeit von `rechnungen` im Betreiber-PUT und in `bestand-anlegen` (Paketposition nur mit Paketkennung, buchbar, Abrechnungsgrund, ohne Pilot im Monat). Verhaltensänderung: „Alle löschen“ löscht keine Rechnungen mehr; Mandantenlöschung behält Rechnungen. Betreiberbestätigung dazu offen. Restlücken (Notiz, KEINE neuen Pakete). P1 VOR der ersten echten Abrechnung: Der Server erzeugt die Rechnung aus dem Vertragsstand (der Client liefert keine Positionen oder Beträge); Escape in `rechnungHTML` (`src/lib/fachlogik.js` ca. 1081–1097; die Schemaform erlaubt `<`, `>`, `\"`); Altform-Ausnahme in `bestand-anlegen` streichen und die Prüfstände (`pruefungen/rechte.mjs`, `pentest.mjs`, `vollausgabe.mjs`) auf die Schemaform umstellen. P2: Betreiber-`protokoll` ist frei schreibbar; `LFD_MAX` ist nicht fail-closed (422, wenn lfd+1 > LFD_MAX); fünf Grenztests (Textlänge 201–2000, Storno 0,29, 11 Felder, viele lange Felder, lfd zwischen 1e9 und 2^53); Control- und Bidi-Zeichen im Text; Knopf „Alle löschen“ entfernen und Storno-Aktion ergänzen (V4-3b-Fixture); Aufbewahrung gegen Art. 17: nur Hinweis, rechtlich nicht abschließend, Löschregel fehlt."
     },
     {
       "id": "MODINERT-L3",
@@ -8360,12 +8360,12 @@
       "prio": "P2",
       "aufwandPT": {"min":0.5,"max":1},
       "abhaengigkeiten": [],
-      "status": "READY",
+      "status": "INTEGRATED",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #539 (gemergt, Merge-Commit 64451364): Verlaufsausblendung nur für die Messung; „keine Knoten bewertet“ ist ein Fund; Selbsttest-Mutation auf angemeldeter Fläche (Beschäftigte, 375 px, hell); e2e/v4-visuell.*, pruefungen/v4-visuell-qa.test.js"},
+        "lokalGetestet": {"wert":true,"beleg":"PR #539: Selbsttest mit Kontrast-Mutation auf angemeldeter Fläche; je Fläche mehr als null bewertete Knoten verlangt; Befund in docs/acc45/V4-4-BEFUNDE.md; CI des PR: 26 Checks pass"},
+        "reviewt": {"wert":true,"beleg":"Sonnet-Review zu PR #539: MIT AUFLAGEN, danach zwei Delta-Checks, FREIGEGEBEN (unabhängig vom Schreiber)"},
+        "integriert": {"wert":true,"beleg":"PR #539 in integration/release-v4 (Merge-Commit 64451364)"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
@@ -8374,12 +8374,12 @@
       "agent": null,
       "modell": "sonnet",
       "konfliktzonen": [],
-      "pr": [],
-      "nachweis": "Review von PR #539 (Befund); docs/acc45/V4-4-BEFUNDE.md (PR #539 offen stellt die Grenze dar)",
+      "pr": ["#539"],
+      "nachweis": "docs/acc45/V4-4-BEFUNDE.md; PR #539 (gemergt, Merge-Commit 64451364)",
       "akzeptanz": "Auf den angemeldeten Flächen (Beschäftigte, Leitung) bewertet die Kontrastprüfung echte Knoten; die Mutation „blasser Text“ schlägt dort an; der Selbsttest läuft nicht nur auf der Anmeldeseite; Befund steht ehrlich in V4-4-BEFUNDE.md",
       "tests": "E2E (Projekt v4-visuell), Selbsttest mit Mutation",
       "dateien": "e2e/v4-visuell.*, pruefungen/v4-visuell-qa.test.js, docs/acc45/V4-4-BEFUNDE.md",
-      "notiz": "Umfangsklasse: RELEASE-UMFANG.\nPrioritätsbegründung: P2: V4-Qualitätsnachweis. Befund: axe color-contrast liefert auf angemeldeten Flächen passes 0, incomplete 1 (Grund: Pseudoelement-Hintergrund); die Mutation blasser Text bleibt grün; die Schwäche besteht schon in #538. Ohne Fix gilt die Kontrastaussage für angemeldete Ansichten nicht als belegt.\nTeil (b) kann schon in PR #539 (offen) erledigt werden; dann Status erst nach dem Merge nachführen. Bis dahin NICHT als erledigt führen. Quelle: Auftrag SSOT-Pakete 2 und Review PR #540 (2026-11-25). Aufwand SCHÄTZUNG, nicht gemessen."
+      "notiz": "Umfangsklasse: RELEASE-UMFANG.\nPrioritätsbegründung: P2: V4-Qualitätsnachweis. Befund: axe color-contrast liefert auf angemeldeten Flächen passes 0, incomplete 1 (Grund: Pseudoelement-Hintergrund); die Mutation blasser Text bleibt grün; die Schwäche besteht schon in #538. Ohne Fix gilt die Kontrastaussage für angemeldete Ansichten nicht als belegt.\nTeil (b) kann schon in PR #539 (offen) erledigt werden; dann Status erst nach dem Merge nachführen. Bis dahin NICHT als erledigt führen. Quelle: Auftrag SSOT-Pakete 2 und Review PR #540 (2026-11-25). Aufwand SCHÄTZUNG, nicht gemessen.\nNachtrag 2026-11-25 (Nachtrag 2): Teil (b) in PR #539 erledigt und gemergt (64451364); Status INTEGRATED. Grenze (ehrlich): Gemessen wird gegen die Grundfläche, nicht gegen den Verlauf; ein Text, der nur auf dem Verlauf zu blass wäre, bleibt unentdeckt. Folgehinweis „Messung mit Verlauf“ bleibt Notiz (V4-4-BEFUNDE.md), kein neues Paket."
     },
     {
       "id": "V4-4d",

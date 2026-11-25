@@ -4,7 +4,7 @@ Erzeugt von `werkzeug/acc45-backlog.mjs` aus `docs/acc45/work-packages.json` (ni
 
 **Kritischer Pfad gemeinsam** (offener Entwicklungsaufwand, ohne extern): WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **50–90 PT**
 **Ohne Intelligence:** WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 → WP-42a → WP-42 = **22,5–35 PT**
-**Offener Entwicklungsaufwand:** 370,65–635,2 PT in 149 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
+**Offener Entwicklungsaufwand:** 369,55–633 PT in 146 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
 
 WP-09 ist nur Livegang-Reihenfolge und zählt im Pfad nicht als Abhängigkeit. Der Graph zeigt nur offene Pakete.
 
@@ -57,7 +57,6 @@ flowchart LR
     ABN_S2_b["ABN-S2-b<br/>BLOCKED"]
     ABN_S2_de["ABN-S2-de<br/>READY"]
     ABN_S2_H["ABN-S2-H<br/>READY"]
-    MODINERT_L4["MODINERT-L4<br/>READY"]
     MODINERT_L3["MODINERT-L3<br/>READY"]
     SSOT_UK1["SSOT-UK1<br/>BLOCKED"]
     SSOT_UK2["SSOT-UK2<br/>BLOCKED"]
@@ -149,7 +148,6 @@ flowchart LR
     RST_8["RST-8<br/>BLOCKED"]
     RST_9["RST-9<br/>READY"]
     FREIGABE_S2["FREIGABE-S2<br/>READY"]
-    V4_4b["V4-4b<br/>REVIEW"]
     GATE_EW1["GATE-EW1<br/>IN_PROGRESS"]
     GATE_EW2["GATE-EW2<br/>IN_PROGRESS"]
     GATE_EW3["GATE-EW3<br/>BLOCKED"]
@@ -164,7 +162,6 @@ flowchart LR
     K4_P4["K4-P4<br/>BLOCKED"]
     K4_P7["K4-P7<br/>BLOCKED"]
     V4_4c["V4-4c<br/>BLOCKED"]
-    V4_4e["V4-4e<br/>READY"]
     V4_4d["V4-4d<br/>BLOCKED"]
   end
   subgraph extern[Extern/Entscheidungen]
@@ -384,7 +381,6 @@ flowchart LR
   RST_5 --> RST_6
   REL_2 --> RST_6
   WEBSITE_W3b --> WEBSITE_W4
-  V4_4 --> V4_4b
   GATE_EW1 --> GATE_EW2
   GATE_EW1 --> GATE_EW4
   GATE_EW1 --> GATE_EW5
@@ -409,8 +405,6 @@ flowchart LR
   K4_P1 --> K4_P6
   WEBSITE_W4 --> WEBSITE_W7
   V4_4 --> V4_4c
-  V4_4b --> V4_4d
-  V4_4e --> V4_4d
 ```
 
 | Paket | Strang | Prio | PT | Rest-PT | hängt ab von | Konfliktzonen | Modell | Status |
@@ -677,7 +671,7 @@ flowchart LR
 | WEBSITE-W3b | acc45 | P1 | 0,5 | 0,5 | – | – | sonnet | READY |
 | WEBSITE-W5 | acc45 | P2 | 3–5 | 3–5 | – | – | sonnet | BLOCKED |
 | WEBSITE-W6 | acc45 | P2 | 0,5–1 | 0,5–1 | – | – | opus | BLOCKED |
-| V4-4b | folge | P2 | 0,5–1 | 0,1–0,2 | V4-4 | – | sonnet | REVIEW |
+| V4-4b | folge | P2 | 0,5–1 | 0 | V4-4 | – | sonnet | INTEGRATED |
 | GATE-EW1 | folge | P1 | 1,5–3 | 0,75–1,5 | – | – | opus | IN_PROGRESS |
 | GATE-EW2 | folge | P1 | 0,5–1 | 0,25–0,5 | GATE-EW1 | – | opus | IN_PROGRESS |
 | GATE-EW3 | folge | P1 | 0,5–1 | 0,5–1 | – | – | sonnet | BLOCKED |
@@ -688,7 +682,7 @@ flowchart LR
 | ABN-S2-b | acc45 | P1 | 1–2 | 1–2 | ABN-S2 | – | opus | BLOCKED |
 | ABN-S2-de | acc45 | P1 | 0,25–0,5 | 0,25–0,5 | – | – | haiku | READY |
 | ABN-S2-H | acc45 | P2 | 0,25–0,5 | 0,25–0,5 | – | – | haiku | READY |
-| MODINERT-L4 | acc45 | P2 | 0,5–1 | 0,5–1 | – | – | opus | READY |
+| MODINERT-L4 | acc45 | P2 | 0,5–1 | 0 | – | – | opus | INTEGRATED |
 | MODINERT-L3 | acc45 | P2 | 0,25–0,5 | 0,25–0,5 | – | – | sonnet | READY |
 | GATE-DEPLOY-DIGEST | folge | P2 | 0,5–1 | 0,5–1 | GATE-EW1 | – | opus | BLOCKED |
 | GATE-RUECKHALT-AU6 | folge | P2 | 0,25–0,5 | 0,25–0,5 | GATE-EW2 | – | opus | BLOCKED |
@@ -707,6 +701,6 @@ flowchart LR
 | WEBSITE-W7 | acc45 | P2 | 0,5–1 | 0,5–1 | WEBSITE-W4 | – | sonnet | BLOCKED |
 | WEBSITE-W8 | acc45 | P2 | 0,25–0,5 | 0,25–0,5 | – | – | sonnet | BLOCKED |
 | V4-4c | folge | P2 | 1–2 | 1–2 | V4-4 | – | sonnet | BLOCKED |
-| V4-4e | folge | P2 | 0,5–1 | 0,5–1 | – | – | sonnet | READY |
+| V4-4e | folge | P2 | 0,5–1 | 0 | – | – | sonnet | INTEGRATED |
 | V4-4d | folge | P2 | 0,5–1 | 0,5–1 | V4-4b, V4-4e | – | sonnet | BLOCKED |
 | WEBSITE-W8-1 | acc45 | P1 | 0,25–0,5 | 0,25–0,5 | – | – | sonnet | BLOCKED |
