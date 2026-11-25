@@ -104,10 +104,11 @@ export function paketPositionen(p, eur = (x) => x) {
   for (const pk of p.pakete || []) {
     const frei = (p.paketeFrei || []).some((x) => x.id === pk.id);
     if ((p.paketeNichtBerechnet || []).some((x) => x.id === pk.id)) continue;
+    /* MODINERT-L4: paketId (und frei) prüft der Server beim Speichern (server/lib/rechnungsausgang.mjs). */
     out.push({
       text: `Branchenpaket ${pk.name}${frei ? " (in der Stufe enthalten)" : ""}`,
       menge: "", einzel: eur(frei ? 0 : pk.aufpreis),
-      betrag: eur(frei ? 0 : Math.round(pk.aufpreis * p.anteil * 100) / 100) });
+      betrag: eur(frei ? 0 : Math.round(pk.aufpreis * p.anteil * 100) / 100), paketId: pk.id, ...(frei ? { frei: true } : {}) });
   }
   return out;
 }
