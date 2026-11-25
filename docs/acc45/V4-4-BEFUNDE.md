@@ -1,6 +1,6 @@
 # V4-4: Visuelle QA hell/dunkel — Prüfumfang und Befunde
 
-Stand: 2026-11-25, Basis `integration/release-v4` (d699e1e8). Arbeitspaket V4-4 (SSOT `docs/acc45/work-packages.json`), Umfangsklasse RELEASE-UMFANG (V4-Qualität). Nur erfundene Testdaten (Demo-Bestand des Testservers, `e2e/global-setup.mjs`).
+Stand: 2026-11-25, Basis `integration/release-v4` (d699e1e8; Folge zu PR #538 auf 4c18ac77). Arbeitspaket V4-4 (SSOT `docs/acc45/work-packages.json`), Umfangsklasse RELEASE-UMFANG (V4-Qualität). Nur erfundene Testdaten (Demo-Bestand des Testservers, `e2e/global-setup.mjs`).
 
 ## Was es gibt
 
@@ -17,27 +17,36 @@ Je Ansicht, Breite (375 px Telefon, 1280 px Desktop) und Thema (hell, dunkel; ge
 | Ansicht | Rolle | Kontrast | Bildlauf | Außerhalb / abgeschnitten | Überlappung | Fokus |
 | --- | --- | --- | --- | --- | --- | --- |
 | Anmeldung | ohne | ja | ja | ja | ja | ja |
-| Dienstplan (Monatsplan) | Leitung | ja | ja | ja | ja | ja |
+| Dienstplan (Monatsplan) | Leitung | ja, außer B1 (siehe Befunde) | ja | ja | ja | ja |
 | Mitarbeiter (Personal) | Leitung | ja | ja | ja | ja | ja |
 | Abwesenheiten (Anträge) | Leitung | ja | ja | ja | ja | ja |
 | Einstellungen | Leitung | ja | ja | ja | ja | ja |
 | Pakete | Betreiber | ja | ja | ja | ja | ja |
+| Heute, Mein Plan, Anliegen (Urlaub, Krank, Tausch), Mehr (Profil) | Beschäftigte | ja (Verlauf aus, siehe Grenzen) | ja | ja | ja | ja |
+
+Die Beschäftigten (Schichtdienst) sehen immer die Telefonschale mit vier Reitern (`zeigeMobil` in `src/App.jsx`). Sie wird bei 375 px und bei 1024 px (Umbruch der Seitenleiste, `UMBRUCH.seitenleiste`) geprüft, im selben Lauf je Thema. Die Rechneransicht der Beschäftigten (Umschalter in „Mehr“) ist nicht Teil dieser Prüfung. Die Leitung bleibt bei 375 und 1280 px; 1024 px gibt es für sie nicht.
 
 Die Prüfungen:
 
-- Kontrast: axe-Regel `color-contrast` (WCAG 1.4.3), jeder Fund zählt.
+- Kontrast: axe-Regel `color-contrast` (WCAG 1.4.3), jeder Fund zählt. Je Fläche müssen mehr als null Knoten bewertet sein (Verstöße plus bestanden); sonst ist der Fund „keine Knoten bewertet“ und die Fläche ist rot.
 - Bildlauf: Die Seite hat keine waagerechte Bildlaufleiste (`scrollWidth <= clientWidth`).
-- Außerhalb: Kein Hauptelement (Knöpfe, Felder, Überschriften, Karten, Navigation) liegt außerhalb der Breite, außer in einer waagerecht blätternden Fläche (Plantabelle).
+- Außerhalb: Kein Hauptelement (Knöpfe, Felder, Überschriften, Karten, Navigation) liegt außerhalb der Breite, außer in einer waagerecht klemmenden oder blätternden Fläche (Plantabelle; siehe Grenzen).
 - Abgeschnitten: Kein Element mit `overflow: hidden` schneidet Text ab, außer mit Auslassungspunkten.
 - Überlappung: Bedienbare Elemente überlappen sich nicht. Elemente unter festen oder klebenden Leisten und in Bildlaufflächen zählen nicht.
-- Fokus: Je Ansicht drei Stichproben (Element 0, 3, 7 der Tabulatorfolge): Umriss oder Schatten sichtbar, Kontrast >= 3:1 gegen die Fläche dahinter (WCAG 1.4.11).
+- Fokus: Je Ansicht drei gezielte Elemente: das erste bedienbare Element, das erste im Hauptinhalt (`main`, nicht in einer festen oder klebenden Leiste) und das letzte. Umriss oder Schatten sichtbar, Kontrast >= 3:1 gegen die Fläche dahinter (WCAG 1.4.11).
 - Selbsttest (Mutation, bei jedem Lauf): Auf der Anmeldeseite wird je Prüfung ein Fehler eingebaut (blasser Text, breites Element, Knopf außerhalb, abgeschnittene Karte, überlappende Knöpfe, Fokusring entfernt). Die Prüfung muss anschlagen. Außerdem muss die Ausgangslage sauber sein.
 
 Beleg der Mutation (lokal, 2026-11-25): Mit abgeschalteter Kontrastprüfung bzw. abgeschalteter Überlappungsprüfung wird der Selbsttest rot („Prüfung kontrast muss anschlagen, fand []“, ebenso `ueberlappung`).
 
 ## Befunde
 
-Der erste vollständige Lauf (alle 10 Tests) zeigt keinen echten Befund an der App: Kontrast, Bildlauf, Außerhalb, Abschneiden, Überlappung und Fokus bestehen in allen geprüften Ansichten, Breiten und Themen. `VISUELL_BEKANNT` in `e2e/v4-visuell.mjs` ist leer.
+### B1 Planzelle Zusatzzeile hell
+
+Dienstplan (Monatsplan), Leitung, Desktop 1280 px, hell: Die Zusatzzeile (`.unten`) der Planzellen in Nachtdienst- und Spätdienstfarbe hat 4,0 bis 4,3:1 gegen die Zellenfläche (Nachtdienst Vordergrund #7c3aed auf #dad8e4 = 4,04:1; Spätdienst #b03a0a auf #d7d9ce = 4,25:1); gefordert sind 4,5:1 (WCAG 1.4.3, Schrift 14,5 px, nicht fett). Dunkel besteht, Telefon (375 px) meldet hier nichts. Aufgedeckt, weil die Messung jetzt auch angemeldete Flächen bewertet (siehe Grenzen, erster Punkt); sie war vorher blind. Eingetragen in `VISUELL_BEKANNT` mit dem Muster `.unten`: Nur Kontrastfunde, deren Selektor `.unten` enthält, sind Anmerkung statt rot, und nur auf Dienstplan, Desktop 1280 px, hell. Jeder andere Kontrastverstoß auf derselben Fläche bleibt rot; "keine Knoten bewertet" gilt nie als bekannt. Ein Eintrag ohne Treffer (nach einer Reparatur) macht den Lauf rot und zwingt dazu, Eintrag und diesen Abschnitt zu entfernen.
+
+Quelle (nur Hinweis, nicht Teil dieses Pakets): Die Zelle `Planzelle` in `src/ui/bausteine.jsx` (Zeilen 122 bis 137; `.unten` in Zeile 137) setzt den Hintergrund `${da.farbe}1C` und die Textfarbe `lesbar(da.farbe, 5.4)`. `lesbar` (`src/ui/thema.js`, Zeile 20) lässt die Farbe im hellen Erscheinungsbild unverändert; der Wert 5,4 greift nur im dunklen. Die Dienstfarben stehen in `src/lib/fachlogik.js` (Zeile 237 Spätdienst #B03A0A, Zeile 239 Nachtdienst #7C3AED; auch Zeilen 506 bis 512). `.unten` hat keine eigene CSS-Regel. Reparaturrichtung: im hellen Erscheinungsbild die Textfarbe bis mindestens 4,5:1 abdunkeln. Reparatur gehört nicht in dieses Paket (`src/`, V4-3b-Byte-Pins): Kandidat V4-3d (Rest-Farbwerte der Dienstfarben). Schwere: gering bis mittel (Zusatzzeile, 4,0 bis 4,3 statt 4,5:1).
+
+Stand: Außer B1 findet die Spec keinen echten Befund an der App. Bildlauf, Außerhalb, Abschneiden, Überlappung und Fokus bestehen in allen geprüften Ansichten, Breiten und Themen; Kontrast besteht dort, wo axe Knoten bewertet (siehe Grenzen), außer bei B1. `VISUELL_BEKANNT` in `e2e/v4-visuell.mjs` enthält genau einen Eintrag (B1). Der erste Lauf von PR #538 (10 Tests) meldete "kein Befund"; das galt für den Kontrast auf angemeldeten Flächen nicht, weil axe dort keinen Knoten bewertete.
 
 Zwei Messfehler im ersten Entwurf (kein App-Fehler, im Test behoben):
 
@@ -46,14 +55,32 @@ Zwei Messfehler im ersten Entwurf (kein App-Fehler, im Test behoben):
 
 ## Grenzen (ehrlich)
 
-- Die Fokusprüfung ist eine Stichprobe (drei Elemente je Ansicht), keine vollständige Tabulatorfolge.
+- Kontrast auf angemeldeten Flächen: Ohne Eingriff meldete axe dort überwiegend „incomplete“ (Hintergrund nicht bestimmbar wegen eines Pseudoelements, `.inhalt::before` und `.m-schale::before`) und bewertete keinen Knoten; ein grünes Ergebnis belegte nichts. Der erste Stand (PR #538 und die erste Fassung dieser Folge) hatte diese Lücke für Leitung und Beschäftigte. Jetzt blendet die Spec für die Messung die beiden Verlaufs-Pseudoelemente aus (die App kennt denselben Zustand als Einstellung, Feldmodus und `kein-verlauf`), zählt die bewerteten Knoten und verlangt mehr als null je Fläche. Gemessen wird damit gegen die Grundfläche, nicht gegen den Verlauf; ein Text, der nur auf dem Verlauf zu blass wäre, bleibt unentdeckt. Der Verlauf ist für den Kontrast nicht bloß Zierde: Eine Rechnung des Reviewers (keine Browsermessung) ergibt hell für Text in der Farbe "aus" (#566e72) 4,85 statt 3,8 auf dem Verlauf, für die Planzelle Nachtdienst 4,35 statt 3,45 und Spätdienst 4,61 statt 3,66. Die Farben "text", "dim" und "accent" bleiben auch auf dem Verlauf über 4,5. Texte in "aus" oder Zellen in der Titelzone, die der Verlauf bedeckt, würden von der Ausblendung verdeckt; das ist Absicht des Entwurfs, nicht erzwungen. Folgepaket: Messung mit Verlauf. Der Selbsttest hat eine Kontrast-Mutation auf einer angemeldeten Fläche (Beschäftigte, 375 px, hell).
+- Der Wächtertest der Fokusauswahl in `pruefungen/v4-visuell-qa.test.js` ist ein Textwächter (er sucht Zeichenfolgen im Code). Das Verhalten beweist der Selbsttest in der Spec: Mit fester Kopfleiste vor einem `<main>` trifft die Auswahl „haupt“ ein Element in `main` und keines in der Leiste.
+- „erstes“ und „letztes“ wiederholen sich je Fläche (erstes meist die Mitteilungen in der Kopfleiste, letztes der Reiter „Mehr“); nur „haupt“ ist je Reiter ein eigenes Element. Folgepaket-Gedanke: statt „letztes“ das letzte Element im `main`.
+
+- Die Fokusprüfung ist eine gezielte Auswahl (drei Elemente je Ansicht), keine vollständige Tabulatorfolge.
 - Die Überlappungsprüfung nimmt feste und klebende Leisten sowie Bildlaufflächen aus. Ein Fehler dort bleibt unentdeckt.
-- Es wird nur die Leitung (Kundenseite) und die Betreiberrolle geprüft; Beschäftigte, Planung, Schichtverantwortung und Betriebsrat haben die Kontrast- und Fokusprüfung nur über `e2e/barrierefreiheit.spec.mjs` (Standardthema).
-- Keine Tablet-Breiten (768, 1024 px) und kein Querformat; die acht Gerätebreiten bleiben bei den bestehenden axe-Specs.
+- Die Prüfungen „außerhalb“ und „Überlappung“ nehmen Elemente aus, deren Vorfahr waagerecht klemmt (`overflow-x` hidden, clip, auto oder scroll, mit `scrollWidth > clientWidth`). Ein Knopf, der sauber in einem solchen Behälter verschwindet, bleibt unentdeckt. Die Prüfung „abgeschnitten“ deckt nur Text im klemmenden Element selbst.
+- Es werden die Leitung (Kundenseite), die Beschäftigten (Telefonschale) und die Betreiberrolle geprüft; Planung, Schichtverantwortung und Betriebsrat haben die Kontrast- und Fokusprüfung nur über `e2e/barrierefreiheit.spec.mjs` (Standardthema).
+- Keine Tablet-Breiten für Leitung und Betreiber (768 px; 1024 px nur bei den Beschäftigten) und kein Querformat; die acht Gerätebreiten bleiben bei den bestehenden axe-Specs.
 - Die Token-Nutzung im Quelltext (keine harten Farben) sichern weiter `pruefung:v4-tokens` und `pruefungen/v4-3b-*.test.js`; hier gibt es dazu keine eigene Prüfung. `v4-variablen.spec.mjs` sichert die Variablen je Thema.
 - V4-3d (Rest-Farb- und Formwerte) ist offen (Betreiberentscheidung in `ENTSCHEIDUNGSLISTE.md`); diese QA nimmt keine Entscheidung vorweg.
-- Die Zahl der Anmeldungen je Lauf ist klein (zwei Leitung, zwei Betreiber); die Lastbremse „anmelden-code“ (20 je 300 s und Code) ist unkritisch.
+- Die Zahl der Anmeldungen je Lauf ist klein (zwei Leitung, zwei Beschäftigte, zwei Betreiber); die Lastbremse „anmelden-code“ (20 je 300 s und Code) ist unkritisch.
 
 ## Laufzeit
 
-Lokal gemessen (Windows, 2 Arbeiter, ohne Parallellast): zehn Tests, Summe der Testzeiten 138 s, Wandzeit der Testphase rund 70 s (zwei Arbeiter). Der gemeinsame Aufbau des Testservers (`global-setup.mjs`, rund zwei Minuten lokal) fällt ohnehin an und zählt nicht zum Zusatz. Ziel war < 90 s zusätzlich. Die Anmeldung ist der größte Posten; deshalb gibt es je Thema nur eine Anmeldung je Rolle, die Breite wechselt im selben Lauf.
+Messweise: lokal (Windows, 2 Arbeiter), Summe der Testzeiten laut Playwright-Liste und Beobachtung des Reviewers, 2026-11-25. Die Werte schwanken stark mit der Last der Maschine; sie sind Größenordnungen, keine Zusagen.
+
+- Zwei neue Tests (Beschäftigte hell und dunkel): lokal Größenordnung +30 bis 45 s Summe (gemessen 31 s und 43 s). Die frühere Angabe „Testphase rund 70 s Wandzeit“ und die Summen 139 s und 165 s sind nicht bestätigt und gelten nicht als Wert. Ein Lauf des Reviewers mit 12 Tests brauchte für die Testphase rund 3,5 min (Summe etwa 225 s).
+- Mit Verlaufsausblendung und Kontrastzählung: Messung siehe PR-Beschreibung; der Zusatz je Fläche liegt im Millisekundenbereich, ein weiterer Test (Mutation auf angemeldeter Fläche) kommt hinzu (eine Anmeldung, rund 10 s).
+- CI (Job `browser-abnahme`): im Rauschen der Läufe (etwa ±2,5 min), kein messbarer Zuwachs. Die Testphase ist dort nicht getrennt gemessen.
+
+Die Anmeldung ist der größte Posten; deshalb gibt es je Thema nur eine Anmeldung je Rolle, die Breite wechselt im selben Lauf.
+
+## Folgepakete (nicht in diesem PR)
+
+- 1024 px für die Leitung (Schubladen-Navigation, geschätzt +45 s in der CI): erst nach Prüfung der Kontrastbefunde (B1).
+- Rechneransicht der Beschäftigten (Umschalter in „Mehr“; ein Lauf, nur 1280 px): kleines Paket.
+- Messung des Kontrasts mit eingeblendetem Verlauf (Titelzone), nach B1.
+- Reparatur von B1 über V4-3d (Rest-Farbwerte, Betreiberentscheidung in `ENTSCHEIDUNGSLISTE.md`).
