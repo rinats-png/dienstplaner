@@ -2389,8 +2389,8 @@
       "abhaengigkeiten": ["WP-I3","WP-I5","WP-I6"],
       "status": "IN_PROGRESS",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":"Teil 1 (PR #572, in integration/release-v4, Merge f39c9788): Zählregeln über 62 Tage mit vorberechneten Aggregaten (Betreiberentscheidung I5-4), Schalter AUS. Teil 2 lokal (Branch intelligence/wp-i7-planer-kern-2): Aggregate einmal je Lauf, Tagesnachführung statt Neulesen (auch mit Posten). Rest des Planers offen (docs/acc45/WP-I7-nachweis.md)"},
-        "lokalGetestet": {"wert":false,"beleg":"Teil 1: pruefungen/intelligence-planer-aggregate.test.js; Teil 2: pruefungen/intelligence-planer-aggregate-lauf.test.js, Mutationen (lokal); Vollregression in CI offen"},
+        "implementiert": {"wert":false,"beleg":"Teil 1 (PR #572, in integration/release-v4, Merge f39c9788): Zählregeln über 62 Tage mit vorberechneten Aggregaten (Betreiberentscheidung I5-4), Schalter AUS. Teil 2 (PR #574, in integration/release-v4, Merge 046c3884): Aggregate einmal je Lauf, Tagesnachführung statt Neulesen (auch mit Posten). Teil 3 lokal (Branch intelligence/wp-i7-planer-kern-3): eigener Planer erste Scheibe server/lib/engine/planer.mjs (ganzer Monat, feste Punkte, Nacht-/Wochenendblöcke vor Einzeltagen, Verbessern mit fester Zugzahl und Startwert, Rangfolge, Nachprüfung, ein Aufwandsbudget; Schalter PLANER_AN AUS, ohne Oberfläche). Rest offen (docs/acc45/WP-I7-nachweis.md)"},
+        "lokalGetestet": {"wert":false,"beleg":"Teil 1: pruefungen/intelligence-planer-aggregate.test.js; Teil 2: pruefungen/intelligence-planer-aggregate-lauf.test.js; Teil 3: pruefungen/intelligence-planer-kern.test.js; Mutationen (lokal); Vollregression in CI offen"},
         "reviewt": {"wert":false,"beleg":null},
         "integriert": {"wert":false,"beleg":null},
         "stagingGeprueft": {"wert":false,"beleg":null},
@@ -2401,12 +2401,12 @@
       "agent": "Intelligence (eigener Block)",
       "modell": "sonnet",
       "konfliktzonen": [],
-      "pr": ["#572"],
+      "pr": ["#572","#574"],
       "nachweis": "docs/acc45/WP-I7-nachweis.md",
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block K)",
-      "tests": "pruefungen/intelligence-planer-aggregate*.test.js",
+      "tests": "pruefungen/intelligence-planer-aggregate*.test.js, pruefungen/intelligence-planer-kern.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). Nachtrag 2026-11-26: BLOCKED nur wegen WP-I5; WP-I5 ist mit #566 in integration/release-v4 gemergt. Teil 1 (I5-4 Aggregate) mit #572 integriert, Schalter AUS. Nachtrag 2026-11-27: Teil 2 (Aggregate einmal je Lauf, Tagesnachführung) lokal; Rest (eigener Planer, Rangfolge, Verbessern, Wunsch, übrige Regelarten im Plan, Betriebsmodus, Hinweis seit dem Vorschlag) offen."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). Nachtrag 2026-11-26: BLOCKED nur wegen WP-I5; WP-I5 ist mit #566 in integration/release-v4 gemergt. Teil 1 (I5-4 Aggregate) mit #572 integriert, Schalter AUS. Nachtrag 2026-11-27: Teil 2 (Aggregate einmal je Lauf, Tagesnachführung) mit #574 integriert. Nachtrag 2026-11-28: Teil 3 lokal (eigener Planer, erste Scheibe ohne Oberfläche, Schalter AUS); Rest (Tausch zweier Personen, Verteilung/Wunsch bewerten, übrige Regelarten im Plan, Anheften, Betriebsmodus, Hinweis seit dem Vorschlag, Anschluss an die Oberfläche) offen."
     },
     {
       "id": "WP-I8",
