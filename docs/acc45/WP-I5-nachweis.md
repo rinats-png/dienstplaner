@@ -111,3 +111,7 @@ Dieser Abschnitt ersetzt die Aussagen zu Teilzeit im Abschnitt „Betreiberentsc
    - Mutationen: Skalierung ohne ausdrückliches „ja“ 1 rot, freie Tage werden bei „ja“ gesenkt 1, Abweisung entfernt 1.
    - Folge: Mit „frei“ als Ereignis kann Teilzeit nie mehr zu einer niedrigeren Mindestzahl führen; Untergrenzen mit anderem Ereignis werden bei „ja“ weiterhin skaliert, ihre Einteilung kann die Zahl aber nicht senken (kein Befund möglich). Offene Rückfrage an den Betreiber, ob Untergrenzen dieser Art im Plan überhaupt sinnvoll abbildbar sein sollen.
 3. **Zu den Rückfragen aus dem Review:** Ein abgelaufener Nachweis bleibt Gruppenmitglied (unverändert). `belastbarkeit` zählt bei erschöpftem Budget weitere Personen als möglich, jetzt gekennzeichnet (siehe Nebenpunkt).
+
+## Nachtrag 26.11.: Postenverdrängung in `planeMonat` (Review #577)
+
+Die Wirkung der Vorgaben in `planeMonat` gilt jetzt auch für Personen, die eine Einteilung über die Postenbesetzung auf ihren Quelldienst verdrängt: Sie werden mit demselben Monatsbudget geprüft (Automatik); Muss/ab Achtung = Einteilung nicht gesetzt (Grund `verdraengung`), Budget leer = Grund `vorgabe`. Belege, Invarianten, Tests, Mutationen und Messung: `docs/acc45/WP-I7-nachweis.md`, Abschnitt „Nachtrag: Postenverdrängung im bestehenden `planeMonat`“.
