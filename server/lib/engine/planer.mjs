@@ -44,6 +44,12 @@
    Planer nichts (Status „nachpruefung“). Die Nachprüfung hat ein eigenes,
    gleich großes Budget der Vorgaben (frisch gerechnet, unabhängig vom Aufbau).
 
+   Vorwärts (Betreiberentscheidung 26.11., wie planeMonat): Eine Einteilung darf
+   an späteren Tagen derselben Person keinen neuen Befund ab Achtung auslösen
+   (folgeVorwaerts, einsatz.mjs; betrifft „Dienste in Folge“). Geprüft im
+   Aufbau je Kandidat (scheitert er, der nächste; zählt nicht als Versuch),
+   bei der Blockfortsetzung, im Verbessern und in der Nachprüfung.
+
    Aufwand (Lehren #561/#566/#572): EIN Budget je Aufruf, gezählt in
    Personenprüfungen (Besetzung eines Tags = Personen, Ersatzsuche = Personen,
    eine Einsatzprüfung = 1). Jede Arbeit wird VOR ihr angemeldet; reicht es
@@ -69,7 +75,7 @@ import { kiPauseAktiv } from "../ki-steuerung.mjs";
 import { neuesVorgabenBudget, vorgabenPlanFortschreiben } from "../vorgabenwirkung.mjs";
 import { VORGABEN_WIRKUNG_GRENZE } from "../vorgaben.mjs";
 import { besetzung, personTag, stundenkonto } from "./plan.mjs";
-import { ersatzVorschlaege, hindernisBefunde, nachtJahr, stufeRang, verdraengt } from "./einsatz.mjs";
+import { ersatzVorschlaege, hindernisBefunde, nachtJahr, stufeRang, verdraengt, folgeVorwaerts } from "./einsatz.mjs";
 
 /** Schalter des eigenen Planers (Vorgabe AUS). Einschalten ist eine bewusste Codeänderung dieser Konstante; Prüfungen geben je Aufruf frei. */
 export const PLANER_AN = false;
@@ -159,6 +165,8 @@ export function nachpruefen(m, stand, eigene, vorgabenBudget) {
       if (b.regel === "vorgabeSoll") soll++;
       if (b.regel === "vorgabeOffen") offenV++;
     }
+    /* Vorwärts: kein neuer Befund ab Achtung an späteren Tagen der Person durch diese Einteilung (Aufwand reserviert der Aufrufer). */
+    if (folgeVorwaerts(ohne, p, e.datum, da, () => true, stand) !== null) durch = false;
   }
   return { durch, gesetz, muss, soll, offenV, verdraengte };
 }
@@ -197,7 +205,10 @@ export function planeVorschlag(m, ym, opt = {}) {
      Einsatzprüfung mit der Besetzung des Tags) und die Besetzung aller Tage. */
   const A = { grenze, rest: grenze, ausgeschoepft: false };
   /* … dazu je Tag der Vergleich der Bestandspersonen (Stand und Bestand: 2 P). */
-  const reserve = (n) => n * (P + 1) + 3 * nTage * P;
+  /* … und je Einteilung die Vorwärtsprüfung (2 je späterem Tag, höchstens maxFolge Tage). */
+  const mf = Number(m.einstellungen && m.einstellungen.maxFolge);
+  const W = mf > 0 ? Math.ceil(mf) : 0;
+  const reserve = (n) => n * (P + 1 + 2 * W) + 3 * nTage * P;
   const leisten = (k, n) => { if (A.rest - k < reserve(n)) { A.ausgeschoepft = true; return false; } A.rest -= k; return true; };
   if (A.rest < reserve(0)) return { ...leer(m, ym, "aufwand", "Aufwand reicht nicht für die Nachprüfung", startwert), aufwand: { grenze, verbraucht: 0, ausgeschoepft: true } };
 
@@ -227,8 +238,10 @@ export function planeVorschlag(m, ym, opt = {}) {
   const bestand = { ...m, abweichungen: { ...basis } };
   /** Höchstzahl der Kandidaten, die je Stelle wegen Verdrängung nacheinander versucht werden (verdrängt einer, meist alle: Postenbesetzung). */
   const VERSUCHE = 3;
-  const einsetzbar = (stand, p, d, da, jeP) => (jeP[p.id] || 0) < maxProPerson && !personTag(stand, p, d).dienstId
-    && !hindernisBefunde(stand, p, d, da, pruefOpt).some((b) => stufeRang(b.stufe) >= 2);
+  /* `lst`: Anmeldung der Vorwärtsprüfung im Aufrufbudget (reicht es nicht: nicht einsetzbar). */
+  const einsetzbar = (stand, p, d, da, jeP, lst) => (jeP[p.id] || 0) < maxProPerson && !personTag(stand, p, d).dienstId
+    && !hindernisBefunde(stand, p, d, da, pruefOpt).some((b) => stufeRang(b.stufe) >= 2)
+    && folgeVorwaerts(stand, p, d, da, lst) === null;
 
   /* ---------- 2. Aufbauen ---------- */
   const aufbauen = () => {
@@ -263,18 +276,23 @@ export function planeVorschlag(m, ym, opt = {}) {
         if (!leisten(P, eigene.size + 1)) { gekappt.set(`${d}|${da.id}`, "aufwand"); return; }
         const kand = ersatzVorschlaege(stand, d, da.id, ctx).filter((x) => x.moeglich && (jeP[x.person.id] || 0) < maxProPerson);
         if (!kand.length) { if (ctx.vorgabenBudget.ausgeschoepft) gekappt.set(`${d}|${da.id}`, "vorgabe"); return; }
-        let p = null;
-        for (const x of kand.slice(0, VERSUCHE)) {
+        let p = null, versuche = 0;
+        for (const x of kand) {
+          /* Vorwärts (wie planeMonat): scheitert der Kandidat, der nächste — zählt nicht als Versuch. */
+          const f = folgeVorwaerts(stand, x.person, d, da, (k) => leisten(k, eigene.size + 1));
+          if (f === "aufwand") { gekappt.set(`${d}|${da.id}`, "aufwand"); return; }
+          if (f) continue;
+          if (versuche++ >= VERSUCHE) break;
           if (!leisten(2 * P, eigene.size + 1)) { gekappt.set(`${d}|${da.id}`, "aufwand"); return; }
           if (setzenOhneVerdraengung(x.person, d, da, art)) { p = x.person; break; }
         }
-        if (!p) { gekappt.set(`${d}|${da.id}`, "verdraengung"); return; }
+        if (!p) { gekappt.set(`${d}|${da.id}`, versuche ? "verdraengung" : "folgeVorwaerts"); return; }
         /* Block: dieselbe Person an den folgenden Tagen, solange dort eine Lücke ist und sie einsetzbar ist (kein halber Schritt: Kosten vorab). */
         for (const t of block || []) {
           if (!leisten(3 * P + 1, eigene.size + 1)) break;
           const bt = besetzung(stand, t)[da.id];
           if (bt.diff >= 0 && !bt.qualFehlt) break;
-          if (!einsetzbar(stand, p, t, da, jeP)) break;
+          if (!einsetzbar(stand, p, t, da, jeP, (k) => leisten(k, eigene.size + 1))) break;
           if (!setzenOhneVerdraengung(p, t, da, art)) break;
         }
       }
@@ -357,7 +375,8 @@ export function planeVorschlag(m, ym, opt = {}) {
       const schritte = [{ pid: p.id, d: E.datum }];
       /* Zug verworfen: der alte Stand gilt weiter; seine Aggregate kommen zurück (die berührten Tage werden nachgelesen). */
       const zurueck = (x) => vorgabenPlanFortschreiben(ctx.vorgabenBudget, x, stand, schritte.map((c) => ({ personId: c.pid, tag: c.d })));
-      if (!einsetzbar(s1, p, S.d, daS, jeP2)) { zurueck(s1); continue; }
+      const lst = (k) => leisten(k, eigene.size + 1);
+      if (!einsetzbar(s1, p, S.d, daS, jeP2, lst)) { zurueck(s1); continue; }
       s1 = setze(s1, p.id, S.d, daS.id);
       schritte.push({ pid: p.id, d: S.d });
       jeP2[p.id] += 1;
@@ -365,7 +384,8 @@ export function planeVorschlag(m, ym, opt = {}) {
       const bE = besetzung(s1, E.datum)[daE.id];
       if (bE.diff < 0 || bE.qualFehlt) {
         const kand = ersatzVorschlaege(s1, E.datum, daE.id, ctx).filter((x) => x.moeglich && x.person.id !== p.id && (jeP2[x.person.id] || 0) < maxProPerson);
-        if (kand.length) { q = kand[0].person; s1 = setze(s1, q.id, E.datum, daE.id); schritte.push({ pid: q.id, d: E.datum }); jeP2[q.id] = (jeP2[q.id] || 0) + 1; }
+        const qx = kand.find((x) => folgeVorwaerts(s1, x.person, E.datum, daE, lst) === null);
+        if (qx) { q = qx.person; s1 = setze(s1, q.id, E.datum, daE.id); schritte.push({ pid: q.id, d: E.datum }); jeP2[q.id] = (jeP2[q.id] || 0) + 1; }
       }
       /* Bestandspersonen an beiden Tagen unverändert (Posten: Zurücknehmen kann jemanden in die Postenbesetzung ziehen, Setzen verdrängen). */
       const schl = new Set([...eigene.keys()].filter((k) => k !== `${p.id}|${E.datum}`));

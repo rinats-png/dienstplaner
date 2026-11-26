@@ -44,7 +44,7 @@ import { pruefen } from "../../server/lib/engine/befunde.mjs";
 export { verteilung, planKennzahlen } from "../../server/lib/engine/kennzahlen.mjs";
 /* WP-I12a: Einsatzprüfung und Ersatzsuche stehen ebenfalls im Rechenkern. Der Client hängt die Regelkennung des Regelregisters ein (Frage 6). */
 export { SCHUTZ_QUELLE_NEUTRAL, SCHUTZ_QUELLE_EINSCHRAENKUNG, einschr, nachtJahr, FENSTER, fensterVon, verfuegbarFuer, wochenStundenGeplant, hindernisBefunde, ersatzVorschlaege } from "../../server/lib/engine/einsatz.mjs";
-import { SCHUTZ_QUELLE_NEUTRAL, nachtJahr, wochenStundenGeplant, hindernisBefunde, ersatzVorschlaege, regelIdHakenSetzen, verdraengt } from "../../server/lib/engine/einsatz.mjs";
+import { SCHUTZ_QUELLE_NEUTRAL, nachtJahr, wochenStundenGeplant, hindernisBefunde, ersatzVorschlaege, regelIdHakenSetzen, verdraengt, folgeVorwaerts } from "../../server/lib/engine/einsatz.mjs";
 import { neuesVorgabenBudget, vorgabenPlanFortschreiben } from "../../server/lib/vorgabenwirkung.mjs";
 import { krankSchrittErlaubt } from "../../server/lib/krankmeldung.mjs";
 regelIdHakenSetzen(regelIdFuerBefund);
@@ -1557,6 +1557,9 @@ export function urlaubsRang(m, w) {
 /* --------------------------- Planungsassistent --------------------------- */
 /** Aufwand der Verdrängungsprüfung in planeMonat je Aufruf (Personenprüfungen; Review #577). `grenzen.verdraengungAufwand` setzt ihn je Aufruf (Prüfungen). */
 export const PLANEMONAT_VERDRAENGUNG_AUFWAND = 1000000;
+/** Aufwand der Vorwärtsprüfung (Dienste in Folge nach dem Tag; Betreiberentscheidung 26.11.) je Aufruf in Tagesprüfungen; `grenzen.folgeAufwand`
+    setzt ihn je Aufruf. Eigener Zähler nach demselben Muster, damit die Verdrängungsprüfung ohne Posten weiter ohne jeden Aufwand bleibt. */
+export const PLANEMONAT_FOLGE_AUFWAND = 1000000;
 /* Budget ohne Rechenleistung (0) für die Mitgliederprüfung der Verdrängung: Vorgaben werden dort nicht gerechnet (sie hängen nur am eigenen,
    unveränderten Plan); das eine Monatsbudget von planeMonat bleibt das einzige, das Arbeit für Vorgaben leistet. */
 const leeresVorgabenBudget = () => neuesVorgabenBudget(0);
@@ -1608,6 +1611,15 @@ export function planeMonat(m, ym, grenzen = {}) {
   const aufwandGrenze = Number.isInteger(grenzen.verdraengungAufwand) && grenzen.verdraengungAufwand >= 0 ? Math.min(grenzen.verdraengungAufwand, PLANEMONAT_VERDRAENGUNG_AUFWAND) : PLANEMONAT_VERDRAENGUNG_AUFWAND;
   let aufwandRest = aufwandGrenze;
   const leisten = (k) => { if (aufwandRest < k) { aufwandRest = -1; return false; } aufwandRest -= k; return true; };
+  /* Vorwärtsprüfung (Betreiberentscheidung 26.11.): Eine Einteilung an d verlängert eine Folge bestehender Dienste derselben Person NACH d;
+     „folge“ zählt nur rückwärts, den späteren Tag prüfte niemand. folgeVorwaerts (einsatz.mjs) prüft die betroffenen späteren Tage frisch
+     mit hindernisBefunde (Stand davor gegen Stand mit der Einteilung). Ein neuer Befund ab Achtung ⇒ dieser Kandidat nicht, der nächste
+     (die Stelle bleibt nicht unnötig offen); scheitern alle, bleibt sie offen mit Grund „folgeVorwaerts“. Ohne Dienst der Person an d+1:
+     keine Prüfung, kein Aufwand, Ergebnis wie bisher. Aufwand: eigener Zähler je Aufruf (2 je geprüftem Tag, vorab angemeldet); reicht er
+     nicht, wird nicht eingeteilt (Grund „aufwand“). */
+  const folgeGrenze = Number.isInteger(grenzen.folgeAufwand) && grenzen.folgeAufwand >= 0 ? Math.min(grenzen.folgeAufwand, PLANEMONAT_FOLGE_AUFWAND) : PLANEMONAT_FOLGE_AUFWAND;
+  let folgeRest = folgeGrenze;
+  const folgeLeisten = (k) => { if (folgeRest < k) { folgeRest = -1; return false; } folgeRest -= k; return true; };
   const bestand = { ...m, abweichungen: { ...m.abweichungen } };
   const eigene = new Set();
   /** null = niemand verdrängt oder alle Verdrängten bestehen; sonst der Grund, weshalb die Einteilung nicht gesetzt wird. */
@@ -1640,6 +1652,11 @@ export function planeMonat(m, ym, grenzen = {}) {
       if (!leisten(1)) return "aufwand";
       const bef = hindernisBefunde(stand, v.person, d, daN, { vorgabenBudget: ctx.vorgabenBudget, vorgabenAutomatisch: true });
       if (bef.some((x) => stufeRang(x.stufe) >= 2)) return bef.some((x) => x.regel === "vorgabeOffen") && ctx.vorgabenBudget.ausgeschoepft ? "vorgabe" : "verdraengung";
+      /* Vorwärts: wer an d neu einen Dienst bekommt (vorher frei, hineingezogen), verlängert ggf. eine Folge danach wie eine Einteilung. */
+      if (!v.vorher) {
+        const f = folgeVorwaerts(vorher, v.person, d, daN, folgeLeisten, stand);
+        if (f) return f === "aufwand" ? "aufwand" : "folgeVorwaerts";
+      }
       neu.push(`verdrängt ${v.person.vorname} ${v.person.nachname} in ${daN.kurz || daN.name}`, ...bef.map((x) => `Hinweis: ${x.text}`));
     }
     hinweise.push(...neu);
@@ -1660,7 +1677,15 @@ export function planeMonat(m, ym, grenzen = {}) {
           offen.push({ datum: d, dienstId: da.id, fehlt: Math.max(0, -b.diff), qualFehlt: b.qualFehlt, ...(ctx.vorgabenBudget.ausgeschoepft ? { grund: "vorgabe" } : {}) });
           break;
         }
-        const beste = kand[0];
+        /* Vorwärtsprüfung je Kandidat in der Reihenfolge der Ersatzsuche: der erste ohne neuen Befund an späteren Tagen. */
+        let beste = null, folgeGrund = null;
+        for (const x of kand) {
+          const f = folgeVorwaerts(arbeit, x.person, d, da, folgeLeisten);
+          if (f === null) { beste = x; break; }
+          folgeGrund = f === "aufwand" ? "aufwand" : "folgeVorwaerts";
+          if (f === "aufwand") break;
+        }
+        if (!beste) { offen.push({ datum: d, dienstId: da.id, fehlt: Math.max(0, -b.diff), qualFehlt: b.qualFehlt, grund: folgeGrund }); break; }
         /* Verdrängung (Review #577): Arbeit vorab anmelden (Vergleich des Tags, P Personen); reicht es nicht, wird nicht eingeteilt. */
         if (mitPosten && !leisten(P)) { offen.push({ datum: d, dienstId: da.id, fehlt: Math.max(0, -b.diff), qualFehlt: b.qualFehlt, grund: "aufwand" }); break; }
         const vorher = arbeit;

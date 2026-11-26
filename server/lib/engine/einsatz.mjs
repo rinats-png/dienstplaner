@@ -186,6 +186,43 @@ export function verdraengt(bestand, stand, d, eigene, liste) {
 }
 
 /**
+ * Vorwärtsprüfung einer Einteilung (Betreiberentscheidung 26.11., WP-I5/I7): Eine Einteilung der Person p am Tag d darf an SPÄTEREN Tagen
+ * derselben Person keinen Befund ab Achtung auslösen, den es auf dem Stand davor nicht gab. Einzige einseitige Regel in hindernisBefunde
+ * ist „folge“ (Dienste in Folge, zählt nur rückwärts); Ruhezeit (±2 Tage), Dienste je Woche (ganze Woche) und Vorgaben (Fenster um d)
+ * rechnet die Prüfung am Tag d schon in beide Richtungen. Betroffen sind deshalb nur die zusammenhängenden Diensttage der Person ab d+1,
+ * solange ihr Lauf rückwärts auf dem Stand davor unter maxFolge bleibt (danach bestand der Befund schon; Fenster = maxFolge Tage).
+ * Für jeden dieser Tage wird hindernisBefunde frisch auf beiden Ständen gerufen (keine eigene Regellogik): Befunde ab Achtung ohne
+ * Vorgaben (Regel + Text; Vorgaben sind an d schon symmetrisch geprüft und belasten so kein Monatsbudget); einer, der davor nicht bestand,
+ * lehnt ab. Kosten 2 je Tag, VOR der Arbeit über `leisten(k)` angemeldet (false = Budget leer). Ohne Dienst an d+1: keine Arbeit.
+ * `stand` (wahlweise): der Stand mit der Einteilung; sonst der Stand davor mit der Abweichung p|d = da.
+ * @param {any} vorher Stand ohne die Einteilung @param {any} p @param {string} d @param {any} da @param {(k: number) => boolean} leisten
+ * @param {any} [stand]
+ * @returns {null | "aufwand" | { tag: string, regel: string, text: string }}
+ */
+export function folgeVorwaerts(vorher, p, d, da, leisten, stand) {
+  const max = Number(vorher.einstellungen && vorher.einstellungen.maxFolge);
+  const tage = [];
+  for (let j = 1; j - 1 < max; j++) {
+    const t = addDays(d, j);
+    const id = personTag(vorher, p, t).dienstId;
+    if (!id) break;
+    tage.push({ t, id });
+  }
+  if (!tage.length) return null;
+  if (!leisten(2 * tage.length)) return "aufwand";
+  const neu = stand || { ...vorher, abweichungen: { ...vorher.abweichungen, [`${p.id}|${d}`]: da.id } };
+  const harte = (st, t, dx) => new Set(hindernisBefunde(st, p, t, dx, { vorgabenBudget: neuesVorgabenBudget(/** @type {any} */ (0)), vorgabenAutomatisch: false })
+    .filter((b) => stufeRang(b.stufe) >= 2 && !String(b.regel).startsWith("vorgabe")).map((b) => `${b.regel}|${b.text}`));
+  for (const { t, id } of tage) {
+    const dx = vorher.dienstarten.find((x) => x.id === id);
+    if (!dx) return { tag: t, regel: "unbekannt", text: "Dienst unbekannt (nicht prüfbar)" };   // fail-closed
+    const alt = harte(vorher, t, dx);
+    for (const k of harte(neu, t, dx)) if (!alt.has(k)) return { tag: t, regel: k.slice(0, k.indexOf("|")), text: k.slice(k.indexOf("|") + 1) };
+  }
+  return null;
+}
+
+/**
  * Ersatzsuche für einen unterbesetzten Dienst.
  * Sortiert nach Eignung: Qualifikation, Stundenkonto im Minus, Belastungsausgleich.
  */
