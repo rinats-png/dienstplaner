@@ -247,7 +247,7 @@ describe("4. Rechenlast, Mandantengrenze, Pause", () => {
     expect(vorgabePlanwirkung(Z(JAHR), { aggregate: true, pause: true }).wirkt).toBe(false);
     expect(regeln(pruefe([Z(JAHR)], plan, { einstellungen: { kiSteuerung: {} } }))).toEqual(["vorgabeMuss"]);
   });
-  it("aggregateFortschreiben übernimmt nur, wenn sich allein die Einteilungen geändert haben, und verwirft genau den Monat der geänderten Person", () => {
+  it("aggregateFortschreiben übernimmt nur, wenn sich allein die Einteilungen geändert haben, und merkt genau den Tag der geänderten Person zum Nachlesen vor (WP-I7 Teil 2; vorher: ganzer Monat verworfen)", () => {
     const sp = neuerAggregatSpeicher();
     const alt = { dienstarten: DA, abweichungen: {} };
     const lies = () => ({ klasse: "frei", abw: 0 });
@@ -257,7 +257,8 @@ describe("4. Rechenlast, Mandantengrenze, Pause", () => {
     const neu = { ...alt, abweichungen: { "a|2026-11-17": "N" } };
     expect(aggregateFortschreiben(sp, alt, neu, [{ personId: "a", tag: "2026-11-17" }])).toBe(true);
     expect(sp.jeBetrieb.get(alt)).toBeUndefined();
-    expect([...sp.jeBetrieb.get(neu).keys()].sort()).toEqual(["a|2026-10", "b|2026-11"]);
+    expect([...sp.jeBetrieb.get(neu).keys()].sort()).toEqual(["a|2026-10", "a|2026-11", "b|2026-11"]);
+    expect([...sp.jeBetrieb.get(neu).values()].map((b) => [b.mon, [...b.neu]])).toEqual([["2026-10", []], ["2026-11", [16]], ["2026-11", []]]);
     const anders = { ...neu, dienstarten: [...DA] };
     expect(aggregateFortschreiben(sp, neu, anders, [])).toBe(false);
     expect(sp.jeBetrieb.get(anders)).toBeUndefined();
@@ -304,7 +305,7 @@ describe("5. Planer (planeMonat) mit Aggregaten", () => {
       expect(b.filter((x) => x.regel === "vorgabeMuss"), `${g.datum}`).toEqual([]);
     }
   }, 180000);
-  it("Review #572 A1: Posten-Besetzung hängt von der Einteilung ANDERER Personen ab — nach dem Fortschreiben gleiches Ergebnis wie frisch gerechnet (Betrieb mit Posten: keine Übernahme)", () => {
+  it("Review #572 A1: Posten-Besetzung hängt von der Einteilung ANDERER Personen ab — nach dem Fortschreiben gleiches Ergebnis wie frisch gerechnet (Betrieb mit Posten: der Tag wird bei allen Personen nachgelesen, WP-I7 Teil 2)", () => {
     const m = structuredClone(B.find(([n]) => n.startsWith("demo1"))[1]);
     const po = m.dienstarten.find((x) => x.posten && x.quelle);
     const Q = po && po.quelle;

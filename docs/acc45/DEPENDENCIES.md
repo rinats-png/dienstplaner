@@ -2,9 +2,9 @@
 
 Erzeugt von `werkzeug/acc45-backlog.mjs` aus `docs/acc45/work-packages.json` (nicht von Hand ändern).
 
-**Kritischer Pfad gemeinsam** (offener Entwicklungsaufwand, ohne extern): WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **41–73 PT**
+**Kritischer Pfad gemeinsam** (offener Entwicklungsaufwand, ohne extern): WP-I4 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **39–69 PT**
 **Ohne Intelligence:** WP-16 → WP-19.7 → WP-19.6 → WP-19.13 → WP-42a → WP-42 = **21–33,5 PT**
-**Offener Entwicklungsaufwand:** 348,3–596,25 PT in 138 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
+**Offener Entwicklungsaufwand:** 346,3–592,25 PT in 137 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
 
 WP-09 ist nur Livegang-Reihenfolge und zählt im Pfad nicht als Abhängigkeit. Der Graph zeigt nur offene Pakete.
 
@@ -88,7 +88,6 @@ flowchart LR
   subgraph intelligence[Intelligence]
     WP_I1["WP-I1<br/>BLOCKED"]
     WP_I4["WP-I4<br/>IN_PROGRESS"]
-    WP_I5["WP-I5<br/>IN_PROGRESS"]
     WP_I7["WP-I7<br/>IN_PROGRESS"]
     WP_I8["WP-I8<br/>BLOCKED"]
     WP_I9["WP-I9<br/>BLOCKED"]
@@ -263,8 +262,6 @@ flowchart LR
   WP_19_11 --> WP_19_13
   WP_19_12 --> WP_19_13
   E_21 --> WP_I1
-  WP_I4 --> WP_I5
-  WP_I5 --> WP_I7
   WP_I7 --> WP_I8
   WP_I7 --> WP_I9
   WP_I8 --> WP_I9
@@ -288,7 +285,6 @@ flowchart LR
   WP_I16 --> WP_I36
   WP_I1 --> WP_I37
   WP_I4 --> WP_I37
-  WP_I5 --> WP_I37
   WP_I7 --> WP_I37
   WP_I8 --> WP_I37
   WP_I9 --> WP_I37
@@ -465,7 +461,7 @@ flowchart LR
 | WP-I2 | intelligence | P2 | 3–6 | 0 | WP-11, E-21i | App.jsx | sonnet | INTEGRATED |
 | WP-I3 | intelligence | P2 | 8–14 | 0 | WP-11, E-21i | – | sonnet | INTEGRATED |
 | WP-I4 | intelligence | P2 | 8–14 | 4–7 | WP-I3, WP-22 | App.jsx, rechte.mjs | sonnet + opus-review | IN_PROGRESS |
-| WP-I5 | intelligence | P2 | 4–8 | 2–4 | WP-I3, WP-I4 | App.jsx | sonnet | IN_PROGRESS |
+| WP-I5 | intelligence | P2 | 4–8 | 0 | WP-I3, WP-I4 | App.jsx | sonnet | INTEGRATED |
 | WP-I6 | intelligence | P2 | 3–5 | 0 | E-21i | App.jsx | sonnet | INTEGRATED |
 | WP-I7 | intelligence | P2 | 14–26 | 7–13 | WP-I3, WP-I5, WP-I6 | – | sonnet | IN_PROGRESS |
 | WP-I8 | intelligence | P2 | 8–14 | 8–14 | WP-I7 | App.jsx | sonnet | BLOCKED |
