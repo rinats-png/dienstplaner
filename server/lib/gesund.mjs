@@ -33,6 +33,8 @@
      sicherung   Alter der letzten erfolgreichen Sicherung (WP-04), wenn
                  CENTRIC_SICHERUNG_STATUS auf deren Statusdatei zeigt  → warnung
      loeschlauf  letzter Lauf des Löschlaufs (aufraeumen:letzter)      → warnung
+                 dazu Datenschutzlauf: Schutzsicherung gescheitert
+                 (datenschutzlauf:letzter, art „sicherung“)            → warnung
      fehler      gleitende Fehlerzählung (gesund-zaehler.mjs)          → warnung
      widerrufbuch  E-M6: Buch nicht prüfbar oder Widerruf nicht im Buch
                  (widerrufbuch.mjs, widerrufbuchLage)                 → warnung
@@ -171,17 +173,26 @@ async function loeschlaufPruefen(g, jetzt) {
   let v;
   try { v = await getStore({ name: "centric", consistency: "strong" }).get("aufraeumen:letzter", { type: "json" }); }
   catch { return { stufe: "warnung", text: "Vermerk nicht lesbar" }; }
+  /* Datenschutzlauf (Review #586 B-2): Ließ sich vor dem Löschen eines Raums die Schutzsicherung nicht anlegen,
+     unterblieb dort die fristgebundene Löschung — Warnung. Gezählt werden nur Einträge mit art „sicherung“
+     (datenschutzlauf.mjs); Fristfehler und andere Einträge alarmieren hier wie bisher nicht. Nur die Anzahl. */
+  let sicherungFehler = 0;
+  try {
+    const d = await getStore({ name: "centric", consistency: "strong" }).get("datenschutzlauf:letzter", { type: "json" });
+    if (d && Array.isArray(d.fehler)) sicherungFehler = d.fehler.filter((f) => f && f.art === "sicherung").length;
+  } catch { return { stufe: "warnung", text: "Vermerk nicht lesbar" }; }
   const zeit = v && Date.parse(v.zeit);
   /* Der erste Lauf kommt eine Minute nach dem Start; vorher ist „keiner“
      kein Befund. */
   if (!Number.isFinite(zeit)) {
     const laeuftStunden = (jetzt - START) / 3600000;
-    return { stufe: laeuftStunden > g.loeschlaufWarnungStunden ? "warnung" : "ok", text: "noch kein Lauf" };
+    return { stufe: laeuftStunden > g.loeschlaufWarnungStunden || sicherungFehler > 0 ? "warnung" : "ok", text: "noch kein Lauf",
+      ...(sicherungFehler ? { sicherungFehler } : {}) };
   }
   const stunden = Math.round(((jetzt - zeit) / 3600000) * 10) / 10;
   const fehler = Array.isArray(v.fehler) ? v.fehler.length : 0;
-  return { stufe: stunden > g.loeschlaufWarnungStunden || fehler > 0 ? "warnung" : "ok",
-    alterStunden: stunden, fehler };
+  return { stufe: stunden > g.loeschlaufWarnungStunden || fehler > 0 || sicherungFehler > 0 ? "warnung" : "ok",
+    alterStunden: stunden, fehler, ...(sicherungFehler ? { sicherungFehler } : {}) };
 }
 
 function fehlerPruefen(g, jetzt) {

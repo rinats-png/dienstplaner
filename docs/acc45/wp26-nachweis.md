@@ -167,3 +167,144 @@ Invarianten (vor der Umsetzung festgehalten):
    Datenschutzlauf brechen ab (der Lauf löscht dann nichts in diesem Raum).
 
 Review: Opus-Review FREIGABE (fe9b1d8b), gemergt #582 (7656f044).
+
+## Nachtrag 2026-11-26 (2): Sicherungsfehler differenziert (Betreiberentscheidung A/B)
+
+Ersetzt Invariante 6 des vorigen Nachtrags. Betreiberentscheidung 2026-11-26: (A) Sicherungsfehler nicht pauschal
+gleich behandeln; (B) `sicherung:<raum>:vor-zerlegung` darf bei erneuter Übernahme nicht unbemerkt überschrieben
+werden. Keine neue Sicherungsarchitektur, keine Workflow-Datei geändert.
+
+### Inventar und Klassifikation
+
+| Stelle | Klasse | Begründung | Verhalten bei Fehler (neu) |
+|---|---|---|---|
+| Betreiber-Ablagesicherung `werkzeug/ablage-sicherung.mjs` (Workflow `betrieb-sicherung.yml`, restic) | (i) regelmäßige Hintergrundsicherung | läuft nach Plan, schützt keine einzelne Änderung | unverändert: Rückgabewert ≠ 0, Statusdatei nicht erneuert → `/gesund` Prüfung `sicherung` „warnung“ nach 26 h → Überwachung/Alarm (`CENTRIC_ALARM_WEBHOOK`); Normalbetrieb läuft |
+| Widerrufbuch-Sicherung (BE-3, `widerrufbuchsicherung.mjs`) | (i) | Job mit Statusdatei | unverändert: `/gesund` `widerrufbuchsicherung` „warnung“, keine Sperre |
+| Manuelle Sicherung `POST /api/sicherung` (`daten.mjs`, unter Raumsperre) | (ii) manuell | von der Leitung ausgelöst, ändert den Bestand nie | **neu**: eigene Antwort 503 `SICHERUNG_FEHLGESCHLAGEN` („Die Sicherung konnte nicht angelegt werden … Bestand unverändert“), Protokoll `sicherung`/`fehler` (Betriebskennung + Fehlercode). Vorher: Ausnahme → allgemeiner 500 „Serverfehler“ — sichtbar, aber ohne Aussage. Lese- und Sperrfehler laufen wie bisher in die gemeinsame Fehlerbehandlung |
+| Automatisch vor Verlust im `PUT /api/bestand` (`daten.mjs`) | (iii) Rückweg | wird nur angelegt, wenn der Schreibvorgang ≥ `SICHERUNGSSCHWELLE` (34 %) der Listeneinträge/Abweichungen verwirft (`schrumpfung`) — genau dann ist sie der einzige Rückweg für diesen Verlust | **neu**: fail-closed — 503 `SICHERUNG_FEHLGESCHLAGEN`, nichts geschrieben, Protokoll `schreiben`/`abgewiesen` „Sicherung fehlgeschlagen, Änderung nicht durchgeführt (vor Verlust a → b Datensätze)“, keine „gesichert“-Zeile. Vorher: `.catch(() => {})`, das Schreiben lief ohne Sicherung weiter, und „gesichert“ stand trotzdem im Protokoll |
+| Automatisch vor Wiederherstellung (`daten.mjs`, unter Raumsperre) | (iii) | Rückweg zum jetzigen Stand vor dem Tausch | **neu**: fail-closed — 503 `SICHERUNG_FEHLGESCHLAGEN`, nichts zurückgespielt, Protokoll „wiederherstellen <marke>: Sicherung fehlgeschlagen, Änderung nicht durchgeführt“ (vorher `.catch`) |
+| Datenschutzlauf `datenschutzlauf.mjs` (täglich, Modus „an“) | (iii) innerhalb eines Hintergrundlaufs | Schutzsicherung vor dem löschenden Schreiben | war schon fail-closed (Ausnahme vor `bestandSchreiben`, Raum übersprungen, übrige Räume laufen); **neu**: Grund „Sicherung fehlgeschlagen, Änderung nicht durchgeführt (…)“ im Vermerk `datenschutzlauf:letzter` und im Protokoll `loeschlauf`/`fehler`, zusätzlich eine Zeile der Art `fehler` (`datenschutzlauf`, Raum + Fehlercode), die die Betreiber-Lage zeigt (`spurLesen` kennt die Art `loeschlauf` nicht) |
+| Übernahme eines Altbestands `bestand.mjs` (`schreibeAlles`, `neuAngelegt`) → `sicherung:<raum>:vor-zerlegung` | (iii) | danach wird der Altbestand `bestand:<raum>` gelöscht — das ist der destruktive Schritt | **neu**: Altbestand nur löschen, wenn gesichert; sonst bleibt er liegen (Serverprotokoll `console.error`). Der Kern ist dann schon geschrieben (der Altbestand wird neben einem Kern nicht gelesen) — der Rückweg bleibt der Altbestand selbst |
+| Betreiber-Wiederherstellung `ablage-sicherung.mjs wiederherstellen` | (iii) | alter Inhalt wird beiseite umbenannt (`.vor-wiederherstellung-*`), nichts gelöscht; bei Fehler zurückgerollt | unverändert (Werkzeug nicht angefasst) |
+| Ausdünnen (`sicherungenAusduennen`), Datenschutzplan, Raumlöschung | keine Sicherung | löschen Sicherungen nach Plan bzw. mit dem Raum | unverändert |
+
+Entscheidung (konservativ): Die Sicherung vor Verlust ist (iii), weil sie im Code nur bei verwerfendem Schreiben
+entsteht — normales Speichern unter der Schwelle legt keine Sicherung an und ist von einem Ablagefehler der Sicherung
+nicht berührt (Test „normales Speichern …“). Die Regime-Marke eines neuen Betriebs steht im PUT vor der Sicherung;
+scheitert die Sicherung danach, bleibt eine Marke für eine noch nicht existierende Kennung — harmlos (Kommentar F1
+dort). In-App gibt es keine regelmäßige Hintergrundsicherung; Klasse (i) sind nur die Betreiber-Jobs.
+
+### Invarianten
+
+1. **Reihenfolge/Atomarität (iii)**: Die Rückweg-Sicherung ist vollständig und atomar angelegt (`setJSONWennNeu`),
+   BEVOR die destruktive Änderung beginnt (PUT, Wiederherstellen, Datenschutzlauf: vor `bestandSchreiben`, alles unter
+   der Raumsperre; vor-zerlegung: vor dem Löschen des Altbestands). Test: Stand beim Anlegen = Stand vor dem PUT bzw.
+   vor dem Tausch.
+2. **Fail-closed (iii)**: Scheitert die Sicherung — Ablage voll/nicht beschreibbar (ENOSPC, EACCES …), „alle Marken
+   belegt“ (`MARKE_VERSUCHE` erschöpft), Ablage ohne atomares Anlegen —, wird die Änderung nicht durchgeführt: Platte
+   byte-gleich (Kern, Scherben, Stand, Journal, Altbestand, Sicherungen), Antwort 503 `SICHERUNG_FEHLGESCHLAGEN` bzw.
+   Raum im Vermerk bzw. Altbestand bleibt, Protokoll „Sicherung fehlgeschlagen, Änderung nicht durchgeführt“, nie
+   „gesichert“, nie „erfolg“. Der 503 zählt in `/gesund` (Fehlerzählung `5xx`) und ist so auch im Alarmweg.
+3. **Prozessabbruch** zwischen Sicherung und Änderung: Es bleibt eine Sicherung ohne Änderung (sichere Richtung); die
+   Änderung selbst ist durch das Schreibjournal ganz oder gar nicht (bestand.mjs). Bei vor-zerlegung: Abbruch nach
+   dem Kern und vor dem Löschen lässt den Altbestand liegen (er wird neben dem Kern nicht gelesen).
+4. **Wiederholung/Idempotenz**: Ein abgewiesener Vorgang hat nichts geschrieben und kann unverändert wiederholt werden
+   (gleicher ETag). Eine Wiederherstellung zählt weiter zur Bremse (fünf je Stunde; steht im Antworttext).
+5. **Parallele Vorgänge**: unter der Raumsperre nacheinander; scheitert die Sicherung des ersten, schreibt ein
+   gleichzeitiger zweiter nur mit eigener erfolgreicher Sicherung des vollen Stands (Test „parallel mit Fehler“).
+   Gleichzeitige Sicherungen kollidieren nicht (Nachtrag 1).
+6. **(ii)**: Die manuelle Sicherung gibt den Fehler sichtbar zurück (503, kein `ok`, keine Marke); der Bestand bleibt
+   unverändert.
+7. **(i)**: Hintergrundsicherungen blockieren den Normalbetrieb nicht; Fehler gehen über Statusdatei → `/gesund` →
+   Überwachung/Alarm (unverändert).
+8. **vor-zerlegung (B)**: Ein vorhandener Sicherungspunkt `sicherung:<raum>:vor-zerlegung` wird nie überschrieben
+   (atomar `setJSONWennNeu`). Ist er belegt (zweite Übernahme in einem Raum ohne Kern mit liegenden Sicherungen,
+   Reviewer-Szenario #582), bekommt der neue Altbestand eine eigene Sicherung im Markenformat über `sicherungAnlegen`
+   (Metadaten `automatisch: "ja"`, „automatisch vor der Zerlegung (weitere Übernahme)“); der Konflikt steht im
+   Serverprotokoll (`console.warn`). Scheitert auch diese, bleibt der Altbestand liegen. Gewählt statt „Übernahme
+   abbrechen“: kleiner (kein neuer Fehlerweg für jeden Schreiber eines Raums ohne Kern), kein Datenverlust, und die
+   Marke ist mit Liste, Ausdünnung, Datenschutzplan und Wiederherstellen verträglich (`MARKE`-Format). Der feste
+   Schlüssel `vor-zerlegung` bleibt für die erste Übernahme.
+9. **Datenschutz**: Protokollzeilen enthalten nur Kennungen (Raum, Betrieb, Marke), Zahlen und Fehlercodes — keine
+   Namen, Tage oder Inhalte (Test). Rechte und Rollen unverändert.
+
+### Tests (`pruefungen/sicherung-fehler-differenziert.test.js`, in `pruefung:sicherungen`)
+
+Rot auf der Basis (Quelle unverändert): 11 von 18; nach der Umsetzung 18/18. Fehler per Beobachter an
+`sicherungAnlegen`: „erschoepft“ ruft das echte `sicherungAnlegen` mit einer Ablage, die jede Marke als belegt meldet;
+„ablage“ wirft wie ENOSPC; vor-zerlegung zusätzlich mit einer Ablage, deren `setJSONWennNeu` für Sicherungen wirft.
+Bestehende Tests nicht geändert.
+
+### Hinweise (C/D, nicht umgesetzt)
+
+- `vor-zerlegung` erscheint in `GET /api/sicherungen`, lässt sich aber nicht über `/api/wiederherstellen` einspielen
+  (`MARKE`); Notweg Betreiber (BETRIEB-SICHERUNG). Die Ausweich-Sicherung einer zweiten Übernahme ist einspielbar.
+- ~~`/gesund` liest nur `aufraeumen:letzter`~~ — umgesetzt im Nachtrag (3), B-2.
+- `spurLesen` (Betreiber-Lage) kennt die Protokollart `loeschlauf` nicht.
+
+## Nachtrag 2026-11-26 (3): Review #586 (Ablehnung, 2 × B) — umgesetzt
+
+**B-1 (Klasse ii in der Oberfläche):** Die Aktion `sicherungAnlegen` (`src/app/aktionen/einstellungen.js`) fing den
+Fehler (Hinweis mit dem Fehlertext des Servers, z. B. „Die Sicherung konnte nicht angelegt werden.“), der Knopf
+„Jetzt sichern“ (`src/ansichten/einstellungen.jsx`) meldete danach trotzdem „Sicherung angelegt.“. Jetzt gibt die
+Aktion `true`/`false` zurück, der Knopf meldet den Erfolg nur bei `true`. Je eine Zeile, Zeilenzahlen beider Dateien
+unverändert (377/100), keine Stile; alle `v4-3b-*`-Tests grün. Der Fehlertext wurde schon vorher angezeigt (Bonus C
+damit erfüllt). Test `pruefungen/sicherung-anlegen-ui.test.js` (rot 3/4 → grün 4/4): Aktion mit nachgebildeter
+Speicherschicht; echte Komponente `Einstellungen` serverseitig gerendert, der Knopf über einen aufzeichnenden `Btn`
+gedrückt, gesetzte Meldungen über ein aufzeichnendes `useState`.
+Befund am Rand (nicht geändert): Die Karte „Für den Betrieb“ samt „Jetzt sichern“ hängt an
+`darf(sitz, "mandant.edit")`; dieses Recht gibt es in keiner Standardtabelle (`src/lib/rollen.js`) — die Karte ist
+nur mit einer betriebseigenen Tabelle sichtbar, die es führt (Test setzt eine solche). Der zweite Aufrufer
+„Vorher sichern“ (`src/ansichten/datenschutz.jsx`) meldete nie Erfolg und zeigt den Fehler über die Aktion.
+
+**B-2 (Hintergrund ohne Alarmweg):** `loeschlaufPruefen` (`server/lib/gesund.mjs`) liest zusätzlich
+`datenschutzlauf:letzter`; Einträge mit `art: "sicherung"` (gescheiterte Schutzsicherung) ⇒ Prüfung `loeschlauf`
+„warnung“ (auch vor dem ersten Löschlauf-Vermerk; Detail nur die Anzahl `sicherungFehler`, kein Raumname) ⇒
+Überwachung/Alarm wie jede Warnung. Engere Variante gewählt: Fristfehler (`aufbewahrungFehler`) und andere Einträge
+(Konflikt, Lesefehler) alarmieren hier weiterhin nicht. Sauber trennbar, weil der Datenschutzlauf den Eintrag selbst
+kennzeichnet (Fehler mit `sicherung: true` → `art: "sicherung"`), statt am Text zu erkennen. Abgeschaltet
+(`CENTRIC_AUFRAEUMEN=aus`, dann läuft auch der Datenschutzlauf nicht): wie bisher „ok“. Test in `gesund.test.js`
+inkl. Gegenprobe (nur Fristfehler/Konflikt ⇒ „ok“).
+
+**C-Hinweise:** (a) Datenschutzlauf: in Vermerk und Protokoll nur der Fehlercode (`ENOSPC`, sonst „Fehler“), keine
+Meldung mit Dateipfad (Test). (b) vor-zerlegung: zusätzlich Protokollzeilen Art `fehler`, Ausgang `zerlegung`
+(„<raum>: Sicherung fehlgeschlagen, Altbestand nicht entfernt (<code>)“ bzw. „<raum>: vor-zerlegung belegt, nicht
+überschrieben — Altbestand als <marke> gesichert“) — sichtbar in der Betreiber-Lage. (c) Inventar ergänzt: **Löschweg
+der Leitung** (WP-48.4, `PUT` mit `loeschweg`) läuft durch denselben PUT-Pfad — gesichert wird nur ab der
+34-%-Schwelle, dann fail-closed wie jeder Verlust-PUT; darunter keine Sicherung (bewusst, wie beim gewöhnlichen
+Speichern; der Datenschutzlauf-Pfad sichert dagegen immer). (d) Reihenfolge: Die Datenschutzlauf-Fälle nutzen je
+einen eigenen Raum; der Erfolgsfall legt seinen Raum selbst an (vorher hing er am Fehlerfall davor).
+
+## Nachtrag 2026-11-26 (4): Knopf „Jetzt sichern“ — Sichtbarkeit wie der Server (Review #586, Befund am Rand)
+
+Betreiberentscheidung: Die manuelle Sicherung soll für die berechtigte Leitung erreichbar sein; vor einer Vergabe von
+`mandant.edit` dessen Wirkung prüfen; keine pauschale Erweiterung von Mandantenrechten; vorhandene Berechtigungen
+bevorzugen; kein neues Paket.
+
+**Analyse `mandant.edit`** (`git grep` über das ganze Repo): einziger Verwender `src/ansichten/einstellungen.jsx`
+(Karte „Für den Betrieb“), sonst nur dieser Nachweis und der Test aus #586. Nicht in `RECHTE_GRUPPEN`/`ALLE_RECHTE`/
+`MATRIX_STD` (`src/lib/rollen.js`), nicht in `RECHTEMATRIX.md`, nicht auf dem Server (der Server liest `m.matrix` nie;
+`POST /api/sicherung` prüft `SICHERUNG_ROLLEN.includes(s.rolle)` = Rolle des Zugangs, dazu Bremse und Protokoll).
+Wirkung einer Vergabe: In `MATRIX_STD` hieße das ein neues Recht in `RECHTE_GRUPPEN` (Rechte-Tabelle der Oberfläche,
+`rechtematrix*`-Tests, Golden) — und Betriebe mit gespeicherter eigener Tabelle bekämen es trotzdem nicht
+(`rechteDerRolle` nimmt die eigene Tabelle; nur `FESTE_RECHTE` kommen aus `MATRIX_STD`), die Leitung dort sähe den
+Knopf weiter nicht. Zudem ist es ein Rechtsname der Personenrolle, der Server entscheidet nach der Zugangsrolle;
+beide liefen auseinander (z. B. Zugang `kunde` mit Person „Mitarbeiter“). `mandant.edit` ist damit ungeeignet.
+
+**Vorhandenes Muster:** Die Sicherungsliste direkt darunter (WP-25) hängt an
+`SP.angemeldet() && darfSicherungenSehen(serverRolle)` (`src/sicherungen-ui.js`, `SICHERUNG_SEHEN` = `SICHERUNG_ROLLEN`,
+gebunden in `wiederherstellen-ui.test.js`). Die Verweise „Zum Betrieb“/„Datenmitnahme“ führen auf Ansichten, die die
+Navigation mit `org.edit` freigibt.
+
+**Entscheidung/Änderung** (nur Bedingungen, Zeilenzahl 377 unverändert, keine Stile): Karte an derselben Regel wie
+Server und Liste (`sitz.mandant && SP.angemeldet() && darfSicherungenSehen(serverRolle)`); die beiden Verweise
+zusätzlich `darf(sitz, "org.edit")` wie die Navigation. `mandant.edit` entfällt; Standardrechte, Rechte-Tabelle und
+Server unverändert. Sichtbar für Zugang `leitung` und `kunde` (wie der Server), nicht für mitarbeiter/planer/subplaner/
+betriebsrat/betreiber/ohne Zugang, nicht offline (Probierumgebung ohne Server). 403 des Servers unverändert
+(`rollen-failclosed.test.js`).
+
+**Tests** `pruefungen/sicherung-anlegen-ui.test.js` (4 → 15): Sichtbarkeit je Zugangsrolle, offline, eigene Tabelle mit
+`mandant.edit` schaltet nichts frei, Verweise nur mit `org.edit`; Konsistenz aus den Quellen (Kartenbedingung,
+`SICHERUNG_SEHEN` == `SICHERUNG_ROLLEN`, Prüfung im POST-Zweig). Mutationen (je einzeln, danach Quelle sauber):
+M1 alte Bedingung `mandant.edit` → 6 rot; M2 ohne `SP.angemeldet()` → 2 rot; M3 `org.edit` statt Serverregel → 5 rot;
+M4 Verweis ohne `org.edit` → 1 rot; M5 `planer` in `SICHERUNG_SEHEN` → 3 rot.

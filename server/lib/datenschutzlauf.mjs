@@ -196,10 +196,23 @@ async function lauf(store, { jetzt, spur, modus, vermerk }) {
           }
           if (berichte.length) {
             /* Schutzsicherung vor dem löschenden Schreiben — wie im PUT-Pfad
-               bei auffälligem Verlust (daten.mjs). */
-            await sicherungAnlegen(store, raum, g.bestand,
-              { jetzt, metadata: { zeit: jetzt.toISOString(), durch: "automatisch vor dem Datenschutzlauf",
-                automatisch: "ja" } });
+               bei auffälligem Verlust (daten.mjs). Sie ist der Rückweg: Scheitert
+               sie, wird in diesem Raum nichts gelöscht (Betreiberentscheidung
+               2026-11-26, A). Der Raum steht mit Grund im Vermerk und im
+               Protokoll „loeschlauf“; zusätzlich eine Zeile der Art „fehler“,
+               die die Betreiber-Lage zeigt. Die übrigen Räume laufen weiter.
+               Der Eintrag im Vermerk trägt art „sicherung“: /gesund (loeschlauf)
+               warnt darauf — Fristfehler und andere Einträge nicht (Review #586 B-2).
+               Nur der Fehlercode, keine Meldung mit Dateipfad. */
+            try {
+              await sicherungAnlegen(store, raum, g.bestand,
+                { jetzt, metadata: { zeit: jetzt.toISOString(), durch: "automatisch vor dem Datenschutzlauf",
+                  automatisch: "ja" } });
+            } catch (e) {
+              const code = String((e && /** @type {any} */ (e).code) || "Fehler").slice(0, 40);
+              await protokoll("fehler", "system", "datenschutzlauf", `${raum}: Sicherung fehlgeschlagen, Änderung nicht durchgeführt (${code})`);
+              throw Object.assign(new Error(`Sicherung fehlgeschlagen, Änderung nicht durchgeführt (${code})`), { sicherung: true });
+            }
             const erg = await bestandSchreiben(store, raum, { ...g.bestand, mandanten },
               { erwarteterStand: g.stand, durch: "Löschlauf (Aufbewahrungsfristen)" });
             if (!erg.ok) throw new Error("Konflikt beim Schreiben");
@@ -236,7 +249,7 @@ async function lauf(store, { jetzt, spur, modus, vermerk }) {
       });
     } catch (e) {
       const grund = String((e && e.message) || e).slice(0, 200);
-      vermerk.fehler.push({ raum, grund });
+      vermerk.fehler.push({ raum, grund, ...(e && /** @type {any} */ (e).sicherung ? { art: "sicherung" } : {}) });
       await protokoll("loeschlauf", "system", "fehler", `${raum}: ${grund}`);
     }
   }

@@ -449,3 +449,91 @@ Gleich für alle drei: Rechnung aus `pruefen` (keine zweite Regellogik; der Nach
 **Tests und Prüfungen (lokal, TZ=UTC, `--maxWorkers=1`, ein Prozess, freier Speicher vor jedem Lauf ≥ 2,4 GB):** engine-*, intelligence-* (ohne Browserprüfung), prozess-wachen (QS-5), v4-3b-betreiber/-import/-personal/-querschnitt-1/-querschnitt-2/-selbsttest/-plan: 60 Dateien, 1726/1726 grün (darin intelligence-planer-kern 63/63; engine-rechenkern mit unveränderten Golden-Werten, `pruefen`-Ausgabe byte-gleich). `npx tsc -p jsconfig.json --noEmit` grün; `eslint` auf die geänderten Dateien 0 Fehler (5 Warnungen in `fachlogik.js`, wie auf der Basis); `node werkzeug/verdrahtung-pruefen.mjs` ok (521); `acc45-backlog status-schreiben` + `pruefen` ok.
 
 **C-Hinweise (nicht umgesetzt):** M8 (Verdrängte ohne Planbefunde) fängt weiterhin nur die Quellprüfung; ein Verhaltenstest bräuchte ein Posten-Szenario, in dem die Verdrängung einen Nachtlauf oder neuen Arbeitstag erzeugt (in `planeMonat` zieht die Postenbesetzung nur aus dem Quelldienst: Arbeit bleibt Arbeit; nachtfolge nur, wenn Posten und Quelldienst verschiedene Nachtanteile haben). Bundesland-Prüfung nur am Tag d (siehe oben). Oberfläche `regelwerk.jsx` speichert `maxNachtFolge` als Zahl mit Schritt 0,5 (leeres Feld 0, 4,5) ⇒ „nicht bewertbar“ ⇒ keine Nachtdienste; Meldung jetzt „ungültig oder leer“ statt „nicht eingestellt“; UI unverändert (Hinweis an die Oberfläche). Frage 5 (fail-closed ohne gültiges `maxNachtFolge`) bleibt wie entschieden: Normalfall gesetzt (mandant-anlage.js, leerbetrieb.mjs, Demodaten).
+---
+
+# WP-I7 Planer-Kern — Teil 4: lange Musterregeln mit den Aggregaten
+
+Basis `origin/integration/release-v4` (61c919bf, nach #584/#585). Betreiberentscheidung 26.11. (verbindlich) zu Rückfrage 4 aus Teil 1: lange Musterregeln innerhalb WP-I7 mit den vorhandenen Aggregaten fertigstellen; `PLANER_AN` und `PLANER_AGGREGATE_AN` bleiben AUS; keine pauschale Budgeterhöhung; nicht vollständig Geprüftes nie „bestanden“. Nur synthetische Daten, kein KI-Anteil, keine Oberflächendatei, `src/lib/fachlogik.js`, `planer.mjs`, `einsatz.mjs`, `befunde.mjs` unberührt.
+
+## Klassifikation (aus Code, nichts erfunden)
+
+| Regel (Regelbaukasten `musterregel`) | Fenster der Planwirkung | vorher | jetzt |
+| --- | --- | --- | --- |
+| „höchstens in Folge“ (`hoechstensFolge`: Klassen, `max`, `danachFrei`, wahlweise `frei`) | d ± halb, halb = max + danachFrei + 1, Länge 2·halb + 1 | ≤ 62 Tage kurzer Weg; darüber `vorgabeOffen` („rechnet erst mit den Aggregaten“), auch mit Aggregaten | ≤ 62 unverändert kurzer Weg; 63–372 Tage (halb 31–185) mit Aggregaten; > 372 `vorgabeOffen` „Muster über 372 Tage“ |
+| „verbotene Folge“ (`verbotenFolge`: `von`, `dann`, `abstandTage`) | d ± Abstand | wie oben | wie oben (Abstand 31–185 mit Aggregaten) |
+| Blockregel | Kalenderwoche (7 Tage) | nie lang | unverändert |
+| Zählregeln > 62 Tage | — | Teil 1 | unverändert |
+
+Parametergrenzen der Vorgabe: `max` und `danachFrei` je ≤ 366 (halb bis 733), `abstandTage` ohne Obergrenze → alles über halb 185 bleibt offen (nie bestanden). Die Fachbedeutung ist durch den Regelbaukasten und den kurzen Weg vollständig bestimmt (Fenster, Vergleich mit/ohne, Maß); es war **keine Fachentscheidung** nötig, um sie auf 372 Tage zu erweitern. Einzige gewählte Festlegung: das Maß der Obergrenze ist die Fensterlänge 2·halb + 1 (dasselbe Maß wie die 62-Tage-Grenze des kurzen Wegs), Rückfrage 1 unten.
+
+## Invarianten (vor der Umsetzung festgelegt)
+
+1. **Semantik = kurzer Weg:** Befund genau dann, wenn der Regelbaukasten über das Fenster d ± halb mit der Einteilung verletzt und die Einteilung die Verletzung herbeiführt oder vergrößert (ohne verletzt und Maß mit ≤ Maß ohne ⇒ kein Befund; Maß = Summe der Verstoßlängen, verbotene Folge je Paar 1). Am Tag d: „ohne“ = frei, „mit“ = Dienst. Text und Bestätigung kommen vom Baukasten über das ganze Fenster (gleicher Wortlaut wie im kurzen Weg). Eine Stelle für den Vergleich: `mitOhneEntscheiden` (kurzer Weg, Blockregel, lange Muster).
+2. **Was die Aggregate darstellen:** die Tagesklasse je Person und Tag (Monatsblock, einmal je Einstieg gelesen, Tagesnachführung aus Teil 2). Musterregeln brauchen Folgen, keine Summen; Präfix-/Fenstersummen tragen sie nicht. Aggregiert wird darum nur das Lesen; die Entscheidung (`musterVerschaerft`) liest nur die Tage, die d berührt:
+   - verbotene Folge: nur die Paare (d − a, d) und (d, d + a) enthalten d; alle übrigen sind mit/ohne gleich ⇒ 2 Tage.
+   - höchstens in Folge: ein Block [i, j] (maximal, am Fensterrand abgeschnitten wie im Baukasten) hängt nur an den Tagen i − 1 … j + max(danachFrei, 1); Blöcke ohne d in diesem Bereich sind mit/ohne gleich. Gerechnet werden genau die Blöcke mit i ≤ d + 1 und j ≥ d − max(danachFrei, 1) (Anfang links gesucht, rechts bis zum Blockende + danachFrei), in derselben Zählweise wie der Baukasten. Beweisskizze: Ein Block, dessen Bereich d nicht enthält, hat in beiden Fassungen dieselben Rand- und Folgetage, also denselben Beitrag; Befund ⇔ Maß mit > Maß ohne (Maß ≥ 1 je Verstoß).
+   - nur bei „verschärft“ rechnet der Baukasten das ganze Fenster (Text, Bestätigung, gleiche Vergleichsregel).
+   - **nicht aggregierbar ⇒ offen:** kaputte Parameter (der Baukasten prüft sie vorab und wirft wie im kurzen Weg), unbekannte Art, ungültiger Tag, Fenster > 372 Tage, Budget leer, Pause, Schalter AUS ⇒ `vorgabeOffen` mit Grund, in der Automatik bei Muss Achtung (nicht einteilen). Nie „bestanden“.
+3. **Stale:** Die Tagesklasse hängt bei Posten von den Einteilungen anderer Personen am selben Tag ab (Review #572 A1). Lange Muster lesen ausschließlich über `aggregatZaehler.klasse` ⇒ die Vormerkung aus Teil 2 (mit Posten bei allen Personen des Monats) gilt unverändert; kein eigener Zwischenspeicher über den Aufruf hinaus (`gelesen` lebt nur in einer Auswertung).
+4. **Teilzeit:** Musterregeln werden nie skaliert (Teilzeit anteilig nur Zählregeln mit `ausnahmen.teilzeitAnteilig === true`; Frei-Untergrenzen nie gesenkt) — unverändert.
+5. **Urlaub/Krankheit/Abwesenheit:** abwesender Tag = unbekannte Klasse (nie frei); er beendet keinen Block als „frei“ und erfüllt kein „danach frei“ (wie im kurzen Weg und im Baukasten). Herausnehmen aus der Zählung betrifft nur Zählregeln.
+6. **Budget je äußerem Einstieg, Kosten vorab:** dasselbe Budget wie bisher (`VORGABEN_WIRKUNG_GRENZE` unverändert 50/62/200000). Je Auswertung fester Grundbetrag `MUSTER_LANG_GRUNDKOSTEN` = 2 (Hinweis #566-Review), je gelesenem Tag 1, Monat lesen = Tage des Monats (Aggregate), Bestätigung über das Fenster 2 je Tag (Kostenmodell des kurzen Wegs „Fenster zweimal“). Alles VOR der Arbeit angemeldet; reicht es nicht ⇒ diese und alle folgenden Vorgaben offen.
+7. **Nicht umgehbar:** Tag muss ein Kalenderdatum sein (`tagAus(tagNr(d)) === d`, 30. Februar und falsches Format ⇒ Rechenfehler, offen); halb NaN/Infinity/übergroß ⇒ nicht wirkend bzw. offen über der Grenze.
+8. **KI-Pause hält an** (auch unlesbarer Stand): Aggregate ruhen ⇒ lange Muster offen mit Grund „Intelligence pausiert“; kurze Muster und die normale Dienstplanung unverändert.
+9. **Mandantengrenze:** Blöcke je Betriebsstand (WeakMap, Teil 1); Test mit zwei Betrieben, gleicher Personenkennung, einem Budget.
+10. **Keine Personenbezüge:** Befundtext wie im kurzen Weg (Name der Vorgabe, Tage); nichts wird abgelegt.
+11. **Gleichwertigkeit:** Aggregatweg = Regelbaukasten über das ganze Fenster (Referenz im Test) = kurzer Weg (für Fenster ≤ 62 Tage ist die Referenz gegen den bestehenden kurzen Weg geprüft); Verwaltung (`vorgabePlanwirkung`) und Prüfung sagen dasselbe.
+12. **Obergrenze** 372 Tage Fensterlänge (wie Teil 1), darüber offen.
+13. **Schalter AUS:** ohne `aggregate` (Vorgabe) exakt das bisherige Verhalten (Text, Stufe, Verwaltung); `assistent.jsx` und `planeMonat` unverändert.
+
+## Umsetzung (nur `server/lib/vorgabenwirkung.mjs`)
+
+- `vorgabePlanwirkung`: Musterregel mit Fenster > 62 Tage wirkt mit Aggregaten bis 372 Tage; darüber „Muster über 372 Tage rechnen nur im Testlauf“. Ohne Aggregate der bisherige Text.
+- `vorgabenBefunde`: neuer Zweig `langMuster` (Kalenderdatum prüfen, Grundbetrag, Parameterprüfung durch den Baukasten, Lesen über `aggregatZaehler` mit Kosten je Tag, Entscheidung `musterVerschaerft`, bei Treffer Baukasten über das Fenster via `mitOhneEntscheiden`). Grund über der Grenze mit Aggregaten: „Muster über 372 Tage“.
+- Neu exportiert: `musterVerschaerft` (reine Entscheidung, direkt getestet), `MUSTER_LANG_GRUNDKOSTEN`. Gemeinsam: `musterHalb` (vorher dreimal derselbe Ausdruck), `mitOhneEntscheiden` (vorher im kurzen Weg inline; gleiche Logik), der Aufbau des Zählers (`zaehler`) für Zähl- und Musterregeln.
+- Planer (`planeMonat` mit `aggregate: true`, `planer.mjs`): keine Änderung nötig; sie prüfen über `hindernisBefunde` → `vorgabenBefunde` mit ihrem einen Budget und schreiben die Aggregate fort. Vorwärtswirkung ist durch das symmetrische Fenster d ± halb gedeckt.
+
+## Rot → grün
+
+Neu `pruefungen/intelligence-planer-aggregate-muster.test.js` (14 Tests, läuft über `pruefung:intelligence`). Gegen die Basisquelle (nur `vorgabenwirkung.mjs` zurückgesetzt): 11 rot, 2 grün (Schalter AUS, 300 kurze Muster = Bestand), dazu 1 rot im geänderten bestehenden Test. Danach alle grün.
+
+Geänderter bestehender Test (Erwartung durch die Entscheidung gekippt, nicht abgeschwächt): `intelligence-planer-aggregate.test.js` Abschnitt 2 erwartete für „höchstens 40 F in Folge“ mit Aggregaten `vorgabeOffen` („nicht Teil von I5-4“); jetzt kein Befund (leerer Plan) und zusätzlich `vorgabeOffen` für halb 186 (Fenster 373 Tage).
+
+## Mutationen
+
+Werkzeug: wörtliche Ersetzung (genau ein Treffer), Lauf `intelligence-planer-aggregate-muster` + `intelligence-planer-aggregate` ohne Messteil, nacheinander, ein Prozess, Quelle danach gegen die Sicherung verglichen (jeweils sauber). Rote Tests je Mutation:
+
+M1 Folge: verschärft nie 7 · M2 verbotene Folge: verschärft nie 3 · M3 Blockanfang links nicht gesucht 6 · M4 Bereich danachFrei statt max(danachFrei, 1) 6 · M5 Block ab d+1 nicht betrachtet 1 · M6 „danach nicht frei“ zählt nicht 3 · M7 „zu lang“ zählt 1 statt Länge 3 · M8 abwesend als frei 1 · M9 Grundbetrag nicht angemeldet 1 · M10 Tag lesen ohne Kosten 1.
+
+M11 „Bestätigung ohne Kosten“ **überlebte** (0 rot): kein Test hielt die Kosten eines Treffers fest. Neue Zusicherung im Budgettest (Treffer kostet mindestens Grundbetrag + 2 × 83 Tage); der Abschnitt ist danach grün, die Mutation wurde nicht erneut gefahren (siehe unten).
+
+**Abgebrochen:** Der Mutationslauf wurde nach M11 vom System wegen Speichermangel beendet (Laptop, parallel weitere Schreiber). Die Quelle war beim Abbruch unverändert (Vergleich mit der Sicherung: gleich). Nicht gelaufen, vorbereitet: M12 Datumsprüfung entfällt · M13 Parameterprüfung des Baukastens entfällt · M14 Grenze 372 entfällt · M15 Pause in der Verwaltung ignoriert · M16 Pause in der Prüfung ignoriert · M17 Vergleich mit/ohne entfällt · M18 Posten: nur eingeteilte Person vorgemerkt · M19 Bestätigung über halbes Fenster. Die zugehörigen Tests sind grün; ob sie die Mutationen fangen, ist **nicht belegt**.
+
+## Messung
+
+Laptop Celeron N4120, TZ=UTC, `--maxWorkers=1`, synthetisch, Läufe unter Last (parallele Schreiber).
+
+| Lauf | ohne Vorgaben | 2 lange Muss-Muster | 5 lange Muss-Muster |
+| --- | --- | --- | --- |
+| `planeMonat` demo3 (48 Personen), Dezember, Nachtdienste frei, Aggregate an | 2,1–2,3 s, 63 gesetzt | 63 gesetzt (Budget reicht) | 4,2–4,8 s; 34 gesetzt, 25 offen (17 Grund `vorgabe`) |
+
+Messtest (Abschnitt 5, „6. Messung“): 5 lange Muster höchstens 2 × ohne + 5 s — grün (4,2 s gegen 2,1 s). Kosten je Prüfung (demo3, 2418 Prüfungen je Regel): ohne Treffer 6–8 Schritte, mit Treffer etwa 2 × Fensterlänge. Erste Fassung belastete einen Treffer mit 3 × Fensterlänge (Tage einzeln + Baukasten); auf das Kostenmodell des kurzen Wegs (Fenster zweimal = 2 je Tag) gebracht: 26 → 34 gesetzt. Von den 17 offenen Stellen mit Grund `vorgabe` wären 16 mit großem Budget besetzbar (Diagnose mit 10⁸) — Budget, keine Fehlentscheidung; Rückfrage 2.
+
+## Tests und Prüfungen
+
+Lokal, TZ=UTC, `--maxWorkers=1`, ein Prozess, freier Speicher vor jedem Lauf ≥ 2,2 GB:
+- `intelligence-planer-*` (kern, aggregate, aggregate-lauf, aggregate-muster), `intelligence-vorgaben*` (11 Dateien), `intelligence-planungsreife`/`-anzeige`, `intelligence-regelbaukasten`, `engine-*` (5), `prozess-wachen` (QS-5), `konsistenz`, `schutzregeln-ersatzsuche`, `warnen`: 24 Dateien, 638/638 grün (mit Messteilen). Danach nur die Kostenzusicherung ergänzt: Abschnitt 3 der neuen Datei 4/4 grün.
+- `npx tsc -p jsconfig.json --noEmit` grün; `eslint` auf die geänderten Dateien ohne Befund; `node werkzeug/verdrahtung-pruefen.mjs` ok; `acc45-backlog status-schreiben` + `pruefen` ok.
+- v4-3b-*: `src/lib/fachlogik.js` und Oberfläche unverändert, nicht gelaufen. Keine `.github/workflows`-Änderung. Vollregression in CI.
+
+## SSOT
+
+WP-I7-Eintrag in `docs/acc45/work-packages.json` (Notiz und Beleg „Teil 4 lange Musterregeln“), `STATUS.md` neu geschrieben; Status unverändert `IN_PROGRESS`.
+
+## Offene Rückfragen (nur konkret)
+
+1. **Maß der Obergrenze 372 Tage.** Umgesetzt: Fensterlänge 2·halb + 1 ≤ 372 (also „höchstens 184 in Folge“ ohne „danach frei“; verbotene Folge bis 185 Tage Abstand), gleiches Maß wie die 62-Tage-Grenze. Alternative: Musterlänge halb ≤ 372 (Fenster bis 745 Tage; der Baukasten rechnet bis 800). Entscheidung: Maß beibehalten oder auf Musterlänge umstellen? Empfehlung: beibehalten (konservativ, ein Maß für alle Wege; längere Muster sind in Plan und Tests nicht beschrieben).
+2. **Budget mit mehreren anspruchsvollen langen Mustern** (präzisiert Rückfrage 1 aus Teil 2, keine Erhöhung vorgenommen): demo3 Dezember, 5 lange Muss-Muster (u. a. „nach N 2 Tage frei“ mit Fenster 87 Tage): 34 gesetzt, 25 offen, davon 16 mit größerem Budget besetzbar. Kosten je Prüfung ohne Treffer 6–8, mit Treffer etwa 2 × Fensterlänge (Baukasten über das Fenster für Text und Bestätigung). Entscheidung wie dort: (a) unverändert, Rest offen (fail-closed); (b) Budget je Planer-Einstieg mit Messtest; (c) in der Automatik den Befund ohne Text (nur Regel/Stufe) aus `musterVerschaerft` nehmen und den Baukasten nur für die angezeigten Befunde rechnen. Empfehlung: (c) prüfen (größter Hebel, keine Budgeterhöhung; braucht aber eine Festlegung, dass die Automatik den Wortlaut nicht braucht), bis dahin (a).
+3. **C-Hinweis:** `abstandTage` hat in `pruefeVorgabe` (vorgaben.mjs `groessenFehler`) keine Obergrenze (anders als `max`/`danachFrei` ≤ 366); wirkt sich nicht aus (über 185 offen), wäre aber für die Eingabe konsistent zu begrenzen. Nicht geändert (Scope).
+
+C/D: keine neuen Pakete, Werkzeuge oder Doku-Familien; nur dieser Abschnitt.
