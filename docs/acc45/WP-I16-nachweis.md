@@ -115,4 +115,53 @@ Die Betreiberentscheidung zur Rückfrage legt fest: Die Betriebsrat-Konten-Sperr
 Siehe Bericht des Koordinators; Dateien: `intelligence-steuerung{,-handler,-oberflaeche,-zugaenge}.test.js` (Kern 62, Handler 12, Zugänge 20, Oberfläche), danach die angrenzenden Suiten (rechtematrix*, rollenvergabe, prozess-wachen, die `zugang-sperren`/`api/zugaenge`-Tests).
 
 ### Offene Rückfragen
-Keine verbleibenden für die Betreiberentscheidungen. Hinweis: Die „ja“-Pause liegt in `pause` (Betriebsrat-Schutzwirkung, Konten-Sperre); sollte sie als Leitung-Pause behandelt werden, wäre die Konten-Sperre bei „ja“ entfallen. Das wurde nicht entschieden und bleibt wie bisher dokumentiert.
+Keine verbleibenden für die Betreiberentscheidungen. Hinweis: Die „ja“-Pause liegt in `pause` (Betriebsrat-Schutzwirkung, Konten-Sperre); sollte sie als Leitung-Pause behandelt werden, wäre die Konten-Sperre bei „ja“ entfallen. Das wurde nicht entschieden und bleibt wie bisher dokumentiert. **→ Inzwischen entschieden, siehe Teil 3.**
+
+---
+
+## WP-I16 Teil 3 — Leitung-„ja“ = Leitung-Pause (Betreiberentscheidung 2026-11-26, spät; Branch `intelligence/wp-i16-leitung-ja`, lokal, nicht gepusht)
+Entscheidung (verbindlich): Die durch die Leitung ausgelöste Antwort „ja“ wird als Leitung-Pause (`leitungPause`) geführt, sofern keine ausdrücklich beschlossene stellvertretende Betriebsrat-Pause vorliegt. Die Leitung kann durch eine eigene Pause die Betriebsrat-Konten-Sperre nicht auslösen. Bestehende Betriebsrat-Pausen, ihre Schutzwirkung und die Sicherheitssperre des Betreibers bleiben unverändert.
+
+**Klassifikation:** Leitung-„ja“ → `leitungPause`: umgesetzt. Stellvertretende Betriebsrat-Pause: **Entscheidung nötig** — im Repo gibt es dafür kein Datenfeld, keinen Beschlussvermerk und keinen Schreibweg (`git grep stellvertret` trifft nur WR-3/Kontowiederherstellung). Es wurde nichts erfunden; der einzige bestehende Weg zur Betriebsrat-Pause (`kiPauseDurchBetriebsrat`, Betriebsrat selbst, hinter `CENTRIC_KI_BR_PAUSE`) bleibt unverändert.
+
+### Invarianten (vor der Umsetzung festgelegt)
+| # | Invariante |
+|---|---|
+| I1 | Zustände: `pause` = Betriebsrat-Pause (setzt nur der Betriebsrat hinter dem Schalter; im Altbestand auch die früher durch „ja“ gesetzte Pause). `leitungPause` = Leitung-Pause (setzt die Leitung ausdrücklich oder mittelbar über „ja“). Eine stellvertretende Betriebsrat-Pause gibt es nicht als Zustand. |
+| I2 | „ja“ (nur Leitung, nicht Demo; `vorher !== "ja"`) setzt `leitungPause` (aktiv, `nr`+1, Stempel der Leitung, Ereignis `leitungspause-gesetzt`/Ziel `einrichtung`), außer sie ist schon aktiv (dann kein neuer Stempel, kein Ereignis). `pause` wird dabei nie geschrieben, auch nicht wenn sie aufgehoben ist oder fehlt. |
+| I3 | Konten-Sperre (`betriebsratKontenSperre`, `zugang-sperren`, `POST /api/zugaenge`, Einladungen) nur über `kiBrPauseAktiv` = `pause` aktiv oder unlesbar. Leitung-Pause (auch die „ja“-Pause) löst sie nie aus und beseitigt sie nie. |
+| I4 | Intelligence pausiert, solange eine der beiden Pausen aktiv oder unlesbar ist. Bei Antwort „ja“ zusätzlich: frei erst, wenn mindestens eine Pause vorhanden und ausdrücklich aufgehoben ist (`leitungPause` oder Altbestand `pause`); sonst `KI_PAUSIERT` (fail closed). |
+| I5 | Aufheben beider Pausen nur durch die Leitung, als Compare-and-set auf `am`+`nr` der gesehenen Pause; der Betriebsrat hebt nie auf. Aufheben der einen berührt die andere nie. |
+| I6 | Altbestand (`pause` mit Stempel `leitung` aus einem früheren „ja“): keine Migration, keine Umdeutung beim Lesen oder bei anderen Schreibvorgängen — die Konten-Sperre bleibt bestehen, bis die Leitung diese Pause wie bisher aufhebt (Schutzwirkung nicht schwächer). |
+| I7 | Protokoll: jedes Setzen/Aufheben als Ereignis im Betriebsstand (Rolle, Personenkennung) und im Betriebsprotokoll nur Art, Ziel, Rolle. Betreiber-Sicherheitssperre unverändert. |
+
+### Schreibwege und Umgehungen (zusammenhängend geprüft)
+- Wer kann „ja“ setzen: nur die Leitung (Recht `frage`; Planung, Kunde, Schichtverantwortung, Beschäftigte, Betriebsrat, Betreiber und Demo nie — bestehende Tests unverändert). Der Betriebsrat kann mit einer mitgeschickten Frage nichts ändern (bestehender Test „der Betriebsrat ändert sonst nichts“). Der Betreiber schreibt über `PUT /api/bestand` nur kaufmännische Felder.
+- Import, Teilweg, Wiederherstellen: laufen über `zusammenfuehren`/`rollenwechselErlaubt` — derselbe Kern, keine eigene „ja“-Logik.
+- Oberfläche (`src/ansichten/ki-steuerung.jsx`, weiter hinter `KI_STEUERUNG_PROZESS = "aus"`): zeigt „pausiert“, wenn eine der beiden Pausen aktiv ist; „Pause aufheben“ der Leitung hebt zuerst genau die Leitung-Pause auf (mit ihrem Stempel), sonst die Betriebsrat-Pause — nie beide mit einem Klick. Der Betriebsrat kann bei reiner Leitung-Pause zusätzlich seine eigene Pause setzen. Zeilenzahl der Datei unverändert (154; V4-3b-Messung bleibt gleich).
+- Transparenz (`transparenz.mjs`): führt `leitungPause` bereits als Geschwisterfeld — keine Änderung nötig.
+- Einladungen und `POST /api/zugaenge`, `zugang-sperren`: nutzen `kiBrPauseAktiv` — keine Codeänderung; Wirkung per End-zu-End-Test belegt.
+
+### Widerspruch zu bestehender fachlicher Vorgabe (benannt, nicht still umgangen)
+Der Plan (`INTELLIGENCE-ENTWICKLUNGSPLAN.md`, I16) und der frühere Kommentar im Kern sahen vor: „ja“ → keine Modellaufrufe, **bis der Betriebsrat bestätigt**. Das war schon in Teil 1/2 nicht so umgesetzt (die Leitung hebt allein auf, offene Frage 1). Mit dieser Entscheidung entfällt zusätzlich die Schutzwirkung „ja“ → Konten-Sperre: Nach „ja“ und vor einer eigenen Pause des Betriebsrats kann die Leitung Betriebsrat-Zugänge anlegen, ändern und zurückziehen (protokolliert). Handbuch und Rechtematrix sagten bisher ausdrücklich „ja setzt die Pause und damit die Konten-Sperre“ — berichtigt. Bewertung im Rahmen der rechtlichen Prüfung (offene Frage 1/2/6).
+
+### Tests (rot → grün)
+Rot vor dem Code: 10 Tests (4 Dateien) aus dem richtigen Grund (`pause` statt `leitungPause`, Konten-Sperre bei „ja“, Freigabe nur über `pause`, Oberfläche ohne Leitung-Pause, End-zu-End `zugang-sperren` nach „ja“). Wegen der Entscheidung angepasst (nicht abgeschwächt, Richtung umgestellt): „Antwort ja“, „Leitung kann die Pause nicht umgehen“ (zusätzlich: BR-Pause unverändert), Schalter-Test, Betriebsprotokoll (`leitungspause-gesetzt einrichtung (leitung)`), Konten-Sperre bei „ja“ (jetzt frei, mit BR-Pause gesperrt), Handler „ja ohne Schalter“. Neu: „ja“ bei bestehender BR-Pause, „ja“ bei schon aktiver Leitung-Pause, Altbestand, „ja“ ohne aufgehobene Pause (fail closed), Oberfläche Leitung-Pause, Zugänge End-zu-End (Stand aus dem echten Schreibweg; Altbestand 403). Unverändert grün (Gleichwertigkeit): alle reinen BR-Pause-, Betreiber-Sicherheitssperre-, `POST /api/zugaenge`- und Einladungstests.
+
+### Mutationen (je Schutz einzeln, Quelle nach jedem Lauf wiederhergestellt und verglichen; 4 Dateien `intelligence-steuerung*`)
+| Mutation | Ergebnis |
+|---|---|
+| M1 „ja“ setzt wieder `pause` | gefangen (8) |
+| M2 „ja“ setzt keine Pause | gefangen (7) |
+| M3 Freigabe bei „ja“ nur über aufgehobene `pause` | gefangen (2) |
+| M4 „ja“ ohne aufgehobene Pause frei | gefangen (1) |
+| M5 „ja“ stempelt aktive Leitung-Pause neu | zuerst **überlebt**, Test ergänzt, danach gefangen (1) |
+| M6 „ja“ verwirft bestehende BR-Pause | gefangen (3) |
+| M7 Konten-Sperre auch bei Leitung-Pause | gefangen (7) |
+| M8 Oberfläche hebt zuerst die BR-Pause auf | gefangen (1) |
+| M9 Oberfläche zeigt Leitung-Pause nicht | gefangen (1) |
+
+### Nicht umgesetzt (Scope Freeze; Hinweise)
+- `POST /api/zugaenge`: zusätzlich die Rolle der Person prüfen (Code-Rolle ≠ Betriebsrat, Person Betriebsrat) — Code in diesem Teil nicht berührt, offen.
+- `zugang-sperren`: Protokollzeile „erfolg“ der Betreiber-Sicherheitssperre steht laut Entscheidung Nr. 1 VOR dem Sperren; ein Umstellen auf „erst nach dem Sperren“ widerspräche dem Wortlaut „Protokollzeile VOR dem Sperren“ — Klärung nötig (z. B. „begonnen“ vorher, „erfolg“ danach). Nicht berührt.
+- Migration des Altbestands (`pause` mit Stempel `leitung` aus früherem „ja“) zu `leitungPause`: bewusst nicht gemacht (würde die Konten-Sperre still lösen); falls gewünscht, Entscheidung nötig.

@@ -137,19 +137,74 @@ describe("intelligenceErlaubt: fail closed", () => {
       expect(intelligenceErlaubt(c, "F3", "leitung", AN), JSON.stringify(kaputt)).toBe(false);
     }
   });
-  it("Antwort „ja“: gesperrt, bis die Leitung die Pause aufgehoben hat; „nein“ braucht keine Pause", () => {
+  it("Antwort „ja“ der Leitung: Leitung-Pause (leitungPause), gesperrt, bis die Leitung sie aufgehoben hat; „nein“ braucht keine Pause", () => {
+    /* Betreiberentscheidung 2026-11-26 (spät): Die durch die Leitung ausgelöste „ja“-Pause ist eine Leitung-Pause, keine Betriebsrat-Pause. */
     const b = bereit();
     const ja = schreibe("leitung", setze({ betriebsratFrage: { antwort: "ja" } }), b);
     expect(ja.abgewiesen, ja.grund).toBe(false);
-    expect(KI(ja.bestand).pause.aktiv).toBe(true);
-    expect(intelligenceErlaubt(ja.m, "F3", "leitung", AN)).toBe(false);
-    const nicht = schreibe("betriebsrat", setze({ pause: { aktiv: false } }), ja.bestand);
-    expect(KI(nicht.bestand).pause.aktiv).toBe(true);                 // der Betriebsrat hebt nicht auf
-    const auf = schreibe("leitung", setze(frei(ja.bestand)), ja.bestand);
+    expect(KI(ja.bestand).leitungPause).toMatchObject({ aktiv: true, vonRolle: "leitung", vonPerson: "l1", nr: 1 });
+    expect(KI(ja.bestand).pause).toBeUndefined();                     // keine Betriebsrat-Pause entsteht
+    expect(kiBrPauseAktiv(ja.m.einstellungen)).toBe(false);
+    expect(intelligenceEntscheidung(ja.m, "F3", "leitung", AN).code).toBe("KI_PAUSIERT");
+    const nicht = schreibe("betriebsrat", setze({ leitungPause: { aktiv: false, am: KI(ja.bestand).leitungPause.am, nr: 1 }, pause: { aktiv: false } }), ja.bestand);
+    expect(KI(nicht.bestand).leitungPause.aktiv).toBe(true);          // der Betriebsrat hebt nicht auf
+    const blind = schreibe("leitung", setze({ leitungPause: { aktiv: false } }), ja.bestand);
+    expect(KI(blind.bestand).leitungPause.aktiv).toBe(true);          // Compare-and-set: blind hebt nicht auf
+    const auf = schreibe("leitung", setze({ leitungPause: { aktiv: false, am: KI(ja.bestand).leitungPause.am, nr: KI(ja.bestand).leitungPause.nr } }), ja.bestand);
     expect(auf.abgewiesen, auf.grund).toBe(false);
-    expect(KI(auf.bestand).pause).toMatchObject({ aktiv: false, vonRolle: "leitung", vonPerson: "l1" });
+    expect(KI(auf.bestand).leitungPause).toMatchObject({ aktiv: false, vonRolle: "leitung", vonPerson: "l1", nr: 2 });
+    expect(KI(auf.bestand).pause).toBeUndefined();
     expect(intelligenceErlaubt(auf.m, "F3", "leitung", AN)).toBe(true);
     expect(intelligenceErlaubt(b.mandanten[0], "F3", "leitung", AN)).toBe(true);   // „nein“, nie eine Pause
+  });
+  it("„ja“ bei bestehender Betriebsrat-Pause: deren Stempel bleibt, zusätzlich Leitung-Pause; Aufheben der Leitung-Pause beseitigt die Betriebsrat-Pause nicht", () => {
+    const br = schreibe("betriebsrat", setze({ pause: { aktiv: true } }), bereit()).bestand;
+    const brPause = KI(br).pause;
+    const ja = schreibe("leitung", setze({ betriebsratFrage: { antwort: "ja" } }), br).bestand;
+    expect(KI(ja).pause).toEqual(brPause);                           // unverändert (am, nr, vonRolle betriebsrat)
+    expect(KI(ja).leitungPause).toMatchObject({ aktiv: true, vonRolle: "leitung" });
+    expect(kiBrPauseAktiv(ja.mandanten[0].einstellungen)).toBe(true);
+    const ohneLeitung = schreibe("leitung", setze({ leitungPause: { aktiv: false, am: KI(ja).leitungPause.am, nr: KI(ja).leitungPause.nr } }), ja).bestand;
+    expect(KI(ohneLeitung).pause).toEqual(brPause);
+    expect(kiBrPauseAktiv(ohneLeitung.mandanten[0].einstellungen)).toBe(true);
+    expect(intelligenceEntscheidung(ohneLeitung.mandanten[0], "F3", "leitung", AN).code).toBe("KI_PAUSIERT");
+    /* eine früher aufgehobene Betriebsrat-Pause wird durch „ja“ weder neu gesetzt noch verändert */
+    const aufgehoben = schreibe("leitung", setze(frei(br)), br).bestand;
+    const ja2 = schreibe("leitung", setze({ betriebsratFrage: { antwort: "ja" } }), aufgehoben).bestand;
+    expect(KI(ja2).pause).toEqual(KI(aufgehoben).pause);
+    expect(kiBrPauseAktiv(ja2.mandanten[0].einstellungen)).toBe(false);
+    expect(KI(ja2).leitungPause.aktiv).toBe(true);
+  });
+  it("„ja“ bei schon aktiver Leitung-Pause: kein neuer Stempel (am/nr bleiben, die gesehene Pause bleibt aufhebbar), kein zweites Pausen-Ereignis", () => {
+    const lp = schreibe("leitung", setze({ leitungPause: { aktiv: true } }), bereit()).bestand;
+    const ja = schreibe("leitung", setze({ betriebsratFrage: { antwort: "ja" } }), lp).bestand;
+    expect(KI(ja).leitungPause).toEqual(KI(lp).leitungPause);
+    expect(KI(ja).protokoll.filter((x) => x.art === "leitungspause-gesetzt").length).toBe(1);
+  });
+  it("Altbestand: eine früher durch „ja“ gesetzte Pause in `pause` bleibt eine Betriebsrat-Pause (keine Migration, Schutzwirkung nicht schwächer); Aufheben wie bisher", () => {
+    const alt = kopie(bereit());
+    const k = alt.mandanten[0].einstellungen.kiSteuerung;
+    k.betriebsratFrage = { antwort: "ja", am: "2026-11-20T08:00:00.000Z", vonRolle: "leitung", vonPerson: "l1" };
+    k.pause = { aktiv: true, nr: 1, am: "2026-11-20T08:00:00.000Z", vonRolle: "leitung", vonPerson: "l1" };
+    expect(kiBrPauseAktiv(alt.mandanten[0].einstellungen)).toBe(true);           // Konten-Sperre besteht weiter
+    expect(intelligenceEntscheidung(alt.mandanten[0], "F3", "leitung", AN).code).toBe("KI_PAUSIERT");
+    /* ein anderer Schreibvorgang der Leitung lässt den Altbestand unverändert (keine stille Umdeutung) */
+    const anders = schreibe("leitung", setze({ ...k, funktionen: { F3: { an: true }, F15: { an: false } } }), alt).bestand;
+    expect(KI(anders).pause).toEqual(k.pause);
+    expect(KI(anders).leitungPause).toBeUndefined();
+    const auf = schreibe("leitung", setze(frei(alt)), alt);
+    expect(KI(auf.bestand).pause).toMatchObject({ aktiv: false, nr: 2 });
+    expect(intelligenceErlaubt(auf.m, "F3", "leitung", AN)).toBe(true);           // „ja“ mit aufgehobener Pause wie bisher frei
+    expect(kiBrPauseAktiv(auf.m.einstellungen)).toBe(false);
+  });
+  it("„ja“ ohne jede (aufgehobene) Pause bleibt gesperrt (fail closed); jede der beiden aufgehobenen Pausen genügt", () => {
+    const b = kopie(bereit());
+    b.mandanten[0].einstellungen.kiSteuerung.betriebsratFrage = { antwort: "ja", am: "2026-11-20T08:00:00.000Z", vonRolle: "leitung" };
+    expect(intelligenceEntscheidung(b.mandanten[0], "F3", "leitung", AN).code).toBe("KI_PAUSIERT");
+    const mitLeitung = kopie(b); mitLeitung.mandanten[0].einstellungen.kiSteuerung.leitungPause = { aktiv: false, nr: 2, am: "2026-11-21T08:00:00.000Z", vonRolle: "leitung" };
+    expect(intelligenceErlaubt(mitLeitung.mandanten[0], "F3", "leitung", AN)).toBe(true);
+    const mitBr = kopie(b); mitBr.mandanten[0].einstellungen.kiSteuerung.pause = { aktiv: false, nr: 2, am: "2026-11-21T08:00:00.000Z", vonRolle: "leitung" };
+    expect(intelligenceErlaubt(mitBr.mandanten[0], "F3", "leitung", AN)).toBe(true);
   });
   it("Prozessschalter: nur die Umgebung genau „an“ liefert „an“ — der Aufrufer reicht es durch", () => {
     expect(modusAusUmgebung({})).toBe("aus");
@@ -520,7 +575,8 @@ describe("Betriebsrat-Pause", () => {
     const pausiert = schreibe("betriebsrat", setze({ pause: { aktiv: true } }), bereit()).bestand;
     const r = schreibe("leitung", setze({ betriebsratFrage: { antwort: "ja" } }), pausiert);
     expect(r.abgewiesen, r.grund).toBe(false);
-    expect(KI(r.bestand).pause.aktiv).toBe(true);
+    expect(KI(r.bestand).pause).toEqual(KI(pausiert).pause);
+    expect(KI(r.bestand).leitungPause.aktiv).toBe(true);
     const r2 = schreibe("leitung", setze({ betriebsratFrage: { antwort: "nein" } }), r.bestand);
     expect(KI(r2.bestand).pause.aktiv).toBe(true);
     const r3 = schreibe("leitung", setze({ betrieb: { an: false } }), r2.bestand);
@@ -542,9 +598,11 @@ describe("Betriebsrat-Pause", () => {
     });
     ohneSchalter(undefined, () => {
       const ja = schreibe("leitung", setze({ betriebsratFrage: { antwort: "ja" } }), b);
-      expect(KI(ja.bestand).pause.aktiv).toBe(true);
-      const auf = schreibe("leitung", setze(frei(ja.bestand)), ja.bestand);
-      expect(KI(auf.bestand).pause.aktiv).toBe(false);
+      expect(KI(ja.bestand).leitungPause.aktiv).toBe(true);
+      expect(KI(ja.bestand).pause).toBeUndefined();
+      const lp = KI(ja.bestand).leitungPause;
+      const auf = schreibe("leitung", setze({ leitungPause: { aktiv: false, am: lp.am, nr: lp.nr } }), ja.bestand);
+      expect(KI(auf.bestand).leitungPause.aktiv).toBe(false);
     });
   });
   it("ein Betriebsrat eines anderen Betriebs (Fremdsitzung) setzt keine Pause", () => {
@@ -616,7 +674,8 @@ describe("Sicht, neuer Betrieb, Sicherung, Protokoll", () => {
     const r = schreibe("leitung", setze({ betriebsratFrage: { antwort: "ja" }, betrieb: { an: true }, funktionen: { F3: { an: true } } }), alt);
     const zeilen = kiSteuerungProtokollZeilen(alt, r.bestand);
     expect(zeilen.length).toBe(4);
-    expect(zeilen).toContain("pause-gesetzt einrichtung (leitung)");
+    expect(zeilen).toContain("leitungspause-gesetzt einrichtung (leitung)");
+    expect(zeilen.some((z) => z.startsWith("pause-gesetzt"))).toBe(false);
     expect(zeilen).toContain("funktion-an F3 (leitung)");
     for (const z of zeilen) expect(z).not.toMatch(/l1|Haus|V\w+ N\w+/);
     expect(kiSteuerungProtokollZeilen(r.bestand, r.bestand)).toEqual([]);
@@ -670,11 +729,17 @@ describe("Rollenvergabe (roles.assign) hebelt die Betriebsrat-Pause nicht aus", 
     expect(wechsel(alt, mitPersonen(alt, (p) => { p.push(person("a2", "mitarbeiter")); })).ok).toBe(true);
     expect(wechsel(alt, alt).ok).toBe(true);                           // unverändert zurückgeschrieben
   });
-  it("die Pause wirkt auch ohne den Schalter (Frage „ja“ setzt sie): Betriebsrat-Konten sind dann ebenso gesperrt", () => {
+  it("die „ja“-Pause der Leitung ist eine Leitung-Pause: sie löst die Konten-Sperre NICHT aus (Betreiberentscheidung 2026-11-26); mit Betriebsrat-Pause gesperrt", () => {
     const ja = schreibe("leitung", setze({ betriebsratFrage: { antwort: "ja" } }), bereit()).bestand;
     ohneSchalter(undefined, () => {
       const neu = mitPersonen(ja, (p) => { p.find((x) => x.id === "r1").rolle = "mitarbeiter"; });
-      expect(wechsel(ja, neu).ok).toBe(false);
+      expect(wechsel(ja, neu).ok).toBe(true);
+    });
+    const brDazu = schreibe("betriebsrat", setze({ pause: { aktiv: true } }), ja).bestand;
+    expect(KI(brDazu).pause.vonRolle).toBe("betriebsrat");
+    ohneSchalter(undefined, () => {
+      const neu = mitPersonen(brDazu, (p) => { p.find((x) => x.id === "r1").rolle = "mitarbeiter"; });
+      expect(wechsel(brDazu, neu).ok).toBe(false);
     });
   });
   it("ein unlesbarer Pausenstand zählt als Pause (fail closed) auch für die Konten", () => {

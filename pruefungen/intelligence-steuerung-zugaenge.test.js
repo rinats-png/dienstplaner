@@ -327,3 +327,40 @@ describe("Nr. 2: die Konten-Sperre wird nur von der Betriebsrat-Pause ausgelöst
     expect(nein.status, nein.roh).toBe(403);
   });
 });
+
+describe("„ja“ der Leitung ist eine Leitung-Pause (Betreiberentscheidung 2026-11-26, spät): keine Konten-Sperre; Altbestand in `pause` sperrt weiter", () => {
+  const setzeSteuerung = async (st) => {
+    const b = (await B.bestandLesen(laden(), RAUM)).bestand;
+    b.mandanten[0].einstellungen = { kiSteuerung: { betrieb: STEUERUNG().betrieb, ...st } };
+    await B.bestandSchreiben(laden(), RAUM, b, { durch: "Pruefung" });
+  };
+  it("Stand aus dem echten Schreibweg (Antwort „ja“): Leitung sperrt einen Betriebsrat-Zugang (200), Einladung geht; die alte „ja“-Pause in `pause` sperrt (403)", async () => {
+    const { kiSteuerungZusammen } = await import("../server/lib/ki-steuerung.mjs");
+    const alt = { einstellungen: { kiSteuerung: { betrieb: STEUERUNG().betrieb, betriebsratFrage: { antwort: "nein", am: "2026-11-25T07:00:00.000Z", vonRolle: "leitung" } } } };
+    const neu = { einstellungen: { kiSteuerung: { betriebsratFrage: { antwort: "ja" } } } };
+    const r = kiSteuerungZusammen(alt, neu, { rolle: "leitung", person: "l1" }, { jetzt: "2026-11-26T09:00:00.000Z" });
+    const st = r.mandant.einstellungen.kiSteuerung;
+    expect(st.leitungPause).toMatchObject({ aktiv: true, vonRolle: "leitung" });
+    expect(st.pause).toBeUndefined();
+    const { betrieb: _b, ...rest } = st;
+    await setzeSteuerung(rest);
+    await kontoSchreiben(laden(), ablageSchluessel("WZ19-AAAA-0019"), { name: "lj", bestand: RAUM, rolle: "leitung", person: "l1", betrieb: 0, mandantId: "m-a",
+      angelegt: "2026-01-01T00:00:00.000Z" });
+    const tj = (await anfrage("/api/anmelden", { rumpf: { zugangscode: "WZ19-AAAA-0019" } })).token;
+    expect(tj).toBeTruthy();
+    const leitungSperrt = (code) => anfrage("/api/zugang-sperren", { token: tj, rumpf: { code } });
+    await konto("WZ17-AAAA-0017", "j1");
+    const e = await leitungSperrt("WZ17-AAAA-0017");
+    expect(e.status, e.roh).toBe(200);
+    expect(await gesperrt("WZ17-AAAA-0017")).toBe(true);
+    const ein = await E.einladungAusstellen(laden(), { sitzung: SITZ, bestand: await bestandJetzt(), personId: "r4" });
+    expect(ein.ok, JSON.stringify(ein)).toBe(true);
+    /* Altbestand: die früher durch „ja“ gesetzte Pause liegt in `pause` (Stempel der Leitung) — Schutzwirkung unverändert */
+    await setzeSteuerung({ betriebsratFrage: { antwort: "ja", am: "2026-11-20T08:00:00.000Z", vonRolle: "leitung" },
+      pause: { aktiv: true, nr: 1, am: "2026-11-20T08:00:00.000Z", vonRolle: "leitung", vonPerson: "l1" } });
+    await konto("WZ18-AAAA-0018", "j2");
+    const e2 = await leitungSperrt("WZ18-AAAA-0018");
+    expect(e2.status, e2.roh).toBe(403);
+    expect(await gesperrt("WZ18-AAAA-0018")).toBe(false);
+  });
+});
