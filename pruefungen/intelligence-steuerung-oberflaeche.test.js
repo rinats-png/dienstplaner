@@ -93,6 +93,28 @@ describe("Prozessschalter an (nur im Test)", () => {
     expect(r.stand.pause.aktiv).toBe(false);
     expect(r.ereignisse.map((e) => e.art)).toEqual(["pause-aufgehoben"]);
   });
+  it("Leitung-Pause (auch die „ja“-Pause): angezeigt als pausiert; die Leitung hebt genau sie auf (Stempel), die Betriebsrat-Pause bleibt; der Betriebsrat kann zusätzlich pausieren", () => {
+    const LP = { aktiv: true, nr: 1, am: "2026-11-12T08:00:00.000Z", vonRolle: "leitung", vonPerson: "l1" };
+    const nurLeitung = { kiSteuerung: { ...STAND.kiSteuerung, pause: undefined, leitungPause: LP } };
+    delete nurLeitung.kiSteuerung.pause;
+    expect(rendere("leitung", "an", nurLeitung)).toContain("pausiert");
+    expect(knoepfe(rendere("leitung", "an", nurLeitung))).toContain(KI_STEUERUNG_TEXTE.pauseAufheben);
+    expect(knoepfe(rendere("betriebsrat", "an", nurLeitung))).toEqual([KI_STEUERUNG_TEXTE.pauseSetzen]);
+    const finde = (n) => {
+      if (!n || typeof n !== "object") return null;
+      if (Array.isArray(n)) { for (const k of n) { const r = finde(k); if (r) return r; } return null; }
+      if (n.props && n.props.children === KI_STEUERUNG_TEXTE.pauseAufheben && typeof n.props.onClick === "function") return n;
+      return n.props ? finde(n.props.children) : null;
+    };
+    const beide = { kiSteuerung: { ...STAND.kiSteuerung, pause: { aktiv: true, nr: 3, am: "2026-11-11T08:00:00.000Z", vonRolle: "betriebsrat", vonPerson: "r1" }, leitungPause: LP } };
+    const aufrufe = [];
+    finde(KiSteuerung({ sitz: sitz("leitung", beide), akt: { ...AKT, setzeKiSteuerung: (a) => aufrufe.push(a) }, prozess: "an" })).props.onClick();
+    expect(aufrufe).toEqual([{ leitungPause: { aktiv: false, am: LP.am, nr: 1 } }]);
+    const r = kiSteuerungAnwenden(kiSteuerungLesen(beide), aufrufe[0], { rolle: "leitung", person: "l1", betrieb: 0, mandantId: "m1" }, "2026-11-13T08:00:00.000Z");
+    expect(r.stand.leitungPause.aktiv).toBe(false);
+    expect(r.stand.pause).toEqual(beide.kiSteuerung.pause);
+    expect(r.ereignisse.map((e) => e.art)).toEqual(["leitungspause-aufgehoben"]);
+  });
   it("Betriebsrat: ausschließlich die Pause SETZEN (nie aufheben), kein Schalter", () => {
     const html = rendere("betriebsrat", "an");
     expect(knoepfe(html)).toEqual([]);                                 // pausiert: Aufheben nur durch die Leitung

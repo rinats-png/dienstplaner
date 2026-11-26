@@ -17,13 +17,15 @@
    - Leitung (Rolle „leitung“, nicht Demo): Hauptschalter, Schalter je Funktion, die Frage nach der
      Mitbestimmungsvertretung, die Pause (des Betriebsrats) AUFHEBEN (Wiederaktivierung) und eine EIGENE Pause
      (`leitungPause`) SETZEN und aufheben (Betreiberentscheidung 2026-11-26): ausdrücklich, ohne den Betreiberschalter
-     CENTRIC_KI_BR_PAUSE. ZWEI getrennte Pausen mit eigenem Stempel (`am`/`nr`/`vonRolle`): `pause` (Betriebsrat oder die
-     Antwort „ja“) und `leitungPause`. Intelligence ist pausiert, solange EINE aktiv ist; keine überschreibt oder hebt die
-     andere auf. Die besondere Konten-Sperre (Betriebsrat-Zugänge) löst NUR `pause` aus (kiBrPauseAktiv), nie die Leitungspause.
+     CENTRIC_KI_BR_PAUSE. ZWEI getrennte Pausen mit eigenem Stempel (`am`/`nr`/`vonRolle`): `pause` (Betriebsrat; im Altbestand
+     auch die frühere „ja“-Pause) und `leitungPause` (Leitung, auch die Antwort „ja“). Intelligence ist pausiert, solange EINE aktiv
+     ist; keine überschreibt oder hebt die andere auf. Die besondere Konten-Sperre (Betriebsrat-Zugänge) löst NUR `pause` aus
+     (kiBrPauseAktiv), nie die Leitungspause.
    - Betriebsrat: ausschließlich die Pause SETZEN — und nur, wenn der Betreiberschalter CENTRIC_KI_BR_PAUSE
      genau „true“ ist (Vorgabe AUS; der Aufrufer reicht ihn als `schalter` durch, dieses Modul liest keine Umgebung).
      Aus: der Betriebsrat schreibt nirgends, wie bisher.
-   - Die Antwort „ja“ auf die Frage setzt die Pause (Server, nicht die Anfrage); sie gilt, bis die Leitung sie aufhebt.
+   - Die Antwort „ja“ auf die Frage setzt die Leitung-Pause (Server, nicht die Anfrage; Betreiberentscheidung 2026-11-26, spät);
+     sie gilt, bis die Leitung sie aufhebt.
    - Alle anderen Rollen (Planung, Schichtverantwortung, Beschäftigte, Kunde, Betreiber, Demo): nie. Die Planung
      sieht den Stand, ändert ihn nicht.
    - Die normale Dienstplanung bleibt unberührt: Die Pause sperrt nur `intelligenceErlaubt`.
@@ -130,8 +132,9 @@ export function intelligenceEntscheidung(betrieb, funktion, rolle, o = {}) {
     if (s.pauseUngueltig || (s.pause && s.pause.aktiv === true) || s.leitungPauseUngueltig || (s.leitungPause && s.leitungPause.aktiv === true)) return nein("KI_PAUSIERT");
     if (!s.betrieb || s.betrieb.an !== true) return nein("KI_AUS");
     if (!s.betriebsratFrage) return nein("KI_AUS");
-    /* „Ja“: erst nach der ausdrücklichen Aufhebung der Pause durch die Leitung (Pause vorhanden und aufgehoben). */
-    if (s.betriebsratFrage.antwort === "ja" && (!s.pause || s.pause.aktiv !== false)) return nein("KI_PAUSIERT");
+    /* „Ja“: erst nach der ausdrücklichen Aufhebung einer Pause durch die Leitung (vorhanden und aufgehoben) — die „ja“-Pause liegt
+       heute in `leitungPause`, im Altbestand in `pause`; ohne jede aufgehobene Pause bleibt es gesperrt (fail closed). */
+    if (s.betriebsratFrage.antwort === "ja" && !((s.leitungPause && s.leitungPause.aktiv === false) || (s.pause && s.pause.aktiv === false))) return nein("KI_PAUSIERT");
     if (!hat(s.funktionen, funktion) || s.funktionen[funktion].an !== true) return nein("KI_AUS");
     return { erlaubt: true, code: "OK" };
   } catch {
@@ -225,10 +228,13 @@ export function kiSteuerungAnwenden(alt, absicht, sitzung, jetzt) {
       const vorher = stand.betriebsratFrage ? stand.betriebsratFrage.antwort : null;
       stand.betriebsratFrage = { antwort: f.antwort, ...stempel };
       ereignisse.push({ art: "frage", ziel: "betriebsrat", wert: f.antwort, ...stempel });
-      /* „Ja“ → keine Modellaufrufe, bis der Betriebsrat bestätigt (Pause). Das setzt der Server, nicht die Anfrage. */
-      if (f.antwort === "ja" && vorher !== "ja" && !(stand.pause && stand.pause.aktiv === true)) {
-        stand.pause = { aktiv: true, nr: nrVon(stand.pause) + 1, ...stempel };
-        ereignisse.push({ art: "pause-gesetzt", ziel: "einrichtung", wert: true, ...stempel });
+      /* „Ja“ → keine Modellaufrufe, bis die Leitung die Pause aufhebt. Das setzt der Server, nicht die Anfrage. Betreiberentscheidung
+         2026-11-26 (spät): Die durch die Leitung ausgelöste „ja“-Pause ist eine LEITUNG-PAUSE (`leitungPause`, eigener Stempel), keine
+         Betriebsrat-Pause — sie löst die Konten-Sperre nicht aus und lässt eine bestehende (auch aufgehobene) `pause` unberührt.
+         Eine ausdrücklich beschlossene stellvertretende Betriebsrat-Pause ist nicht modelliert (Entscheidung nötig, WP-I16-Nachweis). */
+      if (f.antwort === "ja" && vorher !== "ja" && !(stand.leitungPause && stand.leitungPause.aktiv === true)) {
+        stand.leitungPause = { aktiv: true, nr: nrVon(stand.leitungPause) + 1, ...stempel };
+        ereignisse.push({ art: "leitungspause-gesetzt", ziel: "einrichtung", wert: true, ...stempel });
       }
     }
   }
@@ -379,7 +385,7 @@ const brSchluessel = (personen) => new Set((Array.isArray(personen) ? personen :
   .map((p) => [p.id, p.status || "", p.austritt || "", p.anonym ? 1 : 0].join("|")));
 
 /**
- * Ist die Pause des Betriebsrats (`pause`, auch die durch die Antwort „ja“ gesetzte) aktiv? Nur sie löst die besondere
+ * Ist die Pause des Betriebsrats (`pause`; im Altbestand auch eine früher durch „ja“ gesetzte) aktiv? Nur sie löst die besondere
  * Konten-Sperre aus (Betreiberentscheidung 2026-11-26), nicht die eigene Pause der Leitung. Ein vorhandener, aber
  * unlesbarer Pausenstand zählt als aktiv (fail closed).
  */

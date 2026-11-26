@@ -84,10 +84,10 @@ export function KiSteuerung({ sitz, akt, prozess = KI_STEUERUNG_PROZESS }) {
   const leitung = rolle === "leitung";
   const br = rolle === "betriebsrat";
   const frage = t.betriebsratFrage ? t.betriebsratFrage.antwort : null;
-  return (
-    <Card style={{ marginBottom: 20 }}>
-      <CardHead right={<Pill tone={t.betrieb.an && !t.pause.aktiv ? "ok" : "warn"}>
-        {t.pause.aktiv ? T.pauseAktiv : t.betrieb.an ? T.an : T.aus}</Pill>}>{T.titel}</CardHead>
+  const lp = t.leitungPause && t.leitungPause.aktiv ? t.leitungPause : null, pausiert = t.pause.aktiv || !!lp; // Leitung-Pause, auch „ja“
+  return (<Card style={{ marginBottom: 20 }}>
+      <CardHead right={<Pill tone={t.betrieb.an && !pausiert ? "ok" : "warn"}>
+        {pausiert ? T.pauseAktiv : t.betrieb.an ? T.an : T.aus}</Pill>}>{T.titel}</CardHead>
       <div style={{ padding: 22, fontSize: 13.5, color: C.dim, lineHeight: 1.55, maxWidth: 760, overflowWrap: "anywhere" }}>
         <section aria-label={T.haupt} style={{ marginBottom: 18 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
@@ -113,16 +113,16 @@ export function KiSteuerung({ sitz, akt, prozess = KI_STEUERUNG_PROZESS }) {
         </section>
 
         <section aria-label={T.pause} style={{ marginBottom: 18 }}>
-          <div><strong style={{ color: C.text }}>{T.pause}: {t.pause.aktiv ? T.pauseAktiv : T.pauseAus}</strong></div>
-          <div style={NUM}>{wer(t.pause)}</div>
+          <div><strong style={{ color: C.text }}>{T.pause}: {pausiert ? T.pauseAktiv : T.pauseAus}</strong></div>
+          <div style={NUM}>{wer(lp || t.pause)}</div>
           <div>{br ? T.pauseHinweisBetriebsrat : leitung ? T.pauseHinweisLeitung : T.pauseHinweisAndere}</div>
           {br && !t.pause.aktiv && (
             <div style={{ marginTop: 8 }}>
               <Btn style={ZIEL} onClick={() => akt.setzeKiPause(true)}>{T.pauseSetzen}</Btn>
             </div>)}
-          {leitung && t.pause.aktiv && (
+          {leitung && pausiert && (/* zuerst genau die Leitung-Pause (Stempel), sonst die Pause des Betriebsrats; nie beide mit einem Klick */
             <div style={{ marginTop: 8 }}>
-              <Btn style={ZIEL} kind="primary" onClick={() => akt.setzeKiSteuerung({ pause: { aktiv: false, am: t.pause.am, nr: t.pause.nr ?? 0 } })}>{T.pauseAufheben}</Btn>
+              <Btn style={ZIEL} kind="primary" onClick={() => akt.setzeKiSteuerung(lp ? { leitungPause: { aktiv: false, am: lp.am, nr: lp.nr ?? 0 } } : { pause: { aktiv: false, am: t.pause.am, nr: t.pause.nr ?? 0 } })}>{T.pauseAufheben}</Btn>
             </div>)}
         </section>
 

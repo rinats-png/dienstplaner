@@ -217,15 +217,19 @@ describe("PUT /api/bestand: Steuerung je Rolle", () => {
         expect(e2.status, w).toBe(403);
       }
     } finally { process.env[SCHALTER] = "true"; }
-    /* Frage „ja“ setzt die Pause auch ohne den Schalter; die Leitung hebt sie wieder auf */
+    /* Frage „ja“ setzt auch ohne den Schalter eine Leitung-Pause (Betreiberentscheidung 2026-11-26, spät), nicht die Pause des
+       Betriebsrats (die bleibt, wie sie war); die Leitung hebt sie wieder auf */
     delete process.env[SCHALTER];
     try {
+      const vorher = ki(await gespeichert()).pause;
       await schreibe("l1", (m) => setze({ ...ki(m), betriebsratFrage: { antwort: "ja" } })(m));
       const g = await gespeichert();
-      expect(ki(g).pause.aktiv).toBe(true);
-      const e = await schreibe("l1", (m) => setze({ ...ki(m), pause: { aktiv: false, am: ki(g).pause.am, nr: ki(g).pause.nr } })(m));
+      expect(ki(g).leitungPause.aktiv).toBe(true);
+      expect(ki(g).pause).toEqual(vorher);
+      const e = await schreibe("l1", (m) => setze({ ...ki(m), leitungPause: { aktiv: false, am: ki(g).leitungPause.am, nr: ki(g).leitungPause.nr } })(m));
       expect(e.status, e.roh).toBe(200);
-      expect(ki(await gespeichert()).pause.aktiv).toBe(false);
+      expect(ki(await gespeichert()).leitungPause.aktiv).toBe(false);
+      expect(ki(await gespeichert()).pause).toEqual(vorher);
     } finally { process.env[SCHALTER] = "true"; }
   });
   it("keine neue Route: /api/ki-steuerung und /ki/steuerung gibt es nicht", async () => {
