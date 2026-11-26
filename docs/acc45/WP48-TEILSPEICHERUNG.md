@@ -1288,3 +1288,48 @@ node werkzeug/wp48-messung.mjs --abschluss --personen 400 --monate 36   # Monats
 
 Gelaufen zum Entwurf: `--ohne-ablage` über die ganze Matrix sowie mit Ablage 150 × 12 (zweimal) und 60 × 12. Nicht
 gelaufen: die Produktprüfungen (kein Produktcode geändert).
+
+### 7.10 WP-48.9 für den aktiven Weg (Branch `acc45/release/wp-48-9-aktiver-weg`, Basis `integration/release-v4` 7d73f2be)
+
+Stand 2026-11-26. Anlass: G8/G9-Isolationsanalyse (WP-48 „B: nur nach Behebung"). Die Schalterteile (Teilweg, Löschlauf, segmentweiser
+Abschluss) sind bei AUS inert; aktiv ausgeliefert werden die neue Ablage (#87), der Voll-PUT mit `zusammenfuehren` (#224), die Kette
+(#341, `kette.mjs`, ohne Schalter) und der Umbau des Monatsabschlusses (#322/#351).
+
+**Klassifikation des Pakets:** WP-48.9 ist in zwei Teile zerlegt.
+(1) **Aktiver Weg, ohne Schalter: technisch ausführbar und hiermit umgesetzt** (kein Blocker, keine Entscheidung offen).
+(2) **Staging-Messmatrix (60/150/400 × 12/24/36 über HTTP) und Abnahmekriterien 4.4 Nr. 1–5, 7: nicht ausführbar auf dieser Maschine**
+— die Messung gehört nach 4.4 und Betreiberlage O2 in die temporäre isolierte CI-Testumgebung (synthetisch, ohne Dauerdienst). Der Laptop
+ist durch parallele Arbeit stark ausgelastet (Zeitüberschreitungen in langen Prüfungen), Zeiten wären kein Beleg. Das Paket bleibt
+deshalb `IN_PROGRESS`, `stagingGeprueft` bleibt offen. Es ist **kein** Beschluss nötig, nur der Lauf in der Testumgebung.
+
+**Neu:** `pruefungen/wp48-9-aktiver-weg.test.js` (28 Tests, Schalter ausdrücklich aus, in `pruefung:datenintegritaet` verdrahtet):
+1. *Fehlerfall = Abweisen statt Teilzustand:* Nach jeder Absage des Voll-PUT ist die Platte (Kern, Scherben, Zeiger, Journal, Metadaten)
+   unverändert, auch wenn neben dem Verbotenen eine erlaubte Planänderung gesendet wurde. Fälle: ohne ETag (409), veralteter ETag mit
+   Überschneidung (409, fremder Wert bleibt), Stempel verändert/gelöscht (403), Ist-Zeit/eingefrorenes Ist/neue Ist-Zeit im
+   abgeschlossenen Monat (403), doppelte Betriebskennung (422); je Leitung, Planung, Kunde.
+2. *Mandantengrenze:* Ändern oder Weglassen eines zweiten Betriebs im Raum ändert ihn nicht (Leitung, Planung, Kunde).
+3. *Weglassen löscht nichts:* `einstempeln`, `erfassung`, `monatsabschluss`, `istEingefroren` bleiben.
+4. *Schalter aus:* `POST /api/bestand/teile` und `/api/loeschlauf` antworten 404, Platte unverändert.
+
+**Rot → grün:** Die Prüfung war beim ersten Lauf grün auf dem unveränderten Produktcode (kein Produktfehler gefunden, kein Produktcode
+geändert); die Wirksamkeit ist durch Mutanten belegt (`werkzeug/wp48-mutanten.mjs`, neue Gruppe W, jeder einzeln, Lauf in Kopie des Worktrees):
+
+| Mutant | Schwäche | Ergebnis |
+|---|---|---|
+| W1 | Voll-PUT ohne Stempel-Integrität | getötet |
+| W2 | Voll-PUT ohne Monatsabschluss-Sperre | getötet |
+| W3 | Voll-PUT ohne ETag auf vorhandenem Bestand erlaubt | getötet |
+| W4 | doppelte Betriebskennung nicht abgewiesen | getötet |
+| W5 | Kette: Abschlussprüfung `a === n` zu locker | getötet |
+| W6 | Kette: Abschlussprüfung `a[k] === n[k]` zu locker | getötet |
+| W7 | Kette: Stempel „unverändert" zu locker | getötet |
+| W9 | Teilweg-Schalter immer an | getötet |
+| (W8) | `zusammenfuehren` verliert nicht ausgelieferte Betriebe | **kein Mutant**: für Leitung/Planung/Kunde gibt es eine zweite Schicht (Ersetzen am Fundort, `rechte.mjs` ~1826); die Zeile ist dort nicht allein tragend. Der Test hält das Ergebnis trotzdem fest. |
+
+**Bestehende Prüfungen des aktiven Wegs** (unverändert, Lauf 2026-11-26 auf dieser Basis): `wp48-rundweg` 31/31, `wp48-speicherkern` 44/44.
+Die Kette ist durch `wp48-6-kette` (Differenzialtest alt gegen neu) abgedeckt; Läufe der langen Dateien siehe Bericht.
+
+**Offen (nicht in diesem Paket lösbar):** Staging-Messmatrix und Kriterien 4.4 (Laufzeit p95, Haltezeit, Event-Loop, `/gesund`,
+Plattengrößen), `ablage-pruefen` auf einer Sicherungskopie vor dem Einschalten (Review PR #322, Auflage 4), 48.8 (optional), Einschalten der
+Schalter (gesonderte Betreiberfreigabe). Folge für die Annahme: Der Schalterteil ist mit diesem Nachweis, der aktive Anteil ist nach
+den Läufen oben belegt; die Leistungsfrage bei großen Betrieben (Haltezeit voller Abschluss 43,9 s bei 400 × 36) bleibt ohne Staging offen.

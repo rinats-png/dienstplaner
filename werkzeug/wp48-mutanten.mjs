@@ -33,6 +33,7 @@ const KERN = ["pruefungen/wp48-speicherkern.test.js"];
 const RUNDWEG = ["pruefungen/wp48-rundweg.test.js"];
 const TEILWEG = ["pruefungen/wp48-teilweg.test.js"];
 const ABSCHLUSS = ["pruefungen/wp48-7-abschluss-segmentweise.test.js"];
+const AKTIV = ["pruefungen/wp48-9-aktiver-weg.test.js"];
 
 /** @type {Array<{id: string, was: string, datei: string, ersetzungen: Array<[string, string]>, pruefungen: string[]}>} */
 export const MUTANTEN = [
@@ -171,6 +172,24 @@ export const MUTANTEN = [
     ersetzungen: [["        if (teilM && !(\"status\" in r) && !teileM) {", "        if (false && teilM && !(\"status\" in r) && !teileM) {"]], pruefungen: ABSCHLUSS },
   { id: "A10", was: "Eindeutigkeit nur der eigenen Betriebskennung geprüft (zwei Betriebe ohne Kennung → 500)", datei: "server/lib/abschluss-segmentweise.mjs",
     ersetzungen: [["    if (new Set(ids).size !== ids.length) return null;", "    if (ids.filter((x) => x === m.id).length !== 1) return null;"]], pruefungen: ABSCHLUSS },
+  /* --- WP-48.9: aktiver Weg ohne Schalter (Voll-PUT, zusammenfuehren, Kette) --- */
+  { id: "W1", was: "Voll-PUT: Stempel-Integrität nicht geprüft", datei: "server/funktionen/daten.mjs",
+    ersetzungen: [["const w = stempelWiderspruch(altNachId.get(id) || null, gesendet,", "const w = false && stempelWiderspruch(altNachId.get(id) || null, gesendet,"]], pruefungen: AKTIV },
+  { id: "W2", was: "Voll-PUT: Monatsabschluss-Sperre nicht geprüft", datei: "server/funktionen/daten.mjs",
+    ersetzungen: [["const wa = abschlussWiderspruch(altNachId.get(id) || null, gesendet, stempelO);", "const wa = false && abschlussWiderspruch(altNachId.get(id) || null, gesendet, stempelO);"]], pruefungen: AKTIV },
+  { id: "W3", was: "Voll-PUT: ohne ETag auf vorhandenem Bestand erlaubt (stilles Überschreiben)", datei: "server/funktionen/daten.mjs",
+    ersetzungen: [["if (!etagGueltig && jetzt && jetzt.bestand) {", "if (false) {"]], pruefungen: AKTIV },
+  { id: "W4", was: "Voll-PUT: doppelte Betriebskennung nicht abgewiesen", datei: "server/funktionen/daten.mjs",
+    ersetzungen: [["const kennungen = mandantenKennungenGeprueft(b.mandanten);", "const kennungen = null;"]], pruefungen: AKTIV },
+  { id: "W5", was: "Kette: Abschlussprüfung überspringt jedes Feld mit gleichem Typ (a === n zu locker)", datei: "server/lib/monatsabschluss.mjs",
+    ersetzungen: [["if (kurz && a === n) continue;", "if (kurz && a && n) continue;"]], pruefungen: AKTIV },
+  { id: "W6", was: "Kette: Abschlussprüfung überspringt jeden Schlüssel (a[k] === n[k] zu locker)", datei: "server/lib/monatsabschluss.mjs",
+    ersetzungen: [["if (kurz && a[k] === n[k]) return;", "if (kurz) return;"]], pruefungen: AKTIV },
+  { id: "W7", was: "Kette: Stempel gelten als unverändert, sobald beide Objekte sind", datei: "server/lib/stempelintegritaet.mjs",
+    ersetzungen: [["const stempelUnveraendert = (an, e, a) => an && e === a && objekt(a)", "const stempelUnveraendert = (an, e, a) => an && objekt(e) && objekt(a)"]], pruefungen: AKTIV },
+  /* W8 (rechte.mjs: nicht ausgelieferte Betriebe bleiben bestehen) lebt für Leitung/Planung/Kunde: zweite Schutzschicht (Ersetzen am Fundort, rechte.mjs ~1826) — äquivalent, kein Mutant. */
+  { id: "W9", was: "Teilweg-Schalter immer an (Vorgabe aus verletzt)", datei: "server/lib/schalter.mjs",
+    ersetzungen: [["export const teilwegAn = () => process.env.CENTRIC_TEILSPEICHERUNG === \"true\";", "export const teilwegAn = () => true;"]], pruefungen: AKTIV },
 ];
 
 function argWert(name) {
