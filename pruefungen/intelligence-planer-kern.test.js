@@ -438,6 +438,61 @@ describe("8. Posten: Bestandspersonen bleiben unverändert (Review #572 A1)", ()
     expect(a.offen.every((x) => x.grund === undefined)).toBe(true);
     expect(m).toEqual(vorher);
   }, 600000);
+  /** Delta-Review #579 B-1: Befunde ab Achtung (ohne Vorgaben) im Endstand, die im Bestand nicht bestanden — für JEDE Person mit Dienst
+      (auch die eingeteilten selbst und Personen mit unverändertem Dienst), frisch auf dem fertigen Stand. */
+  const neueHarte = (m, r) => {
+    const fertig = { ...m, abweichungen: r.abweichungen };
+    const opt = () => ({ vorgabenBudget: neuesVorgabenBudget(0), vorgabenAutomatisch: false });
+    const harte = (st, p, t, da) => F.hindernisBefunde(st, p, t, da, opt()).filter((b) => stufeRang(b.stufe) >= 2 && !String(b.regel).startsWith("vorgabe")).map((b) => `${b.regel}|${b.text}`);
+    const l = [];
+    for (const t of TAGE) for (const p of m.personen) {
+      const id = F.personTag(fertig, p, t).dienstId;
+      if (!id) continue;
+      const da = m.dienstarten.find((x) => x.id === id);
+      if (!da) continue;
+      const alt = F.personTag(m, p, t).dienstId === id ? new Set(harte(m, p, t, da)) : new Set();
+      for (const k of harte(fertig, p, t, da)) if (!alt.has(k)) l.push(`${p.id}|${t}|${k.split("|")[0]}`);
+    }
+    return l;
+  };
+  for (const soll of [1, 2]) it(`planeMonat (Delta-Review #579 B-1, Posten Soll ${soll}): Personen mit keinAlleindienst bleiben nach einer Verdrängung nicht allein auf dem Posten`, () => {
+    const m0 = mitLuecken("demo1");
+    const po = m0.dienstarten.find((x) => x.posten && x.quelle);
+    const q = m0.qualifikationen.map((x) => x.id).find((id) => { const n = m0.personen.filter((p) => p.qualifikationen.includes(id)).length; return n >= 5 && n < 40; });
+    po.mindest = { mo_do: soll, fr: soll, sa: soll, so: soll };
+    po.mindestQual = { [q]: 1 };
+    for (const p of m0.personen) if (p.qualifikationen.includes(q)) p.einschraenkungen = { ...(p.einschraenkungen || {}), keinAlleindienst: true };
+    const m = structuredClone(m0);
+    const r = F.planeMonat(structuredClone(m), YM, { maxProPerson: 3 });
+    /* „folge“ (Dienste in Folge DAVOR) ist keine Folge der Verdrängung: Die Regel blickt nur rückwärts; eine eigene Einteilung VOR einem
+       bestehenden Dienst derselben Person verlängert deren Folge (bestehendes Verhalten von planeMonat, im Nachweis als Rückfrage).
+       Ausgenommen nur, wenn die Person in den Tagen davor wirklich eine eigene Einteilung hat — sonst zählt es. */
+    const eigeneVor = (pid, t) => r.gesetzt.some((g) => g.personId === pid && g.datum < t && g.datum >= add(t, -m.einstellungen.maxFolge - 1));
+    const neu = neueHarte(m, r).filter((x) => { const [pid, t, regel] = x.split("|"); return !(regel === "folge" && eigeneVor(pid, t)); });
+    expect(neu, "neue Befunde ab Achtung im Endstand (u. a. keinAlleindienst)").toEqual([]);
+    expect(verdraengtGeprueft(m, r).filter((x) => x.bef.length)).toEqual([]);
+    expect(pruefwegFehler(m, r)).toEqual([]);
+  }, 600000);
+  it("planeMonat (B-1) Aufwand: die Prüfung der Dienstmitglieder ist angemeldet — reicht er nur für Tagesvergleich und Verdrängten, wird nicht eingeteilt", () => {
+    const m0 = structuredClone(B.find(([n]) => n.startsWith("demo1"))[1]);
+    const po = m0.dienstarten.find((x) => x.posten && x.quelle);
+    const q = m0.qualifikationen.map((x) => x.id).find((id) => { const n = m0.personen.filter((p) => p.qualifikationen.includes(id)).length; return n >= 5 && n < 40; });
+    po.mindest = { mo_do: 1, fr: 1, sa: 1, so: 1 };
+    po.mindestQual = { [q]: 1 };
+    const m = structuredClone(m0);
+    const P = m.personen.length;
+    /* Vorbedingung: ohne Grenze verdrängt schon die erste Einteilung des Monats jemanden. */
+    const voll = F.planeMonat(structuredClone(m), YM, { maxProPerson: 3 });
+    expect(voll.gesetzt.length).toBeGreaterThan(0);
+    const erste = voll.gesetzt[0];
+    expect(erste.grund.includes("verdrängt "), "erste Einteilung verdrängt").toBe(true);
+    /* Tagesvergleich (P) + eine verdrängte Person (1) reichen, die Mitglieder (je 2) nicht: nicht eingeteilt, Grund „aufwand“. */
+    const r = F.planeMonat(structuredClone(m), YM, { maxProPerson: 3, verdraengungAufwand: P + 1 });
+    expect(r.gesetzt).toEqual([]);
+    expect(r.offen.some((x) => x.grund === "aufwand")).toBe(true);
+    /* Obergrenze (C-3): größere Werte gelten als die Standardgrenze. */
+    expect(F.planeMonat(structuredClone(m), YM, { maxProPerson: 3, verdraengungAufwand: 10 * F.PLANEMONAT_VERDRAENGUNG_AUFWAND })).toEqual(voll);
+  }, 600000);
   it("planeMonat Messung (demo1, Posten mit mindestQual): mit Verdrängungsprüfung höchstens 2 × derselbe Lauf ohne Posten-Kennzeichen + 5 s", () => {
     const { m } = szenario();
     const ohneP = structuredClone(m);

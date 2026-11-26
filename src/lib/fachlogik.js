@@ -1557,6 +1557,9 @@ export function urlaubsRang(m, w) {
 /* --------------------------- Planungsassistent --------------------------- */
 /** Aufwand der Verdrängungsprüfung in planeMonat je Aufruf (Personenprüfungen; Review #577). `grenzen.verdraengungAufwand` setzt ihn je Aufruf (Prüfungen). */
 export const PLANEMONAT_VERDRAENGUNG_AUFWAND = 1000000;
+/* Budget ohne Rechenleistung (0) für die Mitgliederprüfung der Verdrängung: Vorgaben werden dort nicht gerechnet (sie hängen nur am eigenen,
+   unveränderten Plan); das eine Monatsbudget von planeMonat bleibt das einzige, das Arbeit für Vorgaben leistet. */
+const leeresVorgabenBudget = () => neuesVorgabenBudget(0);
 /**
  * Füllt offene Stellen eines Monats automatisch.
  * Nutzt dieselbe Bewertung wie die Ersatzsuche und meldet, was offen bleibt.
@@ -1592,18 +1595,44 @@ export function planeMonat(m, ym, grenzen = {}) {
      Automatik: Muss ungeprüft = Achtung). Ab Achtung, ohne Dienst danach oder nicht prüfbar: die Einteilung wird NICHT gesetzt, die Stelle
      bleibt offen mit Grund (fail-closed). Hinweise (Soll) stehen beim Grund der Einteilung. Ohne Posten ändert eine Einteilung niemand
      anderen: keine Prüfung, kein Aufwand, Ergebnis wie bisher. Aufwand: EIN Budget je Aufruf in Personenprüfungen (Vergleich des Tags
-     = P, Prüfung einer verdrängten Person = 1), vor der Arbeit angemeldet; reicht es nicht, wird nicht eingeteilt (Grund „aufwand“). */
+     = P, Prüfung einer verdrängten Person = 1), vor der Arbeit angemeldet; reicht es nicht, wird nicht eingeteilt (Grund „aufwand“).
+     Delta-Review #579 B-1: Eine Verdrängung ändert auch, WER in einem Dienst steht (Posten: die eingeteilte Person rückt nach, die
+     verdrängte geht). Davon hängen Befunde von Personen mit UNVERÄNDERTEM Dienst ab (keinAlleindienst über alleinOhnePartner; Branchen-
+     hinweise). Deshalb werden bei einer Verdrängung zusätzlich alle Personen jedes Dienstes geprüft, dessen Besetzung am Tag sich durch
+     diese Einteilung geändert hat (auch die eingeteilte Person selbst): Befunde ab Achtung auf dem neuen Stand, die auf dem Stand davor
+     nicht bestanden, lehnen die Einteilung ab (Grund „verdraengung“). Vorgaben gehen dort nicht ein: Sie hängen nur vom eigenen Plan der
+     Person ab, der unverändert ist (die eingeteilte Person wurde dafür schon in der Ersatzsuche geprüft); eigenes leeres Budget ohne
+     Automatik, kein Verbrauch des Monatsbudgets. Kosten: 2 je Person (vorher, nachher), vorab angemeldet. */
   const mitPosten = m.dienstarten.some((x) => x && x.posten);
   const P = Math.max(1, m.personen.length);
-  const aufwandGrenze = Number.isInteger(grenzen.verdraengungAufwand) && grenzen.verdraengungAufwand >= 0 ? grenzen.verdraengungAufwand : PLANEMONAT_VERDRAENGUNG_AUFWAND;
+  const aufwandGrenze = Number.isInteger(grenzen.verdraengungAufwand) && grenzen.verdraengungAufwand >= 0 ? Math.min(grenzen.verdraengungAufwand, PLANEMONAT_VERDRAENGUNG_AUFWAND) : PLANEMONAT_VERDRAENGUNG_AUFWAND;
   let aufwandRest = aufwandGrenze;
   const leisten = (k) => { if (aufwandRest < k) { aufwandRest = -1; return false; } aufwandRest -= k; return true; };
   const bestand = { ...m, abweichungen: { ...m.abweichungen } };
   const eigene = new Set();
   /** null = niemand verdrängt oder alle Verdrängten bestehen; sonst der Grund, weshalb die Einteilung nicht gesetzt wird. */
-  const verdraengungPruefen = (stand, d, hinweise) => {
+  const ohneVorgaben = () => ({ vorgabenBudget: leeresVorgabenBudget(), vorgabenAutomatisch: false });
+  /** Befunde ab Achtung ohne Vorgaben als Schlüssel (Regel und Text). */
+  const harte = (st, p, d, dx) => new Set(hindernisBefunde(st, p, d, dx, ohneVorgaben())
+    .filter((x) => stufeRang(x.stufe) >= 2 && !String(x.regel).startsWith("vorgabe")).map((x) => `${x.regel}|${x.text}`));
+  const verdraengungPruefen = (stand, vorher, d, hinweise) => {
     const liste = [];
     if (!verdraengt(bestand, stand, d, eigene, liste)) return null;
+    /* B-1: Personen in Diensten, deren Besetzung sich durch diese Einteilung geändert hat (ohne die Verdrängten, die unten voll geprüft werden). */
+    const verdrId = new Set(liste.map((v) => v.person.id));
+    const bAlt = besetzung(vorher, d), bNeu = besetzung(stand, d);
+    const mitglieder = [];
+    for (const dx of m.dienstarten) {
+      const a = (bAlt[dx.id] ? bAlt[dx.id].personen : []).map((x) => x.id).sort().join("|");
+      const nl = bNeu[dx.id] ? bNeu[dx.id].personen : [];
+      if (a === nl.map((x) => x.id).sort().join("|")) continue;
+      for (const x of nl) if (!verdrId.has(x.id)) mitglieder.push({ person: x, da: dx });
+    }
+    if (!leisten(2 * mitglieder.length)) return "aufwand";
+    for (const { person, da: dx } of mitglieder) {
+      const alt = harte(vorher, person, d, dx);
+      for (const k of harte(stand, person, d, dx)) if (!alt.has(k)) return "verdraengung";
+    }
     const neu = [];
     for (const v of liste) {
       const daN = v.nachher ? m.dienstarten.find((x) => x.id === v.nachher) : null;
@@ -1641,7 +1670,7 @@ export function planeMonat(m, ym, grenzen = {}) {
         vorgabenPlanFortschreiben(ctx.vorgabenBudget, vorher, arbeit, [{ personId: beste.person.id, tag: d }]);
         eigene.add(schluessel);
         const hinweiseVerdraengt = [];
-        const pruef = mitPosten ? verdraengungPruefen(arbeit, d, hinweiseVerdraengt) : null;
+        const pruef = mitPosten ? verdraengungPruefen(arbeit, vorher, d, hinweiseVerdraengt) : null;
         if (pruef) {
           /* Durchgefallen oder nicht prüfbar: diese Einteilung NICHT setzen (fail-closed), die Stelle bleibt offen mit Grund.
              Der alte Stand gilt weiter; seine Aggregate kommen zurück (dieser Tag wird nachgelesen). */
