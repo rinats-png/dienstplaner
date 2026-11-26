@@ -342,18 +342,18 @@ export function Einstellungen({ sitz, akt, gehZu }) {
         })}
       </Card>}
 
-      {/* ------------------- Nur für die Leitung ----------------------- */}
-      {sitz.mandant && darf(sitz, "mandant.edit") && (
+      {/* Leitung: Karte wie der Server (SICHERUNG_ROLLEN), Verweise mit org.edit wie die Navigation */}
+      {sitz.mandant && SP.angemeldet() && darfSicherungenSehen(serverRolle) && (
         <Card>
           <CardHead>Für den Betrieb</CardHead>
-          <Zeile titel="Arbeitszeitregeln, Standorte, Dienstarten"
+          {darf(sitz, "org.edit") && <Zeile titel="Arbeitszeitregeln, Standorte, Dienstarten"
             text="Betriebliche Festlegungen stehen getrennt — sie gelten für alle, nicht nur für dich.">
             <Btn size="sm" onClick={() => gehZu("betrieb")}>Zum Betrieb</Btn>
-          </Zeile>
-          <Zeile titel="Datenmitnahme"
+          </Zeile>}
+          {darf(sitz, "org.edit") && <Zeile titel="Datenmitnahme"
             text="Alle Daten als CSV, jederzeit, ohne Gebühr.">
             <Btn size="sm" onClick={() => gehZu("mitnahme")}>Öffnen</Btn>
-          </Zeile>
+          </Zeile>}
           <Zeile titel="Sicherung anlegen"
             text="Legt eine Kopie des heutigen Standes an. Zurückspielen kann die Leitung unten unter „Sicherungen“.">
             <Btn size="sm" onClick={async () => { if (await akt.sicherungAnlegen()) melde("Sicherung angelegt."); setSicherungsRunde((n) => n + 1); }}>
