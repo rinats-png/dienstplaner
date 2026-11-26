@@ -53,7 +53,7 @@
 
 import { raeumen, vorschau, berichtstext, aufbewahrungFehler } from "./aufbewahrung.mjs";
 import { bestandLesenStreng, bestandSchreiben, unterRaumsperre } from "./bestand.mjs";
-import { kontingent, markeNeu } from "./sicherungen.mjs";
+import { kontingent, sicherungAnlegen } from "./sicherungen.mjs";
 import { protokoll, spurAufraeumen } from "./schutz.mjs";
 import { heuteBerlin } from "./zeiterfassung.mjs";
 import { bestaetigungEntfernen } from "./mailbestaetigung.mjs";
@@ -197,8 +197,8 @@ async function lauf(store, { jetzt, spur, modus, vermerk }) {
           if (berichte.length) {
             /* Schutzsicherung vor dem löschenden Schreiben — wie im PUT-Pfad
                bei auffälligem Verlust (daten.mjs). */
-            await store.setJSON(`sicherung:${raum}:${markeNeu(jetzt)}`, g.bestand,
-              { metadata: { zeit: jetzt.toISOString(), durch: "automatisch vor dem Datenschutzlauf",
+            await sicherungAnlegen(store, raum, g.bestand,
+              { jetzt, metadata: { zeit: jetzt.toISOString(), durch: "automatisch vor dem Datenschutzlauf",
                 automatisch: "ja" } });
             const erg = await bestandSchreiben(store, raum, { ...g.bestand, mandanten },
               { erwarteterStand: g.stand, durch: "Löschlauf (Aufbewahrungsfristen)" });

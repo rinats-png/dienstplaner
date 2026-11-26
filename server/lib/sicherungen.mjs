@@ -45,12 +45,44 @@ const PERSON_GEHEIMNISSE = ["kalenderGeheim", "kalenderVerweis", "kalenderStand"
   "pushSchluessel", "zustellung"];
 
 /** Zeitmarke einer Sicherung: Datum, Uhrzeit, vier Zufallsziffern.
-    Die Ziffern halten zwei Sicherungen derselben Sekunde auseinander. */
-export function markeNeu(jetzt = new Date(), zufall = Math.random) {
+    Die Ziffern halten zwei Sicherungen derselben Sekunde auseinander —
+    allein aber nicht sicher (1:10 000, CI-Check #577): Angelegt wird deshalb
+    nur über sicherungAnlegen (unten). `versuch` rückt die Ziffern weiter. */
+export function markeNeu(jetzt = new Date(), zufall = Math.random, versuch = 0) {
   const zeit = jetzt.toISOString().slice(0, 19).replace(/[:T]/g, "-");
-  return `${zeit}-${String(Math.floor(zufall() * 10000)).padStart(4, "0")}`;
+  const ziffern = (Math.floor(zufall() * 10000) + versuch) % 10000;
+  return `${zeit}-${String(ziffern).padStart(4, "0")}`;
 }
 export const MARKE = /^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}(-\d{4})?$/;
+
+/** Wie oft bei einer belegten Marke neu gebildet wird, bevor das Anlegen scheitert. */
+export const MARKE_VERSUCHE = 50;
+
+/**
+ * Eine Sicherung unter `sicherung:<raum>:<marke>` anlegen — nie über eine
+ * vorhandene. Bis November 2026 schrieben alle Stellen mit setJSON: Zwei
+ * Sicherungen eines Raums in derselben Sekunde mit gleichen Zufallsziffern
+ * überschrieben einander still (CI-Check #577). Jetzt atomar über
+ * setJSONWennNeu (ablage.mjs: link() → EEXIST, auch zwischen Prozessen); ist
+ * die Marke belegt, wird eine neue gebildet (gleiche Sekunde, Ziffern rücken
+ * weiter), höchstens `versuche` Mal — danach Fehler statt Überschreiben.
+ * Gibt die Marke zurück.
+ * @param {{ setJSONWennNeu?: Function }} store
+ * @param {string} raum
+ * @param {any} daten
+ * @param {{ metadata?: object, jetzt?: Date, zufall?: () => number, versuche?: number }} [o]
+ * @returns {Promise<string>}
+ */
+export async function sicherungAnlegen(store, raum, daten,
+  { metadata = {}, jetzt = new Date(), zufall = Math.random, versuche = MARKE_VERSUCHE } = {}) {
+  if (!store || typeof store.setJSONWennNeu !== "function")
+    throw new Error("Sicherung nicht angelegt: Ablage ohne atomares Anlegen.");
+  for (let versuch = 0; versuch < versuche; versuch++) {
+    const marke = markeNeu(jetzt, zufall, versuch);
+    if (await store.setJSONWennNeu(`sicherung:${raum}:${marke}`, daten, { metadata })) return marke;
+  }
+  throw new Error(`Sicherung nicht angelegt: ${versuche} Marken dieser Sekunde sind belegt (nichts überschrieben).`);
+}
 
 /** Der Betrieb dieser Sitzung im gespeicherten Bestand — oder null. */
 export function eigenerBetrieb(bestand, sitzung) {
