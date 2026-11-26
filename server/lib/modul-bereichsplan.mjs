@@ -18,7 +18,7 @@
    BEREICH-BESETZUNG-01), nie eine Sperre; nur bei aktivem Modul.
    Rein: keine Ablage, keine Uhr.
    ========================================================================== */
-import { modulAktiv, BRANCHENMODULE, BEREICH_PROTOKOLL_ART, BEREICH_ARCHIV_ART } from "./branchenmodule.mjs";
+import { modulAktiv, BRANCHENMODULE, BEREICH_PROTOKOLL_ART, BEREICH_ARCHIV_ART, BEREICH_LUECKE_ART } from "./branchenmodule.mjs";
 import { REGELN_BRANCHEN, alsEinteilungsBefund } from "./branchenkatalog.mjs";
 
 export const BEREICH_GRENZEN = Object.freeze({ bereicheJeEinheit: 50, planEintraege: 200_000, aenderungenSchicht: 500, tageSpanne: 731,
@@ -366,8 +366,9 @@ export function bereichsprotokollAnhaengen(einstellungen, eintrag, { grenzen = B
    `rolle` stammen von der Schichtverantwortung. Risikogerecht und fail-open (WP19-MODULPLAN.md 17.1, L1–L10): Das Protokoll hindert
    Leitung und Planung NIE am Speichern. Mehr als `jeSpeichern` Zuordnungen oder mehr als `eintragBytes` in einem Speichern →
    ein verdichteter Eintrag (Anzahl, Prüfsumme der Einzelliste, keine Einzelwerte). Eigenes Kontingent (`eintraege`/`gesamtBytes`
-   zählen nur Einträge mit `rolle`); ist es erschöpft, entsteht kein Eintrag, das Speichern geht durch, und die Spur ist die Zeile im
-   Betriebsprotokoll des Servers (modulProtokollZeilen: „ohne Eintrag im Änderungsprotokoll“). Platz schafft die Archivierung. */
+   zählen nur Einträge mit `rolle`); ist es erschöpft, entsteht kein Einzeleintrag, das Speichern geht durch; dauerhaft bleibt ein
+   Lückenvermerk je Erschöpfungsperiode (Review #590 B-2), dazu bestmöglich die Zeile im Betriebsprotokoll des Servers (30 Tage,
+   modulProtokollZeilen: „ohne Eintrag im Änderungsprotokoll“). Platz schafft die Archivierung. */
 /** Rolle des vollen Schreibwegs → Angabe im Eintrag. */
 export const BEREICH_PROTOKOLL_ROLLEN = Object.freeze({ leitung: "leitung", planer: "planung", kunde: "kunde" });
 /** Eintrag aus dem vollen Schreibweg (Leitung, Planung, Kundenrolle)? @param {any} x */
@@ -391,7 +392,7 @@ function einheitDerAenderung(altM, neuM, zuordnungen) {
  * @param {any} altM gespeicherter Betrieb
  * @param {any} neuM zu speichernder Betrieb (nach allen Schreibwegen; sein Modulprotokoll ist das vom Server gesetzte)
  * @param {{ am: string, von: any, rolle: string, pruefsumme?: (text: string) => string, grenzen?: typeof BEREICH_PROTOKOLL_GRENZEN }} k
- * @returns {{ mandant: any, eintrag: any, voll?: boolean }}
+ * @returns {{ mandant: any, eintrag: any, voll?: boolean, luecke?: any }}
  */
 export function bereichsprotokollVoll(altM, neuM, { am, von, rolle, pruefsumme, grenzen = BEREICH_PROTOKOLL_GRENZEN }) {
   if (!istObjekt(neuM)) return { mandant: neuM, eintrag: null };
@@ -407,9 +408,37 @@ export function bereichsprotokollVoll(altM, neuM, { am, von, rolle, pruefsumme, 
   const e = istObjekt(neuM.einstellungen) ? neuM.einstellungen : {};
   const bisher = Array.isArray(e.modulprotokoll) ? e.modulprotokoll : [];
   const eigene = bisher.filter(bereichsprotokollVonVoll);
-  if (eigene.length + 1 > grenzen.eintraege || protokollBytes(eigene) + protokollBytes(eintrag) > grenzen.gesamtBytes)
-    return { mandant: neuM, eintrag: null, voll: true };
+  if (eigene.length + 1 > grenzen.eintraege || protokollBytes(eigene) + protokollBytes(eintrag) > grenzen.gesamtBytes) {
+    /* Review #590 B-2: Beim ersten Überlauf einer Erschöpfungsperiode ein dauerhafter Lückenvermerk im SELBEN Schreiben (nicht über das
+       kurzlebige Betriebsprotokoll); weitere Änderungen derselben Periode ohne weiteren Vermerk. Höchstens BEREICH_LUECKE_GRENZE insgesamt. */
+    if (bereichsprotokollLueckeOffen(bisher) || bisher.filter((x) => istObjekt(x) && x.art === BEREICH_LUECKE_ART).length >= BEREICH_LUECKE_GRENZE)
+      return { mandant: neuM, eintrag: null, voll: true };
+    const luecke = { art: BEREICH_LUECKE_ART, modul: "bereichsplan", am: kopf.am, von: kopf.von, rolle: kopf.rolle };
+    return { mandant: { ...neuM, einstellungen: { ...e, modulprotokoll: [...bisher, luecke] } }, eintrag: null, voll: true, luecke };
+  }
   return { mandant: { ...neuM, einstellungen: { ...e, modulprotokoll: [...bisher, eintrag] } }, eintrag };
+}
+
+/* ---- Lückenvermerk (E1, Review #590 B-2) ----
+   Eine Erschöpfungsperiode beginnt mit dem Lückenvermerk und endet mit dem nächsten Archivierungsvermerk oder dem nächsten Eintrag von
+   Leitung/Planung (dann wird wieder einzeln protokolliert). Der Vermerk selbst ist nicht archivierbar (bereichsprotokollExport nimmt nur die
+   Art bereich-zuordnung) und wird über den vollen Weg nicht geändert (das Modulprotokoll kommt aus dem gespeicherten Stand). */
+export { BEREICH_LUECKE_ART };
+/** Höchstzahl der Lückenvermerke je Betrieb (Größenrechnung WP19-MODULPLAN.md 17.1 L6); jede Periode setzt eine Archivierung voraus. */
+export const BEREICH_LUECKE_GRENZE = 500;
+/**
+ * Der Lückenvermerk der laufenden Erschöpfungsperiode oder null.
+ * @param {any} liste Modulprotokoll
+ */
+export function bereichsprotokollLueckeOffen(liste) {
+  const l = Array.isArray(liste) ? liste : [];
+  for (let i = l.length - 1; i >= 0; i--) {
+    const x = l[i];
+    if (!istObjekt(x)) continue;
+    if (x.art === BEREICH_LUECKE_ART) return x;
+    if (x.art === BEREICH_ARCHIV_ART || bereichsprotokollVonVoll(x)) return null;
+  }
+  return null;
 }
 
 /* ---- Archivierung durch die Leitung (E7 b, Betreiberentscheidung 2026-11-26; Invarianten A1–A12, WP19-MODULPLAN.md 17.1) ----

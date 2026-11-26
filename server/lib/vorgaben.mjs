@@ -22,7 +22,7 @@
    Rein: keine Ablage; einzige Uhr: `jetzt` wird übergeben (Server stempelt).
    ========================================================================== */
 import { pruefeRegel, testlauf, REGELARTEN_ALLE } from "./regelbaukasten-erweitert.mjs";
-import { MODULPROTOKOLL_GRENZE, modulprotokollFaellig, modulprotokollBelegt } from "./branchenmodule.mjs";
+import { modulprotokollFaellig, modulprotokollUeberGrenze } from "./branchenmodule.mjs";
 
 export const VORGABEN_REGELARTEN = REGELARTEN_ALLE;
 export const VORGABEN_STAERKEN = Object.freeze(["muss", "soll", "wunsch"]);
@@ -346,9 +346,11 @@ export function vorgabenZusammen(altM, neuM, { darfOrgEdit, person, tarif, jetzt
   /* An der Grenze zuerst nach geprüfter Frist fällige Einträge entfernen (heute keine: Regel ungeprüft, FN-32); sonst bleibt die Grenze eine
      Sperre — außer fürs Deaktivieren, das immer geht. */
   /* Einträge der Bereichszuordnung (WP-19.4) zählen nicht mit (eigene Grenzen, Review #578 B-1). */
-  if (modulprotokollBelegt(bisher) + ereignisse.length > MODULPROTOKOLL_GRENZE) bisher = modulprotokollFaellig({ einstellungen: { modulprotokoll: bisher } }, jetzt.slice(0, 10)).rest;
-  if (modulprotokollBelegt(bisher) + ereignisse.length > MODULPROTOKOLL_GRENZE && ereignisse.some((x) => x.art !== "vorgabe-deaktiviert"))
-    return { grund: `Modulprotokoll: Die Grenze von ${MODULPROTOKOLL_GRENZE} Einträgen ist erreicht. Deaktivieren geht weiter; alles andere wieder, sobald ältere Einträge nach einer geprüften Aufbewahrungsregel entfallen dürfen.` };
+  /* Zahl ODER Bytes (Review #590 B-1, modulprotokollUeberGrenze). */
+  if (modulprotokollUeberGrenze(bisher, ereignisse, "Deaktivieren")) bisher = modulprotokollFaellig({ einstellungen: { modulprotokoll: bisher } }, jetzt.slice(0, 10)).rest;
+  const ueber = modulprotokollUeberGrenze(bisher, ereignisse, "Deaktivieren");
+  if (ueber && ereignisse.some((x) => x.art !== "vorgabe-deaktiviert"))
+    return { grund: `${ueber}alles andere wieder, sobald ältere Einträge nach einer geprüften Aufbewahrungsregel entfallen dürfen.` };
   return { mandant: { ...neuM, vorgaben: aus, einstellungen: { ...einst, modulprotokoll: [...bisher, ...ereignisse] } } };
 }
 
