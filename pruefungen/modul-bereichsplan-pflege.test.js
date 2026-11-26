@@ -71,6 +71,15 @@ describe("Zuordnung auf einen unbekannten Bereich (Server)", () => {
     expect(bereichsplanZusammen({ einheiten: ohneB2, bereichsPlan: a.bereichsPlan }, a).grund).toMatch(/entfernter Bereich/);
     expect(bereichsplanZusammen({ einheiten: ohneB2, bereichsPlan: {} }, a)).toEqual({});
   });
+  it("B-1: eine ganze Einheit zu löschen bleibt erlaubt, auch mit Altzuordnung auf ihre Bereiche; ein Bereich einer bleibenden Einheit nicht", () => {
+    const a = { einheiten: einheiten(), bereichsPlan: { [`a1|${T}`]: "b3" } };
+    const ohneE2 = [a.einheiten[0]];
+    expect(bereichsplanZusammen({ einheiten: ohneE2, bereichsPlan: a.bereichsPlan }, a)).toEqual({});
+    expect(bereichsplanZusammen({ einheiten: ohneE2, bereichsPlan: { ...a.bereichsPlan, [`a2|${T}`]: "b3" } }, a).grund).toMatch(/gibt es im Betrieb nicht/);
+    const b = { einheiten: einheiten(), bereichsPlan: { [`a1|${T}`]: "b3" } };
+    const ohneB3 = [b.einheiten[0], { ...b.einheiten[1], bereiche: [] }];
+    expect(bereichsplanZusammen({ einheiten: ohneB3, bereichsPlan: b.bereichsPlan }, b).grund).toMatch(/entfernter Bereich/);
+  });
 });
 
 describe("Reine Pflegefunktionen", () => {
@@ -225,7 +234,7 @@ describe("Rollen (Schreibweg der Oberfläche und Server)", () => {
     expect(pl.mandanten[0].einheiten[0].bereiche.map((b) => b.id)).toContain("b7");
     for (const r of ["MA", "BR"]) {
       const v = schreibeAls(g, r, (m) => { m.bereichsPlan = { [`a1|${T}`]: "b1" }; });
-      if (v && !v.verweigert) expect(v.mandanten[0].bereichsPlan, r).toEqual({});
+      expect(v === null || !!v.verweigert || Object.keys(v.mandanten[0].bereichsPlan || {}).length === 0, r).toBe(true);
     }
   });
   it("Server: Planung kann keine Zuordnung auf einen unbekannten Bereich speichern und keinen zugeordneten Bereich entfernen", () => {
@@ -236,6 +245,19 @@ describe("Rollen (Schreibweg der Oberfläche und Server)", () => {
     expect(schreibeAls(mit, "LT", (m) => { m.einheiten[0].bereiche = [m.einheiten[0].bereiche[0]]; }).verweigert).toMatch(/entfernter Bereich/);
     const frei = schreibeAls(mit, "LT", (m) => { m.einheiten[0].bereiche = [m.einheiten[0].bereiche[0]]; m.bereichsPlan = {}; });
     expect(frei.verweigert).toBeUndefined();
+  });
+  it("B-1 Server: Die Leitung löscht eine Einheit samt Bereichen und Altzuordnung, mit wirkendem und mit geplantem Modul", () => {
+    const g = gesamt();
+    g.mandanten[0].bereichsPlan = { [`a1|${T}`]: "b3" };
+    const weg = (m) => { m.einheiten = m.einheiten.filter((e) => e.id !== "e2"); };
+    const an = schreibeAls(g, "LT", weg);
+    expect(an && an.verweigert, an && an.verweigert).toBeFalsy();
+    expect(an.mandanten[0].einheiten.map((e) => e.id)).toEqual(["e1"]);
+    const geplant = schreibeAlsEcht(g, "LT", weg);
+    expect(geplant && geplant.verweigert, geplant && geplant.verweigert).toBeFalsy();
+    expect(geplant.mandanten[0].einheiten.map((e) => e.id)).toEqual(["e1"]);
+    const bleibt = schreibeAls(g, "LT", (m) => { m.einheiten[1].bereiche = []; });
+    expect(bleibt.verweigert).toMatch(/entfernter Bereich/);
   });
   it("Server: Bei Status geplant bleibt der Schreibweg geschlossen (Platte unverändert)", () => {
     const g = gesamt();

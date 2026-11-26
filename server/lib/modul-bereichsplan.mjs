@@ -179,7 +179,10 @@ export function bereichsplanZusammen(neuM, altM, { bekannt = true } = {}) {
     for (const [k, v] of Object.entries(neuM.bereichsPlan))
       if (!(hat(vorher, k) && vorher[k] === v) && !ix.has(v)) return { grund: `Bereichsplan: den Bereich „${String(v).slice(0, 30)}“ gibt es im Betrieb nicht.` };
     if (altM) {
-      const w = new Set([...bereichsIndex(altM).keys()].filter((id) => !ix.has(id)));
+      /* Nur Bereiche, deren Einheit weiter besteht: Eine Einheit zu löschen ist ein Kernweg und bleibt erlaubt (modul-altwege.mjs);
+         Zuordnungen auf Bereiche gelöschter Einheiten sind Altbestand und blockieren nicht. */
+      const bleibend = new Set(liste(neuM.einheiten).map((e) => String(e.id)));
+      const w = new Set([...bereichsIndex(altM)].filter(([id, e]) => !ix.has(id) && bleibend.has(String(e.einheitId))).map(([id]) => id));
       if (w.size && Object.values(neuM.bereichsPlan).some((v) => w.has(v)))
         return { grund: "Bereichsplan: ein entfernter Bereich hat noch Zuordnungen — erst die Zuordnungen lösen." };
     }

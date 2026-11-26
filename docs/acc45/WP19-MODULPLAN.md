@@ -697,6 +697,7 @@ Pflegefunktionen in `server/lib/modul-bereichsplan.mjs`; Rechte-Kontext `bereich
 
 Gewollte Verhaltensänderung am Server (`bereichsplanZusammen`, wie beim Postenplan): Eine neue oder geänderte Zuordnung muss auf
 einen Bereich des Betriebs zeigen, und ein Bereich, der entfällt, darf keine Zuordnung zurücklassen. Altbestand blockiert nicht;
+betroffen sind nur Bereiche, deren Einheit im neuen Stand weiter besteht (Review #575 B-1): Eine Einheit samt Bereichen zu löschen bleibt ein erlaubter Kernweg, auch mit Altzuordnung (bei Modul geplant ist der Bereichsplan nur lesbar, die Leitung könnte sie nicht lösen); die Zweige „unbekannter Bereich“ und „entfernter Bereich“ greifen sonst nur dort, wo das Modul wirkt, da bei geplant jede Änderung an Bereichen und Bereichsplan ohnehin abgewiesen wird (modul-altwege.mjs);
 auf dem Ausnahmeweg Art. 16/17 gilt die Regel nicht (`bekannt: false`). Die Regel ist mit einer Zeile abschaltbar
 (`server/lib/rechte.mjs`: Aufruf `bereichsplanZusammen(geschickt, ort.betrieb, { bekannt: moduldatenAusnahme === undefined })`
 auf `{ bekannt: false }`); Pflegefunktionen und Oberfläche bleiben davon unabhängig.
@@ -711,5 +712,5 @@ Lokal belegt (TZ=UTC, je Datei ein Lauf): `modul-bereichsplan-pflege` 20, `modul
 `abnahme-c-module` 8, `rechtematrix` 64, `rechtematrix-zeilen` 747, alle `v4-3b-*` (zusammen 14 Dateien) und `v4-3c-branchenmodule` 3, `prozess-wachen` 15; `tsc -p jsconfig.json`, eslint auf die geänderten Dateien,
 `verdrahtung-pruefen` sauber. Mutationen (sieben, je einzeln, alle erkannt): bekannt-Prüfung, verwaiste Zuordnung, Entfernen nur ohne Zuordnung,
 Einheitsprüfung der Zuordnung, Schichtverantwortung nur eigene Einheit, `einheiten` nur mit vollem Recht, Rollenstufe `einheit` nur Schichtverantwortung.
-Nicht belegt: unabhängiges Review (Opus), E2E (gehört zu WP-19.13). Offen: Änderungsprotokoll im SV-Schreibweg (B2), Profil Rettungsdienst und
+B-1 (Review #575, Einheit löschen mit Altzuordnung): zwei neue Fälle in `modul-bereichsplan-pflege` (22 Tests), vor dem Fix rot (Mutation „Einheitsfilter entfernt“: 2 rot), danach grün; Gegenprobe Bereich einer bleibenden Einheit mit Zuordnung entfernen bleibt abgewiesen. Der Test des Betriebsrats-/Beschäftigtenfalls ist gehärtet (kein stilles Überspringen mehr). Nicht belegt: unabhängiges Review (Opus), E2E (gehört zu WP-19.13). Offen: Änderungsprotokoll im SV-Schreibweg (B2), Profil Rettungsdienst und
 Paketdarstellung (B3, Betreiberentscheidung). Hinweis C/D: übrige Branchenmodule nicht berührt.
