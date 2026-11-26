@@ -18,6 +18,8 @@ import { FEST, zufall, betriebe } from "./engine-golden.fixture.mjs";
 import * as Einsatz from "../server/lib/engine/einsatz.mjs";
 import * as L from "../server/lib/engine/luckenursache.mjs";
 import { aktive, besetzung, personTag } from "../server/lib/engine/plan.mjs";
+import { neuesVorgabenBudget } from "../server/lib/vorgabenwirkung.mjs";
+import { VORGABEN_WIRKUNG_GRENZE } from "../server/lib/vorgaben.mjs";
 
 vi.setConfig({ testTimeout: 280000 });
 const lies = (p) => readFileSync(new URL(`../${p}`, import.meta.url), "utf8");
@@ -215,7 +217,7 @@ describe("U5: Datenschutz — nur Kennungen und Zahlen", () => {
     }
     for (const w of ["Krank", "krank", "Urlaub", "Schutzvorschrift", "abwesend (", "Ruhezeit nach"]) expect(s.includes(w), w).toBe(false);
     const erlaubt = new Set(["ok", "von", "bis", "luecken", "luckenGesamt", "abgeschnitten", "unvollstaendig", "datum", "dienst", "fehlt", "geprueft", "direkt",
-      "hindernisse", "regel", "personen", "kleinste", "regeln", "wege", "deckt", "ursache", "qualFehlt", "qid", "noetig", "ist", "ohneQualifikation"]);
+      "hindernisse", "regel", "personen", "kleinste", "regeln", "wege", "deckt", "ursache", "qualFehlt", "qid", "noetig", "ist", "ohneQualifikation", "vorgabenUnvollstaendig"]);
     const keys = (o, acc = new Set()) => { if (Array.isArray(o)) o.forEach((x) => keys(x, acc)); else if (o && typeof o === "object") for (const k of Object.keys(o)) { acc.add(k); keys(o[k], acc); } return acc; };
     for (const k of keys(r)) expect(erlaubt.has(k), `Schlüssel ${k}`).toBe(true);
   });
@@ -312,5 +314,76 @@ describe("U9 (Review #570): Budget-Umgehung und unvollständige Betriebe", () =>
     expect(L.lueckenUrsache(b, D, "F")).toEqual({ ok: false, grund: "betriebUngueltig" });
     const c = structuredClone(m); delete c.abwesenheiten;
     expect(L.konflikteMitUrsache(c, "2026-11-16", "2026-11-17")).toEqual({ ok: false, grund: "betriebUngueltig" });
+  });
+});
+
+/* ------------------------------------------------------------------------ */
+describe("U10 (#566): internes Vorgaben-Budget je Einstieg, automatisch, Laufzeit", () => {
+  const MUSS = (id) => ({ id, name: `Vorgabe ${id}`, regelart: "musterregel", parameter: { art: "verbotenFolge", von: ["N"], dann: ["F"] },
+    geltung: { art: "betrieb" }, bezug: "monat", staerke: "muss", prioritaet: 1, grundlage: { art: "hausregel" }, status: "aktiv" });
+  const FREI = (id) => ({ ...MUSS(id), regelart: "zaehlregel", parameter: { ereignis: "frei", fenster: { art: "rollierend", einheit: "tage", laenge: 28 }, richtung: "mindestens", grenze: 8 } });
+  const mitVorgaben = (liste) => { const { m } = mitLuecke(); m.vorgaben = liste; return structuredClone(m); };
+
+  it("EIN Vorgaben-Budget je Einstieg: dasselbe Objekt wird von allen Lücken und Personen verbraucht", () => {
+    const m = mitVorgaben([MUSS("a"), FREI("b")]);
+    const vb = neuesVorgabenBudget();
+    const start = vb.rest;
+    const r = L.konflikteMitUrsache(m, "2026-11-16", "2026-11-20", { vorgabenBudget: vb });
+    expect(r.luecken.length).toBeGreaterThan(1);
+    expect(vb.rest).toBeLessThan(start);
+    const kosten1 = start - vb.rest;
+    const vb2 = neuesVorgabenBudget();
+    L.lueckenUrsache(structuredClone(m), "2026-11-16", "F", { vorgabenBudget: vb2 });
+    expect(kosten1).toBeGreaterThan(start - vb2.rest);      // mehrere Lücken kosten mehr als eine
+  });
+  it("kleines Vorgaben-Budget: unvollständig, keine Ursache behauptet, nie 'direkt'", () => {
+    const m = mitVorgaben([MUSS("a"), FREI("b")]);
+    const r = L.konflikteMitUrsache(m, "2026-11-16", "2026-11-20", { vorgabenBudget: neuesVorgabenBudget(1) });
+    expect(r.vorgabenUnvollstaendig).toBe(true);
+    expect(r.unvollstaendig).toBe(true);
+    for (const l of r.luecken) {
+      expect(l.vorgabenUnvollstaendig).toBe(true);
+      expect(l.unvollstaendig).toBe(true);
+      expect(l.ursache).toBe("unvollstaendig");
+      expect(l.kleinste).toBeNull();
+      expect(l.wege).toEqual([]);
+    }
+  });
+  it("ohne übergebenes Vorgaben-Budget legt der äußere Aufruf genau eines an (Voreinstellung reicht für wenige Vorgaben)", () => {
+    const r = L.konflikteMitUrsache(mitVorgaben([MUSS("a")]), "2026-11-16", "2026-11-18");
+    expect(r.vorgabenUnvollstaendig).toBe(false);
+  });
+  it("Vorgaben-Budget mit falscher Form oder riesigem Rest: kein Wurf, Obergrenze gilt", () => {
+    const m = mitVorgaben([MUSS("a")]);
+    for (const vb of [{}, { rest: 5 }, null, "x", { rest: 1e12, cache: new WeakMap(), vorbereitet: new WeakMap(), ausgeschoepft: false }]) {
+      const r = L.lueckenUrsache(structuredClone(m), "2026-11-17", "F", { vorgabenBudget: vb });
+      expect(r.ok === false, JSON.stringify(vb)).toBe(false);
+      if (vb && vb.rest === 1e12) expect(vb.rest).toBeLessThanOrEqual(VORGABEN_WIRKUNG_GRENZE.aufwand);
+    }
+  });
+  it("Einsatzprüfung läuft automatisch (ungeprüfte Muss-Vorgabe gilt als Achtung): Quelltext reicht beides durch", () => {
+    const q = lies("server/lib/engine/luckenursache.mjs");
+    expect(q).toMatch(/vorgabenAutomatisch: true/);
+    expect(q).toMatch(/vorgabenBudget/);
+  });
+  it("Messung: 300 Personen, 62 Tage, 50 Muss-Vorgaben rollierend — Laufzeit mit Vorgaben bleibt gedeckelt", () => {
+    const basis = mitLuecke().m;
+    const viele = (vorgaben) => {
+      const m = structuredClone(basis);
+      const vorlage = m.personen.slice();
+      let i = 0;
+      while (m.personen.length < 300) { const q = structuredClone(vorlage[i % vorlage.length]); q.id = `kopie-${i++}`; m.personen.push(q); }
+      m.vorgaben = vorgaben;
+      return m;
+    };
+    const lauf = (m) => { const t = process.hrtime.bigint(); const r = L.konflikteMitUrsache(m, "2026-11-01", "2026-12-31"); return { r, ms: Number(process.hrtime.bigint() - t) / 1e6 }; };
+    const ohne = lauf(viele([]));
+    const mit = lauf(viele(Array.from({ length: 50 }, (_, i) => FREI(`v${i}`))));
+    expect(ohne.r.ok).toBe(true);
+    expect(mit.r.ok).toBe(true);
+    const summe = mit.r.luecken.reduce((a, l) => a + l.geprueft, 0);
+    expect(summe).toBeLessThanOrEqual(L.PERSONEN_PRUEFUNGEN_MAX);
+    console.log("MESSUNG ohne", Math.round(ohne.ms), "ms, mit", Math.round(mit.ms), "ms, Prüfungen", summe);
+    expect(mit.ms).toBeLessThan(Math.max(10 * ohne.ms, 5000));
   });
 });

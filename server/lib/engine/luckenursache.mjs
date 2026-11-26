@@ -36,6 +36,8 @@
 import { addDays } from "../regelwerk.mjs";
 import { aktive, besetzung, personTag, qualGueltig } from "./plan.mjs";
 import { hindernisBefunde, stufeRang } from "./einsatz.mjs";
+import { neuesVorgabenBudget } from "../vorgabenwirkung.mjs";
+import { VORGABEN_WIRKUNG_GRENZE } from "../vorgaben.mjs";
 
 /** Höchstzahl Personenprüfungen je äußerem Einstieg (ein Budget für alle Lücken). */
 export const PERSONEN_PRUEFUNGEN_MAX = 400;
@@ -81,6 +83,14 @@ const istOffen = (b) => /Offen$/.test(String(b.regel));
 /** Hindert der Befund den Einsatz? Ab „Achtung“ oder nicht bewertbar (fail closed). */
 const hindert = (b) => stufeRang(b.stufe) >= 2 || istOffen(b);
 
+/** Das Vorgaben-Budget des Einstiegs: ein übergebenes mit falscher Form oder zu großem Rest wird nie übernommen (Obergrenze der Wirkung). */
+function vorgabenBudgetPruefen(b) {
+  const ok = !!b && typeof b === "object" && Number.isFinite(b.rest) && b.cache instanceof WeakMap && b.vorbereitet instanceof WeakMap;
+  if (!ok) return neuesVorgabenBudget();
+  if (b.rest > VORGABEN_WIRKUNG_GRENZE.aufwand) b.rest = VORGABEN_WIRKUNG_GRENZE.aufwand;
+  return b;
+}
+
 const reihe = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 
 /**
@@ -90,7 +100,8 @@ const reihe = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
  * @param {string} dienstId Dienstart
  * @param {{ budget?: { rest: number } }} [opt] budget: das eine Budget des äußeren Einstiegs
  */
-export function lueckenUrsache(m, d, dienstId, { budget = budgetNeu() } = {}) {
+export function lueckenUrsache(m, d, dienstId, { budget = budgetNeu(), vorgabenBudget: vorgabenBudgetRoh } = {}) {
+  const vorgabenBudget = vorgabenBudgetPruefen(vorgabenBudgetRoh);
   if (!betriebOk(m)) return { ok: false, grund: "betriebUngueltig" };
   if (!gueltigerTag(d)) return { ok: false, grund: "datumUngueltig" };
   const da = m.dienstarten.find((x) => x.id === dienstId);
@@ -98,7 +109,7 @@ export function lueckenUrsache(m, d, dienstId, { budget = budgetNeu() } = {}) {
   const b = besetzung(m, d)[dienstId];
   const fehlt = b && b.diff < 0 && !b.bedarfOffen ? -b.diff : 0;
   const qualFehlt = b ? b.qual.filter((q) => !q.ok).map((q) => ({ qid: String(q.qid), noetig: q.noetig, ist: q.ist })) : [];
-  const aus = { datum: d, dienst: dienstId, fehlt, geprueft: 0, direkt: 0, ohneQualifikation: 0, hindernisse: [], kleinste: null, wege: [], ursache: "besetzt", unvollstaendig: false };
+  const aus = { datum: d, dienst: dienstId, fehlt, geprueft: 0, direkt: 0, ohneQualifikation: 0, vorgabenUnvollstaendig: false, hindernisse: [], kleinste: null, wege: [], ursache: "besetzt", unvollstaendig: false };
   if (qualFehlt.length) aus.qualFehlt = qualFehlt;
   if (fehlt === 0 && !qualFehlt.length) return aus;
 
@@ -110,7 +121,8 @@ export function lueckenUrsache(m, d, dienstId, { budget = budgetNeu() } = {}) {
     aus.geprueft++;
     /* Qualifikationslücke: nur Personen mit einer der fehlenden Qualifikationen können sie schließen. */
     if (qualFehlt.length && !qualFehlt.some((q) => qualGueltig(m, p, q.qid))) { aus.ohneQualifikation++; continue; }
-    const regeln = [...new Set(hindernisBefunde(m, p, d, da).filter(hindert).map((x) => String(x.regel)))].sort(reihe);
+    const regeln = [...new Set(hindernisBefunde(m, p, d, da, { vorgabenBudget, vorgabenAutomatisch: true }).filter(hindert).map((x) => String(x.regel)))].sort(reihe);
+    if (regeln.includes("vorgabeOffen")) aus.vorgabenUnvollstaendig = true;      // Vorgaben nicht vollständig geprüft
     if (!regeln.length) { aus.direkt++; continue; }
     for (const r of regeln) zaehl.set(r, (zaehl.get(r) || 0) + 1);
     const k = regeln.join("|");
@@ -118,6 +130,8 @@ export function lueckenUrsache(m, d, dienstId, { budget = budgetNeu() } = {}) {
     if (e) e.personen++; else mengen.set(k, { regeln, personen: 1 });
   }
   aus.hindernisse = [...zaehl].map(([regel, personen]) => ({ regel, personen })).sort((x, y) => y.personen - x.personen || reihe(x.regel, y.regel));
+  if (vorgabenBudget.ausgeschoepft) aus.vorgabenUnvollstaendig = true;
+  if (aus.vorgabenUnvollstaendig) aus.unvollstaendig = true;
   if (aus.unvollstaendig) { aus.ursache = "unvollstaendig"; return aus; }        // keine Ursache behaupten, die nicht belegt ist
   if (aus.geprueft === 0) { aus.ursache = "keinPersonal"; return aus; }
   if (aus.direkt > 0) { aus.ursache = "direktMoeglich"; return aus; }
@@ -139,7 +153,8 @@ export function lueckenUrsache(m, d, dienstId, { budget = budgetNeu() } = {}) {
  * @param {string} bis JJJJ-MM-TT (einschließlich; höchstens TAGE_MAX Tage)
  * @param {{ budget?: { rest: number }, luckenMax?: number }} [opt]
  */
-export function konflikteMitUrsache(m, von, bis, { budget = budgetNeu(), luckenMax = LUECKEN_MAX } = {}) {
+export function konflikteMitUrsache(m, von, bis, { budget = budgetNeu(), vorgabenBudget: vorgabenBudgetRoh, luckenMax = LUECKEN_MAX } = {}) {
+  const vorgabenBudget = vorgabenBudgetPruefen(vorgabenBudgetRoh);
   if (!betriebOk(m)) return { ok: false, grund: "betriebUngueltig" };
   if (!gueltigerTag(von) || !gueltigerTag(bis)) return { ok: false, grund: "datumUngueltig" };
   if (bis < von) return { ok: false, grund: "zeitraumUmgekehrt" };
@@ -149,7 +164,7 @@ export function konflikteMitUrsache(m, von, bis, { budget = budgetNeu(), luckenM
     tage.push(t);
   }
   const max = Number.isInteger(luckenMax) && luckenMax > 0 ? Math.min(luckenMax, LUECKEN_MAX) : LUECKEN_MAX;
-  const aus = { ok: true, von, bis, luckenGesamt: 0, abgeschnitten: false, unvollstaendig: false, luecken: [] };
+  const aus = { ok: true, von, bis, luckenGesamt: 0, abgeschnitten: false, unvollstaendig: false, vorgabenUnvollstaendig: false, luecken: [] };
   for (const t of tage) {
     const bes = besetzung(m, t);
     for (const da of m.dienstarten) {
@@ -157,9 +172,10 @@ export function konflikteMitUrsache(m, von, bis, { budget = budgetNeu(), luckenM
       if (!e || e.bedarfOffen || !(e.diff < 0 || e.qualFehlt)) continue;
       aus.luckenGesamt++;
       if (aus.luecken.length >= max) { aus.abgeschnitten = true; continue; }
-      const r = lueckenUrsache(m, t, da.id, { budget });
+      const r = lueckenUrsache(m, t, da.id, { budget, vorgabenBudget });
       if (r.ok === false) continue;
       if (r.unvollstaendig) aus.unvollstaendig = true;
+      if (r.vorgabenUnvollstaendig) aus.vorgabenUnvollstaendig = true;
       aus.luecken.push(r);
     }
   }

@@ -47,3 +47,13 @@ Vorher: Test lädt `luckenursache.mjs` nicht (Modul fehlt), 0 Tests. Danach 17 v
 Offen (nach Merge von #566): Durchreichen des #566-Vorgaben-Budgets: nach Merge von #566 nachziehen (Rebase): ein gemeinsames `vorgabenBudget` je Einstieg und `automatisch` an `hindernisBefunde` durchreichen, dazu Test. Die Offen-Behandlung ist dafür bereits so gebaut, dass `vorgabeOffen` automatisch als Hindernis zählt.
 
 Hinweis für den späteren Aufrufer (WP-I7/I8): Der kalte Erstaufbau der Planrechnung (Zwischenspeicher je Bestand) kostet rund 2,5 s und ist nicht budgetiert; er fällt beim ersten Aufruf auf einem frischen Bestand an.
+
+## #566-Anschluss (erledigt: Durchreichen des #566-Vorgaben-Budgets)
+
+#566 ist in der Integration (7d73f2be); der Merge ist ein Merge-Commit, kein Rebase. Das Durchreichen des #566-Vorgaben-Budgets ist damit erledigt:
+
+- **Ein Vorgaben-Budget je Einstieg.** `lueckenUrsache` und `konflikteMitUrsache` legen genau EIN `neuesVorgabenBudget()` an (oder nehmen `opt.vorgabenBudget`) und reichen es an jede Personenprüfung (`hindernisBefunde(m, p, d, da, { vorgabenBudget, vorgabenAutomatisch: true })`) durch; `konflikteMitUrsache` auch an alle Lücken. Ein Budget mit falscher Form wird nicht übernommen (frisches Budget), ein zu großer Rest auf `VORGABEN_WIRKUNG_GRENZE.aufwand` gedeckelt.
+- **Automatisch.** Die Auswertung läuft mit `vorgabenAutomatisch: true`: eine ungeprüfte Muss-Vorgabe gilt als Achtung. `vorgabeOffen` zählt nie als `direkt` (Offen-Regel aus der Nachbesserung #570).
+- **Vorgaben nicht vollständig geprüft.** Taucht `vorgabeOffen` auf oder ist das Vorgaben-Budget ausgeschöpft: `vorgabenUnvollstaendig` und `unvollstaendig`, Ursache `unvollstaendig`, keine kleinste Ursache, keine Wege.
+- **Laufzeit.** Messtest (U10): 300 Personen, 62 Tage, 50 rollierende Muss-Vorgaben („mindestens frei“, 28 Tage). Gemessen auf dem Entwicklungsrechner (Celeron N4120): ohne Vorgaben 1609 ms (kalt), mit Vorgaben 1191 ms, je 400 Personenprüfungen (Budget). Der Test verlangt: mit Vorgaben unter dem Zehnfachen des Laufs ohne Vorgaben, mindestens aber unter 5 s.
+- Tests U10: gemeinsames Budget (Kosten mehrerer Lücken größer als einer Lücke), kleines Budget ⇒ unvollständig ohne Ursache, Standardbudget reicht für wenige Vorgaben, ungültiges Budget, Quelltext reicht `vorgabenAutomatisch: true` durch, Messung. Mutationen (je einzeln): Budget je Person neu, `automatisch` auf false, Offen zählt frei, `vorgabenUnvollstaendig` ohne Wirkung.
