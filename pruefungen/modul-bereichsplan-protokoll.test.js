@@ -20,8 +20,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { createElement as h } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { BRANCHENMODULE, MODULPROTOKOLL_GRENZE, modulProtokollZeilen, moduleinstellungenSicht } from "../server/lib/branchenmodule.mjs";
-import { bereichsprotokollEintrag, bereichsprotokollAnhaengen, BEREICH_PROTOKOLL_ART, BEREICH_GRENZEN } from "../server/lib/modul-bereichsplan.mjs";
+import { BRANCHENMODULE, MODULPROTOKOLL_GRENZE, modulProtokollZeilen, moduleinstellungenSicht, modulprotokollBelegt, branchenmoduleZusammen }
+  from "../server/lib/branchenmodule.mjs";
+import { bereichsprotokollEintrag, bereichsprotokollAnhaengen, BEREICH_PROTOKOLL_ART, BEREICH_GRENZEN, BEREICH_PROTOKOLL_GRENZEN, protokollBytes }
+  from "../server/lib/modul-bereichsplan.mjs";
+import { vorgabenZusammen } from "../server/lib/vorgaben.mjs";
 import { bestandFuerRolle, zusammenfuehren } from "../server/lib/rechte.mjs";
 import { auskunftBauen } from "../server/lib/auskunft.mjs";
 import { branchenbestand, schreibeAls as schreibeAlsEcht, SITZUNGEN } from "./hilfen/branchenbetrieb.mjs";
@@ -45,6 +48,30 @@ function bestand({ plan = {}, protokoll = [ALTEINTRAG] } = {}) {
   return g;
 }
 const protokollVon = (g) => g.mandanten[0].einstellungen.modulprotokoll;
+const tagPlus = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
+/** n Einträge anderer Art (gemeinsame Grenze) bzw. n Altbestand-Einträge der Bereichszuordnung. */
+const fuellAndere = (n) => Array.from({ length: n }, (_, i) => ({ art: "parameter", modul: "bereichsplan", am: "2026-10-01T08:00:00.000Z", von: `l${i}` }));
+const fuellBereich = (n) => Array.from({ length: n }, (_, i) => ({ art: BEREICH_PROTOKOLL_ART, modul: "bereichsplan", am: "2026-10-01T08:00:00.000Z",
+  von: "s1", einheit: "e1", anzahl: 1, zuordnungen: [{ person: "a1", tag: MO, vorher: i % 2 ? "b1" : null, nachher: i % 2 ? null : "b1" }] }));
+/** Bei gefüllter Zuordnungsart: Leitung schaltet ein Modul ein, legt eine Vorgabe an, ordnet zu und speichert — alles wie vorher. */
+function leitungGegenprobe(g) {
+  const m = g.mandanten[0];
+  const ein = branchenmoduleZusammen({ ...m, einstellungen: { ...m.einstellungen, branchenmodule: {} } },
+    { ...m, einstellungen: { ...m.einstellungen, branchenmodule: { bereichsplan: { an: true } } } }, { person: "l1" }, true, AKTIV);
+  expect(ein.grund).toBeUndefined();
+  expect(ein.mandant.einstellungen.modulprotokoll.at(-1)).toMatchObject({ art: "eingeschaltet", modul: "bereichsplan" });
+  const v = { id: "v1", name: "Vorgabe v1", beschreibung: "x", regelart: "grenzregel", parameter: { groesse: "Überstunden im Monat", hoechstens: 10 },
+    geltung: { art: "betrieb" }, bezug: "monat", staerke: "muss", prioritaet: 1, grundlage: { art: "hausregel" }, status: "entwurf" };
+  const vg = vorgabenZusammen(m, { ...m, vorgaben: [v] }, { darfOrgEdit: true, person: "l1", tarif: "pro", jetzt: "2026-11-26T10:00:00.000Z" });
+  expect(vg.grund).toBeUndefined();
+  expect(vg.mandant.einstellungen.modulprotokoll.at(-1)).toMatchObject({ art: "vorgabe-angelegt" });
+  for (const r of ["LT", "PL"]) {
+    const w = schreibeAls(g, r, (x) => { x.bereichsPlan = { ...x.bereichsPlan, [`s1|${DI}`]: "b2" }; });
+    expect(w.verweigert, r).toBeFalsy();
+    expect(w.mandanten[0].bereichsPlan[`s1|${DI}`], r).toBe("b2");
+    expect(protokollVon(w), r).toEqual(protokollVon(g));
+  }
+}
 const neueEintraege = (g) => protokollVon(g).filter((x) => x.art === BEREICH_PROTOKOLL_ART);
 
 describe("Teil A — Schreibweg der Schichtverantwortung (zusammenfuehren)", () => {
@@ -159,14 +186,91 @@ describe("Teil A — Schreibweg der Schichtverantwortung (zusammenfuehren)", () 
     expect(schreibeAls(aus, "SV", (m) => { m.bereichsPlan = { [`a1|${MO}`]: "b1" }; }).verweigert).toBeTruthy();
   });
 
-  it("P4: Grenze des Modulprotokolls erreicht → Speichern abgewiesen (keine Zuordnung ohne Protokoll); ein Platz frei → gespeichert", () => {
-    const fuell = (n) => Array.from({ length: n }, (_, i) => ({ art: "parameter", modul: "bereichsplan", am: "2026-10-01T08:00:00.000Z", von: `l${i}` }));
-    const voll = schreibeAls(bestand({ protokoll: fuell(MODULPROTOKOLL_GRENZE) }), "SV", (m) => { m.bereichsPlan = { [`a1|${MO}`]: "b1" }; });
-    expect(voll.verweigert).toMatch(/Änderungsprotokoll ist voll/);
-    const platz = schreibeAls(bestand({ protokoll: fuell(MODULPROTOKOLL_GRENZE - 1) }), "SV", (m) => { m.bereichsPlan = { [`a1|${MO}`]: "b1" }; });
+  it("B-1: die gemeinsame Grenze (andere Einträge voll) sperrt die SV nicht — die Zuordnung hat eigene Grenzen", () => {
+    const voll = schreibeAls(bestand({ protokoll: fuellAndere(MODULPROTOKOLL_GRENZE) }), "SV", (m) => { m.bereichsPlan = { [`a1|${MO}`]: "b1" }; });
+    expect(voll.verweigert).toBeFalsy();
+    expect(protokollVon(voll)).toHaveLength(MODULPROTOKOLL_GRENZE + 1);
+    expect(modulprotokollBelegt(protokollVon(voll))).toBe(MODULPROTOKOLL_GRENZE);
+  });
+
+  it("B-1/(c): Zahl der Einträge dieser Art — genau an der Grenze gespeichert, darüber abgewiesen (nichts gespeichert); Altbestand darüber ebenso", () => {
+    const G = BEREICH_PROTOKOLL_GRENZEN.eintraege;
+    const platz = schreibeAls(bestand({ protokoll: fuellBereich(G - 1) }), "SV", (m) => { m.bereichsPlan = { [`a1|${MO}`]: "b1" }; });
     expect(platz.verweigert).toBeFalsy();
-    expect(protokollVon(platz)).toHaveLength(MODULPROTOKOLL_GRENZE);
-    expect(bereichsprotokollAnhaengen({ modulprotokoll: fuell(MODULPROTOKOLL_GRENZE) }, { am: "2026-11-01T00:00:00.000Z" })).toHaveProperty("grund");
+    expect(neueEintraege(platz)).toHaveLength(G);
+    for (const n of [G, G + 5]) {
+      const g = bestand({ protokoll: fuellBereich(n) });
+      const vorher = kopie(g);
+      const r = schreibeAls(g, "SV", (m) => { m.bereichsPlan = { [`a1|${MO}`]: "b1" }; });
+      expect(r.verweigert, String(n)).toMatch(/Änderungsprotokoll der Zuordnungen ist voll/);
+      expect(g, String(n)).toEqual(vorher);
+    }
+  });
+
+  it("(b): höchstens 100 Zuordnungen je Speichern — 100 gespeichert, 101 abgewiesen; Eintragsgröße begrenzt", () => {
+    const J = BEREICH_PROTOKOLL_GRENZEN.jeSpeichern;
+    const plan = (n) => Object.fromEntries(Array.from({ length: n }, (_, i) => [`a1|${tagPlus(-200 + i)}`, "b1"]));
+    const genau = schreibeAls(bestand(), "SV", (m) => { m.bereichsPlan = plan(J); });
+    expect(genau.verweigert).toBeFalsy();
+    expect(neueEintraege(genau)[0].anzahl).toBe(J);
+    const zuViel = schreibeAls(bestand(), "SV", (m) => { m.bereichsPlan = plan(J + 1); });
+    expect(zuViel.verweigert).toMatch(/höchstens 100 Änderungen je Speichern \(Änderungsprotokoll\)/);
+    /* Größter möglicher Eintrag (Kennungen 60 Zeichen) passt unter eintragBytes; darüber: abgewiesen. */
+    const k = (c) => c.repeat(60);
+    const gross = { art: BEREICH_PROTOKOLL_ART, modul: "bereichsplan", am: "2026-11-26T10:00:00.000Z", von: k("s"), einheit: k("e"), anzahl: J,
+      zuordnungen: Array.from({ length: J }, () => ({ person: k("p"), tag: "2026-11-02", vorher: k("v"), nachher: k("n") })) };
+    expect(protokollBytes(gross)).toBeLessThanOrEqual(BEREICH_PROTOKOLL_GRENZEN.eintragBytes);
+    expect(bereichsprotokollAnhaengen({}, gross)).not.toHaveProperty("grund");
+    expect(bereichsprotokollAnhaengen({}, gross, { grenzen: { ...BEREICH_PROTOKOLL_GRENZEN, eintragBytes: protokollBytes(gross) - 1 } }).grund).toMatch(/zu groß/);
+  });
+
+  it("(c): Gesamtgröße dieser Art — über gesamtBytes abgewiesen; Worst Case ≪ RUMPF_MAX", () => {
+    const voll = { modulprotokoll: fuellBereich(3) };
+    const klein = { art: BEREICH_PROTOKOLL_ART, zuordnungen: [] };
+    const grenze = protokollBytes(voll.modulprotokoll) + protokollBytes(klein);
+    expect(bereichsprotokollAnhaengen(voll, klein, { grenzen: { ...BEREICH_PROTOKOLL_GRENZEN, gesamtBytes: grenze } })).not.toHaveProperty("grund");
+    expect(bereichsprotokollAnhaengen(voll, klein, { grenzen: { ...BEREICH_PROTOKOLL_GRENZEN, gesamtBytes: grenze - 1 } }).grund).toMatch(/voll/);
+    /* Worst Case je Betrieb: die Art belegt höchstens gesamtBytes = 1 MiB, unabhängig von Einheiten; RUMPF_MAX 6 MiB. */
+    expect(BEREICH_PROTOKOLL_GRENZEN.gesamtBytes * 5).toBeLessThanOrEqual(6 * 1024 * 1024);
+  });
+
+  it("DoS 1: 2000 Hin-und-her-Speichern der SV füllen nur die eigene Art; danach SV abgewiesen, Leitung schaltet, legt Vorgaben an und ordnet zu", () => {
+    let g = bestand({ protokoll: [ALTEINTRAG] });
+    for (let i = 0; i < BEREICH_PROTOKOLL_GRENZEN.eintraege - 1; i++) {
+      const r = schreibeAls(g, "SV", (m) => { m.bereichsPlan = { [`a1|${MO}`]: i % 2 ? "b1" : "b2" }; });
+      expect(r.verweigert, String(i)).toBeFalsy();
+      g = r;
+    }
+    const letzter = schreibeAls(g, "SV", (m) => { m.bereichsPlan = { [`a1|${MO}`]: "b1" }; });
+    expect(letzter.verweigert).toBeFalsy();
+    g = letzter;
+    expect(neueEintraege(g)).toHaveLength(BEREICH_PROTOKOLL_GRENZEN.eintraege);
+    const vorher = kopie(g);
+    expect(schreibeAls(g, "SV", (m) => { m.bereichsPlan = { [`a1|${MO}`]: "b2" }; }).verweigert).toMatch(/voll/);
+    expect(g).toEqual(vorher);
+    leitungGegenprobe(g);
+  });
+
+  it("DoS 2: 190 SV-Speichern mit je höchstens 100 Änderungen — gemessen bleibt der Betrieb weit unter RUMPF_MAX; Leitung unberührt", () => {
+    let g = bestand();
+    const tage = Array.from({ length: BEREICH_PROTOKOLL_GRENZEN.jeSpeichern }, (_, i) => `a1|${tagPlus(-300 + i)}`);
+    let abgewiesen = 0;
+    for (let i = 0; i < 190; i++) {
+      /* Je Versuch ein Wechsel aller 100 Tage gegen den gespeicherten Stand — also immer 100 echte Änderungen. */
+      const jetzt = g.mandanten[0].bereichsPlan[tage[0]];
+      const r = schreibeAls(g, "SV", (m) => { m.bereichsPlan = Object.fromEntries(tage.map((k) => [k, jetzt === "b2" ? "b1" : "b2"])); });
+      if (r.verweigert) { abgewiesen += 1; expect(r.verweigert).toMatch(/voll/); continue; }
+      expect(neueEintraege(r)).toHaveLength(neueEintraege(g).length + 1);
+      g = r;
+    }
+    expect(abgewiesen).toBeGreaterThan(0);                                            // die Gesamtgrenze greift vor 190
+    const art = neueEintraege(g);
+    expect(art.length + abgewiesen).toBe(190);
+    /* Fehlte nur noch der Platz für den nächsten Eintrag: die Grenze ist ausgeschöpft, nicht vorzeitig gesperrt. */
+    expect(protokollBytes(art) + protokollBytes(art.at(-1))).toBeGreaterThan(BEREICH_PROTOKOLL_GRENZEN.gesamtBytes - 200);
+    expect(protokollBytes(art)).toBeLessThanOrEqual(BEREICH_PROTOKOLL_GRENZEN.gesamtBytes);
+    expect(protokollBytes(g)).toBeLessThan(2 * 1024 * 1024);                          // ganzer Bestand, gemessen
+    leitungGegenprobe(g);
   });
 
   it("P3: Leitung kann das Protokoll über den vollen Weg weder leeren noch ändern (Server stellt es wieder her)", () => {
@@ -282,9 +386,9 @@ async function anfrage(pfad, { methode = "GET", rumpf, token } = {}) {
   return { status: a.status, ...d };
 }
 const ROLLEN = { SV: { rolle: "subplaner", person: "s1", einheit: "e1" }, LT: { rolle: "leitung", person: "l1" }, BR: { rolle: "betriebsrat", person: "b1" } };
-async function raum() {
+async function raum(protokoll) {
   const name = `wp194p-${++raumNr}`;
-  const g = bestand();
+  const g = bestand(protokoll ? { protokoll } : {});
   g.version = 9;
   g.mandanten[0].status = "aktiv";
   await S.B.bestandSchreiben(S.laden(), name, S.G.personenAngleichen(g), { durch: "Pruefung" });
@@ -294,16 +398,16 @@ async function raum() {
 }
 const gespeichert = async (name) => (await S.B.bestandLesenStreng(S.laden(), name)).bestand.mandanten[0];
 /** Schreibt als SV über PUT („voll“) oder den Teilweg („teil“) den neuen Bereichsplan aus der Sicht. */
-async function svSchreibt(r, weg, neuerPlan) {
-  const g = await anfrage("/api/bestand", { token: r.sv });
+async function svSchreibt(r, weg, neuerPlan, token = r.sv) {
+  const g = await anfrage("/api/bestand", { token });
   const m = g.bestand.mandanten.find((x) => x && x.id === "m1");
   const plan = neuerPlan(kopie(m.bereichsPlan || {}));
   if (weg === "voll") {
     const b = kopie(g.bestand);
     b.mandanten.find((x) => x && x.id === "m1").bereichsPlan = plan;
-    return anfrage("/api/bestand", { methode: "PUT", token: r.sv, rumpf: { bestand: b, etag: g.etag, durch: "Pruefung" } });
+    return anfrage("/api/bestand", { methode: "PUT", token, rumpf: { bestand: b, etag: g.etag, durch: "Pruefung" } });
   }
-  return anfrage("/api/bestand/teile", { methode: "POST", token: r.sv, rumpf: { format: 1, epoche: g.teile.epoche, durch: "Pruefung",
+  return anfrage("/api/bestand/teile", { methode: "POST", token, rumpf: { format: 1, epoche: g.teile.epoche, durch: "Pruefung",
     kern: { bereichsPlan: { basis: g.teile.versionen["kern:bereichsPlan"] ?? null, wert: plan } } } });
 }
 
@@ -353,6 +457,22 @@ describe("Teil B — über die echten Handler (PUT und Teilweg)", { timeout: 300
         expect(nachher.bereichsPlan, was).toEqual(vorher.bereichsPlan);
         expect(nachher.einstellungen.modulprotokoll, was).toEqual(vorher.einstellungen.modulprotokoll);
       }
+    });
+
+    it(`${weg}: Zuordnungsart voll (Altbestand) → SV 403, Platte unverändert; Leitung speichert Zuordnung wie vorher`, async () => {
+      const r = await raum([ALTEINTRAG, ...fuellBereich(BEREICH_PROTOKOLL_GRENZEN.eintraege)]);
+      const vorher = await gespeichert(r.name);
+      const w = await svSchreibt(r, weg, (p) => ({ ...p, [`a1|${tag(2)}`]: "b2" }));
+      expect(w.status).toBe(403);
+      expect(String(w.text || w.fehler)).toMatch(/Änderungsprotokoll der Zuordnungen ist voll/);
+      const nachher = await gespeichert(r.name);
+      expect(nachher.bereichsPlan).toEqual(vorher.bereichsPlan);
+      expect(nachher.einstellungen.modulprotokoll).toEqual(vorher.einstellungen.modulprotokoll);
+      const l = await svSchreibt(r, weg, (p) => ({ ...p, [`a1|${tag(2)}`]: "b2" }), r.lt);
+      expect(l.status, JSON.stringify(l).slice(0, 300)).toBe(200);
+      const nachL = await gespeichert(r.name);
+      expect(nachL.bereichsPlan[`a1|${tag(2)}`]).toBe("b2");
+      expect(nachL.einstellungen.modulprotokoll).toEqual(vorher.einstellungen.modulprotokoll);
     });
   }
 });

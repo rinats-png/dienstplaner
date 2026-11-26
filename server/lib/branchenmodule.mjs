@@ -556,6 +556,9 @@ export const MODULPROTOKOLL_GRENZE = 2000;
 /** Art des Eintrags „Zuordnung im Bereichsplan durch die Schichtverantwortung“ (WP-19.4, modul-bereichsplan.mjs): trägt Person|Tag
     und Bereich vorher/nachher — nur für Leitung und Planung (Vollsicht), nicht für den Betriebsrat (moduleinstellungenSicht). */
 export const BEREICH_PROTOKOLL_ART = "bereich-zuordnung";
+/** Belegte Plätze der gemeinsamen Grenze (MODULPROTOKOLL_GRENZE): ohne Einträge der Art BEREICH_PROTOKOLL_ART — die haben eigene
+    Grenzen (BEREICH_GRENZEN in modul-bereichsplan.mjs) und verdrängen oder sperren nie Schalter, Regelwerte oder Vorgaben (Review #578 B-1). */
+export const modulprotokollBelegt = (liste) => (Array.isArray(liste) ? liste : []).filter((x) => !istObjekt(x) || x.art !== BEREICH_PROTOKOLL_ART).length;
 /** Aufbewahrungsregel des Modulprotokolls — Entwurfswert, fachlich zu bestätigen (FN-32). Löscht erst mit Prüfstatus „geprueft". */
 export const MODULPROTOKOLL_FRIST = Object.freeze({ regelId: "AUFB-MODULPROTOKOLL-01", monate: 24, pruefstatus: "vorlaeufig",
   quelle: "Art. 5 Abs. 1 lit. e und Abs. 2 DSGVO (Speicherbegrenzung, Rechenschaft); § 87 Abs. 1 Nr. 6 BetrVG (Nachweis der Einführung)",
@@ -833,8 +836,8 @@ export function branchenmoduleZusammen(altM, neuM, sitzung, darfOrgEdit, liste =
   if (ereignisse.length) {
     let bisher = Array.isArray(altE.modulprotokoll) ? altE.modulprotokoll : [];
     /* An der Grenze zuerst die nach der Frist fälligen Einträge entfernen (statt Dauersperre). */
-    if (bisher.length + ereignisse.length > MODULPROTOKOLL_GRENZE) bisher = modulprotokollFaellig(altM, jetzt.slice(0, 10), { regel: protokollRegel }).rest;
-    if (bisher.length + ereignisse.length > MODULPROTOKOLL_GRENZE && ereignisse.some((x) => x.art !== "ausgeschaltet"))
+    if (modulprotokollBelegt(bisher) + ereignisse.length > MODULPROTOKOLL_GRENZE) bisher = modulprotokollFaellig(altM, jetzt.slice(0, 10), { regel: protokollRegel }).rest;
+    if (modulprotokollBelegt(bisher) + ereignisse.length > MODULPROTOKOLL_GRENZE && ereignisse.some((x) => x.art !== "ausgeschaltet"))
       return { grund: `Modulprotokoll: Die Grenze von ${MODULPROTOKOLL_GRENZE} Einträgen ist erreicht. Ausschalten geht weiter; `
         + "alles andere wieder, sobald ältere Einträge nach einer geprüften Aufbewahrungsregel entfallen dürfen "
         + "(Einträge in der Frist und zustandsbegründende Einträge werden nicht verdrängt; Prüfung/Freigabe der Regel erforderlich, FN-32)." };
