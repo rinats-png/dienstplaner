@@ -18,7 +18,7 @@
    BEREICH-BESETZUNG-01), nie eine Sperre; nur bei aktivem Modul.
    Rein: keine Ablage, keine Uhr.
    ========================================================================== */
-import { modulAktiv, BRANCHENMODULE } from "./branchenmodule.mjs";
+import { modulAktiv, BRANCHENMODULE, BEREICH_PROTOKOLL_ART } from "./branchenmodule.mjs";
 import { REGELN_BRANCHEN, alsEinteilungsBefund } from "./branchenkatalog.mjs";
 
 export const BEREICH_GRENZEN = Object.freeze({ bereicheJeEinheit: 50, planEintraege: 200_000, aenderungenSchicht: 500, tageSpanne: 731,
@@ -291,4 +291,69 @@ export function bereichsPlanSchicht(altO, neuO, { imBereich, eigeneBereiche }) {
       return { ok: false, grund: "Dieser Bereich gehört nicht zu deiner Einheit." };
   }
   return { ok: true, plan: neuO };
+}
+
+/* ---- Änderungsprotokoll im Schreibweg der Schichtverantwortung (WP-19.4, Matrix B2 b; Invarianten WP19-MODULPLAN.md §17) ----
+   Im bestehenden Modulprotokoll des Betriebs (einstellungen.modulprotokoll: nur der Server schreibt, Aufbewahrung und Löschweg wie
+   dort; eigene Grenzen statt der gemeinsamen, BEREICH_PROTOKOLL_GRENZEN). Je angenommenem Speichern mit Änderung genau ein Eintrag: wer (Kennung), wann (Serverzeit), eigene Einheit,
+   Anzahl und je Änderung Person (Kennung), Tag, Bereich vorher und nachher (Kennung oder null) — keine Namen, nichts weiter. */
+export { BEREICH_PROTOKOLL_ART };
+
+/**
+ * Der Protokolleintrag zu einer angenommenen Änderung des Bereichsplans; ohne Änderung null.
+ * @param {any} altO gespeicherter Bereichsplan
+ * @param {any} neuO angenommener Bereichsplan
+ * @param {{ am: string, von: any, einheit: any }} k
+ * @returns {null | { art: string, modul: string, am: string, von: any, einheit: any, anzahl: number,
+ *   zuordnungen: { person: string, tag: string, vorher: (string | null), nachher: (string | null) }[] }}
+ */
+export function bereichsprotokollEintrag(altO, neuO, { am, von, einheit }) {
+  const alt = istObjekt(altO) ? altO : {}, neu = istObjekt(neuO) ? neuO : {};
+  const wert = (o, k) => (hat(o, k) && typeof o[k] === "string" ? o[k] : null);
+  const zuordnungen = [];
+  for (const k of [...new Set([...Object.keys(alt), ...Object.keys(neu)])].sort()) {
+    const vorher = wert(alt, k), nachher = wert(neu, k);
+    if (vorher === nachher) continue;
+    const i = k.lastIndexOf("|");
+    zuordnungen.push({ person: k.slice(0, i), tag: k.slice(i + 1), vorher, nachher });
+  }
+  if (!zuordnungen.length) return null;
+  return { art: BEREICH_PROTOKOLL_ART, modul: "bereichsplan", am, von: von === undefined ? null : von,
+    einheit: einheit === undefined ? null : einheit, anzahl: zuordnungen.length, zuordnungen };
+}
+
+/**
+ * Eigene Grenzen dieser Art (Review #578 B-1/B-2): Sie zählen NICHT zur gemeinsamen Grenze des Modulprotokolls
+ * (modulprotokollBelegt) und sperren nur das Zuordnen durch die Schichtverantwortung — nie Leitung, Planung oder andere Einträge.
+ * Worst Case Bytes: alle Einträge dieser Art zusammen höchstens `gesamtBytes` (1 MiB, UTF-8 der JSON-Form), also ≤ 1/6 von
+ * RUMPF_MAX (6 MiB, server/funktionen/daten.mjs) — unabhängig von der Zahl der Einheiten, weil die Grenze je Betrieb gilt.
+ * Ein Eintrag: höchstens `jeSpeichern` Zuordnungen und `eintragBytes`; je Zuordnung höchstens ≈ 240 Byte (Kennungen ≤ 60 Zeichen).
+ */
+export const BEREICH_PROTOKOLL_GRENZEN = Object.freeze({ jeSpeichern: 100, eintragBytes: 32 * 1024, eintraege: 2000, gesamtBytes: 1024 * 1024 });
+
+/** Bytes der JSON-Form (UTF-8) — im Browser und auf dem Server gleich. @param {any} x */
+export const protokollBytes = (x) => new TextEncoder().encode(JSON.stringify(x)).length;
+
+/**
+ * Hängt den Eintrag an das gespeicherte Modulprotokoll an (nie an das übermittelte). Nur anhängen: nichts wird hier entfernt oder
+ * verdrängt (Archivierung: Entscheidung E7, WP19-MODULPLAN.md 17.1). Über einer eigenen Grenze wird das Speichern der
+ * Schichtverantwortung abgewiesen — keine Zuordnung ohne Protokoll (fail-closed).
+ * @param {any} einstellungen gespeicherte Einstellungen des Betriebs
+ * @param {any} eintrag
+ * @param {{ grenzen?: typeof BEREICH_PROTOKOLL_GRENZEN }} [o]
+ * @returns {{ einstellungen: any } | { grund: string }}
+ */
+export function bereichsprotokollAnhaengen(einstellungen, eintrag, { grenzen = BEREICH_PROTOKOLL_GRENZEN } = {}) {
+  const e = istObjekt(einstellungen) ? einstellungen : {};
+  const bisher = Array.isArray(e.modulprotokoll) ? e.modulprotokoll : [];
+  const n = Array.isArray(eintrag && eintrag.zuordnungen) ? eintrag.zuordnungen.length : 0;
+  if (n > grenzen.jeSpeichern)
+    return { grund: `Bereichsplan: höchstens ${grenzen.jeSpeichern} Änderungen je Speichern (Änderungsprotokoll) — bitte in kleineren Schritten speichern.` };
+  const b = protokollBytes(eintrag);
+  if (b > grenzen.eintragBytes) return { grund: "Bereichsplan: Die Änderung ist für das Änderungsprotokoll zu groß — bitte in kleineren Schritten speichern." };
+  const eigene = bisher.filter((x) => istObjekt(x) && x.art === BEREICH_PROTOKOLL_ART);
+  if (eigene.length + 1 > grenzen.eintraege || protokollBytes(eigene) + b > grenzen.gesamtBytes)
+    return { grund: "Bereichsplan: Das Änderungsprotokoll der Zuordnungen ist voll. Zuordnen durch die Schichtverantwortung geht erst wieder, "
+      + "wenn die Leitung über die Archivierung entschieden hat; Leitung und Planung ordnen weiter zu." };
+  return { einstellungen: { ...e, modulprotokoll: [...bisher, eintrag] } };
 }

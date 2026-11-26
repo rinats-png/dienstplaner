@@ -22,7 +22,7 @@
    Rein: keine Ablage; einzige Uhr: `jetzt` wird übergeben (Server stempelt).
    ========================================================================== */
 import { pruefeRegel, testlauf, REGELARTEN_ALLE } from "./regelbaukasten-erweitert.mjs";
-import { MODULPROTOKOLL_GRENZE, modulprotokollFaellig } from "./branchenmodule.mjs";
+import { MODULPROTOKOLL_GRENZE, modulprotokollFaellig, modulprotokollBelegt } from "./branchenmodule.mjs";
 
 export const VORGABEN_REGELARTEN = REGELARTEN_ALLE;
 export const VORGABEN_STAERKEN = Object.freeze(["muss", "soll", "wunsch"]);
@@ -345,8 +345,9 @@ export function vorgabenZusammen(altM, neuM, { darfOrgEdit, person, tarif, jetzt
   let bisher = Array.isArray(einst.modulprotokoll) ? einst.modulprotokoll : [];
   /* An der Grenze zuerst nach geprüfter Frist fällige Einträge entfernen (heute keine: Regel ungeprüft, FN-32); sonst bleibt die Grenze eine
      Sperre — außer fürs Deaktivieren, das immer geht. */
-  if (bisher.length + ereignisse.length > MODULPROTOKOLL_GRENZE) bisher = modulprotokollFaellig({ einstellungen: { modulprotokoll: bisher } }, jetzt.slice(0, 10)).rest;
-  if (bisher.length + ereignisse.length > MODULPROTOKOLL_GRENZE && ereignisse.some((x) => x.art !== "vorgabe-deaktiviert"))
+  /* Einträge der Bereichszuordnung (WP-19.4) zählen nicht mit (eigene Grenzen, Review #578 B-1). */
+  if (modulprotokollBelegt(bisher) + ereignisse.length > MODULPROTOKOLL_GRENZE) bisher = modulprotokollFaellig({ einstellungen: { modulprotokoll: bisher } }, jetzt.slice(0, 10)).rest;
+  if (modulprotokollBelegt(bisher) + ereignisse.length > MODULPROTOKOLL_GRENZE && ereignisse.some((x) => x.art !== "vorgabe-deaktiviert"))
     return { grund: `Modulprotokoll: Die Grenze von ${MODULPROTOKOLL_GRENZE} Einträgen ist erreicht. Deaktivieren geht weiter; alles andere wieder, sobald ältere Einträge nach einer geprüften Aufbewahrungsregel entfallen dürfen.` };
   return { mandant: { ...neuM, vorgaben: aus, einstellungen: { ...einst, modulprotokoll: [...bisher, ...ereignisse] } } };
 }
