@@ -317,4 +317,39 @@ describe("Teil B — über den echten Handler POST /api/bereichsprotokoll-archiv
     expect(m2.einstellungen.modulprotokoll.filter((x) => x.art === BEREICH_ARCHIV_ART)).toHaveLength(1);
     expect(m2.einstellungen.modulprotokoll.filter((x) => x.art === BEREICH_PROTOKOLL_ART)).toHaveLength(0);
   }, 120000);
+
+  it("Nachtrag: Betreiber, Demo-Sitzung der Leitung und unbekannte Rolle → 403, Platte unverändert (wie Wiederherstellen/Vollausgabe)", async () => {
+    const r = await raum({ protokoll: [ALT, ...fuell(3)] });
+    const b = await exportDerLeitung(r);
+    const vorher = await gespeichert(r.name);
+    const neu = async (felder) => (await S.sitzungAnlegen({ bestand: r.name, name: "V Nx", person: "x1", betrieb: 0, mandantId: "m1", einheit: null, ...felder }, 2 * 3600 * 1000)).token;
+    const faelle = {
+      betreiber: await neu({ rolle: "betreiber", zweifaktor: true }),
+      demoLeitung: await neu({ rolle: "leitung", person: "l1", demo: true }),
+      unbekannt: await neu({ rolle: "gast" }),
+    };
+    for (const [k, token] of Object.entries(faelle)) {
+      const a = await archivieren(r, b, token);
+      /* Unbekannte Rolle: schon die Sitzung gilt nicht (401); Betreiber und Demo erreichen den Handler (403). */
+      expect(a.status, k).toBe(k === "unbekannt" ? 401 : 403);
+      expect(a.archiviert, k).toBeUndefined();
+    }
+    expect(await gespeichert(r.name)).toEqual(vorher);
+    /* Gegenprobe: dieselbe Angabe mit der echten Leitung geht durch. */
+    expect((await archivieren(r, b)).status).toBe(200);
+  }, 120000);
+
+  it("Nachtrag: Fremdbetrieb-Angabe (mandantId/raum) im Rumpf wird ignoriert — archiviert wird nur der eigene Betrieb, der andere bleibt byte-gleich", async () => {
+    const r = await raum({ protokoll: [ALT, ...fuell(3)] });
+    const fremd = await raum({ protokoll: [ALT, ...fuell(3)] });
+    const b = await exportDerLeitung(r);
+    const fremdVorher = JSON.stringify(await gespeichert(fremd.name));
+    const a = await archivieren(r, { ...b, mandantId: "m9", raum: fremd.name, bestand: fremd.name, betrieb: 1 });
+    expect(a.status, JSON.stringify(a).slice(0, 300)).toBe(200);
+    expect(a.archiviert).toBe(b.anzahl);
+    expect(JSON.stringify(await gespeichert(fremd.name))).toBe(fremdVorher);
+    const m = await gespeichert(r.name);
+    expect(m.einstellungen.modulprotokoll.filter((x) => x.art === BEREICH_ARCHIV_ART)).toHaveLength(1);
+    expect(m.einstellungen.modulprotokoll.filter((x) => x.art === BEREICH_PROTOKOLL_ART)).toHaveLength(0);
+  }, 120000);
 });

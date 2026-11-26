@@ -3094,7 +3094,7 @@ async function behandeln(req, context, ctx) {
        mit erwartetem Stand unter der Raumsperre (fail-closed). Der volle Weg leert das Protokoll weiterhin nicht. */
     if (pfad === "bereichsprotokoll-archivieren" && req.method === "POST") {
       const kA = kennung(req, s);
-      if (s.rolle !== "leitung") {
+      if (s.rolle !== "leitung" || s.demo) {
         await protokoll("schreiben", kA, "abgewiesen", `Bereichsprotokoll archivieren · Rolle ${s.rolle}`, wer);
         return antwort({ fehler: "Das Änderungsprotokoll archiviert nur die Leitung.", text: absageText(s.rolle) }, 403);
       }
