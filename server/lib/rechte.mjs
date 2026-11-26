@@ -1703,7 +1703,7 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
       const posten = postenZusammen(geschickt, ort.betrieb, { bekannt: moduldatenAusnahme === undefined });
       if (posten.grund) return { verweigert: posten.grund };
       /* Bereichsplan (WP-19): Bereiche je Einheit und Zuordnung, nur Neues oder Geändertes streng. */
-      const bereiche = bereichsplanZusammen(geschickt, ort.betrieb);
+      const bereiche = bereichsplanZusammen(geschickt, ort.betrieb, { bekannt: moduldatenAusnahme === undefined });
       if (bereiche.grund) return { verweigert: bereiche.grund };
       /* Interne Vorgaben (WP-I4): nur org.edit (sonst wirkungslos), Form, Stufengrenze und Wann/Wer vom Server (vorgaben.mjs). */
       const vorgaben = vorgabenZusammen(ort.betrieb, geschickt, { darfOrgEdit: darf(rolle, "org.edit"), person: sitzung.person,

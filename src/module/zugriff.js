@@ -38,6 +38,12 @@ export function postenSchreibenFuer(rolle) {
   return rolle === "leitung" || rolle === "planer";
 }
 
+/** Schreibweg der Bereichs-Oberfläche: "voll" (Zuordnung und Pflege) für Leitung und Planung, "einheit" (nur Zuordnung, nur eigene Einheit) für die Schichtverantwortung, sonst null (fail-closed). @param {any} rolle */
+export function bereichSchreibenFuer(rolle) {
+  if (rolle === "leitung" || rolle === "planer") return "voll";
+  return rolle === "subplaner" ? "einheit" : null;
+}
+
 /**
  * Der Basiskontext für die Moduloberflächen.
  * @param {{ sitz?: any, kontext?: any }} o
@@ -54,6 +60,7 @@ export function modulKontext({ sitz, kontext } = {}) {
     wachbuchZugriff: wachbuchZugriffFuer(rolle),
     berichtZugriff,
     postenSchreiben: postenSchreibenFuer(rolle),
+    bereichSchreiben: bereichSchreibenFuer(rolle),
     person: person && person.id !== undefined && person.id !== null ? String(person.id) : null,
     eigeneEinheit: eigene,
     personen: m && Array.isArray(m.personen) ? m.personen.filter(istObjekt) : [],
