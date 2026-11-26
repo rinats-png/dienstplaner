@@ -66,7 +66,7 @@ import { schichtzuordnungProtokollZeilen, modellKuerzungFehlerBestand } from "..
 import { kiSteuerungProtokollZeilen, kiSteuerungVerwerfen, betriebsratKontenZeilen, kiBrPauseAktiv } from "../lib/ki-steuerung.mjs";
 import { VORLAGEN, vorlageBestand, demoGestaltPruefen, demoOhneVertrag, codeBindung, betriebFuerNeuenCode }
   from "../lib/erstbefuellung.mjs";
-import { SICHERUNG_ROLLEN, WIEDERHERSTELLEN_ROLLEN, MARKE, markeNeu, eigenerBetrieb,
+import { SICHERUNG_ROLLEN, WIEDERHERSTELLEN_ROLLEN, MARKE, sicherungAnlegen, eigenerBetrieb,
   betriebsSicherung, auszuduennen, listenEintrag, betriebWiederherstellen,
   vollausgabeBetrieb } from "../lib/sicherungen.mjs";
 /* Sitzungen liegen in lib/sitzungen.mjs — dieselbe Logik wie vorher hier,
@@ -2106,8 +2106,7 @@ async function behandeln(req, context, ctx) {
         if (jetzt) {
           const schrumpf = schrumpfung(jetzt.bestand, zuSchreiben);
           if (schrumpf.anteil >= SICHERUNGSSCHWELLE) {
-            const marke = markeNeu();
-            await store.setJSON(`sicherung:${s.bestand}:${marke}`, jetzt.bestand,
+            await sicherungAnlegen(store, s.bestand, jetzt.bestand,
               { metadata: { zeit: lesezeit,
                 durch: `automatisch vor Verlust von ${Math.round(schrumpf.anteil * 100)} %`,
                 automatisch: "ja", zeitquelle: "lesezeit" } }).catch(() => {});
@@ -3434,7 +3433,7 @@ async function behandeln(req, context, ctx) {
       if (!ortVorab) return antwort({ fehler: "Kein Betrieb vorhanden." }, 404);
       const bS = await bremse("sicherung", `${s.bestand}:${ortVorab.betrieb.id}`);
       if (!bS.frei) return zuVielAntwort(bS.wartet);
-      const marke = markeNeu();
+      let marke = "";
       /* Die Momentaufnahme unter der Sperre des Raums und streng gelesen:
          Ohne Sperre konnte sie mitten in einen Schreibvorgang fallen — Kern
          und erster Monat schon neu, zweiter Monat noch alt —, und ohne
@@ -3445,7 +3444,7 @@ async function behandeln(req, context, ctx) {
         const mit = await bestandLesenStreng(store, s.bestand);
         const o = mit ? eigenerBetrieb(mit.bestand, s) : null;
         if (!o) return null;
-        await store.setJSON(`sicherung:${s.bestand}:${marke}`,
+        marke = await sicherungAnlegen(store, s.bestand,
           betriebsSicherung(mit.bestand, o, { stand: mit.stand, durch: s.name || null }),
           { metadata: { zeit: new Date().toISOString(), durch: s.name || null,
             mandantId: o.betrieb.id, rolle: s.rolle } });
@@ -3622,8 +3621,7 @@ async function behandeln(req, context, ctx) {
         await protokoll("schreiben", kW, "pruefung", `wiederherstellen ${marke}: ${berichtZeileW}`.slice(0, 400), wer);
 
         /* Erst den jetzigen Stand wegschreiben, dann tauschen. */
-        const m2 = markeNeu();
-        await store.setJSON(`sicherung:${s.bestand}:${m2}`, jetztGelesen.bestand,
+        await sicherungAnlegen(store, s.bestand, jetztGelesen.bestand,
           { metadata: { zeit: lesezeitW,
             durch: `automatisch vor Wiederherstellung von ${marke}`, automatisch: "ja", zeitquelle: "lesezeit" } })
           .catch(() => {});
