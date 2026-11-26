@@ -185,6 +185,12 @@ export function bereichsplanZusammen(neuM, altM, { bekannt = true } = {}) {
       const w = new Set([...bereichsIndex(altM)].filter(([id, e]) => !ix.has(id) && bleibend.has(String(e.einheitId))).map(([id]) => id));
       if (w.size && Object.values(neuM.bereichsPlan).some((v) => w.has(v)))
         return { grund: "Bereichsplan: ein entfernter Bereich hat noch Zuordnungen — erst die Zuordnungen lösen." };
+      /* B-2: Eine Kennung, die es im alten Stand nicht gab, darf nicht wieder auf eine unveränderte Altzuordnung zeigen
+         (sonst lebt der Plan eines gelöschten Bereichs im neuen Bereich still wieder auf). Neue Zuordnungen auf den neuen Bereich im selben Schreiben bleiben erlaubt. */
+      const altIx = bereichsIndex(altM);
+      for (const [k, v] of Object.entries(neuM.bereichsPlan))
+        if (hat(vorher, k) && vorher[k] === v && ix.has(v) && !altIx.has(v))
+          return { grund: `Bereichsplan: die Kennung „${String(v).slice(0, 30)}“ gehört noch zu Zuordnungen eines gelöschten Bereichs — erst die Zuordnungen lösen.` };
     }
   }
   return {};
@@ -197,11 +203,13 @@ const zuordnungenAuf = (m, ids) => (istObjekt(m && m.bereichsPlan) ? Object.valu
 const AENDERBAR = Object.freeze(["name", "soll"]);
 const mitBereichen = (einheiten, einheitId, f) => liste(einheiten).map((e) => (String(e.id) === String(einheitId) ? { ...e, bereiche: f(liste(e.bereiche)) } : e));
 
-/** Neuer Bereich in einer Einheit (Name leer: „Neuer Bereich“); Einheit unbekannt oder voll: unverändert. @param {any[]} einheiten @param {any} einheitId @param {string} name */
-export function bereichHinzufuegen(einheiten, einheitId, name) {
+/** Neuer Bereich in einer Einheit (Name leer: „Neuer Bereich“); Einheit unbekannt oder voll: unverändert. @param {any[]} einheiten @param {any} einheitId @param {string} name @param {any} [bereichsPlan] */
+export function bereichHinzufuegen(einheiten, einheitId, name, bereichsPlan) {
   const e = liste(einheiten).find((x) => String(x.id) === String(einheitId));
   if (!e || liste(e.bereiche).length >= BEREICH_GRENZEN.bereicheJeEinheit) return einheiten;
   const belegt = new Set(liste(einheiten).flatMap((x) => liste(x.bereiche).map((b) => b.id)));
+  /* B-2: auch Kennungen, auf die der Bereichsplan noch zeigt (Bereiche gelöschter Einheiten), sind belegt. */
+  if (istObjekt(bereichsPlan)) for (const v of Object.values(bereichsPlan)) belegt.add(v);
   return mitBereichen(einheiten, einheitId, (bs) => [...bs, { id: freieId(belegt, "b"), name: String(name || "").trim() || "Neuer Bereich", soll: {} }]);
 }
 /** Name oder Soll ändern; die Kennung nie. @param {any[]} einheiten @param {any} einheitId @param {string} bereichId @param {Record<string, any>} patch */

@@ -71,6 +71,19 @@ describe("Zuordnung auf einen unbekannten Bereich (Server)", () => {
     expect(bereichsplanZusammen({ einheiten: ohneB2, bereichsPlan: a.bereichsPlan }, a).grund).toMatch(/entfernter Bereich/);
     expect(bereichsplanZusammen({ einheiten: ohneB2, bereichsPlan: {} }, a)).toEqual({});
   });
+  it("B-2: eine Kennung, die es vorher nicht gab, darf nicht auf eine unveränderte Altzuordnung zeigen; neue Zuordnung im selben Schreiben bleibt erlaubt", () => {
+    const alt = { einheiten: [einheiten()[0]], bereichsPlan: { [`a1|${T}`]: "b3" } };
+    const neuB3 = [{ ...alt.einheiten[0], bereiche: [...alt.einheiten[0].bereiche, { id: "b3", name: "Neu", soll: {} }] }];
+    expect(bereichsplanZusammen({ einheiten: neuB3, bereichsPlan: alt.bereichsPlan }, alt).grund).toMatch(/gelöschten Bereichs/);
+    /* dieselbe Einheit mit demselben Bereich neu angelegt: kein stilles Wiederaufleben */
+    expect(bereichsplanZusammen({ einheiten: [...alt.einheiten, einheiten()[1]], bereichsPlan: alt.bereichsPlan }, alt).grund).toMatch(/gelöschten Bereichs/);
+    /* Zuordnung vorher lösen oder neu setzen ist erlaubt */
+    expect(bereichsplanZusammen({ einheiten: neuB3, bereichsPlan: {} }, alt)).toEqual({});
+    expect(bereichsplanZusammen({ einheiten: neuB3, bereichsPlan: { [`a1|${T}`]: "b3", [`a2|${T}`]: "b3" } }, { ...alt, bereichsPlan: {} })).toEqual({});
+    /* die Freigabe aus B-1 bleibt: Einheit mit Altzuordnung löschen */
+    const mit = { einheiten: einheiten(), bereichsPlan: { [`a1|${T}`]: "b3" } };
+    expect(bereichsplanZusammen({ einheiten: [mit.einheiten[0]], bereichsPlan: mit.bereichsPlan }, mit)).toEqual({});
+  });
   it("B-1: eine ganze Einheit zu löschen bleibt erlaubt, auch mit Altzuordnung auf ihre Bereiche; ein Bereich einer bleibenden Einheit nicht", () => {
     const a = { einheiten: einheiten(), bereichsPlan: { [`a1|${T}`]: "b3" } };
     const ohneE2 = [a.einheiten[0]];
@@ -83,6 +96,14 @@ describe("Zuordnung auf einen unbekannten Bereich (Server)", () => {
 });
 
 describe("Reine Pflegefunktionen", () => {
+  it("B-2: eine neue Bereichskennung meidet Kennungen, auf die der Bereichsplan noch zeigt (Bereiche gelöschter Einheiten)", () => {
+    const nurE1 = [einheiten()[0]];
+    const ohnePlan = bereichHinzufuegen(nurE1, "e1", "Neu");
+    expect(ohnePlan[0].bereiche.at(-1).id).toBe("b3");
+    const mitPlan = bereichHinzufuegen(nurE1, "e1", "Neu", { [`a1|${T}`]: "b3" });
+    expect(mitPlan[0].bereiche.at(-1).id).not.toBe("b3");
+    expect(pruefeBereiche(mitPlan)).toBeNull();
+  });
   it("Bereich anlegen: eindeutige Kennung über alle Einheiten, Standardname, nichts wird verändert; Grenzen", () => {
     const e = einheiten();
     const kopie = JSON.stringify(e);
@@ -258,6 +279,20 @@ describe("Rollen (Schreibweg der Oberfläche und Server)", () => {
     expect(geplant.mandanten[0].einheiten.map((e) => e.id)).toEqual(["e1"]);
     const bleibt = schreibeAls(g, "LT", (m) => { m.einheiten[1].bereiche = []; });
     expect(bleibt.verweigert).toMatch(/entfernter Bereich/);
+  });
+  it("B-2 Server: Nach dem Löschen der Einheit lebt die Altzuordnung in einem neuen Bereich mit gleicher Kennung nicht wieder auf", () => {
+    const g = gesamt();
+    g.mandanten[0].bereichsPlan = { [`a1|${T}`]: "b3" };
+    const ohneE2 = schreibeAls(g, "LT", (m) => { m.einheiten = m.einheiten.filter((e) => e.id !== "e2"); });
+    expect(ohneE2.verweigert).toBeUndefined();
+    expect(ohneE2.mandanten[0].bereichsPlan).toEqual({ [`a1|${T}`]: "b3" });
+    const neu = schreibeAls(ohneE2, "LT", (m) => { m.einheiten[0].bereiche = [...m.einheiten[0].bereiche, { id: "b3", name: "Neu", soll: { F: 1 } }]; });
+    expect(neu.verweigert).toMatch(/gelöschten Bereichs/);
+    const e2neu = schreibeAls(ohneE2, "LT", (m) => { m.einheiten = [...m.einheiten, { id: "e2", versatzTage: 0, bereiche: JSON.parse(JSON.stringify(E2)) }]; });
+    expect(e2neu.verweigert).toMatch(/gelöschten Bereichs/);
+    const ok = schreibeAls(ohneE2, "LT", (m) => { m.einheiten[0].bereiche = bereichHinzufuegen(m.einheiten, "e1", "Neu", m.bereichsPlan)[0].bereiche; });
+    expect(ok.verweigert).toBeUndefined();
+    expect(ok.mandanten[0].einheiten[0].bereiche.map((b) => b.id)).not.toContain("b3"); // kollision-ok: feste Kennung b3 des gelöschten Bereichs, kein Zufallswert
   });
   it("Server: Bei Status geplant bleibt der Schreibweg geschlossen (Platte unverändert)", () => {
     const g = gesamt();

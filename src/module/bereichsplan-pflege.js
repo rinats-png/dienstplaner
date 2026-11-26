@@ -110,7 +110,7 @@ export function BereichsPflege({ m, einheitId, schreibe }) {
           value: b.soll && b.soll[d.id] !== undefined ? b.soll[d.id] : "",
           onChange: (e) => setEntwurf(bereichAendern(entwurf, einheitId, b.id, { soll: bereichSollSetzen(b.soll, d.id, e.target.value === "" ? undefined : Number(e.target.value)) })) }))),
       h("div", null, knopf(`Bereich ${b.name} entfernen`, () => entferne(b.id))))),
-    h("div", { style: ZEILE }, knopf("Bereich hinzufügen", () => setEntwurf(bereichHinzufuegen(entwurf, einheitId, "")))),
+    h("div", { style: ZEILE }, knopf("Bereich hinzufügen", () => setEntwurf(bereichHinzufuegen(entwurf, einheitId, "", m.bereichsPlan)))),
     (meldung || fehler) && h("p", { role: "alert", style: { margin: 0 } }, fehler || meldung),
     h("div", { style: ZEILE },
       knopf("Änderungen übernehmen", () => { schreibe("einheiten", entwurf); setMeldung("Übernommen — wird gespeichert."); }, { disabled: !geaendert || !!fehler }),
