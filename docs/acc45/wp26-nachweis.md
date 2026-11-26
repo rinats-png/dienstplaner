@@ -165,3 +165,5 @@ Invarianten (vor der Umsetzung festgehalten):
 6. Das bisherige Fehlerverhalten der Schreibstellen bleibt: Die automatischen Sicherungen vor Verlust und vor
    Wiederherstellung schlucken einen Schreibfehler weiter (`.catch`), die manuelle Sicherung und der
    Datenschutzlauf brechen ab (der Lauf löscht dann nichts in diesem Raum).
+
+Review: Opus-Review FREIGABE (fe9b1d8b), gemergt #582 (7656f044).
