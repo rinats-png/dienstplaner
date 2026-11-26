@@ -270,7 +270,7 @@ function RegelwertZeile({ m, regel, darfSchalten, setzeRegelwert }) {
 }
 
 /** Moduloberflächen an den Einhängepunkten (./index.js). */
-function Oberflaechen({ m, sitz, darf, kontext, liste }) {
+function Oberflaechen({ m, sitz, darf, kontext, liste, akt }) {
   const dienstarten = (Array.isArray(m.dienstarten) ? m.dienstarten : []).filter((d) => d && d.id);
   const einheiten = (Array.isArray(m.einheiten) ? m.einheiten : []).filter((e) => e && e.id);
   const [tag, setTag] = useState(heuteTag());
@@ -283,7 +283,7 @@ function Oberflaechen({ m, sitz, darf, kontext, liste }) {
   /* Basiskontext der Ansichten (zugriff.js): Zugriffsstufen, Person, Qualifikationsprüfung, Personen, Dienstzeit — fail-closed. */
   /* Dienstzeit des Objektberichts (OB-2): nur aus der bestätigten Ist-Zeit (dienstzeit.js), nie aus dem Plan;
      modulKontext reicht sie nur bei Berichtszugriff „voll“ (Planung, Leitung) weiter. */
-  const basis = { m, heute: heuteTag(), darf,
+  const basis = { m, heute: heuteTag(), darf, akt,
     ...modulKontext({ sitz, kontext: { ...(kontext || {}), dienstzeit: objektberichtDienstzeit(m, sitz) } }) };
   const rahmen = (x, inhalt, schluessel) => (
     <section key={schluessel} style={RAHMEN} aria-label={x.eintrag.titel}>
@@ -348,7 +348,7 @@ export function BranchenModule({ sitz, akt, darf, kontext, liste = BRANCHENMODUL
         </div>)}
       <div>
         <h3 style={{ margin: "8px 0 4px", fontSize: 16 }}>Moduloberflächen</h3>
-        <Oberflaechen m={m} sitz={sitz} darf={darf} kontext={kontext} liste={liste} />
+        <Oberflaechen m={m} sitz={sitz} darf={darf} kontext={kontext} liste={liste} akt={akt} />
       </div>
     </section>);
 }

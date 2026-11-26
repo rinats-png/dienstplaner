@@ -35,6 +35,7 @@ import { personTag } from "../../engine/plan.mjs";
 import { mitTagesdatum } from "../../engine/zeit.mjs";
 import { mitMerkmalen } from "../../engine/befunde.mjs";
 import { ersatzKandidaten, ruheIst, KANDIDATEN_MAX } from "../../engine/ersatzfakten.mjs";
+import { neuesVorgabenBudget } from "../../vorgabenwirkung.mjs";
 import { funktionEintrag, rolleDarf } from "../positivliste.mjs";
 import { betriebIndexAusSitzung } from "../alias.mjs";
 import { gatewayAn, SCHALTER_AUS } from "../gateway/schalter.mjs";
@@ -124,6 +125,7 @@ export async function ausfallVorschlag(o) {
 
   const ergebnisse = mitTagesdatum(o.heute, () => mitMerkmalen(() => false, () => {
     const aus = [];
+    const vorgabenBudget = neuesVorgabenBudget();   // WP-I5: ein Budget für alle Ausfalltage dieser Anfrage
     for (const a of ausfaelle) {
       const p = r.personen.find((x) => gleich(x.id, a.personId));
       for (const d of a.tage) {
@@ -139,7 +141,7 @@ export async function ausfallVorschlag(o) {
         const fehlen = [p, ...r.personen.filter((q) => !gleich(q.id, p.id) && imFall(q.id, d))];
         const gedacht = { ...r, abwesenheiten: [...r.abwesenheiten, ...fehlen.map((q, i) => ({ id: `f3-gedacht-${i}`, personId: q.id, art: "abwesend", von: d, bis: d }))] };
         try {
-          const k = ersatzKandidaten(gedacht, d, String(da.id));
+          const k = ersatzKandidaten(gedacht, d, String(da.id), { vorgabenBudget });
           const person = (id) => r.personen.find((x) => gleich(x.id, id));
           const direkt = k.direkt.slice(0, KANDIDATEN_MAX)
             .map((c) => ({ personId: String(c.personId), name: name(person(c.personId)), punkte: c.punkte,

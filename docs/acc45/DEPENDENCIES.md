@@ -2,9 +2,9 @@
 
 Erzeugt von `werkzeug/acc45-backlog.mjs` aus `docs/acc45/work-packages.json` (nicht von Hand ändern).
 
-**Kritischer Pfad gemeinsam** (offener Entwicklungsaufwand, ohne extern): WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **50–90 PT**
-**Ohne Intelligence:** WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 → WP-42a → WP-42 = **22,5–35 PT**
-**Offener Entwicklungsaufwand:** 359,3–616,25 PT in 138 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
+**Kritischer Pfad gemeinsam** (offener Entwicklungsaufwand, ohne extern): WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **48–86 PT**
+**Ohne Intelligence:** WP-16 → WP-19.7 → WP-19.6 → WP-19.13 → WP-42a → WP-42 = **21–33,5 PT**
+**Offener Entwicklungsaufwand:** 355,3–609,25 PT in 138 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
 
 WP-09 ist nur Livegang-Reihenfolge und zählt im Pfad nicht als Abhängigkeit. Der Graph zeigt nur offene Pakete.
 
@@ -70,7 +70,7 @@ flowchart LR
     WEBSITE_W8_1["WEBSITE-W8-1<br/>BLOCKED"]
   end
   subgraph wp19[WP-19-Module]
-    WP_19_1["WP-19.1<br/>BLOCKED"]
+    WP_19_1["WP-19.1<br/>IN_PROGRESS"]
     WP_19_2["WP-19.2<br/>BLOCKED"]
     WP_19_3["WP-19.3<br/>BLOCKED"]
     WP_19_4["WP-19.4<br/>BLOCKED"]
@@ -88,7 +88,7 @@ flowchart LR
   subgraph intelligence[Intelligence]
     WP_I1["WP-I1<br/>BLOCKED"]
     WP_I4["WP-I4<br/>IN_PROGRESS"]
-    WP_I5["WP-I5<br/>BLOCKED"]
+    WP_I5["WP-I5<br/>IN_PROGRESS"]
     WP_I7["WP-I7<br/>BLOCKED"]
     WP_I8["WP-I8<br/>BLOCKED"]
     WP_I9["WP-I9<br/>BLOCKED"]
@@ -448,7 +448,7 @@ flowchart LR
 | WP-07b | folge | P1 | 2–4 | 0,4–0,8 | WP-07, WP-16 | daten.mjs, stempelintegritaet.mjs | opus | REVIEW |
 | WP-S1 | folge | P1 | 1–2 | 0 | WP-12 | – | sonnet | INTEGRATED |
 | WP-19.0 | wp19 | P1 | 4–6 | 0 | WP-11, WP-22 | App.jsx, rechte.mjs, sicht.mjs | opus | INTEGRATED |
-| WP-19.1 | wp19 | P1 | 4–6 | 4–6 | WP-19.0 | – | sonnet + opus-review | BLOCKED |
+| WP-19.1 | wp19 | P1 | 4–6 | 2–3 | WP-19.0 | – | sonnet + opus-review | IN_PROGRESS |
 | WP-19.2 | wp19 | P1 | 8–12 | 8–12 | WP-19.0, WP-19.1, WP-26 | rechte.mjs | opus | BLOCKED |
 | WP-19.3 | wp19 | P1 | 5–8 | 5–8 | WP-19.1, WP-19.2, WP-16 | – | opus | BLOCKED |
 | WP-19.4 | wp19 | P1 | 4–6 | 4–6 | WP-19.0 | – | sonnet + opus-review | BLOCKED |
@@ -465,7 +465,7 @@ flowchart LR
 | WP-I2 | intelligence | P2 | 3–6 | 0 | WP-11, E-21i | App.jsx | sonnet | INTEGRATED |
 | WP-I3 | intelligence | P2 | 8–14 | 0 | WP-11, E-21i | – | sonnet | INTEGRATED |
 | WP-I4 | intelligence | P2 | 8–14 | 4–7 | WP-I3, WP-22 | App.jsx, rechte.mjs | sonnet + opus-review | IN_PROGRESS |
-| WP-I5 | intelligence | P2 | 4–8 | 4–8 | WP-I3, WP-I4 | App.jsx | sonnet | BLOCKED |
+| WP-I5 | intelligence | P2 | 4–8 | 2–4 | WP-I3, WP-I4 | App.jsx | sonnet | IN_PROGRESS |
 | WP-I6 | intelligence | P2 | 3–5 | 0 | E-21i | App.jsx | sonnet | INTEGRATED |
 | WP-I7 | intelligence | P2 | 14–26 | 14–26 | WP-I3, WP-I5, WP-I6 | – | sonnet | BLOCKED |
 | WP-I8 | intelligence | P2 | 8–14 | 8–14 | WP-I7 | App.jsx | sonnet | BLOCKED |

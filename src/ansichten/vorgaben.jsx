@@ -7,7 +7,7 @@
    des Regelbaukastens hat Auswahlfelder. Der Server prüft Form, Recht (org.edit)
    und Stufengrenze und setzt Wann/Wer; hier steht nur die Bedienung.
 
-   Eine aktive Vorgabe wirkt noch nicht im Plan (WP-I5) — der Text sagt das.
+   Eine aktive Vorgabe wirkt, wo ihre Regelart im Plan gerechnet wird (WP-I5, server/lib/vorgabenwirkung.mjs); die Liste sagt je Vorgabe, wo nicht.
    ========================================================================== */
 import { useState } from "react";
 import { C } from "../farben.js";
@@ -17,6 +17,7 @@ import {
   VORGABEN_REGELARTEN, VORGABEN_STAERKEN, VORGABEN_GRUNDLAGEN, VORGABEN_BEZUEGE, VORGABEN_GELTUNG, VORGABEN_GRENZEN_FELD, PARAMETER_FELDER,
   pruefeVorgabe, vorgabeTestlauf, vorgabenGrenze, aktiveVorgaben, felderAusParametern, parameterAusFeldern,
 } from "../../server/lib/vorgaben.mjs";
+import { vorgabePlanwirkung } from "../../server/lib/vorgabenwirkung.mjs";
 
 export const REGELART_TEXT = {
   zaehlregel: "Zählregel (Ereignisse im Zeitraum zählen)", grenzregel: "Grenzregel (Wert gegen Ober-/Untergrenze)",
@@ -28,7 +29,7 @@ const STAERKE_TEXT = { muss: "Muss", soll: "Soll", wunsch: "Wunsch" };
 const STAERKE_HILFE = { muss: "Ein Verstoß ist eine Achtung und braucht eine Bestätigung.", soll: "Ziel beim Planen; eine Abweichung ist ein Hinweis.", wunsch: "Wird nur berücksichtigt, wenn es geht." };
 const GRUNDLAGE_TEXT = { hausregel: "Hausregel", betriebsvereinbarung: "Betriebsvereinbarung", tarif: "Tarifvertrag" };
 const BEZUG_TEXT = { woche: "Woche", monat: "Monat", quartal: "Quartal", rotation: "Schichtrotation" };
-const GELTUNG_TEXT = { betrieb: "ganzer Betrieb", einheit: "Einheit(en)", gruppe: "Personengruppe(n)", personen: "einzelne Personen" };
+const GELTUNG_TEXT = { betrieb: "ganzer Betrieb", einheit: "Einheit(en)", gruppe: "Qualifikationsgruppe(n)", personen: "einzelne Personen" };
 const STATUS_TEXT = { entwurf: "Entwurf", aktiv: "aktiv", inaktiv: "inaktiv" };
 const WAHL_TEXT = { hoechstens: "höchstens", mindestens: "mindestens", kalendermonat: "Kalendermonat", kalenderjahr: "Kalenderjahr", rollierend: "rollierend",
   tage: "Tage", wochen: "Wochen", monate: "Monate", anzahl: "Personen insgesamt", anzahlMit: "Personen mit Merkmal", quoteMit: "Anteil mit Merkmal (0 bis 1)",
@@ -124,8 +125,9 @@ export function Formular({ m, start, onSpeichern, onAbbruch }) {
           <label key={e.id} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13.5, minHeight: 24 }}>
             <input type="checkbox" checked={(v.geltung.einheiten || []).includes(e.id)} onChange={() => liste("einheiten", e.id)} />{e.name || e.id}</label>))}</div></Field>)}
       {v.geltung.art === "gruppe" && (
-        <Field label="Personengruppen" hint="Mit Komma trennen, z. B. Vollzeit, Fachkräfte."><Inp value={(v.geltung.gruppen || []).join(", ")}
-          onChange={(e) => setz("geltung", { ...v.geltung, gruppen: e.target.value.split(",").map((x) => x.trim()).filter(Boolean) })} /></Field>)}
+        <Field label="Qualifikationsgruppen" hint="Gilt für Personen mit der gewählten Qualifikation (keine allgemeine Gruppierung). Ohne die Qualifikation gilt die Vorgabe für die Person nicht."><div style={box}>{(m.qualifikationen || []).map((q) => (
+          <label key={q.id} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13.5, minHeight: 24 }}>
+            <input type="checkbox" checked={(v.geltung.gruppen || []).includes(q.id)} onChange={() => liste("gruppen", q.id)} />{q.name || q.kurz || q.id}</label>))}</div></Field>)}
       {v.geltung.art === "personen" && (
         <Field label="Personen"><div style={box}>{personen.map((p) => (
           <label key={p.id} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13.5, minHeight: 24 }}>
@@ -205,8 +207,8 @@ function VorgabenInnen({ sitz, akt, lesend }) {
         <div style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.55, maxWidth: 760 }}>
           Betriebliche Regeln, die CENTRIC zusätzlich zu Gesetz und Tarif prüfen kann, etwa „zwei freie Wochenenden im Monat“. {lesend
             ? "Sie können die Vorgaben einsehen; anlegen, testen, aktivieren und ändern darf nur die Leitung. "
-            : "Eine Vorgabe wird angelegt, getestet und erst dann aktiviert; eine aktive Vorgabe wird deaktiviert, nicht gelöscht. "}Sie ersetzt nie ein Gesetz. Aktive Vorgaben sind gespeichert und rechenbar; ihre Wirkung im Planungsassistenten,
-          in der Ersatzsuche und in der Selbstplanung folgt in einem eigenen Schritt. Der Test rechnet Beispielfälle durch, nicht den echten Plan.
+            : "Eine Vorgabe wird angelegt, getestet und erst dann aktiviert; eine aktive Vorgabe wird deaktiviert, nicht gelöscht. "}Sie ersetzt nie ein Gesetz. Aktive Vorgaben gelten im Planungsassistenten, in der Ersatzsuche und in der Selbstplanung: Ein Muss ist eine Achtung mit Bestätigung, ein Soll ein Hinweis; gesperrt wird nie.
+          Der Test rechnet Beispielfälle durch, nicht den echten Plan.
           {Number.isFinite(grenze) && ` In dieser Preisstufe sind bis zu ${grenze} aktive Vorgaben möglich.`}
         </div>
         {liste.length === 0 && !bearbeite && <Leer titel="Noch keine Vorgaben" text={lesend ? "Die Leitung hat noch keine interne Vorgabe angelegt." : "Legen Sie die erste interne Vorgabe an."} />}
@@ -224,6 +226,8 @@ function VorgabenInnen({ sitz, akt, lesend }) {
                 <span style={{ fontSize: 12.5, color: C.dim }}>{REGELART_TEXT[v.regelart]} · {BEZUG_TEXT[v.bezug]} · {GELTUNG_TEXT[v.geltung && v.geltung.art]} · {GRUNDLAGE_TEXT[v.grundlage && v.grundlage.art]}</span>
               </div>
               {v.beschreibung && <div style={{ fontSize: 13.5 }}>{v.beschreibung}</div>}
+              {v.status === "aktiv" && v.staerke === "wunsch" && <div style={{ fontSize: 12.5, color: C.dim }}>Wirkt im Plan noch nicht: Ein Wunsch wird erst vom Planer berücksichtigt.</div>}
+              {v.status === "aktiv" && v.staerke !== "wunsch" && !vorgabePlanwirkung(v).wirkt && <div style={{ fontSize: 12.5, color: C.dim }}>Wirkt im Plan noch nicht: {vorgabePlanwirkung(v).grund}</div>}
               {t && (
                 <div role="status" style={{ fontSize: 13.5, lineHeight: 1.5 }}>
                   {t.fehler ? t.fehler : <>

@@ -172,7 +172,7 @@ describe("hindernisse() in der Oberfläche fragt einsatzSchutz", () => {
      Befunde mit Stufe; hindernisse() ist nur noch ihr Wortlaut. Harte
      Schutzbefunde und der Alleindienst tragen sperrt: true — der Warndialog
      bietet dafür kein „dennoch“ an (Kette B maßgeblich). */
-  const start = app.indexOf("function hindernisBefunde(m, p, d, da) {");
+  const start = app.indexOf("function hindernisBefunde(m, p, d, da, opt) {");
   const block = app.slice(start, app.indexOf("\n}\n", start));
   /* WP-11: Es gibt genau eine Schutzprüfung, schutzEinsatz (server/lib/
      schutzpruefung.mjs). hindernisBefunde liest sie; einsatzSchutz ist nur
@@ -181,7 +181,7 @@ describe("hindernisse() in der Oberfläche fragt einsatzSchutz", () => {
   it("Schutz, Wochenstundengrenze und Alleindienst stehen in hindernisse()", () => {
     expect(start).toBeGreaterThan(0);
     /* Nur ab „Achtung“ hindert ein Befund; ein Hinweis (nicht bewertbar) nicht. */
-    expect(app).toContain("const hindernisse = (m, p, d, da) => hindernisBefunde(m, p, d, da).filter((b) => stufeRang(b.stufe) >= 2).map((b) => b.text);");
+    expect(app).toContain("const hindernisse = (m, p, d, da, opt) => hindernisBefunde(m, p, d, da, opt).filter((b) => stufeRang(b.stufe) >= 2).map((b) => b.text);");
     /* WP-22: Die Prüfung selbst steht in einteilungsBefunde (server/lib/
        fachpruefung.mjs) — dieselbe für den Server; hindernisBefunde fragt sie
        mit dem Plan der Oberfläche (personTag, besetzung). */
@@ -205,7 +205,7 @@ describe("hindernisse() in der Oberfläche fragt einsatzSchutz", () => {
   it("weiche Schutzregeln erscheinen in der Ersatzsuche — einmal, als Befund, die Grenze als Hinweis", () => {
     const a = app.indexOf("function ersatzVorschlaege(");
     const e = app.slice(a, app.indexOf("\n}\n", a));
-    expect(e).toContain("const bef = hindernisBefunde(m, p, d, da);");
+    expect(e).toContain("const bef = hindernisBefunde(m, p, d, da, { vorgabenBudget, vorgabenAutomatisch });");
     expect(e).toContain("stundengrenzeHinweis(p, da, d,");
     expect(e).not.toContain("einsatzSchutz(");
   });

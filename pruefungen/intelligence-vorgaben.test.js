@@ -57,7 +57,7 @@ describe("Form und Parameter", () => {
     f((v) => { v.gueltigAb = "2026-02-30"; }, /Datum/);
     f((v) => { v.gueltigAb = "2026-05-01"; v.gueltigBis = "2026-04-01"; }, /nach gültig bis/);
     f((v) => { v.geltung = { art: "einheit" }; }, /Einheit/);
-    f((v) => { v.geltung = { art: "gruppe", gruppen: [] }; }, /Gruppe/);
+    f((v) => { v.geltung = { art: "gruppe", gruppen: [] }; }, /Qualifikationsgruppe/);
     f((v) => { v.geltung = { art: "personen" }; }, /Person/);
     f((v) => { v.geltung = { art: "betrieb", extra: 1 }; }, /unbekannte/);
     f((v) => { v.grundlage = { art: "bauchgefuehl" }; }, /Grundlage/);
@@ -70,7 +70,7 @@ describe("Form und Parameter", () => {
   it("Personenmerkmale in Name, Beschreibung, Gruppe und Parametern werden abgewiesen (Plan 6.3)", () => {
     expect(pruefeVorgabe(vorgabe("zaehlregel", { name: "Keine Krankheitstage" }))).toMatch(/Personenmerkmal/);
     expect(pruefeVorgabe(vorgabe("zaehlregel", { beschreibung: "Wer viele Fehlzeiten hat" }))).toMatch(/Personenmerkmal/);
-    expect(pruefeVorgabe(vorgabe("zaehlregel", { geltung: { art: "gruppe", gruppen: ["Leistungsträger"] } }))).toMatch(/Personengruppen/);
+    expect(pruefeVorgabe(vorgabe("zaehlregel", { geltung: { art: "gruppe", gruppen: ["Leistungsträger"] } }))).toMatch(/Qualifikationsgruppen/);
     expect(pruefeVorgabe(vorgabe("grenzregel", { parameter: { groesse: "Fehlzeit", hoechstens: 3 } }))).toMatch(/Personenmerkmal/);
   });
   it("gültige Geltung, Ausnahmen und Fundstelle", () => {

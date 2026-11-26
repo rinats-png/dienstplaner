@@ -30,6 +30,7 @@ import { addDays, fenster, uhrversatz } from "../regelwerk.mjs";
 import { rufbereitschaft, RUHEZEIT_GESETZ } from "../fachpruefung.mjs";
 import { personTag } from "./plan.mjs";
 import { ersatzVorschlaege, hindernisBefunde, stufeRang } from "./einsatz.mjs";
+import { neuesVorgabenBudget } from "../vorgabenwirkung.mjs";
 
 export const RUHE_REGELN = Object.freeze(["ruhezeitGesetz", "ruhezeitBetrieb"]);
 /** Höchstzahl je Liste (Faktenpaket hat eine Obergrenze). */
@@ -81,14 +82,16 @@ export function ruheIst(m, p, d, da, { zeitumstellung = false } = {}) {
  *   nahe: { personId: string, hinderung: string, spielraumMin: number, ruheVorMin: number|null, punkte: number }[],
  *   andere: number }}
  */
-export function ersatzKandidaten(m, d, dienstId) {
+export function ersatzKandidaten(m, d, dienstId, opt) {
   const da = dienstart(m, dienstId);
   const aus = { datum: d, dienst: dienstId, direkt: [], nahe: [], andere: 0 };
   if (!da) return aus;
   const grenzeMin = (Number((m.einstellungen || {}).ruhezeit) || RUHEZEIT_GESETZ) * 60;
-  for (const k of ersatzVorschlaege(m, d, dienstId)) {
+  /* WP-I5: EIN Budget für Suche und Nachprüfung; der äußere Einstieg (mehrere Dienste) übergibt seines in opt.vorgabenBudget. */
+  const vorgabenBudget = (opt && opt.vorgabenBudget) || neuesVorgabenBudget();
+  for (const k of ersatzVorschlaege(m, d, dienstId, undefined, { vorgabenBudget })) {
     if (k.moeglich) { aus.direkt.push({ personId: String(k.person.id), punkte: k.punkte }); continue; }
-    const ernst = hindernisBefunde(m, k.person, d, da).filter((b) => stufeRang(b.stufe) >= 2);
+    const ernst = hindernisBefunde(m, k.person, d, da, { vorgabenBudget }).filter((b) => stufeRang(b.stufe) >= 2);
     const nurRuhe = ernst.length > 0 && ernst.every((b) => RUHE_REGELN.includes(b.regel));
     if (!nurRuhe) { aus.andere++; continue; }
     const { kuerzeste } = ruheZuNachbarn(m, k.person, d, da);

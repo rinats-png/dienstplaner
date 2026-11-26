@@ -77,7 +77,7 @@ export function Prioritaeten({ sitz, akt, gehZu, oeffneTag }) {
       if (bl.length)
         l.push({ id: "reserve", zahl: bl.length, einheit: bl.length === 1 ? "Woche" : "Wochen",
           titel: "Ohne jede Reserve",
-          text: `Ab ${fKurz(bl[0].von)} verträgt ${bl[0].schwaechste ? bl[0].schwaechste.da.name : "ein Dienst"} keinen einzigen Ausfall mehr.`,
+          text: `Ab ${fKurz(bl[0].von)} verträgt ${bl[0].schwaechste ? bl[0].schwaechste.da.name : "ein Dienst"} keinen einzigen Ausfall mehr.${bl[0].vorgabenUnvollstaendig ? " Reserve evtl. zu hoch: interne Vorgaben nicht vollständig geprüft." : ""}`,
           ton: "warn", weg: () => gehZu("belastbarkeit"), knopf: "Belastbarkeit ansehen" });
     }
 
@@ -312,7 +312,7 @@ export function Prioritaeten({ sitz, akt, gehZu, oeffneTag }) {
               <Kennzahlen style={{ marginBottom: 0 }} kacheln={[
                 { label: "Heute im Dienst", wert: eingeteilt, ton: "accent", sub: `von ${aktive(m, d0).length} Beschäftigten` },
                 { label: "Abwesend", wert: abw, sub: "Urlaub, krank, Schulung" },
-                { label: "Wochen ohne Puffer", wert: schwach, ton: schwach ? "warn" : "ok", sub: "in den nächsten vier" }]} />);
+                { label: "Wochen ohne Puffer", wert: schwach, ton: schwach ? "warn" : "ok", sub: bl.some((w) => w.vorgabenUnvollstaendig) ? "in den nächsten vier · Reserve evtl. zu hoch" : "in den nächsten vier" }]} />);
           })()}
         </div>)}
 
