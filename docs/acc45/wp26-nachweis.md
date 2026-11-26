@@ -274,3 +274,37 @@ der Leitung** (WP-48.4, `PUT` mit `loeschweg`) läuft durch denselben PUT-Pfad �
 34-%-Schwelle, dann fail-closed wie jeder Verlust-PUT; darunter keine Sicherung (bewusst, wie beim gewöhnlichen
 Speichern; der Datenschutzlauf-Pfad sichert dagegen immer). (d) Reihenfolge: Die Datenschutzlauf-Fälle nutzen je
 einen eigenen Raum; der Erfolgsfall legt seinen Raum selbst an (vorher hing er am Fehlerfall davor).
+
+## Nachtrag 2026-11-26 (4): Knopf „Jetzt sichern“ — Sichtbarkeit wie der Server (Review #586, Befund am Rand)
+
+Betreiberentscheidung: Die manuelle Sicherung soll für die berechtigte Leitung erreichbar sein; vor einer Vergabe von
+`mandant.edit` dessen Wirkung prüfen; keine pauschale Erweiterung von Mandantenrechten; vorhandene Berechtigungen
+bevorzugen; kein neues Paket.
+
+**Analyse `mandant.edit`** (`git grep` über das ganze Repo): einziger Verwender `src/ansichten/einstellungen.jsx`
+(Karte „Für den Betrieb“), sonst nur dieser Nachweis und der Test aus #586. Nicht in `RECHTE_GRUPPEN`/`ALLE_RECHTE`/
+`MATRIX_STD` (`src/lib/rollen.js`), nicht in `RECHTEMATRIX.md`, nicht auf dem Server (der Server liest `m.matrix` nie;
+`POST /api/sicherung` prüft `SICHERUNG_ROLLEN.includes(s.rolle)` = Rolle des Zugangs, dazu Bremse und Protokoll).
+Wirkung einer Vergabe: In `MATRIX_STD` hieße das ein neues Recht in `RECHTE_GRUPPEN` (Rechte-Tabelle der Oberfläche,
+`rechtematrix*`-Tests, Golden) — und Betriebe mit gespeicherter eigener Tabelle bekämen es trotzdem nicht
+(`rechteDerRolle` nimmt die eigene Tabelle; nur `FESTE_RECHTE` kommen aus `MATRIX_STD`), die Leitung dort sähe den
+Knopf weiter nicht. Zudem ist es ein Rechtsname der Personenrolle, der Server entscheidet nach der Zugangsrolle;
+beide liefen auseinander (z. B. Zugang `kunde` mit Person „Mitarbeiter“). `mandant.edit` ist damit ungeeignet.
+
+**Vorhandenes Muster:** Die Sicherungsliste direkt darunter (WP-25) hängt an
+`SP.angemeldet() && darfSicherungenSehen(serverRolle)` (`src/sicherungen-ui.js`, `SICHERUNG_SEHEN` = `SICHERUNG_ROLLEN`,
+gebunden in `wiederherstellen-ui.test.js`). Die Verweise „Zum Betrieb“/„Datenmitnahme“ führen auf Ansichten, die die
+Navigation mit `org.edit` freigibt.
+
+**Entscheidung/Änderung** (nur Bedingungen, Zeilenzahl 377 unverändert, keine Stile): Karte an derselben Regel wie
+Server und Liste (`sitz.mandant && SP.angemeldet() && darfSicherungenSehen(serverRolle)`); die beiden Verweise
+zusätzlich `darf(sitz, "org.edit")` wie die Navigation. `mandant.edit` entfällt; Standardrechte, Rechte-Tabelle und
+Server unverändert. Sichtbar für Zugang `leitung` und `kunde` (wie der Server), nicht für mitarbeiter/planer/subplaner/
+betriebsrat/betreiber/ohne Zugang, nicht offline (Probierumgebung ohne Server). 403 des Servers unverändert
+(`rollen-failclosed.test.js`).
+
+**Tests** `pruefungen/sicherung-anlegen-ui.test.js` (4 → 15): Sichtbarkeit je Zugangsrolle, offline, eigene Tabelle mit
+`mandant.edit` schaltet nichts frei, Verweise nur mit `org.edit`; Konsistenz aus den Quellen (Kartenbedingung,
+`SICHERUNG_SEHEN` == `SICHERUNG_ROLLEN`, Prüfung im POST-Zweig). Mutationen (je einzeln, danach Quelle sauber):
+M1 alte Bedingung `mandant.edit` → 6 rot; M2 ohne `SP.angemeldet()` → 2 rot; M3 `org.edit` statt Serverregel → 5 rot;
+M4 Verweis ohne `org.edit` → 1 rot; M5 `planer` in `SICHERUNG_SEHEN` → 3 rot.
