@@ -39,7 +39,7 @@ import { anlagenZusammen } from "./modul-anlagen.mjs";
 import { maschinenqualZusammen } from "./modul-maschinenqual.mjs";
 import { geteilterdienstZusammen } from "./modul-geteilterdienst.mjs";
 import { postenZusammen } from "./modul-posten.mjs";
-import { bereichsplanZusammen, bereichsPlanSchicht } from "./modul-bereichsplan.mjs";
+import { bereichsplanZusammen, bereichsPlanSchicht, bereichsprotokollEintrag, bereichsprotokollAnhaengen } from "./modul-bereichsplan.mjs";
 import { fallAusAbwesenheit, svZustaendig, krankSchrittErlaubt, krankmeldungMitteilungen } from "./krankmeldung.mjs";
 import { klaerungFuerRolle, KLAERUNG_ROLLEN } from "./klaerung.mjs";
 import { ausschreibungDerEinheit, eintragDerEinheit, bestandSichtBetreiber, bestandSicht, SICHT_ROLLEN, schichtKontext, schichtPersonSicht, betriebSichtSchicht, OBEN_FELDER,
@@ -2371,6 +2371,14 @@ export function einheitZusammen(altM, neuM, sitzung) {
         const urteil = bereichsPlanSchicht(a, n, { imBereich,
           eigeneBereiche: new Set((eigeneE && Array.isArray(eigeneE.bereiche) ? eigeneE.bereiche : []).filter(Boolean).map((b) => b.id)) });
         if (urteil.ok === false) return nein(urteil.grund);
+        /* Änderungsprotokoll (WP-19.4, B2 b): im selben Betrieb wie die Zuordnung, aus dem gespeicherten Protokoll — wird das
+           Speichern danach abgewiesen (Registerwache, Fachprüfung …), entfällt beides; ohne Platz im Protokoll kein Speichern. */
+        const eintrag = bereichsprotokollEintrag(a, urteil.plan, { am: new Date().toISOString(), von: ichId, einheit: eigene });
+        if (eintrag) {
+          const prot = bereichsprotokollAnhaengen(altM.einstellungen, eintrag);
+          if ("grund" in prot) return nein(prot.grund);
+          aus.einstellungen = prot.einstellungen;
+        }
         aus.bereichsPlan = urteil.plan;
         break;
       }
