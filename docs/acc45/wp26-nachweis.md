@@ -167,3 +167,79 @@ Invarianten (vor der Umsetzung festgehalten):
    Datenschutzlauf brechen ab (der Lauf löscht dann nichts in diesem Raum).
 
 Review: Opus-Review FREIGABE (fe9b1d8b), gemergt #582 (7656f044).
+
+## Nachtrag 2026-11-26 (2): Sicherungsfehler differenziert (Betreiberentscheidung A/B)
+
+Ersetzt Invariante 6 des vorigen Nachtrags. Betreiberentscheidung 2026-11-26: (A) Sicherungsfehler nicht pauschal
+gleich behandeln; (B) `sicherung:<raum>:vor-zerlegung` darf bei erneuter Übernahme nicht unbemerkt überschrieben
+werden. Keine neue Sicherungsarchitektur, keine Workflow-Datei geändert.
+
+### Inventar und Klassifikation
+
+| Stelle | Klasse | Begründung | Verhalten bei Fehler (neu) |
+|---|---|---|---|
+| Betreiber-Ablagesicherung `werkzeug/ablage-sicherung.mjs` (Workflow `betrieb-sicherung.yml`, restic) | (i) regelmäßige Hintergrundsicherung | läuft nach Plan, schützt keine einzelne Änderung | unverändert: Rückgabewert ≠ 0, Statusdatei nicht erneuert → `/gesund` Prüfung `sicherung` „warnung“ nach 26 h → Überwachung/Alarm (`CENTRIC_ALARM_WEBHOOK`); Normalbetrieb läuft |
+| Widerrufbuch-Sicherung (BE-3, `widerrufbuchsicherung.mjs`) | (i) | Job mit Statusdatei | unverändert: `/gesund` `widerrufbuchsicherung` „warnung“, keine Sperre |
+| Manuelle Sicherung `POST /api/sicherung` (`daten.mjs`, unter Raumsperre) | (ii) manuell | von der Leitung ausgelöst, ändert den Bestand nie | **neu**: eigene Antwort 503 `SICHERUNG_FEHLGESCHLAGEN` („Die Sicherung konnte nicht angelegt werden … Bestand unverändert“), Protokoll `sicherung`/`fehler` (Betriebskennung + Fehlercode). Vorher: Ausnahme → allgemeiner 500 „Serverfehler“ — sichtbar, aber ohne Aussage. Lese- und Sperrfehler laufen wie bisher in die gemeinsame Fehlerbehandlung |
+| Automatisch vor Verlust im `PUT /api/bestand` (`daten.mjs`) | (iii) Rückweg | wird nur angelegt, wenn der Schreibvorgang ≥ `SICHERUNGSSCHWELLE` (34 %) der Listeneinträge/Abweichungen verwirft (`schrumpfung`) — genau dann ist sie der einzige Rückweg für diesen Verlust | **neu**: fail-closed — 503 `SICHERUNG_FEHLGESCHLAGEN`, nichts geschrieben, Protokoll `schreiben`/`abgewiesen` „Sicherung fehlgeschlagen, Änderung nicht durchgeführt (vor Verlust a → b Datensätze)“, keine „gesichert“-Zeile. Vorher: `.catch(() => {})`, das Schreiben lief ohne Sicherung weiter, und „gesichert“ stand trotzdem im Protokoll |
+| Automatisch vor Wiederherstellung (`daten.mjs`, unter Raumsperre) | (iii) | Rückweg zum jetzigen Stand vor dem Tausch | **neu**: fail-closed — 503 `SICHERUNG_FEHLGESCHLAGEN`, nichts zurückgespielt, Protokoll „wiederherstellen <marke>: Sicherung fehlgeschlagen, Änderung nicht durchgeführt“ (vorher `.catch`) |
+| Datenschutzlauf `datenschutzlauf.mjs` (täglich, Modus „an“) | (iii) innerhalb eines Hintergrundlaufs | Schutzsicherung vor dem löschenden Schreiben | war schon fail-closed (Ausnahme vor `bestandSchreiben`, Raum übersprungen, übrige Räume laufen); **neu**: Grund „Sicherung fehlgeschlagen, Änderung nicht durchgeführt (…)“ im Vermerk `datenschutzlauf:letzter` und im Protokoll `loeschlauf`/`fehler`, zusätzlich eine Zeile der Art `fehler` (`datenschutzlauf`, Raum + Fehlercode), die die Betreiber-Lage zeigt (`spurLesen` kennt die Art `loeschlauf` nicht) |
+| Übernahme eines Altbestands `bestand.mjs` (`schreibeAlles`, `neuAngelegt`) → `sicherung:<raum>:vor-zerlegung` | (iii) | danach wird der Altbestand `bestand:<raum>` gelöscht — das ist der destruktive Schritt | **neu**: Altbestand nur löschen, wenn gesichert; sonst bleibt er liegen (Serverprotokoll `console.error`). Der Kern ist dann schon geschrieben (der Altbestand wird neben einem Kern nicht gelesen) — der Rückweg bleibt der Altbestand selbst |
+| Betreiber-Wiederherstellung `ablage-sicherung.mjs wiederherstellen` | (iii) | alter Inhalt wird beiseite umbenannt (`.vor-wiederherstellung-*`), nichts gelöscht; bei Fehler zurückgerollt | unverändert (Werkzeug nicht angefasst) |
+| Ausdünnen (`sicherungenAusduennen`), Datenschutzplan, Raumlöschung | keine Sicherung | löschen Sicherungen nach Plan bzw. mit dem Raum | unverändert |
+
+Entscheidung (konservativ): Die Sicherung vor Verlust ist (iii), weil sie im Code nur bei verwerfendem Schreiben
+entsteht — normales Speichern unter der Schwelle legt keine Sicherung an und ist von einem Ablagefehler der Sicherung
+nicht berührt (Test „normales Speichern …“). Die Regime-Marke eines neuen Betriebs steht im PUT vor der Sicherung;
+scheitert die Sicherung danach, bleibt eine Marke für eine noch nicht existierende Kennung — harmlos (Kommentar F1
+dort). In-App gibt es keine regelmäßige Hintergrundsicherung; Klasse (i) sind nur die Betreiber-Jobs.
+
+### Invarianten
+
+1. **Reihenfolge/Atomarität (iii)**: Die Rückweg-Sicherung ist vollständig und atomar angelegt (`setJSONWennNeu`),
+   BEVOR die destruktive Änderung beginnt (PUT, Wiederherstellen, Datenschutzlauf: vor `bestandSchreiben`, alles unter
+   der Raumsperre; vor-zerlegung: vor dem Löschen des Altbestands). Test: Stand beim Anlegen = Stand vor dem PUT bzw.
+   vor dem Tausch.
+2. **Fail-closed (iii)**: Scheitert die Sicherung — Ablage voll/nicht beschreibbar (ENOSPC, EACCES …), „alle Marken
+   belegt“ (`MARKE_VERSUCHE` erschöpft), Ablage ohne atomares Anlegen —, wird die Änderung nicht durchgeführt: Platte
+   byte-gleich (Kern, Scherben, Stand, Journal, Altbestand, Sicherungen), Antwort 503 `SICHERUNG_FEHLGESCHLAGEN` bzw.
+   Raum im Vermerk bzw. Altbestand bleibt, Protokoll „Sicherung fehlgeschlagen, Änderung nicht durchgeführt“, nie
+   „gesichert“, nie „erfolg“. Der 503 zählt in `/gesund` (Fehlerzählung `5xx`) und ist so auch im Alarmweg.
+3. **Prozessabbruch** zwischen Sicherung und Änderung: Es bleibt eine Sicherung ohne Änderung (sichere Richtung); die
+   Änderung selbst ist durch das Schreibjournal ganz oder gar nicht (bestand.mjs). Bei vor-zerlegung: Abbruch nach
+   dem Kern und vor dem Löschen lässt den Altbestand liegen (er wird neben dem Kern nicht gelesen).
+4. **Wiederholung/Idempotenz**: Ein abgewiesener Vorgang hat nichts geschrieben und kann unverändert wiederholt werden
+   (gleicher ETag). Eine Wiederherstellung zählt weiter zur Bremse (fünf je Stunde; steht im Antworttext).
+5. **Parallele Vorgänge**: unter der Raumsperre nacheinander; scheitert die Sicherung des ersten, schreibt ein
+   gleichzeitiger zweiter nur mit eigener erfolgreicher Sicherung des vollen Stands (Test „parallel mit Fehler“).
+   Gleichzeitige Sicherungen kollidieren nicht (Nachtrag 1).
+6. **(ii)**: Die manuelle Sicherung gibt den Fehler sichtbar zurück (503, kein `ok`, keine Marke); der Bestand bleibt
+   unverändert.
+7. **(i)**: Hintergrundsicherungen blockieren den Normalbetrieb nicht; Fehler gehen über Statusdatei → `/gesund` →
+   Überwachung/Alarm (unverändert).
+8. **vor-zerlegung (B)**: Ein vorhandener Sicherungspunkt `sicherung:<raum>:vor-zerlegung` wird nie überschrieben
+   (atomar `setJSONWennNeu`). Ist er belegt (zweite Übernahme in einem Raum ohne Kern mit liegenden Sicherungen,
+   Reviewer-Szenario #582), bekommt der neue Altbestand eine eigene Sicherung im Markenformat über `sicherungAnlegen`
+   (Metadaten `automatisch: "ja"`, „automatisch vor der Zerlegung (weitere Übernahme)“); der Konflikt steht im
+   Serverprotokoll (`console.warn`). Scheitert auch diese, bleibt der Altbestand liegen. Gewählt statt „Übernahme
+   abbrechen“: kleiner (kein neuer Fehlerweg für jeden Schreiber eines Raums ohne Kern), kein Datenverlust, und die
+   Marke ist mit Liste, Ausdünnung, Datenschutzplan und Wiederherstellen verträglich (`MARKE`-Format). Der feste
+   Schlüssel `vor-zerlegung` bleibt für die erste Übernahme.
+9. **Datenschutz**: Protokollzeilen enthalten nur Kennungen (Raum, Betrieb, Marke), Zahlen und Fehlercodes — keine
+   Namen, Tage oder Inhalte (Test). Rechte und Rollen unverändert.
+
+### Tests (`pruefungen/sicherung-fehler-differenziert.test.js`, in `pruefung:sicherungen`)
+
+Rot auf der Basis (Quelle unverändert): 11 von 18; nach der Umsetzung 18/18. Fehler per Beobachter an
+`sicherungAnlegen`: „erschoepft“ ruft das echte `sicherungAnlegen` mit einer Ablage, die jede Marke als belegt meldet;
+„ablage“ wirft wie ENOSPC; vor-zerlegung zusätzlich mit einer Ablage, deren `setJSONWennNeu` für Sicherungen wirft.
+Bestehende Tests nicht geändert.
+
+### Hinweise (C/D, nicht umgesetzt)
+
+- `vor-zerlegung` erscheint in `GET /api/sicherungen`, lässt sich aber nicht über `/api/wiederherstellen` einspielen
+  (`MARKE`); Notweg Betreiber (BETRIEB-SICHERUNG). Die Ausweich-Sicherung einer zweiten Übernahme ist einspielbar.
+- `/gesund` liest nur `aufraeumen:letzter`, nicht `datenschutzlauf:letzter`; ein gescheiterter Datenschutzlauf löst
+  deshalb keinen Alarm aus, nur Protokoll, Betreiber-Lage und Konsolenzeile. Patch-Vorschlag (nicht umgesetzt, ändert
+  Alarmverhalten): `loeschlaufPruefen` zusätzlich `datenschutzlauf:letzter.fehler` zählen lassen.
+- `spurLesen` (Betreiber-Lage) kennt die Protokollart `loeschlauf` nicht.
