@@ -44,7 +44,7 @@ import { pruefen } from "../../server/lib/engine/befunde.mjs";
 export { verteilung, planKennzahlen } from "../../server/lib/engine/kennzahlen.mjs";
 /* WP-I12a: Einsatzprüfung und Ersatzsuche stehen ebenfalls im Rechenkern. Der Client hängt die Regelkennung des Regelregisters ein (Frage 6). */
 export { SCHUTZ_QUELLE_NEUTRAL, SCHUTZ_QUELLE_EINSCHRAENKUNG, einschr, nachtJahr, FENSTER, fensterVon, verfuegbarFuer, wochenStundenGeplant, hindernisBefunde, ersatzVorschlaege } from "../../server/lib/engine/einsatz.mjs";
-import { SCHUTZ_QUELLE_NEUTRAL, nachtJahr, wochenStundenGeplant, hindernisBefunde, ersatzVorschlaege, regelIdHakenSetzen } from "../../server/lib/engine/einsatz.mjs";
+import { SCHUTZ_QUELLE_NEUTRAL, nachtJahr, wochenStundenGeplant, hindernisBefunde, ersatzVorschlaege, regelIdHakenSetzen, verdraengt } from "../../server/lib/engine/einsatz.mjs";
 import { neuesVorgabenBudget, vorgabenPlanFortschreiben } from "../../server/lib/vorgabenwirkung.mjs";
 import { krankSchrittErlaubt } from "../../server/lib/krankmeldung.mjs";
 regelIdHakenSetzen(regelIdFuerBefund);
@@ -1555,6 +1555,8 @@ export function urlaubsRang(m, w) {
 }
 
 /* --------------------------- Planungsassistent --------------------------- */
+/** Aufwand der Verdrängungsprüfung in planeMonat je Aufruf (Personenprüfungen; Review #577). `grenzen.verdraengungAufwand` setzt ihn je Aufruf (Prüfungen). */
+export const PLANEMONAT_VERDRAENGUNG_AUFWAND = 1000000;
 /**
  * Füllt offene Stellen eines Monats automatisch.
  * Nutzt dieselbe Bewertung wie die Ersatzsuche und meldet, was offen bleibt.
@@ -1584,6 +1586,37 @@ export function planeMonat(m, ym, grenzen = {}) {
   const offen = [];
   const jePerson = {};
 
+  /* Verdrängung (Review #577, Betreiberentscheidung 26.11.): Mit Posten kann eine Einteilung eine Person der Rotation aus der
+     Postenbesetzung auf ihren Quelldienst verdrängen. Nach jeder Einteilung wird der Tag frisch gegen den Bestand gerechnet (verdraengt,
+     dieselbe Prüfung wie im Planer-Kern); jede veränderte Person wird für ihren neuen Dienst geprüft wie eine Einteilung (hindernisBefunde,
+     Automatik: Muss ungeprüft = Achtung). Ab Achtung, ohne Dienst danach oder nicht prüfbar: die Einteilung wird NICHT gesetzt, die Stelle
+     bleibt offen mit Grund (fail-closed). Hinweise (Soll) stehen beim Grund der Einteilung. Ohne Posten ändert eine Einteilung niemand
+     anderen: keine Prüfung, kein Aufwand, Ergebnis wie bisher. Aufwand: EIN Budget je Aufruf in Personenprüfungen (Vergleich des Tags
+     = P, Prüfung einer verdrängten Person = 1), vor der Arbeit angemeldet; reicht es nicht, wird nicht eingeteilt (Grund „aufwand“). */
+  const mitPosten = m.dienstarten.some((x) => x && x.posten);
+  const P = Math.max(1, m.personen.length);
+  const aufwandGrenze = Number.isInteger(grenzen.verdraengungAufwand) && grenzen.verdraengungAufwand >= 0 ? grenzen.verdraengungAufwand : PLANEMONAT_VERDRAENGUNG_AUFWAND;
+  let aufwandRest = aufwandGrenze;
+  const leisten = (k) => { if (aufwandRest < k) { aufwandRest = -1; return false; } aufwandRest -= k; return true; };
+  const bestand = { ...m, abweichungen: { ...m.abweichungen } };
+  const eigene = new Set();
+  /** null = niemand verdrängt oder alle Verdrängten bestehen; sonst der Grund, weshalb die Einteilung nicht gesetzt wird. */
+  const verdraengungPruefen = (stand, d, hinweise) => {
+    const liste = [];
+    if (!verdraengt(bestand, stand, d, eigene, liste)) return null;
+    const neu = [];
+    for (const v of liste) {
+      const daN = v.nachher ? m.dienstarten.find((x) => x.id === v.nachher) : null;
+      if (!daN) return "verdraengung";               // ohne Dienst danach (oder unbekannter Dienst): ungeprüft, nicht setzen
+      if (!leisten(1)) return "aufwand";
+      const bef = hindernisBefunde(stand, v.person, d, daN, { vorgabenBudget: ctx.vorgabenBudget, vorgabenAutomatisch: true });
+      if (bef.some((x) => stufeRang(x.stufe) >= 2)) return bef.some((x) => x.regel === "vorgabeOffen") && ctx.vorgabenBudget.ausgeschoepft ? "vorgabe" : "verdraengung";
+      neu.push(`verdrängt ${v.person.vorname} ${v.person.nachname} in ${daN.kurz || daN.name}`, ...bef.map((x) => `Hinweis: ${x.text}`));
+    }
+    hinweise.push(...neu);
+    return null;
+  };
+
   for (let i = 1; i <= n; i++) {
     const d = `${ym}-${pad(i)}`;
     for (const da of m.dienstarten) {
@@ -1599,13 +1632,28 @@ export function planeMonat(m, ym, grenzen = {}) {
           break;
         }
         const beste = kand[0];
+        /* Verdrängung (Review #577): Arbeit vorab anmelden (Vergleich des Tags, P Personen); reicht es nicht, wird nicht eingeteilt. */
+        if (mitPosten && !leisten(P)) { offen.push({ datum: d, dienstId: da.id, fehlt: Math.max(0, -b.diff), qualFehlt: b.qualFehlt, grund: "aufwand" }); break; }
         const vorher = arbeit;
-        arbeit = { ...arbeit, abweichungen: { ...arbeit.abweichungen, [`${beste.person.id}|${d}`]: da.id } };
+        const schluessel = `${beste.person.id}|${d}`;
+        arbeit = { ...arbeit, abweichungen: { ...arbeit.abweichungen, [schluessel]: da.id } };
         /* WP-I7: Aggregate wandern zum neuen Stand, nur dieser Tag wird nachgelesen (mit Posten bei allen Personen; ohne Aggregate: nichts). */
         vorgabenPlanFortschreiben(ctx.vorgabenBudget, vorher, arbeit, [{ personId: beste.person.id, tag: d }]);
+        eigene.add(schluessel);
+        const hinweiseVerdraengt = [];
+        const pruef = mitPosten ? verdraengungPruefen(arbeit, d, hinweiseVerdraengt) : null;
+        if (pruef) {
+          /* Durchgefallen oder nicht prüfbar: diese Einteilung NICHT setzen (fail-closed), die Stelle bleibt offen mit Grund.
+             Der alte Stand gilt weiter; seine Aggregate kommen zurück (dieser Tag wird nachgelesen). */
+          eigene.delete(schluessel);
+          vorgabenPlanFortschreiben(ctx.vorgabenBudget, arbeit, vorher, [{ personId: beste.person.id, tag: d }]);
+          arbeit = vorher;
+          offen.push({ datum: d, dienstId: da.id, fehlt: Math.max(0, -b.diff), qualFehlt: b.qualFehlt, grund: pruef });
+          break;
+        }
         jePerson[beste.person.id] = (jePerson[beste.person.id] || 0) + 1;
         gesetzt.push({ personId: beste.person.id, name: `${beste.person.vorname} ${beste.person.nachname}`,
-          datum: d, dienstId: da.id, punkte: beste.punkte, grund: beste.gruende.slice(0, 2).join(" · ") });
+          datum: d, dienstId: da.id, punkte: beste.punkte, grund: [...beste.gruende.slice(0, 2), ...hinweiseVerdraengt].join(" · ") });
       }
     }
   }

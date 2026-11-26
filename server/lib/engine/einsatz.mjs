@@ -166,6 +166,26 @@ export function hindernisBefunde(m, p, d, da, opt) {
 }
 
 /**
+ * Bestandspersonen eines Tags gegen den Bestand, frisch gerechnet: Jede Person OHNE eigene Einteilung an diesem Tag muss dort denselben
+ * Dienst haben wie im Bestand (Review #572 A1, Posten: eine Einteilung kann eine andere Person aus der Postenbesetzung verdrängen oder
+ * hineinziehen; dann hätte sie einen Dienst, den niemand geprüft hat). Gibt die Zahl der veränderten Personen zurück. Arbeit: P Tagesabfragen
+ * je Stand (der Bestand liegt im Zwischenspeicher). Ohne Posten ändert eine Einteilung keine andere Person (personTag hängt nur über die
+ * Postenbesetzung von anderen ab). Aus planer.mjs hierher (gemeinsam mit planeMonat, Review #577); `liste` (wahlweise) sammelt die
+ * veränderten Personen mit ihrem Dienst vorher und nachher.
+ * @param {any} bestand Bestand als Stand (Abweichungen des Bestands) @param {any} stand @param {string} d @param {{ has: (k: string) => boolean }} eigene Schlüssel personId|tag
+ * @param {{ person: any, vorher: any, nachher: any }[]} [liste]
+ */
+export function verdraengt(bestand, stand, d, eigene, liste) {
+  let n = 0;
+  for (const x of bestand.personen) {
+    if (eigene.has(`${x.id}|${d}`)) continue;
+    const nachher = personTag(stand, x, d).dienstId || null, vorher = personTag(bestand, x, d).dienstId || null;
+    if (nachher !== vorher) { n++; if (liste) liste.push({ person: x, vorher, nachher }); }
+  }
+  return n;
+}
+
+/**
  * Ersatzsuche für einen unterbesetzten Dienst.
  * Sortiert nach Eignung: Qualifikation, Stundenkonto im Minus, Belastungsausgleich.
  */

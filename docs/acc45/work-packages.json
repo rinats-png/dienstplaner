@@ -2350,7 +2350,7 @@
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block K)",
       "tests": "pruefungen/intelligence-vorgaben-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). Nachtrag 2026-11-27: INTEGRATED nach #566 (Merge 7d73f2be in integration/release-v4, Review und Delta-Review behoben); fachliche/rechtliche Abnahme der Wirkung (Teilzeit anteilig, Abwesenheit) offen."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). Nachtrag 2026-11-27: INTEGRATED nach #566 (Merge 7d73f2be in integration/release-v4, Review und Delta-Review behoben); fachliche/rechtliche Abnahme der Wirkung (Teilzeit anteilig, Abwesenheit) offen. Nachtrag 2026-11-26: Korrektur Postenverdrängung in planeMonat (Review #577) im Paket WP-I7 belegt (docs/acc45/WP-I7-nachweis.md), lokal."
     },
     {
       "id": "WP-I6",
@@ -2406,7 +2406,7 @@
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block K)",
       "tests": "pruefungen/intelligence-planer-aggregate*.test.js, pruefungen/intelligence-planer-kern.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). Nachtrag 2026-11-26: BLOCKED nur wegen WP-I5; WP-I5 ist mit #566 in integration/release-v4 gemergt. Teil 1 (I5-4 Aggregate) mit #572 integriert, Schalter AUS. Nachtrag 2026-11-27: Teil 2 (Aggregate einmal je Lauf, Tagesnachführung) mit #574 integriert. Nachtrag 2026-11-28: Teil 3 lokal (eigener Planer, erste Scheibe ohne Oberfläche, Schalter AUS); Rest (Tausch zweier Personen, Verteilung/Wunsch bewerten, übrige Regelarten im Plan, Anheften, Betriebsmodus, Hinweis seit dem Vorschlag, Anschluss an die Oberfläche) offen."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). Nachtrag 2026-11-26: BLOCKED nur wegen WP-I5; WP-I5 ist mit #566 in integration/release-v4 gemergt. Teil 1 (I5-4 Aggregate) mit #572 integriert, Schalter AUS. Nachtrag 2026-11-27: Teil 2 (Aggregate einmal je Lauf, Tagesnachführung) mit #574 integriert. Nachtrag 2026-11-28: Teil 3 lokal (eigener Planer, erste Scheibe ohne Oberfläche, Schalter AUS); Rest (Tausch zweier Personen, Verteilung/Wunsch bewerten, übrige Regelarten im Plan, Anheften, Betriebsmodus, Hinweis seit dem Vorschlag, Anschluss an die Oberfläche) offen. Nachtrag 2026-11-26 (Review #577, Schwere B, Betreiberentscheidung 26.11.): Postenverdrängung im bestehenden planeMonat behoben (verdraengt gemeinsam in server/lib/engine/einsatz.mjs; verdrängte Personen geprüft, Muss/ab Achtung = nicht einteilen, Grund verdraengung; Aufwand je Aufruf), lokal auf Branch intelligence/wp-i7-planemonat-verdraengung; Beleg docs/acc45/WP-I7-nachweis.md Abschnitt „Nachtrag: Postenverdrängung im bestehenden planeMonat“."
     },
     {
       "id": "WP-I8",

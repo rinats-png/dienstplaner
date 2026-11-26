@@ -21,7 +21,7 @@
    Aufruf: npx vitest run pruefungen/intelligence-planer-kern.test.js
    ========================================================================== */
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
-import { writeFileSync } from "node:fs";
+import { writeFileSync, readFileSync } from "node:fs";
 import * as PL from "../server/lib/engine/planer.mjs";
 import { planeVorschlag, nachpruefen, rangVergleich, zufallAus, PLANER_AN, PLANER_GRENZE, RANGFOLGE, NICHT_BEWERTET } from "../server/lib/engine/planer.mjs";
 import { neuesVorgabenBudget } from "../server/lib/vorgabenwirkung.mjs";
@@ -369,4 +369,95 @@ describe("8. Posten: Bestandspersonen bleiben unverändert (Review #572 A1)", ()
     expect(nachpruefen(m, st, eig, neuesVorgabenBudget(0, { aggregate: true })).durch).toBe(false);
     expect(nachpruefen(m, st, eig, neuesVorgabenBudget(500, { aggregate: true })).durch, "Budget mitten in der Nachprüfung leer").toBe(false);
   }, 300000);
+
+  /* ---------- planeMonat (bestehender Assistent): Verdrängung geprüft (Review #577, Betreiberentscheidung 26.11.) ---------- */
+  /** Muss/Soll-Vorgabe zur Quelldienstart des Postens: höchstens 0 Quelldienste in 7 Tagen. Wirkt nur, wenn jemand in den Quelldienst
+      kommt (Einteilung oder Verdrängung); wer schon Quelldienste hat und dazu verdrängt wird, verletzt sie (mehr als ohne). */
+  const quellVorgabe = (po, staerke) => [{ id: "q7", name: "Quelldienst 7 Tage", regelart: "zaehlregel",
+    parameter: { ereignis: po.quelle, fenster: { art: "rollierend", laenge: 7, einheit: "tage" }, richtung: "hoechstens", grenze: 0 },
+    geltung: { art: "betrieb" }, bezug: "monat", staerke, prioritaet: 1, grundlage: { art: "hausregel" }, status: "aktiv" }];
+  /** Jede durch planeMonat verdrängte Person (frisch gerechnet) mit ihren Befunden ab Achtung für den neuen Dienst (eigenes Budget, Automatik). */
+  const verdraengtGeprueft = (m, r) => {
+    const fertig = { ...m, abweichungen: r.abweichungen };
+    const eig = new Set(r.gesetzt.map((g) => `${g.personId}|${g.datum}`));
+    const l = [];
+    for (const p of m.personen) for (const t of TAGE) {
+      if (eig.has(`${p.id}|${t}`)) continue;
+      const nach = F.personTag(fertig, p, t).dienstId || null;
+      if (nach === (F.personTag(m, p, t).dienstId || null)) continue;
+      const da = nach && m.dienstarten.find((x) => x.id === nach);
+      const bef = da ? F.hindernisBefunde(fertig, p, t, da, { vorgabenBudget: neuesVorgabenBudget(), vorgabenAutomatisch: true }).filter((b) => stufeRang(b.stufe) >= 2).map((b) => b.regel) : ["ohneDienst"];
+      l.push({ k: `${p.id}|${t}`, bef });
+    }
+    return l;
+  };
+  it("planeMonat (Befund #577): Posten mit mindestQual, Muss zur Quelldienstart — keine verdrängte Person verletzt Muss; Postenstellen offen mit Grund „verdraengung“", () => {
+    const { m, po } = szenario();
+    m.vorgaben = quellVorgabe(po, "muss");
+    const r = F.planeMonat(structuredClone(m), YM, { maxProPerson: 3 });
+    const v = verdraengtGeprueft(m, r);
+    expect(v.filter((x) => x.bef.length), "verdrängte Person mit Befund ab Achtung (ungeprüfte Muss-Verletzung)").toEqual([]);
+    expect(r.offen.some((x) => x.dienstId === po.id && x.grund === "verdraengung"), "die Postenstelle bleibt offen mit klarem Grund").toBe(true);
+    expect(pruefwegFehler(m, { ...r, gesetzt: r.gesetzt })).toEqual([]);
+  }, 600000);
+  it("planeMonat Soll zur Quelldienstart: Einteilung wie bisher, die Verdrängung steht mit Hinweis beim Grund; ohne Vorgabe ebenso ohne Befund ab Achtung", () => {
+    const { m, po } = szenario();
+    const ohne = F.planeMonat(structuredClone(m), YM, { maxProPerson: 3 });
+    expect(verdraengtGeprueft(m, ohne).filter((x) => x.bef.length)).toEqual([]);
+    expect(ohne.gesetzt.some((g) => g.dienstId === po.id && g.grund.includes("verdrängt ")), "Verdrängung genannt").toBe(true);
+    m.vorgaben = quellVorgabe(po, "soll");
+    const r = F.planeMonat(structuredClone(m), YM, { maxProPerson: 3 });
+    expect(verdraengtGeprueft(m, r).filter((x) => x.bef.length)).toEqual([]);
+    const mitHinweis = r.gesetzt.filter((g) => g.dienstId === po.id && g.grund.includes("verdrängt ") && g.grund.includes("Hinweis: "));
+    expect(mitHinweis.length, "Soll: eingeteilt, Verdrängung mit Hinweis gekennzeichnet").toBeGreaterThan(0);
+    expect(r.gesetzt.filter((g) => g.grund.includes(`verdrängt ${g.name} in`)), "die eingeteilte Person selbst gilt nie als verdrängt").toEqual([]);
+    expect(schluessel(r.gesetzt), "Soll sperrt nie: dieselben Einteilungen wie ohne Vorgabe").toEqual(schluessel(ohne.gesetzt));
+  }, 600000);
+  it("planeMonat Aufwand der Verdrängungsprüfung: 0 = mit Posten nichts eingeteilt (Grund „aufwand“), klein = leer mitten im Lauf, nie ungeprüft", () => {
+    const { m } = szenario();
+    m.vorgaben = quellVorgabe(m.dienstarten.find((x) => x.posten && x.quelle), "muss");
+    const null0 = F.planeMonat(structuredClone(m), YM, { maxProPerson: 3, verdraengungAufwand: 0 });
+    expect(null0.gesetzt).toEqual([]);
+    expect(null0.offen.length).toBeGreaterThan(0);
+    expect(null0.offen.some((x) => x.grund === "aufwand")).toBe(true);
+    const P = m.personen.length;
+    const klein = F.planeMonat(structuredClone(m), YM, { maxProPerson: 3, verdraengungAufwand: 5 * P + 2 });
+    expect(klein.gesetzt.length).toBeGreaterThan(0);
+    expect(klein.gesetzt.length).toBeLessThanOrEqual(5);
+    expect(klein.offen.some((x) => x.grund === "aufwand")).toBe(true);
+    expect(verdraengtGeprueft(m, klein).filter((x) => x.bef.length)).toEqual([]);
+    expect(F.PLANEMONAT_VERDRAENGUNG_AUFWAND).toBe(1000000);
+  }, 600000);
+  it("planeMonat Gegenprobe ohne Posten: Verdrängungsprüfung ohne Wirkung und ohne Aufwand (auch Aufwand 0 gleich), Bestand unverändert", () => {
+    const m = mitLuecken("demo3", true);
+    expect(m.dienstarten.some((x) => x.posten)).toBe(false);
+    const vorher = structuredClone(m);
+    const a = F.planeMonat(m, YM, { maxProPerson: 3 });
+    expect(F.planeMonat(m, YM, { maxProPerson: 3, verdraengungAufwand: 0 })).toEqual(a);
+    expect(a.gesetzt.every((g) => !g.grund.includes("verdrängt "))).toBe(true);
+    expect(a.offen.every((x) => x.grund === undefined)).toBe(true);
+    expect(m).toEqual(vorher);
+  }, 600000);
+  it("planeMonat Messung (demo1, Posten mit mindestQual): mit Verdrängungsprüfung höchstens 2 × derselbe Lauf ohne Posten-Kennzeichen + 5 s", () => {
+    const { m } = szenario();
+    const ohneP = structuredClone(m);
+    ohneP.dienstarten = ohneP.dienstarten.map((x) => (x.posten ? { ...x, posten: false } : x));
+    F.planeMonat(structuredClone(ohneP), YM, { maxProPerson: 3 });   // aufwärmen
+    let t0 = performance.now();
+    const o = F.planeMonat(structuredClone(ohneP), YM, { maxProPerson: 3 });
+    const tOhne = performance.now() - t0;
+    t0 = performance.now();
+    const r = F.planeMonat(structuredClone(m), YM, { maxProPerson: 3 });
+    const tMit = performance.now() - t0;
+    if (process.env.MESSUNG_DATEI) writeFileSync(process.env.MESSUNG_DATEI, JSON.stringify({ tOhne, tMit, gesetztOhne: o.gesetzt.length, gesetztMit: r.gesetzt.length, offenMit: r.offen.length }, null, 1));
+    expect(tMit).toBeLessThan(2 * tOhne + 5000);
+  }, 600000);
+  it("Quelle: planeMonat und Planer nutzen dieselbe Prüfung verdraengt (einsatz.mjs), keine Kopie", () => {
+    const q = readFileSync("src/lib/fachlogik.js", "utf8");
+    const f = q.slice(q.indexOf("export function planeMonat("), q.indexOf("\n}\n", q.indexOf("export function planeMonat(")));
+    expect(f).toContain("verdraengt(bestand, stand, d, eigene, liste)");
+    expect(q.split("export function verdraengt(").length - 1).toBe(0);
+    expect(readFileSync("server/lib/engine/planer.mjs", "utf8")).not.toContain("function verdraengt(");
+    expect(readFileSync("server/lib/engine/einsatz.mjs", "utf8")).toContain("export function verdraengt(bestand, stand, d, eigene, liste)");
+  });
 });
