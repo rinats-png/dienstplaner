@@ -44,7 +44,7 @@ import { pruefen } from "../../server/lib/engine/befunde.mjs";
 export { verteilung, planKennzahlen } from "../../server/lib/engine/kennzahlen.mjs";
 /* WP-I12a: Einsatzprüfung und Ersatzsuche stehen ebenfalls im Rechenkern. Der Client hängt die Regelkennung des Regelregisters ein (Frage 6). */
 export { SCHUTZ_QUELLE_NEUTRAL, SCHUTZ_QUELLE_EINSCHRAENKUNG, einschr, nachtJahr, FENSTER, fensterVon, verfuegbarFuer, wochenStundenGeplant, hindernisBefunde, ersatzVorschlaege } from "../../server/lib/engine/einsatz.mjs";
-import { SCHUTZ_QUELLE_NEUTRAL, nachtJahr, wochenStundenGeplant, hindernisBefunde, ersatzVorschlaege, regelIdHakenSetzen, verdraengt, folgeVorwaerts, planbefundeNeu } from "../../server/lib/engine/einsatz.mjs";
+import { SCHUTZ_QUELLE_NEUTRAL, nachtJahr, wochenStundenGeplant, hindernisBefunde, ersatzVorschlaege, regelIdHakenSetzen, verdraengt, folgeVorwaerts, planbefundeNeu, PLANBEFUND_GRENZE } from "../../server/lib/engine/einsatz.mjs";
 import { neuesVorgabenBudget, vorgabenPlanFortschreiben } from "../../server/lib/vorgabenwirkung.mjs";
 import { krankSchrittErlaubt } from "../../server/lib/krankmeldung.mjs";
 regelIdHakenSetzen(regelIdFuerBefund);
@@ -1560,9 +1560,10 @@ export const PLANEMONAT_VERDRAENGUNG_AUFWAND = 1000000;
 /** Aufwand der Vorwärtsprüfung (Dienste in Folge nach dem Tag; Betreiberentscheidung 26.11.) je Aufruf in Tagesprüfungen; `grenzen.folgeAufwand`
     setzt ihn je Aufruf. Eigener Zähler nach demselben Muster, damit die Verdrängungsprüfung ohne Posten weiter ohne jeden Aufwand bleibt. */
 export const PLANEMONAT_FOLGE_AUFWAND = 1000000;
-/** Aufwand der Planbefundprüfung (Nachtdienste in Folge, § 11 ArbZG; Betreiberentscheidung 26.11. Variante A) je Aufruf in Regelprüfungen
-    (planbefundeNeu: 2 je betroffener Regel); `grenzen.planbefundAufwand` setzt ihn je Aufruf. Eigener Zähler nach demselben Muster. */
-export const PLANEMONAT_PLANBEFUND_AUFWAND = 1000000;
+/** Aufwand der Planbefundprüfung (Nachtdienste in Folge, § 11 ArbZG; Betreiberentscheidung 26.11. Variante A) je Aufruf in Personentagen
+    (planbefundeNeu meldet je Einteilung die Obergrenze der Tage an, die eine Regel betrachtet; Review #588 B-3); `grenzen.planbefundAufwand`
+    setzt ihn je Aufruf. Eigener Zähler nach demselben Muster; dieselbe Grenze wie im Planer. */
+export const PLANEMONAT_PLANBEFUND_AUFWAND = PLANBEFUND_GRENZE;
 /* Budget ohne Rechenleistung (0) für die Mitgliederprüfung der Verdrängung: Vorgaben werden dort nicht gerechnet (sie hängen nur am eigenen,
    unveränderten Plan); das eine Monatsbudget von planeMonat bleibt das einzige, das Arbeit für Vorgaben leistet. */
 const leeresVorgabenBudget = () => neuesVorgabenBudget(0);
@@ -1624,10 +1625,10 @@ export function planeMonat(m, ym, grenzen = {}) {
   let folgeRest = folgeGrenze;
   const folgeLeisten = (k) => { if (folgeRest < k) { folgeRest = -1; return false; } folgeRest -= k; return true; };
   /* Planbefunde (Betreiberentscheidung 26.11. Variante A): `nachtfolge` (betrieblich), `sonntagsfrei` und `ersatzruhe` (§ 11 ArbZG) kennt
-     hindernisBefunde nicht. planbefundeNeu (einsatz.mjs) rechnet sie wie pruefen auf dem Stand davor und mit der Einteilung; löst die
-     Einteilung einen davor nicht bestehenden Befund aus (bei sonntagsfrei: Jahresbilanz unter 15) oder ist die Regel nicht bewertbar,
-     wird der nächste Kandidat versucht; scheitern alle, bleibt die Stelle offen mit der Regel als Grund. Ohne betroffene Regel (kein neuer
-     Nachtdienst, kein neuer Arbeitstag an einem Sonn- oder Feiertag oder in Reichweite eines gearbeiteten) keine Arbeit. Eigener Zähler. */
+     hindernisBefunde nicht. planbefundeNeu (einsatz.mjs) prüft sie auf dem Stand davor und mit der Einteilung (Nachtlauf durch d länger
+     als die Grenze; Jahresbilanz unter 15 freien Sonntagen; neuer fehlender Ersatzruhetag in einer Monatsansicht der Prüfung) oder die
+     Regel ist nicht bewertbar: dann wird der nächste Kandidat versucht; scheitern alle, bleibt die Stelle offen mit der Regel als Grund.
+     Ohne neuen Nacht- oder Arbeitstag keine Arbeit. Eigener Zähler in Personentagen. */
   const planGrenze = Number.isInteger(grenzen.planbefundAufwand) && grenzen.planbefundAufwand >= 0 ? Math.min(grenzen.planbefundAufwand, PLANEMONAT_PLANBEFUND_AUFWAND) : PLANEMONAT_PLANBEFUND_AUFWAND;
   let planRest = planGrenze;
   const planLeisten = (k) => { if (planRest < k) { planRest = -1; return false; } planRest -= k; return true; };

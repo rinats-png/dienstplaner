@@ -51,7 +51,9 @@
    Betreiberentscheidung 26.11. Variante A; Grund der offenen Stelle ist die
    Regel). Geprüft im Aufbau je Kandidat (scheitert er, der nächste; zählt
    nicht als Versuch), bei der Blockfortsetzung, im Verbessern und in der
-   Nachprüfung.
+   Nachprüfung. Die Planbefunde haben ein eigenes Budget in Personentagen
+   (`planbefundAufwand`, Review #588 B-3), die Nachprüfung ist darin je
+   eigener Einteilung mit der Obergrenze eines Aufrufs reserviert.
 
    Aufwand (Lehren #561/#566/#572): EIN Budget je Aufruf, gezählt in
    Personenprüfungen (Besetzung eines Tags = Personen, Ersatzsuche = Personen,
@@ -78,15 +80,16 @@ import { kiPauseAktiv } from "../ki-steuerung.mjs";
 import { neuesVorgabenBudget, vorgabenPlanFortschreiben } from "../vorgabenwirkung.mjs";
 import { VORGABEN_WIRKUNG_GRENZE } from "../vorgaben.mjs";
 import { besetzung, personTag, stundenkonto } from "./plan.mjs";
-import { ersatzVorschlaege, hindernisBefunde, nachtJahr, stufeRang, verdraengt, folgeVorwaerts, planbefundeNeu, PLANBEFUND_AUFWAND_HOECHST } from "./einsatz.mjs";
+import { ersatzVorschlaege, hindernisBefunde, nachtJahr, stufeRang, verdraengt, folgeVorwaerts, planbefundeNeu, planbefundAufwandHoechst, PLANBEFUND_GRENZE } from "./einsatz.mjs";
 
 /** Schalter des eigenen Planers (Vorgabe AUS). Einschalten ist eine bewusste Codeänderung dieser Konstante; Prüfungen geben je Aufruf frei. */
 export const PLANER_AN = false;
 
-/** Obergrenzen: Aufwand (Personenprüfungen je Aufruf), Züge des Verbesserns, Blocklänge, Höchstzahl zusätzlicher Dienste je Person. */
-export const PLANER_GRENZE = Object.freeze({ aufwand: 1000000, zuege: 2000, blockTage: 7, maxProPerson: 31 });
+/** Obergrenzen: Aufwand (Personenprüfungen je Aufruf), Züge des Verbesserns, Blocklänge, Höchstzahl zusätzlicher Dienste je Person;
+    Aufwand der Planbefunde (Personentage je Aufruf, planbefundeNeu; eigene Einheit, eigenes Budget). */
+export const PLANER_GRENZE = Object.freeze({ aufwand: 1000000, zuege: 2000, blockTage: 7, maxProPerson: 31, planbefundAufwand: PLANBEFUND_GRENZE });
 /** Vorgaben je Aufruf. */
-export const PLANER_STANDARD = Object.freeze({ aufwand: 1000000, zuege: 100, startwert: 1, maxProPerson: 3 });
+export const PLANER_STANDARD = Object.freeze({ aufwand: 1000000, zuege: 100, startwert: 1, maxProPerson: 3, planbefundAufwand: PLANBEFUND_GRENZE });
 
 /** Rangfolge (Plan 7.4), streng in dieser Reihenfolge; kleiner ist besser. */
 export const RANGFOLGE = Object.freeze(["gesetz", "besetzung", "muss", "soll", "verteilung", "wunsch", "stabilitaet"]);
@@ -125,6 +128,7 @@ function eingabeFehler(m, ym, opt) {
   if (opt.startwert !== undefined && !ganz(opt.startwert, 0, 4294967295)) return "Startwert ungültig";
   if (opt.maxProPerson !== undefined && !ganz(opt.maxProPerson, 1, PLANER_GRENZE.maxProPerson)) return "Höchstzahl je Person ungültig";
   if (opt.vorgabenAufwand !== undefined && !ganz(opt.vorgabenAufwand, 0, VORGABEN_WIRKUNG_GRENZE.aufwand)) return "Budget der Vorgaben ungültig";
+  if (opt.planbefundAufwand !== undefined && !ganz(opt.planbefundAufwand, 0, PLANER_GRENZE.planbefundAufwand)) return "Aufwand der Planbefunde ungültig";
   return null;
 }
 
@@ -133,10 +137,10 @@ const leer = (m, ym, status, grund, startwert) => ({ status, grund, ym, startwer
 
 /** Vorwärtsprüfung (folgeVorwaerts) und Planbefunde (planbefundeNeu) einer Einteilung: null = besteht, "aufwand" = Budget leer, sonst der
     Grund („folgeVorwaerts“ oder die Regel des Planbefunds). Dieselben Prüfungen wie planeMonat, in derselben Reihenfolge. */
-const vorwaerts = (vorher, p, d, da, leisten, stand) => {
+const vorwaerts = (vorher, p, d, da, leisten, stand, leistenPlan = leisten) => {
   const f = folgeVorwaerts(vorher, p, d, da, leisten, stand);
   if (f !== null) return f === "aufwand" ? f : "folgeVorwaerts";
-  const z = planbefundeNeu(vorher, p, d, da, leisten, stand);
+  const z = planbefundeNeu(vorher, p, d, da, leistenPlan, stand);
   return z === null || z === "aufwand" ? z : z.regel;
 };
 
@@ -218,11 +222,17 @@ export function planeVorschlag(m, ym, opt = {}) {
      Einsatzprüfung mit der Besetzung des Tags) und die Besetzung aller Tage. */
   const A = { grenze, rest: grenze, ausgeschoepft: false };
   /* … dazu je Tag der Vergleich der Bestandspersonen (Stand und Bestand: 2 P). */
-  /* … und je Einteilung die Vorwärtsprüfung (2 je späterem Tag, höchstens maxFolge Tage) und die Planbefunde (höchstens 6). */
+  /* … und je Einteilung die Vorwärtsprüfung (2 je späterem Tag, höchstens maxFolge Tage). */
   const mf = Number(m.einstellungen && m.einstellungen.maxFolge);
   const W = mf > 0 ? Math.ceil(mf) : 0;
-  const reserve = (n) => n * (P + 1 + 2 * W + PLANBEFUND_AUFWAND_HOECHST) + 3 * nTage * P;
+  const reserve = (n) => n * (P + 1 + 2 * W) + 3 * nTage * P;
   const leisten = (k, n) => { if (A.rest - k < reserve(n)) { A.ausgeschoepft = true; return false; } A.rest -= k; return true; };
+  /* Planbefunde (planbefundeNeu): eigenes Budget in Personentagen (Review #588 B-3: nicht mit Personenprüfungen vermischen); die
+     Nachprüfung ist je eigener Einteilung mit der Obergrenze eines Aufrufs reserviert. Leer ⇒ nicht einteilen (Grund „aufwand“). */
+  const pbGrenze = o.planbefundAufwand === undefined ? PLANER_STANDARD.planbefundAufwand : o.planbefundAufwand;
+  const PB = { rest: pbGrenze, ausgeschoepft: false };
+  const pbHoechst = planbefundAufwandHoechst(m, y);
+  const pbLeisten = (n) => (k) => { if (PB.rest - k < n * pbHoechst) { PB.ausgeschoepft = true; return false; } PB.rest -= k; return true; };
   if (A.rest < reserve(0)) return { ...leer(m, ym, "aufwand", "Aufwand reicht nicht für die Nachprüfung", startwert), aufwand: { grenze, verbraucht: 0, ausgeschoepft: true } };
 
   /* Ein Budget der Vorgaben für den ganzen Aufruf (wie planeMonat), Automatik. */
@@ -252,9 +262,9 @@ export function planeVorschlag(m, ym, opt = {}) {
   /** Höchstzahl der Kandidaten, die je Stelle wegen Verdrängung nacheinander versucht werden (verdrängt einer, meist alle: Postenbesetzung). */
   const VERSUCHE = 3;
   /* `lst`: Anmeldung der Vorwärtsprüfung im Aufrufbudget (reicht es nicht: nicht einsetzbar). */
-  const einsetzbar = (stand, p, d, da, jeP, lst) => (jeP[p.id] || 0) < maxProPerson && !personTag(stand, p, d).dienstId
+  const einsetzbar = (stand, p, d, da, jeP, lst, lstP) => (jeP[p.id] || 0) < maxProPerson && !personTag(stand, p, d).dienstId
     && !hindernisBefunde(stand, p, d, da, pruefOpt).some((b) => stufeRang(b.stufe) >= 2)
-    && vorwaerts(stand, p, d, da, lst) === null;
+    && vorwaerts(stand, p, d, da, lst, undefined, lstP) === null;
 
   /* ---------- 2. Aufbauen ---------- */
   const aufbauen = () => {
@@ -292,7 +302,7 @@ export function planeVorschlag(m, ym, opt = {}) {
         let p = null, versuche = 0, grundV = "folgeVorwaerts";
         for (const x of kand) {
           /* Vorwärts und Planbefunde (wie planeMonat): scheitert der Kandidat, der nächste — zählt nicht als Versuch. */
-          const f = vorwaerts(stand, x.person, d, da, (k) => leisten(k, eigene.size + 1));
+          const f = vorwaerts(stand, x.person, d, da, (k) => leisten(k, eigene.size + 1), undefined, pbLeisten(eigene.size + 1));
           if (f === "aufwand") { gekappt.set(`${d}|${da.id}`, "aufwand"); return; }
           if (f) { grundV = f; continue; }
           if (versuche++ >= VERSUCHE) break;
@@ -305,7 +315,7 @@ export function planeVorschlag(m, ym, opt = {}) {
           if (!leisten(3 * P + 1, eigene.size + 1)) break;
           const bt = besetzung(stand, t)[da.id];
           if (bt.diff >= 0 && !bt.qualFehlt) break;
-          if (!einsetzbar(stand, p, t, da, jeP, (k) => leisten(k, eigene.size + 1))) break;
+          if (!einsetzbar(stand, p, t, da, jeP, (k) => leisten(k, eigene.size + 1), pbLeisten(eigene.size + 1))) break;
           if (!setzenOhneVerdraengung(p, t, da, art)) break;
         }
       }
@@ -338,6 +348,7 @@ export function planeVorschlag(m, ym, opt = {}) {
   const nachBudget = neuesVorgabenBudget(vorgabenAufwand, { aggregate: o.aggregate === true });
   const bewerten = (r) => {
     A.rest -= reserve(r.eigene.size);
+    PB.rest -= r.eigene.size * pbHoechst;
     const { durch, gesetz, muss, soll, offenV } = nachpruefen(m, r.stand, [...r.eigene.values()], nachBudget);
     const offen = [];
     let luecke = 0;
@@ -388,8 +399,8 @@ export function planeVorschlag(m, ym, opt = {}) {
       const schritte = [{ pid: p.id, d: E.datum }];
       /* Zug verworfen: der alte Stand gilt weiter; seine Aggregate kommen zurück (die berührten Tage werden nachgelesen). */
       const zurueck = (x) => vorgabenPlanFortschreiben(ctx.vorgabenBudget, x, stand, schritte.map((c) => ({ personId: c.pid, tag: c.d })));
-      const lst = (k) => leisten(k, eigene.size + 1);
-      if (!einsetzbar(s1, p, S.d, daS, jeP2, lst)) { zurueck(s1); continue; }
+      const lst = (k) => leisten(k, eigene.size + 1), lstP = pbLeisten(eigene.size + 1);
+      if (!einsetzbar(s1, p, S.d, daS, jeP2, lst, lstP)) { zurueck(s1); continue; }
       s1 = setze(s1, p.id, S.d, daS.id);
       schritte.push({ pid: p.id, d: S.d });
       jeP2[p.id] += 1;
@@ -397,7 +408,7 @@ export function planeVorschlag(m, ym, opt = {}) {
       const bE = besetzung(s1, E.datum)[daE.id];
       if (bE.diff < 0 || bE.qualFehlt) {
         const kand = ersatzVorschlaege(s1, E.datum, daE.id, ctx).filter((x) => x.moeglich && x.person.id !== p.id && (jeP2[x.person.id] || 0) < maxProPerson);
-        const qx = kand.find((x) => vorwaerts(s1, x.person, E.datum, daE, lst) === null);
+        const qx = kand.find((x) => vorwaerts(s1, x.person, E.datum, daE, lst, undefined, lstP) === null);
         if (qx) { q = qx.person; s1 = setze(s1, q.id, E.datum, daE.id); schritte.push({ pid: q.id, d: E.datum }); jeP2[q.id] = (jeP2[q.id] || 0) + 1; }
       }
       /* Bestandspersonen an beiden Tagen unverändert (Posten: Zurücknehmen kann jemanden in die Postenbesetzung ziehen, Setzen verdrängen). */
@@ -422,7 +433,7 @@ export function planeVorschlag(m, ym, opt = {}) {
 
   const aufgebaut = aufbauen();
   const bk = bewerten(aufgebaut);
-  if (!bk.durch) return { ...leer(m, ym, "nachpruefung", "Nachprüfung des Aufbaus nicht bestanden", startwert), aufwand: { grenze, verbraucht: grenze - A.rest, ausgeschoepft: A.ausgeschoepft } };
+  if (!bk.durch) return { ...leer(m, ym, "nachpruefung", "Nachprüfung des Aufbaus nicht bestanden", startwert), aufwand: { grenze, verbraucht: grenze - A.rest, ausgeschoepft: A.ausgeschoepft || PB.ausgeschoepft, planbefund: { grenze: pbGrenze, verbraucht: pbGrenze - PB.rest, ausgeschoepft: PB.ausgeschoepft } } };
   let ergebnis = aufgebaut, bewertung = bk, verbessert = 0;
   if (zuege > 0 && aufgebaut.eigene.size && bk.offen.length) {
     const v = verbessern(aufgebaut);
@@ -435,5 +446,5 @@ export function planeVorschlag(m, ym, opt = {}) {
     || m.dienstarten.findIndex((x) => x.id === a.dienstId) - m.dienstarten.findIndex((x) => x.id === b.dienstId)
     || (String(a.personId) < String(b.personId) ? -1 : String(a.personId) > String(b.personId) ? 1 : 0));
   return { status: "ok", grund: null, ym, startwert, gesetzt, offen: bewertung.offen, abweichungen: ergebnis.stand.abweichungen,
-    rang: bewertung.rang, nichtBewertet: [...NICHT_BEWERTET], aufwand: { grenze, verbraucht: grenze - A.rest, ausgeschoepft: A.ausgeschoepft }, verbessert };
+    rang: bewertung.rang, nichtBewertet: [...NICHT_BEWERTET], aufwand: { grenze, verbraucht: grenze - A.rest, ausgeschoepft: A.ausgeschoepft || PB.ausgeschoepft, planbefund: { grenze: pbGrenze, verbraucht: pbGrenze - PB.rest, ausgeschoepft: PB.ausgeschoepft } }, verbessert };
 }

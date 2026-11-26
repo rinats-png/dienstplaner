@@ -405,6 +405,9 @@ export function pruefen(m, von, bis) {
    Aus pruefen herausgelöst, Rechnung und Texte unverändert: pruefen ruft sie an derselben Stelle, der Planungsassistent und der
    Planer (planbefundeNeu, einsatz.mjs) vergleichen damit den Stand vor und nach einer Einteilung. Eine Implementierung. */
 
+/** Zählt dieser Dienst für „Nachtdienste in Folge“ (Nachtanteil mindestens die Schwelle des Betriebs)? Ohne Dienstart: nein. */
+export const istNachtdienst = (m, da) => !!da && nachtAnteil(da, m.einstellungen) >= nachtschwelle(m.einstellungen);
+
 /**
  * Nachtdienste in Folge (betriebliche Grenze `maxNachtFolge`, Regelregister AZ-NACHTFOLGE-01): je Lauf der Tag, an dem er die Grenze
  * überschreitet, wenn er in `von` … `bis` liegt. Gezählt wird ab `vor` (pruefen: zehn Tage vor `von`); ein Dienst ohne Nachtanteil über
@@ -417,7 +420,7 @@ export function nachtfolgeBefunde(m, p, von, bis, vor = addDays(von, -10)) {
     const t = personTag(m, p, d);
     if (t.dienstId) {
       const da = m.dienstarten.find((x) => x.id === t.dienstId);
-      nl = da && nachtAnteil(da, m.einstellungen) >= nachtschwelle(m.einstellungen) ? nl + 1 : 0;
+      nl = istNachtdienst(m, da) ? nl + 1 : 0;
       if (nl === m.einstellungen.maxNachtFolge + 1 && d >= von && d <= bis)
         out.push({ art: "nachtfolge", schwere: "warn", datum: d, ref: p.id, personId: p.id,
           titel: `${nl} Nachtdienste in Folge — ${p.nachname}`, text: `Grenzwert ${m.einstellungen.maxNachtFolge}` });
