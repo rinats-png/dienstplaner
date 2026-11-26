@@ -272,6 +272,9 @@ describe("Q5 — Monatsabschluss (WP-16): Moduldaten verändern das Ist nicht", 
     const v = schreibeAls(g, "LT", (m) => {
       m.postenPlan = { ...m.postenPlan, "a1|2026-10-05": "po2", "a1|2026-10-07": "po1" };
       delete m.postenPlan["a1|2026-10-06"];
+      /* WP-19.4: eine Zuordnung muss auf einen Bereich des Betriebs zeigen (der Bereich b1 ist hier Teil der Eingabe). */
+      const e0 = (m.einheiten || [])[0];
+      if (e0 && !(e0.bereiche || []).some((b) => b.id === "b1")) e0.bereiche = [...(e0.bereiche || []), { id: "b1", name: "Bereich 1", soll: {} }];
       m.bereichsPlan = { ...(m.bereichsPlan || {}), "a1|2026-10-05": "b1" };
     }, { liste: PRUEF });
     expect(v.verweigert, v.verweigert).toBeFalsy();

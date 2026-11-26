@@ -10,7 +10,7 @@
    Orte und was der Kontext dort enthält (kern.jsx baut ihn):
      betrieb    { m, heute, darf }
      tag        dazu { datum, dienstId, einheitId, personenImDienst: Person[] }
-     (alle Orte: akt und postenSchreiben — Posten-Pflege und -Einteilung nur für Leitung und Planung, posten-pflege.js)
+     (alle Orte: akt, postenSchreiben und bereichSchreiben — Posten-Pflege und -Einteilung nur für Leitung und Planung, posten-pflege.js; Bereichs-Zuordnung auch für die Schichtverantwortung in der eigenen Einheit, bereichsplan-pflege.js)
      dienstart  dazu { da } — je Dienstart des Betriebs
 
    Gezeigt wird eine Oberfläche nur, wenn ihr Modul im Betrieb wirkt
@@ -33,6 +33,7 @@ import { FunktionsUebersicht } from "./funktionsdienst.jsx";
 import { RotationUebersicht } from "./rotation.jsx";
 import { PflegeVerteilung } from "./pflegequal.jsx";
 import { BereichsUebersicht } from "./bereichsplan.jsx";
+import { BereichsErgaenzung } from "./bereichsplan-pflege.js";
 import { AbschnittsAnzeige } from "./geteilterdienst.jsx";
 import { AnlagenUebersicht } from "./anlagen.jsx";
 import { QualifikationsMatrix } from "./maschinenqual.jsx";
@@ -67,7 +68,9 @@ export const MODUL_OBERFLAECHEN = Object.freeze([
   { modul: "pflegequal", ort: "tag", titel: "Pflegeniveaus im Dienst",
     ansicht: (k) => h(PflegeVerteilung, { m: k.m, personenImDienst: k.personenImDienst || [], qualGueltig: k.qualGueltig, heute: k.heute }) },
   { modul: "bereichsplan", ort: "tag", titel: "Bereiche",
-    ansicht: (k) => h(BereichsUebersicht, { m: k.m, einheitId: k.einheitId, datum: k.datum, dienstId: k.dienstId, personenImDienst: k.personenImDienst }) },
+    ansicht: (k) => h(Fragment, null,
+      h(BereichsUebersicht, { m: k.m, einheitId: k.einheitId, datum: k.datum, dienstId: k.dienstId, personenImDienst: k.personenImDienst }),
+      h(BereichsErgaenzung, { k })) },
   { modul: "anlagen", ort: "tag", titel: "Anlagen",
     ansicht: (k) => h(AnlagenUebersicht, { m: k.m, datum: k.datum }) },
   { modul: "geteilterdienst", ort: "dienstart", titel: "Abschnitte des geteilten Dienstes",
