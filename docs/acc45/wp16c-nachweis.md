@@ -85,3 +85,9 @@ Tests: `wp16c` 26 (HTTP: PUT ohne Änderung, Selbstauskunft, Wiederherstellen, S
 
 ## Nachtrag letzte Review-Runde
 Mitwirkung nach Eingabe-Fingerabdruck (`korrekturFingerabdruck`), Vorfilter über Kern/Scherben-Hashes, Basis des Schreibers bei veraltetem Stand, Schnellpfad ohne laufende Korrektur; `"?"` sperrt die Freigabe; `korrektur-verwerfen` als Ausweg (Spur ohne Grund); Grenze 200. `wp16c`: 33 Tests, Mutanten (Fingerabdruck ignoriert 1 rot, `"?"` ohne Wirkung 2, Basis statt aktuellem Stand 1, Wiederherstellen-Sperre 1). Restrisiken: `wp16c-fragen.md` L1–L7.
+
+## Nachtrag 2026-11-26: Nachweis Abschlusspfad (HTTP)
+`pruefungen/wp16c-abschlusspfad.test.js` (2 Tests, in `pruefung:wp-nachtraege`): nach Abschluss und bestätigtem Lohnexport wird eine Ist-Änderung per PUT abgewiesen und der Bestand bleibt
+byte-identisch; der Export (`exportZeilenFuer`) kommt aus dem Freeze, auch ein verändertes Ist ändert die Zeilen nicht; unberechtigte, unvollständige und anmeldelose Anfragen sowie Wiederöffnen nach Export
+(Absagen) lassen den Bestand unverändert; Mandantentrennung: Abschluss/Wiederöffnen eines zweiten Betriebs derselben Ablage lässt Abschluss und Export des ersten unverändert (HTTP, zwei Mandanten).
+Klasse C/D unverändert offen: E-29 (Kanzlei/Lohnbüro), Messung Offline/Migration/VPS.
