@@ -1215,6 +1215,8 @@ export function adresseFuersProtokoll(url) {
  * @param {string} [zusatz]
  * @param {{rolle?: string, person?: (string|number|null), weg?: string,
  *          verfahren?: string, herkunft?: string, mandantId?: string, tag?: string}} [wer]
+ * @returns {Promise<boolean>} ob die Zeile geschrieben wurde. Wirft nie — wer darauf angewiesen ist, dass eine Zeile
+ *   wirklich steht (WP-I16, Sicherheitssperre: „begonnen“/Ergebnis), wertet den Rückgabewert aus; alle anderen ignorieren ihn.
  */
 export async function protokoll(art, kennung, ausgang, zusatz, wer) {
   try {
@@ -1248,7 +1250,8 @@ export async function protokoll(art, kennung, ausgang, zusatz, wer) {
        über die Zeit im Eintrag. */
     const marke = `${jetzt.getTime().toString(36)}${randomBytes(5).toString("hex")}`;
     await spur().setJSON(`${tag}/${art}/${marke}`, zeile);
-  } catch { /* Protokollieren darf nie eine Anfrage scheitern lassen */ }
+    return true;
+  } catch { /* Protokollieren darf nie eine Anfrage scheitern lassen */ return false; }
 }
 
 /** Was ist in den letzten Tagen passiert? Für die Betreiberkonsole. */
