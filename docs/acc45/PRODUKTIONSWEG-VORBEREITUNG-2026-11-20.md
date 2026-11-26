@@ -482,6 +482,7 @@ Jede Zeile braucht einen Beleg (Datei, Lauf, Protokollzeile). Ohne Beleg: No-Go.
 |---|---|---|---|
 | F-1 | Laufendes Produktionsbild bestimmt (Zustand A/B/C) | V-1…V-3 | offen |
 | F-2 | Kandidat auf `main`, Gates R1–R3 grün | RELEASE-GATES | offen |
+| F-2a | Manuell zu prüfende Pakete ohne Gate-Schutz (WP-44, WP-15, WP-07b): Funktionsisolation und Betreiberhandlung am Kandidaten bestätigt, Abschnitt 5a | Abschnitt 5a, Betreiberbestätigung je Punkt | offen |
 | F-3 | Kandidatenbild gebaut; Digest, Label = Commit, Provenienz `vcs.revision` = Commit | `deploy.yml` Lauf, Abschnitt 1.3 | offen (kein Bild) |
 | F-4 | Staging-Abnahme per Digest bestanden | STAGING-PLAN-V4 §9 | offen |
 | F-5 | Restore-Probe K0–K11 bestanden | Bericht Abschnitt 4 | offen |
@@ -494,6 +495,133 @@ Jede Zeile braucht einen Beleg (Datei, Lauf, Protokollzeile). Ohne Beleg: No-Go.
 | F-12 | Listenzeile für den Kandidaten `aktiv` **vor** dem Wechsel (3.7 Schritt 3); Zeile `274bfa0` nach O-1/3.3a: `vorherig` bis T0+24 h (Option a, nur als Neustart vor dem Wechsel, nie als Rücksprungziel) **oder** sofort `gesperrt` (Option b, Abbruch vor dem Wechsel = Ausfall, S-5 ausgeschlossen) | PR auf die Liste | offen |
 | F-13 | Wartungsfenster, Ansprechpartner, Entscheidungsbaum 3.6 bestätigt | Vermerk | offen |
 | F-14 | Ausdrückliche Produktionsfreigabe des Betreibers | schriftlich | offen |
+
+## 5a. Pakete ohne Gate-Schutz und Funktionsisolation am Kandidaten (Stand 2026-11-26)
+
+Betreiberentscheidung 2026-11-26: Es wird **keine** verbindliche Akzeptanz für G8/G9 erteilt und keine als erteilt behandelt.
+`akzeptiertePakete` und `akzeptierteBefunde` bleiben unverändert. Dieser Abschnitt ergänzt die Freigabe-Checkliste (F-2a) um
+Punkte, die die automatischen Gates **nicht** erfassen. Er ändert kein Gate, kein Werkzeug und keinen Workflow.
+
+### 5a.1 Warum die Gates diese Pakete nicht erfassen
+
+- **G8** (`werkzeug/release-pruefung.mjs`, `g8Blocker`, Z. 1549) blockiert ein offenes P0/P1-Paket nur, wenn eine PR aus seinem Feld `pr`
+  im Kandidaten liegt (Z. 1562). Pakete mit `pr: []` sieht G8 nie.
+- **G9** (`g9Befunde`, Z. 1623; Konfiguration Z. 230) blockiert offene P0/P1-Pakete nur mit `strang: folge` oder ID `ABN-*`/`V4-*`.
+  Strang `acc45` ohne diese Präfixe fällt durch.
+- Folge: **WP-44** (P0, `acc45`, `pr: []`) und **WP-15** (P1, `acc45`, `pr: []`) stehen in keinem Gate. **WP-07b** (P1, `folge`, `pr: []`)
+  erfasst G9 zwar über den Strang, G8 aber nicht; es enthält zudem keinen Produktcode. Eine Annahme in der Freigabedatei
+  ersetzt die manuelle Bestätigung nicht, und umgekehrt.
+
+### 5a.2 Manuell zu prüfende Punkte (Betreiber bestätigt je Punkt mit Beleg)
+
+| Paket (work-packages.json) | Warum kein Gate | Manuell zu bestätigen | Stand heute |
+|---|---|---|---|
+| **WP-44** (P0, BLOCKED): „Zugangscodes bewerten, rotieren, Klartext beseitigen (A9)“; Abhängigkeit E-15 | `pr: []`, Strang `acc45`: G8 und G9 sehen es nicht. Es ist eine Betreiberhandlung, kein Code | (1) Zugangscodes bewertet und rotiert (Ablauf A9, Z1 bis Z7 laut `ENTSCHEIDUNGSLISTE.md` E-15, `EXTERNE-ABNAHMEN-UEBERGABE.md`). (2) Kein Code aus Klartextdateien aktiv, Klartextdateien beseitigt. (3) Betreiberzugang rotiert, Nachweise gesichert. (4) Produktionskonfiguration: keine alten Zugangscodes in der `.env` (nur Schlüsselnamen mit V-6 prüfen, nie Werte weitergeben) | **offen**: SSOT-Stufen alle `false`, kein Nachweis; als P0-Produktionsblocker nicht erledigt. Im Repo ist keine Funktionsisolation möglich, weil kein Code betroffen ist |
+| **WP-15** (P1, REVIEW): „Selbstauskunft mit Freigabe und Stempelabgleich“ | `pr: []` (Direkt-Merge `1c1a27e0`, anerkannt), Strang `acc45`: G8 und G9 sehen es nicht | (1) Der Code ist im Kandidaten **aktiv ohne Schalter**: `POST /api/selbstauskunft-entscheiden` (`server/funktionen/daten.mjs:3061`), Recht `staff.edit` plus Schreibumfang (`:3064`), Zurückziehen nur mit Schreibumfang (`:3068`). Die Funktion ist nicht isoliert; es gibt nichts abzuschalten. (2) Offen: Browser-E2E und F15-2 (Selbstfreigabe im Einpersonenbetrieb). (3) Betreiber bestätigt, dass ein Einpersonenbetrieb die eigene Auskunft vorerst nicht selbst freigeben kann (Bedienung, kein Rechteleck belegt) | **offen**: SSOT `integriert=false`, Abnahmekriterien Browser-E2E und F15-2 offen; Tests `selbstauskunft` 22/22, Oberfläche 6/6 laut SSOT (Lauf 2026-11-12) |
+| **WP-07b** (P1, REVIEW): „Stempel-Sonderfall ‚500 nach Speicherung‘ (clientEventId, sechs Szenarien)“ | `pr: []`; G8 sieht es nicht, G9 erfasst es über `folge` | (1) Kein Produktcode im Kandidaten (SSOT `implementiert`: kein Codeänderungsbedarf; nur Prüfung `pruefungen/wp07b-stempel-500.test.js`, 9/9). (2) Offen: Lastmessung N-07b-1 (echter 500 nach dem Schreiben unter Last) auf Staging oder VPS. (3) Betreiber bestätigt, dass bis dahin das Risiko Doppelstempel unter Last bewusst getragen wird | **offen** (nur Messung; nichts zu isolieren). Nachholreview 2026-11-13 ohne Blocker (`NACHHOLREVIEW-STEMPELKETTE-2026-11-13.md`) |
+
+### 5a.3 Funktionsisolation am konkreten Kandidaten
+
+**Kandidatenschnitt.** Basis (laufende Produktion laut `BETREIBER-ANLEITUNG-ERSTRELEASE.md`, Annahme 7): `274bfa0baca5681f383eea334aab69875f31d5c1`.
+Kandidatenstand für diese Prüfung: `origin/integration/release-v4` @ `3d4535478a3d5884facd156d75025aef4f5b0975`
+(2528 Commits, 1797 geänderte Dateien gegenüber der Basis). `release/rc-2026-11-22` (`517993ca`) liegt vollständig darin
+(Vorfahr) und ist nicht der Kandidat. Der echte Kandidat ist ein künftiger Commit auf `main`; die Prüfung ist dort zu wiederholen.
+Maßgeblich waren: offene P0/P1-Pakete (Status nicht `INTEGRATED`/`DONE`/`VERIFIED`), deren `pr` im Schnitt liegt (G8-Sicht), plus
+die `pr: []`-Pakete (5a.2). Alle Zeilenangaben gelten für den genannten Stand.
+
+**Produktionskonfiguration.** Sie liegt nicht im Repository. Die Vorlagen (`.env.example`, `deploy/compose.yml`) setzen keinen der
+folgenden **Schalter** aktiv (alle Zeilen auskommentiert, G3 prüft das an den Vorlagen). Ausnahme ist keine Schalterzeile:
+`CENTRIC_VERTRAUTE_PROXYS` steht in `.env.example` (Z. 39) unkommentiert mit Platzhalter, es ist Konfiguration, kein Schalter. Was auf dem VPS tatsächlich gesetzt ist, kann
+nur der Betreiber feststellen (5a.4).
+
+Isolationsbeleg: **ja** = bei Sollwert inert, mit Quelle und Test; **nein** = Code läuft aktiv oder in gemeinsamen Pfaden ohne Schalter;
+**offen** = nicht belegt, Fehlendes benannt.
+
+| Paket | Code im Kandidaten | Isolationsbeleg | Beleg (Quelle, Test) oder was fehlt | Folgerung |
+|---|---|---|---|---|
+| WP-48 (P0), PR #87, #224, #271, #322, #341, #342, #346, #348, #350, #351 | Schalterteile und aktive Teile | **nein** (Schalterteil: ja) | Schalter `teilwegAn()`, `abschlussSegmentweiseAn()`, `abschlussOhneSperreAn()` nur bei genau `true` (`server/lib/schalter.mjs:21, 47, 63`; Abfragen `server/funktionen/daten.mjs:1582, 1586, 2930, 2956`). Aktiv ohne Schalter: Ablage/Scherben, Voll-PUT, `zusammenfuehren`, Kette (`server/lib/kette.mjs:23-25`, Rückfall `CENTRIC_KETTE_AUS=1`), Umbau des Monatsabschlusses. WP-48.8/48.9 offen | G8-Blocker bleibt; Rundweg und Messung auf Sicherungskopie in Pilotgröße fehlen |
+| WP-16c (P0), PR #223 | Korrekturaktionen im Monatsabschluss | **nein** | aktiv ohne Schalter (`daten.mjs:2875-2898`); Migration alter Abschlüsse ohne Revisionsschema, Offline-Stempel in revidierte Monate und HTTP-Pfad ungemessen; E-29 offen | G8-Blocker bleibt; kein echter Korrekturexport an das Lohnbüro bis geklärt |
+| WP-16 (P1), PR #85 | Pausen, Abschluss sperrt Ist, Wiederöffnen, Lohnexport | **nein** | aktiv ohne Schalter; A-6 (Lohnart 1200) offen | G8-Blocker bleibt; kein produktiver Lohnexport bis A-6 |
+| WP-14c (P1), PR #368 | Pausenprüfung in Ist/Stempel | **nein** | aktiv; F6 offen; Alteinträge mit leerer oder negativer Pause zählen still | G8/G9-Blocker bleibt |
+| WP-15 (P1), kein PR | Selbstauskunft | **nein** | siehe 5a.2 | manuell (5a.2) |
+| WP-07b (P1), kein PR | kein Produktcode | **ja** (nichts zu isolieren) | `pruefungen/wp07b-stempel-500.test.js` 9/9 laut SSOT; Lastmessung N-07b-1 **offen** | manuell (5a.2) |
+| WP-44 (P0), kein PR | kein Code | **offen** | Betreiberhandlung, siehe 5a.2 | manuell (5a.2), Produktionsblocker |
+| WP-19, 19.3, 19.5, 19.6, 19.13, PR #234, #243, #244, #247, #249, #359 | Branchenmodule | **ja** | alle Module Status `geplant`: Vorgabe des Hilfsaufrufs `modul()` (`server/lib/branchenmodule.mjs:156`), in den Moduldefinitionen (Z. 159 bis 300) nirgends überschrieben; `modulAktiv` weist `geplant` ab (`:301-304`); Oberfläche nur bei `modulAktiv` (`src/module/index.js:131`). Tests: `pruefungen/branchenmodule.test.js:104` (ein geplantes Modul wirkt nie, auch wenn ein Schalter gespeichert ist, Z. 110), `:164` (Server weist geplante Module ab). **Kein Umgebungsschalter**, sondern Code-Konstante; G3 prüft sie nicht. Aktiver Rest: Art.-17-Löschweg | Annahme (falls je erteilt) nur gebunden an Status `geplant`; erlischt, sobald ein Modul `vorlaeufig` wird |
+| WP-19.1 (P1, IN_PROGRESS), PR #569 (neu seit der Analyse vom 25.11.) | Posten-Pflege (`server/lib/modul-posten.mjs`, `src/module/posten-pflege.js`) | **ja** | Posten-Zuordnung nur mit `modulAktiv(m, "posten", …)` (`modul-posten.mjs:179`); Modul `posten` bleibt `geplant` (`pruefungen/modul-posten-pflege.test.js:13`: geschrieben wird im Prüfmodus, Registry-Kopie „vorlaeufig“ nur im Test) | wie WP-19; zusätzlich Einzeleintrag WP-19.1, falls je akzeptiert |
+| WP-21 (P1), PR #183, #192, #211, #213, #258 | Darstellung | **nein** (nur Darstellung) | echte Geräte, Kartenansicht, Vorlesesoftware, Textvergrößerung offen; kein Rechte- oder Datenweg | G8-Blocker bleibt |
+| ABN-A2 (P1), PR #534, #536 | Rolle vor Zähler, getrennte Zähler je Raum | **nein** | Rest R-A2-1R (niedrig, Verfügbarkeit) offen; Betreiber lehnte am 24.11. eine dauerhafte Risikoannahme ab | G8/G9-Blocker bleibt |
+| ABN-S2 (P1), kein Fix | Anmelde-/Einlöseweg | **nein** (vorbestehend) | Konfiguration `CENTRIC_VERTRAUTE_PROXYS` (Platzhalter in `.env.example`, Betreiber setzt Wert); ABN-S2-de offen | G9-Blocker bleibt |
+| RB-P217 (P1) | Lesepfad bei Altdaten ohne vollständiges `mindest` | **nein** | Ampel kann grün statt Hinweis zeigen; Entscheidung P2-17 offen | G9-Blocker bleibt |
+| OPT-4 (P1), PR #182 | Zweiter Faktor je Konto (TOTP) | **nein** | aktiv; Migration bestehender Leitungskonten (E1) und Nachtrag E4 offen; Betreiber-2FA-Einrichtung (F-11) | G8-Blocker bleibt (F-11 begleitet ihn) |
+| E-9 (P1, READY, Strang extern, PR #353): „E-Mail und Push (WP-30)“; Betreiberhandlung plus Technikteil #343/#353 | Mailbestätigung (`mailbestaetigung.mjs`), Push-Abmeldung je Gerät, Aufräumen bei Anonymisierung | **nein** (Schalterteil: ja) | Hinter Schalter: Adressbestätigung nur bei `CENTRIC_MAILBESTAETIGUNG=angebot|pflicht`, alles andere ist „aus“ (`server/lib/mailbestaetigung.mjs:67-70`; Test `pruefungen/mailbestaetigung.test.js`). Aktiv ohne Schalter: Push-Abmeldung je Gerät (`server/funktionen/daten.mjs:3159` mit `geraetAbmelden` aus `server/lib/versand.mjs`; Test `pruefungen/e9-abmelden-geraet.test.js`), Aufräumen der Bestätigung bei Anonymisierung (`daten.mjs:2227-2233`, `server/lib/datenschutzlauf.mjs`; ohne Schalter gibt es keine solchen Einträge, das Entfernen läuft leer). Die Mail- und Push-Zustellung selbst (WP-30, PR #84) ist aktiv und hängt an Anbieter-Konfiguration (`CENTRIC_MAIL_WEG`, `CENTRIC_SMTP_*`, VAPID in `.env.example` Z. 222-242, 259); Ein Anbieter-Ende-zu-Ende-Test am Kandidaten ist in der SSOT nicht belegt. Offen: Betreiberhandlung E-9 (Absenderdomain, Anbieter, End-to-End-Test; SSOT alle Stufen `false`) | G8-Blocker (über #353) bleibt; Betreiber bestätigt Schalter und Anbieterkonfiguration (5a.4) |
+| WP-ST1 (#279, #299), REL-1 (#427) | nur Doku, Werkzeug, Staging-Vorbereitung | **nicht untersucht** | #279 nur Doku; Staging-Gate ausgeschaltet bis `STAGING_GATE_AKTIV=true` laut SSOT | kein Beitrag zur Funktionsisolation der App |
+| Intelligence/Steuerung, IMP-6, Import, Demo (kein offenes P0/P1-Paket im Schnitt, aber Schalter) | Schalter aus `RELEASE-SCHALTER.json` | **ja** | `PLANER_AN = false` (`server/lib/engine/planer.mjs:81`, Auswertung `:188`), `PLANER_AGGREGATE_AN = false` (`server/lib/engine/planeraggregate.mjs:46`, genutzt `server/lib/vorgabenwirkung.mjs:105`), `KI_STEUERUNG_PROZESS = "aus"` (`src/ansichten/ki-steuerung.jsx:28`; Test `pruefungen/intelligence-steuerung-oberflaeche.test.js:41`), Tests `pruefungen/intelligence-planer-kern.test.js:81`, `intelligence-planer-aggregate.test.js:44`; `CENTRIC_KI_BR_PAUSE` nur genau `true` (`server/lib/schalter.mjs:32`, Verwendung `daten.mjs:1595`), `CENTRIC_SCHICHTMODELL_PFLEGE` (`schalter.mjs:110`), `…_WIRKUNG` (`:132`), `CENTRIC_IMPORT_AKTIV` (`:78`) nur genau `true`. `PLANER_AN` und `KI_STEUERUNG_PROZESS` sind Code-Konstanten, **keine** Umgebungsschalter | Isolation im Code belegt; Produktionswerte nur vom Betreiber bestätigbar (5a.4) |
+
+**Gesamtfolgerung.** Am Kandidatenstand `3d453547` ist die Funktionsisolation nur für die Module (WP-19 und Unterpakete einschließlich WP-19.1),
+die Intelligence-Konstanten und die Schalter in `RELEASE-SCHALTER.json` belegt. Für WP-48 (nur der Schalterteil), WP-16c, WP-16, WP-14c, WP-15, WP-21,
+ABN-A2, ABN-S2, RB-P217, OPT-4 und E-9 (nur die Mailbestätigung liegt hinter einem Schalter) gibt es **keine** vollständige Isolation: der Code läuft aktiv, die Absicherung ist ein fachlicher Rest oder eine Auflage,
+keine Abschaltung. WP-44 ist eine reine Betreiberhandlung und derzeit offen; bei E-9 ist die Betreiberhandlung (Anbieter, Absender, Ende-zu-Ende-Test) offen. Nicht untersucht sind nur WP-ST1 und REL-1 (siehe Tabelle). Das ist eine Lesart des Codes, keine Annahme und keine Freigabe.
+
+### 5a.4 Was der Betreiber am konkreten Kandidaten bestätigen muss (Produktionskonfiguration)
+
+Die Liste ist **nicht abschließend**: alle Einträge der Klasse `schalter-aus` in `docs/acc45/RELEASE-SCHALTER.json` sind mit V-6 gegenzuprüfen. G3 prüft nur die Vorlagen des Kandidaten, nicht die tatsächliche `.env` auf dem Server.
+Nur Schlüsselnamen und Sollwerte; Werte nie in Doku, Chat oder Tickets schreiben. Prüfung mit V-6 (Schlüsselnamen der `.env`)
+und der Kandidaten-Vorlage; maßgeblich ist die Konfiguration, die der Kandidat tatsächlich erhält.
+
+| Schlüssel | Sollwert | Deckt ab |
+|---|---|---|
+| `CENTRIC_TEILSPEICHERUNG` | nicht gesetzt (nur genau `true` schaltet ein) | WP-48 Teilweg und Löschlauf |
+| `CENTRIC_ABSCHLUSS_SEGMENTWEISE` | nicht gesetzt | WP-48 segmentweiser Abschluss |
+| `CENTRIC_ABSCHLUSS_OHNE_SPERRE` | nicht gesetzt | WP-48, nur zusammen mit SEGMENTWEISE wirksam |
+| `CENTRIC_KETTE_AUS` | bewusst entscheiden: nicht gesetzt = Kette **an** (Vorgabe des Kandidaten); `1` = Rückfall ohne Kette | WP-48 (#341) |
+| `CENTRIC_KI_BR_PAUSE` | nicht gesetzt | Betriebsrat darf Intelligence pausieren (WP-I16) |
+| `CENTRIC_SCHICHTMODELL_PFLEGE`, `CENTRIC_SCHICHTMODELL_WIRKUNG` | nicht gesetzt | IMP-6 |
+| `CENTRIC_IMPORT_AKTIV` | nicht gesetzt | Personalimport (Dateiweg) |
+| `CENTRIC_DEMO` | nicht gesetzt | öffentlicher Demozugang |
+| `CENTRIC_VERTRAUTE_PROXYS` | bewusst gesetzt (nur die feste Adresse des Caddy-Containers); leer = niemandem geglaubt: dann zählen alle Nutzer unter der Caddy-Adresse, die Bremse träfe alle gemeinsam, und `deploy.sh` liefert nicht aus (`.env.example` Z. 30-38); das ganze Subnetz ist nicht empfohlen | ABN-S2 |
+| `CENTRIC_DATENSCHUTZLAUF` | bewusst gesetzt (F-9) | Datenschutzlauf |
+| Zugangscodes in der `.env` | rotiert, keine alten Werte (WP-44) | WP-44 |
+| `CENTRIC_SELBSTSTART` | nicht gesetzt (nur genau `true` schaltet ein) | Selbststart |
+| `CENTRIC_PUBLIC_REGISTRATION` | nicht gesetzt (nur genau `true` schaltet ein) | öffentliche Selbstregistrierung |
+| `CENTRIC_HILFE_ASSISTENT` | nicht gesetzt oder `aus` (Werte `aus`, `suche`, `an`) | Hilfe-Assistent |
+| `CENTRIC_PRUEFLINK` | nicht gesetzt (nur `ja` schaltet ein) | Prüflink |
+| `CENTRIC_MAILBESTAETIGUNG` | nicht gesetzt oder `aus` (`angebot` und `pflicht` schalten ein; `pflicht` braucht `CENTRIC_PFEFFER`) | E-9 Adressbestätigung |
+| `CENTRIC_KONTOWIEDERHERSTELLUNG` | nicht gesetzt (WR-4 bis WR-9 offen) | Kontowiederherstellung |
+| `CENTRIC_TESTRAUM_MAIL` | nicht gesetzt (nur `ja` schaltet ein) | Mail aus Test-/Demoräumen |
+| `CENTRIC_ZUSTELL_SPERREN_AUFHEBEN` | nicht gesetzt (nur `ja`, einmalig) | Aufheben der Zustellsperren |
+
+Nicht per Umgebung steuerbar und daher kein Konfigurationspunkt, aber im Kandidaten festgelegt (Quellen 5a.3): Modulstatus `geplant`
+(`branchenmodule.mjs`), `PLANER_AN = false`, `PLANER_AGGREGATE_AN = false`, `KI_STEUERUNG_PROZESS = "aus"`. Eine Änderung dieser Konstanten
+ist eine Codeänderung und gehört in die Wiederholung dieser Prüfung am echten Kandidaten.
+
+### 5a.5 Ergebnis `werkzeug/release-pruefung.mjs` (nur lesend)
+
+Lauf am 2026-11-26 (lesend, online gegen GitHub, Dauer rund 38 Minuten wegen der Abfrage je Commit und je PR):
+`node werkzeug/release-pruefung.mjs --kandidat 3d4535478a3d5884facd156d75025aef4f5b0975 --basis 274bfa0 --release-id g89-lesend-2026-11-26 --kurz`.
+Es wurde keine Freigabedatei angelegt oder geändert. Gesamt: **NO-GO, Exit 1** (erwartet: keine Freigabedatei, kein Bild, kein Kandidat auf `main`).
+
+| Gate | Ergebnis | Kern der Gründe |
+|---|---|---|
+| G1 CI | NO-GO | Pflicht-Checks `browser-abnahme`, `pruefen-a`, `pruefen-b`, `pruefen-c` zum Zeitpunkt des Laufs `in_progress` |
+| G2 Review je PR | NO-GO | 324 PR ohne maschinell prüfbaren Review-Beleg (Bestätigung durch den Betreiber in `reviewBestaetigt`); 149 Commits ohne PR |
+| G3 Schalter | NO-GO | Freigabedatei ohne `vorlagenHashes` (Vorlagen nicht gebunden); die Schalterprüfung selbst nannte keinen aktiven Schalter |
+| G4 Bild | NO-GO | Digest und Bildangaben fehlen (kein Bild gebaut) |
+| G5 Migration/Startschreibvorgänge | NO-GO | seit `274bfa0` geändert: W-1 bis W-9, STARTBLOCK; wartet auf `migration.freigegeben` |
+| G6 Sicherung/Restore | NO-GO | Nachweise für Sicherung außer Haus, Restore-Probe, Widerrufbuch-Probe und `v4-r1.freigabe.json` fehlen |
+| G7 Rückweg | NO-GO | `rueckweg.strategie` fehlt in der Freigabedatei |
+| G8 offene P0/P1 im Kandidaten | NO-GO | 16 Pakete, u. a. WP-16, WP-16c, WP-19, WP-19.1, WP-19.3, WP-21, WP-48, WP-14c |
+| G9 offene P0/P1-Befunde | NO-GO | WP-14c, WP-07b, ABN-A2, RB-P217, ABN-S2, RST-3, RST-5, GATE-EW3 und 3 weitere |
+| G10 Betreiberfreigabe | NO-GO | Freigabedatei fehlt; Kopf-SHA des Laufs nicht auf `origin` im Sinn des Werkzeugs |
+
+Bestätigt die Lücke aus 5a.1: **WP-44 und WP-15** tauchen weder in G8 noch in G9 als Grund auf (WP-07b nur in G9). Neu gegenüber der Analyse vom 25.11.:
+**WP-19.1** (PR #569) steht jetzt in G8. `akzeptiertePakete` und `akzeptierteBefunde` bleiben unverändert; nichts ist als akzeptiert eingetragen.
+
+### 5a.6 Lücke im Gate: nur als Vorschlag (nicht umgesetzt)
+
+Keine Änderung an Gate oder Werkzeug. Falls der Betreiber die Lücke künftig im Werkzeug schließen will, wäre das ein Patch für das
+Betreiber-Workflow-/Werkzeug-Bündel (nicht in diesem Paket): G8 behandelt offene P0/P1-Pakete mit `pr: []` und Strang `acc45`
+als Blocker (oder verlangt für sie einen Eintrag unter `akzeptiertePakete` mit Betreiberquittung). Bis dahin deckt die
+manuelle Bestätigung in 5a.2 die Lücke ab.
 
 ---
 
