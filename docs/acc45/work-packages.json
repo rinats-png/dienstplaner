@@ -2641,7 +2641,7 @@
       "abhaengigkeiten": ["WP-I13","WP-I15"],
       "status": "IN_PROGRESS",
       "stufen": {
-        "implementiert": {"wert":true,"beleg":"Branch intelligence/wp-i16-pause (PR #563); Teil 2: Branch intelligence/wp-i16-teil-2 (Betreiberentscheidungen 2026-11-26); Teil 3: Branch intelligence/wp-i16-leitung-ja (lokal, nicht gepusht; Leitung-„ja“ = Leitung-Pause, Betreiberentscheidung 2026-11-26 spät); docs/acc45/WP-I16-nachweis.md"},
+        "implementiert": {"wert":true,"beleg":"Branch intelligence/wp-i16-pause (PR #563); Teil 2: Branch intelligence/wp-i16-teil-2 (Betreiberentscheidungen 2026-11-26); Teil 3: Branch intelligence/wp-i16-leitung-ja (PR #576; Leitung-„ja“ = Leitung-Pause, Betreiberentscheidung 2026-11-26 spät); docs/acc45/WP-I16-nachweis.md"},
         "lokalGetestet": {"wert":true,"beleg":"pruefungen/intelligence-steuerung*.test.js (Kern, Handler, Oberfläche) und angrenzende Rechte-Suiten, Mutationen je Schutz; docs/acc45/WP-I16-nachweis.md"},
         "reviewt": {"wert":false,"beleg":null},
         "integriert": {"wert":false,"beleg":null},
