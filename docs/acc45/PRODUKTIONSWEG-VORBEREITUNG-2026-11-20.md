@@ -530,7 +530,8 @@ Maßgeblich waren: offene P0/P1-Pakete (Status nicht `INTEGRATED`/`DONE`/`VERIFI
 die `pr: []`-Pakete (5a.2). Alle Zeilenangaben gelten für den genannten Stand.
 
 **Produktionskonfiguration.** Sie liegt nicht im Repository. Die Vorlagen (`.env.example`, `deploy/compose.yml`) setzen keinen der
-folgenden Schalter aktiv (alle Zeilen auskommentiert, G3 prüft das an den Vorlagen). Was auf dem VPS tatsächlich gesetzt ist, kann
+folgenden **Schalter** aktiv (alle Zeilen auskommentiert, G3 prüft das an den Vorlagen). Ausnahme ist keine Schalterzeile:
+`CENTRIC_VERTRAUTE_PROXYS` steht in `.env.example` (Z. 39) unkommentiert mit Platzhalter, es ist Konfiguration, kein Schalter. Was auf dem VPS tatsächlich gesetzt ist, kann
 nur der Betreiber feststellen (5a.4).
 
 Isolationsbeleg: **ja** = bei Sollwert inert, mit Quelle und Test; **nein** = Code läuft aktiv oder in gemeinsamen Pfaden ohne Schalter;
@@ -552,16 +553,18 @@ Isolationsbeleg: **ja** = bei Sollwert inert, mit Quelle und Test; **nein** = Co
 | ABN-S2 (P1), kein Fix | Anmelde-/Einlöseweg | **nein** (vorbestehend) | Konfiguration `CENTRIC_VERTRAUTE_PROXYS` (Platzhalter in `.env.example`, Betreiber setzt Wert); ABN-S2-de offen | G9-Blocker bleibt |
 | RB-P217 (P1) | Lesepfad bei Altdaten ohne vollständiges `mindest` | **nein** | Ampel kann grün statt Hinweis zeigen; Entscheidung P2-17 offen | G9-Blocker bleibt |
 | OPT-4 (P1), PR #182 | Zweiter Faktor je Konto (TOTP) | **nein** | aktiv; Migration bestehender Leitungskonten (E1) und Nachtrag E4 offen; Betreiber-2FA-Einrichtung (F-11) | G8-Blocker bleibt (F-11 begleitet ihn) |
+| E-9 (P1, READY, Strang extern, PR #353): „E-Mail und Push (WP-30)“; Betreiberhandlung plus Technikteil #343/#353 | Mailbestätigung (`mailbestaetigung.mjs`), Push-Abmeldung je Gerät, Aufräumen bei Anonymisierung | **nein** (Schalterteil: ja) | Hinter Schalter: Adressbestätigung nur bei `CENTRIC_MAILBESTAETIGUNG=angebot|pflicht`, alles andere ist „aus“ (`server/lib/mailbestaetigung.mjs:67-70`; Test `pruefungen/mailbestaetigung.test.js`). Aktiv ohne Schalter: Push-Abmeldung je Gerät (`server/funktionen/daten.mjs:3159` mit `geraetAbmelden` aus `server/lib/versand.mjs`; Test `pruefungen/e9-abmelden-geraet.test.js`), Aufräumen der Bestätigung bei Anonymisierung (`daten.mjs:2227-2233`, `server/lib/datenschutzlauf.mjs`; ohne Schalter gibt es keine solchen Einträge, das Entfernen läuft leer). Die Mail- und Push-Zustellung selbst (WP-30, PR #84) ist aktiv und hängt an Anbieter-Konfiguration (`CENTRIC_MAIL_WEG`, `CENTRIC_SMTP_*`, VAPID in `.env.example` Z. 222-242, 259); Ein Anbieter-Ende-zu-Ende-Test am Kandidaten ist in der SSOT nicht belegt. Offen: Betreiberhandlung E-9 (Absenderdomain, Anbieter, End-to-End-Test; SSOT alle Stufen `false`) | G8-Blocker (über #353) bleibt; Betreiber bestätigt Schalter und Anbieterkonfiguration (5a.4) |
 | WP-ST1 (#279, #299), REL-1 (#427) | nur Doku, Werkzeug, Staging-Vorbereitung | **nicht untersucht** | #279 nur Doku; Staging-Gate ausgeschaltet bis `STAGING_GATE_AKTIV=true` laut SSOT | kein Beitrag zur Funktionsisolation der App |
 | Intelligence/Steuerung, IMP-6, Import, Demo (kein offenes P0/P1-Paket im Schnitt, aber Schalter) | Schalter aus `RELEASE-SCHALTER.json` | **ja** | `PLANER_AN = false` (`server/lib/engine/planer.mjs:81`, Auswertung `:188`), `PLANER_AGGREGATE_AN = false` (`server/lib/engine/planeraggregate.mjs:46`, genutzt `server/lib/vorgabenwirkung.mjs:105`), `KI_STEUERUNG_PROZESS = "aus"` (`src/ansichten/ki-steuerung.jsx:28`; Test `pruefungen/intelligence-steuerung-oberflaeche.test.js:41`), Tests `pruefungen/intelligence-planer-kern.test.js:81`, `intelligence-planer-aggregate.test.js:44`; `CENTRIC_KI_BR_PAUSE` nur genau `true` (`server/lib/schalter.mjs:32`, Verwendung `daten.mjs:1595`), `CENTRIC_SCHICHTMODELL_PFLEGE` (`schalter.mjs:110`), `…_WIRKUNG` (`:132`), `CENTRIC_IMPORT_AKTIV` (`:78`) nur genau `true`. `PLANER_AN` und `KI_STEUERUNG_PROZESS` sind Code-Konstanten, **keine** Umgebungsschalter | Isolation im Code belegt; Produktionswerte nur vom Betreiber bestätigbar (5a.4) |
 
 **Gesamtfolgerung.** Am Kandidatenstand `3d453547` ist die Funktionsisolation nur für die Module (WP-19 und Unterpakete einschließlich WP-19.1),
 die Intelligence-Konstanten und die Schalter in `RELEASE-SCHALTER.json` belegt. Für WP-48 (nur der Schalterteil), WP-16c, WP-16, WP-14c, WP-15, WP-21,
-ABN-A2, ABN-S2, RB-P217 und OPT-4 gibt es **keine** Isolation: der Code läuft aktiv, die Absicherung ist ein fachlicher Rest oder eine Auflage,
-keine Abschaltung. WP-44 ist eine reine Betreiberhandlung und derzeit offen. Das ist eine Lesart des Codes, keine Annahme und keine Freigabe.
+ABN-A2, ABN-S2, RB-P217, OPT-4 und E-9 (nur die Mailbestätigung liegt hinter einem Schalter) gibt es **keine** vollständige Isolation: der Code läuft aktiv, die Absicherung ist ein fachlicher Rest oder eine Auflage,
+keine Abschaltung. WP-44 ist eine reine Betreiberhandlung und derzeit offen; bei E-9 ist die Betreiberhandlung (Anbieter, Absender, Ende-zu-Ende-Test) offen. Nicht untersucht sind nur WP-ST1 und REL-1 (siehe Tabelle). Das ist eine Lesart des Codes, keine Annahme und keine Freigabe.
 
 ### 5a.4 Was der Betreiber am konkreten Kandidaten bestätigen muss (Produktionskonfiguration)
 
+Die Liste ist **nicht abschließend**: alle Einträge der Klasse `schalter-aus` in `docs/acc45/RELEASE-SCHALTER.json` sind mit V-6 gegenzuprüfen. G3 prüft nur die Vorlagen des Kandidaten, nicht die tatsächliche `.env` auf dem Server.
 Nur Schlüsselnamen und Sollwerte; Werte nie in Doku, Chat oder Tickets schreiben. Prüfung mit V-6 (Schlüsselnamen der `.env`)
 und der Kandidaten-Vorlage; maßgeblich ist die Konfiguration, die der Kandidat tatsächlich erhält.
 
@@ -575,9 +578,17 @@ und der Kandidaten-Vorlage; maßgeblich ist die Konfiguration, die der Kandidat 
 | `CENTRIC_SCHICHTMODELL_PFLEGE`, `CENTRIC_SCHICHTMODELL_WIRKUNG` | nicht gesetzt | IMP-6 |
 | `CENTRIC_IMPORT_AKTIV` | nicht gesetzt | Personalimport (Dateiweg) |
 | `CENTRIC_DEMO` | nicht gesetzt | öffentlicher Demozugang |
-| `CENTRIC_VERTRAUTE_PROXYS` | bewusst gesetzt (Liste der vertrauten Proxys); bei leerer Liste sperren schon wenige Fehlversuche | ABN-S2 |
+| `CENTRIC_VERTRAUTE_PROXYS` | bewusst gesetzt (nur die feste Adresse des Caddy-Containers); leer = niemandem geglaubt: dann zählen alle Nutzer unter der Caddy-Adresse, die Bremse träfe alle gemeinsam, und `deploy.sh` liefert nicht aus (`.env.example` Z. 30-38); das ganze Subnetz ist nicht empfohlen | ABN-S2 |
 | `CENTRIC_DATENSCHUTZLAUF` | bewusst gesetzt (F-9) | Datenschutzlauf |
 | Zugangscodes in der `.env` | rotiert, keine alten Werte (WP-44) | WP-44 |
+| `CENTRIC_SELBSTSTART` | nicht gesetzt (nur genau `true` schaltet ein) | Selbststart |
+| `CENTRIC_PUBLIC_REGISTRATION` | nicht gesetzt (nur genau `true` schaltet ein) | öffentliche Selbstregistrierung |
+| `CENTRIC_HILFE_ASSISTENT` | nicht gesetzt oder `aus` (Werte `aus`, `suche`, `an`) | Hilfe-Assistent |
+| `CENTRIC_PRUEFLINK` | nicht gesetzt (nur `ja` schaltet ein) | Prüflink |
+| `CENTRIC_MAILBESTAETIGUNG` | nicht gesetzt oder `aus` (`angebot` und `pflicht` schalten ein; `pflicht` braucht `CENTRIC_PFEFFER`) | E-9 Adressbestätigung |
+| `CENTRIC_KONTOWIEDERHERSTELLUNG` | nicht gesetzt (WR-4 bis WR-9 offen) | Kontowiederherstellung |
+| `CENTRIC_TESTRAUM_MAIL` | nicht gesetzt (nur `ja` schaltet ein) | Mail aus Test-/Demoräumen |
+| `CENTRIC_ZUSTELL_SPERREN_AUFHEBEN` | nicht gesetzt (nur `ja`, einmalig) | Aufheben der Zustellsperren |
 
 Nicht per Umgebung steuerbar und daher kein Konfigurationspunkt, aber im Kandidaten festgelegt (Quellen 5a.3): Modulstatus `geplant`
 (`branchenmodule.mjs`), `PLANER_AN = false`, `PLANER_AGGREGATE_AN = false`, `KI_STEUERUNG_PROZESS = "aus"`. Eine Änderung dieser Konstanten
