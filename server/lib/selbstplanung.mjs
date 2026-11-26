@@ -25,6 +25,7 @@ export const NICHT_UEBERNOMMEN_GRUENDE = {
   schutz: "Schutz- oder Einsatzregel",
   abwesend: "abwesend",
   befund: "Befund der Planprüfung",
+  vorgabe: "Interne Vorgabe des Betriebs",
   auswahl: "nicht ausgewählt",
 };
 
@@ -33,6 +34,7 @@ export function grundKennung(befund) {
   if (!befund) return "auswahl";
   if (befund.art === "schutz") return "schutz";
   if (befund.art === "abwesend") return "abwesend";
+  if (befund.art === "vorgabe") return "vorgabe";
   return "befund";
 }
 

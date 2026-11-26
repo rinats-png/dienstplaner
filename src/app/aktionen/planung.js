@@ -10,6 +10,7 @@ import { laufendeRunde, darfSelbstEintragen } from "../../lib/selbstplanung.js";
 import { bestaetigungVermerken, hindernisBefunde, abwesenheitTagAufheben, personTag } from "../../lib/fachlogik.js";
 import { stufeRang } from "../../warnstufen.js";
 import { grundKennung } from "../../../server/lib/selbstplanung.mjs";
+import { neuesVorgabenBudget } from "../../../server/lib/vorgabenwirkung.mjs";
 import { notrufEmpfaenger } from "../../lib/notrufe.js";
 import * as SP from "../../speicher.js";
 import { WECK_STD, verfuegbarkeitsBild } from "../../lib/verfuegbarkeit.js";
@@ -132,11 +133,13 @@ export function aktionenPlanung(k) {
            Wortlaut wie „MuSchG § 5“ oder „abwesend (Krank)“ verriete Dritten
            Gesundheitsangaben (server/lib/selbstplanung.mjs). */
         const nichtEintrag = (e, grund) => ({ personId: e.personId, datum: e.datum, dienstId: e.dienstId, grund });
+        /* WP-I5: ein Budget für die ganze Übernahme; ohne ausdrückliche Auswahl gilt fail-closed (ungeprüfte Muss-Vorgabe: nicht übernommen). */
+        const vorgabenBudget = neuesVorgabenBudget();
         (r.eintraege || []).forEach((e, i) => {
           const p = m.personen.find((x) => x.id === e.personId);
           const da = m.dienstarten.find((x) => x.id === e.dienstId);
           if (!p || !da) { nicht.push(nichtEintrag(e, "fehlt")); return; }
-          const bef = hindernisBefunde(m, p, e.datum, da);
+          const bef = hindernisBefunde(m, p, e.datum, da, { vorgabenBudget, vorgabenAutomatisch: !gewaehlt });
           const ernst = bef.filter((b) => stufeRang(b.stufe) >= 2);
           const sperre = bef.find((b) => b.sperrt);
           if (sperre) { nicht.push(nichtEintrag(e, grundKennung(sperre))); return; }

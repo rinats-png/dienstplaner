@@ -25,26 +25,26 @@ die sich mit dem Backlog ändern.
 <!-- AUTO:BEGIN kennzahlen -->
 Erzeugt aus `docs/acc45/work-packages.json` (Schema 2) mit `node werkzeug/acc45-backlog.mjs status-schreiben` — nicht von Hand ändern.
 
-**Pakete gesamt:** 295 · BLOCKED 114 · READY 27 · IN_PROGRESS 22 · REVIEW 10 · INTEGRATED 119 · DONE 3
+**Pakete gesamt:** 295 · BLOCKED 113 · READY 27 · IN_PROGRESS 23 · REVIEW 10 · INTEGRATED 119 · DONE 3
 
 | Strang | Pakete | BLOCKED | READY | IN_PROGRESS | REVIEW | INTEGRATED | DONE | offener Aufwand PT |
 |---|---|---|---|---|---|---|---|---|
 | ACC45 | 143 | 42 | 5 | 7 | 3 | 84 | 2 | 74,1–126,65 |
 | WP-19-Module | 15 | 12 | 0 | 2 | 0 | 1 | 0 | 62,5–97,5 |
-| Intelligence | 40 | 19 | 0 | 8 | 0 | 13 | 0 | 177–313 |
+| Intelligence | 40 | 18 | 0 | 9 | 0 | 13 | 0 | 175–309 |
 | Folgepakete | 62 | 23 | 6 | 5 | 7 | 21 | 0 | 43,7–76,1 |
 | Extern/Entscheidungen | 35 | 18 | 16 | 0 | 0 | 0 | 1 | 20,35–46,1 |
 
-Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **357,3–613,25 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
+Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **355,3–609,25 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
 
 **Kritische Pfade** (offener Aufwand, Mitte der Spanne maßgeblich):
 
-- gemeinsam: WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **50–90 PT**
+- gemeinsam: WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **48–86 PT**
 - ohne Intelligence: WP-16 → WP-19.7 → WP-19.6 → WP-19.13 → WP-42a → WP-42 = **21–33,5 PT**
 - ACC45: WP-21 → WP-42a → WP-42 = **14–20 PT**
 - Folgepakete: V4-1 → V4-3a → V4-3b → V4-3d = **5,2–10,3 PT**
 - WP-19: WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 = **16,5–25,5 PT**
-- Intelligence: WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **50–90 PT**
+- Intelligence: WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **48–86 PT**
 <!-- AUTO:END kennzahlen -->
 
 ## 3. Abhängigkeitsgraph (Überblick)
@@ -103,8 +103,8 @@ ACC45 nie), darin die längste Restkette.
 | 3 | 2026-11-18 | WR-5 (sonnet; daten.mjs) · RST-2 (opus) · V4-3b (sonnet; src/ansichten) · SSOT-UK1 (sonnet) · V4-3 (opus; App.jsx) · V4-3c (sonnet) · V4-4 (opus) · WEBSITE-W4 (sonnet) · WP-ZEIT (opus; daten.mjs, rechte.mjs) · IMP-7 (sonnet) · DEP-3 (opus) · V4-5 (opus) · WEBSITE-W5 (sonnet) · WR-7 (opus; daten.mjs) · WP-36 (sonnet) · V4-3d (sonnet; src/ansichten) · WP-ST1 (opus) · ABN-A2-Folge (opus) · ABN-A3 (opus) · ABN-C1 (opus) · ABN-S2-b (opus) · ABN-S2-de (haiku) · ABN-S2-H (haiku) · BE-3 (sonnet) · DEP-1 (opus) · DEP-2 (opus) · DEP-4 (opus) | E-1 · E-2 · E-3 · E-4 · E-5 · E-6 · E-18 |
 | 4 | 2026-11-25 | FREIGABE-S2 (sonnet) · GATE-DEPLOY-DIGEST (opus) · GATE-EW6 (sonnet) · GATE-RUECKHALT-AU6 (opus) · GATE-VPS-SIGNATUR (opus) · IMP-8 (haiku) · K4-P2 (sonnet) · K4-P5 (sonnet) · K4-P6 (haiku) · K4-P8 (opus) · MODINERT-L3 (sonnet) · OPT-2 (opus; daten.mjs) · RB-P217 (sonnet + opus) · RC-WECHSEL (opus) · REL-0c (opus) · REL-4 (sonnet) · RST-1 (sonnet (Text) + opus (Gegenlesen)) · RST-3 (sonnet) · RST-4 (sonnet) · RST-6 (opus) · RST-8 (opus) · RST-9 (sonnet) · SI-P6b (opus; daten.mjs) · SSOT-UK2 (sonnet) · V4-4c (sonnet) · V4-4d (sonnet) · V4-6 (opus) · WEBSITE-W6 (opus) · WEBSITE-W7 (sonnet) · WEBSITE-W8 (sonnet) | – |
 | 5 | 2026-12-02 | WEBSITE-W8-1 (sonnet) · WP-09 (opus) · WP-19-B6 (sonnet) · WP-34 (sonnet) · WR-4 (opus; daten.mjs) · WP-I4 (sonnet + opus-review; App.jsx, rechte.mjs) · WP-I31 (sonnet + opus-review) · WR-8 (sonnet; daten.mjs) · WR-9 (opus; daten.mjs) · WP-I5 (sonnet; App.jsx) · WP-I25 (sonnet) · WP-I23 (haiku + sonnet) · WP-I7 (sonnet) · WP-I19 (sonnet + opus-review; App.jsx) · WP-I1 (sonnet + opus-review) · WP-I16 (opus; App.jsx, rechte.mjs) | E-17 |
-| 6 | 2026-12-09 | WP-I28 (sonnet; App.jsx) · WP-I8 (sonnet; App.jsx) | – |
-| 7 | 2026-12-16 | WP-PILOT (sonnet) · WP-I20 (sonnet + opus-review; App.jsx) · WP-I26 (sonnet) · WP-I9 (sonnet + opus-review; App.jsx) · WP-42 (opus) · WP-I29 (sonnet; App.jsx) | E-23 |
+| 6 | 2026-12-09 | WP-I8 (sonnet; App.jsx) · WP-I26 (sonnet) · WP-I28 (sonnet; App.jsx) | – |
+| 7 | 2026-12-16 | WP-PILOT (sonnet) · WP-I20 (sonnet + opus-review; App.jsx) · WP-I9 (sonnet + opus-review; App.jsx) · WP-42 (opus) · WP-I29 (sonnet; App.jsx) | E-23 |
 | 8 | 2026-12-23 | WP-I22 (sonnet; App.jsx) · WP-I33 (sonnet; App.jsx) · WP-I18 (sonnet) · WP-I27 (opus) · WP-I32 (sonnet; App.jsx) | E-24 |
 | 9 | 2027-01-05 | WP-I34 (sonnet + opus-review) · WP-I36 (sonnet; App.jsx) · WP-I24 (sonnet; App.jsx) · WP-I30 (sonnet; App.jsx) | – |
 | 10 | 2027-01-12 | – | E-24i |
@@ -202,9 +202,9 @@ Treiberkette A (realistisch): OPT-4 (wartet auf Zone daten.mjs) → WR-9 (wartet
 
 | Szenario | Rest-PT (Entwicklung) | Untergrenze Arbeit ÷ Kapazität | Simulierte Dauer | fertig am |
 |---|---|---|---|---|
-| optimistisch | 354,3 | 8,9 AT | **13 AT** | **2026-11-20** |
-| realistisch | 481,5 | 26,8 AT | **45 AT** | **2027-01-11** |
-| bei Problemen | 760,9 | 72,5 AT | **112 AT** | **2027-04-16** |
+| optimistisch | 352,3 | 8,8 AT | **13 AT** | **2026-11-20** |
+| realistisch | 478,5 | 26,6 AT | **45 AT** | **2027-01-11** |
+| bei Problemen | 755,9 | 72 AT | **110 AT** | **2027-04-14** |
 
 Treiberkette B (realistisch): WP-I30 (wartet auf Zone App.jsx) → WP-I37
 
@@ -212,9 +212,9 @@ Treiberkette B (realistisch): WP-I30 (wartet auf Zone App.jsx) → WP-I37
 
 | Szenario | Rest-PT (Entwicklung) | Untergrenze Arbeit ÷ Kapazität | Simulierte Dauer | fertig am |
 |---|---|---|---|---|
-| optimistisch | 357,3 | 8,9 AT | **53 AT** | **2027-01-21** |
-| realistisch | 485,3 | 27 AT | **92 AT** | **2027-03-17** |
-| bei Problemen | 766,6 | 73 AT | **135 AT** | **2027-05-21** |
+| optimistisch | 355,3 | 8,9 AT | **53 AT** | **2027-01-21** |
+| realistisch | 482,3 | 26,8 AT | **92 AT** | **2027-03-17** |
+| bei Problemen | 761,6 | 72,5 AT | **135 AT** | **2027-05-21** |
 
 | Szenario | Produktiv-Deploy (E-23) | C1: ACC45 + WP-19 produktionsreif (Pilot E-24 bestanden) | C2: Intelligence produktionsreif (WP-I37) |
 |---|---|---|---|

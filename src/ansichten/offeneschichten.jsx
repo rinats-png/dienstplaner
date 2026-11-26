@@ -9,6 +9,7 @@ import { zahl } from "../lib/format.js";
 import { Icon } from "../gestalt/icons.jsx";
 import { Sheet } from "../ui/leisten.jsx";
 import { besetzung, hindernisse } from "../lib/fachlogik.js";
+import { neuesVorgabenBudget } from "../../server/lib/vorgabenwirkung.mjs";
 import { darf } from "../lib/berechtigung.js";
 import { OFFEN_STATUS, ausschreibungLage, bewerbbarOhneHinweis } from "../lib/offene-schichten.js";
 
@@ -19,6 +20,7 @@ import { OFFEN_STATUS, ausschreibungLage, bewerbbarOhneHinweis } from "../lib/of
    Person oben steht. Ein Griff, und sie ist eingeteilt.
    ========================================================================== */
 export function OffeneSchichten({ sitz, akt, gehZu }) {
+  const vorgabenBudget = neuesVorgabenBudget();   // ein Vorgaben-Budget je Renderdurchlauf (Review #566), nicht je Eintrag
   const m = sitz.mandant;
   const darfVergeben = darf(sitz, "plan.edit.unit") || darf(sitz, "plan.edit.all");
   const [gewaehlt, setGewaehlt] = useState(null);
@@ -194,7 +196,7 @@ export function OffeneSchichten({ sitz, akt, gehZu }) {
                           <div style={{ fontSize: 13.5, color: C.dim, marginTop: 10,
                             paddingLeft: 52, lineHeight: 1.5, fontStyle: "italic" }}>„{b.text}"</div>)}
                         {(() => { const dx = m.dienstarten.find((x) => x.id === a.dienstId);
-                          const h = dx ? hindernisse(m, b.person, a.datum, dx) : [];
+                          const h = dx ? hindernisse(m, b.person, a.datum, dx, { vorgabenBudget }) : [];
                           return h.length > 0 && (
                             <div style={{ display: "flex", gap: 7, fontSize: 12.5, color: C.warn, marginTop: 8, paddingLeft: 52, lineHeight: 1.45 }}>
                               <Icon n="warnung" size={14} /><span>mit Hinweis: {h.join(" · ")}</span></div>); })()}

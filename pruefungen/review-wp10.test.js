@@ -115,7 +115,7 @@ describe("H1: was sperrt, steht an einer Stelle und ist streng", () => {
     expect(Object.isFrozen(W.SPERR_REGELN)).toBe(true);
   });
   it("jeder Befund in hindernisBefunde trägt seinen Schlüssel, sperrt kommt nur aus der Tabelle", () => {
-    const h = funktionAb("function hindernisBefunde(m, p, d, da) {");
+    const h = funktionAb("function hindernisBefunde(m, p, d, da, opt) {");
     expect(h).toContain("sperrt: sperrtArt(");
     expect(h.replace(/\/\*[\s\S]*?\*\//g, "")).not.toMatch(/sperrt: true/);
     /* WP-22: Die Fachprüfung der Einteilung steht in server/lib/fachpruefung.mjs

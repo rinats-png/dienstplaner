@@ -15,9 +15,9 @@
        gezählt werden aktive Vorgaben),
      - Beispielfälle für den Testlauf.
 
-   NICHT hier (WP-I5, Vorgaben wirksam machen): Planungsassistent, Ersatzsuche,
-   Selbstplanung und die Prüfung gegen den echten Plan. Eine aktive Vorgabe
-   ist gespeichert und rechenbar, wirkt aber noch in keiner Planungsfunktion.
+   NICHT hier: die Wirkung im Plan (WP-I5) steht in server/lib/vorgabenwirkung.mjs;
+   hindernisBefunde hängt sie an, daher gelten aktive Vorgaben in Ersatzsuche,
+   Planungsassistent und Selbstplanung.
 
    Rein: keine Ablage; einzige Uhr: `jetzt` wird übergeben (Server stempelt).
    ========================================================================== */
@@ -44,6 +44,10 @@ export const VORGABEN_PARAMETER_GRENZE = Object.freeze({ zaehlGrenze: 366, folge
 export const VORGABEN_AUFWAND_JE_ANFRAGE = 50000;
 /** Zeitbudget aller Testläufe einer Anfrage in Millisekunden (Schutz des Ereignisschleife); wird vor jedem Testlauf geprüft. */
 export const VORGABEN_ZEITBUDGET_MS = 2000;
+
+/** Wirkung im Plan (WP-I5): höchstens `aktive` Vorgaben je Prüfung, Zeiträume bis `fensterTage` Tage, kumuliertes Budget `aufwand`
+ *  (Tagesabfragen) je Anfrage; ist es aufgebraucht, steht ein Hinweis statt einer stillen Auslassung. Deterministisch, ohne Uhr. */
+export const VORGABEN_WIRKUNG_GRENZE = Object.freeze({ aktive: 50, fensterTage: 62, aufwand: 200000 });
 
 /** Aktive Vorgaben je Preisstufe (E-21, Plan 10.2). Unbekannte Stufe: die kleinste (fail closed). */
 export const VORGABEN_STUFENGRENZE = Object.freeze({ basis: 5, pro: 25, enterprise: Infinity });
@@ -78,12 +82,22 @@ const idListe = (l, max) => Array.isArray(l) && l.length <= max && l.every((x) =
   && new Set(l).size === l.length;
 
 const ganzIn = (x, von, bis) => typeof x === "number" && Number.isInteger(x) && x >= von && x <= bis;
+const FENSTER_ARTEN = ["kalendermonat", "kalenderjahr", "rollierend"], FENSTER_EINHEITEN = ["tage", "wochen", "monate"];
+/** Art und Einheit des Zeitraums einer Zählregel (sonst scheiterte sie erst beim Aktivieren). Nur, was gesetzt ist; Fehlendes prüft der Baukasten. */
+function fensterFehler(f) {
+  if (f === undefined || f === null) return null;
+  if (!istObjekt(f)) return "Der Zeitraum der Zählregel hat eine unbekannte Form.";
+  if (f.art !== undefined && !FENSTER_ARTEN.includes(f.art)) return "Zeitraum: Art ist Kalendermonat, Kalenderjahr oder rollierend.";
+  if (f.einheit !== undefined && !FENSTER_EINHEITEN.includes(f.einheit)) return "Zeitraum: Einheit ist Tage, Wochen oder Monate.";
+  if (f.art === "rollierend" && f.einheit === undefined) return "Zeitraum: Bei „rollierend“ fehlt die Einheit.";
+  return null;
+}
 /** Größenbestimmende Parameter: Abweisungstext oder null. Nur, was gesetzt ist, wird geprüft; ob es fehlt, prüft der Baukasten. */
 function groessenFehler(v) {
   const G = VORGABEN_PARAMETER_GRENZE, p = (v && v.parameter) || {};
   const zahl = (name, x, von, bis) => (x === undefined || ganzIn(x, von, bis) ? null : `${name} ist eine ganze Zahl von ${von} bis ${bis} (höchstens ${bis}).`);
   switch (v && v.regelart) {
-    case "zaehlregel": return zahl("Grenze", p.grenze, 0, G.zaehlGrenze) || zahl("Länge des Fensters", p.fenster && p.fenster.laenge, 1, G.fensterLaenge);
+    case "zaehlregel": return fensterFehler(p.fenster) || zahl("Grenze", p.grenze, 0, G.zaehlGrenze) || zahl("Länge des Fensters", p.fenster && p.fenster.laenge, 1, G.fensterLaenge);
     case "musterregel": return zahl("Höchstens in Folge", p.max, 1, G.folgeMax) || zahl("Danach frei", p.danachFrei, 0, G.danachFrei);
     case "besetzungsregel":
       for (const a of Array.isArray(p.anforderungen) ? p.anforderungen : []) {
@@ -157,15 +171,15 @@ export function pruefeVorgabe(v) {
   if (v.gueltigAb && v.gueltigBis && v.gueltigAb > v.gueltigBis) return `${wo}: Gültig ab liegt nach gültig bis.`;
 
   const geltung = v.geltung;
-  if (!istObjekt(geltung) || !VORGABEN_GELTUNG.includes(geltung.art)) return `${wo}: Geltung ist Betrieb, Einheit, Personengruppe oder einzelne Personen.`;
+  if (!istObjekt(geltung) || !VORGABEN_GELTUNG.includes(geltung.art)) return `${wo}: Geltung ist Betrieb, Einheit, Qualifikationsgruppe oder einzelne Personen.`;
   if (Object.keys(geltung).some((k) => !["art", "einheiten", "gruppen", "personen"].includes(k))) return `${wo}: Geltung hat unbekannte Felder.`;
   if (geltung.einheiten !== undefined && !idListe(geltung.einheiten, G.einheiten)) return `${wo}: Einheiten als Liste von Kennungen erwartet.`;
   if (geltung.gruppen !== undefined && !(Array.isArray(geltung.gruppen) && geltung.gruppen.length <= G.gruppen
-    && geltung.gruppen.every((x) => typeof x === "string" && x.trim() && x.length <= G.gruppeLaenge && !VERBOTEN.test(x)))) return `${wo}: Personengruppen als kurze Texte ohne Personenmerkmal erwartet.`;
+    && geltung.gruppen.every((x) => typeof x === "string" && x.trim() && x.length <= G.gruppeLaenge && !VERBOTEN.test(x)))) return `${wo}: Qualifikationsgruppen (Namen von Qualifikationen) als kurze Texte ohne Personenmerkmal erwartet.`;
   if (geltung.personen !== undefined && !idListe(geltung.personen, G.personen)) return `${wo}: Personen als Liste von Kennungen erwartet.`;
   const hat = (k) => Array.isArray(geltung[k]) && geltung[k].length > 0;
   if (geltung.art === "einheit" && !hat("einheiten")) return `${wo}: Bei Geltung „Einheit" fehlt die Einheit.`;
-  if (geltung.art === "gruppe" && !hat("gruppen")) return `${wo}: Bei Geltung „Personengruppe" fehlt die Gruppe.`;
+  if (geltung.art === "gruppe" && !hat("gruppen")) return `${wo}: Bei Geltung „Qualifikationsgruppe" fehlt die Qualifikation.`;
   if (geltung.art === "personen" && !hat("personen")) return `${wo}: Bei Geltung „einzelne Personen" fehlt die Person.`;
 
   const g = v.grundlage;
@@ -178,6 +192,10 @@ export function pruefeVorgabe(v) {
     if (!istObjekt(a) || Object.keys(a).some((k) => !["personen", "zeitraeume", "teilzeitAnteilig"].includes(k))) return `${wo}: Ausnahmen haben eine unbekannte Form.`;
     if (a.personen !== undefined && !idListe(a.personen, G.personen)) return `${wo}: Ausnahmen: Personen als Liste von Kennungen erwartet.`;
     if (a.teilzeitAnteilig !== undefined && typeof a.teilzeitAnteilig !== "boolean") return `${wo}: Ausnahmen: „Teilzeit anteilig" ist Ja oder Nein.`;
+    /* Eine Mindestzahl freier Tage (Frei-/Ruhetage) wird nie anteilig nach unten gesetzt (Betreiberentscheidung I5-2). */
+    if (a.teilzeitAnteilig === true && v.regelart === "zaehlregel" && istObjekt(v.parameter) && v.parameter.richtung === "mindestens"
+      && String(v.parameter.ereignis === undefined || v.parameter.ereignis === null ? "" : v.parameter.ereignis).trim().toLowerCase() === "frei")
+      return `${wo}: Eine Mindestzahl freier Tage gilt nie anteilig; „Teilzeit anteilig" ist hier nicht möglich.`;
     if (a.zeitraeume !== undefined && !(Array.isArray(a.zeitraeume) && a.zeitraeume.length <= G.zeitraeume
       && a.zeitraeume.every((z) => istObjekt(z) && Object.keys(z).every((k) => ["von", "bis"].includes(k)) && istTag(z.von) && istTag(z.bis) && z.von <= z.bis)))
       return `${wo}: Ausnahmen: Zeiträume als Liste mit Von und Bis erwartet.`;

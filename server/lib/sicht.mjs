@@ -550,6 +550,8 @@ const schutzText = (b) => /Schutz|Einsatzregel|Einsatzeinschränkung|MuSchG|JArb
   .test(`${b && b.quelle || ""} ${b && b.text || ""}`);
 function regelFuerBetriebsrat(x) {
   const k = BEFUND_KATALOG[x.regel];
+  /* WP-I5: Befunde interner Vorgaben bleiben dem Betriebsrat verborgen (Entscheidung 2026-11-25, 1.2: keine Sicht, Schalter AUS). */
+  if (k && k.vorgabe) return "sonstiges";
   if (k) return k.schutz ? SCHUTZ_NEUTRAL : x.regel;
   /* Altbestand ohne Kennung: nie der Wortlaut. */
   if (schutzText(x)) return SCHUTZ_NEUTRAL;

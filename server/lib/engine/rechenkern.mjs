@@ -47,6 +47,7 @@
 import { pruefen, mitMerkmalen } from "./befunde.mjs";
 import { planKennzahlen } from "./kennzahlen.mjs";
 import { ersatzKandidaten, ruheIst } from "./ersatzfakten.mjs";
+import { neuesVorgabenBudget } from "../vorgabenwirkung.mjs";
 import { personTag } from "./plan.mjs";
 import { mitTagesdatum } from "./zeit.mjs";
 
@@ -136,8 +137,9 @@ export function rechnen(sicht, optionen) {
         }
       } catch { nichtBerechenbar.push({ berechnung: "ruhezeit", grund: "Eingabe unvollständig" }); }
     }
+    const vorgabenBudget = neuesVorgabenBudget();   // WP-I5: ein Budget für alle Ausfälle dieses Einstiegs
     for (const a of o.ausfaelle) {
-      try { aus.ersatz.push(ersatzKandidaten(m, a.datum, a.dienst)); } catch { nichtBerechenbar.push({ berechnung: "ersatzKandidaten", grund: "Eingabe unvollständig" }); }
+      try { aus.ersatz.push(ersatzKandidaten(m, a.datum, a.dienst, { vorgabenBudget })); } catch { nichtBerechenbar.push({ berechnung: "ersatzKandidaten", grund: "Eingabe unvollständig" }); }
     }
     return aus;
   }));

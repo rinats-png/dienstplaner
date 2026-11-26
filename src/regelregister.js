@@ -62,8 +62,8 @@ export { PRUEFSTATUS, FOLGEN, gilt, wirkung };
 
 /** Regelarten. Die ersten vier rechnet der Regelbaukasten (server/lib/regelbaukasten.mjs). Muster-, Block-,
  *  Verteilungs- und Wunschregel rechnet server/lib/regelbaukasten-erweitert.mjs (`pruefeRegel`, WP-I3); die
- *  Vorgaben-Verwaltung (server/lib/vorgaben.mjs, Testlauf) nutzt sie, aber keine Planungsfunktion wendet sie an
- *  (WP-I5 offen). Plan 5.2. */
+ *  Vorgaben-Verwaltung (server/lib/vorgaben.mjs, Testlauf) nutzt sie, ihre Wirkung im Plan steht in server/lib/vorgabenwirkung.mjs
+ *  (WP-I5: server/lib/vorgabenwirkung.mjs). Plan 5.2. */
 export const REGELARTEN = {
   zaehlregel: "Zählregel",
   grenzregel: "Grenzregel",
