@@ -42,7 +42,7 @@
     "pruefung:personendaten": "vitest run pruefungen/personendaten.test.js",
     "pruefung:mandanten": "vitest run pruefungen/mandanten.test.js",
     "pruefung:mandanten-http": "node --import ./werkzeug/betreiber-faktor-vorlauf.mjs pruefungen/mandanten.mjs",
-    "pruefung:sicherungen": "vitest run pruefungen/sicherungen.test.js",
+    "pruefung:sicherungen": "vitest run pruefungen/sicherungen.test.js pruefungen/sicherung-markenkollision.test.js",
     "pruefung:wiederherstellung-schutz": "vitest run pruefungen/wiederherstellung-schutz.test.js",
     "pruefung:abnahme-ab": "vitest run pruefungen/abnahme-a-b.test.js pruefungen/abnahme-409.test.js",
     "pruefung:abnahme-c": "vitest run pruefungen/abnahme-c-absturz.test.js pruefungen/abnahme-c-module.test.js pruefungen/abnahme-c-schalter.test.js --testTimeout=120000 --hookTimeout=120000",

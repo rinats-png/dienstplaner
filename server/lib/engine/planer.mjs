@@ -69,7 +69,7 @@ import { kiPauseAktiv } from "../ki-steuerung.mjs";
 import { neuesVorgabenBudget, vorgabenPlanFortschreiben } from "../vorgabenwirkung.mjs";
 import { VORGABEN_WIRKUNG_GRENZE } from "../vorgaben.mjs";
 import { besetzung, personTag, stundenkonto } from "./plan.mjs";
-import { ersatzVorschlaege, hindernisBefunde, nachtJahr, stufeRang } from "./einsatz.mjs";
+import { ersatzVorschlaege, hindernisBefunde, nachtJahr, stufeRang, verdraengt } from "./einsatz.mjs";
 
 /** Schalter des eigenen Planers (Vorgabe AUS). Einschalten ist eine bewusste Codeänderung dieser Konstante; Prüfungen geben je Aufruf frei. */
 export const PLANER_AN = false;
@@ -122,21 +122,9 @@ function eingabeFehler(m, ym, opt) {
 const leer = (m, ym, status, grund, startwert) => ({ status, grund, ym, startwert, gesetzt: [], offen: [], abweichungen: m && m.abweichungen ? m.abweichungen : {},
   rang: null, nichtBewertet: [...NICHT_BEWERTET], aufwand: null, verbessert: 0 });
 
-/**
- * Bestandspersonen eines Tags gegen den Bestand, frisch gerechnet: Jede Person OHNE eigene Einteilung an diesem Tag muss dort denselben
- * Dienst haben wie im Bestand (Review #572 A1, Posten: eine Einteilung kann eine andere Person aus der Postenbesetzung verdrängen oder
- * hineinziehen; dann hätte sie einen Dienst, den niemand geprüft hat). Gibt die Zahl der veränderten Personen zurück. Arbeit: P Tagesabfragen
- * je Stand (der Bestand liegt im Zwischenspeicher).
- * @param {any} bestand Bestand als Stand (Abweichungen des Bestands) @param {any} stand @param {string} d @param {{ has: (k: string) => boolean }} eigene Schlüssel personId|tag
- */
-export function verdraengt(bestand, stand, d, eigene) {
-  let n = 0;
-  for (const x of bestand.personen) {
-    if (eigene.has(`${x.id}|${d}`)) continue;
-    if ((personTag(stand, x, d).dienstId || null) !== (personTag(bestand, x, d).dienstId || null)) n++;
-  }
-  return n;
-}
+/* verdraengt (Bestandspersonen eines Tags gegen den Bestand) liegt seit der Korrektur in planeMonat (WP-I5/I7, Review #577) in
+   einsatz.mjs, damit planeMonat (Browser) und der Planer dieselbe Prüfung nutzen; hier unverändert weitergereicht. */
+export { verdraengt };
 
 /**
  * Nachprüfung (fail-closed): Jede eigene Einteilung auf dem fertigen Stand — ohne sie (Bestand dieses Tags wieder hergestellt) muss die
