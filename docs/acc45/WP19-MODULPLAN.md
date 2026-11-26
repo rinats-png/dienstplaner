@@ -786,6 +786,15 @@ den Sitzungsschlüssel aus `src/speicher.js` (bisher importiert kein Modul `spei
 kommt aus der V4-gepinnten `kern.jsx`). Vorschlag für den nächsten Schritt: Funktion in `speicher.js` wie `selbstauskunftEntscheiden`, Export mit
 `lade` (`src/lib/download.js`), Bestätigungsfeld „Export gespeichert“, danach Hinweis „Ansicht neu laden“. Bis dahin ist der Weg nur über die
 Schnittstelle nutzbar.
+Belege Archivierung (lokal, TZ=UTC, ein vitest-Prozess): `pruefungen/modul-bereichsplan-archiv.test.js` 14 Fälle (8 reine Funktion, 6 über den
+Handler), vor der Umsetzung 14/14 rot, danach grün. Mutationen einzeln, Quelle danach jeweils sauber (`git status`): Prüfsummenvergleich (3 rot),
+Exportbestätigung (2), Vermerk weggelassen = stilles Löschen (6), Planung/Kundenrolle zugelassen (1), frische Anmeldung (1), Modul wirkt (1),
+Betriebsrat-Filter des Vermerks (2), alle statt der ältesten n entfernt (3), Anzahl-/Bytes-Vergleich (1) – erkannt; erwarteter Stand beim Schreiben
+weggelassen: äquivalent (Lesen und Schreiben unter der Raumsperre), bleibt als zweite Sicherung. Regression: alle `modul-*`, `rechtematrix*`,
+`v4-3b-*`, `v4-3c-branchenmodule`, `prozess-wachen`, `routen-inventar`, `rollen-failclosed`, `aufbewahrung`, `selbstauskunft`, `art9-katalog`,
+`sicherungen`, `branchenmodule`, `dsgvo-server`, `verdrahtung`, `intelligence-vorgaben*`, `intelligence-steuerung-zugaenge` (75 Dateien, 2522 Tests)
+grün nach Verlagerung der Modulabfrage in `modul-bereichsplan.mjs` (G10, `modul-kern-nachtrag` N7); tsc, eslint, `verdrahtung-pruefen`,
+`acc45-backlog pruefen` sauber. Nicht belegt: unabhängiges Review, E2E.
 
 **Belege (lokal, TZ=UTC, je ein vitest-Prozess, `--maxWorkers=1`).** Neu `pruefungen/modul-bereichsplan-protokoll.test.js` (23 Fälle; Teil B über
 die echten Handler PUT und Teilweg, Registry-Kopie „vorlaeufig“ nur im Test). Rot vor der Umsetzung: 15 von 23 rot (die übrigen 8 sind
