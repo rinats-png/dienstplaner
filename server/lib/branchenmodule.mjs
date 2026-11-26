@@ -553,14 +553,38 @@ export function regelwertAnwenden(m, befund, tag) {
    bleibt die Grenze eine Sperre — Ausschalten und Art. 16/17 gehen immer.
    -------------------------------------------------------------------------- */
 export const MODULPROTOKOLL_GRENZE = 2000;
-/** Art des Eintrags „Zuordnung im Bereichsplan durch die Schichtverantwortung“ (WP-19.4, modul-bereichsplan.mjs): trägt Person|Tag
+/** Art des Eintrags „Zuordnung im Bereichsplan durch die Schichtverantwortung“ (WP-19.4, modul-bereichsplan.mjs; seit E1 auch Leitung und
+    Planung, erkennbar an `rolle`): trägt Person|Tag
     und Bereich vorher/nachher — nur für Leitung und Planung (Vollsicht), nicht für den Betriebsrat (moduleinstellungenSicht). */
 export const BEREICH_PROTOKOLL_ART = "bereich-zuordnung";
 /** Vermerk der Archivierung dieser Einträge durch die Leitung (E7, modul-bereichsplan.mjs `bereichsprotokollArchivieren`) — nicht für den Betriebsrat. */
 export const BEREICH_ARCHIV_ART = "bereich-zuordnung-archiviert";
+/** Lückenvermerk (E1, Review #590 B-2): Das Kontingent von Leitung/Planung ist erschöpft, ihre Änderungen stehen ab `am` ohne Einzelnachweis
+    im Protokoll — höchstens einer je Erschöpfungsperiode, dauerhaft, nicht archivierbar, nicht für den Betriebsrat (modul-bereichsplan.mjs). */
+export const BEREICH_LUECKE_ART = "bereich-zuordnung-luecke";
+/** Bytegrenze der gemeinsamen Einträge (Review #590 B-1), zusätzlich zur Zahl MODULPROTOKOLL_GRENZE: Die Zahl allein begrenzt die Größe
+    nicht (Mitbestimmung mit Grundlage bis GRUNDLAGE_MAX Zeichen, 3 Byte je Zeichen ≈ 3 KB je Eintrag → 2000 Einträge ≈ 6 MiB > RUMPF_MAX).
+    Summe der eigenen Grenzen: gemeinsam 512 KiB + SV 1 MiB + Leitung/Planung 1 MiB + Lückenvermerke (≤ 500) — WP19-MODULPLAN.md 17.1 L6. */
+export const MODULPROTOKOLL_BYTES = 512 * 1024;
+/** Einträge mit eigenen Grenzen (Zuordnungen, Lückenvermerke) zählen nicht zur gemeinsamen Grenze. */
+const eigeneGrenze = (x) => istObjekt(x) && (x.art === BEREICH_PROTOKOLL_ART || x.art === BEREICH_LUECKE_ART);
 /** Belegte Plätze der gemeinsamen Grenze (MODULPROTOKOLL_GRENZE): ohne Einträge der Art BEREICH_PROTOKOLL_ART — die haben eigene
     Grenzen (BEREICH_GRENZEN in modul-bereichsplan.mjs) und verdrängen oder sperren nie Schalter, Regelwerte oder Vorgaben (Review #578 B-1). */
-export const modulprotokollBelegt = (liste) => (Array.isArray(liste) ? liste : []).filter((x) => !istObjekt(x) || x.art !== BEREICH_PROTOKOLL_ART).length;
+export const modulprotokollBelegt = (liste) => (Array.isArray(liste) ? liste : []).filter((x) => !eigeneGrenze(x)).length;
+/** Belegte Bytes der gemeinsamen Einträge (UTF-8 der JSON-Form, wie protokollBytes). @param {any} liste */
+export const modulprotokollBelegtBytes = (liste) => new TextEncoder().encode(JSON.stringify((Array.isArray(liste) ? liste : []).filter((x) => !eigeneGrenze(x)))).length;
+/**
+ * Hält die gemeinsame Grenze nach dem Anhängen? Sonst der Grund (Zahl oder Bytes), wörtlich für die Absage.
+ * @param {any[]} bisher @param {any[]} ereignisse @param {string} weiter was trotzdem geht („Ausschalten“, „Deaktivieren“)
+ * @returns {string | null}
+ */
+export function modulprotokollUeberGrenze(bisher, ereignisse, weiter) {
+  if (modulprotokollBelegt(bisher) + ereignisse.length > MODULPROTOKOLL_GRENZE)
+    return `Modulprotokoll: Die Grenze von ${MODULPROTOKOLL_GRENZE} Einträgen ist erreicht. ${weiter} geht weiter; `;
+  if (modulprotokollBelegtBytes([...bisher, ...ereignisse]) > MODULPROTOKOLL_BYTES)
+    return `Modulprotokoll: Die Größengrenze von ${MODULPROTOKOLL_BYTES / 1024} KiB ist erreicht. ${weiter} geht weiter; `;
+  return null;
+}
 /** Aufbewahrungsregel des Modulprotokolls — Entwurfswert, fachlich zu bestätigen (FN-32). Löscht erst mit Prüfstatus „geprueft". */
 export const MODULPROTOKOLL_FRIST = Object.freeze({ regelId: "AUFB-MODULPROTOKOLL-01", monate: 24, pruefstatus: "vorlaeufig",
   quelle: "Art. 5 Abs. 1 lit. e und Abs. 2 DSGVO (Speicherbegrenzung, Rechenschaft); § 87 Abs. 1 Nr. 6 BetrVG (Nachweis der Einführung)",
@@ -838,9 +862,11 @@ export function branchenmoduleZusammen(altM, neuM, sitzung, darfOrgEdit, liste =
   if (ereignisse.length) {
     let bisher = Array.isArray(altE.modulprotokoll) ? altE.modulprotokoll : [];
     /* An der Grenze zuerst die nach der Frist fälligen Einträge entfernen (statt Dauersperre). */
-    if (modulprotokollBelegt(bisher) + ereignisse.length > MODULPROTOKOLL_GRENZE) bisher = modulprotokollFaellig(altM, jetzt.slice(0, 10), { regel: protokollRegel }).rest;
-    if (modulprotokollBelegt(bisher) + ereignisse.length > MODULPROTOKOLL_GRENZE && ereignisse.some((x) => x.art !== "ausgeschaltet"))
-      return { grund: `Modulprotokoll: Die Grenze von ${MODULPROTOKOLL_GRENZE} Einträgen ist erreicht. Ausschalten geht weiter; `
+    /* Zahl ODER Bytes (Review #590 B-1); Ausschalten geht immer. */
+    if (modulprotokollUeberGrenze(bisher, ereignisse, "Ausschalten")) bisher = modulprotokollFaellig(altM, jetzt.slice(0, 10), { regel: protokollRegel }).rest;
+    const ueber = modulprotokollUeberGrenze(bisher, ereignisse, "Ausschalten");
+    if (ueber && ereignisse.some((x) => x.art !== "ausgeschaltet"))
+      return { grund: ueber
         + "alles andere wieder, sobald ältere Einträge nach einer geprüften Aufbewahrungsregel entfallen dürfen "
         + "(Einträge in der Frist und zustandsbegründende Einträge werden nicht verdrängt; Prüfung/Freigabe der Regel erforderlich, FN-32)." };
     e.modulprotokoll = [...bisher, ...ereignisse];
@@ -866,6 +892,15 @@ export function modulProtokollZeilen(altB, neuB) {
   /* Neu ist, was im gespeicherten Protokoll nicht steht — nicht „ab der alten Länge": Seit der Frist
      (MODULPROTOKOLL_FRIST) können vorne Einträge entfallen, während hinten neue dazukommen. */
   const altP = new Map(betriebe(altB).map((m) => [m.id, new Set(protokollVon(m).map((x) => JSON.stringify(x)))]));
+  const altPlan = new Map(betriebe(altB).map((m) => [m.id, m.bereichsPlan]));
+  /** E1: Zahl der geänderten Zuordnungen im Bereichsplan (nur Zeichenketten zählen als Bereich, wie bereichsprotokollEintrag). */
+  const planAenderungen = (a, n) => {
+    const wert = (o, k) => (istObjekt(o) && hat(o, k) && typeof o[k] === "string" ? o[k] : null);
+    let z = 0;
+    for (const k of new Set([...Object.keys(istObjekt(a) ? a : {}), ...Object.keys(istObjekt(n) ? n : {})])) if (wert(a, k) !== wert(n, k)) z++;
+    return z;
+  };
+  const DURCH = Object.freeze({ leitung: "die Leitung", planung: "die Planung", kunde: "die Kundenrolle" });
   const kennung = (x) => String(x || "").replace(/[^A-Za-z0-9-]/g, "").slice(0, 60);
   const feldname = (x) => String(x || "").replace(/[^A-Za-z0-9]/g, "").slice(0, 40);
   const zeilen = [];
@@ -878,8 +913,10 @@ export function modulProtokollZeilen(altB, neuB) {
       for (const k of bekannt) if (!jetzt.has(k)) weg++;
       if (weg) zeilen.push(`Modulprotokoll: ${weg} ${weg === 1 ? "Eintrag" : "Einträge"} nach Ablauf der Aufbewahrungsfrist entfernt`);
     }
+    let zuordnungEintrag = false;
     for (const x of protokollVon(m)) {
       if (!istObjekt(x) || bekannt.has(JSON.stringify(x))) continue;
+      if (x.art === BEREICH_PROTOKOLL_ART) zuordnungEintrag = true;
       if (x.art === "regelwert") zeilen.push(`Regelwert ${kennung(x.regelId)}: ${REGELWERT_STUFEN.includes(x.stufe) ? x.stufe : "?"}, ${REGELWERT_PRUEFSTATUS.includes(x.pruefstatus) ? x.pruefstatus : "?"}`);
       else if (x.art === "regelwert-entfernt") zeilen.push(`Regelwert ${kennung(x.regelId)} entfernt`);
       else if (x.art === "eingeschaltet") zeilen.push(`Branchenmodul ${kennung(x.modul)} eingeschaltet${x.grundlage ? " (Mitbestimmung bestätigt)" : ""}`);
@@ -890,13 +927,22 @@ export function modulProtokollZeilen(altB, neuB) {
       else if (x.art === BEREICH_PROTOKOLL_ART) {
         /* Nur die Zahl — keine Person, kein Tag, kein Bereich (WP-14b, M1). */
         const n = Number.isInteger(x.anzahl) && x.anzahl > 0 ? x.anzahl : 0;
-        zeilen.push(`Branchenmodul bereichsplan: ${n} ${n === 1 ? "Zuordnung" : "Zuordnungen"} durch die Schichtverantwortung geändert`);
+        /* E1: Einträge mit `rolle` stammen aus dem vollen Schreibweg (Leitung, Planung, Kundenrolle). */
+        const durch = hat(x, "rolle") ? (hat(DURCH, x.rolle) ? DURCH[x.rolle] : "eine Rolle mit vollem Schreibrecht") : "die Schichtverantwortung";
+        zeilen.push(`Branchenmodul bereichsplan: ${n} ${n === 1 ? "Zuordnung" : "Zuordnungen"} durch ${durch} geändert${x.verdichtet === true ? " (zusammengefasst)" : ""}`);
       }
+      else if (x.art === BEREICH_LUECKE_ART) zeilen.push(`Branchenmodul bereichsplan: Änderungsprotokoll von Leitung und Planung erschöpft (Lückenvermerk durch ${hat(DURCH, x.rolle) ? DURCH[x.rolle] : "eine Rolle mit vollem Schreibrecht"}) — bitte archivieren${x.hoechstzahl === true ? "; Höchstzahl der Lückenvermerke erreicht" : ""}`);
       else if (x.art === "moduldaten-loeschung" || x.art === "moduldaten-berichtigung") {
         const n = Number.isInteger(x.anzahl) && x.anzahl > 0 ? x.anzahl : 0;
         zeilen.push(`Branchenmodul ${kennung(x.modul)}: Datenschutz-${x.art === "moduldaten-loeschung" ? "Löschung (Art. 17 DSGVO)" : "Berichtigung (Art. 16 DSGVO)"}, `
           + `${n} ${n === 1 ? "Eintrag" : "Einträge"} in ${feldname(x.feld)}`);
       }
+    }
+    /* E1 „kein Schreiben ohne Spur“: Geändert ohne neuen Eintrag (Kontingent von Leitung/Planung erschöpft, Ausnahmeweg Art. 16/17,
+       Löschlauf) — dass und wie viele, ohne Person, Tag oder Bereich; Rolle und Zeit trägt die Zeile des Betriebsprotokolls. */
+    if (altPlan.has(m.id) && !zuordnungEintrag) {
+      const n = planAenderungen(altPlan.get(m.id), m.bereichsPlan);
+      if (n) zeilen.push(`Branchenmodul bereichsplan: ${n} ${n === 1 ? "Zuordnung" : "Zuordnungen"} ohne Eintrag im Änderungsprotokoll geändert`);
     }
   }
   return zeilen.slice(0, 50);
@@ -1009,8 +1055,8 @@ export function moduleinstellungenSicht(e, rolle, vorgabenBetriebsrat = false) {
   if (rolle === "betriebsrat") {
     /* Das Protokoll der internen Vorgaben (WP-I4): nur bei offenem Schalter (AUS, Entscheidung 2026-11-25, 1.2), dann ohne Person. */
     /* Zuordnungen im Bereichsplan (WP-19.4): keine Einzelzuordnung und keine Person für den Betriebsrat — der Eintrag entfällt ganz. */
-    /* Ebenso der Vermerk ihrer Archivierung durch die Leitung (E7, A12). */
-    if (hat(e, "modulprotokoll")) aus.modulprotokoll = modulprotokollPositiv(e.modulprotokoll.filter((x) => !istObjekt(x) || (x.art !== BEREICH_PROTOKOLL_ART && x.art !== BEREICH_ARCHIV_ART))
+    /* Ebenso der Vermerk ihrer Archivierung durch die Leitung (E7, A12) und der Lückenvermerk (E1, Review #590 B-2). */
+    if (hat(e, "modulprotokoll")) aus.modulprotokoll = modulprotokollPositiv(e.modulprotokoll.filter((x) => !istObjekt(x) || (x.art !== BEREICH_PROTOKOLL_ART && x.art !== BEREICH_ARCHIV_ART && x.art !== BEREICH_LUECKE_ART))
       .filter((x) => !istObjekt(x) || x.modul !== "vorgaben" || vorgabenBetriebsrat === true)
       .map((x) => (istObjekt(x) && x.modul === "vorgaben" ? ohne(x, ["von"]) : x)));
     return aus;

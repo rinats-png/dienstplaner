@@ -1854,7 +1854,8 @@ async function behandeln(req, context, ctx) {
             bestand = abweichungenTeilrollen(bestand, { roh: rohA, sicht: sichtBetrieb(bestandFuerAntwort(angeglichenA, s), rohA.id),
               rolle: s.rolle, person: s.person ?? null, heute: heuteBerlin(), basisServer: req.headers.get("x-centric-schichtfolge") === "server" });
         }
-        let zuSchreiben = zusammenfuehren(jetzt ? personenAngleichen(jetzt.bestand) : null, bestand, s, { fachpruefung: "aussen" });
+        /* loeschlauf: Fristablauf ist keine Zuordnungsänderung — kein Eintrag im Änderungsprotokoll des Bereichsplans (E1, rechte.mjs). */
+        let zuSchreiben = zusammenfuehren(jetzt ? personenAngleichen(jetzt.bestand) : null, bestand, s, { fachpruefung: "aussen", ...(loeschweg ? { loeschlauf: true } : {}) });
         if (!zuSchreiben) {
           await protokoll("schreiben", ks, "abgewiesen", `Rolle ${s.rolle}`, wer);
           return antwort({ fehler: "Keine Schreibberechtigung.",

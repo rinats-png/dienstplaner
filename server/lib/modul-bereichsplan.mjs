@@ -18,7 +18,7 @@
    BEREICH-BESETZUNG-01), nie eine Sperre; nur bei aktivem Modul.
    Rein: keine Ablage, keine Uhr.
    ========================================================================== */
-import { modulAktiv, BRANCHENMODULE, BEREICH_PROTOKOLL_ART, BEREICH_ARCHIV_ART } from "./branchenmodule.mjs";
+import { modulAktiv, BRANCHENMODULE, BEREICH_PROTOKOLL_ART, BEREICH_ARCHIV_ART, BEREICH_LUECKE_ART } from "./branchenmodule.mjs";
 import { REGELN_BRANCHEN, alsEinteilungsBefund } from "./branchenkatalog.mjs";
 
 export const BEREICH_GRENZEN = Object.freeze({ bereicheJeEinheit: 50, planEintraege: 200_000, aenderungenSchicht: 500, tageSpanne: 731,
@@ -325,6 +325,8 @@ export function bereichsprotokollEintrag(altO, neuO, { am, von, einheit }) {
 /**
  * Eigene Grenzen dieser Art (Review #578 B-1/B-2): Sie zählen NICHT zur gemeinsamen Grenze des Modulprotokolls
  * (modulprotokollBelegt) und sperren nur das Zuordnen durch die Schichtverantwortung — nie Leitung, Planung oder andere Einträge.
+ * E1: dieselben Werte gelten getrennt für die Einträge der Schichtverantwortung (ohne `rolle`) und die von Leitung/Planung (mit
+ * `rolle`, bereichsprotokollVoll) — Worst Case der Art also 2 × 1 MiB ≤ 1/3 von RUMPF_MAX.
  * Worst Case Bytes: alle Einträge dieser Art zusammen höchstens `gesamtBytes` (1 MiB, UTF-8 der JSON-Form), also ≤ 1/6 von
  * RUMPF_MAX (6 MiB, server/funktionen/daten.mjs) — unabhängig von der Zahl der Einheiten, weil die Grenze je Betrieb gilt.
  * Ein Eintrag: höchstens `jeSpeichern` Zuordnungen und `eintragBytes`; je Zuordnung höchstens ≈ 240 Byte (Kennungen ≤ 60 Zeichen).
@@ -351,12 +353,105 @@ export function bereichsprotokollAnhaengen(einstellungen, eintrag, { grenzen = B
     return { grund: `Bereichsplan: höchstens ${grenzen.jeSpeichern} Änderungen je Speichern (Änderungsprotokoll) — bitte in kleineren Schritten speichern.` };
   const b = protokollBytes(eintrag);
   if (b > grenzen.eintragBytes) return { grund: "Bereichsplan: Die Änderung ist für das Änderungsprotokoll zu groß — bitte in kleineren Schritten speichern." };
-  const eigene = bisher.filter((x) => istObjekt(x) && x.art === BEREICH_PROTOKOLL_ART);
+  /* E1: Gezählt werden nur Einträge der Schichtverantwortung (ohne `rolle`) — Einträge von Leitung und Planung sperren die SV nie. */
+  const eigene = bisher.filter((x) => istObjekt(x) && x.art === BEREICH_PROTOKOLL_ART && !hat(x, "rolle"));
   if (eigene.length + 1 > grenzen.eintraege || protokollBytes(eigene) + b > grenzen.gesamtBytes)
     return { grund: "Bereichsplan: Das Änderungsprotokoll der Zuordnungen ist voll. Zuordnen durch die Schichtverantwortung geht erst wieder, "
       + "wenn die Leitung das Änderungsprotokoll archiviert hat (Export und Vermerk); Leitung und Planung ordnen weiter zu." };
   return { einstellungen: { ...e, modulprotokoll: [...bisher, eintrag] } };
 }
+
+/* ---- E1 (Betreiberentscheidung 2026-11-26): Änderungsprotokoll auch für Leitung und Planung (voller Schreibweg) ----
+   Gleiche Art und gleicher Inhalt wie bei der Schichtverantwortung (nur Kennungen, vorher → nachher), dazu `rolle`; Einträge ohne
+   `rolle` stammen von der Schichtverantwortung. Risikogerecht und fail-open (WP19-MODULPLAN.md 17.1, L1–L10): Das Protokoll hindert
+   Leitung und Planung NIE am Speichern. Mehr als `jeSpeichern` Zuordnungen oder mehr als `eintragBytes` in einem Speichern →
+   ein verdichteter Eintrag (Anzahl, Prüfsumme der Einzelliste, keine Einzelwerte). Eigenes Kontingent (`eintraege`/`gesamtBytes`
+   zählen nur Einträge mit `rolle`); ist es erschöpft, entsteht kein Einzeleintrag, das Speichern geht durch; dauerhaft bleibt ein
+   Lückenvermerk je Erschöpfungsperiode (Review #590 B-2), dazu bestmöglich die Zeile im Betriebsprotokoll des Servers (30 Tage,
+   modulProtokollZeilen: „ohne Eintrag im Änderungsprotokoll“). Platz schafft die Archivierung. */
+/** Rolle des vollen Schreibwegs → Angabe im Eintrag. */
+export const BEREICH_PROTOKOLL_ROLLEN = Object.freeze({ leitung: "leitung", planer: "planung", kunde: "kunde" });
+/** Eintrag aus dem vollen Schreibweg (Leitung, Planung, Kundenrolle)? @param {any} x */
+export const bereichsprotokollVonVoll = (x) => istObjekt(x) && x.art === BEREICH_PROTOKOLL_ART && hat(x, "rolle");
+
+/** Die Einheit, zu der alle berührten Bereiche gehören (alter oder neuer Stand), sonst null. */
+function einheitDerAenderung(altM, neuM, zuordnungen) {
+  const ixN = bereichsIndex(neuM), ixA = bereichsIndex(altM);
+  const ids = new Set();
+  for (const z of zuordnungen) for (const b of [z.vorher, z.nachher]) {
+    if (b === null) continue;
+    const t = ixN.get(b) || ixA.get(b);
+    ids.add(t ? String(t.einheitId) : "\u0000");
+  }
+  return ids.size === 1 && !ids.has("\u0000") ? [...ids][0] : null;
+}
+
+/**
+ * Hängt zu einer Änderung des Bereichsplans im vollen Schreibweg (Leitung, Planung) genau einen Eintrag an — oder, bei
+ * erschöpftem Kontingent, keinen (`voll: true`). Weist nie ab. Ohne Änderung: `eintrag: null`, `mandant` unverändert (dasselbe Objekt).
+ * @param {any} altM gespeicherter Betrieb
+ * @param {any} neuM zu speichernder Betrieb (nach allen Schreibwegen; sein Modulprotokoll ist das vom Server gesetzte)
+ * @param {{ am: string, von: any, rolle: string, pruefsumme?: (text: string) => string, grenzen?: typeof BEREICH_PROTOKOLL_GRENZEN }} k
+ * @returns {{ mandant: any, eintrag: any, voll?: boolean, luecke?: any }}
+ */
+export function bereichsprotokollVoll(altM, neuM, { am, von, rolle, pruefsumme, grenzen = BEREICH_PROTOKOLL_GRENZEN }) {
+  if (!istObjekt(neuM)) return { mandant: neuM, eintrag: null };
+  const roh = bereichsprotokollEintrag(altM && altM.bereichsPlan, neuM.bereichsPlan, { am, von, einheit: null });
+  if (!roh) return { mandant: neuM, eintrag: null };
+  const kopf = { art: roh.art, modul: roh.modul, am: roh.am, von: roh.von,
+    rolle: hat(BEREICH_PROTOKOLL_ROLLEN, rolle) ? BEREICH_PROTOKOLL_ROLLEN[rolle] : String(rolle).slice(0, 20),
+    einheit: einheitDerAenderung(altM, neuM, roh.zuordnungen), anzahl: roh.anzahl };
+  /** @type {Record<string, any>} */
+  let eintrag = { ...kopf, zuordnungen: roh.zuordnungen };
+  if (roh.anzahl > grenzen.jeSpeichern || protokollBytes(eintrag) > grenzen.eintragBytes)
+    eintrag = { ...kopf, verdichtet: true, ...(typeof pruefsumme === "function" ? { pruefsumme: pruefsumme(JSON.stringify(roh.zuordnungen)) } : {}) };
+  const e = istObjekt(neuM.einstellungen) ? neuM.einstellungen : {};
+  const bisher = Array.isArray(e.modulprotokoll) ? e.modulprotokoll : [];
+  const eigene = bisher.filter(bereichsprotokollVonVoll);
+  if (eigene.length + 1 > grenzen.eintraege || protokollBytes(eigene) + protokollBytes(eintrag) > grenzen.gesamtBytes) {
+    /* Review #590 B-2/B-3: Beim ersten Überlauf einer Erschöpfungsperiode ein dauerhafter Lückenvermerk im SELBEN Schreiben (nicht über das
+       kurzlebige Betriebsprotokoll); weitere Änderungen derselben Periode ohne weiteren Vermerk (die Periode endet nur mit einer Archivierung).
+       Höchstens BEREICH_LUECKE_GRENZE insgesamt; der letzte trägt `hoechstzahl: true` — danach bleibt der Zustand über
+       bereichsprotokollLueckeHoechstzahl sichtbar, auch ohne weiteren Vermerk. */
+    const zahl = bisher.filter((x) => istObjekt(x) && x.art === BEREICH_LUECKE_ART).length;
+    if (bereichsprotokollLueckeOffen(bisher) || zahl >= BEREICH_LUECKE_GRENZE)
+      return { mandant: neuM, eintrag: null, voll: true };
+    const luecke = { art: BEREICH_LUECKE_ART, modul: "bereichsplan", am: kopf.am, von: kopf.von, rolle: kopf.rolle,
+      ...(zahl + 1 === BEREICH_LUECKE_GRENZE ? { hoechstzahl: true } : {}) };
+    return { mandant: { ...neuM, einstellungen: { ...e, modulprotokoll: [...bisher, luecke] } }, eintrag: null, voll: true, luecke };
+  }
+  return { mandant: { ...neuM, einstellungen: { ...e, modulprotokoll: [...bisher, eintrag] } }, eintrag };
+}
+
+/* ---- Lückenvermerk (E1, Review #590 B-2) ----
+   Eine Erschöpfungsperiode beginnt mit dem Lückenvermerk und endet NUR mit dem nächsten Archivierungsvermerk (Review #590 B-3: endete sie
+   auch mit einem Einzeleintrag, erzeugte ein Wechsel kleiner und großer Änderungen bei fast vollem Kontingent je Wechsel einen neuen Vermerk).
+   Kleine Änderungen, die in der Periode noch passen, bekommen weiter ihren Einzeleintrag; die Periode bleibt offen. Der Vermerk selbst ist nicht archivierbar (bereichsprotokollExport nimmt nur die
+   Art bereich-zuordnung) und wird über den vollen Weg nicht geändert (das Modulprotokoll kommt aus dem gespeicherten Stand). */
+export { BEREICH_LUECKE_ART };
+/** Höchstzahl der Lückenvermerke je Betrieb (Größenrechnung WP19-MODULPLAN.md 17.1 L6); jede neue Periode setzt eine Archivierung voraus. */
+export const BEREICH_LUECKE_GRENZE = 500;
+/**
+ * Der Lückenvermerk der laufenden Erschöpfungsperiode oder null.
+ * @param {any} liste Modulprotokoll
+ */
+export function bereichsprotokollLueckeOffen(liste) {
+  const l = Array.isArray(liste) ? liste : [];
+  for (let i = l.length - 1; i >= 0; i--) {
+    const x = l[i];
+    if (!istObjekt(x)) continue;
+    if (x.art === BEREICH_LUECKE_ART) return x;
+    if (x.art === BEREICH_ARCHIV_ART) return null;
+  }
+  return null;
+}
+
+/**
+ * Höchstzahl der Lückenvermerke erreicht? Dann entsteht bei erschöpftem Kontingent kein weiterer Vermerk — die Oberfläche zeigt das
+ * dauerhaft an (aus dem Zustand abgeleitet, ohne weiteren Eintrag). @param {any} liste Modulprotokoll
+ */
+export const bereichsprotokollLueckeHoechstzahl = (liste) =>
+  (Array.isArray(liste) ? liste : []).filter((x) => istObjekt(x) && x.art === BEREICH_LUECKE_ART).length >= BEREICH_LUECKE_GRENZE;
 
 /* ---- Archivierung durch die Leitung (E7 b, Betreiberentscheidung 2026-11-26; Invarianten A1–A12, WP19-MODULPLAN.md 17.1) ----
    Kein stilles Löschen und keine höheren Grenzen: Die Leitung zieht aus ihrer Sicht einen Export der ältesten Einträge dieser Art

@@ -16,12 +16,14 @@
                       nur wenn pruefeBereiche nichts beanstandet.
    bereichsSchreibeVon  Der Schreibweg aus dem Kontext: nur die Felder
                       einheiten (nur mit Pflegerecht) und bereichsPlan.
-   BereichsProtokoll  Änderungen der Schichtverantwortung in der Einheit
-                      (Modulprotokoll, nur lesend) — nur Leitung und Planung.
+   BereichsProtokoll  Änderungsprotokoll der Zuordnungen in der Einheit
+                      (Schichtverantwortung, seit E1 auch Leitung und Planung;
+                      Modulprotokoll, nur lesend) — nur Leitung und Planung.
    ========================================================================== */
 import { createElement as h, useState, Fragment } from "react";
 import {
   pruefeBereiche, zuordnungSetzen, bereichHinzufuegen, bereichAendern, bereichSollSetzen, bereichEntfernen, BEREICH_GRENZEN, BEREICH_PROTOKOLL_ART,
+  bereichsprotokollLueckeOffen, bereichsprotokollLueckeHoechstzahl,
 } from "../../server/lib/modul-bereichsplan.mjs";
 
 const RAHMEN = { border: "1px solid currentColor", borderRadius: "var(--v4-r-klein)", padding: 12, overflowWrap: "anywhere" };
@@ -122,27 +124,47 @@ export function BereichsPflege({ m, einheitId, schreibe }) {
 /** Höchstens so viele Einträge zeigt die Liste (die jüngsten zuerst). */
 export const PROTOKOLL_ANZEIGE = 20;
 
+/** Rolle eines Eintrags in Worten (E1: Einträge ohne `rolle` stammen von der Schichtverantwortung). */
+const ROLLE_WORT = Object.freeze({ leitung: "Leitung", planung: "Planung", kunde: "Kundenrolle" });
+const rolleWort = (x) => (!x || x.rolle === undefined ? "Schichtverantwortung"
+  : Object.prototype.hasOwnProperty.call(ROLLE_WORT, x.rolle) ? ROLLE_WORT[x.rolle] : "volles Schreibrecht");
+
 /**
- * Änderungsprotokoll der Schichtverantwortung für eine Einheit (WP-19.4, B2 b) — nur lesend, nur Leitung und Planung (der Server
- * liefert das Modulprotokoll keiner anderen Rolle mit Zuordnungen aus). Wer, wann, Person, Tag, Bereich vorher → nachher.
+ * Änderungsprotokoll der Zuordnungen für eine Einheit (WP-19.4, B2 b; seit E1 auch Leitung und Planung) — nur lesend, nur Leitung und
+ * Planung (der Server liefert das Modulprotokoll keiner anderen Rolle mit Zuordnungen aus). Wer (mit Rolle), wann, Person, Tag, Bereich
+ * vorher → nachher; ein verdichteter Eintrag nur mit der Anzahl. Einträge von Leitung/Planung über mehrere Einheiten (einheit null)
+ * erscheinen in jeder Einheit.
  * @param {{ m: any, einheitId: any }} props
  */
 export function BereichsProtokoll({ m, einheitId }) {
   const e = m && m.einstellungen && typeof m.einstellungen === "object" ? m.einstellungen : {};
   const eintraege = (Array.isArray(e.modulprotokoll) ? e.modulprotokoll : [])
-    .filter((x) => x && x.art === BEREICH_PROTOKOLL_ART && String(x.einheit) === String(einheitId) && Array.isArray(x.zuordnungen))
+    .filter((x) => x && x.art === BEREICH_PROTOKOLL_ART && (Array.isArray(x.zuordnungen) || x.verdichtet === true)
+      && (String(x.einheit) === String(einheitId) || (x.rolle !== undefined && (x.einheit === null || x.einheit === undefined))))
     .slice(-PROTOKOLL_ANZEIGE).reverse();
   const personen = new Map((Array.isArray(m && m.personen) ? m.personen : []).filter(Boolean).map((p) => [String(p.id), p]));
   const bereiche = new Map((Array.isArray(m && m.einheiten) ? m.einheiten : []).flatMap((x) => (x && Array.isArray(x.bereiche) ? x.bereiche : []))
     .filter((b) => b && b.id).map((b) => [b.id, b.name]));
-  const wer = (id) => (personen.has(String(id)) ? personName(personen.get(String(id))) : "unbekannte Person");
+  const wer = (id) => (id === null || id === undefined ? "ohne Personenbezug" : personen.has(String(id)) ? personName(personen.get(String(id))) : "unbekannte Person");
   const bereich = (id) => (id === null || id === undefined ? "nicht zugeordnet" : bereiche.get(id) || "entfernter Bereich");
-  return h("section", { "aria-label": "Änderungen der Schichtverantwortung", style: { ...RAHMEN, display: "grid", gap: 6 } },
-    h("h3", { style: { margin: 0, fontSize: 15 } }, "Änderungen der Schichtverantwortung"),
-    !eintraege.length ? h("p", { style: { margin: 0 } }, "Keine Änderungen der Schichtverantwortung in dieser Einheit.")
+  const inhalt = (x) => (Array.isArray(x.zuordnungen)
+    ? x.zuordnungen.map((z) => `${wer(z.person)} am ${z.tag}: ${bereich(z.vorher)} → ${bereich(z.nachher)}`).join("; ")
+    : `${Number.isInteger(x.anzahl) ? x.anzahl : "?"} Zuordnungen geändert (zusammengefasst, ohne Einzelangaben)`);
+  /* Review #590 B-2: laufende Erschöpfungsperiode sichtbar machen (betriebsweit, in jeder Einheit). */
+  const luecke = bereichsprotokollLueckeOffen(e.modulprotokoll);
+  const hoechstzahl = bereichsprotokollLueckeHoechstzahl(e.modulprotokoll);
+  return h("section", { "aria-label": "Änderungsprotokoll der Zuordnungen", style: { ...RAHMEN, display: "grid", gap: 6 } },
+    h("h3", { style: { margin: 0, fontSize: 15 } }, "Änderungsprotokoll der Zuordnungen"),
+    luecke && h("p", { role: "status", style: { margin: 0 } },
+      `Kontingent erschöpft – Änderungen von Leitung und Planung ab ${String(luecke.am || "").slice(0, 16).replace("T", " ")} ohne Einzelnachweis, bitte archivieren.`),
+    hoechstzahl && h("p", { role: "status", style: { margin: 0 } },
+      "Höchstzahl der Lückenvermerke erreicht – ist das Kontingent von Leitung und Planung erschöpft, entstehen Änderungen ohne Einzelnachweis "
+      + "und ohne weiteren Vermerk. Bitte regelmäßig archivieren."),
+    !eintraege.length ? h("p", { style: { margin: 0 } }, "Keine Änderungen der Zuordnungen in dieser Einheit.")
       : h("ul", { style: { margin: 0, paddingLeft: 18, display: "grid", gap: 4 } }, eintraege.map((x, i) => h("li", { key: `${x.am}-${i}` },
-        `${String(x.am || "").slice(0, 16).replace("T", " ")} · ${wer(x.von)}: `,
-        x.zuordnungen.map((z) => `${wer(z.person)} am ${z.tag}: ${bereich(z.vorher)} → ${bereich(z.nachher)}`).join("; ")))));
+        `${String(x.am || "").slice(0, 16).replace("T", " ")} · ${wer(x.von)} (${rolleWort(x)}`
+          + `${x.rolle !== undefined && (x.einheit === null || x.einheit === undefined) ? ", mehrere oder keine Einheit" : ""}): `,
+        inhalt(x)))));
 }
 
 /** Die Oberfläche des Moduls am Ort „tag": Zuordnung und Pflege, unter der Übersicht (index.js). */
