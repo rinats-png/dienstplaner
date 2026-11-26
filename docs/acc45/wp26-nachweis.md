@@ -239,7 +239,38 @@ Bestehende Tests nicht geändert.
 
 - `vor-zerlegung` erscheint in `GET /api/sicherungen`, lässt sich aber nicht über `/api/wiederherstellen` einspielen
   (`MARKE`); Notweg Betreiber (BETRIEB-SICHERUNG). Die Ausweich-Sicherung einer zweiten Übernahme ist einspielbar.
-- `/gesund` liest nur `aufraeumen:letzter`, nicht `datenschutzlauf:letzter`; ein gescheiterter Datenschutzlauf löst
-  deshalb keinen Alarm aus, nur Protokoll, Betreiber-Lage und Konsolenzeile. Patch-Vorschlag (nicht umgesetzt, ändert
-  Alarmverhalten): `loeschlaufPruefen` zusätzlich `datenschutzlauf:letzter.fehler` zählen lassen.
+- ~~`/gesund` liest nur `aufraeumen:letzter`~~ — umgesetzt im Nachtrag (3), B-2.
 - `spurLesen` (Betreiber-Lage) kennt die Protokollart `loeschlauf` nicht.
+
+## Nachtrag 2026-11-26 (3): Review #586 (Ablehnung, 2 × B) — umgesetzt
+
+**B-1 (Klasse ii in der Oberfläche):** Die Aktion `sicherungAnlegen` (`src/app/aktionen/einstellungen.js`) fing den
+Fehler (Hinweis mit dem Fehlertext des Servers, z. B. „Die Sicherung konnte nicht angelegt werden.“), der Knopf
+„Jetzt sichern“ (`src/ansichten/einstellungen.jsx`) meldete danach trotzdem „Sicherung angelegt.“. Jetzt gibt die
+Aktion `true`/`false` zurück, der Knopf meldet den Erfolg nur bei `true`. Je eine Zeile, Zeilenzahlen beider Dateien
+unverändert (377/100), keine Stile; alle `v4-3b-*`-Tests grün. Der Fehlertext wurde schon vorher angezeigt (Bonus C
+damit erfüllt). Test `pruefungen/sicherung-anlegen-ui.test.js` (rot 3/4 → grün 4/4): Aktion mit nachgebildeter
+Speicherschicht; echte Komponente `Einstellungen` serverseitig gerendert, der Knopf über einen aufzeichnenden `Btn`
+gedrückt, gesetzte Meldungen über ein aufzeichnendes `useState`.
+Befund am Rand (nicht geändert): Die Karte „Für den Betrieb“ samt „Jetzt sichern“ hängt an
+`darf(sitz, "mandant.edit")`; dieses Recht gibt es in keiner Standardtabelle (`src/lib/rollen.js`) — die Karte ist
+nur mit einer betriebseigenen Tabelle sichtbar, die es führt (Test setzt eine solche). Der zweite Aufrufer
+„Vorher sichern“ (`src/ansichten/datenschutz.jsx`) meldete nie Erfolg und zeigt den Fehler über die Aktion.
+
+**B-2 (Hintergrund ohne Alarmweg):** `loeschlaufPruefen` (`server/lib/gesund.mjs`) liest zusätzlich
+`datenschutzlauf:letzter`; Einträge mit `art: "sicherung"` (gescheiterte Schutzsicherung) ⇒ Prüfung `loeschlauf`
+„warnung“ (auch vor dem ersten Löschlauf-Vermerk; Detail nur die Anzahl `sicherungFehler`, kein Raumname) ⇒
+Überwachung/Alarm wie jede Warnung. Engere Variante gewählt: Fristfehler (`aufbewahrungFehler`) und andere Einträge
+(Konflikt, Lesefehler) alarmieren hier weiterhin nicht. Sauber trennbar, weil der Datenschutzlauf den Eintrag selbst
+kennzeichnet (Fehler mit `sicherung: true` → `art: "sicherung"`), statt am Text zu erkennen. Abgeschaltet
+(`CENTRIC_AUFRAEUMEN=aus`, dann läuft auch der Datenschutzlauf nicht): wie bisher „ok“. Test in `gesund.test.js`
+inkl. Gegenprobe (nur Fristfehler/Konflikt ⇒ „ok“).
+
+**C-Hinweise:** (a) Datenschutzlauf: in Vermerk und Protokoll nur der Fehlercode (`ENOSPC`, sonst „Fehler“), keine
+Meldung mit Dateipfad (Test). (b) vor-zerlegung: zusätzlich Protokollzeilen Art `fehler`, Ausgang `zerlegung`
+(„<raum>: Sicherung fehlgeschlagen, Altbestand nicht entfernt (<code>)“ bzw. „<raum>: vor-zerlegung belegt, nicht
+überschrieben — Altbestand als <marke> gesichert“) — sichtbar in der Betreiber-Lage. (c) Inventar ergänzt: **Löschweg
+der Leitung** (WP-48.4, `PUT` mit `loeschweg`) läuft durch denselben PUT-Pfad — gesichert wird nur ab der
+34-%-Schwelle, dann fail-closed wie jeder Verlust-PUT; darunter keine Sicherung (bewusst, wie beim gewöhnlichen
+Speichern; der Datenschutzlauf-Pfad sichert dagegen immer). (d) Reihenfolge: Die Datenschutzlauf-Fälle nutzen je
+einen eigenen Raum; der Erfolgsfall legt seinen Raum selbst an (vorher hing er am Fehlerfall davor).

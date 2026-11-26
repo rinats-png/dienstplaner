@@ -310,26 +310,34 @@ describe("(iii) Datenschutzlauf „an“: Schutzsicherung vor dem Löschen", () 
     abweichungen: { "p1|2024-09-01": "F", "p1|2026-10-01": "F" }, abwesenheiten: [], erfassung: {},
     einstempeln: { "p1|2024-09-01": { start: "06:00", ende: "14:00" } }, anfragen: [], aenderungen: [], nachrichten: [] }] });
 
-  it("Sicherung scheitert: dieser Raum bleibt byte-gleich, Fehler im Vermerk und im Protokoll (Betreiberweg „fehler“), Lauf geht weiter", async () => {
-    await B.bestandSchreiben(laden(), R, alt(), { durch: "Pruefung" });
-    const vorher = await platte(R);
-    const nZ = (await zeilen()).length;
-    steuer.modus = "erschoepft";
-    const v = await D.datenschutzLauf(laden(), { jetzt: JETZT, spur: false, modus: "an" });
-    expect(v.uebersprungen).toBe(false);
-    expect(await platte(R)).toEqual(vorher);
-    expect(v.geaendert.filter((x) => x.raum === R)).toEqual([]);
-    const f = v.fehler.filter((x) => x.raum === R);
-    expect(f).toHaveLength(1);
-    expect(f[0].grund).toMatch(/Sicherung fehlgeschlagen, Änderung nicht durchgeführt/);
-    const neu = await neueZeilen(nZ);
-    expect(neu.some((z) => z.art === "loeschlauf" && z.ausgang === "fehler" && z.zusatz.startsWith(`${R}: Sicherung fehlgeschlagen`))).toBe(true);
-    expect(neu.some((z) => z.art === "fehler" && /Sicherung fehlgeschlagen, Änderung nicht durchgeführt/.test(z.zusatz || "")
-      && String(z.zusatz).includes(R))).toBe(true);
-    expect(JSON.stringify(neu)).not.toMatch(/Vp1|Np1/);
-  }, 120000);
+  /* Jeder Fall mit eigenem Raum — keine Abhängigkeit von der Reihenfolge (Review #586 C-d). Der Lauf geht über
+     alle Räume der Ablage; die Fehlerfälle lassen ihren Raum fällig liegen, deshalb wird nur nach Raum gefiltert. */
+  for (const modus of /** @type {const} */ (["erschoepft", "ablage"])) {
+    it(`Sicherung scheitert (${modus}): Raum byte-gleich, Vermerk (art „sicherung“, nur Code) und Protokoll (Betreiberweg „fehler“)`, async () => {
+      const R1 = `sfd-dsl-${modus}`;
+      await B.bestandSchreiben(laden(), R1, alt(), { durch: "Pruefung" });
+      const vorher = await platte(R1);
+      const nZ = (await zeilen()).length;
+      steuer.modus = modus;
+      const v = await D.datenschutzLauf(laden(), { jetzt: JETZT, spur: false, modus: "an" });
+      expect(v.uebersprungen).toBe(false);
+      expect(await platte(R1)).toEqual(vorher);
+      expect(v.geaendert.filter((x) => x.raum === R1)).toEqual([]);
+      const f = v.fehler.filter((x) => x.raum === R1);
+      expect(f).toHaveLength(1);
+      expect(f[0].art).toBe("sicherung");
+      expect(f[0].grund).toBe(`Sicherung fehlgeschlagen, Änderung nicht durchgeführt (${modus === "ablage" ? "ENOSPC" : "Fehler"})`);
+      const neu = await neueZeilen(nZ);
+      expect(neu.some((z) => z.art === "loeschlauf" && z.ausgang === "fehler" && z.zusatz.startsWith(`${R1}: Sicherung fehlgeschlagen`))).toBe(true);
+      expect(neu.some((z) => z.art === "fehler" && /Sicherung fehlgeschlagen, Änderung nicht durchgeführt/.test(z.zusatz || "")
+        && String(z.zusatz).includes(R1))).toBe(true);
+      expect(JSON.stringify(neu)).not.toMatch(/Vp1|Np1|no space|belegt/);                 // keine Namen, keine Fehlermeldung
+      expect(JSON.stringify(await laden().get(D.VERMERK, { type: "json" }))).not.toMatch(/no space|belegt/);
+    }, 120000);
+  }
 
   it("Erfolgsfall unverändert: Sicherung, dann Löschen", async () => {
+    await B.bestandSchreiben(laden(), R, alt(), { durch: "Pruefung" });
     const v = await D.datenschutzLauf(laden(), { jetzt: JETZT, spur: false, modus: "an" });
     expect(v.fehler.filter((x) => x.raum === R)).toEqual([]);
     expect(v.geaendert.map((x) => x.raum)).toContain(R);
@@ -377,6 +385,8 @@ describe("(iii) Übernahme eines Altbestands: sicherung:<raum>:vor-zerlegung", (
     const md = (await laden().getMetadata(`sicherung:${R}:${weitere[0]}`)).metadata;
     expect(md.automatisch).toBe("ja");
     expect(md.durch).toMatch(/vor der Zerlegung/);
+    expect((await zeilen()).some((z) => z.art === "fehler" && z.ausgang === "zerlegung"
+      && z.zusatz === `${R}: vor-zerlegung belegt, nicht überschrieben — Altbestand als ${weitere[0]} gesichert`)).toBe(true);
     expect(await laden().get(`bestand:${R}`, { type: "json" })).toBeNull();
   }, 120000);
 
@@ -399,6 +409,8 @@ describe("(iii) Übernahme eines Altbestands: sicherung:<raum>:vor-zerlegung", (
     } finally { fehler.mockRestore(); }
     expect((await laden().get(`bestand:${R}`, { type: "json" })).mandanten[0].name).toBe("Erster");
     expect(await sicherungsMarken(R)).toEqual([]);
+    expect((await zeilen()).some((z) => z.art === "fehler" && z.ausgang === "zerlegung"
+      && z.zusatz === `${R}: Sicherung fehlgeschlagen, Altbestand nicht entfernt (ENOSPC)`)).toBe(true);
     expect((await B.bestandLesen(laden(), R)).bestand.mandanten[0].name).toBe("Erster neu");
   }, 120000);
 

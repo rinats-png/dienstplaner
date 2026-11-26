@@ -148,6 +148,28 @@ describe("Stufen", () => {
     await s.delete("aufraeumen:letzter");
   });
 
+  it("Datenschutzlauf: gescheiterte Schutzsicherung → warnung (ohne Raumnamen); Fristfehler allein nicht (Review #586 B-2)", async () => {
+    const { getStore } = await import("../server/lib/ablage.mjs");
+    const s = getStore({ name: "centric", consistency: "strong" });
+    await s.setJSON("aufraeumen:letzter", { zeit: new Date().toISOString(), fehler: [] });
+    /* Gegenprobe: Fristfehler und andere Einträge ändern nichts am bisherigen Verhalten. */
+    await s.setJSON("datenschutzlauf:letzter", { zeit: new Date().toISOString(),
+      fehler: [{ raum: "geheimraum", betrieb: "m1", grund: "plandatenMonate ungültig" }, { raum: "geheimraum", grund: "Konflikt beim Schreiben" }] });
+    expect((await G.zustand({ frisch: true })).pruefungen.loeschlauf.stufe).toBe("ok");
+    await s.setJSON("datenschutzlauf:letzter", { zeit: new Date().toISOString(),
+      fehler: [{ raum: "geheimraum", grund: "Sicherung fehlgeschlagen, Änderung nicht durchgeführt (EACCES)", art: "sicherung" }] });
+    let e = await G.zustand({ frisch: true });
+    expect(e.pruefungen.loeschlauf).toMatchObject({ stufe: "warnung", sicherungFehler: 1 });
+    expect(JSON.stringify(e.pruefungen.loeschlauf)).not.toContain("geheimraum");
+    /* Auch vor dem ersten Löschlauf-Vermerk. */
+    await s.delete("aufraeumen:letzter");
+    e = await G.zustand({ frisch: true });
+    expect(e.pruefungen.loeschlauf.stufe).toBe("warnung");
+    process.env.CENTRIC_AUFRAEUMEN = "aus";                                  // Lauf abgeschaltet: wie bisher ok
+    expect((await G.zustand({ frisch: true })).pruefungen.loeschlauf.stufe).toBe("ok");
+    await s.delete("datenschutzlauf:letzter");
+  });
+
   it("R2: hängt die Prüfung, gilt nach der Zeitgrenze „Ablage kritisch“; danach ist das Promise frei", async () => {
     process.env.CENTRIC_GESUND_ZEITGRENZE_MS = "200";
     let loslassen;

@@ -36,6 +36,7 @@ import { zerlegen, zusammensetzen, abdruck, kernAbdruck, abdruckNormal, monatVon
   kernSchluessel, scherbenSchluessel, scherbenKennungen, gleicheEintraege } from "./scherben.mjs";
 import { ketteAn } from "./kette.mjs";
 import { ereignis } from "./gesund-zaehler.mjs";
+import { protokoll } from "./schutz.mjs";
 import { unterRaumsperre, sperreGehalten, sperrKontext, SPERRE_ZEITGRENZE, SPERRE_GESTOPPT } from "./raumsperre.mjs";
 import { createHash, randomBytes } from "node:crypto";
 import { schreibKontext } from "./schreibkontext.mjs";
@@ -853,6 +854,8 @@ async function schreibeAlles(store, raum, zerlegt, abd, neuerStand, durch, opt =
       try { gesichert = await altbestandSichern(store, raum, alt, zeit); }
       catch (e) {
         console.error(`Bestand ${raum}: Altbestand vor der Zerlegung nicht gesichert (${String((e && e.message) || e).slice(0, 160)}) — Altbestand nicht entfernt`);
+        await protokoll("fehler", "system", "zerlegung",
+          `${raum}: Sicherung fehlgeschlagen, Altbestand nicht entfernt (${String((e && e.code) || "Fehler").slice(0, 40)})`);
       }
       if (gesichert) await store.delete(ALT(raum)).catch(() => {});
     }
@@ -873,6 +876,7 @@ async function altbestandSichern(store, raum, alt, zeit) {
   const marke = await sicherungAnlegen(store, raum, alt,
     { jetzt: new Date(zeit), metadata: { ...metadata, durch: "automatisch vor der Zerlegung (weitere Übernahme)" } });
   console.warn(`Bestand ${raum}: Sicherungspunkt vor-zerlegung bestand schon und bleibt — Altbestand als ${marke} gesichert`);
+  await protokoll("fehler", "system", "zerlegung", `${raum}: vor-zerlegung belegt, nicht überschrieben — Altbestand als ${marke} gesichert`);
   return true;
 }
 
