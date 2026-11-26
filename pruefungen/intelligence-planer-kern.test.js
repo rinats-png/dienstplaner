@@ -31,6 +31,8 @@ import { FEST, zufall, betriebe } from "./engine-golden.fixture.mjs";
 const add = (t, n) => { const x = new Date(`${t}T00:00:00Z`); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
 const YM = "2026-12";
 const TAGE = []; for (let t = "2026-12-01"; t <= "2026-12-31"; t = add(t, 1)) TAGE.push(t);
+/** Dezember und die ersten zehn Januartage (Vorwärtsprüfung über die Monatsgrenze). */
+const TAGE_PLUS = [...TAGE]; for (let t = "2027-01-01"; t <= "2027-01-10"; t = add(t, 1)) TAGE_PLUS.push(t);
 const schluessel = (l) => l.map((g) => `${g.personId}|${g.datum}|${g.dienstId}`).sort();
 
 let F, B;
@@ -318,7 +320,9 @@ describe("8. Posten: Bestandspersonen bleiben unverändert (Review #572 A1)", ()
   }, 600000);
   it("Verbessern mit Posten: Züge, die eine Bestandsperson verdrängen würden, werden verworfen, die übrigen behalten (kein Rückfall auf den Aufbau)", () => {
     const m0 = structuredClone(B.find(([n]) => n.startsWith("demo1"))[1]);
-    m0.personen.forEach((p, i) => { for (const t of TAGE) { const d = F.personTag(m0, p, t).dienstId; if (d === "N" || (d && i % 3 === 0)) m0.abweichungen[`${p.id}|${t}`] = "-"; } });
+    /* Jede zweite Person frei (bis zur Vorwärtsprüfung jede dritte): Seit der Aufbau bei einem Verstoß an Folgetagen die nächste Kandidatin
+       nimmt, ist der Aufbau mit jeder dritten schon so gut, dass kein Zug mehr etwas schließt (29 → 26 Lücken, 0 Züge). Zusicherungen gleich. */
+    m0.personen.forEach((p, i) => { for (const t of TAGE) { const d = F.personTag(m0, p, t).dienstId; if (d === "N" || (d && i % 2 === 0)) m0.abweichungen[`${p.id}|${t}`] = "-"; } });
     const m = structuredClone(m0);
     const po = m.dienstarten.find((x) => x.posten && x.quelle);
     const q = m.qualifikationen.map((x) => x.id).find((id) => { const n = m.personen.filter((p) => p.qualifikationen.includes(id)).length; return n >= 5 && n < 40; });
@@ -440,12 +444,12 @@ describe("8. Posten: Bestandspersonen bleiben unverändert (Review #572 A1)", ()
   }, 600000);
   /** Delta-Review #579 B-1: Befunde ab Achtung (ohne Vorgaben) im Endstand, die im Bestand nicht bestanden — für JEDE Person mit Dienst
       (auch die eingeteilten selbst und Personen mit unverändertem Dienst), frisch auf dem fertigen Stand. */
-  const neueHarte = (m, r) => {
+  const neueHarte = (m, r, tage = TAGE) => {
     const fertig = { ...m, abweichungen: r.abweichungen };
     const opt = () => ({ vorgabenBudget: neuesVorgabenBudget(0), vorgabenAutomatisch: false });
     const harte = (st, p, t, da) => F.hindernisBefunde(st, p, t, da, opt()).filter((b) => stufeRang(b.stufe) >= 2 && !String(b.regel).startsWith("vorgabe")).map((b) => `${b.regel}|${b.text}`);
     const l = [];
-    for (const t of TAGE) for (const p of m.personen) {
+    for (const t of tage) for (const p of m.personen) {
       const id = F.personTag(fertig, p, t).dienstId;
       if (!id) continue;
       const da = m.dienstarten.find((x) => x.id === id);
@@ -464,12 +468,8 @@ describe("8. Posten: Bestandspersonen bleiben unverändert (Review #572 A1)", ()
     for (const p of m0.personen) if (p.qualifikationen.includes(q)) p.einschraenkungen = { ...(p.einschraenkungen || {}), keinAlleindienst: true };
     const m = structuredClone(m0);
     const r = F.planeMonat(structuredClone(m), YM, { maxProPerson: 3 });
-    /* „folge“ (Dienste in Folge DAVOR) ist keine Folge der Verdrängung: Die Regel blickt nur rückwärts; eine eigene Einteilung VOR einem
-       bestehenden Dienst derselben Person verlängert deren Folge (bestehendes Verhalten von planeMonat, im Nachweis als Rückfrage).
-       Ausgenommen nur, wenn die Person in den Tagen davor wirklich eine eigene Einteilung hat — sonst zählt es. */
-    const eigeneVor = (pid, t) => r.gesetzt.some((g) => g.personId === pid && g.datum < t && g.datum >= add(t, -m.einstellungen.maxFolge - 1));
-    const neu = neueHarte(m, r).filter((x) => { const [pid, t, regel] = x.split("|"); return !(regel === "folge" && eigeneVor(pid, t)); });
-    expect(neu, "neue Befunde ab Achtung im Endstand (u. a. keinAlleindienst)").toEqual([]);
+    /* Seit der Vorwärtsprüfung (Betreiberentscheidung 26.11.) ohne Ausnahme: auch „folge“ an Tagen NACH einer eigenen Einteilung. */
+    expect(neueHarte(m, r, TAGE_PLUS), "neue Befunde ab Achtung im Endstand (u. a. keinAlleindienst, Dienste in Folge)").toEqual([]);
     expect(verdraengtGeprueft(m, r).filter((x) => x.bef.length)).toEqual([]);
     expect(pruefwegFehler(m, r)).toEqual([]);
   }, 600000);
@@ -507,6 +507,107 @@ describe("8. Posten: Bestandspersonen bleiben unverändert (Review #572 A1)", ()
     if (process.env.MESSUNG_DATEI) writeFileSync(process.env.MESSUNG_DATEI, JSON.stringify({ tOhne, tMit, gesetztOhne: o.gesetzt.length, gesetztMit: r.gesetzt.length, offenMit: r.offen.length }, null, 1));
     expect(tMit).toBeLessThan(2 * tOhne + 5000);
   }, 600000);
+  /* ---------- Vorwärtsprüfung „Dienste in Folge“ (Betreiberentscheidung 26.11.; Review #579) ---------- */
+  const D1 = "2026-12-01";
+  /** demo3, Nachtdienste frei, höchstens 5 Dienste in Folge. X (beste Kandidatin für N am 1.12.) hat N vom 2.12. an `k` Tage in Folge
+      (30.11. und der Tag nach dem Lauf frei); wer am 1.12. frei ist, ist dort abwesend — außer X und (mitY) Y, der letzten Kandidatin. */
+  const folgeSzenario = (k, mitY = false) => {
+    const m = mitLuecken("demo3");
+    m.einstellungen = { ...m.einstellungen, maxFolge: 5 };
+    const kand = F.ersatzVorschlaege(m, D1, "N").filter((x) => x.moeglich);
+    const X = kand[0].person.id, Y = kand[kand.length - 1].person.id;
+    m.abweichungen[`${X}|2026-11-30`] = "-";
+    for (let j = 1; j <= k; j++) m.abweichungen[`${X}|${add(D1, j)}`] = "N";
+    m.abweichungen[`${X}|${add(D1, k + 1)}`] = "-";
+    const frei = m.personen.filter((p) => p.id !== X && !(mitY && p.id === Y) && !F.personTag(m, p, D1).dienstId);
+    m.abwesenheiten = [...m.abwesenheiten, ...frei.map((p, i) => ({ id: `fv${i}`, personId: p.id, art: "urlaub", von: D1, bis: D1, status: "genehmigt" }))];
+    return { m: structuredClone(m), X, Y };
+  };
+  const amTag = (r, pid) => r.gesetzt.filter((g) => g.personId === pid && g.datum === D1);
+  it("planeMonat vorwärts (Befund #579): Einteilung VOR einer Folge bestehender Dienste, die sie zu lang macht — nicht gesetzt, offen mit Grund „folgeVorwaerts“", () => {
+    const { m, X } = folgeSzenario(5);
+    /* Vorbedingung: rückwärts allein sieht es nicht (X ist für den 1.12. einsetzbar und die einzige Kandidatin). */
+    expect(F.ersatzVorschlaege(m, D1, "N").filter((x) => x.moeglich).map((x) => x.person.id)).toEqual([X]);
+    const r = F.planeMonat(structuredClone(m), YM, { maxProPerson: 31 });
+    expect(amTag(r, X)).toEqual([]);
+    expect(r.offen.find((x) => x.datum === D1 && x.dienstId === "N")).toMatchObject({ grund: "folgeVorwaerts" });
+    expect(neueHarte(m, r, TAGE_PLUS)).toEqual([]);
+    expect(pruefwegFehler(m, r)).toEqual([]);
+  }, 300000);
+  it("planeMonat vorwärts: scheitert die beste Kandidatin, wird die nächste eingeteilt (die Stelle bleibt nicht unnötig offen)", () => {
+    const { m, X, Y } = folgeSzenario(5, true);
+    expect(F.ersatzVorschlaege(m, D1, "N").filter((x) => x.moeglich).map((x) => x.person.id), "X vor Y").toEqual([X, Y]);
+    const r = F.planeMonat(structuredClone(m), YM, { maxProPerson: 31 });
+    expect(amTag(r, X)).toEqual([]);
+    expect(amTag(r, Y).map((g) => g.dienstId)).toEqual(["N"]);
+    expect(neueHarte(m, r, TAGE_PLUS)).toEqual([]);
+  }, 300000);
+  it("planeMonat vorwärts Gegenproben: Folge genau maxFolge lang, Lücke am Tag danach — eingeteilt wie bisher (ohne Folgetage auch mit Aufwand 0)", () => {
+    const { m, X } = folgeSzenario(4);
+    const r = F.planeMonat(structuredClone(m), YM, { maxProPerson: 31 });
+    expect(amTag(r, X).map((g) => g.dienstId), "1 + 4 = 5 Dienste in Folge sind erlaubt").toEqual(["N"]);
+    expect(neueHarte(m, r, TAGE_PLUS)).toEqual([]);
+    const { m: m2, X: X2 } = folgeSzenario(5);
+    m2.abweichungen[`${X2}|${add(D1, 1)}`] = "-";   // Lücke am 2.12.: der Lauf danach hängt nicht an der Einteilung
+    const r2 = F.planeMonat(structuredClone(m2), YM, { maxProPerson: 31 });
+    expect(amTag(r2, X2).map((g) => g.dienstId)).toEqual(["N"]);
+    const nur = (x) => x.gesetzt.filter((g) => g.datum === D1);
+    expect(nur(F.planeMonat(structuredClone(m2), YM, { maxProPerson: 31, folgeAufwand: 0 })), "ohne Folgetage keine Arbeit").toEqual(nur(r2));
+  }, 300000);
+  it("planeMonat vorwärts Aufwand: vorab angemeldet (2 je Folgetag); reicht er nicht, nicht eingeteilt mit Grund „aufwand“; Obergrenze", () => {
+    const { m, X } = folgeSzenario(5);
+    for (const [a, grund] of [[0, "aufwand"], [9, "aufwand"], [10, "folgeVorwaerts"]]) {
+      const r = F.planeMonat(structuredClone(m), YM, { maxProPerson: 31, folgeAufwand: a });
+      expect(amTag(r, X), String(a)).toEqual([]);
+      expect(r.offen.find((x) => x.datum === D1 && x.dienstId === "N"), String(a)).toMatchObject({ grund });
+    }
+    expect(F.PLANEMONAT_FOLGE_AUFWAND).toBe(1000000);
+    const voll = F.planeMonat(structuredClone(m), YM, { maxProPerson: 31 });
+    expect(F.planeMonat(structuredClone(m), YM, { maxProPerson: 31, folgeAufwand: 10 * F.PLANEMONAT_FOLGE_AUFWAND })).toEqual(voll);
+  }, 300000);
+  it("Planer vorwärts: Aufbau wie planeMonat (nächste Kandidatin), mit Blöcken und Verbessern kein neuer Befund; Nachprüfung lehnt die Einteilung ab", () => {
+    const { m, X, Y } = folgeSzenario(5, true);
+    const a = F.planeMonat(structuredClone(m), YM, { maxProPerson: 3 });
+    const b = planeVorschlag(m, YM, { freigabe: true, bloecke: false, zuege: 0 });
+    expect(schluessel(b.gesetzt)).toEqual(schluessel(a.gesetzt));
+    expect(amTag(b, X)).toEqual([]);
+    expect(amTag(b, Y).length).toBe(1);
+    const voll = planeVorschlag(m, YM, { freigabe: true });
+    expect(voll.status).toBe("ok");
+    expect(neueHarte(m, voll, TAGE_PLUS)).toEqual([]);
+    const st = { ...m, abweichungen: { ...m.abweichungen, [`${X}|${D1}`]: "N" } };
+    expect(nachpruefen(m, st, [{ personId: X, datum: D1, dienstId: "N" }], neuesVorgabenBudget()).durch).toBe(false);
+    const st4 = folgeSzenario(4);
+    expect(nachpruefen(st4.m, { ...st4.m, abweichungen: { ...st4.m.abweichungen, [`${st4.X}|${D1}`]: "N" } }, [{ personId: st4.X, datum: D1, dienstId: "N" }], neuesVorgabenBudget()).durch, "Gegenprobe").toBe(true);
+  }, 600000);
+  it("Planer vorwärts im Nachtblock: die Fortsetzung endet vor dem Tag, der eine bestehende Folge zu lang machen würde (nicht erst die Nachprüfung)", () => {
+    /* X beginnt den Nachtblock am 1.12. (einzige Kandidatin); 2.–3.12. frei, N vom 4.12. an fünf Tage. Am 3.12. wären es 1 + 2 + 5 > 5. */
+    const { m, X } = folgeSzenario(0);
+    for (let j = 3; j <= 7; j++) m.abweichungen[`${X}|${add(D1, j)}`] = "N";
+    for (const j of [1, 2, 8]) m.abweichungen[`${X}|${add(D1, j)}`] = "-";
+    const r = planeVorschlag(m, YM, { freigabe: true, zuege: 0 });
+    expect(r.status, "Aufbau besteht die Nachprüfung").toBe("ok");
+    const nb = r.gesetzt.filter((g) => g.personId === X && g.art === "nachtblock").map((g) => g.datum);
+    expect(nb.slice(0, 2), "Block mit X begonnen").toEqual([D1, add(D1, 1)]);
+    expect(nb).not.toContain(add(D1, 2));
+    expect(neueHarte(m, r, TAGE_PLUS)).toEqual([]);
+  }, 600000);
+  for (const name of ["demo3", "demo1"]) it(`Endstand vorwärts (${name}, höchstens 3 Dienste in Folge, viele Lücken): planeMonat und Planer erzeugen keinen neuen Befund ab Achtung`, () => {
+    const m = mitLuecken(name, true);
+    m.einstellungen = { ...m.einstellungen, maxFolge: 3 };
+    for (const h of [3, 31]) expect(neueHarte(m, F.planeMonat(structuredClone(m), YM, { maxProPerson: h }), TAGE_PLUS), `planeMonat ${h}`).toEqual([]);
+    const r = planeVorschlag(m, YM, { freigabe: true });
+    expect(r.status).toBe("ok");
+    expect(neueHarte(m, r, TAGE_PLUS), "Planer").toEqual([]);
+  }, 900000);
+  it("Quelle: planeMonat und Planer nutzen dieselbe Vorwärtsprüfung folgeVorwaerts (einsatz.mjs), keine Kopie", () => {
+    const q = readFileSync("src/lib/fachlogik.js", "utf8");
+    const f = q.slice(q.indexOf("export function planeMonat("), q.indexOf("\n}\n", q.indexOf("export function planeMonat(")));
+    expect(f).toContain("folgeVorwaerts(arbeit, x.person, d, da, folgeLeisten)");
+    expect(q).not.toContain("export function folgeVorwaerts(");
+    expect(readFileSync("server/lib/engine/planer.mjs", "utf8")).not.toContain("function folgeVorwaerts(");
+    expect(readFileSync("server/lib/engine/einsatz.mjs", "utf8")).toContain("export function folgeVorwaerts(vorher, p, d, da, leisten, stand)");
+  });
   it("Quelle: planeMonat und Planer nutzen dieselbe Prüfung verdraengt (einsatz.mjs), keine Kopie", () => {
     const q = readFileSync("src/lib/fachlogik.js", "utf8");
     const f = q.slice(q.indexOf("export function planeMonat("), q.indexOf("\n}\n", q.indexOf("export function planeMonat(")));
