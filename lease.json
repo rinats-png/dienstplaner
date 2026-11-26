@@ -1,10 +1,10 @@
 {
-  "epoche": 26,
-  "halter": "hauptchat-e26",
-  "uebernommen_am": "2026-11-25T23:09:27.657Z",
-  "erneuert_am": "2026-11-25T23:09:27.657Z",
-  "gueltig_bis": "2026-11-26T03:09:27.657Z",
-  "uebergabe": "Hauptchat setzt Arbeit fort 26.11.; eigene Lease Epoche 25 abgelaufen; Integration 4f548e66; PRs #566/#569/#570 in Bearbeitung",
-  "vorgaenger": "hauptchat-e25",
+  "epoche": 27,
+  "halter": "hauptchat-e27",
+  "uebernommen_am": "2026-11-26T10:51:43.060Z",
+  "erneuert_am": "2026-11-26T10:51:43.060Z",
+  "gueltig_bis": "2026-11-26T12:21:43.060Z",
+  "uebergabe": "Lease abgelaufen; Hauptchat setzt Masterauftrag fort (Epoche 27); keine laufenden Schreiber ausser Nacharbeiten, alles gemergt bis 61c919bf",
+  "vorgaenger": "hauptchat-e26",
   "freigegeben_am": null
 }
