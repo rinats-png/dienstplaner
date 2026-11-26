@@ -18,7 +18,7 @@
    BEREICH-BESETZUNG-01), nie eine Sperre; nur bei aktivem Modul.
    Rein: keine Ablage, keine Uhr.
    ========================================================================== */
-import { modulAktiv, BRANCHENMODULE } from "./branchenmodule.mjs";
+import { modulAktiv, BRANCHENMODULE, MODULPROTOKOLL_GRENZE, modulprotokollFaellig, BEREICH_PROTOKOLL_ART } from "./branchenmodule.mjs";
 import { REGELN_BRANCHEN, alsEinteilungsBefund } from "./branchenkatalog.mjs";
 
 export const BEREICH_GRENZEN = Object.freeze({ bereicheJeEinheit: 50, planEintraege: 200_000, aenderungenSchicht: 500, tageSpanne: 731,
@@ -291,4 +291,51 @@ export function bereichsPlanSchicht(altO, neuO, { imBereich, eigeneBereiche }) {
       return { ok: false, grund: "Dieser Bereich gehört nicht zu deiner Einheit." };
   }
   return { ok: true, plan: neuO };
+}
+
+/* ---- Änderungsprotokoll im Schreibweg der Schichtverantwortung (WP-19.4, Matrix B2 b; Invarianten WP19-MODULPLAN.md §17) ----
+   Im bestehenden Modulprotokoll des Betriebs (einstellungen.modulprotokoll: nur der Server schreibt, Aufbewahrung, Grenze und
+   Löschweg wie dort). Je angenommenem Speichern mit Änderung genau ein Eintrag: wer (Kennung), wann (Serverzeit), eigene Einheit,
+   Anzahl und je Änderung Person (Kennung), Tag, Bereich vorher und nachher (Kennung oder null) — keine Namen, nichts weiter. */
+export { BEREICH_PROTOKOLL_ART };
+
+/**
+ * Der Protokolleintrag zu einer angenommenen Änderung des Bereichsplans; ohne Änderung null.
+ * @param {any} altO gespeicherter Bereichsplan
+ * @param {any} neuO angenommener Bereichsplan
+ * @param {{ am: string, von: any, einheit: any }} k
+ * @returns {null | { art: string, modul: string, am: string, von: any, einheit: any, anzahl: number,
+ *   zuordnungen: { person: string, tag: string, vorher: (string | null), nachher: (string | null) }[] }}
+ */
+export function bereichsprotokollEintrag(altO, neuO, { am, von, einheit }) {
+  const alt = istObjekt(altO) ? altO : {}, neu = istObjekt(neuO) ? neuO : {};
+  const wert = (o, k) => (hat(o, k) && typeof o[k] === "string" ? o[k] : null);
+  const zuordnungen = [];
+  for (const k of [...new Set([...Object.keys(alt), ...Object.keys(neu)])].sort()) {
+    const vorher = wert(alt, k), nachher = wert(neu, k);
+    if (vorher === nachher) continue;
+    const i = k.lastIndexOf("|");
+    zuordnungen.push({ person: k.slice(0, i), tag: k.slice(i + 1), vorher, nachher });
+  }
+  if (!zuordnungen.length) return null;
+  return { art: BEREICH_PROTOKOLL_ART, modul: "bereichsplan", am, von: von === undefined ? null : von,
+    einheit: einheit === undefined ? null : einheit, anzahl: zuordnungen.length, zuordnungen };
+}
+
+/**
+ * Hängt den Eintrag an das gespeicherte Modulprotokoll an (nie an das übermittelte). An der Grenze zuerst nach geprüfter Frist
+ * fällige Einträge entfernen (wie branchenmoduleZusammen); reicht das nicht, wird das Speichern abgewiesen — keine Änderung ohne
+ * Protokoll (fail-closed).
+ * @param {any} einstellungen gespeicherte Einstellungen des Betriebs
+ * @param {any} eintrag
+ * @returns {{ einstellungen: any } | { grund: string }}
+ */
+export function bereichsprotokollAnhaengen(einstellungen, eintrag) {
+  const e = istObjekt(einstellungen) ? einstellungen : {};
+  let bisher = Array.isArray(e.modulprotokoll) ? e.modulprotokoll : [];
+  if (bisher.length + 1 > MODULPROTOKOLL_GRENZE) bisher = modulprotokollFaellig({ einstellungen: { modulprotokoll: bisher } }, String(eintrag.am).slice(0, 10)).rest;
+  if (bisher.length + 1 > MODULPROTOKOLL_GRENZE)
+    return { grund: `Bereichsplan: Das Änderungsprotokoll ist voll (Grenze ${MODULPROTOKOLL_GRENZE} Einträge im Modulprotokoll). `
+      + "Die Zuordnung wird erst wieder gespeichert, wenn ältere Einträge nach einer geprüften Aufbewahrungsregel entfallen dürfen — bitte die Leitung ansprechen." };
+  return { einstellungen: { ...e, modulprotokoll: [...bisher, eintrag] } };
 }

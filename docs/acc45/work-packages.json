@@ -1941,8 +1941,8 @@
       "abhaengigkeiten": ["WP-19.0"],
       "status": "BLOCKED",
       "stufen": {
-        "implementiert": {"wert":"teilweise","beleg":"Server-Teilumfang #49 (ee38af2); Rest lokal: Zuordnungs- und Pflegeoberfläche, bekannt-Prüfung (docs/acc45/WP19-MODULPLAN.md Abschnitt 17); offen: Änderungsprotokoll (B2), Profil Rettungsdienst (B3)"},
-        "lokalGetestet": {"wert":"teilweise","beleg":"pruefungen/modul-bereichsplan-pflege.test.js (20, 7 Mutationen erkannt) und Regression, siehe docs/acc45/WP19-MODULPLAN.md Abschnitt 17"},
+        "implementiert": {"wert":"teilweise","beleg":"Server-Teilumfang #49 (ee38af2); Pflege und Zuordnung #575 (d6ac2089); lokal: Änderungsprotokoll im SV-Schreibweg (B2, docs/acc45/WP19-MODULPLAN.md Abschnitt 17.1; E1–E5 Entscheidung nötig); offen: Profil Rettungsdienst (B3, nach Marktstart)"},
+        "lokalGetestet": {"wert":"teilweise","beleg":"pruefungen/modul-bereichsplan-pflege.test.js, pruefungen/modul-bereichsplan-protokoll.test.js (23, Handler PUT und Teilweg, Mutationen je Schutz) und Regression, siehe docs/acc45/WP19-MODULPLAN.md Abschnitt 17/17.1"},
         "reviewt": {"wert":"teilweise","beleg":"Server-Teilumfang #49 (ee38af2)"},
         "integriert": {"wert":"teilweise","beleg":"Server-Teilumfang #49 (ee38af2)"},
         "stagingGeprueft": {"wert":false,"beleg":null},
@@ -1958,7 +1958,7 @@
       "akzeptanz": "laut WP19-MODULPLAN.md (Abschnitt des Moduls) und Produktentscheidungen 2026-11-03",
       "tests": "pruefungen/modul-<id>*.test.js, E2E in 19.13",
       "dateien": "siehe WP19-MODULPLAN.md Abschnitt 14",
-      "notiz": "Pflege lokal (2026-11-26, Branch acc45/wp-19-next, kein PR, kein unabhängiges Review): Zuordnung und Pflege der Bereiche in src/module/bereichsplan-pflege.js; Server weist Zuordnungen auf unbekannte Bereiche ab (abschaltbar, Abschnitt 17); Modul bleibt geplant. Offen: Änderungsprotokoll B2, Rettungsdienst-Profil B3. PR #244 (WP-19 B1): Schreibwege bei Status geplant geschlossen (server/lib/modul-altwege.mjs); Status unverändert."
+      "notiz": "Pflege lokal (2026-11-26, Branch acc45/wp-19-next, kein PR, kein unabhängiges Review): Zuordnung und Pflege der Bereiche in src/module/bereichsplan-pflege.js; Server weist Zuordnungen auf unbekannte Bereiche ab (abschaltbar, Abschnitt 17); Modul bleibt geplant. Änderungsprotokoll B2 (2026-11-26, Branch acc45/wp-19-4-aenderungsprotokoll, lokal, kein PR, kein unabhängiges Review): im bestehenden Modulprotokoll, nur SV-Schreibweg, atomar und fail-closed, Betriebsrat ohne diese Einträge, Liste für Leitung/Planung (Abschnitt 17.1; Entscheidung nötig E1–E5). Offen: Rettungsdienst-Profil B3 (nach Marktstart, Betreiberentscheidung 2026-11-26). PR #244 (WP-19 B1): Schreibwege bei Status geplant geschlossen (server/lib/modul-altwege.mjs); Status unverändert."
     },
     {
       "id": "WP-19.5",

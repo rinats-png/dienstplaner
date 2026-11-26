@@ -16,10 +16,12 @@
                       nur wenn pruefeBereiche nichts beanstandet.
    bereichsSchreibeVon  Der Schreibweg aus dem Kontext: nur die Felder
                       einheiten (nur mit Pflegerecht) und bereichsPlan.
+   BereichsProtokoll  Änderungen der Schichtverantwortung in der Einheit
+                      (Modulprotokoll, nur lesend) — nur Leitung und Planung.
    ========================================================================== */
 import { createElement as h, useState, Fragment } from "react";
 import {
-  pruefeBereiche, zuordnungSetzen, bereichHinzufuegen, bereichAendern, bereichSollSetzen, bereichEntfernen, BEREICH_GRENZEN,
+  pruefeBereiche, zuordnungSetzen, bereichHinzufuegen, bereichAendern, bereichSollSetzen, bereichEntfernen, BEREICH_GRENZEN, BEREICH_PROTOKOLL_ART,
 } from "../../server/lib/modul-bereichsplan.mjs";
 
 const RAHMEN = { border: "1px solid currentColor", borderRadius: "var(--v4-r-klein)", padding: 12, overflowWrap: "anywhere" };
@@ -117,6 +119,32 @@ export function BereichsPflege({ m, einheitId, schreibe }) {
       knopf("Verwerfen", () => { setEntwurf(gespeichert); setMeldung(""); }, { disabled: !geaendert })));
 }
 
+/** Höchstens so viele Einträge zeigt die Liste (die jüngsten zuerst). */
+export const PROTOKOLL_ANZEIGE = 20;
+
+/**
+ * Änderungsprotokoll der Schichtverantwortung für eine Einheit (WP-19.4, B2 b) — nur lesend, nur Leitung und Planung (der Server
+ * liefert das Modulprotokoll keiner anderen Rolle mit Zuordnungen aus). Wer, wann, Person, Tag, Bereich vorher → nachher.
+ * @param {{ m: any, einheitId: any }} props
+ */
+export function BereichsProtokoll({ m, einheitId }) {
+  const e = m && m.einstellungen && typeof m.einstellungen === "object" ? m.einstellungen : {};
+  const eintraege = (Array.isArray(e.modulprotokoll) ? e.modulprotokoll : [])
+    .filter((x) => x && x.art === BEREICH_PROTOKOLL_ART && String(x.einheit) === String(einheitId) && Array.isArray(x.zuordnungen))
+    .slice(-PROTOKOLL_ANZEIGE).reverse();
+  const personen = new Map((Array.isArray(m && m.personen) ? m.personen : []).filter(Boolean).map((p) => [String(p.id), p]));
+  const bereiche = new Map((Array.isArray(m && m.einheiten) ? m.einheiten : []).flatMap((x) => (x && Array.isArray(x.bereiche) ? x.bereiche : []))
+    .filter((b) => b && b.id).map((b) => [b.id, b.name]));
+  const wer = (id) => (personen.has(String(id)) ? personName(personen.get(String(id))) : "unbekannte Person");
+  const bereich = (id) => (id === null || id === undefined ? "nicht zugeordnet" : bereiche.get(id) || "entfernter Bereich");
+  return h("section", { "aria-label": "Änderungen der Schichtverantwortung", style: { ...RAHMEN, display: "grid", gap: 6 } },
+    h("h3", { style: { margin: 0, fontSize: 15 } }, "Änderungen der Schichtverantwortung"),
+    !eintraege.length ? h("p", { style: { margin: 0 } }, "Keine Änderungen der Schichtverantwortung in dieser Einheit.")
+      : h("ul", { style: { margin: 0, paddingLeft: 18, display: "grid", gap: 4 } }, eintraege.map((x, i) => h("li", { key: `${x.am}-${i}` },
+        `${String(x.am || "").slice(0, 16).replace("T", " ")} · ${wer(x.von)}: `,
+        x.zuordnungen.map((z) => `${wer(z.person)} am ${z.tag}: ${bereich(z.vorher)} → ${bereich(z.nachher)}`).join("; ")))));
+}
+
 /** Die Oberfläche des Moduls am Ort „tag": Zuordnung und Pflege, unter der Übersicht (index.js). */
 export function BereichsErgaenzung({ k }) {
   const schreibe = bereichsSchreibeVon(k);
@@ -124,5 +152,6 @@ export function BereichsErgaenzung({ k }) {
   const pflegen = k.bereichSchreiben === "voll" ? schreibe : null;
   return h(Fragment, null,
     h(BereichsZuordnung, { m: k.m, einheitId: k.einheitId, datum: k.datum, personenImDienst: k.personenImDienst, schreibe: zuordnen }),
-    pflegen && h(BereichsPflege, { key: String(k.einheitId), m: k.m, einheitId: k.einheitId, schreibe: pflegen }));
+    pflegen && h(BereichsPflege, { key: String(k.einheitId), m: k.m, einheitId: k.einheitId, schreibe: pflegen }),
+    pflegen && h(BereichsProtokoll, { m: k.m, einheitId: k.einheitId }));
 }
