@@ -15,6 +15,26 @@ import path from "node:path";
 
 vi.setConfig({ testTimeout: 60000, hookTimeout: 120000 });
 
+/* Störstelle für die Protokoll-Prüfungen der Sicherheitssperre (Nachtrag Nr. 1): Jeder setJSON-Aufruf der Ablage geht durch
+   `globalThis.__ablageBeobachter(name, schluessel, daten)`; wirft der Beobachter, scheitert der Schreibvorgang wie bei einer
+   gestörten Ablage. Ohne Beobachter (alle übrigen Tests) unverändert durchgereicht. */
+vi.mock("../server/lib/ablage.mjs", async (importOriginal) => {
+  const echt = /** @type {any} */ (await importOriginal());
+  return { ...echt, getStore: (angabe) => {
+    const s = echt.getStore(angabe);
+    const name = typeof angabe === "string" ? angabe : angabe && angabe.name;
+    return new Proxy(s, { get(t, p) {
+      if (p === "setJSON") return async (schluessel, daten, ...rest) => {
+        const b = /** @type {any} */ (globalThis).__ablageBeobachter;
+        if (b) b(name, schluessel, daten);
+        return t.setJSON(schluessel, daten, ...rest);
+      };
+      const v = t[p];
+      return typeof v === "function" ? v.bind(t) : v;
+    } });
+  } };
+});
+
 const WIRT = "127.0.0.1:3000";
 const RAUM = "wpi16zugang";
 let wurzel, laden, daten, kontoSchreiben, alleKonten, ablageSchluessel, B, E, nr = 0;
@@ -362,5 +382,156 @@ describe("„ja“ der Leitung ist eine Leitung-Pause (Betreiberentscheidung 202
     const e2 = await leitungSperrt("WZ18-AAAA-0018");
     expect(e2.status, e2.roh).toBe(403);
     expect(await gesperrt("WZ18-AAAA-0018")).toBe(false);
+  });
+});
+
+/* ---------------------------------------------------------------------------------------------------------------
+   Nachtrag Nr. 1 (Betreiberentscheidung 2026-11-26): Sicherheitssperre — „begonnen“ VOR dem Sperren, das tatsächliche
+   Ergebnis DANACH; ein fehlgeschlagener Vorgang steht nie als Erfolg im Protokoll (Invarianten S1–S8, WP-I16-nachweis.md)
+   --------------------------------------------------------------------------------------------------------------- */
+describe("Nachtrag Nr. 1: Protokoll der Sicherheitssperre — begonnen vorher, Ergebnis danach, nie Erfolg ohne Sperre", () => {
+  const VORGANG = /Vorgang ([0-9a-f]{8})/;
+  const zeilen = async () => { const { spurLesen } = await import("../server/lib/schutz.mjs"); return spurLesen(80); };
+  /** Alle Zeilen eines Vorgangs (nur Art `zugaenge`), älteste zuerst. */
+  const vorgangZeilen = async (v) => (await zeilen()).filter((z) => z.art === "zugaenge" && typeof z.zusatz === "string"
+    && (z.zusatz.match(VORGANG) || [])[1] === v).sort((a, b) => a.zeit.localeCompare(b.zeit));
+  const begonnenSeit = async (vorher) => (await zeilen()).filter((z) => z.ausgang === "begonnen" && !vorher.has(z.zeit + z.zusatz));
+  const schnappschuss = async () => new Set((await zeilen()).filter((z) => z.ausgang === "begonnen").map((z) => z.zeit + z.zusatz));
+  const ohne = () => { delete (/** @type {any} */ (globalThis)).__ablageBeobachter; };
+  const beobachte = (f) => { /** @type {any} */ (globalThis).__ablageBeobachter = f; };
+  const brKonto = (code, extra = {}) => kontoSchreiben(laden(), ablageSchluessel(code), { name: "s", bestand: RAUM, rolle: "betriebsrat",
+    person: "r1", betrieb: 0, mandantId: "m-a", angelegt: "2026-01-01T00:00:00.000Z", ...extra });
+
+  it("Erfolg: begonnen → Sperre in der Ablage → erfolg, in dieser Reihenfolge; Ergebnis nennt „1 von 1“; keine Person, kein Code", async () => {
+    await brKonto("WZ21-AAAA-0021");
+    await setzePause(PAUSE);
+    const vorher = await schnappschuss();
+    const folge = [];
+    beobachte((name, schl, d) => {
+      if (name === "centric-spur" && d && d.art === "zugaenge") folge.push(`spur:${d.ausgang}`);
+      if (schl === `konto:${ablageSchluessel("WZ21-AAAA-0021")}` && d && d.gesperrt) folge.push("sperre");
+    });
+    try {
+      const e = await betreiberSperren({ code: "WZ21-AAAA-0021" });
+      expect(e.status, e.roh).toBe(200);
+      expect(e.ok).toBe(true);
+    } finally { ohne(); }
+    expect(await gesperrt("WZ21-AAAA-0021")).toBe(true);
+    const b = await begonnenSeit(vorher);
+    expect(b).toHaveLength(1);
+    const v = b[0].zusatz.match(VORGANG)[1];
+    const zz = await vorgangZeilen(v);
+    expect(zz.map((z) => z.ausgang)).toEqual(["begonnen", "erfolg"]);
+    expect(zz[1].zusatz).toContain("1 von 1 Betriebsrat-Zugang gesperrt");
+    /* Reihenfolge an der Ablage selbst: die Zeile „begonnen“ vor dem Sperren, „erfolg“ erst danach */
+    expect(folge.indexOf("spur:begonnen")).toBeGreaterThanOrEqual(0);
+    expect(folge.indexOf("spur:begonnen")).toBeLessThan(folge.indexOf("sperre"));
+    expect(folge.indexOf("sperre")).toBeLessThan(folge.indexOf("spur:erfolg"));
+    const text = JSON.stringify(zz);
+    expect(text).not.toContain("WZ21-AAAA-0021");
+    expect(text).not.toContain(ablageSchluessel("WZ21-AAAA-0021").slice(-8));
+  });
+
+  it("Ablagefehler beim Sperren: 503, nicht gesperrt; Protokoll begonnen + fehler „0 von 1 … abgebrochen“, nie erfolg", async () => {
+    await brKonto("WZ22-AAAA-0022");
+    await setzePause(PAUSE);
+    const vorher = await schnappschuss();
+    const ziel = `konto:${ablageSchluessel("WZ22-AAAA-0022")}`;
+    beobachte((name, schl) => { if (schl === ziel) throw new Error("Ablage gestört (Prüfung)"); });
+    let e;
+    try { e = await betreiberSperren({ code: "WZ22-AAAA-0022" }); } finally { ohne(); }
+    expect(e.status, e.roh).toBe(503);
+    expect(e.ok).toBeUndefined();
+    expect(e).toMatchObject({ betriebsratGesperrt: 0, betriebsratAngefragt: 1 });
+    expect(await gesperrt("WZ22-AAAA-0022")).toBe(false);
+    const b = await begonnenSeit(vorher);
+    expect(b).toHaveLength(1);
+    const zz = await vorgangZeilen(b[0].zusatz.match(VORGANG)[1]);
+    expect(zz.map((z) => z.ausgang)).toEqual(["begonnen", "fehler"]);
+    expect(zz[1].zusatz).toContain("0 von 1 Betriebsrat-Zugang gesperrt");
+    expect(zz[1].zusatz).toContain("abgebrochen");
+    /* Wiederholung (idempotent): jetzt wirksam, eigener Vorgang mit erfolg */
+    const vorher2 = await schnappschuss();
+    const w = await betreiberSperren({ code: "WZ22-AAAA-0022" });
+    expect(w.status, w.roh).toBe(200);
+    expect(await gesperrt("WZ22-AAAA-0022")).toBe(true);
+    const b2 = await begonnenSeit(vorher2);
+    expect(b2).toHaveLength(1);
+    expect((await vorgangZeilen(b2[0].zusatz.match(VORGANG)[1])).map((z) => z.ausgang)).toEqual(["begonnen", "erfolg"]);
+  });
+
+  it("Teilergebnis (Kette ersetztDurch, zweites Glied scheitert): 503; Ergebnis fehler „1 von 2“, das erste bleibt gesperrt", async () => {
+    await brKonto("WZ24-AAAA-0024");
+    await brKonto("WZ23-AAAA-0023", { ersetztDurch: ablageSchluessel("WZ24-AAAA-0024") });
+    await setzePause(PAUSE);
+    const vorher = await schnappschuss();
+    const zweites = `konto:${ablageSchluessel("WZ24-AAAA-0024")}`;
+    beobachte((name, schl) => { if (schl === zweites) throw new Error("Ablage gestört (Prüfung)"); });
+    let e;
+    try { e = await betreiberSperren({ code: "WZ23-AAAA-0023" }); } finally { ohne(); }
+    expect(e.status, e.roh).toBe(503);
+    expect(e).toMatchObject({ betriebsratGesperrt: 1, betriebsratAngefragt: 2 });
+    expect(await gesperrt("WZ23-AAAA-0023")).toBe(true);
+    expect(await gesperrt("WZ24-AAAA-0024")).toBe(false);
+    const b = await begonnenSeit(vorher);
+    expect(b).toHaveLength(1);
+    expect(b[0].zusatz).toContain("Sicherheitssperre durch Betreiber: 2 Betriebsrat-Zugang");
+    const zz = await vorgangZeilen(b[0].zusatz.match(VORGANG)[1]);
+    expect(zz.map((z) => z.ausgang)).toEqual(["begonnen", "fehler"]);
+    expect(zz[1].zusatz).toContain("1 von 2 Betriebsrat-Zugang gesperrt");
+  });
+
+  it("Ergebnis-Protokoll nicht schreibbar: Sperre bleibt wirksam (Sitzung beendet), Antwort 503 statt ok; „begonnen“ bleibt offen, nie erfolg", async () => {
+    await brKonto("WZ25-AAAA-0025");
+    const t = (await anfrage("/api/anmelden", { rumpf: { zugangscode: "WZ25-AAAA-0025" } })).token;
+    expect(t).toBeTruthy();
+    await setzePause(PAUSE);
+    const vorher = await schnappschuss();
+    beobachte((name, schl, d) => {
+      if (name === "centric-spur" && d && typeof d.zusatz === "string" && d.zusatz.startsWith("Sicherheitssperre Ergebnis"))
+        throw new Error("Protokoll gestört (Prüfung)");
+    });
+    let e;
+    try { e = await betreiberSperren({ code: "WZ25-AAAA-0025" }); } finally { ohne(); }
+    expect(e.status, e.roh).toBe(503);
+    expect(e).toMatchObject({ widerrufWirksam: true, protokollVollstaendig: false });
+    expect(e.vorgang).toMatch(/^[0-9a-f]{8}$/);
+    expect(await gesperrt("WZ25-AAAA-0025")).toBe(true);
+    expect(e.sitzungenBeendet).toBeGreaterThanOrEqual(1);
+    const b = await begonnenSeit(vorher);
+    expect(b).toHaveLength(1);
+    expect(b[0].zusatz).toContain(e.vorgang);
+    const zz = await vorgangZeilen(e.vorgang);
+    expect(zz.map((z) => z.ausgang)).toEqual(["begonnen"]);
+  });
+
+  it("„begonnen“ nicht schreibbar: die Sicherheitssperre unterbleibt nicht; Ergebnis erfolg steht, Antwort 503 (Protokoll unvollständig)", async () => {
+    await brKonto("WZ26-AAAA-0026");
+    await setzePause(PAUSE);
+    beobachte((name, schl, d) => { if (name === "centric-spur" && d && d.ausgang === "begonnen") throw new Error("Protokoll gestört (Prüfung)"); });
+    let e;
+    try { e = await betreiberSperren({ code: "WZ26-AAAA-0026" }); } finally { ohne(); }
+    expect(e.status, e.roh).toBe(503);
+    expect(e).toMatchObject({ widerrufWirksam: true, protokollVollstaendig: false });
+    expect(await gesperrt("WZ26-AAAA-0026")).toBe(true);
+    const zz = await vorgangZeilen(e.vorgang);
+    expect(zz.map((z) => z.ausgang)).toEqual(["erfolg"]);
+    expect(zz[0].zusatz).toContain("1 von 1 Betriebsrat-Zugang gesperrt");
+  });
+
+  it("Leitung bei aktiver Pause und schon gesperrte Zugänge: kein Vorgang (keine Zeile „begonnen“)", async () => {
+    await setzePause(PAUSE);
+    await brKonto("WZ27-AAAA-0027");
+    await kontoSchreiben(laden(), ablageSchluessel("WZ28-AAAA-0028"), { name: "l", bestand: RAUM, rolle: "leitung", person: "l1", betrieb: 0, mandantId: "m-a",
+      angelegt: "2026-01-01T00:00:00.000Z" });
+    const tl = (await anfrage("/api/anmelden", { rumpf: { zugangscode: "WZ28-AAAA-0028" } })).token;
+    expect(tl).toBeTruthy();
+    const vorher = await schnappschuss();
+    const l = await anfrage("/api/zugang-sperren", { token: tl, rumpf: { code: "WZ27-AAAA-0027" } });
+    expect(l.status, l.roh).toBe(403);
+    /* schon gesperrt (WZ21 aus dem ersten Test): Betreiber wiederholt — nichts anzufragen, kein Vorgang */
+    const w = await betreiberSperren({ code: "WZ21-AAAA-0021" });
+    expect(w.status, w.roh).toBe(200);
+    expect(await begonnenSeit(vorher)).toHaveLength(0);
   });
 });

@@ -679,6 +679,10 @@ async function behandeln(req, context, ctx) {
          über „alle des Betriebs“ (dann die ganze Anfrage, nichts wird gesperrt). Wie die Rollenvergabe
          (betriebsratKontenSperre): unabhängig vom Betreiberschalter; ein nicht lesbarer Bestand oder Pausenstand zählt als
          pausiert (fail closed). Im Protokoll steht nur die Zahl. */
+      /** Sicherheitssperre des Betreibers (Nr. 1 und Nachtrag, Invarianten S1–S8 in docs/acc45/WP-I16-nachweis.md):
+          `begonnen` VOR dem Sperren, das tatsächliche Ergebnis („x von n“) DANACH, beide mit derselben Vorgangskennung.
+          @type {null | { vorgang: string, ziele: string[], protokollLuecke: boolean, unvollstaendig: boolean }} */
+      let sicherheitssperre = null;
       {
         const brZiele = [...new Set([...erlaubt, ...kettenHuelle(konten, erlaubt)])]
           .filter((h) => konten[h] && !konten[h].gesperrt && konten[h].rolle === "betriebsrat");
@@ -699,8 +703,14 @@ async function behandeln(req, context, ctx) {
             /* Betreiberentscheidung 2026-11-26 (Nr. 1): Der Betreiber darf kompromittierte Betriebsrat-Zugänge aus
                Sicherheitsgründen sperren (Widerruf) — auch bei aktiver oder unlesbarer Pause. Nur Sperren: die Pause bleibt
                unberührt, Anlegen und Umstellen bleiben gesperrt, die Leitung bleibt bei aktiver Pause gesperrt (oben). Pflicht:
-               eine Protokollzeile VOR dem Sperren, nur Art und Zahl, keine Person. */
-            await protokoll("zugaenge", kS, "erfolg", `Sicherheitssperre durch Betreiber: ${brZiele.length} Betriebsrat-Zugang bei aktiver Pause`);
+               eine Protokollzeile VOR dem Sperren, nur Art und Zahl, keine Person.
+               Nachtrag (Betreiberentscheidung 2026-11-26): Diese Zeile sagt „begonnen“, nicht „erfolg“ — ein fehlgeschlagener
+               Vorgang darf nie als erfolgreich dastehen. Das Ergebnis folgt nach dem Sperren. Ist die Zeile nicht schreibbar,
+               wird trotzdem gesperrt (die Sicherheitssperre unterbleibt nie wegen des Protokolls); die Antwort sagt es. */
+            sicherheitssperre = { vorgang: randomBytes(4).toString("hex"), ziele: brZiele, protokollLuecke: false, unvollstaendig: false };
+            if (!(await protokoll("zugaenge", kS, "begonnen",
+              `Sicherheitssperre durch Betreiber: ${brZiele.length} Betriebsrat-Zugang bei aktiver Pause · Vorgang ${sicherheitssperre.vorgang}`)))
+              sicherheitssperre.protokollLuecke = true;
           } else if (gesperrtDurchPause) {
             await protokoll("zugaenge", kS, "abgewiesen", `Sperrung von Betriebsrat-Zugängen bei aktiver Pause: ${brZiele.length}`);
             return antwort({ fehler: "Solange die Intelligence-Funktionen pausiert sind, lassen sich Betriebsrat-Zugänge nicht zurückziehen. "
@@ -721,16 +731,40 @@ async function behandeln(req, context, ctx) {
          wurde die zu Beginn gelesene Kopie zurückgeschrieben — eine gleichzeitige Bindung (Erstanmeldung), ein
          Faktorvermerk oder eine Umschlüsselung ging dabei verloren. Der Sammelblob wird nicht mehr gepflegt; ein Zugang,
          der nur dort steht, wird hier vereinzelt (die Basis ist dann die gelesene Kopie). */
-      for (const h of new Set([...erlaubt, ...kette])) {
-        if (!konten[h] || konten[h].gesperrt) continue;
-        let neu = false;
-        konten[h] = await kontoAendern(store, h, (f) => {
-          const basis = f || konten[h];
-          if (!basis || basis.gesperrt) return f || basis;
-          neu = true;
-          return gesperrtesKonto(basis, sB.name || sB.rolle);
-        });
-        if (neu && erlaubt.includes(h)) gesperrt++;
+      /* Sicherheitssperre: wie viele der angefragten Betriebsrat-Zugänge stehen jetzt gesperrt (auch durch einen gleichzeitigen Vorgang)? */
+      const brWirksam = () => sicherheitssperre
+        ? sicherheitssperre.ziele.filter((h) => konten[h] && konten[h].gesperrt).length : 0;
+      try {
+        for (const h of new Set([...erlaubt, ...kette])) {
+          if (!konten[h] || konten[h].gesperrt) continue;
+          let neu = false;
+          konten[h] = await kontoAendern(store, h, (f) => {
+            const basis = f || konten[h];
+            if (!basis || basis.gesperrt) return f || basis;
+            neu = true;
+            return gesperrtesKonto(basis, sB.name || sB.rolle);
+          });
+          if (neu && erlaubt.includes(h)) gesperrt++;
+        }
+      } catch (e) {
+        /* Gewöhnliche Sperre: wie bisher der allgemeine Fehlerweg (Zeile `fehler`). Sicherheitssperre (S5): das Ergebnis
+           des Vorgangs mit der tatsächlich erreichten Zahl, nie `erfolg`. Schon gesperrte bleiben gesperrt (Sitzungen
+           hängen am Kontozustand); eine Wiederholung ist idempotent. */
+        if (!sicherheitssperre) throw e;
+        const n = sicherheitssperre.ziele.length, x = brWirksam();
+        await protokoll("zugaenge", kS, "fehler",
+          `Sicherheitssperre Ergebnis · Vorgang ${sicherheitssperre.vorgang}: ${x} von ${n} Betriebsrat-Zugang gesperrt, abgebrochen (Ablagefehler)`);
+        return antwort({ fehler: "Sicherheitssperre nicht vollständig.",
+          text: `${x} von ${n} Betriebsrat-Zugängen sind gesperrt. Die Ablage hat das Sperren abgebrochen — bitte wiederholen.`,
+          widerrufWirksam: x > 0, betriebsratGesperrt: x, betriebsratAngefragt: n, gesperrt, vorgang: sicherheitssperre.vorgang }, 503);
+      }
+      if (sicherheitssperre) {
+        /* S1/S2: das Ergebnis erst jetzt, nachdem jede Sperre in der Ablage steht — `erfolg` nur bei x = n. */
+        const n = sicherheitssperre.ziele.length, x = brWirksam();
+        if (x !== n) sicherheitssperre.unvollstaendig = true;
+        if (!(await protokoll("zugaenge", kS, x === n ? "erfolg" : "fehler",
+          `Sicherheitssperre Ergebnis · Vorgang ${sicherheitssperre.vorgang}: ${x} von ${n} Betriebsrat-Zugang gesperrt`)))
+          sicherheitssperre.protokollLuecke = true;
       }
       /* WP-24 (Review-Auflage A4a): Ein Kalender-Feed aus der Zeit vor WP-24 trägt keine Herkunft
          und hinge sonst nur an der Person. Die Sperre widerruft zusätzlich den herkunftslosen Feed der
@@ -794,10 +828,23 @@ async function behandeln(req, context, ctx) {
             text: "Der Zugang ist gesperrt und seine Sitzungen sind beendet. Dass er auch nach dem Zurückspielen einer älteren "
               + "Sicherung gesperrt bleibt, ist noch nicht festgehalten — der Betreiber ist informiert (Überwachung); "
               + "der nächste Serverstart holt es nach.",
-            widerrufWirksam: true, gesperrt, sitzungenBeendet: beendet, schluesselBeendet }, 503);
+            widerrufWirksam: true, gesperrt, sitzungenBeendet: beendet, schluesselBeendet,
+            ...(sicherheitssperre ? { vorgang: sicherheitssperre.vorgang, protokollVollstaendig: !sicherheitssperre.protokollLuecke } : {}) }, 503);
         }
       }
-      await protokoll("zugaenge", kS, "erfolg", `${gesperrt} gesperrt · ${beendet} Sitzungen, ${schluesselBeendet} Sicherungsschlüssel beendet`);
+      await protokoll("zugaenge", kS, sicherheitssperre && sicherheitssperre.unvollstaendig ? "fehler" : "erfolg",
+        `${gesperrt} gesperrt · ${beendet} Sitzungen, ${schluesselBeendet} Sicherungsschlüssel beendet`);
+      /* S4: Steht „begonnen“ oder das Ergebnis der Sicherheitssperre nicht im Protokoll (oder ist sie unvollständig), ist die
+         Sperre trotzdem wirksam — der Betreiber bekommt aber kein `ok`, sondern eine Fehlerantwort mit der Vorgangskennung. */
+      if (sicherheitssperre && (sicherheitssperre.protokollLuecke || sicherheitssperre.unvollstaendig))
+        return antwort({ fehler: sicherheitssperre.unvollstaendig ? "Sicherheitssperre nicht vollständig." : "Sperre wirksam, Protokoll unvollständig.",
+          text: sicherheitssperre.unvollstaendig
+            ? "Nicht alle angefragten Betriebsrat-Zugänge sind gesperrt — bitte wiederholen."
+            : "Die Zugänge sind gesperrt und ihre Sitzungen beendet. Der Vorgang steht nicht vollständig im Betriebsprotokoll; "
+              + "bitte die Vorgangskennung festhalten.",
+          widerrufWirksam: !sicherheitssperre.unvollstaendig || brWirksam() > 0, protokollVollstaendig: !sicherheitssperre.protokollLuecke,
+          vorgang: sicherheitssperre.vorgang, betriebsratGesperrt: brWirksam(), betriebsratAngefragt: sicherheitssperre.ziele.length,
+          gesperrt, sitzungenBeendet: beendet, schluesselBeendet }, 503);
       return antwort({ ok: true, gesperrt, sitzungenBeendet: beendet, schluesselBeendet });
     }
 
