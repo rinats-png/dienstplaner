@@ -144,7 +144,7 @@ describe("WP-48.9 aktiver Weg: Fehlerfall = Abweisen, Platte unverändert", { ti
     "eingefrorenes Ist im abgeschlossenen Monat geändert": { status: 403, codes: ["MONAT_ABGESCHLOSSEN"], rollen: ["LT", "PL", "KU"],
       aendern: (m) => { m.istEingefroren[`m0|${tag(-40)}`].std = 1; } },
     "neue Ist-Zeit im abgeschlossenen Monat angelegt": { status: 403, codes: ["STEMPEL_UNVERAENDERLICH", "MONAT_ABGESCHLOSSEN"], rollen: ["LT", "PL", "KU"],
-      aendern: (m) => { m.erfassung[`a1|${tag(-39)}`] = { start: "06:00", ende: "14:00", bestaetigt: true, grund: "" }; } },
+      aendern: (m) => { m.erfassung[`a1|${tag(-40).slice(0, 7)}-01`] = { start: "06:00", ende: "14:00", bestaetigt: true, grund: "" }; } },
     "doppelte Betriebskennung": { status: 422, rollen: ["LT", "PL", "KU"],
       aendern: (m, b) => { b.mandanten.push(kopie(b.mandanten[0])); } },
   };
@@ -194,7 +194,7 @@ describe("WP-48.9 aktiver Weg: Mandantengrenze und Weglassen", { timeout: 120000
       const fremd = b.mandanten.find((m) => m.id === "m2");
       if (fremd) { fremd.name = "Gekapert"; fremd.abweichungen[`a1|${tag(20)}`] = "F"; fremd.personen.pop(); fremd.einstempeln = {}; }
       const p = await put(token[k], b, g.etag);
-      expect([200, 403, 422], JSON.stringify(p).slice(0, 200)).toContain(p.status);
+      expect(p.status, JSON.stringify(p).slice(0, 200)).toBe(200);
       const nach = (await B.bestandLesenStreng(laden(), raum)).bestand;
       expect(nach.mandanten.find((m) => m.id === "m2")).toEqual(vorher);
       if (p.status === 200) expect(nach.mandanten.find((m) => m.id === "m1").abweichungen[`a1|${tag(20)}`]).toBe("F");
@@ -218,7 +218,7 @@ describe("WP-48.9 aktiver Weg: Mandantengrenze und Weglassen", { timeout: 120000
       delete eigener(b).einstempeln; delete eigener(b).erfassung; delete eigener(b).monatsabschluss; delete eigener(b).istEingefroren;
       eigener(b).abweichungen[`a1|${tag(20)}`] = "F";
       const p = await put(token[k], b, g.etag);
-      expect([200, 403, 422], JSON.stringify(p).slice(0, 200)).toContain(p.status);
+      expect(p.status, JSON.stringify(p).slice(0, 200)).toBe(200);
       const nach = eigener((await B.bestandLesenStreng(laden(), raum)).bestand);
       for (const f of ["einstempeln", "erfassung", "monatsabschluss", "istEingefroren"]) expect(nach[f], f).toEqual(vorher[f]);
     });
