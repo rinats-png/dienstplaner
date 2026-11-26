@@ -556,6 +556,8 @@ export const MODULPROTOKOLL_GRENZE = 2000;
 /** Art des Eintrags „Zuordnung im Bereichsplan durch die Schichtverantwortung“ (WP-19.4, modul-bereichsplan.mjs): trägt Person|Tag
     und Bereich vorher/nachher — nur für Leitung und Planung (Vollsicht), nicht für den Betriebsrat (moduleinstellungenSicht). */
 export const BEREICH_PROTOKOLL_ART = "bereich-zuordnung";
+/** Vermerk der Archivierung dieser Einträge durch die Leitung (E7, modul-bereichsplan.mjs `bereichsprotokollArchivieren`) — nicht für den Betriebsrat. */
+export const BEREICH_ARCHIV_ART = "bereich-zuordnung-archiviert";
 /** Belegte Plätze der gemeinsamen Grenze (MODULPROTOKOLL_GRENZE): ohne Einträge der Art BEREICH_PROTOKOLL_ART — die haben eigene
     Grenzen (BEREICH_GRENZEN in modul-bereichsplan.mjs) und verdrängen oder sperren nie Schalter, Regelwerte oder Vorgaben (Review #578 B-1). */
 export const modulprotokollBelegt = (liste) => (Array.isArray(liste) ? liste : []).filter((x) => !istObjekt(x) || x.art !== BEREICH_PROTOKOLL_ART).length;
@@ -1007,7 +1009,8 @@ export function moduleinstellungenSicht(e, rolle, vorgabenBetriebsrat = false) {
   if (rolle === "betriebsrat") {
     /* Das Protokoll der internen Vorgaben (WP-I4): nur bei offenem Schalter (AUS, Entscheidung 2026-11-25, 1.2), dann ohne Person. */
     /* Zuordnungen im Bereichsplan (WP-19.4): keine Einzelzuordnung und keine Person für den Betriebsrat — der Eintrag entfällt ganz. */
-    if (hat(e, "modulprotokoll")) aus.modulprotokoll = modulprotokollPositiv(e.modulprotokoll.filter((x) => !istObjekt(x) || x.art !== BEREICH_PROTOKOLL_ART)
+    /* Ebenso der Vermerk ihrer Archivierung durch die Leitung (E7, A12). */
+    if (hat(e, "modulprotokoll")) aus.modulprotokoll = modulprotokollPositiv(e.modulprotokoll.filter((x) => !istObjekt(x) || (x.art !== BEREICH_PROTOKOLL_ART && x.art !== BEREICH_ARCHIV_ART))
       .filter((x) => !istObjekt(x) || x.modul !== "vorgaben" || vorgabenBetriebsrat === true)
       .map((x) => (istObjekt(x) && x.modul === "vorgaben" ? ohne(x, ["von"]) : x)));
     return aus;

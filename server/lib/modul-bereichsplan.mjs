@@ -18,7 +18,7 @@
    BEREICH-BESETZUNG-01), nie eine Sperre; nur bei aktivem Modul.
    Rein: keine Ablage, keine Uhr.
    ========================================================================== */
-import { modulAktiv, BRANCHENMODULE, BEREICH_PROTOKOLL_ART } from "./branchenmodule.mjs";
+import { modulAktiv, BRANCHENMODULE, BEREICH_PROTOKOLL_ART, BEREICH_ARCHIV_ART } from "./branchenmodule.mjs";
 import { REGELN_BRANCHEN, alsEinteilungsBefund } from "./branchenkatalog.mjs";
 
 export const BEREICH_GRENZEN = Object.freeze({ bereicheJeEinheit: 50, planEintraege: 200_000, aenderungenSchicht: 500, tageSpanne: 731,
@@ -336,7 +336,7 @@ export const protokollBytes = (x) => new TextEncoder().encode(JSON.stringify(x))
 
 /**
  * Hängt den Eintrag an das gespeicherte Modulprotokoll an (nie an das übermittelte). Nur anhängen: nichts wird hier entfernt oder
- * verdrängt (Archivierung: Entscheidung E7, WP19-MODULPLAN.md 17.1). Über einer eigenen Grenze wird das Speichern der
+ * verdrängt (Platz schafft nur die Archivierung der Leitung, bereichsprotokollArchivieren, WP19-MODULPLAN.md 17.1 A1–A12). Über einer eigenen Grenze wird das Speichern der
  * Schichtverantwortung abgewiesen — keine Zuordnung ohne Protokoll (fail-closed).
  * @param {any} einstellungen gespeicherte Einstellungen des Betriebs
  * @param {any} eintrag
@@ -354,6 +354,65 @@ export function bereichsprotokollAnhaengen(einstellungen, eintrag, { grenzen = B
   const eigene = bisher.filter((x) => istObjekt(x) && x.art === BEREICH_PROTOKOLL_ART);
   if (eigene.length + 1 > grenzen.eintraege || protokollBytes(eigene) + b > grenzen.gesamtBytes)
     return { grund: "Bereichsplan: Das Änderungsprotokoll der Zuordnungen ist voll. Zuordnen durch die Schichtverantwortung geht erst wieder, "
-      + "wenn die Leitung über die Archivierung entschieden hat; Leitung und Planung ordnen weiter zu." };
+      + "wenn die Leitung das Änderungsprotokoll archiviert hat (Export und Vermerk); Leitung und Planung ordnen weiter zu." };
   return { einstellungen: { ...e, modulprotokoll: [...bisher, eintrag] } };
+}
+
+/* ---- Archivierung durch die Leitung (E7 b, Betreiberentscheidung 2026-11-26; Invarianten A1–A12, WP19-MODULPLAN.md 17.1) ----
+   Kein stilles Löschen und keine höheren Grenzen: Die Leitung zieht aus ihrer Sicht einen Export der ältesten Einträge dieser Art
+   (kanonisch JSON, Bytes, SHA-256) und bestätigt ihn mit Anzahl, Bytes und Prüfsumme. Nur wenn das zum gespeicherten Stand passt,
+   entfernt der Server genau diese Einträge und hängt im SELBEN Schreiben einen Vermerk an (ohne Namen, ohne Freitext). Browser und
+   Server rechnen dasselbe (WebCrypto). Das Archiv ist das Exportpaket der Leitung; eine Serverablage gibt es nicht (E8). */
+export { BEREICH_ARCHIV_ART };
+
+/** Archivieren nur bei wirkendem Modul (A8; die Abfrage bleibt im Modul, G10). @param {any} m @param {readonly any[]} [module] */
+export const bereichsprotokollArchivierbar = (m, module = BRANCHENMODULE) => modulAktiv(m, "bereichsplan", module);
+const PRUEFSUMME = /^[0-9a-f]{64}$/;
+
+/**
+ * Die ältesten `anzahl` Einträge dieser Art (ohne Angabe: alle) in gespeicherter Reihenfolge — dieselben Objekte, nicht kopiert —
+ * mit der kanonischen Form `text` (JSON), über die `bytes` (UTF-8) und die Prüfsumme laufen.
+ * @param {any} einstellungen
+ * @param {{ anzahl?: number }} [o]
+ * @returns {{ eintraege: any[], anzahl: number, vorhanden: number, bytes: number, text: string }}
+ */
+export function bereichsprotokollExport(einstellungen, { anzahl } = {}) {
+  const liste = istObjekt(einstellungen) && Array.isArray(einstellungen.modulprotokoll) ? einstellungen.modulprotokoll : [];
+  const alle = liste.filter((x) => istObjekt(x) && x.art === BEREICH_PROTOKOLL_ART);
+  const eintraege = anzahl === undefined ? alle : alle.slice(0, Math.max(0, anzahl));
+  const text = JSON.stringify(eintraege);
+  return { eintraege, anzahl: eintraege.length, vorhanden: alle.length, bytes: new TextEncoder().encode(text).length, text };
+}
+
+/** SHA-256 (hex) der UTF-8-Form — im Browser und auf dem Server gleich. @param {string} text @returns {Promise<string>} */
+export async function bereichsprotokollPruefsumme(text) {
+  const d = await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(String(text)));
+  return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * Archiviert nach bestätigtem Export: entfernt die ältesten `anzahl` Einträge dieser Art und hängt den Vermerk an — beides im
+ * Ergebnis, sonst nichts (fail-closed; die Eingabe bleibt unverändert). 400: Form; 409: Export passt nicht zum gespeicherten Stand.
+ * Grenzen bleiben, wie sie sind (A10); der Vermerk wird auch an der gemeinsamen Grenze geschrieben (wie Ausschalten, Art. 16/17).
+ * @param {any} einstellungen gespeicherte Einstellungen des Betriebs (frisch gelesen)
+ * @param {any} angabe { anzahl, bytes, pruefsumme, exportGespeichert: true }
+ * @param {{ am: string, von: any }} k
+ * @returns {Promise<{ einstellungen: any, vermerk: any } | { status: 400 | 409, grund: string }>}
+ */
+export async function bereichsprotokollArchivieren(einstellungen, angabe, { am, von }) {
+  const a = istObjekt(angabe) ? angabe : {};
+  if (a.exportGespeichert !== true)
+    return { status: 400, grund: "Archivieren: Erst den Export herunterladen und bestätigen, dass er gespeichert ist." };
+  if (!Number.isInteger(a.anzahl) || a.anzahl < 1 || !Number.isInteger(a.bytes) || a.bytes < 2 || typeof a.pruefsumme !== "string" || !PRUEFSUMME.test(a.pruefsumme))
+    return { status: 400, grund: "Archivieren: Anzahl, Bytes und Prüfsumme des Exports fehlen oder sind ungültig." };
+  const e = istObjekt(einstellungen) ? einstellungen : {};
+  const ex = bereichsprotokollExport(e, { anzahl: a.anzahl });
+  if (ex.anzahl !== a.anzahl || ex.bytes !== a.bytes || (await bereichsprotokollPruefsumme(ex.text)) !== a.pruefsumme)
+    return { status: 409, grund: "Archivieren: Der Export passt nicht zum gespeicherten Änderungsprotokoll (inzwischen archiviert oder unvollständig). "
+      + "Nichts entfernt — bitte neu exportieren." };
+  const zeit = (x) => (typeof x.am === "string" ? x.am.slice(0, 40) : null);
+  const vermerk = { art: BEREICH_ARCHIV_ART, modul: "bereichsplan", am, von: von === undefined ? null : von, anzahl: ex.anzahl, bytes: ex.bytes,
+    pruefsumme: a.pruefsumme, erster: zeit(ex.eintraege[0]), letzter: zeit(ex.eintraege[ex.eintraege.length - 1]) };
+  const weg = new Set(ex.eintraege);
+  return { einstellungen: { ...e, modulprotokoll: [...e.modulprotokoll.filter((x) => !weg.has(x)), vermerk] }, vermerk };
 }

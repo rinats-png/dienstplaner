@@ -136,3 +136,32 @@ ohne Befund.
 
 **Angepasste bestehende Tests:** M1 (N-2), M5 (je Person), H3 und „Fristabgelaufenes bleibt gelöscht“ (mit `an`, N-3) —
 alle wegen der verlangten Verhaltensänderung, keine Abschwächung.
+
+## Nachtrag 2026-11-26: Kollision der Sicherungsmarken (Ursache CI-Check #577)
+
+Befund: `markeNeu()` bildet die Marke aus der Sekunde und vier Zufallsziffern; alle Schreibstellen legten
+`sicherung:<raum>:<marke>` mit `setJSON` an — ohne Existenzprüfung. Zwei Sicherungen desselben Raums in derselben
+Sekunde mit gleichen Ziffern (1:10 000) überschrieben einander still; ein Sicherungspunkt ging verloren (der
+Live-Bestand nicht). Reproduziert mit festem `Math.random` im Server-Kindprozess (Szenario M2 in
+`erstleitung-bestand-differenz` rot). Behebung vom Betreiber am 2026-11-26 genehmigt (kleiner Produktfix).
+
+Invarianten (vor der Umsetzung festgehalten):
+
+1. Jede Sicherung hat einen im Raum eindeutigen Schlüssel `sicherung:<raum>:<marke>`; eine angelegte Sicherung
+   wird von keiner späteren Sicherung überschrieben.
+2. Angelegt wird nie ohne Existenzprüfung, und die Prüfung ist atomar mit dem Anlegen: `setJSONWennNeu` der
+   Ablage (`ablage.mjs`, `atomarAnlegen`: Zwischendatei, fsync, `link()` → `EEXIST`). Das gilt auch zwischen
+   zwei Node-Prozessen auf derselben Ablage; eine Raumsperre ist dafür nicht nötig (und ein get-then-set ohne
+   Sperre wäre keine Lösung).
+3. Bei Kollision wird eine neue Marke gebildet — gleiche Sekunde, andere Ziffern —, höchstens
+   `MARKE_VERSUCHE` Mal. Die Ziffern rücken je Versuch weiter (Zufall + Versuchsnummer), damit auch ein
+   fester oder schlechter Zufall nicht in denselben Ziffern hängen bleibt. Danach fail-closed: Fehler, nie
+   überschreiben.
+4. Das Markenformat bleibt (`MARKE`, `JJJJ-MM-TT-hh-mm-ss-NNNN`): Ausdünnung, Datenschutzplan, Liste und
+   Wiederherstellen lesen es unverändert. Feste Sonderschlüssel (`vor-zerlegung`, einmalig je Raum) sind nicht
+   betroffen.
+5. Parallel: viele gleichzeitige Sicherungen desselben Raums (gleicher Betrieb, verschiedene Betriebe,
+   automatische und manuelle) in derselben Sekunde mit gleichen Ziffern ergeben ebenso viele Sicherungen.
+6. Das bisherige Fehlerverhalten der Schreibstellen bleibt: Die automatischen Sicherungen vor Verlust und vor
+   Wiederherstellung schlucken einen Schreibfehler weiter (`.catch`), die manuelle Sicherung und der
+   Datenschutzlauf brechen ab (der Lauf löscht dann nichts in diesem Raum).

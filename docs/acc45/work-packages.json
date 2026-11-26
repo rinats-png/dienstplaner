@@ -864,7 +864,7 @@
       "akzeptanz": "Auskunft inkl. Stempel; serverseitiger Löschlauf nach Fristen; Ausdünnung Sicherungen/Spur",
       "tests": "Unit, HTTP",
       "dateien": "server",
-      "notiz": "Widerspruch geklärt: STATUS.md („Review abgelehnt, nicht integriert“) war veraltet. Ablehnung 2c1aa8e → H1–H3 umgesetzt → Nachprüfung „integrierbar mit Auflagen“ → N-1…N-4 (7e6a4bb) → Merge #40 (9abf988) am 2026-11-03 07:15. Eine dokumentierte Freigabe NACH den N-Auflagen fehlt im Nachweis. Q-10 aus WP19-MODULPLAN.md damit erledigt."
+      "notiz": "Widerspruch geklärt: STATUS.md („Review abgelehnt, nicht integriert“) war veraltet. Ablehnung 2c1aa8e → H1–H3 umgesetzt → Nachprüfung „integrierbar mit Auflagen“ → N-1…N-4 (7e6a4bb) → Merge #40 (9abf988) am 2026-11-03 07:15. Eine dokumentierte Freigabe NACH den N-Auflagen fehlt im Nachweis. Q-10 aus WP19-MODULPLAN.md damit erledigt. Nachtrag 2026-11-26 (Betreiberentscheidung, kleiner Produktfix, kein neues Paket): Sicherungsmarken-Kollision (Ursache CI-Check #577) — alle Sicherungen werden über sicherungAnlegen (sicherungen.mjs) atomar mit setJSONWennNeu angelegt, bei belegter Marke neue Ziffern (höchstens MARKE_VERSUCHE), danach Fehler statt Überschreiben; Invarianten und Tests im Nachweis (Abschnitt „Nachtrag 2026-11-26“), Branch acc45/sicherung-markenkollision, Opus-Review offen."
     },
     {
       "id": "WP-27",
@@ -1941,8 +1941,8 @@
       "abhaengigkeiten": ["WP-19.0"],
       "status": "BLOCKED",
       "stufen": {
-        "implementiert": {"wert":"teilweise","beleg":"Server-Teilumfang #49 (ee38af2); Pflege und Zuordnung #575 (d6ac2089); lokal: Änderungsprotokoll im SV-Schreibweg (B2, docs/acc45/WP19-MODULPLAN.md Abschnitt 17.1; E1–E5 Entscheidung nötig); offen: Profil Rettungsdienst (B3, nach Marktstart)"},
-        "lokalGetestet": {"wert":"teilweise","beleg":"pruefungen/modul-bereichsplan-pflege.test.js, pruefungen/modul-bereichsplan-protokoll.test.js (30, Handler PUT und Teilweg, eigene Grenzen nach Review #578, Mutationen je Schutz und Grenze) und Regression, siehe docs/acc45/WP19-MODULPLAN.md Abschnitt 17/17.1"},
+        "implementiert": {"wert":"teilweise","beleg":"Server-Teilumfang #49 (ee38af2); Pflege und Zuordnung #575 (d6ac2089); Änderungsprotokoll im SV-Schreibweg #578 (a437107f) + #581; lokal: Archivierung durch die Leitung (E7 b, POST /api/bereichsprotokoll-archivieren, Export mit Prüfsumme, Vermerk, A1–A12 in Abschnitt 17.1; Oberfläche offen, E8–E11 Entscheidung nötig); offen: Profil Rettungsdienst (B3, nach Marktstart)"},
+        "lokalGetestet": {"wert":"teilweise","beleg":"pruefungen/modul-bereichsplan-pflege.test.js, pruefungen/modul-bereichsplan-protokoll.test.js (30, Handler PUT und Teilweg, eigene Grenzen nach Review #578, Mutationen je Schutz und Grenze), pruefungen/modul-bereichsplan-archiv.test.js (14, Archivierung E7, Handler, Mutationen je Schutz) und Regression, siehe docs/acc45/WP19-MODULPLAN.md Abschnitt 17/17.1"},
         "reviewt": {"wert":"teilweise","beleg":"Server-Teilumfang #49 (ee38af2)"},
         "integriert": {"wert":"teilweise","beleg":"Server-Teilumfang #49 (ee38af2)"},
         "stagingGeprueft": {"wert":false,"beleg":null},
@@ -2641,8 +2641,8 @@
       "abhaengigkeiten": ["WP-I13","WP-I15"],
       "status": "IN_PROGRESS",
       "stufen": {
-        "implementiert": {"wert":true,"beleg":"Branch intelligence/wp-i16-pause (PR #563); Teil 2: Branch intelligence/wp-i16-teil-2 (Betreiberentscheidungen 2026-11-26); Teil 3: Branch intelligence/wp-i16-leitung-ja (PR #576; Leitung-„ja“ = Leitung-Pause, Betreiberentscheidung 2026-11-26 spät); docs/acc45/WP-I16-nachweis.md"},
-        "lokalGetestet": {"wert":true,"beleg":"pruefungen/intelligence-steuerung*.test.js (Kern, Handler, Oberfläche) und angrenzende Rechte-Suiten, Mutationen je Schutz; docs/acc45/WP-I16-nachweis.md"},
+        "implementiert": {"wert":true,"beleg":"Branch intelligence/wp-i16-pause (PR #563); Teil 2: Branch intelligence/wp-i16-teil-2 (Betreiberentscheidungen 2026-11-26); Teil 3: Branch intelligence/wp-i16-leitung-ja (PR #576; Leitung-„ja“ = Leitung-Pause, Betreiberentscheidung 2026-11-26 spät); Nachtrag Nr. 1: Branch intelligence/wp-i16-sperre-protokoll (Sicherheitssperre: „begonnen“ vorher, Ergebnis „x von n“ danach, nie Erfolg ohne Sperre; Betreiberentscheidung 2026-11-26); docs/acc45/WP-I16-nachweis.md"},
+        "lokalGetestet": {"wert":true,"beleg":"pruefungen/intelligence-steuerung*.test.js (Kern, Handler, Oberfläche, Zugänge inkl. Protokoll der Sicherheitssperre) und angrenzende Rechte-Suiten, Mutationen je Schutz; docs/acc45/WP-I16-nachweis.md"},
         "reviewt": {"wert":false,"beleg":null},
         "integriert": {"wert":false,"beleg":null},
         "stagingGeprueft": {"wert":false,"beleg":null},
