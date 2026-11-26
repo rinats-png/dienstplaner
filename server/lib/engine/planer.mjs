@@ -30,6 +30,14 @@
    (null, „nicht bewertet“ — nie „erfüllt“); die Verteilungs- und Wunschregel
    im Plan folgen nach dem Planer.
 
+   Bestandspersonen (Review #572 A1, Posten): Eine Einteilung kann die
+   Postenbesetzung und damit den Dienst ANDERER Personen am selben Tag ändern
+   (verdrängen oder hineinziehen). Nach jedem Setzen, Zurücknehmen und Zug wird
+   der Tag frisch gegen den Bestand gerechnet (verdraengt); ändert sich der
+   Dienst einer Person ohne eigene Einteilung, wird die Einteilung zurück-
+   genommen (Aufbau: höchstens 3 Kandidaten je Stelle, dann offen mit Grund
+   „verdraengung“), der Zug verworfen bzw. die Nachprüfung nicht bestanden.
+
    Nachprüfung (fail-closed): Am Ende wird jede eigene Einteilung auf dem
    fertigen Plan nachgeprüft (ohne sie, dann hindernisBefunde). Fällt der
    verbesserte Plan durch, gilt der aufgebaute; fällt auch der durch, setzt der
@@ -115,6 +123,22 @@ const leer = (m, ym, status, grund, startwert) => ({ status, grund, ym, startwer
   rang: null, nichtBewertet: [...NICHT_BEWERTET], aufwand: null, verbessert: 0 });
 
 /**
+ * Bestandspersonen eines Tags gegen den Bestand, frisch gerechnet: Jede Person OHNE eigene Einteilung an diesem Tag muss dort denselben
+ * Dienst haben wie im Bestand (Review #572 A1, Posten: eine Einteilung kann eine andere Person aus der Postenbesetzung verdrängen oder
+ * hineinziehen; dann hätte sie einen Dienst, den niemand geprüft hat). Gibt die Zahl der veränderten Personen zurück. Arbeit: P Tagesabfragen
+ * je Stand (der Bestand liegt im Zwischenspeicher).
+ * @param {any} bestand Bestand als Stand (Abweichungen des Bestands) @param {any} stand @param {string} d @param {{ has: (k: string) => boolean }} eigene Schlüssel personId|tag
+ */
+export function verdraengt(bestand, stand, d, eigene) {
+  let n = 0;
+  for (const x of bestand.personen) {
+    if (eigene.has(`${x.id}|${d}`)) continue;
+    if ((personTag(stand, x, d).dienstId || null) !== (personTag(bestand, x, d).dienstId || null)) n++;
+  }
+  return n;
+}
+
+/**
  * Nachprüfung (fail-closed): Jede eigene Einteilung auf dem fertigen Stand — ohne sie (Bestand dieses Tags wieder hergestellt) muss die
  * Person dienstfrei und ohne Befund ab Achtung einsetzbar sein (Automatik: Muss ungeprüft = Achtung). Zählt die Befunde je Rangstufe.
  * `vorgabenBudget`: das Budget der Vorgaben für die Nachprüfung (unabhängig vom Aufbau).
@@ -125,7 +149,13 @@ export function nachpruefen(m, stand, eigene, vorgabenBudget) {
   const basis = (m && m.abweichungen) || {};
   const hat = Object.prototype.hasOwnProperty;
   const opt = { vorgabenBudget, vorgabenAutomatisch: true };
-  let gesetz = 0, muss = 0, soll = 0, offenV = 0, durch = true;
+  let gesetz = 0, muss = 0, soll = 0, offenV = 0, durch = true, verdraengte = 0;
+  /* Bestandspersonen an jedem Tag mit eigener Einteilung unverändert (gegen den Bestand, nicht gegen „ohne diese eine“: auch das
+     Zusammenwirken mehrerer Einteilungen am selben Tag, mehrere Posten, Hineinziehen und Verdrängen). */
+  const bestand = { ...m, abweichungen: { ...basis } };
+  const schl = new Set(eigene.map((e) => `${e.personId}|${e.datum}`));
+  for (const d of new Set(eigene.map((e) => e.datum))) verdraengte += stand ? verdraengt(bestand, stand, d, schl) : 1;
+  if (verdraengte) durch = false;
   for (const e of eigene) {
     const p = m.personen.find((x) => x.id === e.personId);
     const da = m.dienstarten.find((x) => x.id === e.dienstId);
@@ -142,7 +172,7 @@ export function nachpruefen(m, stand, eigene, vorgabenBudget) {
       if (b.regel === "vorgabeOffen") offenV++;
     }
   }
-  return { durch, gesetz, muss, soll, offenV };
+  return { durch, gesetz, muss, soll, offenV, verdraengte };
 }
 
 /** Der Rest des Plans fehlt an diesem Tag: Summe der fehlenden Personen und der fehlenden Qualifikationen je Dienst. */
@@ -178,7 +208,8 @@ export function planeVorschlag(m, ym, opt = {}) {
   /* Aufwand: anmelden VOR der Arbeit. `reserve(n)`: die Nachprüfung eines Stands mit n eigenen Einteilungen (je Einteilung eine
      Einsatzprüfung mit der Besetzung des Tags) und die Besetzung aller Tage. */
   const A = { grenze, rest: grenze, ausgeschoepft: false };
-  const reserve = (n) => n * (P + 1) + nTage * P;
+  /* … dazu je Tag der Vergleich der Bestandspersonen (Stand und Bestand: 2 P). */
+  const reserve = (n) => n * (P + 1) + 3 * nTage * P;
   const leisten = (k, n) => { if (A.rest - k < reserve(n)) { A.ausgeschoepft = true; return false; } A.rest -= k; return true; };
   if (A.rest < reserve(0)) return { ...leer(m, ym, "aufwand", "Aufwand reicht nicht für die Nachprüfung", startwert), aufwand: { grenze, verbraucht: 0, ausgeschoepft: true } };
 
@@ -205,6 +236,9 @@ export function planeVorschlag(m, ym, opt = {}) {
     vorgabenPlanFortschreiben(ctx.vorgabenBudget, stand, neu, [{ personId: pid, tag: d }]);
     return neu;
   };
+  const bestand = { ...m, abweichungen: { ...basis } };
+  /** Höchstzahl der Kandidaten, die je Stelle wegen Verdrängung nacheinander versucht werden (verdrängt einer, meist alle: Postenbesetzung). */
+  const VERSUCHE = 3;
   const einsetzbar = (stand, p, d, da, jeP) => (jeP[p.id] || 0) < maxProPerson && !personTag(stand, p, d).dienstId
     && !hindernisBefunde(stand, p, d, da, pruefOpt).some((b) => stufeRang(b.stufe) >= 2);
 
@@ -219,6 +253,18 @@ export function planeVorschlag(m, ym, opt = {}) {
       eigene.set(`${p.id}|${d}`, { personId: p.id, datum: d, dienstId: da.id, art });
       jeP[p.id] = (jeP[p.id] || 0) + 1;
     };
+    const zuruecknehmen = (p, d) => {
+      stand = setze(stand, p.id, d, undefined);
+      eigene.delete(`${p.id}|${d}`);
+      jeP[p.id] -= 1;
+    };
+    /** Einteilung setzen und gegen den Bestand prüfen (Kosten 2 P vorab angemeldet); verdrängt sie jemanden, zurücknehmen. */
+    const setzenOhneVerdraengung = (p, d, da, art) => {
+      neuEintrag(p, d, da, art);
+      if (!verdraengt(bestand, stand, d, eigene)) return true;
+      zuruecknehmen(p, d);
+      return false;
+    };
     /** Füllt (d, da) wie planeMonat; mit `block` wird die gewählte Person über die folgenden Blocktage fortgesetzt. */
     const fuellen = (d, da, block, art) => {
       let schutz = 0;
@@ -229,15 +275,19 @@ export function planeVorschlag(m, ym, opt = {}) {
         if (!leisten(P, eigene.size + 1)) { gekappt.set(`${d}|${da.id}`, "aufwand"); return; }
         const kand = ersatzVorschlaege(stand, d, da.id, ctx).filter((x) => x.moeglich && (jeP[x.person.id] || 0) < maxProPerson);
         if (!kand.length) { if (ctx.vorgabenBudget.ausgeschoepft) gekappt.set(`${d}|${da.id}`, "vorgabe"); return; }
-        const p = kand[0].person;
-        neuEintrag(p, d, da, art);
+        let p = null;
+        for (const x of kand.slice(0, VERSUCHE)) {
+          if (!leisten(2 * P, eigene.size + 1)) { gekappt.set(`${d}|${da.id}`, "aufwand"); return; }
+          if (setzenOhneVerdraengung(x.person, d, da, art)) { p = x.person; break; }
+        }
+        if (!p) { gekappt.set(`${d}|${da.id}`, "verdraengung"); return; }
         /* Block: dieselbe Person an den folgenden Tagen, solange dort eine Lücke ist und sie einsetzbar ist (kein halber Schritt: Kosten vorab). */
         for (const t of block || []) {
-          if (!leisten(P + 1, eigene.size + 1)) break;
+          if (!leisten(3 * P + 1, eigene.size + 1)) break;
           const bt = besetzung(stand, t)[da.id];
           if (bt.diff >= 0 && !bt.qualFehlt) break;
           if (!einsetzbar(stand, p, t, da, jeP)) break;
-          neuEintrag(p, t, da, art);
+          if (!setzenOhneVerdraengung(p, t, da, art)) break;
         }
       }
     };
@@ -307,8 +357,9 @@ export function planeVorschlag(m, ym, opt = {}) {
       const kandidaten = [...eigene.values()].filter((e) => e.datum !== S.d);
       if (!kandidaten.length) continue;
       const E = kandidaten[Math.floor(rnd() * kandidaten.length)];
-      /* Kosten des Zugs vorab: Besetzung vorher (2 Tage), Einsatzprüfung, Ersatzsuche, Besetzung nachher (2 Tage); danach bleibt die Nachprüfung reserviert. */
-      if (!leisten(5 * P + 1, eigene.size + 1)) break;
+      /* Kosten des Zugs vorab: Besetzung vorher (2 Tage), Einsatzprüfung, Ersatzsuche, Besetzung nachher (2 Tage), Bestandspersonen an
+         beiden Tagen gegen den Bestand (4 P); danach bleibt die Nachprüfung reserviert. */
+      if (!leisten(9 * P + 1, eigene.size + 1)) break;
       const p = m.personen.find((x) => x.id === E.personId);
       const daS = S.da, daE = m.dienstarten.find((x) => x.id === E.dienstId);
       if (!p || !daE) continue;
@@ -328,8 +379,12 @@ export function planeVorschlag(m, ym, opt = {}) {
         const kand = ersatzVorschlaege(s1, E.datum, daE.id, ctx).filter((x) => x.moeglich && x.person.id !== p.id && (jeP2[x.person.id] || 0) < maxProPerson);
         if (kand.length) { q = kand[0].person; s1 = setze(s1, q.id, E.datum, daE.id); schritte.push({ pid: q.id, d: E.datum }); jeP2[q.id] = (jeP2[q.id] || 0) + 1; }
       }
+      /* Bestandspersonen an beiden Tagen unverändert (Posten: Zurücknehmen kann jemanden in die Postenbesetzung ziehen, Setzen verdrängen). */
+      const schl = new Set([...eigene.keys()].filter((k) => k !== `${p.id}|${E.datum}`));
+      schl.add(`${p.id}|${S.d}`); if (q) schl.add(`${q.id}|${E.datum}`);
+      const sauber = !verdraengt(bestand, s1, S.d, schl) && !verdraengt(bestand, s1, E.datum, schl);
       const nachher = tagesLuecke(besetzung(s1, S.d)) + tagesLuecke(besetzung(s1, E.datum));
-      if (nachher < vorher) {
+      if (sauber && nachher < vorher) {
         stand = s1;
         Object.assign(jeP, jeP2);
         eigene.delete(`${p.id}|${E.datum}`);

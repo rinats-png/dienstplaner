@@ -194,7 +194,7 @@ Neu `server/lib/engine/planer.mjs` (reines ESM, Rechenkern; Plan 7.4):
 
 ## Rot → grün
 
-Neu `pruefungen/intelligence-planer-kern.test.js` (18 Tests, läuft über `pruefung:intelligence`, Präfix `pruefungen/intelligence-`). Auf der Basis ohne `planer.mjs` alle rot (Modul fehlt). Danach 18/18 grün. Bestehende Tests und bestehende Quelldateien: nicht verändert.
+Neu `pruefungen/intelligence-planer-kern.test.js` (18 Tests, nach dem Nachtrag unten 23; läuft über `pruefung:intelligence`, Präfix `pruefungen/intelligence-`). Auf der Basis ohne `planer.mjs` alle rot (Modul fehlt). Danach 18/18 grün. Bestehende Tests und bestehende Quelldateien: nicht verändert.
 
 ## Mutationen (je einzeln, gegen die neue Datei ohne Messteil, danach zurückgesetzt und mit `cmp` geprüft)
 
@@ -235,7 +235,29 @@ WP-I7 bleibt `IN_PROGRESS`; Teil 2 als #574 integriert eingetragen, Teil 3 lokal
 1. **Verteilung (Rang 5)**: Plan 7.4 nennt „gleichmäßige Verteilung von Nächten, Wochenenden und Feiertagen“, aber kein Maß. Zur Entscheidung: (a) Spanne (höchste − niedrigste Zahl) je Art über die Personen im Dienst, Teilzeit anteilig nur mit `teilzeitAnteilig === true`; (b) erst über die Verteilungsregel im Plan (nach dem Planer). Empfehlung: (b), bis dahin bleibt die Stufe „nicht bewertet“.
 2. **Muss nicht erfüllbar (Rang 3)**: Plan 7.4 sieht die Einstellung „Lücke lassen (Standard) / mit gekennzeichneter Abweichung füllen“ vor. Gebaut ist nur „Lücke lassen“. Entscheidung, ob und wann die zweite Möglichkeit kommt (gehört zum Betriebsmodus).
 3. **Anheften**: Datenfeld und Recht dafür sind nicht beschrieben; ohne Festlegung nicht gebaut.
-4. **Postenverdrängung bei festen Punkten**: Wie `planeMonat` prüft auch der Planer nur seine eigenen Einteilungen nach; eine Einteilung auf einen Posten kann eine Person des Bestands auf ihren Quelldienst zurücksetzen. Entscheidung, ob auch diese Person nachgeprüft werden soll (Empfehlung: ja, im nächsten Teil, fail-closed).
+4. ~~Postenverdrängung bei festen Punkten~~ — **behoben** (Abschnitt „Nachtrag: Bestandspersonen bei Posten“ unten; Vorgabe des Koordinators).
 5. Unverändert offen aus Teil 1/2: Freischaltung der Aggregate und des Planers, Budget großer Betriebe, „Montag frei“, Betriebsmodus.
 
 C/D: keine neuen Pakete, Werkzeuge oder Doku-Familien; nur dieser Abschnitt.
+
+## Nachtrag: Bestandspersonen bei Posten (Rückfrage 4 behoben, gleiche Fehlerklasse wie Review #572 A1)
+
+**Befund (nachgestellt, vor dem Fix):** demo1, Posten „PF“ (Quelle F) braucht eine Qualifikation, die die Rotation nicht sicher hat. Der Planer füllte die Qualifikationslücke 35-mal mit einer Einteilung auf den Posten; jede senkte den Rest der Rotation, eine Person des Bestands fiel auf ihren Quelldienst F zurück. Niemand prüfte diese Person (fail-open: eine Muss-Vorgabe zu F hätte still verletzt sein können). Der bestehende `planeMonat` tut dasselbe (unverändert; Assistent ist Bestand).
+
+**Fix (`planer.mjs`):**
+- Neu `verdraengt(bestand, stand, d, eigene)`: frische Rechnung des Tags `d` für ALLE Personen ohne eigene Einteilung an diesem Tag, Dienst gegen den Bestand (`personTag`). Gegen den Bestand statt „ohne diese eine Einteilung“: erfasst auch das Zusammenwirken mehrerer Einteilungen am Tag, mehrere Posten, Verdrängen und Hineinziehen (Zurücknehmen erhöht den Rest der Rotation).
+- **Aufbau:** nach jedem Setzen (auch Blockfortsetzung) geprüft; verdrängt die Einteilung jemanden, wird sie zurückgenommen (Bestandswert wiederhergestellt) und der nächste Kandidat versucht, höchstens 3 je Stelle (Verdrängung ist meist strukturell: jede zusätzliche Posten-Einteilung senkt die Rotation); danach bleibt die Stelle offen mit Grund `verdraengung`.
+- **Verbessern:** ein Zug wird nur behalten, wenn an beiden berührten Tagen niemand verdrängt oder hineingezogen ist.
+- **Nachprüfung:** an jedem Tag mit eigener Einteilung alle Bestandspersonen gegen den Bestand; jede Abweichung = nicht bestanden (`verdraengte` im Ergebnis von `nachpruefen`).
+- **Aufwand vorab:** 2 P je Prüfung im Aufbau, 4 P je Zug, Reserve der Nachprüfung jetzt `n · (P+1) + 3 · Tage · P`.
+- Ohne Posten ändert eine Einteilung niemand anderen; geprüft wird trotzdem immer (kein Sonderweg, der umgangen werden kann).
+
+**Zustandsraum, selbst durchgegangen:** Posten ja/nein (ohne: immer 0, Gleichwertigkeit zu `planeMonat` bleibt) · eine und mehrere Verdrängte, mehrere Posten-Einteilungen am Tag (Test: 1 und 2) · Hineinziehen beim Zurücknehmen (Verbessern, Nachprüfung gegen den Bestand) · Monatsgrenze (Postenbesetzung hängt nur am Tag; Test: Folgetag im neuen Monat 0) · Budget leer mitten in der Nachprüfung (Aufwand reserviert; Budget der Vorgaben leer → Muss ungeprüft = durchgefallen, Test mit 0 und 500) · eigene Einteilungen auf dem Posten selbst (Abweichung = feste Zuweisung, von der Rotation unabhängig) · Abwesenheit (in beiden Ständen gleich).
+
+**Rot → grün:** neue Tests in Abschnitt 8 (5 Tests). Gegen die Fassung vor dem Fix: 3 rot (Planer mit/ohne Blöcke verdrängt Bestandspersonen, `verdraengt` fehlt); der Test „Budget der Vorgaben leer“ war schon vorher grün (die Nachprüfung war dort bereits fail-closed). Danach 23/23 grün.
+
+**Testkorrektur:** Die Vorlagen der Prüfung riefen `personTag` auf, während sie die Abweichungen noch änderten; der Zwischenspeicher der Postenbesetzung hängt am Objekt. Jetzt wird der vorbereitete Betrieb frisch geklont (`structuredClone`). Ohne diese Korrektur meldete ein neuer Test eine Verdrängung, die nur im veralteten Speicher bestand.
+
+**Mutationen (je einzeln, zurückgesetzt):** Prüfung im Aufbau entfällt 1 rot (die Nachprüfung fängt es ab, Ergebnis dann leer: fail-closed; rot wird der erwartete Grund „verdraengung“) · Nachprüfung ignoriert die Verdrängung 1 · Zug ohne Prüfung behalten 1 (neuer Test „Verbessern mit Posten“: sonst Rückfall auf den Aufbau, kein Zug behalten) · eigene Einteilungen nicht ausgenommen 13 · Vergleich wirkungslos 3. Nach der Änderung erneut geprüft: Reihenfolge 2, jeder Zug behalten 1, Block 2.
+
+**Messung:** demo1 `planeMonat` 8,0 s gegen Planer 7,5 s (Lauf unter Last), 194/194 gesetzt, Aufwand 122 998 von 1 000 000; Messtest (3 × + 5 s) grün.

@@ -15,11 +15,14 @@
    5. Vorgaben: Muss ungeprüft = nicht einteilen (fail-closed); mit Aggregaten keine Muss-Verletzung (Prüfweg).
    6. Mandantengrenze, Abwesenheit, kein Name im Ergebnis; Nachprüfung direkt; Rangvergleich.
    7. Messung relativ zu planeMonat (feste Obergrenze).
+   8. Posten (Review #572 A1): keine Person ohne eigene Einteilung hat danach einen anderen Dienst als im Bestand (frisch gerechnet);
+      Verdrängung mehrerer Personen, Monatsgrenze, Budget der Vorgaben leer in der Nachprüfung.
 
    Aufruf: npx vitest run pruefungen/intelligence-planer-kern.test.js
    ========================================================================== */
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { writeFileSync } from "node:fs";
+import * as PL from "../server/lib/engine/planer.mjs";
 import { planeVorschlag, nachpruefen, rangVergleich, zufallAus, PLANER_AN, PLANER_GRENZE, RANGFOLGE, NICHT_BEWERTET } from "../server/lib/engine/planer.mjs";
 import { neuesVorgabenBudget } from "../server/lib/vorgabenwirkung.mjs";
 import { stufeRang } from "../server/lib/engine/einsatz.mjs";
@@ -44,7 +47,8 @@ const mitLuecken = (name, mehr = false) => {
   const m = structuredClone(B.find(([n]) => n.startsWith(name))[1]);
   /* mehr: zusätzlich bei jeder vierten Person alle Dienste frei (Lücken in mehreren Dienstarten am selben Tag) */
   m.personen.forEach((p, i) => { for (const t of TAGE) { const d = F.personTag(m, p, t).dienstId; if (d === "N" || (mehr && d && i % 4 === 0)) m.abweichungen[`${p.id}|${t}`] = "-"; } });
-  return m;
+  /* frischer Stand: die Zwischenspeicher hängen am Objekt (Postenbesetzung) und wurden oben vor dem Ändern gefüllt */
+  return structuredClone(m);
 };
 /** Offene Stellen frisch gerechnet. */
 const offenFrisch = (m, ab) => {
@@ -283,4 +287,86 @@ describe("7. Messung (relativ zu planeMonat, feste Obergrenze)", () => {
     expect(r.rang.gesetz).toBe(0);
     expect(tPlaner).toBeLessThan(3 * tMonat + 5000);
   }, 600000);
+});
+
+describe("8. Posten: Bestandspersonen bleiben unverändert (Review #572 A1)", () => {
+  /** demo1: der Posten braucht eine Qualifikation, die die Rotation nicht sicher hat — der Planer füllt die Qualifikationslücke mit einer
+      Einteilung auf den Posten; die Postenbesetzung verdrängt dann eine Person der Rotation auf ihren Quelldienst. */
+  const szenario = () => {
+    const m = mitLuecken("demo1");
+    const po = m.dienstarten.find((x) => x.posten && x.quelle);
+    const q = m.qualifikationen.map((x) => x.id).find((id) => { const n = m.personen.filter((p) => p.qualifikationen.includes(id)).length; return n >= 5 && n < 40; });
+    po.mindestQual = { [q]: 2 };
+    return { m, po };
+  };
+  /** Personen ohne eigene Einteilung, deren Dienst sich gegenüber dem Bestand geändert hat (frische Rechnung). */
+  const veraendert = (m, r) => {
+    const fertig = { ...m, abweichungen: r.abweichungen };
+    const eig = new Set(r.gesetzt.map((g) => `${g.personId}|${g.datum}`));
+    const l = [];
+    for (const p of m.personen) for (const t of TAGE) if (!eig.has(`${p.id}|${t}`) && (F.personTag(fertig, p, t).dienstId || null) !== (F.personTag(m, p, t).dienstId || null)) l.push(`${p.id}|${t}`);
+    return l;
+  };
+  it("Planer mit Blöcken und Verbessern: keine Bestandsperson verdrängt; die Postenstellen bleiben offen mit Grund „verdraengung“; Prüfweg frisch", () => {
+    const { m, po } = szenario();
+    expect(F.planeMonat(m, YM, { maxProPerson: 3 }).gesetzt.some((g) => g.dienstId === po.id), "der bestehende Assistent setzt hier auf den Posten").toBe(true);
+    const r = planeVorschlag(m, YM, { freigabe: true });
+    expect(r.status).toBe("ok");
+    expect(veraendert(m, r)).toEqual([]);
+    expect(r.offen.some((x) => x.dienstId === po.id && x.grund === "verdraengung")).toBe(true);
+    expect(pruefwegFehler(m, r)).toEqual([]);
+  }, 600000);
+  it("Verbessern mit Posten: Züge, die eine Bestandsperson verdrängen würden, werden verworfen, die übrigen behalten (kein Rückfall auf den Aufbau)", () => {
+    const m0 = structuredClone(B.find(([n]) => n.startsWith("demo1"))[1]);
+    m0.personen.forEach((p, i) => { for (const t of TAGE) { const d = F.personTag(m0, p, t).dienstId; if (d === "N" || (d && i % 3 === 0)) m0.abweichungen[`${p.id}|${t}`] = "-"; } });
+    const m = structuredClone(m0);
+    const po = m.dienstarten.find((x) => x.posten && x.quelle);
+    const q = m.qualifikationen.map((x) => x.id).find((id) => { const n = m.personen.filter((p) => p.qualifikationen.includes(id)).length; return n >= 5 && n < 40; });
+    po.mindestQual = { [q]: 2 };
+    const auf = planeVorschlag(m, YM, { freigabe: true, zuege: 0 });
+    const r = planeVorschlag(m, YM, { freigabe: true });
+    expect(veraendert(m, r)).toEqual([]);
+    expect(r.verbessert, "mindestens ein Zug behalten").toBeGreaterThan(0);
+    expect(r.rang.besetzung).toBeLessThan(auf.rang.besetzung);
+  }, 600000);
+  it("ohne Blöcke und Verbessern ebenso (Aufbau Schritt für Schritt)", () => {
+    const { m } = szenario();
+    const r = planeVorschlag(m, YM, { freigabe: true, bloecke: false, zuege: 0 });
+    expect(veraendert(m, r)).toEqual([]);
+  }, 600000);
+  it("verdraengt: eine und mehrere Verdrängte, mehrere Posten-Einteilungen am Tag, nur der eigene Tag (Monatsgrenze), ohne Posten nie", () => {
+    const { m, po } = szenario();
+    const bestand = { ...m, abweichungen: { ...m.abweichungen } };
+    const tag = "2026-12-31";
+    const frei = m.personen.filter((p) => !F.personTag(m, p, tag).dienstId && F.personTag(m, p, tag).quelle !== "extern").slice(0, 3);
+    expect(frei.length).toBe(3);
+    const mit = (n) => { const ab = { ...m.abweichungen }; for (const p of frei.slice(0, n)) ab[`${p.id}|${tag}`] = po.id; return { ...m, abweichungen: ab }; };
+    const schl = (n) => new Set(frei.slice(0, n).map((p) => `${p.id}|${tag}`));
+    expect(typeof PL.verdraengt).toBe("function");
+    expect(PL.verdraengt(bestand, mit(1), tag, schl(1))).toBe(1);
+    expect(PL.verdraengt(bestand, mit(2), tag, schl(2))).toBe(2);
+    expect(PL.verdraengt(bestand, mit(2), "2027-01-01", schl(2)), "Folgetag (anderer Monat) unberührt").toBe(0);
+    expect(PL.verdraengt(bestand, bestand, tag, new Set())).toBe(0);
+    const ohnePosten = { ...mit(2), dienstarten: m.dienstarten.map((x) => (x.posten ? { ...x, posten: false } : x)) };
+    const bestandOhne = { ...bestand, dienstarten: ohnePosten.dienstarten };
+    expect(PL.verdraengt(bestandOhne, ohnePosten, tag, schl(2)), "ohne Posten ändert eine Einteilung niemand anderen").toBe(0);
+    /* Nachprüfung: dieselben Einteilungen als „eigene“ fallen durch (zusammen und einzeln) */
+    const eig = (n) => frei.slice(0, n).map((p) => ({ personId: p.id, datum: tag, dienstId: po.id }));
+    const n2 = nachpruefen(m, mit(2), eig(2), neuesVorgabenBudget());
+    expect(n2.durch).toBe(false);
+    expect(n2.verdraengte).toBe(2);
+    expect(nachpruefen(m, mit(1), eig(1), neuesVorgabenBudget()).durch).toBe(false);
+  }, 300000);
+  it("Nachprüfung mit leerem Budget der Vorgaben (Muss über ein Kalenderjahr): fällt durch, nie bestanden", () => {
+    const m = mitLuecken("demo3");
+    m.vorgaben = [{ id: "jN", name: "Jahr N", regelart: "zaehlregel", parameter: { ereignis: "N", fenster: { art: "kalenderjahr" }, richtung: "hoechstens", grenze: 400 },
+      geltung: { art: "betrieb" }, bezug: "monat", staerke: "muss", prioritaet: 1, grundlage: { art: "hausregel" }, status: "aktiv" }];
+    const r = planeVorschlag(m, YM, { freigabe: true, aggregate: true, zuege: 0 });
+    expect(r.gesetzt.length).toBeGreaterThan(0);
+    const st = { ...m, abweichungen: r.abweichungen };
+    const eig = r.gesetzt.map((g) => ({ personId: g.personId, datum: g.datum, dienstId: g.dienstId }));
+    expect(nachpruefen(m, st, eig, neuesVorgabenBudget(undefined, { aggregate: true })).durch).toBe(true);
+    expect(nachpruefen(m, st, eig, neuesVorgabenBudget(0, { aggregate: true })).durch).toBe(false);
+    expect(nachpruefen(m, st, eig, neuesVorgabenBudget(500, { aggregate: true })).durch, "Budget mitten in der Nachprüfung leer").toBe(false);
+  }, 300000);
 });
