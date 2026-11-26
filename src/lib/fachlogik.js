@@ -45,7 +45,7 @@ export { verteilung, planKennzahlen } from "../../server/lib/engine/kennzahlen.m
 /* WP-I12a: Einsatzprüfung und Ersatzsuche stehen ebenfalls im Rechenkern. Der Client hängt die Regelkennung des Regelregisters ein (Frage 6). */
 export { SCHUTZ_QUELLE_NEUTRAL, SCHUTZ_QUELLE_EINSCHRAENKUNG, einschr, nachtJahr, FENSTER, fensterVon, verfuegbarFuer, wochenStundenGeplant, hindernisBefunde, ersatzVorschlaege } from "../../server/lib/engine/einsatz.mjs";
 import { SCHUTZ_QUELLE_NEUTRAL, nachtJahr, wochenStundenGeplant, hindernisBefunde, ersatzVorschlaege, regelIdHakenSetzen } from "../../server/lib/engine/einsatz.mjs";
-import { neuesVorgabenBudget } from "../../server/lib/vorgabenwirkung.mjs";
+import { neuesVorgabenBudget, vorgabenPlanFortschreiben } from "../../server/lib/vorgabenwirkung.mjs";
 import { krankSchrittErlaubt } from "../../server/lib/krankmeldung.mjs";
 regelIdHakenSetzen(regelIdFuerBefund);
 
@@ -1564,8 +1564,9 @@ export function planeMonat(m, ym, grenzen = {}) {
   const [y, mo] = ym.split("-").map(Number);
   const n = dim_(y, mo - 1);
   const maxProPerson = grenzen.maxProPerson || 3;
-  /* WP-I5: ein Budget für den ganzen Monat (nicht je Suchschritt); ohne Mensch: ungeprüfte Muss-Vorgaben lassen die Lücke offen. */
-  const ctx = { konten: new Map(), einspruenge: {}, nachtAnzahl: new Map(), vorgabenBudget: neuesVorgabenBudget(), vorgabenAutomatisch: true };
+  /* WP-I5: ein Budget für den ganzen Monat (nicht je Suchschritt); ohne Mensch: ungeprüfte Muss-Vorgaben lassen die Lücke offen.
+     WP-I7: `grenzen.aggregate` (nur ausdrücklich; Vorgabe AUS) rechnet Zählregeln über 62 Tage mit den Aggregaten des Planer-Kerns. */
+  const ctx = { konten: new Map(), einspruenge: {}, nachtAnzahl: new Map(), vorgabenBudget: neuesVorgabenBudget(undefined, { aggregate: grenzen.aggregate === true }), vorgabenAutomatisch: true };
   const jahr = Number(ym.slice(0, 4));
   for (const p of m.personen) {
     ctx.konten.set(p.id, stundenkonto(m, p, ym));
@@ -1598,7 +1599,10 @@ export function planeMonat(m, ym, grenzen = {}) {
           break;
         }
         const beste = kand[0];
+        const vorher = arbeit;
         arbeit = { ...arbeit, abweichungen: { ...arbeit.abweichungen, [`${beste.person.id}|${d}`]: da.id } };
+        /* WP-I7: Aggregate wandern zum neuen Stand, nur der Monat dieser Person/dieses Tags wird neu gelesen (ohne Aggregate: nichts). */
+        vorgabenPlanFortschreiben(ctx.vorgabenBudget, vorher, arbeit, [{ personId: beste.person.id, tag: d }]);
         jePerson[beste.person.id] = (jePerson[beste.person.id] || 0) + 1;
         gesetzt.push({ personId: beste.person.id, name: `${beste.person.vorname} ${beste.person.nachname}`,
           datum: d, dienstId: da.id, punkte: beste.punkte, grund: beste.gruende.slice(0, 2).join(" · ") });

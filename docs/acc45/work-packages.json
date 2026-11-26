@@ -3,9 +3,9 @@
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
   "anzahl": 295,
   "statusZaehlung": {
-    "BLOCKED": 113,
+    "BLOCKED": 112,
     "READY": 27,
-    "IN_PROGRESS": 23,
+    "IN_PROGRESS": 24,
     "REVIEW": 10,
     "INTEGRATED": 119,
     "DONE": 3
@@ -31,8 +31,8 @@
       "pakete": 40,
       "offen": 27,
       "restPT": {
-        "min": 175,
-        "max": 309
+        "min": 168,
+        "max": 296
       }
     },
     "folge": {
@@ -53,13 +53,13 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 355.3,
-    "max": 609.25
+    "min": 348.3,
+    "max": 596.25
   },
   "kritischerPfad": {
-    "summe": 67,
-    "min": 48,
-    "max": 86,
+    "summe": 57,
+    "min": 41,
+    "max": 73,
     "kette": [
       "WP-I4",
       "WP-I5",
@@ -2388,26 +2388,26 @@
       "prio": "P2",
       "aufwandPT": {"min":14,"max":26},
       "abhaengigkeiten": ["WP-I3","WP-I5","WP-I6"],
-      "status": "BLOCKED",
+      "status": "IN_PROGRESS",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
+        "implementiert": {"wert":false,"beleg":"Teil 1 lokal (Branch intelligence/wp-i7-planer-kern): Zählregeln über 62 Tage mit vorberechneten Aggregaten (Betreiberentscheidung I5-4), Schalter AUS; Rest des Planers offen (docs/acc45/WP-I7-nachweis.md)"},
+        "lokalGetestet": {"wert":false,"beleg":"Teil 1: pruefungen/intelligence-planer-aggregate.test.js 21 grün, 13 betroffene Testdateien grün (lokal); Vollregression in CI offen"},
         "reviewt": {"wert":false,"beleg":null},
         "integriert": {"wert":false,"beleg":null},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
       },
-      "branch": "intelligence/wp-i7-planer-kern-rechnung",
+      "branch": "intelligence/wp-i7-planer-kern",
       "agent": "Intelligence (eigener Block)",
       "modell": "sonnet",
       "konfliktzonen": [],
       "pr": [],
-      "nachweis": "docs/acc45/INTELLIGENCE-ENTWICKLUNGSPLAN.md",
+      "nachweis": "docs/acc45/WP-I7-nachweis.md",
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block K)",
-      "tests": "pruefungen/ki-*.test.js",
+      "tests": "pruefungen/intelligence-planer-aggregate.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). Nachtrag 2026-11-26: BLOCKED nur wegen WP-I5; WP-I5 ist mit #566 in integration/release-v4 gemergt (Status dort vom Koordinator nachzuziehen). Teil 1 (I5-4 Aggregate) lokal, Schalter AUS; Rest (eigener Planer, Rangfolge, Verbessern, Wunsch, übrige Regelarten im Plan) offen."
     },
     {
       "id": "WP-I8",
