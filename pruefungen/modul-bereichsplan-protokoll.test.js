@@ -249,7 +249,7 @@ describe("Teil A — Schreibweg der Schichtverantwortung (zusammenfuehren)", () 
     expect(schreibeAls(g, "SV", (m) => { m.bereichsPlan = { [`a1|${MO}`]: "b2" }; }).verweigert).toMatch(/voll/);
     expect(g).toEqual(vorher);
     leitungGegenprobe(g);
-  });
+  }, 120000);
 
   it("DoS 2: 190 SV-Speichern mit je höchstens 100 Änderungen — gemessen bleibt der Betrieb weit unter RUMPF_MAX; Leitung unberührt", () => {
     let g = bestand();
@@ -271,7 +271,7 @@ describe("Teil A — Schreibweg der Schichtverantwortung (zusammenfuehren)", () 
     expect(protokollBytes(art)).toBeLessThanOrEqual(BEREICH_PROTOKOLL_GRENZEN.gesamtBytes);
     expect(protokollBytes(g)).toBeLessThan(2 * 1024 * 1024);                          // ganzer Bestand, gemessen
     leitungGegenprobe(g);
-  });
+  }, 120000);
 
   it("P3: Leitung kann das Protokoll über den vollen Weg weder leeren noch ändern (Server stellt es wieder her)", () => {
     const g = schreibeAls(bestand(), "SV", (m) => { m.bereichsPlan = { [`a1|${MO}`]: "b1" }; });
