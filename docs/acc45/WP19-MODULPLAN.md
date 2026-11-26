@@ -684,3 +684,33 @@ Seit 2026-11-03 ist WP-19 in `work-packages.json` in WP-19.0–19.13 aufgeteilt 
 Siehe `STATUS.md`, Abschnitt „WP-19 – Statusstufen je Modul“. Kurz: Für die sechs gebauten Module gelten Stufen 1–4
 nur für den **Server-Teilumfang** (Kernlogik, Schreibweg, Sicht, Unit-Tests); keines ist einschaltbar. Für die
 übrigen sechs ist keine Stufe erreicht.
+
+---
+
+## 17. Nachtrag WP-19.4 Bereichsplan, Pflege (2026-11-26)
+
+Gebaut (Modul bleibt `geplant`, Vorgabe AUS): Zuordnungsoberfläche je Person im Tagesbereich und Pflege der Bereiche je Einheit
+(Name, Soll je Dienstart) in der neuen Datei `src/module/bereichsplan-pflege.js` (`bereichsplan.jsx` und `kern.jsx` bleiben
+V4-3b-gepinnt unverändert). Leitung und Planung ordnen in jeder Einheit zu und pflegen die Bereiche; die Schichtverantwortung
+ordnet nur in der eigenen Einheit zu (der Server bleibt maßgeblich); Beschäftigte und Betriebsrat sehen kein Feld. Reine
+Pflegefunktionen in `server/lib/modul-bereichsplan.mjs`; Rechte-Kontext `bereichSchreiben` in `src/module/zugriff.js`.
+
+Gewollte Verhaltensänderung am Server (`bereichsplanZusammen`, wie beim Postenplan): Eine neue oder geänderte Zuordnung muss auf
+einen Bereich des Betriebs zeigen, und ein Bereich, der entfällt, darf keine Zuordnung zurücklassen. Altbestand blockiert nicht;
+betroffen sind nur Bereiche, deren Einheit im neuen Stand weiter besteht (Review #575 B-1): Eine Einheit samt Bereichen zu löschen bleibt ein erlaubter Kernweg, auch mit Altzuordnung (bei Modul geplant ist der Bereichsplan nur lesbar, die Leitung könnte sie nicht lösen); die Zweige „unbekannter Bereich“ und „entfernter Bereich“ greifen sonst nur dort, wo das Modul wirkt, da bei geplant jede Änderung an Bereichen und Bereichsplan ohnehin abgewiesen wird (modul-altwege.mjs);
+auf dem Ausnahmeweg Art. 16/17 gilt die Regel nicht (`bekannt: false`). Die Regel ist mit einer Zeile abschaltbar
+(`server/lib/rechte.mjs`: Aufruf `bereichsplanZusammen(geschickt, ort.betrieb, { bekannt: moduldatenAusnahme === undefined })`
+auf `{ bekannt: false }`); Pflegefunktionen und Oberfläche bleiben davon unabhängig.
+
+Angepasster bestehender Test: `pruefungen/modul-integritaet-quer.test.js`, Fall Q5 (Monatsabschluss). Der Test schrieb eine Zuordnung
+auf einen Bereich `b1`, den der Betrieb nicht hatte; das weist die neue Regel ab. Die Anpassung legt `b1` im selben Schreibschritt an.
+Die Testabsicht (Moduldaten ändern das eingefrorene Ist und den Abdruck nicht) ist unverändert.
+
+Lokal belegt (TZ=UTC, je Datei ein Lauf): `modul-bereichsplan-pflege` 20, `modul-bereichsplan` 21, `modul-integritaet-quer` 16, `modul-kern-nachtrag` 41 /
+-2 37 / -3 25 / -handler 3 / -4 17 / -5-handler 5 / -5-speicher 6, `modul-b1-schreibweg` 16, `modul-rechte-wp19` 54, `modul-posten` 20,
+`modul-posten-pflege` 28, `modul-kern` 45, `modul-kern-oberflaeche` 14, `modul-inert` 84, `entwuerfe` 68, `vollausgabe` 22, `wp48-rundweg` 31,
+`abnahme-c-module` 8, `rechtematrix` 64, `rechtematrix-zeilen` 747, alle `v4-3b-*` (zusammen 14 Dateien) und `v4-3c-branchenmodule` 3, `prozess-wachen` 15; `tsc -p jsconfig.json`, eslint auf die geänderten Dateien,
+`verdrahtung-pruefen` sauber. Mutationen (sieben, je einzeln, alle erkannt): bekannt-Prüfung, verwaiste Zuordnung, Entfernen nur ohne Zuordnung,
+Einheitsprüfung der Zuordnung, Schichtverantwortung nur eigene Einheit, `einheiten` nur mit vollem Recht, Rollenstufe `einheit` nur Schichtverantwortung.
+B-1 (Review #575, Einheit löschen mit Altzuordnung): zwei neue Fälle in `modul-bereichsplan-pflege` (22 Tests), vor dem Fix rot (Mutation „Einheitsfilter entfernt“: 2 rot), danach grün; Gegenprobe Bereich einer bleibenden Einheit mit Zuordnung entfernen bleibt abgewiesen. Der Test des Betriebsrats-/Beschäftigtenfalls ist gehärtet (kein stilles Überspringen mehr). B-2 (Delta-Review #575, Kennung wird wiederverwendet): Zuordnungen auf Bereiche gelöschter Einheiten bleiben Altbestand (B-1). Damit sie nicht in einem neuen Bereich mit gleicher Kennung still wieder aufleben, gilt (1) `bereichHinzufuegen` vergibt keine Kennung, auf die der Bereichsplan noch zeigt (4. Parameter, die Oberfläche übergibt `bereichsplan`), und (2) der Server weist eine Kennung ab, die es im alten Stand nicht gab, solange eine unveränderte Altzuordnung darauf zeigt (auch Einheit mit gleicher Kennung und gleichem Bereich neu angelegt). Einfachste Regel: erst die Zuordnungen lösen; neue Zuordnungen auf den neuen Bereich im selben Schreiben sind erlaubt, Einheit mit Altzuordnung löschen bleibt erlaubt (B-1). Tests: 25 in `modul-bereichsplan-pflege`, je Schutz eine Mutation (beide rot, 2 Tests). `prozess-wachen` QS-5: Kurzliteral-Ausschluss mit `kollision-ok` begründet (feste Kennung). B-2a/B-2b (Delta-Review #575, zweiter Durchgang): (a) Die Regel gilt jetzt auch, wenn eine unveränderte Altzuordnung auf eine Kennung zeigt, die im alten Stand zu einer anderen Einheit gehörte oder dort fehlte: Löschen der Einheit und gleiche Kennung im selben Schreiben neu vergeben (in e1 oder in einer neuen Einheit) und Verschieben des Bereichs in eine andere Einheit werden abgewiesen, bis die Zuordnungen gelöst sind. Frei bleiben Einheit mit Altzuordnung löschen (B-1), neuer Bereich ohne Altlast, neue Zuordnung im selben Schreiben, Umbenennen in bleibender Einheit, Verschieben ohne Altzuordnung. (b) In rechte.mjs nimmt nur die Ausnahmeangabe des eigenen Moduls (`moduldatenAusnahme.modul`) die Bekannt-Prüfung zurück, für Posten und Bereichsplan je einzeln; die Ausnahme eines anderen Moduls hebt sie nicht mehr auf (P6). 28 Tests in `modul-bereichsplan-pflege`; drei Mutationen (Einheitenvergleich, Bereichsplan-Ausnahme, Posten-Ausnahme) je erkannt. Nicht belegt: unabhängiges Review (Opus), E2E (gehört zu WP-19.13). Offen: Änderungsprotokoll im SV-Schreibweg (B2), Profil Rettungsdienst und
+Paketdarstellung (B3, Betreiberentscheidung). Hinweis C/D: übrige Branchenmodule nicht berührt.

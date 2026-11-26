@@ -155,12 +155,15 @@ export function bereichsplanBefunde(m, da, d, person, personen, { auswerten, ein
 
 /**
  * Schreibweg (Planung, Leitung): prüft Bereiche und Zuordnung, mit `altM`
- * nur Neues oder Geändertes streng.
+ * nur Neues oder Geändertes streng. Neue oder geänderte Zuordnungen müssen auf
+ * einen Bereich des Betriebs zeigen, und ein Bereich, der verschwindet, darf
+ * keine Zuordnung zurücklassen (WP-19.4, wie beim Postenplan).
  * @param {any} neuM
  * @param {any} [altM]
+ * @param {{ bekannt?: boolean }} [o] bekannt: false auf dem Ausnahmeweg Art. 16/17 (dort prüft das Wertschema der Berichtigung)
  * @returns {{ grund?: string }}
  */
-export function bereichsplanZusammen(neuM, altM) {
+export function bereichsplanZusammen(neuM, altM, { bekannt = true } = {}) {
   if (!neuM || typeof neuM !== "object") return {};
   const bereiche = (m) => liste(m && m.einheiten).map((e) => JSON.stringify([e.id, e.bereiche]));
   const gleichB = altM && JSON.stringify(bereiche(neuM)) === JSON.stringify(bereiche(altM));
@@ -169,7 +172,95 @@ export function bereichsplanZusammen(neuM, altM) {
     if (f) return { grund: f };
   }
   const f2 = pruefeBereichsPlan(neuM.bereichsPlan, altM && altM.bereichsPlan);
-  return f2 ? { grund: f2 } : {};
+  if (f2) return { grund: f2 };
+  if (bekannt && istObjekt(neuM.bereichsPlan)) {
+    const ix = bereichsIndex(neuM);
+    const vorher = istObjekt(altM && altM.bereichsPlan) ? altM.bereichsPlan : {};
+    for (const [k, v] of Object.entries(neuM.bereichsPlan))
+      if (!(hat(vorher, k) && vorher[k] === v) && !ix.has(v)) return { grund: `Bereichsplan: den Bereich „${String(v).slice(0, 30)}“ gibt es im Betrieb nicht.` };
+    if (altM) {
+      /* Nur Bereiche, deren Einheit weiter besteht: Eine Einheit zu löschen ist ein Kernweg und bleibt erlaubt (modul-altwege.mjs);
+         Zuordnungen auf Bereiche gelöschter Einheiten sind Altbestand und blockieren nicht. */
+      const bleibend = new Set(liste(neuM.einheiten).map((e) => String(e.id)));
+      const w = new Set([...bereichsIndex(altM)].filter(([id, e]) => !ix.has(id) && bleibend.has(String(e.einheitId))).map(([id]) => id));
+      if (w.size && Object.values(neuM.bereichsPlan).some((v) => w.has(v)))
+        return { grund: "Bereichsplan: ein entfernter Bereich hat noch Zuordnungen — erst die Zuordnungen lösen." };
+      /* B-2: Eine unveränderte Altzuordnung darf nicht auf einen Bereich zeigen, der es im alten Stand nicht gab oder dort zu einer
+         anderen Einheit gehörte (neu vergeben, auch im selben Schreiben wie das Löschen der Einheit, oder verschoben): sonst lebt der
+         Plan eines gelöschten Bereichs im neuen Bereich still wieder auf. Neue Zuordnungen auf den Bereich im selben Schreiben bleiben erlaubt. */
+      const altIx = bereichsIndex(altM);
+      for (const [k, v] of Object.entries(neuM.bereichsPlan)) {
+        if (!(hat(vorher, k) && vorher[k] === v) || !ix.has(v)) continue;
+        const frueher = altIx.get(v);
+        if (!frueher) return { grund: `Bereichsplan: die Kennung „${String(v).slice(0, 30)}“ gehört noch zu Zuordnungen eines gelöschten Bereichs — erst die Zuordnungen lösen.` };
+        if (String(frueher.einheitId) !== String(ix.get(v).einheitId))
+          return { grund: `Bereichsplan: der Bereich „${String(v).slice(0, 30)}“ wechselt die Einheit oder wird neu vergeben, die Zuordnungen darauf gelten noch dem alten — erst die Zuordnungen lösen.` };
+      }
+    }
+  }
+  return {};
+}
+
+/* ---- Pflege: reine Funktionen für die Oberfläche (nichts wird verändert, der Server prüft das Ergebnis noch einmal) ---- */
+
+const freieId = (belegt, praefix) => { let n = belegt.size + 1; while (belegt.has(`${praefix}${n}`)) n += 1; return `${praefix}${n}`; };
+const zuordnungenAuf = (m, ids) => (istObjekt(m && m.bereichsPlan) ? Object.values(m.bereichsPlan).filter((v) => ids.has(v)).length : 0);
+const AENDERBAR = Object.freeze(["name", "soll"]);
+const mitBereichen = (einheiten, einheitId, f) => liste(einheiten).map((e) => (String(e.id) === String(einheitId) ? { ...e, bereiche: f(liste(e.bereiche)) } : e));
+
+/** Neuer Bereich in einer Einheit (Name leer: „Neuer Bereich“); Einheit unbekannt oder voll: unverändert. @param {any[]} einheiten @param {any} einheitId @param {string} name @param {any} [bereichsPlan] */
+export function bereichHinzufuegen(einheiten, einheitId, name, bereichsPlan) {
+  const e = liste(einheiten).find((x) => String(x.id) === String(einheitId));
+  if (!e || liste(e.bereiche).length >= BEREICH_GRENZEN.bereicheJeEinheit) return einheiten;
+  const belegt = new Set(liste(einheiten).flatMap((x) => liste(x.bereiche).map((b) => b.id)));
+  /* B-2: auch Kennungen, auf die der Bereichsplan noch zeigt (Bereiche gelöschter Einheiten), sind belegt. */
+  if (istObjekt(bereichsPlan)) for (const v of Object.values(bereichsPlan)) belegt.add(v);
+  return mitBereichen(einheiten, einheitId, (bs) => [...bs, { id: freieId(belegt, "b"), name: String(name || "").trim() || "Neuer Bereich", soll: {} }]);
+}
+/** Name oder Soll ändern; die Kennung nie. @param {any[]} einheiten @param {any} einheitId @param {string} bereichId @param {Record<string, any>} patch */
+export function bereichAendern(einheiten, einheitId, bereichId, patch) {
+  const nimm = Object.fromEntries(AENDERBAR.filter((k) => istObjekt(patch) && hat(patch, k)).map((k) => [k, patch[k]]));
+  return mitBereichen(einheiten, einheitId, (bs) => bs.map((b) => (b.id === bereichId ? { ...b, ...nimm } : b)));
+}
+/** Sollbesetzung eines Dienstes setzen; ohne Zahl entfällt der Eintrag. Ungültiges bleibt stehen (pruefeBereiche meldet es). */
+export function bereichSollSetzen(soll, dienstId, n) {
+  const neu = { ...(istObjekt(soll) ? soll : {}) };
+  if (n === undefined || n === null || (typeof n === "number" && Number.isNaN(n))) delete neu[dienstId];
+  else neu[dienstId] = n;
+  return neu;
+}
+/**
+ * Entfernt einen Bereich — nur ohne Zuordnung im Bereichsplan (sonst bliebe der Plan ohne Bereich).
+ * @param {any} m @param {string} bereichId
+ * @returns {{ einheiten: any[] } | { grund: string }}
+ */
+export function bereichEntfernen(m, bereichId) {
+  if (!bereichsIndex(m).get(bereichId)) return { grund: "Bereich unbekannt." };
+  const n = zuordnungenAuf(m, new Set([bereichId]));
+  if (n > 0) return { grund: `Dem Bereich sind noch ${n} Zuordnung${n === 1 ? "" : "en"} im Bereichsplan zugeordnet — erst dort lösen.` };
+  return { einheiten: liste(m.einheiten).map((e) => (e.bereiche === undefined ? e : { ...e, bereiche: liste(e.bereiche).filter((b) => b.id !== bereichId) })) };
+}
+/**
+ * Zuordnung einer Person an einem Tag zu einem Bereich setzen (leer: lösen). Mit `einheitId` muss der Bereich zu dieser
+ * Einheit gehören. Der Server prüft dasselbe noch einmal.
+ * @param {any} m @param {string} personId @param {string} tag @param {string | null} bereichId @param {any} [einheitId]
+ * @returns {{ plan: Record<string, string> } | { grund: string }}
+ */
+export function zuordnungSetzen(m, personId, tag, bereichId, einheitId) {
+  if (typeof personId !== "string" || !personId || personId.includes("|") || personId.length > BEREICH_GRENZEN.idMax) return { grund: "Person ungültig." };
+  if (typeof tag !== "string" || !echterTag(tag)) return { grund: "Tag ungültig (JJJJ-MM-TT)." };
+  const alt = istObjekt(m && m.bereichsPlan) ? m.bereichsPlan : {};
+  const plan = { ...alt };
+  const k = `${personId}|${tag}`;
+  if (bereichId === null || bereichId === undefined || bereichId === "") delete plan[k];
+  else {
+    const eintrag = bereichsIndex(m).get(bereichId);
+    if (!eintrag) return { grund: "Bereich unbekannt." };
+    if (einheitId !== undefined && String(eintrag.einheitId) !== String(einheitId)) return { grund: "Der Bereich gehört nicht zu dieser Einheit." };
+    plan[k] = bereichId;
+  }
+  const fehler = pruefeBereichsPlan(plan, alt);
+  return fehler ? { grund: fehler } : { plan };
 }
 
 /**
