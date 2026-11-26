@@ -185,12 +185,17 @@ export function bereichsplanZusammen(neuM, altM, { bekannt = true } = {}) {
       const w = new Set([...bereichsIndex(altM)].filter(([id, e]) => !ix.has(id) && bleibend.has(String(e.einheitId))).map(([id]) => id));
       if (w.size && Object.values(neuM.bereichsPlan).some((v) => w.has(v)))
         return { grund: "Bereichsplan: ein entfernter Bereich hat noch Zuordnungen — erst die Zuordnungen lösen." };
-      /* B-2: Eine Kennung, die es im alten Stand nicht gab, darf nicht wieder auf eine unveränderte Altzuordnung zeigen
-         (sonst lebt der Plan eines gelöschten Bereichs im neuen Bereich still wieder auf). Neue Zuordnungen auf den neuen Bereich im selben Schreiben bleiben erlaubt. */
+      /* B-2: Eine unveränderte Altzuordnung darf nicht auf einen Bereich zeigen, der es im alten Stand nicht gab oder dort zu einer
+         anderen Einheit gehörte (neu vergeben, auch im selben Schreiben wie das Löschen der Einheit, oder verschoben): sonst lebt der
+         Plan eines gelöschten Bereichs im neuen Bereich still wieder auf. Neue Zuordnungen auf den Bereich im selben Schreiben bleiben erlaubt. */
       const altIx = bereichsIndex(altM);
-      for (const [k, v] of Object.entries(neuM.bereichsPlan))
-        if (hat(vorher, k) && vorher[k] === v && ix.has(v) && !altIx.has(v))
-          return { grund: `Bereichsplan: die Kennung „${String(v).slice(0, 30)}“ gehört noch zu Zuordnungen eines gelöschten Bereichs — erst die Zuordnungen lösen.` };
+      for (const [k, v] of Object.entries(neuM.bereichsPlan)) {
+        if (!(hat(vorher, k) && vorher[k] === v) || !ix.has(v)) continue;
+        const frueher = altIx.get(v);
+        if (!frueher) return { grund: `Bereichsplan: die Kennung „${String(v).slice(0, 30)}“ gehört noch zu Zuordnungen eines gelöschten Bereichs — erst die Zuordnungen lösen.` };
+        if (String(frueher.einheitId) !== String(ix.get(v).einheitId))
+          return { grund: `Bereichsplan: der Bereich „${String(v).slice(0, 30)}“ wechselt die Einheit oder wird neu vergeben, die Zuordnungen darauf gelten noch dem alten — erst die Zuordnungen lösen.` };
+      }
     }
   }
   return {};

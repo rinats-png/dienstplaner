@@ -84,6 +84,27 @@ describe("Zuordnung auf einen unbekannten Bereich (Server)", () => {
     const mit = { einheiten: einheiten(), bereichsPlan: { [`a1|${T}`]: "b3" } };
     expect(bereichsplanZusammen({ einheiten: [mit.einheiten[0]], bereichsPlan: mit.bereichsPlan }, mit)).toEqual({});
   });
+  it("B-2a: Löschen der Einheit und dieselbe Kennung im selben Schreiben neu vergeben, oder verschieben, wird abgewiesen; legitime Wege bleiben frei", () => {
+    const alt = { einheiten: einheiten(), bereichsPlan: { [`a1|${T}`]: "b3" } };
+    const plan = alt.bereichsPlan;
+    const e1 = alt.einheiten[0];
+    /* P1: e2 löschen, b3 in e1 neu anlegen */
+    const p1 = [{ ...e1, bereiche: [...e1.bereiche, { id: "b3", name: "Neu", soll: { F: 1 } }] }];
+    expect(bereichsplanZusammen({ einheiten: p1, bereichsPlan: plan }, alt).grund).toMatch(/wechselt die Einheit oder wird neu vergeben/);
+    /* P2: e2 löschen, neue Einheit e3 mit b3 und anderem Namen */
+    const p2 = [e1, { id: "e3", versatzTage: 0, bereiche: [{ id: "b3", name: "Anders", soll: { F: 2 } }] }];
+    expect(bereichsplanZusammen({ einheiten: p2, bereichsPlan: plan }, alt).grund).toMatch(/wechselt die Einheit oder wird neu vergeben/);
+    /* P3: b3 mit gleicher Kennung von e2 nach e1 verschieben, e2 leer */
+    const p3 = [{ ...e1, bereiche: [...e1.bereiche, alt.einheiten[1].bereiche[0]] }, { ...alt.einheiten[1], bereiche: [] }];
+    expect(bereichsplanZusammen({ einheiten: p3, bereichsPlan: plan }, alt).grund).toMatch(/wechselt die Einheit oder wird neu vergeben/);
+    /* frei: Verschieben ohne Altzuordnung, neue Zuordnung im selben Schreiben, Umbenennen in bleibender Einheit, neuer Bereich ohne Altlast */
+    expect(bereichsplanZusammen({ einheiten: p3, bereichsPlan: {} }, alt)).toEqual({});
+    expect(bereichsplanZusammen({ einheiten: p1, bereichsPlan: {} }, alt)).toEqual({});
+    expect(bereichsplanZusammen({ einheiten: p1, bereichsPlan: { [`a2|${T}`]: "b3" } }, { ...alt, bereichsPlan: {} })).toEqual({});
+    const umbenannt = [{ ...e1, bereiche: [{ ...e1.bereiche[0], name: "Anders" }, e1.bereiche[1]] }, alt.einheiten[1]];
+    expect(bereichsplanZusammen({ einheiten: umbenannt, bereichsPlan: { [`a1|${T}`]: "b1" } }, { ...alt, bereichsPlan: { [`a1|${T}`]: "b1" } })).toEqual({});
+    expect(bereichsplanZusammen({ einheiten: [e1], bereichsPlan: plan }, alt)).toEqual({});
+  });
   it("B-1: eine ganze Einheit zu löschen bleibt erlaubt, auch mit Altzuordnung auf ihre Bereiche; ein Bereich einer bleibenden Einheit nicht", () => {
     const a = { einheiten: einheiten(), bereichsPlan: { [`a1|${T}`]: "b3" } };
     const ohneE2 = [a.einheiten[0]];
@@ -293,6 +314,46 @@ describe("Rollen (Schreibweg der Oberfläche und Server)", () => {
     const ok = schreibeAls(ohneE2, "LT", (m) => { m.einheiten[0].bereiche = bereichHinzufuegen(m.einheiten, "e1", "Neu", m.bereichsPlan)[0].bereiche; });
     expect(ok.verweigert).toBeUndefined();
     expect(ok.mandanten[0].einheiten[0].bereiche.map((b) => b.id)).not.toContain("b3"); // kollision-ok: feste Kennung b3 des gelöschten Bereichs, kein Zufallswert
+  });
+  it("B-2b: Nur die Ausnahmeangabe des eigenen Moduls nimmt die Bekannt-Prüfung zurück (P6 Posten-Ausnahme, Bereichsplan-Ausnahme)", () => {
+    const g = branchenbestand({ pakete: ["sicherheit", "pflege"], branchenmodule: { posten: { an: false, eingeschaltetAm: "2026-10-01T08:00:00.000Z", geaendertAm: "2026-10-01T08:00:00.000Z", geaendertVon: "l1" }, bereichsplan: { an: true } } });
+    const m = g.mandanten[0];
+    m.einheiten = einheiten();
+    m.bereichsPlan = { [`a1|${T}`]: "b3" };
+    m.objekte = [{ id: "ob1", name: "Werk", posten: [{ id: "po1", name: "Tor", soll: { F: 1 } }] }];
+    m.postenPlan = { "a1|2026-11-02": "po1", "a1|2026-11-03": "po1" };
+    const loesch = { modul: "posten", art: "loeschung", grund: "art17", eintraege: { postenPlan: ["a1|2026-11-02"] } };
+    /* P6: Posten-Ausnahme, im selben Schreiben wird b3 in e1 angelegt und e2 gelöscht */
+    const p6 = (ausnahme) => schreibeAls(g, "LT", (x) => {
+      delete x.postenPlan["a1|2026-11-02"];
+      x.einheiten = [{ ...x.einheiten[0], bereiche: [...x.einheiten[0].bereiche, { id: "b3", name: "Neu", soll: { F: 1 } }] }];
+      if (ausnahme) x.moduldatenAusnahme = ausnahme;
+    });
+    expect(p6(null).verweigert).toMatch(/wechselt die Einheit oder wird neu vergeben/);
+    expect(p6(loesch).verweigert).toMatch(/wechselt die Einheit oder wird neu vergeben/);
+    /* der Ausnahmeweg des eigenen Moduls (Posten) bleibt unberührt */
+    const eigen = schreibeAls(g, "LT", (x) => { delete x.postenPlan["a1|2026-11-02"]; x.moduldatenAusnahme = loesch; });
+    expect(eigen.verweigert).toBeUndefined();
+    expect(eigen.mandanten[0].postenPlan).toEqual({ "a1|2026-11-03": "po1" });
+    /* Bekannt-Prüfung des Bereichsplans greift auch bei Posten-Ausnahme (unbekannter Bereich) */
+    const unbekannt = schreibeAls(g, "LT", (x) => { delete x.postenPlan["a1|2026-11-02"]; x.moduldatenAusnahme = loesch; x.bereichsPlan = { ...x.bereichsPlan, [`a2|${T}`]: "b9" }; });
+    expect(unbekannt.verweigert).toMatch(/gibt es im Betrieb nicht/);
+  });
+  it("B-2b: Die Ausnahmeangabe des Bereichsplans nimmt die Bekannt-Prüfung des Postenplans nicht zurück", () => {
+    const liste = BRANCHENMODULE.map((x) => (x.id === "bereichsplan" || x.id === "posten" ? { ...x, status: "vorlaeufig" } : x));
+    const EIN = "2026-10-01T08:00:00.000Z";
+    const g = branchenbestand({ pakete: ["sicherheit", "pflege"], branchenmodule: { posten: { an: true }, bereichsplan: { an: false, eingeschaltetAm: EIN, geaendertAm: EIN, geaendertVon: "l1" } } });
+    const m = g.mandanten[0];
+    m.einheiten = einheiten();
+    m.bereichsPlan = { [`a1|${T}`]: "b3", [`a2|${T}`]: "b1" };
+    m.objekte = [{ id: "ob1", name: "Werk", posten: [{ id: "po1", name: "Tor", soll: { F: 1 } }] }];
+    m.postenPlan = {};
+    const loesch = { modul: "bereichsplan", art: "loeschung", grund: "art17", eintraege: { bereichsPlan: [`a1|${T}`] } };
+    const v = schreibeAlsEcht(g, "LT", (x) => { delete x.bereichsPlan[`a1|${T}`]; x.moduldatenAusnahme = loesch; x.postenPlan = { [`a1|${T}`]: "po9" }; }, { liste });
+    expect(v.verweigert).toMatch(/Posten/);
+    const eigen = schreibeAlsEcht(g, "LT", (x) => { delete x.bereichsPlan[`a1|${T}`]; x.moduldatenAusnahme = loesch; }, { liste });
+    expect(eigen.verweigert, eigen.verweigert).toBeUndefined();
+    expect(eigen.mandanten[0].bereichsPlan).toEqual({ [`a2|${T}`]: "b1" });
   });
   it("Server: Bei Status geplant bleibt der Schreibweg geschlossen (Platte unverändert)", () => {
     const g = gesamt();

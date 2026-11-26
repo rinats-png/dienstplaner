@@ -1700,10 +1700,12 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
       const geteilt = geteilterdienstZusammen(geschickt, ort.betrieb);
       if (geteilt.grund) return { verweigert: geteilt.grund };
       /* Posten (WP-19): Form von Objekten und Postenplan, nur Neues oder Geändertes streng. */
-      const posten = postenZusammen(geschickt, ort.betrieb, { bekannt: moduldatenAusnahme === undefined });
+      /* Nur die Ausnahmeangabe des eigenen Moduls nimmt die Bekannt-Prüfung zurück (Review #575 B-2b), nicht die eines anderen Moduls. */
+      const ausnahmeFuer = (id) => !!moduldatenAusnahme && typeof moduldatenAusnahme === "object" && moduldatenAusnahme.modul === id;
+      const posten = postenZusammen(geschickt, ort.betrieb, { bekannt: !ausnahmeFuer("posten") });
       if (posten.grund) return { verweigert: posten.grund };
       /* Bereichsplan (WP-19): Bereiche je Einheit und Zuordnung, nur Neues oder Geändertes streng. */
-      const bereiche = bereichsplanZusammen(geschickt, ort.betrieb, { bekannt: moduldatenAusnahme === undefined });
+      const bereiche = bereichsplanZusammen(geschickt, ort.betrieb, { bekannt: !ausnahmeFuer("bereichsplan") });
       if (bereiche.grund) return { verweigert: bereiche.grund };
       /* Interne Vorgaben (WP-I4): nur org.edit (sonst wirkungslos), Form, Stufengrenze und Wann/Wer vom Server (vorgaben.mjs). */
       const vorgaben = vorgabenZusammen(ort.betrieb, geschickt, { darfOrgEdit: darf(rolle, "org.edit"), person: sitzung.person,
