@@ -15,7 +15,7 @@
    ========================================================================== */
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { readFileSync, appendFileSync } from "node:fs";
-import { vorgabenBefunde, vorgabePlanwirkung, neuesVorgabenBudget } from "../server/lib/vorgabenwirkung.mjs";
+import { vorgabenBefunde, vorgabePlanwirkung, neuesVorgabenBudget, vorgabenPlanFortschreiben } from "../server/lib/vorgabenwirkung.mjs";
 import { VORGABEN_WIRKUNG_GRENZE, vorgabeAlsRegel } from "../server/lib/vorgaben.mjs";
 import { PLANER_AGGREGATE_AN, AGGREGAT_GRENZE, aggregatZaehler, aggregateFortschreiben, neuerAggregatSpeicher, tagNr } from "../server/lib/engine/planeraggregate.mjs";
 import { kiPauseAktiv } from "../server/lib/ki-steuerung.mjs";
@@ -303,6 +303,40 @@ describe("5. Planer (planeMonat) mit Aggregaten", () => {
       const b = F.hindernisBefunde(ohne, p, g.datum, m.dienstarten[0], { vorgabenBudget: AN() });
       expect(b.filter((x) => x.regel === "vorgabeMuss"), `${g.datum}`).toEqual([]);
     }
+  }, 180000);
+  it("Review #572 A1: Posten-Besetzung hängt von der Einteilung ANDERER Personen ab — nach dem Fortschreiben gleiches Ergebnis wie frisch gerechnet (Betrieb mit Posten: keine Übernahme)", () => {
+    const m = structuredClone(B.find(([n]) => n.startsWith("demo1"))[1]);
+    const po = m.dienstarten.find((x) => x.posten && x.quelle);
+    const Q = po && po.quelle;
+    expect(po, "demo1 hat einen Posten mit Quelldienst").toBeTruthy();
+    po.mindest = { mo_do: 1, fr: 1, sa: 1, so: 1 };   // Bedarf 1: wer manuell eingeteilt wird, verdrängt die Person aus der Folge
+    const d = "2026-11-01";
+    const P = m.personen.find((p) => F.personTag(m, p, d).dienstId === po.id);
+    expect(P, "eine Person steht am Tag auf dem Posten").toBeTruthy();
+    /* eine andere Person R auf den Posten: P fällt aus der Postenbesetzung und hat wieder ihren Quelldienst Q */
+    let m2 = null, R = null;
+    for (const r of m.personen) {
+      if (r.id === P.id) continue;
+      const x = { ...m, abweichungen: { ...m.abweichungen, [`${r.id}|${d}`]: po.id } };
+      if (F.personTag(x, P, d).dienstId === Q) { m2 = x; R = r; break; }
+    }
+    expect(m2, "Einteilung einer anderen Person verdrängt P vom Posten").toBeTruthy();
+    /* Prüftag: ein Tag im November, an dem P keinen Quelldienst hat; Grenze = Quelldienste von P im Jahr (ohne den Prüftag) im neuen Stand */
+    const N = m.dienstarten.find((x) => x.id === Q);
+    const tage = []; for (let t = "2026-01-01"; t <= "2026-12-31"; t = add(t, 1)) tage.push(t);
+    const dp = tage.find((t) => t > "2026-11-05" && t < "2026-12-01" && F.personTag(m2, P, t).dienstId !== Q && !F.abwesenheitAm(m2, P.id, t));
+    const nJahr = tage.filter((t) => t !== dp && F.personTag(m2, P, t).dienstId === Q).length;
+    const vorgabe = { ...Z(JAHR, {}, { ereignis: Q, grenze: nJahr }), id: "jq", name: "Jahr Quelldienst" };
+    const mit = (x) => ({ ...x, vorgaben: [vorgabe] });
+    const a = mit(m), b = { ...a, abweichungen: m2.abweichungen };
+    const prue = (x, budget) => vorgabenBefunde(x, P, dp, N, { dienstAm: (q, t) => F.personTag(x, q, t).dienstId || null,
+      abwesendAm: (q, t) => { const ab = F.abwesenheitAm(x, q.id, t); return ab ? ab.art : null; }, budget }).map((y) => y.regel);
+    const frisch = prue(b, AN());
+    expect(frisch).toEqual(["vorgabeMuss"]);
+    const budget = AN();
+    prue(a, budget);                                                                // Blöcke für P im alten Stand
+    vorgabenPlanFortschreiben(budget, a, b, [{ personId: R.id, tag: d }]);
+    expect(prue(b, budget), "nach dem Fortschreiben wie frisch gerechnet").toEqual(frisch);
   }, 180000);
   it("ohne Freischaltung bleibt der Planer fail-closed: die Jahresregel ist offen, es wird nichts eingeteilt, die Lücken bleiben sichtbar", () => {
     const e = F.planeMonat(klein([jahrN(5)]), "2026-11", { maxProPerson: 31 });

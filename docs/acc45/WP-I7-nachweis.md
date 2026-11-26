@@ -66,6 +66,16 @@ Lokal, TZ=UTC, `--maxWorkers=1`:
 - `npx tsc -p jsconfig.json --noEmit` grün; `npx eslint` auf die geänderten Dateien: 0 Fehler (5 Warnungen in `src/lib/fachlogik.js`, alle schon auf der Basis vorhanden); `node werkzeug/verdrahtung-pruefen.mjs` ok (die neue Datei läuft über `pruefung:intelligence`, Präfix `pruefungen/intelligence-`); `node werkzeug/acc45-backlog.mjs pruefen` ok.
 - Keine Oberflächendatei geändert (v4-3b-Prüfungen nicht betroffen), keine `.github/workflows`-Änderung. Vollregression in CI.
 
+## Opus-Review PR #572 (Kopf cb7d9d43), Befund A1: veraltete Aggregate nach dem Fortschreiben
+
+- Befund: `aggregateFortschreiben` nahm an, eine Einteilung ändere nur den Monat der eingeteilten Person. `personTag` → `postenBesatzung` hängt aber von den Einteilungen ANDERER Personen am selben Tag ab: Wird R auf einen Posten eingeteilt, fällt P aus der Postenbesetzung und hat wieder den Quelldienst. P's Monatsblock blieb veraltet, eine Verletzung blieb unbemerkt (frisch: `vorgabeMuss`, nach dem Fortschreiben: nichts).
+- Weitere Abhängigkeiten von anderen Personen in `personTag` geprüft: `planDienst` (Folge, Teilzeit, Schichtmodell), Abweichung und Abwesenheit lesen nur die eigene Person; `istEntwurfstag` hängt am Tag. Einzige Quelle ist die Postenbesetzung.
+- Fix (fail-closed): Hat der Betrieb Posten-Dienstarten, übernimmt `aggregateFortschreiben` nichts; der neue Stand liest neu. Ohne Posten wie bisher. Das Budget und die Grenzen bleiben unverändert.
+- Test (neu, Abschnitt 5): demo1, Posten mit Bedarf 1, P steht am Tag auf dem Posten, eine andere Person R wird dorthin eingeteilt (P hat dann den Quelldienst); Muss „höchstens n Quelldienste im Kalenderjahr“ mit n = Zahl im neuen Stand. Erwartet: nach dem Fortschreiben dasselbe Ergebnis wie frisch gerechnet (`vorgabeMuss`). Vor dem Fix rot (`[]`), danach grün.
+- Mutation: Posten-Prüfung entfernt → 1 rot, zurückgesetzt.
+- Läufe: `intelligence-planer-aggregate` (22), `intelligence-vorgaben-wirkung`, `engine-einsatz`, `prozess-wachen`: 4 Dateien, 128 Tests grün; `tsc` grün, `eslint` ohne Befund. Messtest unverändert grün: 300 Personen × 62 Tage ohne 9,5 s, mit 50 Langzeitregeln 10,3 s, Worst-Case 8,5 s; `planeMonat` demo1 (hat Posten, jetzt ohne Übernahme) 3,2 s gegen 10,8 s ohne Vorgaben.
+- Folge: In Betrieben mit Posten liest der Planer nach jeder Einteilung neu; das Budget ist dann früher aufgebraucht (offen, sichtbar). Eine genauere Übernahme (nur Personen der Einheit am geänderten Tag neu lesen) ist möglich, aber nicht gebaut.
+
 ## Offene Rückfragen (nichts erfunden)
 
 1. **Freischaltung der Aggregate.** Entscheidung: Wann wird `PLANER_AGGREGATE_AN` eingeschaltet (für alle Prüfwege zugleich)? Empfehlung: nach fachlicher Abnahme mit einem Pilotbetrieb, gemeinsam mit dem Planer-Einstieg. Alternativen: (a) sofort an — lange Zählregeln wirken in Ersatzsuche, Warndialog und Planungsassistent; (b) nur Planungsassistent. Auswirkung: Bei AUS bleiben Kalenderjahr-Regeln „nicht vollständig geprüft“, der Assistent teilt bei Muss dort nicht ein.

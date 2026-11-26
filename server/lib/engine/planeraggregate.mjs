@@ -147,7 +147,8 @@ export function aggregatZaehler(speicher, m, personId, lies, kosten) {
 
 /**
  * Der Planer hat in `neuM` gegenüber `altM` genau die genannten Einteilungen geändert: Blöcke übernehmen, die betroffenen Monatsblöcke
- * verwerfen. Übernommen wird nur, wenn alle übrigen Felder dieselben Objekte sind und nur `abweichungen` neu ist (sonst wird neu gelesen).
+ * verwerfen. Übernommen wird nur, wenn alle übrigen Felder dieselben Objekte sind, nur `abweichungen` neu ist und der Betrieb keine
+ * Posten-Dienstarten hat (deren Besetzung hängt von anderen Personen ab); sonst wird neu gelesen.
  * Der alte Stand verliert seine Blöcke (sie gehören jetzt zum neuen).
  * @param {{ jeBetrieb: WeakMap<object, Map<string, any>> } | null | undefined} speicher
  * @param {any} altM @param {any} neuM
@@ -161,6 +162,11 @@ export function aggregateFortschreiben(speicher, altM, neuM, aenderungen) {
   speicher.jeBetrieb.delete(altM);
   const ka = Object.keys(altM), kn = Object.keys(neuM);
   if (ka.length !== kn.length || kn.some((k) => k !== "abweichungen" && neuM[k] !== altM[k])) return false;
+  /* Review #572 A1: Die Postenbesetzung (personTag → postenBesatzung) hängt von den Einteilungen ANDERER Personen am selben Tag ab —
+     eine Einteilung auf einen Posten kann eine andere Person aus der Besetzung verdrängen (sie hat dann wieder ihren Quelldienst).
+     Sonst liest personTag nur die eigene Einteilung, Folge und Abwesenheit. Mit Posten-Dienstarten wird daher nicht übernommen
+     (fail-closed: der neue Stand liest neu). */
+  if ((Array.isArray(neuM.dienstarten) ? neuM.dienstarten : []).some((x) => x && x.posten)) return false;
   for (const a of aenderungen) {
     if (!a || typeof a.tag !== "string") return false;
     jeP.delete(`${String(a.personId)}|${a.tag.slice(0, 7)}`);
