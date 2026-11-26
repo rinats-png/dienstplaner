@@ -116,6 +116,10 @@ describe("2. Mit Aggregaten: lange Zeiträume wirken, darüber offen", () => {
     const b = pruefe([frei], plan, { abw });
     expect(regeln(b)).toEqual(["vorgabeMuss"]);
     expect(b[0].text).toMatch(/ohne Urlaub und Krankheit/);
+    /* Urlaub nur am Tag d selbst: wie im kurzen Weg wird er nicht herausgenommen (die Einteilung ersetzt den Tag) — volle Grenze, kein Zusatz */
+    const nurD = pruefe([frei], plan, { abw: { [TAG]: "urlaub" } });
+    expect(regeln(nurD)).toEqual(["vorgabeMuss"]);
+    expect(nurD[0].text).not.toMatch(/ohne Urlaub|anteilig/);
     /* Schulung: kein Herausnehmen, aber auch kein freier Tag */
     const schulung = Object.fromEntries(Object.keys(abw).map((t) => [t, "schulung"]));
     expect(regeln(pruefe([frei], plan, { abw: schulung }))).toEqual(["vorgabeMuss"]);

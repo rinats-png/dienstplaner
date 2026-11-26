@@ -18,26 +18,26 @@ oder `"teilweise"`, jeweils mit Beleg (PR, Commit, Nachweis). „Geplant“, „
 <!-- AUTO:BEGIN -->
 Erzeugt aus `docs/acc45/work-packages.json` (Schema 2) mit `node werkzeug/acc45-backlog.mjs status-schreiben` — nicht von Hand ändern.
 
-**Pakete gesamt:** 295 · BLOCKED 113 · READY 27 · IN_PROGRESS 23 · REVIEW 10 · INTEGRATED 119 · DONE 3
+**Pakete gesamt:** 295 · BLOCKED 112 · READY 27 · IN_PROGRESS 24 · REVIEW 10 · INTEGRATED 119 · DONE 3
 
 | Strang | Pakete | BLOCKED | READY | IN_PROGRESS | REVIEW | INTEGRATED | DONE | offener Aufwand PT |
 |---|---|---|---|---|---|---|---|---|
 | ACC45 | 143 | 42 | 5 | 7 | 3 | 84 | 2 | 74,1–126,65 |
 | WP-19-Module | 15 | 12 | 0 | 2 | 0 | 1 | 0 | 62,5–97,5 |
-| Intelligence | 40 | 18 | 0 | 9 | 0 | 13 | 0 | 175–309 |
+| Intelligence | 40 | 17 | 0 | 10 | 0 | 13 | 0 | 168–296 |
 | Folgepakete | 62 | 23 | 6 | 5 | 7 | 21 | 0 | 43,7–76,1 |
 | Extern/Entscheidungen | 35 | 18 | 16 | 0 | 0 | 0 | 1 | 20,35–46,1 |
 
-Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **355,3–609,25 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
+Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **348,3–596,25 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
 
 **Kritische Pfade** (offener Aufwand, Mitte der Spanne maßgeblich):
 
-- gemeinsam: WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **48–86 PT**
+- gemeinsam: WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **41–73 PT**
 - ohne Intelligence: WP-16 → WP-19.7 → WP-19.6 → WP-19.13 → WP-42a → WP-42 = **21–33,5 PT**
 - ACC45: WP-21 → WP-42a → WP-42 = **14–20 PT**
 - Folgepakete: V4-1 → V4-3a → V4-3b → V4-3d = **5,2–10,3 PT**
 - WP-19: WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 = **16,5–25,5 PT**
-- Intelligence: WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **48–86 PT**
+- Intelligence: WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **41–73 PT**
 
 ### In Arbeit / Review
 
@@ -58,6 +58,7 @@ Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **355,3–609,
 | WP-I4 Interne Vorgaben: Verwaltung | IN_PROGRESS | `intelligence/wp-i4-interne-vorgaben-verwalt` | SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). Stand (automatisch): Teilumfang nach #256, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). Offene Betreiberfragen: (1) Darf die Planung die Vorgaben lesen und ändern? (2) Welche Betriebsratssicht, falls überhaupt (§ 87 BetrVG, BLOCKED auf Betreiber)? (3) Braucht es ein Protokoll für Löschen/Deaktivieren? (4) Tarif 'pro' = Grenze 25 des Business-Tarifs bestätigen? (5) Muss eine geänderte Vorgabe neu getestet werden (nur die Oberfläche erzwingt, nicht der Server)? Nachtrag 2026-11-18 (SSOT-Klassifizierung): Feld pr um #177 ergänzt (älterer Entwurf „Interne Vorgaben Verwaltung“, offen, nicht gemergt; der gemergte Teil ist #256).
 Nachtrag 2026-11-25 (Betreiber): Antworten auf die fünf Fragen: 1.1 B (Planung liest innerhalb ihrer Zuständigkeit, nur berechtigte Leitungen ändern); 1.2 vorläufig A, Ziel B (Betriebsrat Leserecht auf Vorgaben und relevante Änderungsprotokolle; produktive Aktivierung erst nach rechtlicher Rückmeldung, Schalter AUS); 1.3 C (Deaktivieren statt Löschen, Änderungsprotokoll, gesetzliche Lösch- und Aufbewahrungspflichten bleiben); 1.4 A (Grenze 25 für `pro` vorläufig, zentral konfigurierbar); 1.5 B jetzt (serverseitige Validierung und Prüfung), C Plan-Probelauf im Umfang WP-I8/I9. |
 | WP-I5 Vorgaben wirksam machen | IN_PROGRESS | `intelligence/wp-i5-vorgaben-wirksam-machen` | SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). |
+| WP-I7 Planer-Kern (Rechnung) | IN_PROGRESS | `intelligence/wp-i7-planer-kern` | SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). Nachtrag 2026-11-26: BLOCKED nur wegen WP-I5; WP-I5 ist mit #566 in integration/release-v4 gemergt (Status dort vom Koordinator nachzuziehen). Teil 1 (I5-4 Aggregate) lokal, Schalter AUS; Rest (eigener Planer, Rangfolge, Verbessern, Wunsch, übrige Regelarten im Plan) offen. |
 | WP-I16 Betriebssteuerung und Transparenz (Schalter, BR-Pausierung, Notschalter) | IN_PROGRESS | `intelligence/wp-i16-pause` | SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). PR #238 (WP-I16 Teil 1: Steuerung und Transparenz, Betrieb, Betriebsrat-Pause, Schalter aus): offen, Freigabe ausstehend, nicht gemergt. Grund: neues Schreibrecht für den Betriebsrat (nur kiSteuerung.pause.aktiv über PUT /api/bestand) und akzeptiertes Restrisiko (Leitung hält roles.assign und kann die Betriebsrat-Rolle vergeben und damit die Pause aufheben). Betreiberentscheidungen: Recht freigeben; Minderung des roles.assign-Umwegs (bestehende BR-Mitglieder benachrichtigen, BR-Konto vor der Pause vorausgesetzt, Rollenvergabe Betriebsrat durch Leitung untersagen); Plan-Lücken: wer bestätigt, direktes BR-Recht, Ja-nach-Nein durch Leitung, Frage vor Einschalten Pflicht, Beschäftigteninformation, Notschalter, KI-Kennzeichnung. Entscheidungsstand 2026-11-14 (Statusstufe entschieden, keine Freigabe zur Produktion): Betreiber 2026-11-14: Betriebsrat-Schreibrecht (PR #238) ist NICHT freigegeben. Weiter offen: KI-Pause aktivieren und aufheben (wer darf was), wer BR-Konten zuweist, Umgehung der Pause über die Rollenvergabe durch die Leitung (roles.assign). PR #238 bleibt angehalten. Nachtrag 2026-11-18 (SSOT-Klassifizierung): Feld pr um #238 ergänzt (offen, angehalten, nicht gemergt).
 Nachtrag 2026-11-25 (Betreiber): P2-8: Variante A als technisches Ziel: Betriebsrat darf Intelligence in seinem Zuständigkeitsbereich pausieren; jede Änderung protokolliert; Rollenvergabe darf die Schutzmaßnahme nicht umgehen; normale Dienstplanung bleibt funktionsfähig; Wiederaktivierung durch die Leitung unter den geltenden Freigaberegeln. Produktive Rechte und endgültige Wiederaktivierungsregeln erst nach rechtlicher Prüfung (Schalter AUS).
 Nachtrag 2026-11-25: Betreiberentscheidung P2-8 Variante A (Betriebsrat pausiert, Leitung hebt auf, Rollenvergabe darf die Pause nicht aushebeln; produktive Rechte und Wiederaktivierungsregeln erst nach rechtlicher Prüfung). Umgesetzt auf neuer Basis als Branch intelligence/wp-i16-pause (ersetzt #238; Schließen empfohlen): Betriebsrat-Schreibrecht hinter CENTRIC_KI_BR_PAUSE (Vorgabe AUS, nicht freigegeben), Aufheben nur Leitung mit Compare-and-set, Betriebsrat-Konten bei aktiver Pause gesperrt, Protokoll. Offen: Review, Integration, rechtliche Prüfung, Wiederaktivierungsregel, Vier-Augen/Konten-Regel nach dem Aufheben, Betreiber-Notschalter je Betrieb, Verdrahtung. Status IN_PROGRESS, nicht INTEGRATED. |
