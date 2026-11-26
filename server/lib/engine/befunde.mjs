@@ -105,20 +105,19 @@ export function pruefen(m, von, bis) {
             titel: `Ruhezeit unterschritten — ${p.nachname}`,
             text: `${n1(ruhe)} h zwischen ${reihe[i - 1].da.kurz} am ${fKurz(reihe[i - 1].d)} und ${reihe[i].da.kurz}` });
       }
-      let lauf = 0, nl = 0, ab = null;
+      /* Nachtdienste in Folge: nachtfolgeBefunde (unten, dieselbe Rechnung wie zuvor hier; gemeinsam mit dem Planungsassistenten),
+         an derselben Stelle der Ausgabe wie bisher (nach „folge“ desselben Tags). */
+      const nf = new Map(nachtfolgeBefunde(m, p, von, bis, vor).map((b) => [b.datum, b]));
+      let lauf = 0, ab = null;
       for (let d = vor; d <= addDays(bis, 2); d = addDays(d, 1)) {
         const t = personTag(m, p, d);
         if (t.dienstId) {
           if (!lauf) ab = d; lauf++;
-          const da = m.dienstarten.find((x) => x.id === t.dienstId);
-          nl = da && nachtAnteil(da, m.einstellungen) >= nachtschwelle(m.einstellungen) ? nl + 1 : 0;
           if (lauf === m.einstellungen.maxFolge + 1 && d >= von && d <= bis)
             push({ art: "folge", schwere: "warn", datum: d, ref: p.id, personId: p.id,
               titel: `${lauf} Dienste in Folge — ${p.nachname}`, text: `Serie ab ${fKurz(ab)}, Grenzwert ${m.einstellungen.maxFolge}` });
-          if (nl === m.einstellungen.maxNachtFolge + 1 && d >= von && d <= bis)
-            push({ art: "nachtfolge", schwere: "warn", datum: d, ref: p.id, personId: p.id,
-              titel: `${nl} Nachtdienste in Folge — ${p.nachname}`, text: `Grenzwert ${m.einstellungen.maxNachtFolge}` });
-        } else { lauf = 0; nl = 0; }
+          if (nf.has(d)) push(nf.get(d));
+        } else { lauf = 0; }
       }
       for (let d = von; d <= bis; d = addDays(d, 1)) {
         const a = m.abweichungen[`${p.id}|${d}`], w = abwesenheitAm(m, p.id, d);
@@ -191,47 +190,15 @@ export function pruefen(m, von, bis) {
          im betrachteten Fenster liegt — für einen Anspruch am Rand ist die
          Antwort schlicht noch nicht bekannt, und eine Meldung „kein
          Ersatzruhetag" wäre dort schlicht falsch. */
-      const ARBEITET = new Map();
-      const arbeitet = (d) => {
-        if (ARBEITET.has(d)) return ARBEITET.get(d);
-        const t = personTag(m, p, d);
-        const da = t.dienstId ? m.dienstarten.find((x) => x.id === t.dienstId) : null;
-        const v = !t.abwesenheit && !!da && da.form !== "ruf";
-        ARBEITET.set(d, v);
-        return v;
-      };
-      const istFei = (d) => !!feiertagFuer(m, d, p);
-      const RAND = 56;                       // die längere Frist, § 11 Abs. 3 Satz 2
-      const weitVon = addDays(von, -RAND), weitBis = addDays(bis, RAND);
-      const er = ersatzruhetage(arbeitet, istFei, weitVon, weitBis);
-      for (const o of er.offen) {
-        if (o.datum < von || o.datum > bis) continue;
-        /* Nur melden, wenn das ganze Fenster betrachtet wurde. */
-        if (addDays(o.datum, -(o.frist - 1)) < weitVon) continue;
-        if (addDays(o.datum, o.frist - 1) > weitBis) continue;
-        push({ art: "ersatzruhe", schwere: "warn", datum: o.datum, ref: `${p.id}|er`, personId: p.id,
-          titel: `Ersatzruhetag fehlt — ${p.nachname}`,
-          text: o.art === "sonntag"
-            ? `Dienst am Sonntag, ${fKurz(o.datum)}. Innerhalb von zwei Wochen steht kein freier Werktag zur Verfügung.`
-            : `Dienst am Feiertag, ${fKurz(o.datum)}. Innerhalb von acht Wochen steht kein freier Werktag zur Verfügung.` });
-      }
+      /* Rechnung in ersatzruheBefunde und sonntagsfreiBefund (unten; gemeinsam mit dem Planungsassistenten), Ausgabe wie bisher. */
+      const arbeitet = sonntagsArbeit(m, p);
+      for (const b of ersatzruheBefunde(m, p, von, bis, arbeitet)) push(b);
 
-      /* Die Jahresbilanz nach Absatz 1 ist kein Tagesereignis. Sie hängt am
-         letzten Sonntag des geprüften Zeitraums, damit sie überhaupt
-         irgendwo erscheint — und sie meldet erst dann einen Verstoß, wenn
-         selbst alle noch offenen Sonntage die fünfzehn nicht mehr retten. */
-      let letzterSo = null;
-      for (let d = von; d <= bis; d = addDays(d, 1)) if (dow(d) === 6) letzterSo = d;
+      const so = sonntagsfreiBefund(m, p, von, bis, arbeitet);
+      const letzterSo = so.letzterSo;
       if (letzterSo) {
         const jahr = Number(letzterSo.slice(0, 4));
-        const fs = freieSonntage(arbeitet, jahr, letzterSo);
-        if (fs.verletzt || fs.knapp)
-          push({ art: "sonntagsfrei", schwere: fs.verletzt ? "danger" : "warn",
-            datum: letzterSo, ref: `${p.id}|so${jahr}`, personId: p.id,
-            titel: `Freie Sonntage ${fs.verletzt ? "unterschritten" : "knapp"} — ${p.nachname}`,
-            text: fs.verletzt
-              ? `${fs.frei} frei, ${fs.gearbeitet} gearbeitet. Selbst mit allen ${fs.offen} noch offenen Sonntagen sind ${FREIE_SONNTAGE_MIN} nicht mehr erreichbar.`
-              : `${fs.frei} von ${FREIE_SONNTAGE_MIN} bisher frei, ${fs.offen} Sonntage stehen noch offen.` });
+        if (so.befund) push(so.befund);
 
         /* --- § 6 Abs. 3 ArbZG: die arbeitsmedizinische Untersuchung ---
 
@@ -433,6 +400,93 @@ export function pruefen(m, von, bis) {
     return out;
   });
 }
+/* --- Nachtdienste in Folge und § 11 ArbZG je Person (WP-I5/I7, Betreiberentscheidung 26.11. Variante A) ---
+
+   Aus pruefen herausgelöst, Rechnung und Texte unverändert: pruefen ruft sie an derselben Stelle, der Planungsassistent und der
+   Planer (planbefundeNeu, einsatz.mjs) vergleichen damit den Stand vor und nach einer Einteilung. Eine Implementierung. */
+
+/**
+ * Nachtdienste in Folge (betriebliche Grenze `maxNachtFolge`, Regelregister AZ-NACHTFOLGE-01): je Lauf der Tag, an dem er die Grenze
+ * überschreitet, wenn er in `von` … `bis` liegt. Gezählt wird ab `vor` (pruefen: zehn Tage vor `von`); ein Dienst ohne Nachtanteil über
+ * der Schwelle oder ein dienstfreier Tag beendet den Lauf.
+ */
+export function nachtfolgeBefunde(m, p, von, bis, vor = addDays(von, -10)) {
+  const out = [];
+  let nl = 0;
+  for (let d = vor; d <= addDays(bis, 2); d = addDays(d, 1)) {
+    const t = personTag(m, p, d);
+    if (t.dienstId) {
+      const da = m.dienstarten.find((x) => x.id === t.dienstId);
+      nl = da && nachtAnteil(da, m.einstellungen) >= nachtschwelle(m.einstellungen) ? nl + 1 : 0;
+      if (nl === m.einstellungen.maxNachtFolge + 1 && d >= von && d <= bis)
+        out.push({ art: "nachtfolge", schwere: "warn", datum: d, ref: p.id, personId: p.id,
+          titel: `${nl} Nachtdienste in Folge — ${p.nachname}`, text: `Grenzwert ${m.einstellungen.maxNachtFolge}` });
+    } else nl = 0;
+  }
+  return out;
+}
+
+/** Arbeitet die Person an diesem Tag im Sinne von § 11 ArbZG (Dienst, nicht abwesend, keine Rufbereitschaft)? Zwischenspeicher je Aufruf. */
+export function sonntagsArbeit(m, p) {
+  const ARBEITET = new Map();
+  return (d) => {
+    if (ARBEITET.has(d)) return ARBEITET.get(d);
+    const t = personTag(m, p, d);
+    const da = t.dienstId ? m.dienstarten.find((x) => x.id === t.dienstId) : null;
+    const v = !t.abwesenheit && !!da && da.form !== "ruf";
+    ARBEITET.set(d, v);
+    return v;
+  };
+}
+
+/**
+ * § 11 Abs. 3 ArbZG: Sonn- und Feiertagsdienste in `von` … `bis` ohne zugeordneten Ersatzruhetag. Zugeordnet wird über den Zeitraum
+ * hinaus (je Seite 56 Tage, die längere Frist); gemeldet nur, was mit dem ganzen Fenster beurteilt ist.
+ */
+export function ersatzruheBefunde(m, p, von, bis, arbeitet = sonntagsArbeit(m, p)) {
+  const out = [];
+  const istFei = (d) => !!feiertagFuer(m, d, p);
+  const RAND = 56;                       // die längere Frist, § 11 Abs. 3 Satz 2
+  const weitVon = addDays(von, -RAND), weitBis = addDays(bis, RAND);
+  const er = ersatzruhetage(arbeitet, istFei, weitVon, weitBis);
+  for (const o of er.offen) {
+    if (o.datum < von || o.datum > bis) continue;
+    /* Nur melden, wenn das ganze Fenster betrachtet wurde. */
+    if (addDays(o.datum, -(o.frist - 1)) < weitVon) continue;
+    if (addDays(o.datum, o.frist - 1) > weitBis) continue;
+    out.push({ art: "ersatzruhe", schwere: "warn", datum: o.datum, ref: `${p.id}|er`, personId: p.id,
+      titel: `Ersatzruhetag fehlt — ${p.nachname}`,
+      text: o.art === "sonntag"
+        ? `Dienst am Sonntag, ${fKurz(o.datum)}. Innerhalb von zwei Wochen steht kein freier Werktag zur Verfügung.`
+        : `Dienst am Feiertag, ${fKurz(o.datum)}. Innerhalb von acht Wochen steht kein freier Werktag zur Verfügung.` });
+  }
+  return out;
+}
+
+/**
+ * § 11 Abs. 1 ArbZG, Jahresbilanz am letzten Sonntag von `von` … `bis` (Sonntage danach zählen als noch offen): `befund` bei
+ * „unterschritten“ (danger, selbst mit allen offenen Sonntagen keine 15) oder „knapp“ (warn), sonst null; ohne Sonntag im Zeitraum
+ * `letzterSo` null.
+ */
+export function sonntagsfreiBefund(m, p, von, bis, arbeitet = sonntagsArbeit(m, p)) {
+  /* Die Jahresbilanz nach Absatz 1 ist kein Tagesereignis. Sie hängt am
+     letzten Sonntag des geprüften Zeitraums, damit sie überhaupt
+     irgendwo erscheint — und sie meldet erst dann einen Verstoß, wenn
+     selbst alle noch offenen Sonntage die fünfzehn nicht mehr retten. */
+  let letzterSo = null;
+  for (let d = von; d <= bis; d = addDays(d, 1)) if (dow(d) === 6) letzterSo = d;
+  if (!letzterSo) return { letzterSo, befund: null };
+  const jahr = Number(letzterSo.slice(0, 4));
+  const fs = freieSonntage(arbeitet, jahr, letzterSo);
+  if (!(fs.verletzt || fs.knapp)) return { letzterSo, befund: null };
+  return { letzterSo, befund: { art: "sonntagsfrei", schwere: fs.verletzt ? "danger" : "warn",
+    datum: letzterSo, ref: `${p.id}|so${jahr}`, personId: p.id,
+    titel: `Freie Sonntage ${fs.verletzt ? "unterschritten" : "knapp"} — ${p.nachname}`,
+    text: fs.verletzt
+      ? `${fs.frei} frei, ${fs.gearbeitet} gearbeitet. Selbst mit allen ${fs.offen} noch offenen Sonntagen sind ${FREIE_SONNTAGE_MIN} nicht mehr erreichbar.`
+      : `${fs.frei} von ${FREIE_SONNTAGE_MIN} bisher frei, ${fs.offen} Sonntage stehen noch offen.` } };
+}
+
 /**
  * Wie schwer eine Einschränkung an der Person wiegt — für Planprüfung
  * (pruefen: schwere) und Einteilung (hindernisBefunde: stufe) aus derselben

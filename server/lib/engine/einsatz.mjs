@@ -15,7 +15,9 @@
    ========================================================================== */
 import { addDays, montag, toMin, dow, dauer, pad, stundengrenzeHinweis } from "../regelwerk.mjs";
 import { einteilungsBefunde, einheitAm, einheitDienst, imDienst, nachtAnteil, nachtschwelle, schichtmodellWirkungAktiv,
-  schichtmodellLageAm, schichtfolgeAm } from "../fachpruefung.mjs";
+  schichtmodellLageAm, schichtfolgeAm, landFuerEinheit } from "../fachpruefung.mjs";
+import { feiertagFuer } from "../isteinfrieren.mjs";
+import { nachtfolgeBefunde, ersatzruheBefunde, sonntagsfreiBefund, sonntagsArbeit } from "./befunde.mjs";
 import { istVerfuegbar, zeitraumJahr } from "../istdaten.mjs";
 import { vorgabenBefunde, neuesVorgabenBudget } from "../vorgabenwirkung.mjs";
 import { sperrtBefund as sperrtArt } from "../bestaetigungen.mjs";
@@ -218,6 +220,82 @@ export function folgeVorwaerts(vorher, p, d, da, leisten, stand) {
     if (!dx) return { tag: t, regel: "unbekannt", text: "Dienst unbekannt (nicht prüfbar)" };   // fail-closed
     const alt = harte(vorher, t, dx);
     for (const k of harte(neu, t, dx)) if (!alt.has(k)) return { tag: t, regel: k.slice(0, k.indexOf("|")), text: k.slice(k.indexOf("|") + 1) };
+  }
+  return null;
+}
+
+/** Höchster Aufwand von planbefundeNeu je Einteilung (je Regel 2 Prüfungen: Stand davor, Stand danach; drei Regeln). */
+export const PLANBEFUND_AUFWAND_HOECHST = 6;
+const LAENDER_KENNUNG = new Set(["BW", "BY", "BE", "BB", "HB", "HH", "HE", "MV", "NI", "NW", "RP", "SL", "SN", "ST", "SH", "TH"]);
+/** Ersatzruhe-Fristen in Tagen (§ 11 Abs. 3 ArbZG; regelwerk.mjs ERSATZ_TAGE_*): ein Anspruch erreicht Tage im Abstand frist − 1. */
+const ERSATZ_WEITE_SONNTAG = 13, ERSATZ_WEITE_FEIERTAG = 55;
+
+/**
+ * Planbefunde, die eine Einteilung NEU auslöst (Betreiberentscheidung 26.11. Variante A, WP-I5/I7; Reviews #579/#584 B-1): die drei
+ * Regeln aus der Planprüfung, die hindernisBefunde nicht kennt — mit derselben Rechnung wie pruefen (befunde.mjs), Stand davor gegen
+ * Stand mit der Einteilung, in beide Richtungen um den Tag d:
+ * - `nachtfolge` (betrieblich, Einstellung `maxNachtFolge`; wie „folge“): nur wenn d neu ein Nachtdienst ist. Ein Überschreitungstag in
+ *   d … d + maxNachtFolge, den es davor nicht gab, lehnt ab; ein schon bestehender sperrt nicht. Grenze keine ganze Zahl ≥ 1: nicht
+ *   bewertbar, lehnt ab (fail-closed).
+ * - `sonntagsfrei` (§ 11 Abs. 1, gesetzlich): nur wenn d ein Sonntag ist und neu gearbeitet wird. Bilanz des ganzen Kalenderjahrs
+ *   (jeder geplante Sonntag zählt, keiner gilt als „noch offen“); weniger als 15 freie Sonntage danach lehnt ab — auch wenn es davor
+ *   schon so war (ein weiterer Sonntag macht es schlimmer).
+ * - `ersatzruhe` (§ 11 Abs. 3, gesetzlich): nur wenn an d neu gearbeitet wird und d ein Sonn- oder Feiertag ist oder ein gearbeiteter
+ *   Sonntag in ± 13 bzw. Feiertag in ± 55 Tagen d als Ersatzruhetag brauchen kann (sonst berührt d keine Zuordnung). Ein fehlender
+ *   Ersatzruhetag in d − 55 … d + 55, den es davor nicht gab, lehnt ab. Bundesland unbekannt (Feiertage nicht bestimmbar): lehnt ab.
+ * Aufwand: 2 je betroffener Regel, VOR der Arbeit über `leisten(k)` angemeldet (false = Budget leer ⇒ "aufwand"); ohne betroffene Regel
+ * keine Arbeit und kein Aufwand. `stand` (wahlweise): der Stand mit der Einteilung; sonst der Stand davor mit der Abweichung p|d = da.
+ * @param {any} vorher @param {any} p @param {string} d @param {any} da @param {(k: number) => boolean} leisten @param {any} [stand]
+ * @returns {null | "aufwand" | { tag: string, regel: string, text: string }}
+ */
+export function planbefundeNeu(vorher, p, d, da, leisten, stand) {
+  const neu = stand || { ...vorher, abweichungen: { ...vorher.abweichungen, [`${p.id}|${d}`]: da.id } };
+  const nacht = (st) => {
+    const id = personTag(st, p, d).dienstId;
+    const x = id ? st.dienstarten.find((y) => y.id === id) : null;
+    return !!x && nachtAnteil(x, st.einstellungen) >= nachtschwelle(st.einstellungen);
+  };
+  /* Der Stand danach unterscheidet sich für p nur am Tag d (eine Einteilung; Posten wirken nur am selben Tag): alle anderen Tage aus dem
+     Stand davor (dessen Zwischenspeicher, z. B. die Postenbesetzung, gilt; sonst rechnete jeder Kandidat sie für jeden Tag neu). */
+  const aV = sonntagsArbeit(vorher, p), aNd = sonntagsArbeit(neu, p)(d);
+  const aN = (t) => (t === d ? aNd : aV(t));
+  const nachtNeu = nacht(neu) && !nacht(vorher);
+  const arbeitNeu = aN(d) && !aV(d);
+  const sonntag = arbeitNeu && dow(d) === 6;
+  let ersatz = false, landOffen = false;
+  if (arbeitNeu) {
+    landOffen = !LAENDER_KENNUNG.has(landFuerEinheit(vorher, einheitAm(p, d)));
+    if (sonntag || feiertagFuer(vorher, d, p)) ersatz = true;
+    for (let k = -ERSATZ_WEITE_FEIERTAG; k <= ERSATZ_WEITE_FEIERTAG && !ersatz; k++) {
+      if (!k) continue;
+      const t = addDays(d, k);
+      if (((dow(t) === 6 && Math.abs(k) <= ERSATZ_WEITE_SONNTAG) || feiertagFuer(vorher, t, p)) && aV(t)) ersatz = true;
+    }
+  }
+  /* Nicht bewertbar: nie bestanden (ohne Rechenarbeit, daher ohne Aufwand). */
+  const max = vorher.einstellungen ? vorher.einstellungen.maxNachtFolge : undefined;
+  if (nachtNeu && !(Number.isInteger(max) && max >= 1))
+    return { tag: d, regel: "nachtfolge", text: "Grenze für Nachtdienste in Folge nicht eingestellt (nicht bewertbar)" };
+  if (arbeitNeu && landOffen)
+    return { tag: d, regel: "ersatzruhe", text: "Bundesland unbekannt: Feiertage und Ersatzruhetage nicht bewertbar" };
+  const k = 2 * ((nachtNeu ? 1 : 0) + (sonntag ? 1 : 0) + (ersatz ? 1 : 0));
+  if (!k) return null;
+  if (!leisten(k)) return "aufwand";
+  const neueTage = (alt, nach) => { const a = new Set(alt.map((b) => b.datum)); return nach.filter((b) => !a.has(b.datum)); };
+  if (nachtNeu) {
+    const von = d, bis = addDays(d, max), vor = addDays(d, -(max + 1));
+    const n = neueTage(nachtfolgeBefunde(vorher, p, von, bis, vor), nachtfolgeBefunde(neu, p, von, bis, vor));
+    if (n.length) return { tag: n[0].datum, regel: "nachtfolge", text: n[0].text };
+  }
+  if (sonntag) {
+    const j = d.slice(0, 4);
+    const b = sonntagsfreiBefund(neu, p, `${j}-01-01`, `${j}-12-31`, aN).befund;
+    if (b) return { tag: d, regel: "sonntagsfrei", text: b.text };
+  }
+  if (ersatz) {
+    const von = addDays(d, -ERSATZ_WEITE_FEIERTAG), bis = addDays(d, ERSATZ_WEITE_FEIERTAG);
+    const n = neueTage(ersatzruheBefunde(vorher, p, von, bis, aV), ersatzruheBefunde(neu, p, von, bis, aN));
+    if (n.length) return { tag: n[0].datum, regel: "ersatzruhe", text: n[0].text };
   }
   return null;
 }

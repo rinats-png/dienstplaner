@@ -46,9 +46,12 @@
 
    Vorwärts (Betreiberentscheidung 26.11., wie planeMonat): Eine Einteilung darf
    an späteren Tagen derselben Person keinen neuen Befund ab Achtung auslösen
-   (folgeVorwaerts, einsatz.mjs; betrifft „Dienste in Folge“). Geprüft im
-   Aufbau je Kandidat (scheitert er, der nächste; zählt nicht als Versuch),
-   bei der Blockfortsetzung, im Verbessern und in der Nachprüfung.
+   (folgeVorwaerts, einsatz.mjs; betrifft „Dienste in Folge“), und keinen
+   neuen Planbefund zu Nachtdiensten in Folge oder § 11 ArbZG (planbefundeNeu,
+   Betreiberentscheidung 26.11. Variante A; Grund der offenen Stelle ist die
+   Regel). Geprüft im Aufbau je Kandidat (scheitert er, der nächste; zählt
+   nicht als Versuch), bei der Blockfortsetzung, im Verbessern und in der
+   Nachprüfung.
 
    Aufwand (Lehren #561/#566/#572): EIN Budget je Aufruf, gezählt in
    Personenprüfungen (Besetzung eines Tags = Personen, Ersatzsuche = Personen,
@@ -75,7 +78,7 @@ import { kiPauseAktiv } from "../ki-steuerung.mjs";
 import { neuesVorgabenBudget, vorgabenPlanFortschreiben } from "../vorgabenwirkung.mjs";
 import { VORGABEN_WIRKUNG_GRENZE } from "../vorgaben.mjs";
 import { besetzung, personTag, stundenkonto } from "./plan.mjs";
-import { ersatzVorschlaege, hindernisBefunde, nachtJahr, stufeRang, verdraengt, folgeVorwaerts } from "./einsatz.mjs";
+import { ersatzVorschlaege, hindernisBefunde, nachtJahr, stufeRang, verdraengt, folgeVorwaerts, planbefundeNeu, PLANBEFUND_AUFWAND_HOECHST } from "./einsatz.mjs";
 
 /** Schalter des eigenen Planers (Vorgabe AUS). Einschalten ist eine bewusste Codeänderung dieser Konstante; Prüfungen geben je Aufruf frei. */
 export const PLANER_AN = false;
@@ -128,6 +131,15 @@ function eingabeFehler(m, ym, opt) {
 const leer = (m, ym, status, grund, startwert) => ({ status, grund, ym, startwert, gesetzt: [], offen: [], abweichungen: m && m.abweichungen ? m.abweichungen : {},
   rang: null, nichtBewertet: [...NICHT_BEWERTET], aufwand: null, verbessert: 0 });
 
+/** Vorwärtsprüfung (folgeVorwaerts) und Planbefunde (planbefundeNeu) einer Einteilung: null = besteht, "aufwand" = Budget leer, sonst der
+    Grund („folgeVorwaerts“ oder die Regel des Planbefunds). Dieselben Prüfungen wie planeMonat, in derselben Reihenfolge. */
+const vorwaerts = (vorher, p, d, da, leisten, stand) => {
+  const f = folgeVorwaerts(vorher, p, d, da, leisten, stand);
+  if (f !== null) return f === "aufwand" ? f : "folgeVorwaerts";
+  const z = planbefundeNeu(vorher, p, d, da, leisten, stand);
+  return z === null || z === "aufwand" ? z : z.regel;
+};
+
 /* verdraengt (Bestandspersonen eines Tags gegen den Bestand) liegt seit der Korrektur in planeMonat (WP-I5/I7, Review #577) in
    einsatz.mjs, damit planeMonat (Browser) und der Planer dieselbe Prüfung nutzen; hier unverändert weitergereicht. */
 export { verdraengt };
@@ -165,8 +177,9 @@ export function nachpruefen(m, stand, eigene, vorgabenBudget) {
       if (b.regel === "vorgabeSoll") soll++;
       if (b.regel === "vorgabeOffen") offenV++;
     }
-    /* Vorwärts: kein neuer Befund ab Achtung an späteren Tagen der Person durch diese Einteilung (Aufwand reserviert der Aufrufer). */
-    if (folgeVorwaerts(ohne, p, e.datum, da, () => true, stand) !== null) durch = false;
+    /* Vorwärts und Planbefunde: kein neuer Befund ab Achtung an späteren Tagen der Person, kein neuer Planbefund (Nachtdienste in Folge,
+       § 11 ArbZG) durch diese Einteilung (Aufwand reserviert der Aufrufer). */
+    if (vorwaerts(ohne, p, e.datum, da, () => true, stand) !== null) durch = false;
   }
   return { durch, gesetz, muss, soll, offenV, verdraengte };
 }
@@ -205,10 +218,10 @@ export function planeVorschlag(m, ym, opt = {}) {
      Einsatzprüfung mit der Besetzung des Tags) und die Besetzung aller Tage. */
   const A = { grenze, rest: grenze, ausgeschoepft: false };
   /* … dazu je Tag der Vergleich der Bestandspersonen (Stand und Bestand: 2 P). */
-  /* … und je Einteilung die Vorwärtsprüfung (2 je späterem Tag, höchstens maxFolge Tage). */
+  /* … und je Einteilung die Vorwärtsprüfung (2 je späterem Tag, höchstens maxFolge Tage) und die Planbefunde (höchstens 6). */
   const mf = Number(m.einstellungen && m.einstellungen.maxFolge);
   const W = mf > 0 ? Math.ceil(mf) : 0;
-  const reserve = (n) => n * (P + 1 + 2 * W) + 3 * nTage * P;
+  const reserve = (n) => n * (P + 1 + 2 * W + PLANBEFUND_AUFWAND_HOECHST) + 3 * nTage * P;
   const leisten = (k, n) => { if (A.rest - k < reserve(n)) { A.ausgeschoepft = true; return false; } A.rest -= k; return true; };
   if (A.rest < reserve(0)) return { ...leer(m, ym, "aufwand", "Aufwand reicht nicht für die Nachprüfung", startwert), aufwand: { grenze, verbraucht: 0, ausgeschoepft: true } };
 
@@ -241,7 +254,7 @@ export function planeVorschlag(m, ym, opt = {}) {
   /* `lst`: Anmeldung der Vorwärtsprüfung im Aufrufbudget (reicht es nicht: nicht einsetzbar). */
   const einsetzbar = (stand, p, d, da, jeP, lst) => (jeP[p.id] || 0) < maxProPerson && !personTag(stand, p, d).dienstId
     && !hindernisBefunde(stand, p, d, da, pruefOpt).some((b) => stufeRang(b.stufe) >= 2)
-    && folgeVorwaerts(stand, p, d, da, lst) === null;
+    && vorwaerts(stand, p, d, da, lst) === null;
 
   /* ---------- 2. Aufbauen ---------- */
   const aufbauen = () => {
@@ -276,17 +289,17 @@ export function planeVorschlag(m, ym, opt = {}) {
         if (!leisten(P, eigene.size + 1)) { gekappt.set(`${d}|${da.id}`, "aufwand"); return; }
         const kand = ersatzVorschlaege(stand, d, da.id, ctx).filter((x) => x.moeglich && (jeP[x.person.id] || 0) < maxProPerson);
         if (!kand.length) { if (ctx.vorgabenBudget.ausgeschoepft) gekappt.set(`${d}|${da.id}`, "vorgabe"); return; }
-        let p = null, versuche = 0;
+        let p = null, versuche = 0, grundV = "folgeVorwaerts";
         for (const x of kand) {
-          /* Vorwärts (wie planeMonat): scheitert der Kandidat, der nächste — zählt nicht als Versuch. */
-          const f = folgeVorwaerts(stand, x.person, d, da, (k) => leisten(k, eigene.size + 1));
+          /* Vorwärts und Planbefunde (wie planeMonat): scheitert der Kandidat, der nächste — zählt nicht als Versuch. */
+          const f = vorwaerts(stand, x.person, d, da, (k) => leisten(k, eigene.size + 1));
           if (f === "aufwand") { gekappt.set(`${d}|${da.id}`, "aufwand"); return; }
-          if (f) continue;
+          if (f) { grundV = f; continue; }
           if (versuche++ >= VERSUCHE) break;
           if (!leisten(2 * P, eigene.size + 1)) { gekappt.set(`${d}|${da.id}`, "aufwand"); return; }
           if (setzenOhneVerdraengung(x.person, d, da, art)) { p = x.person; break; }
         }
-        if (!p) { gekappt.set(`${d}|${da.id}`, versuche ? "verdraengung" : "folgeVorwaerts"); return; }
+        if (!p) { gekappt.set(`${d}|${da.id}`, versuche ? "verdraengung" : grundV); return; }
         /* Block: dieselbe Person an den folgenden Tagen, solange dort eine Lücke ist und sie einsetzbar ist (kein halber Schritt: Kosten vorab). */
         for (const t of block || []) {
           if (!leisten(3 * P + 1, eigene.size + 1)) break;
@@ -384,7 +397,7 @@ export function planeVorschlag(m, ym, opt = {}) {
       const bE = besetzung(s1, E.datum)[daE.id];
       if (bE.diff < 0 || bE.qualFehlt) {
         const kand = ersatzVorschlaege(s1, E.datum, daE.id, ctx).filter((x) => x.moeglich && x.person.id !== p.id && (jeP2[x.person.id] || 0) < maxProPerson);
-        const qx = kand.find((x) => folgeVorwaerts(s1, x.person, E.datum, daE, lst) === null);
+        const qx = kand.find((x) => vorwaerts(s1, x.person, E.datum, daE, lst) === null);
         if (qx) { q = qx.person; s1 = setze(s1, q.id, E.datum, daE.id); schritte.push({ pid: q.id, d: E.datum }); jeP2[q.id] = (jeP2[q.id] || 0) + 1; }
       }
       /* Bestandspersonen an beiden Tagen unverändert (Posten: Zurücknehmen kann jemanden in die Postenbesetzung ziehen, Setzen verdrängen). */

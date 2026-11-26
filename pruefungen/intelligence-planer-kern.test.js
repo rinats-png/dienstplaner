@@ -17,6 +17,8 @@
    7. Messung relativ zu planeMonat (feste Obergrenze).
    8. Posten (Review #572 A1): keine Person ohne eigene Einteilung hat danach einen anderen Dienst als im Bestand (frisch gerechnet);
       Verdrängung mehrerer Personen, Monatsgrenze, Budget der Vorgaben leer in der Nachprüfung.
+   9. Planbefunde nachtfolge, ersatzruhe, sonntagsfrei (Betreiberentscheidung 26.11. Variante A, Review #584 B-1): planeMonat und
+      Planer lösen keinen neuen Planbefund aus (pruefen frisch, November bis Januar); Grenzfälle, nicht bewertbar, Aufwand.
 
    Aufruf: npx vitest run pruefungen/intelligence-planer-kern.test.js
    ========================================================================== */
@@ -25,7 +27,7 @@ import { writeFileSync, readFileSync } from "node:fs";
 import * as PL from "../server/lib/engine/planer.mjs";
 import { planeVorschlag, nachpruefen, rangVergleich, zufallAus, PLANER_AN, PLANER_GRENZE, RANGFOLGE, NICHT_BEWERTET } from "../server/lib/engine/planer.mjs";
 import { neuesVorgabenBudget } from "../server/lib/vorgabenwirkung.mjs";
-import { stufeRang } from "../server/lib/engine/einsatz.mjs";
+import { stufeRang, planbefundeNeu, PLANBEFUND_AUFWAND_HOECHST } from "../server/lib/engine/einsatz.mjs";
 import { FEST, zufall, betriebe } from "./engine-golden.fixture.mjs";
 
 const add = (t, n) => { const x = new Date(`${t}T00:00:00Z`); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
@@ -121,7 +123,11 @@ describe("2. Gleichwertigkeit zu planeMonat (ohne Blöcke, ohne Verbessern)", ()
       expect(b.status).toBe("ok");
       expect(schluessel(b.gesetzt)).toEqual(schluessel(a.gesetzt));
       expect(b.abweichungen).toEqual(a.abweichungen);
-      expect(b.offen).toEqual(offenFrisch(m, a.abweichungen));
+      /* Gründe offener Stellen (Planbefunde seit der Betreiberentscheidung 26.11.) stehen nicht in der frischen Rechnung; sie müssen
+         dieselben sein wie bei planeMonat. */
+      expect(b.offen.map(({ grund, ...x }) => x)).toEqual(offenFrisch(m, a.abweichungen));
+      const gruende = (l) => l.filter((x) => x.grund).map((x) => `${x.datum}|${x.dienstId}|${x.grund}`).sort();
+      expect(gruende(b.offen)).toEqual(gruende(a.offen));
       expect(b.aufwand.ausgeschoepft).toBe(false);
       expect(m, "der Planer verändert den Bestand nicht").toEqual(vorher);
       expect(F.planeMonat(m, YM, { maxProPerson: 3 }), "planeMonat nach dem Planer unverändert").toEqual(a);
@@ -439,7 +445,8 @@ describe("8. Posten: Bestandspersonen bleiben unverändert (Review #572 A1)", ()
     const a = F.planeMonat(m, YM, { maxProPerson: 3 });
     expect(F.planeMonat(m, YM, { maxProPerson: 3, verdraengungAufwand: 0 })).toEqual(a);
     expect(a.gesetzt.every((g) => !g.grund.includes("verdrängt "))).toBe(true);
-    expect(a.offen.every((x) => x.grund === undefined)).toBe(true);
+    /* Ohne Posten nie „verdraengung“/„aufwand“; Gründe nur aus den Planbefunden (§ 11 ArbZG, Nachtdienste in Folge; 26.11.). */
+    expect(a.offen.every((x) => x.grund === undefined || ["nachtfolge", "ersatzruhe", "sonntagsfrei"].includes(x.grund))).toBe(true);
     expect(m).toEqual(vorher);
   }, 600000);
   /** Delta-Review #579 B-1: Befunde ab Achtung (ohne Vorgaben) im Endstand, die im Bestand nicht bestanden — für JEDE Person mit Dienst
@@ -513,7 +520,8 @@ describe("8. Posten: Bestandspersonen bleiben unverändert (Review #572 A1)", ()
       (30.11. und der Tag nach dem Lauf frei); wer am 1.12. frei ist, ist dort abwesend — außer X und (mitY) Y, der letzten Kandidatin. */
   const folgeSzenario = (k, mitY = false) => {
     const m = mitLuecken("demo3");
-    m.einstellungen = { ...m.einstellungen, maxFolge: 5 };
+    /* maxNachtFolge hoch: hier wirkt nur „Dienste in Folge“ (die Nachtregel prüft Abschnitt 9). */
+    m.einstellungen = { ...m.einstellungen, maxFolge: 5, maxNachtFolge: 31 };
     const kand = F.ersatzVorschlaege(m, D1, "N").filter((x) => x.moeglich);
     const X = kand[0].person.id, Y = kand[kand.length - 1].person.id;
     m.abweichungen[`${X}|2026-11-30`] = "-";
@@ -615,5 +623,255 @@ describe("8. Posten: Bestandspersonen bleiben unverändert (Review #572 A1)", ()
     expect(q.split("export function verdraengt(").length - 1).toBe(0);
     expect(readFileSync("server/lib/engine/planer.mjs", "utf8")).not.toContain("function verdraengt(");
     expect(readFileSync("server/lib/engine/einsatz.mjs", "utf8")).toContain("export function verdraengt(bestand, stand, d, eigene, liste)");
+  });
+});
+
+/* ---------- 9. Planbefunde nachtfolge, ersatzruhe, sonntagsfrei (Betreiberentscheidung 26.11. Variante A; Review #584 B-1) ---------- */
+describe("9. Planbefunde im Assistenten und im Planer (Nachtdienste in Folge, § 11 ArbZG)", () => {
+  const PLAN_ARTEN = ["nachtfolge", "ersatzruhe", "sonntagsfrei"];
+  const ANSICHTEN = [["2026-11-01", "2026-11-30"], ["2026-12-01", "2026-12-31"], ["2027-01-01", "2027-01-31"]];
+  /** Planbefunde der drei Arten in den Prüfansichten November bis Januar (pruefen frisch), die es im Bestand nicht gab (Kennung + Schwere). */
+  const neuePlan = (m, r) => {
+    const l = [];
+    for (const [von, bis] of ANSICHTEN) {
+      const alt = new Set(F.pruefen(m, von, bis).filter((b) => PLAN_ARTEN.includes(b.art)).map((b) => `${b.id}|${b.schwere}`));
+      for (const b of F.pruefen({ ...m, abweichungen: r.abweichungen }, von, bis))
+        if (PLAN_ARTEN.includes(b.art) && !alt.has(`${b.id}|${b.schwere}`)) l.push(`${b.id}|${b.schwere}`);
+    }
+    return l;
+  };
+  const basis = () => structuredClone(B.find(([n]) => n.startsWith("demo3"))[1]);
+  /** Eine Person ohne Abwesenheiten, durchgehend im Dienst (die synthetischen Fälle setzen ihren Plan selbst). */
+  const person = (m) => m.personen.find((p) => p.eintritt && p.eintritt <= "2025-01-01" && !p.austritt && p.status !== "gesperrt"
+    && !m.abwesenheiten.some((a) => a.personId === p.id));
+  const istSonntag = (t) => new Date(`${t}T00:00:00Z`).getUTCDay() === 0;
+  const setze = (m, pid, von, bis, wert, auchSonntag = true) => {
+    for (let t = von; t <= bis; t = add(t, 1)) if (auchSonntag || !istSonntag(t)) m.abweichungen[`${pid}|${t}`] = wert;
+  };
+  /** Zählt die Anmeldungen; `rest` ist das Budget. */
+  const zaehler = (rest = Infinity) => {
+    const z = { aufrufe: 0, summe: 0, f: null };
+    z.f = (k) => { z.aufrufe++; if (k > rest) return false; rest -= k; z.summe += k; return true; };
+    return z;
+  };
+  const D = "2026-12-08";   // Dienstag
+  /** Die Person ist vom 1.11.2025 bis Ende 2028 dienstfrei (kein Sonntag, kein Feiertag, keine Nacht aus der Rotation); jeder Fall setzt
+      seinen Plan danach selbst. */
+  const fall = (m0, p) => { const m = structuredClone(m0); setze(m, p.id, "2025-11-01", "2028-12-31", "-"); return m; };
+  const da = (m, id) => m.dienstarten.find((x) => x.id === id);
+
+  it("nachtfolge (betrieblich): ein neuer Lauf über maxNachtFolge lehnt ab — vorwärts, rückwärts, verbindend; genau die Grenze, Tagdienst und ein unabhängiger bestehender Lauf nicht", () => {
+    const m0 = basis(); const p = person(m0);
+    expect(m0.einstellungen.maxNachtFolge).toBe(4);
+    const mit = (naechte) => { const m = fall(m0, p, add(D, -70), add(D, 70)); for (const k of naechte) m.abweichungen[`${p.id}|${add(D, k)}`] = "N"; return structuredClone(m); };
+    expect(planbefundeNeu(mit([1, 2, 3, 4]), p, D, da(m0, "N"), () => true)).toMatchObject({ regel: "nachtfolge", tag: add(D, 4) });
+    expect(planbefundeNeu(mit([-4, -3, -2, -1]), p, D, da(m0, "N"), () => true)).toMatchObject({ regel: "nachtfolge", tag: D });
+    expect(planbefundeNeu(mit([-2, -1, 1, 2]), p, D, da(m0, "N"), () => true)).toMatchObject({ regel: "nachtfolge", tag: add(D, 2) });
+    expect(planbefundeNeu(mit([1, 2, 3]), p, D, da(m0, "N"), () => true), "genau 4 Nächte").toBe(null);
+    expect(planbefundeNeu(mit([-14, -13, -12, -11, -10, -9]), p, D, da(m0, "N"), () => true), "bestehender Lauf ohne Bezug sperrt nicht").toBe(null);
+    expect(planbefundeNeu(mit([-4, -3, -2, -1, 1, 2]), p, D, da(m0, "F"), () => true), "Tagdienst beendet den Lauf").toBe(null);
+    const z = zaehler();
+    expect(planbefundeNeu(mit([-5, -4, -3, 1, 2, 3]), p, D, da(m0, "F"), z.f)).toBe(null);
+    expect(z.aufrufe, "Tagdienst an einem Werktag, Nächte drumherum, kein gearbeiteter Sonn-/Feiertag in Reichweite: keine Arbeit").toBe(0);
+    /* Gegenprobe mit der Planprüfung: genau dieser Befund erscheint dort nach der Einteilung, davor nicht. */
+    const m = mit([1, 2, 3, 4]);
+    const nach = F.pruefen({ ...m, abweichungen: { ...m.abweichungen, [`${p.id}|${D}`]: "N" } }, "2026-12-01", "2026-12-31");
+    expect(nach.filter((b) => b.art === "nachtfolge" && b.personId === p.id).map((b) => b.datum)).toEqual([add(D, 4)]);
+    expect(F.pruefen(m, "2026-12-01", "2026-12-31").filter((b) => b.art === "nachtfolge" && b.personId === p.id)).toEqual([]);
+  }, 120000);
+
+  it("nachtfolge nicht bewertbar (Grenze keine ganze Zahl ≥ 1): ein neuer Nachtdienst gilt nie als bestanden; ein Tagdienst ist nicht betroffen", () => {
+    const m0 = basis(); const p = person(m0);
+    for (const v of ["4", undefined, 0, 2.5, null]) {
+      const m = fall(m0, p, add(D, -70), add(D, 70));
+      m.einstellungen = { ...m.einstellungen, maxNachtFolge: v };
+      const r = planbefundeNeu(m, p, D, da(m, "N"), () => true);
+      expect(r, String(v)).toMatchObject({ regel: "nachtfolge" });
+      expect(typeof r === "object" && r ? r.text : "").toContain("nicht bewertbar");
+      expect(planbefundeNeu(m, p, D, da(m, "F"), () => true), String(v)).toBe(null);
+    }
+  }, 120000);
+
+  /** Alle Sonntage eines Jahres. */
+  const sonntage = (j) => { const l = []; for (let t = `${j}-01-01`; t <= `${j}-12-31`; t = add(t, 1)) if (istSonntag(t)) l.push(t); return l; };
+  it("sonntagsfrei (§ 11 Abs. 1, gesetzlich): weniger als 15 freie Sonntage im Kalenderjahr nach der Einteilung lehnt ab — auch wenn es davor schon so war; Werktag und anderes Jahr nicht", () => {
+    const m0 = basis(); const p = person(m0);
+    const so = sonntage(2026);
+    expect(so.length).toBe(52);
+    const S = "2026-12-27";
+    /* Werktage frei (Ersatzruhetage reichlich), die letzten `frei` Sonntage des Jahres frei, alle anderen mit Frühdienst. */
+    const mitFrei = (frei) => { const m = fall(m0, p, "2025-11-01", "2027-02-28"); so.forEach((s, i) => { m.abweichungen[`${p.id}|${s}`] = i < so.length - frei ? "F" : "-"; }); return structuredClone(m); };
+    expect(planbefundeNeu(mitFrei(15), p, S, da(m0, "F"), () => true)).toMatchObject({ regel: "sonntagsfrei", tag: S });
+    expect(planbefundeNeu(mitFrei(10), p, S, da(m0, "F"), () => true), "schon unterschritten: noch ein Sonntag mehr").toMatchObject({ regel: "sonntagsfrei" });
+    expect(planbefundeNeu(mitFrei(16), p, S, da(m0, "F"), () => true)).toBe(null);
+    expect(planbefundeNeu(mitFrei(15), p, "2026-12-29", da(m0, "F"), () => true), "Werktag").toBe(null);
+    expect(planbefundeNeu(mitFrei(15), p, "2027-01-03", da(m0, "F"), () => true), "Sonntag des Folgejahres zählt für 2027").toBe(null);
+    /* Gegenprobe mit der Planprüfung (Ansicht Dezember: kein Sonntag mehr offen): unterschritten erst nach der Einteilung. */
+    const m = mitFrei(15);
+    const art = (st) => F.pruefen(st, "2026-12-01", "2026-12-31").filter((b) => b.art === "sonntagsfrei" && b.personId === p.id).map((b) => b.schwere);
+    expect(art(m)).toEqual([]);
+    expect(art({ ...m, abweichungen: { ...m.abweichungen, [`${p.id}|${S}`]: "F" } })).toEqual(["danger"]);
+  }, 120000);
+
+  it("ersatzruhe (§ 11 Abs. 3, gesetzlich): Sonntagsdienst ohne freien Werktag in zwei Wochen; Werktag als einziger Ersatztag eines früheren oder späteren Sonntags; Gegenproben", () => {
+    const m0 = basis(); const p = person(m0);
+    const S = "2026-12-13";
+    /* Sonntag S: alle Werktage in S ± 13 mit Frühdienst; die Tage in `frei` bleiben frei. */
+    const um = (frei, sonntagDienst) => {
+      const m = fall(m0, p, add(S, -80), add(S, 80));
+      setze(m, p.id, add(S, -13), add(S, 13), "F", false);
+      for (const t of frei) m.abweichungen[`${p.id}|${t}`] = "-";
+      if (sonntagDienst) m.abweichungen[`${p.id}|${S}`] = "F";
+      return structuredClone(m);
+    };
+    const fd = da(m0, "F");
+    expect(planbefundeNeu(um([], false), p, S, fd, () => true)).toMatchObject({ regel: "ersatzruhe", tag: S });
+    expect(planbefundeNeu(um([add(S, -13)], false), p, S, fd, () => true), "ein freier Werktag 13 Tage davor genügt").toBe(null);
+    expect(planbefundeNeu(um([add(S, 3)], true), p, add(S, 3), fd, () => true), "einziger Ersatztag des früheren Sonntags").toMatchObject({ regel: "ersatzruhe", tag: S });
+    expect(planbefundeNeu(um([add(S, -3)], true), p, add(S, -3), fd, () => true), "einziger Ersatztag des späteren Sonntags").toMatchObject({ regel: "ersatzruhe", tag: S });
+    expect(planbefundeNeu(um([add(S, 3), add(S, 4)], true), p, add(S, 3), fd, () => true), "zweiter freier Werktag").toBe(null);
+    /* Gegenprobe mit der Planprüfung. */
+    const m = um([add(S, 3)], true);
+    const er = (st) => F.pruefen(st, "2026-12-01", "2026-12-31").filter((b) => b.art === "ersatzruhe" && b.personId === p.id).map((b) => b.datum);
+    expect(er(m)).toEqual([]);
+    expect(er({ ...m, abweichungen: { ...m.abweichungen, [`${p.id}|${add(S, 3)}`]: "F" } })).toEqual([S]);
+  }, 120000);
+
+  it("ersatzruhe Grenzfälle: Feiertage (acht Wochen), Sonntagsdienst im Folgemonat über die Jahresgrenze, Schaltjahr", () => {
+    const m0 = basis(); const p = person(m0);
+    const fd = da(m0, "F");
+    /* Feiertage 25.12., 26.12., 1.1. gearbeitet, alle Werktage von 25.12. − 55 bis 1.1. + 55 gearbeitet (Sonntage frei); frei nur `frei`. */
+    const fei = (frei) => {
+      const m = fall(m0, p, "2026-09-01", "2027-04-30");
+      setze(m, p.id, add("2026-12-25", -55), add("2027-01-01", 55), "F", false);
+      for (const t of frei) m.abweichungen[`${p.id}|${t}`] = "-";
+      return structuredClone(m);
+    };
+    const W = ["2027-02-03", "2027-02-04", "2027-02-05"];
+    expect(planbefundeNeu(fei(W), p, W[2], fd, () => true), "drei Feiertage, drei Ersatztage: einer fehlt dann").toMatchObject({ regel: "ersatzruhe" });
+    expect(planbefundeNeu(fei([...W, "2027-02-08"]), p, W[2], fd, () => true)).toBe(null);
+    /* Sonntag 3.1.2027 gearbeitet, einziger freier Werktag in ± 13 ist der 31.12.2026 (Einteilung im Dezember). */
+    const jg = fall(m0, p, "2026-10-01", "2027-03-31");
+    setze(jg, p.id, "2026-12-21", "2027-01-16", "F", false);
+    jg.abweichungen[`${p.id}|2027-01-03`] = "F";
+    jg.abweichungen[`${p.id}|2026-12-31`] = "-";
+    const mj = structuredClone(jg);
+    expect(planbefundeNeu(mj, p, "2026-12-31", fd, () => true)).toMatchObject({ regel: "ersatzruhe", tag: "2027-01-03" });
+    const er = (st) => F.pruefen(st, "2027-01-01", "2027-01-31").filter((b) => b.art === "ersatzruhe" && b.personId === p.id).map((b) => b.datum);
+    expect(er(mj)).not.toContain("2027-01-03");
+    expect(er({ ...mj, abweichungen: { ...mj.abweichungen, [`${p.id}|2026-12-31`]: "F" } }), "Prüfansicht Januar").toContain("2027-01-03");
+    /* Schaltjahr: Sonntag 5.3.2028, einziger freier Werktag 29.2.2028. */
+    const sj = fall(m0, p, "2027-12-01", "2028-05-31");
+    setze(sj, p.id, "2028-02-21", "2028-03-18", "F", false);
+    sj.abweichungen[`${p.id}|2028-03-05`] = "F";
+    sj.abweichungen[`${p.id}|2028-02-29`] = "-";
+    expect(planbefundeNeu(structuredClone(sj), p, "2028-02-29", fd, () => true)).toMatchObject({ regel: "ersatzruhe", tag: "2028-03-05" });
+    sj.abweichungen[`${p.id}|2028-02-28`] = "-";
+    expect(planbefundeNeu(structuredClone(sj), p, "2028-02-29", fd, () => true)).toBe(null);
+  }, 120000);
+
+  it("ersatzruhe nicht bewertbar (Bundesland unbekannt): ein neuer Arbeitstag gilt nie als bestanden", () => {
+    const m0 = basis(); const p = person(m0);
+    const m = fall(m0, p, add(D, -70), add(D, 70));
+    m.bundesland = "XX";
+    m.standorte = (m.standorte || []).map((s) => ({ ...s, bundesland: "XX" }));
+    const r = planbefundeNeu(structuredClone(m), p, D, da(m, "F"), () => true);
+    expect(r).toMatchObject({ regel: "ersatzruhe" });
+    expect(typeof r === "object" && r ? r.text : "").toContain("nicht bewertbar");
+  }, 120000);
+
+  it("Aufwand: 2 je betroffener Regel, VOR der Arbeit angemeldet; reicht er nicht: „aufwand“; ohne betroffene Regel keine Anmeldung", () => {
+    const m0 = basis(); const p = person(m0);
+    const m = fall(m0, p, "2026-09-01", "2027-03-31");
+    const S = "2026-12-13";
+    const ms = structuredClone(m);
+    let z = zaehler();
+    expect(planbefundeNeu(ms, p, S, da(m0, "N"), z.f)).toBe(null);
+    expect([z.aufrufe, z.summe], "Nacht an einem Sonntag: nachtfolge, sonntagsfrei, ersatzruhe").toEqual([1, PLANBEFUND_AUFWAND_HOECHST]);
+    for (const rest of [0, 5]) { z = zaehler(rest); expect(planbefundeNeu(ms, p, S, da(m0, "N"), z.f), String(rest)).toBe("aufwand"); }
+    z = zaehler(); expect(planbefundeNeu(ms, p, S, da(m0, "F"), z.f)).toBe(null);
+    expect(z.summe, "Tagdienst am Sonntag: sonntagsfrei, ersatzruhe").toBe(4);
+    z = zaehler(); expect(planbefundeNeu(ms, p, D, da(m0, "F"), z.f)).toBe(null);
+    expect(z.aufrufe, "Werktag ohne gearbeitete Sonn-/Feiertage in Reichweite").toBe(0);
+  }, 120000);
+
+  /** demo3, Nachtdienste frei, Dienste in Folge ohne wirksame Grenze (nur die Nachtregel wirkt). X (beste Kandidatin für N am 1.12.) hat N
+      vom 2.12. an `k` Nächte; wer am 1.12. frei ist, ist dort abwesend — außer X und (mitY) Y. */
+  const D1 = "2026-12-01";
+  const nachtSzenario = (k, mitY = false) => {
+    const m = mitLuecken("demo3");
+    m.einstellungen = { ...m.einstellungen, maxFolge: 31 };
+    const kand = F.ersatzVorschlaege(m, D1, "N").filter((x) => x.moeglich);
+    const X = kand[0].person.id, Y = kand[kand.length - 1].person.id;
+    m.abweichungen[`${X}|2026-11-30`] = "-";
+    for (let j = 1; j <= k; j++) m.abweichungen[`${X}|${add(D1, j)}`] = "N";
+    m.abweichungen[`${X}|${add(D1, k + 1)}`] = "-";
+    const frei = m.personen.filter((p) => p.id !== X && !(mitY && p.id === Y) && !F.personTag(m, p, D1).dienstId);
+    m.abwesenheiten = [...m.abwesenheiten, ...frei.map((p, i) => ({ id: `nf${i}`, personId: p.id, art: "urlaub", von: D1, bis: D1, status: "genehmigt" }))];
+    return { m: structuredClone(m), X, Y };
+  };
+  const amTag = (r, pid) => r.gesetzt.filter((g) => g.personId === pid && g.datum === D1);
+  it("planeMonat (Befund #584): Nacht VOR vier bestehenden Nächten — nicht gesetzt, offen mit Grund „nachtfolge“; mit Y die nächste Kandidatin; Aufwand 0 = „aufwand“", () => {
+    const { m, X } = nachtSzenario(4);
+    expect(F.ersatzVorschlaege(m, D1, "N").filter((x) => x.moeglich).map((x) => x.person.id), "Vorbedingung: X einsetzbar und einzige Kandidatin").toEqual([X]);
+    const r = F.planeMonat(structuredClone(m), YM, { maxProPerson: 31 });
+    expect(amTag(r, X)).toEqual([]);
+    expect(r.offen.find((x) => x.datum === D1 && x.dienstId === "N")).toMatchObject({ grund: "nachtfolge" });
+    expect(neuePlan(m, r)).toEqual([]);
+    expect(pruefwegFehler(m, r)).toEqual([]);
+    const a0 = F.planeMonat(structuredClone(m), YM, { maxProPerson: 31, planbefundAufwand: 0 });
+    expect(amTag(a0, X)).toEqual([]);
+    expect(a0.offen.find((x) => x.datum === D1 && x.dienstId === "N")).toMatchObject({ grund: "aufwand" });
+    expect(F.PLANEMONAT_PLANBEFUND_AUFWAND).toBe(1000000);
+    expect(F.planeMonat(structuredClone(m), YM, { maxProPerson: 31, planbefundAufwand: 10 * F.PLANEMONAT_PLANBEFUND_AUFWAND })).toEqual(r);
+    const mY = nachtSzenario(4, true);
+    const rY = F.planeMonat(structuredClone(mY.m), YM, { maxProPerson: 31 });
+    expect(amTag(rY, mY.X)).toEqual([]);
+    expect(amTag(rY, mY.Y).map((g) => g.dienstId)).toEqual(["N"]);
+    expect(neuePlan(mY.m, rY)).toEqual([]);
+    const g = nachtSzenario(3);
+    expect(amTag(F.planeMonat(structuredClone(g.m), YM, { maxProPerson: 31 }), g.X).map((x) => x.dienstId), "Gegenprobe: 1 + 3 Nächte erlaubt").toEqual(["N"]);
+  }, 600000);
+
+  it("Planer: Aufbau wie planeMonat (nächste Kandidatin), Nachprüfung lehnt die Nacht vor vier Nächten ab, Gegenprobe drei", () => {
+    const { m, X, Y } = nachtSzenario(4, true);
+    const a = F.planeMonat(structuredClone(m), YM, { maxProPerson: 3 });
+    const b = planeVorschlag(m, YM, { freigabe: true, bloecke: false, zuege: 0 });
+    expect(schluessel(b.gesetzt)).toEqual(schluessel(a.gesetzt));
+    expect(amTag(b, X)).toEqual([]);
+    expect(amTag(b, Y).length).toBe(1);
+    const st = { ...m, abweichungen: { ...m.abweichungen, [`${X}|${D1}`]: "N" } };
+    expect(nachpruefen(m, st, [{ personId: X, datum: D1, dienstId: "N" }], neuesVorgabenBudget()).durch).toBe(false);
+    const g = nachtSzenario(3);
+    expect(nachpruefen(g.m, { ...g.m, abweichungen: { ...g.m.abweichungen, [`${g.X}|${D1}`]: "N" } }, [{ personId: g.X, datum: D1, dienstId: "N" }], neuesVorgabenBudget()).durch, "Gegenprobe").toBe(true);
+  }, 600000);
+
+  for (const [name, mehr] of [["demo3", false], ["demo3", true], ["demo2", false], ["demo1", false]]) it(`Endstand (${name}${mehr ? ", viele Lücken" : ", Nachtdienste frei"}): planeMonat${name === "demo3" && mehr ? " und Planer" : ""} ohne neuen Planbefund nachtfolge/ersatzruhe/sonntagsfrei`, () => {
+    const m = mitLuecken(name, mehr);
+    for (const h of name === "demo1" ? [31] : [3, 31]) {
+      const r = F.planeMonat(structuredClone(m), YM, { maxProPerson: h });
+      expect(neuePlan(m, r), `planeMonat ${h}`).toEqual([]);
+      for (const o of r.offen.filter((x) => x.grund)) expect(["vorgabe", "verdraengung", "aufwand", "folgeVorwaerts", ...PLAN_ARTEN]).toContain(o.grund);
+    }
+    if (name === "demo3" && mehr) {
+      const r = planeVorschlag(m, YM, { freigabe: true });
+      expect(r.status).toBe("ok");
+      expect(neuePlan(m, r), "Planer").toEqual([]);
+    }
+  }, 900000);
+
+  it("Quelle: eine Rechnung — pruefen, planeMonat und Planer nutzen dieselben Funktionen (befunde.mjs, planbefundeNeu), keine Kopie", () => {
+    const q = readFileSync("src/lib/fachlogik.js", "utf8");
+    const f = q.slice(q.indexOf("export function planeMonat("), q.indexOf("\n}\n", q.indexOf("export function planeMonat(")));
+    expect(f).toContain("planbefundeNeu(arbeit, x.person, d, da, planLeisten)");
+    expect(f).toContain("planbefundeNeu(vorher, v.person, d, daN, planLeisten, stand)");
+    const pl = readFileSync("server/lib/engine/planer.mjs", "utf8");
+    expect(pl).toContain("planbefundeNeu(vorher, p, d, da, leisten, stand)");
+    const e = readFileSync("server/lib/engine/einsatz.mjs", "utf8");
+    for (const x of ["ersatzruhetage(", "freieSonntage(", "maxNachtFolge + 1"]) { expect(e).not.toContain(x); expect(pl).not.toContain(x); expect(f).not.toContain(x); }
+    const b = readFileSync("server/lib/engine/befunde.mjs", "utf8");
+    const pr = b.slice(b.indexOf("export function pruefen("), b.indexOf("export function nachtfolgeBefunde("));
+    for (const x of ["nachtfolgeBefunde(m, p, von, bis, vor)", "ersatzruheBefunde(m, p, von, bis, arbeitet)", "sonntagsfreiBefund(m, p, von, bis, arbeitet)"]) expect(pr).toContain(x);
+    for (const x of ["ersatzruhetage(", "freieSonntage(", "maxNachtFolge + 1"]) expect(pr).not.toContain(x);
   });
 });

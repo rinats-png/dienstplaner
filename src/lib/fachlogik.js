@@ -44,7 +44,7 @@ import { pruefen } from "../../server/lib/engine/befunde.mjs";
 export { verteilung, planKennzahlen } from "../../server/lib/engine/kennzahlen.mjs";
 /* WP-I12a: Einsatzprüfung und Ersatzsuche stehen ebenfalls im Rechenkern. Der Client hängt die Regelkennung des Regelregisters ein (Frage 6). */
 export { SCHUTZ_QUELLE_NEUTRAL, SCHUTZ_QUELLE_EINSCHRAENKUNG, einschr, nachtJahr, FENSTER, fensterVon, verfuegbarFuer, wochenStundenGeplant, hindernisBefunde, ersatzVorschlaege } from "../../server/lib/engine/einsatz.mjs";
-import { SCHUTZ_QUELLE_NEUTRAL, nachtJahr, wochenStundenGeplant, hindernisBefunde, ersatzVorschlaege, regelIdHakenSetzen, verdraengt, folgeVorwaerts } from "../../server/lib/engine/einsatz.mjs";
+import { SCHUTZ_QUELLE_NEUTRAL, nachtJahr, wochenStundenGeplant, hindernisBefunde, ersatzVorschlaege, regelIdHakenSetzen, verdraengt, folgeVorwaerts, planbefundeNeu } from "../../server/lib/engine/einsatz.mjs";
 import { neuesVorgabenBudget, vorgabenPlanFortschreiben } from "../../server/lib/vorgabenwirkung.mjs";
 import { krankSchrittErlaubt } from "../../server/lib/krankmeldung.mjs";
 regelIdHakenSetzen(regelIdFuerBefund);
@@ -1560,6 +1560,9 @@ export const PLANEMONAT_VERDRAENGUNG_AUFWAND = 1000000;
 /** Aufwand der Vorwärtsprüfung (Dienste in Folge nach dem Tag; Betreiberentscheidung 26.11.) je Aufruf in Tagesprüfungen; `grenzen.folgeAufwand`
     setzt ihn je Aufruf. Eigener Zähler nach demselben Muster, damit die Verdrängungsprüfung ohne Posten weiter ohne jeden Aufwand bleibt. */
 export const PLANEMONAT_FOLGE_AUFWAND = 1000000;
+/** Aufwand der Planbefundprüfung (Nachtdienste in Folge, § 11 ArbZG; Betreiberentscheidung 26.11. Variante A) je Aufruf in Regelprüfungen
+    (planbefundeNeu: 2 je betroffener Regel); `grenzen.planbefundAufwand` setzt ihn je Aufruf. Eigener Zähler nach demselben Muster. */
+export const PLANEMONAT_PLANBEFUND_AUFWAND = 1000000;
 /* Budget ohne Rechenleistung (0) für die Mitgliederprüfung der Verdrängung: Vorgaben werden dort nicht gerechnet (sie hängen nur am eigenen,
    unveränderten Plan); das eine Monatsbudget von planeMonat bleibt das einzige, das Arbeit für Vorgaben leistet. */
 const leeresVorgabenBudget = () => neuesVorgabenBudget(0);
@@ -1620,6 +1623,14 @@ export function planeMonat(m, ym, grenzen = {}) {
   const folgeGrenze = Number.isInteger(grenzen.folgeAufwand) && grenzen.folgeAufwand >= 0 ? Math.min(grenzen.folgeAufwand, PLANEMONAT_FOLGE_AUFWAND) : PLANEMONAT_FOLGE_AUFWAND;
   let folgeRest = folgeGrenze;
   const folgeLeisten = (k) => { if (folgeRest < k) { folgeRest = -1; return false; } folgeRest -= k; return true; };
+  /* Planbefunde (Betreiberentscheidung 26.11. Variante A): `nachtfolge` (betrieblich), `sonntagsfrei` und `ersatzruhe` (§ 11 ArbZG) kennt
+     hindernisBefunde nicht. planbefundeNeu (einsatz.mjs) rechnet sie wie pruefen auf dem Stand davor und mit der Einteilung; löst die
+     Einteilung einen davor nicht bestehenden Befund aus (bei sonntagsfrei: Jahresbilanz unter 15) oder ist die Regel nicht bewertbar,
+     wird der nächste Kandidat versucht; scheitern alle, bleibt die Stelle offen mit der Regel als Grund. Ohne betroffene Regel (kein neuer
+     Nachtdienst, kein neuer Arbeitstag an einem Sonn- oder Feiertag oder in Reichweite eines gearbeiteten) keine Arbeit. Eigener Zähler. */
+  const planGrenze = Number.isInteger(grenzen.planbefundAufwand) && grenzen.planbefundAufwand >= 0 ? Math.min(grenzen.planbefundAufwand, PLANEMONAT_PLANBEFUND_AUFWAND) : PLANEMONAT_PLANBEFUND_AUFWAND;
+  let planRest = planGrenze;
+  const planLeisten = (k) => { if (planRest < k) { planRest = -1; return false; } planRest -= k; return true; };
   const bestand = { ...m, abweichungen: { ...m.abweichungen } };
   const eigene = new Set();
   /** null = niemand verdrängt oder alle Verdrängten bestehen; sonst der Grund, weshalb die Einteilung nicht gesetzt wird. */
@@ -1657,6 +1668,9 @@ export function planeMonat(m, ym, grenzen = {}) {
         const f = folgeVorwaerts(vorher, v.person, d, daN, folgeLeisten, stand);
         if (f) return f === "aufwand" ? "aufwand" : "folgeVorwaerts";
       }
+      /* Planbefunde des neuen Dienstes (Nachtdienste in Folge, § 11 ArbZG) wie bei einer Einteilung. */
+      const z = planbefundeNeu(vorher, v.person, d, daN, planLeisten, stand);
+      if (z) return z === "aufwand" ? "aufwand" : z.regel;
       neu.push(`verdrängt ${v.person.vorname} ${v.person.nachname} in ${daN.kurz || daN.name}`, ...bef.map((x) => `Hinweis: ${x.text}`));
     }
     hinweise.push(...neu);
@@ -1677,13 +1691,14 @@ export function planeMonat(m, ym, grenzen = {}) {
           offen.push({ datum: d, dienstId: da.id, fehlt: Math.max(0, -b.diff), qualFehlt: b.qualFehlt, ...(ctx.vorgabenBudget.ausgeschoepft ? { grund: "vorgabe" } : {}) });
           break;
         }
-        /* Vorwärtsprüfung je Kandidat in der Reihenfolge der Ersatzsuche: der erste ohne neuen Befund an späteren Tagen. */
+        /* Vorwärtsprüfung und Planbefunde je Kandidat in der Reihenfolge der Ersatzsuche: der erste ohne neuen Befund. */
         let beste = null, folgeGrund = null;
         for (const x of kand) {
           const f = folgeVorwaerts(arbeit, x.person, d, da, folgeLeisten);
-          if (f === null) { beste = x; break; }
-          folgeGrund = f === "aufwand" ? "aufwand" : "folgeVorwaerts";
-          if (f === "aufwand") break;
+          const z = f === null ? planbefundeNeu(arbeit, x.person, d, da, planLeisten) : null;
+          if (f === null && z === null) { beste = x; break; }
+          folgeGrund = f === "aufwand" || z === "aufwand" ? "aufwand" : f ? "folgeVorwaerts" : z.regel;
+          if (folgeGrund === "aufwand") break;
         }
         if (!beste) { offen.push({ datum: d, dienstId: da.id, fehlt: Math.max(0, -b.diff), qualFehlt: b.qualFehlt, grund: folgeGrund }); break; }
         /* Verdrängung (Review #577): Arbeit vorab anmelden (Vergleich des Tags, P Personen); reicht es nicht, wird nicht eingeteilt. */

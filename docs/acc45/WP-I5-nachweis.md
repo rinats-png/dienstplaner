@@ -115,3 +115,5 @@ Dieser Abschnitt ersetzt die Aussagen zu Teilzeit im Abschnitt „Betreiberentsc
 ## Nachtrag 26.11.: Postenverdrängung in `planeMonat` (Review #577)
 
 Die Wirkung der Vorgaben in `planeMonat` gilt jetzt auch für Personen, die eine Einteilung über die Postenbesetzung auf ihren Quelldienst verdrängt: Sie werden mit demselben Monatsbudget geprüft (Automatik); Muss/ab Achtung = Einteilung nicht gesetzt (Grund `verdraengung`), Budget leer = Grund `vorgabe`. Belege, Invarianten, Tests, Mutationen und Messung: `docs/acc45/WP-I7-nachweis.md`, Abschnitt „Nachtrag: Postenverdrängung im bestehenden `planeMonat`“.
+
+Die Planbefunde `nachtfolge` (betrieblich), `sonntagsfrei` und `ersatzruhe` (§ 11 ArbZG) prüfen `planeMonat` und der Planer seit der Betreiberentscheidung 26.11. (Variante A) mit derselben Rechnung wie die Planprüfung (`planbefundeNeu`, einsatz.mjs): neu ausgelöster Befund oder nicht bewertbar = Kandidat abgelehnt, der nächste; alle = offen mit der Regel als Grund. Belege, Invarianten, Tests, Mutationen und Messung: `docs/acc45/WP-I7-nachweis.md`, Abschnitt „Nachtrag: Planbefunde `nachtfolge`, `ersatzruhe`, `sonntagsfrei` …“.
