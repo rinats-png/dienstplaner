@@ -98,9 +98,12 @@ describe("2. Mit Aggregaten: lange Zeiträume wirken, darüber offen", () => {
     expect(b[0].text).toMatch(/Zeitraum über 372 Tage/);
     expect(pruefe([lang], {}, { automatisch: true })[0].stufe).toBe("achtung");
     expect(regeln(pruefe([Z({ art: "rollierend", laenge: 373, einheit: "tage" })], {}))).toEqual(["vorgabeOffen"]);
-    /* lange Muster bleiben offen (nicht Teil von I5-4) */
+    /* lange Muster (Rückfrage 4, entschieden 26.11.: innerhalb WP-I7 mit Aggregaten): bis 372 Tage geprüft, darüber offen
+       (Einzelheiten: intelligence-planer-aggregate-muster.test.js) */
     const muster = { ...Z(JAHR), regelart: "musterregel", parameter: { art: "hoechstensFolge", klassen: ["F"], max: 40, danachFrei: 0 } };
-    expect(regeln(pruefe([muster], {}, { da: "F" }))).toEqual(["vorgabeOffen"]);
+    expect(regeln(pruefe([muster], {}, { da: "F" }))).toEqual([]);
+    const zuLang = { ...muster, parameter: { ...muster.parameter, max: 185 } };
+    expect(regeln(pruefe([zuLang], {}, { da: "F" }))).toEqual(["vorgabeOffen"]);
   });
   it("Urlaub/Krankheit aus der Zählung, Abwesenheit nie frei: „mindestens 100 freie Tage im Jahr“", () => {
     const frei = Z(JAHR, {}, { ereignis: "frei", richtung: "mindestens", grenze: 100 });

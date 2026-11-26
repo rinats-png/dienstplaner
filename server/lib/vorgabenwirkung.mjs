@@ -36,6 +36,15 @@
    Aggregate sind AUS (PLANER_AGGREGATE_AN) und ruhen, solange Intelligence
    pausiert ist (WP-I16); dann bleibt es beim Hinweis „nicht vollständig
    geprüft“ (in der Automatik bei Muss: nicht einteilen).
+
+   Lange Musterregeln (WP-I7, Betreiberentscheidung 26.11.): Muster, deren
+   Auswertungsfenster d ± halb länger als 62 Tage ist (bis 372 Tage), rechnen
+   mit denselben Aggregaten. Die Tagesklassen kommen aus den Monatsblöcken; ob
+   die Einteilung die Verletzung herbeiführt oder vergrößert, entscheidet
+   musterVerschaerft nur über die Blöcke/Tagespaare, die der Tag d berührt
+   (alle anderen sind mit und ohne die Einteilung gleich); nur dann wird das
+   ganze Fenster mit dem Regelbaukasten gerechnet (Text, Bestätigung, gleiche
+   Vergleichsregel mit/ohne wie im kurzen Weg: mitOhneEntscheiden).
    ========================================================================== */
 import { pruefeRegel } from "./regelbaukasten-erweitert.mjs";
 import { zeitraum } from "./regelbaukasten.mjs";
@@ -99,12 +108,93 @@ export function vorgabePlanwirkung(v, opt = {}) {
     return { wirkt: false, grund: `Zeiträume über ${G.fensterTage} Tage rechnen nur im Testlauf; im Plan wirkt diese Regel noch nicht${opt.pause === true ? " (Intelligence pausiert)" : ""}.` };
   }
   if (v.regelart === "musterregel") {
-    const halb = p.art === "hoechstensFolge" ? Number(p.max) + (Number(p.danachFrei) || 0) + 1 : Number(p.abstandTage === undefined ? 1 : p.abstandTage);
-    if (!Number.isInteger(halb) || halb < 1 || 2 * halb + 1 > G.fensterTage)
+    const halb = musterHalb(p);
+    if (!Number.isInteger(halb) || halb < 1 || 2 * halb + 1 > G.fensterTage) {
+      /* Lange Muster (WP-I7): mit Aggregaten bis AGGREGAT_GRENZE (Fensterlänge 2·halb+1), darüber nur im Testlauf. */
+      const aggregate = (opt.aggregate === undefined ? PLANER_AGGREGATE_AN : opt.aggregate === true) && opt.pause !== true;
+      if (aggregate && Number.isInteger(halb) && halb >= 1) {
+        if (2 * halb + 1 <= AGGREGAT_GRENZE.fensterTage) return { wirkt: true, grund: null };
+        return { wirkt: false, grund: `Muster über ${AGGREGAT_GRENZE.fensterTage} Tage rechnen nur im Testlauf; im Plan wirkt diese Regel nicht.` };
+      }
       return { wirkt: false, grund: `Muster über mehr als ${G.fensterTage} Tage rechnen nur im Testlauf; im Plan wirkt diese Regel noch nicht.` };
+    }
   }
   return { wirkt: true, grund: null };
 }
+
+/** Halbe Fensterbreite einer Musterregel (Fenster d ± halb): Folge = max + danachFrei + 1, verbotene Folge = Abstand (NaN, wenn unbrauchbar). */
+function musterHalb(p) {
+  return p.art === "hoechstensFolge" ? Number(p.max) + (Number(p.danachFrei) || 0) + 1 : Number(p.abstandTage === undefined ? 1 : p.abstandTage);
+}
+
+/**
+ * Lange Musterregel (WP-I7): Führt die Einteilung am Tag s0 (Klasse kMit statt kOhne = „frei“) im Fenster [A, B] (Tagesnummern) eine
+ * Verletzung herbei oder vergrößert sie — gemessen wie im kurzen Weg (`mass`: Summe der Verstoßlängen, verbotene Folge je Paar 1)?
+ * Gleichwertig zu „Baukasten mit > Baukasten ohne“ über das ganze Fenster, aber nur mit den Tagen, die s0 berührt:
+ * - verbotene Folge: nur die zwei Paare (s0 − Abstand, s0) und (s0, s0 + Abstand) enthalten s0; alle übrigen sind mit/ohne gleich.
+ * - höchstens in Folge: ein Block [i, j] (maximale Folge von Klassen aus `klassen`, am Fensterrand abgeschnitten) hängt nur an den Tagen
+ *   i−1 … j+max(danachFrei, 1); Blöcke, deren Bereich s0 nicht enthält, sind mit/ohne gleich. Gerechnet werden genau die Blöcke mit
+ *   i ≤ s0+1 und j ≥ s0−max(danachFrei, 1), in derselben Zählweise wie der Baukasten (zu lang: Länge; danach nicht frei: Länge;
+ *   unbekannter Tag beendet die Prüfung danach ohne Verstoß).
+ * `klasseAm(t)` liefert die Tagesklasse für t ≠ s0 (undefined = unbekannt/abwesend) und meldet die Arbeit selbst an. Parameter müssen
+ * vorher vom Baukasten geprüft sein (vorgabenBefunde ruft ihn dafür auf).
+ * @param {any} par kanonische Parameter (Kennungen der Dienstarten)
+ * @param {(t: number) => string | undefined} klasseAm
+ * @param {number} s0 @param {number} A @param {number} B @param {string} kMit @param {string} [kOhne]
+ * @returns {boolean}
+ */
+export function musterVerschaerft(par, klasseAm, s0, A, B, kMit, kOhne = "frei") {
+  if (par.art === "verbotenFolge") {
+    const von = par.von, dann = par.dann, a = par.abstandTage === undefined ? 1 : Number(par.abstandTage);
+    const paar = (x, y) => (x !== undefined && y !== undefined && von.includes(x) && dann.includes(y) ? 1 : 0);
+    const vor = s0 - a >= A ? klasseAm(s0 - a) : undefined, nach = s0 + a <= B ? klasseAm(s0 + a) : undefined;
+    const zahl = (k) => (s0 - a >= A ? paar(vor, k) : 0) + (s0 + a <= B ? paar(k, nach) : 0);
+    return zahl(kMit) > zahl(kOhne);
+  }
+  if (par.art === "hoechstensFolge") {
+    const klassen = par.klassen, max = Number(par.max), danach = par.danachFrei === undefined ? 0 : Number(par.danachFrei);
+    const frei = typeof par.frei === "string" && par.frei ? par.frei : "frei";
+    const r = Math.max(danach, 1);
+    const istK = (c) => c !== undefined && klassen.includes(c);
+    const q0 = Math.max(A, s0 - r);
+    /* Anfang des Blocks, der q0 enthält (q0 < s0: mit und ohne gleich). */
+    let start = q0;
+    if (istK(klasseAm(start))) while (start - 1 >= A && istK(klasseAm(start - 1))) start--;
+    const summe = (k) => {
+      const an = (t) => (t === s0 ? k : klasseAm(t));
+      let s = 0, i = start;
+      while (i <= B && i <= s0 + 1) {
+        if (!istK(an(i))) { i++; continue; }
+        let j = i;
+        while (j + 1 <= B && istK(an(j + 1))) j++;
+        const laenge = j - i + 1;
+        if (laenge > max) s += laenge;
+        for (let n = 1; n <= danach; n++) {
+          const kl = j + n > B ? undefined : an(j + n);
+          if (kl === undefined) break;
+          if (kl !== frei) { s += laenge; break; }
+        }
+        i = j + 1;
+      }
+      return s;
+    };
+    return summe(kMit) > summe(kOhne);
+  }
+  throw new Error("Musterregel: unbekannte Art");
+}
+
+/** Vergleich mit/ohne die Einteilung über das ganze Fenster (Regelbaukasten) — eine Stelle für kurze und lange Muster und die Blockregel:
+    Befund nur, wenn mit der Einteilung verletzt und die Einteilung die Verletzung herbeiführt oder vergrößert. */
+function mitOhneEntscheiden(basis, tageMit, tageOhne, fenster, d) {
+  const rechne = (tage) => pruefeRegel(basis, { tage, von: fenster.von, bis: fenster.bis, stichtag: d });
+  const mitE = rechne(tageMit);
+  if (mitE.status !== "verletzt") return null;
+  const ohneE = rechne(tageOhne);
+  return ohneE.status === "verletzt" && mass(mitE) <= mass(ohneE) ? null : mitE;
+}
+
+/** Fester Grundbetrag je Auswertung einer langen Musterregel (Prüfung der Parameter, Aufbau), zusätzlich zu einem Schritt je gelesenem Tag. */
+export const MUSTER_LANG_GRUNDKOSTEN = 2;
 
 /**
  * Ein neues Rechenbudget für EINEN äußeren Einstieg (Tagesabfragen; deterministisch). Es wird vom Einstieg angelegt und durch
@@ -239,7 +329,7 @@ function fensterUm(v, d) {
     const n = p.fenster && p.fenster.art === "rollierend" ? zaehlFenster(p.fenster) : null;
     return n ? { von: addDays(d, -(n - 1)), bis: addDays(d, n - 1) } : zeitraum(p.fenster, d);
   }
-  const halb = p.art === "hoechstensFolge" ? Number(p.max) + (Number(p.danachFrei) || 0) + 1 : Number(p.abstandTage === undefined ? 1 : p.abstandTage);
+  const halb = musterHalb(p);
   return { von: addDays(d, -halb), bis: addDays(d, halb) };
 }
 
@@ -266,7 +356,7 @@ function ueberlangGueltig(v) {
     return f.art === "rollierend" && Number.isInteger(n) && n >= 1 && ["tage", "wochen", "monate"].includes(f.einheit);
   }
   if (v.regelart === "musterregel") {
-    const halb = p.art === "hoechstensFolge" ? Number(p.max) + (Number(p.danachFrei) || 0) + 1 : Number(p.abstandTage === undefined ? 1 : p.abstandTage);
+    const halb = musterHalb(p);
     return Number.isInteger(halb) && halb >= 1;
   }
   return false;
@@ -347,8 +437,8 @@ export function vorgabenBefunde(m, p, d, da, k) {
   };
   for (const v of vb.ueberlang) {
     if (giltFuer(v, p, d, k.einheitAm, vb) === "nein") continue;
-    const ueberAggregat = vb.aggregate && v.regelart === "zaehlregel";
-    ungeprueft([v], ueberAggregat ? `Zeitraum über ${AGGREGAT_GRENZE.fensterTage} Tage`
+    const ueberAggregat = vb.aggregate && (v.regelart === "zaehlregel" || v.regelart === "musterregel");
+    ungeprueft([v], ueberAggregat ? `${v.regelart === "musterregel" ? "Muster" : "Zeitraum"} über ${AGGREGAT_GRENZE.fensterTage} Tage`
       : `Zeitraum über ${G.fensterTage} Tage (${vb.pause ? "Aggregate des Planers angehalten: Intelligence pausiert" : "rechnet erst mit den Aggregaten des Planers"})`);
   }
   const pruef = vb.wirkend.slice(0, G.aktive);
@@ -394,13 +484,15 @@ export function vorgabenBefunde(m, p, d, da, k) {
       }
       /* Zählregel über der Grenze des kurzen Wegs: nur erreichbar mit Aggregaten (vorbereiten sortiert sie sonst als „ueberlang“ aus). */
       const lang = zaehl && zaehlFenster(par.fenster) === null;
+      /* Musterregel über der Grenze des kurzen Wegs (Fenster d ± halb länger als 62 Tage): ebenso nur mit Aggregaten erreichbar. */
+      const langMuster = v.regelart === "musterregel" && 2 * musterHalb(par) + 1 > G.fensterTage;
       const fenster = lang ? { von: d, bis: d } : fensterUm(v, d);
       const rollierend = zaehl && (par.fenster || {}).art === "rollierend";
       const ns = rollierend ? (lang ? langFenster(par.fenster) : zaehlFenster(par.fenster)) : 1;
       const vonO = versatz(fenster.von), bisO = versatz(fenster.bis), L = bisO - vonO + 1;
       /* Kosten = tatsächliche Arbeit: Plantage zweimal (mit/ohne) plus ein Schritt je Stichtag (Präfixsummen). Die Aggregate melden ihre
          Arbeit selbst an, Schritt für Schritt, bevor sie geschieht. */
-      const kosten = lang ? 0 : 2 * L + 2 * (ns - 1);
+      const kosten = lang || langMuster ? 0 : 2 * L + 2 * (ns - 1);
       if (budget.rest < kosten) { budget.ausgeschoepft = true; ungeprueft(pruef.slice(i), "Rechenbudget aufgebraucht"); break; }
       budget.rest -= kosten;
       const basis = vb.regelFuer(v);
@@ -408,17 +500,18 @@ export function vorgabenBefunde(m, p, d, da, k) {
       const regelMit = (eff) => (zaehl && eff !== grenze0 ? { ...basis, parameter: { ...basis.parameter, grenze: eff } } : basis);
       const hinweisZu = (r, ohneTage) => `${r.eff !== grenze0 ? ` — anteilig: Grenze ${r.eff}${r.ganz ? "" : ", nicht ganzzahlig"}` : ""}${ohneTage ? " — ohne Urlaub und Krankheit" : ""}`;
       let treffer = null, hinweis = "", unklar = false;
+      /* Aggregate je Person und Monat (engine/planeraggregate.mjs): jede Arbeit vorab beim Budget angemeldet. */
+      const nimm = (n) => { if (budget.rest < n) throw AUFGEBRAUCHT; budget.rest -= n; };
+      const zaehler = () => aggregatZaehler(budget.aggregat, m, p.id, (t) => {
+        const ab = typeof k.abwesendAm === "function" ? k.abwesendAm(p, t) : null;
+        const abw = ab === undefined || ab === "" ? null : ab;
+        return { klasse: tagesklasse(k.dienstAm(p, t), abw !== null), abw: abw !== null && VORGABEN_ZAEHLUNG_OHNE.includes(String(abw)) ? 1 : 0 };
+      }, nimm);
 
       if (lang) {
-        /* WP-I7 (I5-4): Aggregate je Person und Monat (engine/planeraggregate.mjs). Gezählt wird der vorhandene Plan; der Tag d wird wie im
-           kurzen Weg ersetzt: „ohne“ = frei, „mit“ = der Dienst; Urlaub/Krankheit am Tag d wird nicht herausgenommen. */
-        const nimm = (n) => { if (budget.rest < n) throw AUFGEBRAUCHT; budget.rest -= n; };
-        const lies = (t) => {
-          const ab = typeof k.abwesendAm === "function" ? k.abwesendAm(p, t) : null;
-          const abw = ab === undefined || ab === "" ? null : ab;
-          return { klasse: tagesklasse(k.dienstAm(p, t), abw !== null), abw: abw !== null && VORGABEN_ZAEHLUNG_OHNE.includes(String(abw)) ? 1 : 0 };
-        };
-        const z = aggregatZaehler(budget.aggregat, m, p.id, lies, nimm);
+        /* WP-I7 (I5-4): Gezählt wird der vorhandene Plan; der Tag d wird wie im kurzen Weg ersetzt: „ohne“ = frei, „mit“ = der Dienst;
+           Urlaub/Krankheit am Tag d wird nicht herausgenommen. */
+        const z = zaehler();
         const f = par.fenster, hoechstens = par.richtung === "hoechstens";
         const s0 = tagNr(d), kD = z.klasse(s0), aD = z.abw(s0), kMit = tagesklasse(da.id, false);
         /* Feste Fensterlänge (Tage, Wochen): das nächste Fenster entsteht aus dem vorigen mit zwei Tagen (hinten dazu, vorne weg). */
@@ -494,6 +587,37 @@ export function vorgabenBefunde(m, p, d, da, k) {
           hinweis = hinweisZu(r, ohneTage);
           break;
         }
+      } else if (langMuster) {
+        /* WP-I7 lange Muster: Tagesklassen aus den Aggregaten (abwesend = unbekannt, nie frei; Teilzeit skaliert Muster nie). Erst prüft der
+           Baukasten die Parameter (wirft wie im kurzen Weg → offen), dann entscheidet musterVerschaerft über die Tage, die d berührt; nur
+           bei „verschärft“ wird das ganze Fenster mit dem Baukasten gerechnet (gleiche Vergleichsregel, gleicher Text wie im kurzen Weg). */
+        const s0 = tagNr(d);
+        if (!Number.isFinite(s0) || tagAus(s0) !== d) throw new Error("ungültiger Tag");
+        nimm(MUSTER_LANG_GRUNDKOSTEN);
+        pruefeRegel(basis, { tage: {}, von: d, bis: d, stichtag: d });
+        const z = zaehler();
+        const halb = musterHalb(par), A = s0 - halb, B = s0 + halb;
+        const gelesen = new Map();
+        const klasseAm = (t) => {
+          if (gelesen.has(t)) return gelesen.get(t);
+          nimm(1);
+          const c = z.klasse(t);
+          gelesen.set(t, c);
+          return c;
+        };
+        const kMit = tagesklasse(da.id, false);
+        if (musterVerschaerft(basis.parameter, klasseAm, s0, A, B, kMit, "frei")) {
+          /* Kostenmodell wie der kurze Weg: Fenster zweimal (mit/ohne) = 2 Schritte je Tag, deckt das Lesen der Tagesklassen und die zwei
+             Rechnungen des Baukastens; noch nicht gelesene Monate melden die Aggregate selbst an. */
+          nimm(2 * (B - A + 1));
+          const tageMit = {}, tageOhne = {};
+          for (let t = A; t <= B; t++) {
+            const ohne = t === s0 ? "frei" : gelesen.has(t) ? gelesen.get(t) : z.klasse(t), mit = t === s0 ? kMit : ohne, tt = tagAus(t);
+            if (ohne !== undefined) tageOhne[tt] = ohne;
+            if (mit !== undefined) tageMit[tt] = mit;
+          }
+          treffer = mitOhneEntscheiden(basis, tageMit, tageOhne, { von: tagAus(A), bis: tagAus(B) }, d);
+        }
       } else {
         const tageMit = {}, tageOhne = {};
         for (let o = vonO; o <= bisO; o++) {
@@ -507,12 +631,7 @@ export function vorgabenBefunde(m, p, d, da, k) {
           if (ohne !== undefined && !(offenTag && ohne === "frei")) tageOhne[t] = ohne;
           if (mit !== undefined && !(offenTag && mit === "frei")) tageMit[t] = mit;
         }
-        const rechne = (tage) => pruefeRegel(basis, { tage, von: fenster.von, bis: fenster.bis, stichtag: d });
-        const mitE = rechne(tageMit);
-        if (mitE.status === "verletzt") {
-          const ohneE = rechne(tageOhne);
-          if (!(ohneE.status === "verletzt" && mass(mitE) <= mass(ohneE))) treffer = mitE;
-        }
+        treffer = mitOhneEntscheiden(basis, tageMit, tageOhne, fenster, d);
       }
       if (!treffer) { if (unklar) ungeprueft([v], "anteilig, nicht ganzzahlig"); continue; }
       const muss = v.staerke === "muss";
