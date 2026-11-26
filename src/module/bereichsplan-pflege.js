@@ -23,7 +23,7 @@
 import { createElement as h, useState, Fragment } from "react";
 import {
   pruefeBereiche, zuordnungSetzen, bereichHinzufuegen, bereichAendern, bereichSollSetzen, bereichEntfernen, BEREICH_GRENZEN, BEREICH_PROTOKOLL_ART,
-  bereichsprotokollLueckeOffen,
+  bereichsprotokollLueckeOffen, bereichsprotokollLueckeHoechstzahl,
 } from "../../server/lib/modul-bereichsplan.mjs";
 
 const RAHMEN = { border: "1px solid currentColor", borderRadius: "var(--v4-r-klein)", padding: 12, overflowWrap: "anywhere" };
@@ -152,10 +152,14 @@ export function BereichsProtokoll({ m, einheitId }) {
     : `${Number.isInteger(x.anzahl) ? x.anzahl : "?"} Zuordnungen geändert (zusammengefasst, ohne Einzelangaben)`);
   /* Review #590 B-2: laufende Erschöpfungsperiode sichtbar machen (betriebsweit, in jeder Einheit). */
   const luecke = bereichsprotokollLueckeOffen(e.modulprotokoll);
+  const hoechstzahl = bereichsprotokollLueckeHoechstzahl(e.modulprotokoll);
   return h("section", { "aria-label": "Änderungsprotokoll der Zuordnungen", style: { ...RAHMEN, display: "grid", gap: 6 } },
     h("h3", { style: { margin: 0, fontSize: 15 } }, "Änderungsprotokoll der Zuordnungen"),
     luecke && h("p", { role: "status", style: { margin: 0 } },
       `Kontingent erschöpft – Änderungen von Leitung und Planung ab ${String(luecke.am || "").slice(0, 16).replace("T", " ")} ohne Einzelnachweis, bitte archivieren.`),
+    hoechstzahl && h("p", { role: "status", style: { margin: 0 } },
+      "Höchstzahl der Lückenvermerke erreicht – ist das Kontingent von Leitung und Planung erschöpft, entstehen Änderungen ohne Einzelnachweis "
+      + "und ohne weiteren Vermerk. Bitte regelmäßig archivieren."),
     !eintraege.length ? h("p", { style: { margin: 0 } }, "Keine Änderungen der Zuordnungen in dieser Einheit.")
       : h("ul", { style: { margin: 0, paddingLeft: 18, display: "grid", gap: 4 } }, eintraege.map((x, i) => h("li", { key: `${x.am}-${i}` },
         `${String(x.am || "").slice(0, 16).replace("T", " ")} · ${wer(x.von)} (${rolleWort(x)}`

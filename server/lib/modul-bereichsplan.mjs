@@ -409,22 +409,27 @@ export function bereichsprotokollVoll(altM, neuM, { am, von, rolle, pruefsumme, 
   const bisher = Array.isArray(e.modulprotokoll) ? e.modulprotokoll : [];
   const eigene = bisher.filter(bereichsprotokollVonVoll);
   if (eigene.length + 1 > grenzen.eintraege || protokollBytes(eigene) + protokollBytes(eintrag) > grenzen.gesamtBytes) {
-    /* Review #590 B-2: Beim ersten Überlauf einer Erschöpfungsperiode ein dauerhafter Lückenvermerk im SELBEN Schreiben (nicht über das
-       kurzlebige Betriebsprotokoll); weitere Änderungen derselben Periode ohne weiteren Vermerk. Höchstens BEREICH_LUECKE_GRENZE insgesamt. */
-    if (bereichsprotokollLueckeOffen(bisher) || bisher.filter((x) => istObjekt(x) && x.art === BEREICH_LUECKE_ART).length >= BEREICH_LUECKE_GRENZE)
+    /* Review #590 B-2/B-3: Beim ersten Überlauf einer Erschöpfungsperiode ein dauerhafter Lückenvermerk im SELBEN Schreiben (nicht über das
+       kurzlebige Betriebsprotokoll); weitere Änderungen derselben Periode ohne weiteren Vermerk (die Periode endet nur mit einer Archivierung).
+       Höchstens BEREICH_LUECKE_GRENZE insgesamt; der letzte trägt `hoechstzahl: true` — danach bleibt der Zustand über
+       bereichsprotokollLueckeHoechstzahl sichtbar, auch ohne weiteren Vermerk. */
+    const zahl = bisher.filter((x) => istObjekt(x) && x.art === BEREICH_LUECKE_ART).length;
+    if (bereichsprotokollLueckeOffen(bisher) || zahl >= BEREICH_LUECKE_GRENZE)
       return { mandant: neuM, eintrag: null, voll: true };
-    const luecke = { art: BEREICH_LUECKE_ART, modul: "bereichsplan", am: kopf.am, von: kopf.von, rolle: kopf.rolle };
+    const luecke = { art: BEREICH_LUECKE_ART, modul: "bereichsplan", am: kopf.am, von: kopf.von, rolle: kopf.rolle,
+      ...(zahl + 1 === BEREICH_LUECKE_GRENZE ? { hoechstzahl: true } : {}) };
     return { mandant: { ...neuM, einstellungen: { ...e, modulprotokoll: [...bisher, luecke] } }, eintrag: null, voll: true, luecke };
   }
   return { mandant: { ...neuM, einstellungen: { ...e, modulprotokoll: [...bisher, eintrag] } }, eintrag };
 }
 
 /* ---- Lückenvermerk (E1, Review #590 B-2) ----
-   Eine Erschöpfungsperiode beginnt mit dem Lückenvermerk und endet mit dem nächsten Archivierungsvermerk oder dem nächsten Eintrag von
-   Leitung/Planung (dann wird wieder einzeln protokolliert). Der Vermerk selbst ist nicht archivierbar (bereichsprotokollExport nimmt nur die
+   Eine Erschöpfungsperiode beginnt mit dem Lückenvermerk und endet NUR mit dem nächsten Archivierungsvermerk (Review #590 B-3: endete sie
+   auch mit einem Einzeleintrag, erzeugte ein Wechsel kleiner und großer Änderungen bei fast vollem Kontingent je Wechsel einen neuen Vermerk).
+   Kleine Änderungen, die in der Periode noch passen, bekommen weiter ihren Einzeleintrag; die Periode bleibt offen. Der Vermerk selbst ist nicht archivierbar (bereichsprotokollExport nimmt nur die
    Art bereich-zuordnung) und wird über den vollen Weg nicht geändert (das Modulprotokoll kommt aus dem gespeicherten Stand). */
 export { BEREICH_LUECKE_ART };
-/** Höchstzahl der Lückenvermerke je Betrieb (Größenrechnung WP19-MODULPLAN.md 17.1 L6); jede Periode setzt eine Archivierung voraus. */
+/** Höchstzahl der Lückenvermerke je Betrieb (Größenrechnung WP19-MODULPLAN.md 17.1 L6); jede neue Periode setzt eine Archivierung voraus. */
 export const BEREICH_LUECKE_GRENZE = 500;
 /**
  * Der Lückenvermerk der laufenden Erschöpfungsperiode oder null.
@@ -436,10 +441,17 @@ export function bereichsprotokollLueckeOffen(liste) {
     const x = l[i];
     if (!istObjekt(x)) continue;
     if (x.art === BEREICH_LUECKE_ART) return x;
-    if (x.art === BEREICH_ARCHIV_ART || bereichsprotokollVonVoll(x)) return null;
+    if (x.art === BEREICH_ARCHIV_ART) return null;
   }
   return null;
 }
+
+/**
+ * Höchstzahl der Lückenvermerke erreicht? Dann entsteht bei erschöpftem Kontingent kein weiterer Vermerk — die Oberfläche zeigt das
+ * dauerhaft an (aus dem Zustand abgeleitet, ohne weiteren Eintrag). @param {any} liste Modulprotokoll
+ */
+export const bereichsprotokollLueckeHoechstzahl = (liste) =>
+  (Array.isArray(liste) ? liste : []).filter((x) => istObjekt(x) && x.art === BEREICH_LUECKE_ART).length >= BEREICH_LUECKE_GRENZE;
 
 /* ---- Archivierung durch die Leitung (E7 b, Betreiberentscheidung 2026-11-26; Invarianten A1–A12, WP19-MODULPLAN.md 17.1) ----
    Kein stilles Löschen und keine höheren Grenzen: Die Leitung zieht aus ihrer Sicht einen Export der ältesten Einträge dieser Art

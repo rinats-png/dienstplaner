@@ -931,7 +931,7 @@ export function modulProtokollZeilen(altB, neuB) {
         const durch = hat(x, "rolle") ? (hat(DURCH, x.rolle) ? DURCH[x.rolle] : "eine Rolle mit vollem Schreibrecht") : "die Schichtverantwortung";
         zeilen.push(`Branchenmodul bereichsplan: ${n} ${n === 1 ? "Zuordnung" : "Zuordnungen"} durch ${durch} geändert${x.verdichtet === true ? " (zusammengefasst)" : ""}`);
       }
-      else if (x.art === BEREICH_LUECKE_ART) zeilen.push(`Branchenmodul bereichsplan: Änderungsprotokoll von Leitung und Planung erschöpft (Lückenvermerk durch ${hat(DURCH, x.rolle) ? DURCH[x.rolle] : "eine Rolle mit vollem Schreibrecht"}) — bitte archivieren`);
+      else if (x.art === BEREICH_LUECKE_ART) zeilen.push(`Branchenmodul bereichsplan: Änderungsprotokoll von Leitung und Planung erschöpft (Lückenvermerk durch ${hat(DURCH, x.rolle) ? DURCH[x.rolle] : "eine Rolle mit vollem Schreibrecht"}) — bitte archivieren${x.hoechstzahl === true ? "; Höchstzahl der Lückenvermerke erreicht" : ""}`);
       else if (x.art === "moduldaten-loeschung" || x.art === "moduldaten-berichtigung") {
         const n = Number.isInteger(x.anzahl) && x.anzahl > 0 ? x.anzahl : 0;
         zeilen.push(`Branchenmodul ${kennung(x.modul)}: Datenschutz-${x.art === "moduldaten-loeschung" ? "Löschung (Art. 17 DSGVO)" : "Berichtigung (Art. 16 DSGVO)"}, `

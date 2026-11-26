@@ -25,7 +25,7 @@ import { BRANCHENMODULE, MODULPROTOKOLL_GRENZE, modulProtokollZeilen, moduleinst
   from "../server/lib/branchenmodule.mjs";
 import { bereichsprotokollEintrag, bereichsprotokollAnhaengen, BEREICH_PROTOKOLL_ART, BEREICH_GRENZEN, BEREICH_PROTOKOLL_GRENZEN, protokollBytes,
   bereichsprotokollVoll, bereichsprotokollExport, bereichsprotokollArchivieren, bereichsprotokollPruefsumme, BEREICH_LUECKE_ART, BEREICH_LUECKE_GRENZE,
-  bereichsprotokollLueckeOffen } from "../server/lib/modul-bereichsplan.mjs";
+  bereichsprotokollLueckeOffen, bereichsprotokollLueckeHoechstzahl } from "../server/lib/modul-bereichsplan.mjs";
 import { createHash } from "node:crypto";
 import { vorgabenZusammen } from "../server/lib/vorgaben.mjs";
 import { bestandFuerRolle, zusammenfuehren } from "../server/lib/rechte.mjs";
@@ -645,17 +645,58 @@ describe("Review #590 B-2 — Lückenvermerk bei erschöpftem Kontingent", () =>
     expect(protokollVon(w3).at(-1)).toMatchObject({ art: BEREICH_LUECKE_ART, rolle: "planung" });
   });
 
-  it("Höchstzahl der Lückenvermerke erreicht → kein weiterer Vermerk, Speichern geht trotzdem (Zeile bleibt)", () => {
-    const alte = Array.from({ length: BEREICH_LUECKE_GRENZE }, () => [{ art: BEREICH_LUECKE_ART, modul: "bereichsplan", am: "2026-10-01T08:00:00.000Z", von: "l1", rolle: "leitung" },
-      { art: "bereich-zuordnung-archiviert", modul: "bereichsplan", am: "2026-10-01T09:00:00.000Z", von: "l1", anzahl: 1 }]).flat();
-    const g = bestand({ protokoll: [...fuellVoll(G), ...alte] });
-    expect(bereichsprotokollLueckeOffen(protokollVon(g))).toBeNull();
+  /* Review #590 B-3: Der frühere Test hielt den stillen Zustand an der Höchstzahl für erwartet (kein Vermerk, kein Hinweis). Jetzt: der letzte
+     Vermerk trägt hoechstzahl, und die Oberfläche zeigt den Zustand dauerhaft, auch wenn danach kein Vermerk mehr entstehen kann. */
+  const geschlossen = (n) => Array.from({ length: n }, () => [{ art: BEREICH_LUECKE_ART, modul: "bereichsplan", am: "2026-10-01T08:00:00.000Z", von: "l1", rolle: "leitung" },
+    { art: "bereich-zuordnung-archiviert", modul: "bereichsplan", am: "2026-10-01T09:00:00.000Z", von: "l1", anzahl: 1 }]).flat();
+  it("Höchstzahl exakt (±1): Vermerk Nr. GRENZE-1 gewöhnlich, Nr. GRENZE mit hoechstzahl; danach kein Vermerk, aber dauerhaft sichtbar; nie abgewiesen", () => {
+    const vor = zuordnen(bestand({ protokoll: [...fuellVoll(G), ...geschlossen(BEREICH_LUECKE_GRENZE - 2)] }), "LT");
+    expect(luecken(vor)).toHaveLength(BEREICH_LUECKE_GRENZE - 1);
+    expect(luecken(vor).at(-1)).not.toHaveProperty("hoechstzahl");
+    expect(bereichsprotokollLueckeHoechstzahl(protokollVon(vor))).toBe(false);
+    const g = bestand({ protokoll: [...fuellVoll(G), ...geschlossen(BEREICH_LUECKE_GRENZE - 1)] });
     const w = zuordnen(g, "LT");
     expect(w.verweigert).toBeFalsy();
-    expect(w.mandanten[0].bereichsPlan[`a1|${MO}`]).toBe("b1");
-    expect(protokollVon(w)).toEqual(protokollVon(g));
-    expect(modulProtokollZeilen(g, w)).toEqual(["Branchenmodul bereichsplan: 1 Zuordnung ohne Eintrag im Änderungsprotokoll geändert"]);
+    expect(luecken(w)).toHaveLength(BEREICH_LUECKE_GRENZE);
+    expect(luecken(w).at(-1)).toMatchObject({ rolle: "leitung", hoechstzahl: true });
+    expect(bereichsprotokollLueckeHoechstzahl(protokollVon(w))).toBe(true);
+    expect(modulProtokollZeilen(g, w)[0]).toMatch(/bitte archivieren; Höchstzahl der Lückenvermerke erreicht$/);
+    /* Archivierung beendet die Periode; neue Erschöpfung: kein Vermerk mehr möglich — Speichern geht, der Hinweis bleibt sichtbar. */
+    const g2 = kopie(w); g2.mandanten[0].einstellungen.modulprotokoll.push({ art: "bereich-zuordnung-archiviert", modul: "bereichsplan", am: "2026-11-26T11:00:00.000Z", von: "l1", anzahl: 1 });
+    const w2 = zuordnen(g2, "PL", "b2");
+    expect(w2.verweigert).toBeFalsy();
+    expect(w2.mandanten[0].bereichsPlan[`a1|${MO}`]).toBe("b2");
+    expect(protokollVon(w2)).toEqual(protokollVon(g2));
+    expect(bereichsprotokollLueckeOffen(protokollVon(w2))).toBeNull();
+    const html = renderToStaticMarkup(h(BereichsProtokoll, { m: w2.mandanten[0], einheitId: "e1" }));
+    expect(html).toContain("Höchstzahl der Lückenvermerke erreicht – ist das Kontingent von Leitung und Planung erschöpft, entstehen Änderungen ohne Einzelnachweis");
+    expect(renderToStaticMarkup(h(BereichsProtokoll, { m: vor.mandanten[0], einheitId: "e1" }))).not.toContain("Höchstzahl");
   });
+
+  it("Gegenprobe B-3: Wechsel großer und kleiner Änderungen bei fast vollem Kontingent → EIN Vermerk je Periode; kleine bekommen Einzeleinträge", () => {
+    /* Kontingent nach Bytes fast voll: Platz für kleine (1 Zuordnung), nicht für große (40 Zuordnungen). */
+    const pad = (n) => ({ art: BEREICH_PROTOKOLL_ART, modul: "bereichsplan", am: "2026-10-01T08:00:00.000Z", von: "l1", rolle: "leitung", einheit: "e1", anzahl: 1,
+      zuordnungen: [{ person: "a1", tag: MO, vorher: "x".repeat(n), nachher: null }] });
+    const liste = []; while (protokollBytes([...liste, pad(30000)]) <= BEREICH_PROTOKOLL_GRENZEN.gesamtBytes - 40000) liste.push(pad(30000));
+    const ziel = BEREICH_PROTOKOLL_GRENZEN.gesamtBytes - 1500;
+    liste.push(pad(0)); liste[liste.length - 1] = pad(ziel - protokollBytes(liste));
+    expect(protokollBytes(liste)).toBe(ziel);
+    let g = bestand({ protokoll: liste });
+    const gross = (b) => (m) => { m.bereichsPlan = { ...m.bereichsPlan, ...Object.fromEntries(Array.from({ length: 40 }, (_, i) => [`a1|${tagPlus(-100 + i)}`, b])) }; };
+    let klein = 0;
+    for (let i = 0; i < 6; i++) {
+      const gr = schreibeAls(g, i % 2 ? "LT" : "PL", gross(i % 2 ? "b1" : "b2"));
+      expect(gr.verweigert, String(i)).toBeFalsy();
+      g = gr;
+      const kl = schreibeAls(g, "PL", (m) => { m.bereichsPlan = { ...m.bereichsPlan, [`s1|${tagPlus(i)}`]: "b1" }; });
+      expect(kl.verweigert, String(i)).toBeFalsy();
+      if (protokollVon(kl).length > protokollVon(g).length) { klein += 1; expect(protokollVon(kl).at(-1)).toMatchObject({ art: BEREICH_PROTOKOLL_ART, rolle: "planung" }); }
+      g = kl;
+    }
+    expect(klein).toBeGreaterThan(1);                                                 // kleine Änderungen werden weiter einzeln protokolliert
+    expect(luecken(g)).toHaveLength(1);                                                // … und beenden die Periode nicht
+    expect(bereichsprotokollLueckeOffen(protokollVon(g))).not.toBeNull();
+  }, 120000);
 
   it("Sicht: Leitung/Planung sehen den Vermerk, Betriebsrat nicht, SV/Beschäftigte kein Modulprotokoll; keine Personendaten außer von", () => {
     const w = zuordnen(bestand({ protokoll: [ALTEINTRAG, ...fuellVoll(G)] }), "PL");
@@ -665,7 +706,7 @@ describe("Review #590 B-2 — Lückenvermerk bei erschöpftem Kontingent", () =>
     expect(Object.keys(luecken(w)[0]).sort()).toEqual(["am", "art", "modul", "rolle", "von"]);
   });
 
-  it("Oberfläche: laufende Periode als Hinweis in jeder Einheit; nach dem nächsten Einzeleintrag kein Hinweis mehr", () => {
+  it("Oberfläche: laufende Periode als Hinweis in jeder Einheit; ein Einzeleintrag beendet sie nicht, erst die Archivierung", () => {
     const w = zuordnen(bestand({ protokoll: fuellVoll(G) }), "PL");
     for (const einheitId of ["e1", "e2"]) {
       const html = renderToStaticMarkup(h(BereichsProtokoll, { m: w.mandanten[0], einheitId }));
@@ -674,6 +715,8 @@ describe("Review #590 B-2 — Lückenvermerk bei erschöpftem Kontingent", () =>
     }
     const m = kopie(w.mandanten[0]);
     m.einstellungen.modulprotokoll.push(fuellVoll(1)[0]);
+    expect(renderToStaticMarkup(h(BereichsProtokoll, { m, einheitId: "e1" }))).toContain("Kontingent erschöpft");     // vorher (vor B-3): beendet
+    m.einstellungen.modulprotokoll.push({ art: "bereich-zuordnung-archiviert", modul: "bereichsplan", am: "2026-11-26T11:00:00.000Z", von: "l1", anzahl: 1 });
     expect(renderToStaticMarkup(h(BereichsProtokoll, { m, einheitId: "e1" }))).not.toContain("Kontingent erschöpft");
   });
 });
