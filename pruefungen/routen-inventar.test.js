@@ -65,6 +65,7 @@ export const INVENTAR = {
   "/api/korrektur-entscheiden": ["rollen-failclosed.test.js"],
   "/api/krankmeldung": ["rb2-krankmeldung.test.js"],                // RB-2: melden, vorläufig (SV), endgültig (Planung/Leitung)
   "/api/selbstauskunft-entscheiden": ["rollen-failclosed.test.js", "selbstauskunft.test.js"],   // WP-15
+  "/api/bereichsprotokoll-archivieren": ["modul-bereichsplan-archiv.test.js"],   // WP-19.4 E7: nur Leitung, frisch, nach Export (Prüfsumme)
   "/api/monatsabschluss": ["rollen-failclosed.test.js"],   // WP-16: abschliessen staff.edit, wiederoeffnen/lohnexport org.edit; Matrixzeile §2
   "/api/zeit-bestaetigen": ["rollen-failclosed.test.js", "zeiterfassung.test.js"],   // stempel-datenschutz: nur Kommentar (S4)
   "/api/auskunft": ["dsgvo-server.test.js"],

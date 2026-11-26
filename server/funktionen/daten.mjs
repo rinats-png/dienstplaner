@@ -62,6 +62,7 @@ import { bestaetigtAm, bestaetigungEntfernen } from "../lib/mailbestaetigung.mjs
 import { zustellen, pushSchluessel, geraetAbmelden, geraetAusRumpf, personBereinigen, zustellStatusEigene } from "../lib/versand.mjs";
 import { auskunftBauen, protokollZurPerson, kontoFuerAuskunft, AUSKUNFT_FUER_ANDERE } from "../lib/auskunft.mjs";
 import { modulProtokollZeilen, bestandOhneModuleinstellungen } from "../lib/branchenmodule.mjs";
+import { bereichsprotokollArchivieren, bereichsprotokollArchivierbar } from "../lib/modul-bereichsplan.mjs";
 import { schichtzuordnungProtokollZeilen, modellKuerzungFehlerBestand } from "../lib/schichtzuordnung.mjs";
 import { kiSteuerungProtokollZeilen, kiSteuerungVerwerfen, betriebsratKontenZeilen, kiBrPauseAktiv } from "../lib/ki-steuerung.mjs";
 import { VORLAGEN, vorlageBestand, demoGestaltPruefen, demoOhneVertrag, codeBindung, betriebFuerNeuenCode }
@@ -3083,6 +3084,47 @@ async function behandeln(req, context, ctx) {
         /* Wie beim Korrekturantrag (WP-14b M1): keine Person, kein Tag, keine Zeiten, keine Hinweiskennungen. */
         await protokoll("schreiben", kS, "erfolg", `Selbstauskunft ${r.antrag.id}: ${r.antrag.status}${spurHinweise(r.hinweise)}`, wer);
         return antwort({ ok: true, antrag: r.antrag, eintrag: r.eintrag, hinweise: r.hinweise || [], etag: ergS.stand || null });
+      });
+    }
+
+    /* ------ Änderungsprotokoll der Schichtverantwortung archivieren (WP-19.4 E7 b) ------
+       Betreiberentscheidung 2026-11-26 (WP19-MODULPLAN.md 17.1, A1–A12): nur die Leitung, frisch angemeldet, nur der eigene Betrieb
+       und nur bei wirkendem Modul. Voraussetzung ist ihr Export (aus ihrer Sicht): Anzahl, Bytes und Prüfsumme müssen zu den ältesten
+       Einträgen dieser Art im frisch gelesenen Stand passen — sonst 409, nichts entfernt. Entfernen und Vermerk in EINEM Schreiben
+       mit erwartetem Stand unter der Raumsperre (fail-closed). Der volle Weg leert das Protokoll weiterhin nicht. */
+    if (pfad === "bereichsprotokoll-archivieren" && req.method === "POST") {
+      const kA = kennung(req, s);
+      if (s.rolle !== "leitung") {
+        await protokoll("schreiben", kA, "abgewiesen", `Bereichsprotokoll archivieren · Rolle ${s.rolle}`, wer);
+        return antwort({ fehler: "Das Änderungsprotokoll archiviert nur die Leitung.", text: absageText(s.rolle) }, 403);
+      }
+      if (!frisch(s)) return neuAnmelden();
+      const bA = await bremse("schreiben", kA);
+      if (!bA.frei) return zuVielAntwort(bA.wartet);
+      return await unterRaumsperre(s.bestand, async () => {
+        const mitA = await bestandLesenStreng(store, s.bestand);
+        if (!mitA) return antwort({ fehler: "Kein Bestand vorhanden." }, 404);
+        const mA = eigenerMandant(mitA.bestand, s);
+        if (!mA) return antwort({ fehler: "Kein Betrieb vorhanden." }, 404);
+        if (!bereichsprotokollArchivierbar(mA)) {
+          await protokoll("schreiben", kA, "abgewiesen", "Bereichsprotokoll archivieren: Modul wirkt nicht", wer);
+          return antwort({ fehler: "Archivieren geht nur, solange der Bereichsplan im Betrieb wirkt (gebucht, verfügbar, eingeschaltet)." }, 403);
+        }
+        const rA = await bereichsprotokollArchivieren(mA.einstellungen, rumpf, { am: new Date().toISOString(), von: s.person ?? null });
+        if ("status" in rA) {
+          await protokoll("schreiben", kA, "abgewiesen", `Bereichsprotokoll archivieren: ${rA.status}`, wer);
+          return antwort({ fehler: rA.grund }, rA.status);
+        }
+        const ergA = await bestandSchreiben(store, s.bestand,
+          { ...mitA.bestand, mandanten: mitA.bestand.mandanten.map((x) => (x === mA ? { ...mA, einstellungen: rA.einstellungen } : x)) },
+          { erwarteterStand: mitA.stand, durch: s.name || "Archivierung" });
+        if (!ergA.ok) {
+          await protokoll("schreiben", kA, "konflikt", "Bereichsprotokoll archivieren", wer);
+          return antwort({ fehler: "Gerade wurde gleichzeitig gespeichert. Nichts archiviert — bitte neu exportieren." }, 409);
+        }
+        /* Spur nur mit der Zahl (WP-14b M1): keine Person, kein Tag, kein Bereich. */
+        await protokoll("schreiben", kA, "erfolg", `Branchenmodul bereichsplan: ${rA.vermerk.anzahl} Einträge des Änderungsprotokolls nach Export archiviert`, wer);
+        return antwort({ ok: true, archiviert: rA.vermerk.anzahl, vermerk: rA.vermerk, etag: ergA.stand || null });
       });
     }
 
