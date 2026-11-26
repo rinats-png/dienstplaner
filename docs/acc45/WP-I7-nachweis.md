@@ -152,3 +152,112 @@ WP-I5 auf `INTEGRATED` (#566, Merge 7d73f2be, Review und Delta-Review im WP-I5-N
 3. **Betriebsmodus**: Vorgabe-Modus und ob „nicht planungsreif“ den Vorschlag sperrt (aus WP-I6).
 
 C/D: keine neuen Pakete, Werkzeuge oder Doku-Familien; nur dieser Abschnitt.
+
+---
+
+# WP-I7 Planer-Kern — Teil 3: eigener Planer, erste Scheibe (ohne Oberfläche)
+
+Basis `origin/integration/release-v4` (046c3884, nach #572 und #574). Nur synthetische Daten, kein KI-Anteil, Schalter `PLANER_AN` AUS, keine Oberflächendatei geändert, `planeMonat` und `assistent.jsx` unberührt.
+
+## Klassifikation (Stand nach Teil 2, unverändert bis auf diesen Schritt)
+
+| Teil | Einordnung | in diesem Schritt |
+|---|---|---|
+| eigener Planer: ganzer Monat, feste Punkte, Blöcke vor Einzeltagen, Verbessern mit festem Budget und Startwert, Rangfolge | ausführbar, groß | **erste tragende Scheibe gebaut** (unten); offen: Tausch zweier Personen, Verschieben über Dienstarten, Anheften, Varianten (WP-I8) |
+| Wunsch-, Grenz-, Besetzungs-, Paar-, Verteilungsregel im Plan; Hinweis „seit dem Vorschlag geändert“ | ausführbar nach dem Planer | nicht gebaut; Rangstufen „Verteilung“ und „Wunsch“ stehen als **nicht bewertet** (null) im Ergebnis |
+| Betriebsmodus-Schalter, lange Muster, „Montag frei“, Freischaltung/Budget großer Betriebe | blockiert (Entscheidung / nicht beschrieben) | nicht gebaut, nichts erfunden |
+
+## Umsetzung
+
+Neu `server/lib/engine/planer.mjs` (reines ESM, Rechenkern; Plan 7.4):
+- `planeVorschlag(m, ym, opt)` → `{ status, grund, ym, startwert, gesetzt[{personId, datum, dienstId, art}], offen[{datum, dienstId, fehlt, qualFehlt, grund?}], abweichungen, rang, nichtBewertet, aufwand{grenze, verbraucht, ausgeschoepft}, verbessert }`. Status `aus` (Schalter), `pausiert` (KI-Pause, auch unlesbar), `ungueltig` (Eingabe), `aufwand` (Budget reicht nicht für die Nachprüfung), `nachpruefung` (Aufbau fällt durch), `ok`. In allen Status außer `ok` wird nichts gesetzt.
+- **Feste Punkte:** Der Bestand (Abweichungen, Folge, Abwesenheiten) bleibt; der Planer setzt nur zusätzliche Einteilungen für Personen ohne Dienst. Beim Zurücknehmen einer eigenen Einteilung wird der Bestandswert des Schlüssels wiederhergestellt (nicht gelöscht). „Anheften“ hat kein Datenfeld — nicht gebaut.
+- **Aufbauen, Blöcke vor Einzeltagen:** erst Nachtblöcke (zusammenhängende Tage mit Lücke im selben Nachtdienst, höchstens 7), dann Wochenendblöcke (Sa + So mit Lücke im selben Dienst), dann Tag für Tag. Ein Block wird mit derselben Person fortgesetzt, solange sie dort einsetzbar ist. Einsetzbarkeit = dieselbe Prüfung wie der Planungsassistent (`ersatzVorschlaege` → `hindernisBefunde`, Automatik, Höchstzahl je Person 3). „Nach Schichtfolge und internen Vorgaben“ (Plan 7.4) wird nicht eigens ausgewertet, sondern über die Einsetzbarkeitsprüfung.
+- **Ohne Blöcke und ohne Verbessern ist der Aufbau Schritt für Schritt `planeMonat`** (gleicher Kontext, gleiche Reihenfolge, gleiches Budget der Vorgaben, gleiche Fortschreibung der Aggregate).
+- **Verbessern (Umbesetzen):** feste Zahl von Zügen (Vorgabe 100, höchstens 2000), Reihenfolge aus festem Startwert (`zufallAus`, mulberry32; keine Uhr, kein `Math.random`). Ein Zug nimmt eine eigene Einteilung einer Person zurück, setzt die Person auf eine offene Stelle eines anderen Tags und besetzt die frei gewordene Stelle neu. Behalten nur bei strikt weniger Lücken an beiden Tagen (Rang 2); sonst zurück zum alten Stand (Aggregate wandern mit zurück). Tausch zweier Personen und Verschieben über Dienstarten: nicht gebaut.
+- **Rangfolge:** `RANGFOLGE` = Gesetz > Besetzung > Muss > Soll > Verteilung > Wunsch > Stabilität, `rangVergleich` streng lexikografisch; nicht Bewertetes (null) entscheidet nichts. Gesetz/Muss/Soll = Befunde der Nachprüfung, Besetzung = fehlende Personen + fehlende Qualifikationen über alle Tage, Stabilität = Zahl der eigenen Einteilungen (Wechsel gegenüber dem eigenen Plan; Vormonat nicht gebaut). Soll ist null, wenn eine Soll-Vorgabe ungeprüft blieb.
+- **Nachprüfung (fail-closed, `nachpruefen`):** jede eigene Einteilung auf dem fertigen Stand, ohne sie: dienstfrei, Abweichung passt, kein Befund ab Achtung (Automatik). Eigenes, gleich großes Budget der Vorgaben, frisch gerechnet. Verbesserter Plan fällt durch oder ist nicht besser → aufgebauter Plan; Aufbau fällt durch → nichts gesetzt.
+- **Aufwand:** ein Budget je Aufruf (Vorgabe 1 000 000 Personenprüfungen, Obergrenze ebenso): Besetzung eines Tags und Ersatzsuche = Zahl der Personen, Einsatzprüfung = 1. Angemeldet VOR der Arbeit; die Nachprüfung des jeweiligen Stands ist reserviert. Reicht es nicht, bleibt die Stelle offen (Grund `aufwand`), kein halber Block; reicht es nicht einmal für die Nachprüfung, Status `aufwand`. Eingaben (Monat, Aufwand, Züge, Startwert, Höchstzahl, Budget der Vorgaben) streng geprüft: NaN, Infinity, Bruchzahl, negativ, über der Grenze, Zeichenkette → `ungueltig`.
+- **Datenschutz:** Ergebnis ohne Namen und ohne Begründungstexte zu Personen, nur Kennungen, die der Plan braucht. Keine Ablage, kein Protokoll.
+- Unverändert: `PLANER_AGGREGATE_AN` AUS, Aggregate nur mit `aggregate: true`; Teilzeit, Urlaub/Krankheit, Abwesenheit wirken über die bestehende Prüfung (keine neue Zähllogik).
+
+### Verbindliche Vorgaben, wie umgesetzt
+
+| Vorgabe | Umsetzung |
+|---|---|
+| Budget je äußerem Einstieg, Kosten vorab, nicht umgehbar | ein Aufwand je `planeVorschlag`, Anmeldung vor jeder Besetzungs-/Ersatz-/Einsatzprüfung, Reserve für die Nachprüfung, strenge Eingabeprüfung |
+| nicht bewertbar nie „bestanden“ | Verteilung/Wunsch null; Soll null bei ungeprüfter Soll-Vorgabe; Muss ungeprüft = Achtung = nicht einteilen; Nachprüfung fail-closed |
+| KI-Pause hält Automatik an | Status `pausiert`, auch bei unlesbarem Stand (`kiPauseAktiv`, Ausnahme = Pause) |
+| Mandantengrenze | kein Zustand außerhalb des Aufrufs; Aggregate je Betriebsstand (WeakMap, Teil 1); Test mit gleichen Personenkennungen |
+| Tagesklasse hängt bei Posten von anderen Personen ab | jede Änderung (auch Zurücknehmen) läuft über `vorgabenPlanFortschreiben` (Teil 2) |
+| Gleichwertigkeit, Dienstplanung nie beeinträchtigt | Test: ohne Blöcke/Verbessern = `planeMonat` (demo3, demo1 mit Posten); Bestand und `planeMonat` danach unverändert; Schalter AUS |
+
+## Rot → grün
+
+Neu `pruefungen/intelligence-planer-kern.test.js` (18 Tests, nach dem Nachtrag unten 23; läuft über `pruefung:intelligence`, Präfix `pruefungen/intelligence-`). Auf der Basis ohne `planer.mjs` alle rot (Modul fehlt). Danach 18/18 grün. Bestehende Tests und bestehende Quelldateien: nicht verändert.
+
+## Mutationen (je einzeln, gegen die neue Datei ohne Messteil, danach zurückgesetzt und mit `cmp` geprüft)
+
+Werkzeug: Ersetzung mit wörtlichem Text (genau ein Treffer je Mutation), `vitest -t '^(?!7\. Messung)'`, nacheinander, ein Prozess. Rote Tests je Mutation:
+
+Schalter wirkungslos 1 · KI-Pause ignoriert 1 · Prüfung des Aufwands entfällt 1 · Anmeldung schlägt nie fehl 1 · keine Reserve für die Nachprüfung 2 · Nachprüfung: Befund ab Achtung ignoriert 1 · Nachprüfung: Dienst im Bestand ignoriert 1 · Nachprüfung: Abweichung nicht verglichen 1 · Block nicht fortgesetzt 1 · Höchstzahl je Person entfällt 12 · Bestandswert beim Zurücknehmen gelöscht statt wiederhergestellt 2 · Automatik aus (Muss ungeprüft würde eingeteilt) 1 · Startwert ignoriert 1 · Züge ignoriert 2 · Einsetzbarkeitsprüfung bei Block/Zug entfällt 10 · Prüfung des Startwerts entfällt 1.
+
+Zuerst überlebt und durch schärfere Tests erkannt: „Reihenfolge der Dienstarten im Einzeltag umgedreht“ (Gleichwertigkeit hatte nur Lücken im Nachtdienst; jetzt zusätzlich bei jeder vierten Person alle Dienste frei → 1 rot) · „jeder Zug wird behalten“ (neue Schranke: jeder behaltene Zug schließt mindestens eine Lücke → 1 rot).
+
+Überlebt (Absicherung doppelt, kein auslösender Datenstand gefunden): „Nachprüfung des Aufbaus ignoriert“ — der Aufbau prüft jede Einteilung schon vor dem Setzen; die Nachprüfung ist der unabhängige Riegel für Fälle, die der Aufbau nicht sieht (z. B. Postenverdrängung). Der Riegel selbst (`nachpruefen`) ist direkt geprüft (3 Mutationen rot). · „Rangvergleich am Ende entfällt“ — redundant zur strikten Annahme der Züge.
+
+## Messung (Laptop Celeron N4120, TZ=UTC, `--maxWorkers=1`, synthetisch)
+
+Messtest mit fester Obergrenze (Abschnitt 7): Planer höchstens 3 × `planeMonat` + 5 s, relativ gemessen.
+
+| Lauf | `planeMonat` | Planer (Blöcke, 100 Züge, Nachprüfung) | Aufwand verbraucht |
+|---|---|---|---|
+| demo1 (86 Personen, Posten), Dezember, alle Nachtdienste frei | 4,3–5,5 s, 194 gesetzt, 0 offen | 4,7–5,6 s, 194 gesetzt, 0 offen | 75 870 von 1 000 000 |
+| demo3 (48 Personen), Dezember, alle Nachtdienste frei | 1,1–1,8 s, 63 gesetzt, Lücke 67 | 1,3–2,2 s, 63 gesetzt, **Lücke 65** (2 Züge behalten) | 49 377 |
+| demo2 (57 Personen) | 2,5 s, 93 gesetzt | 1,8 s, 93 gesetzt | 26 746 |
+
+Mit einer Muss-Jahresregel (demo3, Aggregate an): 53 Nachtdienste gesetzt, keine Muss-Verletzung (frisch nachgeprüft); ohne Aggregate 0 gesetzt (Muss ungeprüft, fail-closed). Laufzeitziel des Plans („< 1 Minute bis etwa 80 Personen“) ist hier eingehalten, laut Plan aber im Pilot zu messen.
+
+## Tests und Typprüfung (lokal, TZ=UTC, `--maxWorkers=1`, ein Prozess, freier Speicher vor jedem Lauf ≥ 2,1 GB)
+
+- `intelligence-planer-kern`: 18/18 grün (mit Messteil).
+- `intelligence-planer-aggregate`, `intelligence-planer-aggregate-lauf`, `intelligence-vorgaben-wirkung`, `intelligence-positivliste`, `intelligence-leck`, `prozess-wachen`: 6 Dateien, 209/209 grün.
+- `engine-*`: 5 Dateien, 93/93 grün. Übrige `intelligence-*` (ohne Browserprüfung): 41 Dateien, 1250/1250 grün.
+- `npx tsc -p jsconfig.json --noEmit` grün; `eslint` auf die neuen Dateien 0 Befunde; `node werkzeug/verdrahtung-pruefen.mjs` ok; `node werkzeug/acc45-backlog.mjs pruefen` ok.
+- v4-3b-*: keine Oberflächendatei geändert, nicht gelaufen (CI). Keine `.github/workflows`-Änderung. Vollregression in CI.
+
+## SSOT
+
+WP-I7 bleibt `IN_PROGRESS`; Teil 2 als #574 integriert eingetragen, Teil 3 lokal (Belege und Tests ergänzt).
+
+## Offene Rückfragen (Teil 3, nichts erfunden)
+
+1. **Verteilung (Rang 5)**: Plan 7.4 nennt „gleichmäßige Verteilung von Nächten, Wochenenden und Feiertagen“, aber kein Maß. Zur Entscheidung: (a) Spanne (höchste − niedrigste Zahl) je Art über die Personen im Dienst, Teilzeit anteilig nur mit `teilzeitAnteilig === true`; (b) erst über die Verteilungsregel im Plan (nach dem Planer). Empfehlung: (b), bis dahin bleibt die Stufe „nicht bewertet“.
+2. **Muss nicht erfüllbar (Rang 3)**: Plan 7.4 sieht die Einstellung „Lücke lassen (Standard) / mit gekennzeichneter Abweichung füllen“ vor. Gebaut ist nur „Lücke lassen“. Entscheidung, ob und wann die zweite Möglichkeit kommt (gehört zum Betriebsmodus).
+3. **Anheften**: Datenfeld und Recht dafür sind nicht beschrieben; ohne Festlegung nicht gebaut.
+4. ~~Postenverdrängung bei festen Punkten~~ — **behoben** (Abschnitt „Nachtrag: Bestandspersonen bei Posten“ unten; Vorgabe des Koordinators).
+5. Unverändert offen aus Teil 1/2: Freischaltung der Aggregate und des Planers, Budget großer Betriebe, „Montag frei“, Betriebsmodus.
+
+C/D: keine neuen Pakete, Werkzeuge oder Doku-Familien; nur dieser Abschnitt.
+
+## Nachtrag: Bestandspersonen bei Posten (Rückfrage 4 behoben, gleiche Fehlerklasse wie Review #572 A1)
+
+**Befund (nachgestellt, vor dem Fix):** demo1, Posten „PF“ (Quelle F) braucht eine Qualifikation, die die Rotation nicht sicher hat. Der Planer füllte die Qualifikationslücke 35-mal mit einer Einteilung auf den Posten; jede senkte den Rest der Rotation, eine Person des Bestands fiel auf ihren Quelldienst F zurück. Niemand prüfte diese Person (fail-open: eine Muss-Vorgabe zu F hätte still verletzt sein können). Der bestehende `planeMonat` tut dasselbe (unverändert; Assistent ist Bestand).
+
+**Fix (`planer.mjs`):**
+- Neu `verdraengt(bestand, stand, d, eigene)`: frische Rechnung des Tags `d` für ALLE Personen ohne eigene Einteilung an diesem Tag, Dienst gegen den Bestand (`personTag`). Gegen den Bestand statt „ohne diese eine Einteilung“: erfasst auch das Zusammenwirken mehrerer Einteilungen am Tag, mehrere Posten, Verdrängen und Hineinziehen (Zurücknehmen erhöht den Rest der Rotation).
+- **Aufbau:** nach jedem Setzen (auch Blockfortsetzung) geprüft; verdrängt die Einteilung jemanden, wird sie zurückgenommen (Bestandswert wiederhergestellt) und der nächste Kandidat versucht, höchstens 3 je Stelle (Verdrängung ist meist strukturell: jede zusätzliche Posten-Einteilung senkt die Rotation); danach bleibt die Stelle offen mit Grund `verdraengung`.
+- **Verbessern:** ein Zug wird nur behalten, wenn an beiden berührten Tagen niemand verdrängt oder hineingezogen ist.
+- **Nachprüfung:** an jedem Tag mit eigener Einteilung alle Bestandspersonen gegen den Bestand; jede Abweichung = nicht bestanden (`verdraengte` im Ergebnis von `nachpruefen`).
+- **Aufwand vorab:** 2 P je Prüfung im Aufbau, 4 P je Zug, Reserve der Nachprüfung jetzt `n · (P+1) + 3 · Tage · P`.
+- Ohne Posten ändert eine Einteilung niemand anderen; geprüft wird trotzdem immer (kein Sonderweg, der umgangen werden kann).
+
+**Zustandsraum, selbst durchgegangen:** Posten ja/nein (ohne: immer 0, Gleichwertigkeit zu `planeMonat` bleibt) · eine und mehrere Verdrängte, mehrere Posten-Einteilungen am Tag (Test: 1 und 2) · Hineinziehen beim Zurücknehmen (Verbessern, Nachprüfung gegen den Bestand) · Monatsgrenze (Postenbesetzung hängt nur am Tag; Test: Folgetag im neuen Monat 0) · Budget leer mitten in der Nachprüfung (Aufwand reserviert; Budget der Vorgaben leer → Muss ungeprüft = durchgefallen, Test mit 0 und 500) · eigene Einteilungen auf dem Posten selbst (Abweichung = feste Zuweisung, von der Rotation unabhängig) · Abwesenheit (in beiden Ständen gleich).
+
+**Rot → grün:** neue Tests in Abschnitt 8 (5 Tests). Gegen die Fassung vor dem Fix: 3 rot (Planer mit/ohne Blöcke verdrängt Bestandspersonen, `verdraengt` fehlt); der Test „Budget der Vorgaben leer“ war schon vorher grün (die Nachprüfung war dort bereits fail-closed). Danach 23/23 grün.
+
+**Testkorrektur:** Die Vorlagen der Prüfung riefen `personTag` auf, während sie die Abweichungen noch änderten; der Zwischenspeicher der Postenbesetzung hängt am Objekt. Jetzt wird der vorbereitete Betrieb frisch geklont (`structuredClone`). Ohne diese Korrektur meldete ein neuer Test eine Verdrängung, die nur im veralteten Speicher bestand.
+
+**Mutationen (je einzeln, zurückgesetzt):** Prüfung im Aufbau entfällt 1 rot (die Nachprüfung fängt es ab, Ergebnis dann leer: fail-closed; rot wird der erwartete Grund „verdraengung“) · Nachprüfung ignoriert die Verdrängung 1 · Zug ohne Prüfung behalten 1 (neuer Test „Verbessern mit Posten“: sonst Rückfall auf den Aufbau, kein Zug behalten) · eigene Einteilungen nicht ausgenommen 13 · Vergleich wirkungslos 3. Nach der Änderung erneut geprüft: Reihenfolge 2, jeder Zug behalten 1, Block 2.
+
+**Messung:** demo1 `planeMonat` 8,0 s gegen Planer 7,5 s (Lauf unter Last), 194/194 gesetzt, Aufwand 122 998 von 1 000 000; Messtest (3 × + 5 s) grün.
