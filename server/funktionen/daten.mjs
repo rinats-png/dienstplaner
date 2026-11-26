@@ -2103,14 +2103,28 @@ async function behandeln(req, context, ctx) {
 
         /* Auffälliger Verlust wird nicht abgelehnt — es gibt gute Gründe, viel
            zu löschen —, aber vorher gesichert. Eine Sicherung, die niemand
-           angefordert hat, ist genau dann wertvoll, wenn es niemand kommen sah. */
+           angefordert hat, ist genau dann wertvoll, wenn es niemand kommen sah.
+           Betreiberentscheidung 2026-11-26 (A, WP-26 Nachtrag): Diese Sicherung ist der Rückweg für genau diesen
+           Verlust. Scheitert sie (Ablage voll/nicht beschreibbar, alle Marken belegt), wird NICHT geschrieben — kein
+           stiller Verlust des Rückwegs, kein „gesichert“ im Protokoll. Normales Speichern unter der Schwelle legt
+           keine Sicherung an und ist davon nicht berührt. */
         if (jetzt) {
           const schrumpf = schrumpfung(jetzt.bestand, zuSchreiben);
           if (schrumpf.anteil >= SICHERUNGSSCHWELLE) {
-            await sicherungAnlegen(store, s.bestand, jetzt.bestand,
-              { metadata: { zeit: lesezeit,
-                durch: `automatisch vor Verlust von ${Math.round(schrumpf.anteil * 100)} %`,
-                automatisch: "ja", zeitquelle: "lesezeit" } }).catch(() => {});
+            try {
+              await sicherungAnlegen(store, s.bestand, jetzt.bestand,
+                { metadata: { zeit: lesezeit,
+                  durch: `automatisch vor Verlust von ${Math.round(schrumpf.anteil * 100)} %`,
+                  automatisch: "ja", zeitquelle: "lesezeit" } });
+            } catch (e) {
+              await protokoll("schreiben", ks, "abgewiesen",
+                `Sicherung fehlgeschlagen, Änderung nicht durchgeführt (vor Verlust ${schrumpf.vorher} → ${schrumpf.nachher} Datensätze)`, wer);
+              console.error(`Sicherung vor Verlust (${s.bestand}) fehlgeschlagen, nichts gespeichert: ${String(e && /** @type {any} */ (e).message || e).slice(0, 200)}`);
+              return antwort({ fehler: "Die Schutzsicherung vor dieser Änderung ließ sich nicht anlegen.",
+                text: "Es wurde nichts gespeichert. Diese Änderung entfernt viele Einträge; ohne Sicherung davor wird sie "
+                  + "nicht ausgeführt. Bitte später erneut versuchen oder den Betreiber verständigen.",
+                code: "SICHERUNG_FEHLGESCHLAGEN" }, 503);
+            }
             await sicherungenAusduennen(store, s.bestand);
             await protokoll("schreiben", ks, "gesichert",
               `${schrumpf.vorher} → ${schrumpf.nachher} Datensätze`, wer);
@@ -3476,6 +3490,8 @@ async function behandeln(req, context, ctx) {
       const bS = await bremse("sicherung", `${s.bestand}:${ortVorab.betrieb.id}`);
       if (!bS.frei) return zuVielAntwort(bS.wartet);
       let marke = "";
+      /** @type {any} */
+      let fehlerS = null;
       /* Die Momentaufnahme unter der Sperre des Raums und streng gelesen:
          Ohne Sperre konnte sie mitten in einen Schreibvorgang fallen — Kern
          und erster Monat schon neu, zweiter Monat noch alt —, und ohne
@@ -3486,13 +3502,25 @@ async function behandeln(req, context, ctx) {
         const mit = await bestandLesenStreng(store, s.bestand);
         const o = mit ? eigenerBetrieb(mit.bestand, s) : null;
         if (!o) return null;
-        marke = await sicherungAnlegen(store, s.bestand,
-          betriebsSicherung(mit.bestand, o, { stand: mit.stand, durch: s.name || null }),
-          { metadata: { zeit: new Date().toISOString(), durch: s.name || null,
-            mandantId: o.betrieb.id, rolle: s.rolle } });
+        /* Betreiberentscheidung 2026-11-26 (A): Ein Fehler der manuellen Sicherung geht sichtbar an den Aufrufer
+           (eigene Antwort statt des allgemeinen „Serverfehler“); Lese- und Sperrfehler laufen weiter nach außen. */
+        try {
+          marke = await sicherungAnlegen(store, s.bestand,
+            betriebsSicherung(mit.bestand, o, { stand: mit.stand, durch: s.name || null }),
+            { metadata: { zeit: new Date().toISOString(), durch: s.name || null,
+              mandantId: o.betrieb.id, rolle: s.rolle } });
+        } catch (e) { fehlerS = e; }
         return o;
       });
       if (!ort) return antwort({ fehler: "Kein Betrieb vorhanden." }, 404);
+      if (fehlerS) {
+        await protokoll("sicherung", kennung(req, s), "fehler",
+          `${ort.betrieb.id} · Sicherung fehlgeschlagen (${String(fehlerS && fehlerS.code || "Fehler").slice(0, 40)})`, wer);
+        console.error(`Manuelle Sicherung (${s.bestand}) fehlgeschlagen: ${String(fehlerS && fehlerS.message || fehlerS).slice(0, 200)}`);
+        return antwort({ fehler: "Die Sicherung konnte nicht angelegt werden.",
+          text: "Es wurde keine Sicherung angelegt; der Bestand ist unverändert. Bitte später erneut versuchen oder den Betreiber verständigen.",
+          code: "SICHERUNG_FEHLGESCHLAGEN" }, 503);
+      }
       await protokoll("sicherung", kennung(req, s), "erfolg", `${ort.betrieb.id} · ${marke}`, wer);
       await sicherungenAusduennen(store, s.bestand);
       return antwort({ ok: true, marke });
@@ -3662,11 +3690,22 @@ async function behandeln(req, context, ctx) {
         /* Auditierbar, bevor getauscht wird: Bericht im Serverprotokoll. */
         await protokoll("schreiben", kW, "pruefung", `wiederherstellen ${marke}: ${berichtZeileW}`.slice(0, 400), wer);
 
-        /* Erst den jetzigen Stand wegschreiben, dann tauschen. */
-        await sicherungAnlegen(store, s.bestand, jetztGelesen.bestand,
-          { metadata: { zeit: lesezeitW,
-            durch: `automatisch vor Wiederherstellung von ${marke}`, automatisch: "ja", zeitquelle: "lesezeit" } })
-          .catch(() => {});
+        /* Erst den jetzigen Stand wegschreiben, dann tauschen. Betreiberentscheidung 2026-11-26 (A): Diese
+           Sicherung ist der Rückweg der Wiederherstellung — scheitert sie, wird nicht getauscht (fail-closed). */
+        try {
+          await sicherungAnlegen(store, s.bestand, jetztGelesen.bestand,
+            { metadata: { zeit: lesezeitW,
+              durch: `automatisch vor Wiederherstellung von ${marke}`, automatisch: "ja", zeitquelle: "lesezeit" } });
+        } catch (e) {
+          await protokoll("schreiben", kW, "abgewiesen",
+            `wiederherstellen ${marke}: Sicherung fehlgeschlagen, Änderung nicht durchgeführt`, wer);
+          console.error(`Sicherung vor Wiederherstellung (${s.bestand}) fehlgeschlagen, nichts zurückgespielt: ${String(e && /** @type {any} */ (e).message || e).slice(0, 200)}`);
+          return antwort({ fehler: "Die Sicherung des jetzigen Stands ließ sich nicht anlegen.",
+            text: "Es wurde nichts zurückgespielt. Ohne diese Sicherung gäbe es keinen Weg zurück zum jetzigen Stand. "
+              + "Bitte später erneut versuchen oder den Betreiber verständigen; der Versuch zählt zur Grenze von fünf "
+              + "Wiederherstellungen je Stunde.",
+            code: "SICHERUNG_FEHLGESCHLAGEN" }, 503);
+        }
         await sicherungenAusduennen(store, s.bestand);
 
         const ergW = await bestandSchreiben(store, s.bestand, w.bestand, {

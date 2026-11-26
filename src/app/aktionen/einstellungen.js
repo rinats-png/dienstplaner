@@ -76,7 +76,7 @@ export function aktionenEinstellungen(k) {
             zeit: new Date().toISOString() }, ...(m.adressAenderungen || [])].slice(0, 200) };
       }, "Anmeldeadresse geändert"),
 
-      sicherungAnlegen: async () => { try { await SP.sicherung(); } catch (e) { melde(e.message); } },
+      sicherungAnlegen: async () => { try { await SP.sicherung(); return true; } catch (e) { melde(e.message); return false; } },
       /* WP-25: Liste und Zurückspielen (sicherungenLaden, zurueckspielen) — die Einstellungen
          reichen sie an SicherungenVerwalten weiter. Fehlten sie hier, bliebe die Liste bei „Lädt …“. */
       ...sicherungenAktionen(SP),

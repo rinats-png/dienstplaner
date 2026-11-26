@@ -356,7 +356,7 @@ export function Einstellungen({ sitz, akt, gehZu }) {
           </Zeile>
           <Zeile titel="Sicherung anlegen"
             text="Legt eine Kopie des heutigen Standes an. Zurückspielen kann die Leitung unten unter „Sicherungen“.">
-            <Btn size="sm" onClick={async () => { await akt.sicherungAnlegen(); melde("Sicherung angelegt."); setSicherungsRunde((n) => n + 1); }}>
+            <Btn size="sm" onClick={async () => { if (await akt.sicherungAnlegen()) melde("Sicherung angelegt."); setSicherungsRunde((n) => n + 1); }}>
               Jetzt sichern</Btn>
           </Zeile>
         </Card>)}

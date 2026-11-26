@@ -36,6 +36,7 @@ import { zerlegen, zusammensetzen, abdruck, kernAbdruck, abdruckNormal, monatVon
   kernSchluessel, scherbenSchluessel, scherbenKennungen, gleicheEintraege } from "./scherben.mjs";
 import { ketteAn } from "./kette.mjs";
 import { ereignis } from "./gesund-zaehler.mjs";
+import { protokoll } from "./schutz.mjs";
 import { unterRaumsperre, sperreGehalten, sperrKontext, SPERRE_ZEITGRENZE, SPERRE_GESTOPPT } from "./raumsperre.mjs";
 import { createHash, randomBytes } from "node:crypto";
 import { schreibKontext } from "./schreibkontext.mjs";
@@ -838,18 +839,45 @@ async function schreibeAlles(store, raum, zerlegt, abd, neuerStand, durch, opt =
   await festschreiben(store, raum, schritte, neuerStand, zeit, opt.aufraeumenVoll);
 
   /* Der unzerlegte Altbestand hat ausgedient, sobald der Kern steht. Er
-     bleibt als Sicherung liegen, wird aber nicht mehr gelesen. */
+     bleibt als Sicherung liegen, wird aber nicht mehr gelesen.
+     Betreiberentscheidung 2026-11-26 (A/B): Entfernt wird er nur, wenn die
+     Sicherung gelungen ist — sonst bleibt er liegen (er ist dann selbst der
+     Rückweg; gelesen wird er neben einem Kern nicht). Ein vorhandener
+     Sicherungspunkt `vor-zerlegung` (frühere Übernahme in diesem Raum) wird
+     nie überschrieben: atomar angelegt (setJSONWennNeu); ist er belegt,
+     bekommt der neue Altbestand eine eigene Sicherung im Markenformat
+     (sicherungAnlegen), und der Konflikt steht im Serverprotokoll. */
   if (opt.neuAngelegt) {
     const alt = await store.get(ALT(raum), { type: "json" }).catch(() => null);
     if (alt) {
-      await store.setJSON(`sicherung:${raum}:vor-zerlegung`, alt,
-        { metadata: { zeit, durch: "automatisch vor der Zerlegung", automatisch: "ja" } })
-        .catch(() => {});
-      await store.delete(ALT(raum)).catch(() => {});
+      let gesichert = false;
+      try { gesichert = await altbestandSichern(store, raum, alt, zeit); }
+      catch (e) {
+        console.error(`Bestand ${raum}: Altbestand vor der Zerlegung nicht gesichert (${String((e && e.message) || e).slice(0, 160)}) — Altbestand nicht entfernt`);
+        await protokoll("fehler", "system", "zerlegung",
+          `${raum}: Sicherung fehlgeschlagen, Altbestand nicht entfernt (${String((e && e.code) || "Fehler").slice(0, 40)})`);
+      }
+      if (gesichert) await store.delete(ALT(raum)).catch(() => {});
     }
   }
 
   return { ok: true, stand: String(neuerStand), geschrieben, epoche };
+}
+
+/** Den Altbestand vor der Zerlegung sichern, ohne eine vorhandene Sicherung zu überschreiben. true = gesichert. */
+async function altbestandSichern(store, raum, alt, zeit) {
+  if (!store || typeof store.setJSONWennNeu !== "function")
+    throw new Error("Ablage ohne atomares Anlegen");
+  const metadata = { zeit, durch: "automatisch vor der Zerlegung", automatisch: "ja" };
+  if (await store.setJSONWennNeu(`sicherung:${raum}:vor-zerlegung`, alt, { metadata })) return true;
+  /* Belegt: eine frühere Übernahme hat ihren Sicherungspunkt hinterlassen. Dynamisch geladen — sicherungen.mjs
+     hängt an rechte/sicht/… und soll hier keinen Importkreis bilden. */
+  const { sicherungAnlegen } = await import("./sicherungen.mjs");
+  const marke = await sicherungAnlegen(store, raum, alt,
+    { jetzt: new Date(zeit), metadata: { ...metadata, durch: "automatisch vor der Zerlegung (weitere Übernahme)" } });
+  console.warn(`Bestand ${raum}: Sicherungspunkt vor-zerlegung bestand schon und bleibt — Altbestand als ${marke} gesichert`);
+  await protokoll("fehler", "system", "zerlegung", `${raum}: vor-zerlegung belegt, nicht überschrieben — Altbestand als ${marke} gesichert`);
+  return true;
 }
 
 /**
