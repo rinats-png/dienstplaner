@@ -1601,7 +1601,7 @@ export function planeMonat(m, ym, grenzen = {}) {
         const beste = kand[0];
         const vorher = arbeit;
         arbeit = { ...arbeit, abweichungen: { ...arbeit.abweichungen, [`${beste.person.id}|${d}`]: da.id } };
-        /* WP-I7: Aggregate wandern zum neuen Stand, nur der Monat dieser Person/dieses Tags wird neu gelesen (ohne Aggregate: nichts). */
+        /* WP-I7: Aggregate wandern zum neuen Stand, nur dieser Tag wird nachgelesen (mit Posten bei allen Personen; ohne Aggregate: nichts). */
         vorgabenPlanFortschreiben(ctx.vorgabenBudget, vorher, arbeit, [{ personId: beste.person.id, tag: d }]);
         jePerson[beste.person.id] = (jePerson[beste.person.id] || 0) + 1;
         gesetzt.push({ personId: beste.person.id, name: `${beste.person.vorname} ${beste.person.nachname}`,

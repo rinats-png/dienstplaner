@@ -18,26 +18,26 @@ oder `"teilweise"`, jeweils mit Beleg (PR, Commit, Nachweis). „Geplant“, „
 <!-- AUTO:BEGIN -->
 Erzeugt aus `docs/acc45/work-packages.json` (Schema 2) mit `node werkzeug/acc45-backlog.mjs status-schreiben` — nicht von Hand ändern.
 
-**Pakete gesamt:** 295 · BLOCKED 112 · READY 27 · IN_PROGRESS 24 · REVIEW 10 · INTEGRATED 119 · DONE 3
+**Pakete gesamt:** 295 · BLOCKED 112 · READY 27 · IN_PROGRESS 23 · REVIEW 10 · INTEGRATED 120 · DONE 3
 
 | Strang | Pakete | BLOCKED | READY | IN_PROGRESS | REVIEW | INTEGRATED | DONE | offener Aufwand PT |
 |---|---|---|---|---|---|---|---|---|
 | ACC45 | 143 | 42 | 5 | 7 | 3 | 84 | 2 | 74,1–126,65 |
 | WP-19-Module | 15 | 12 | 0 | 2 | 0 | 1 | 0 | 62,5–97,5 |
-| Intelligence | 40 | 17 | 0 | 10 | 0 | 13 | 0 | 168–296 |
+| Intelligence | 40 | 17 | 0 | 9 | 0 | 14 | 0 | 166–292 |
 | Folgepakete | 62 | 23 | 6 | 5 | 7 | 21 | 0 | 43,7–76,1 |
 | Extern/Entscheidungen | 35 | 18 | 16 | 0 | 0 | 0 | 1 | 20,35–46,1 |
 
-Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **348,3–596,25 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
+Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **346,3–592,25 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
 
 **Kritische Pfade** (offener Aufwand, Mitte der Spanne maßgeblich):
 
-- gemeinsam: WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **41–73 PT**
+- gemeinsam: WP-I4 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **39–69 PT**
 - ohne Intelligence: WP-16 → WP-19.7 → WP-19.6 → WP-19.13 → WP-42a → WP-42 = **21–33,5 PT**
 - ACC45: WP-21 → WP-42a → WP-42 = **14–20 PT**
 - Folgepakete: V4-1 → V4-3a → V4-3b → V4-3d = **5,2–10,3 PT**
 - WP-19: WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 = **16,5–25,5 PT**
-- Intelligence: WP-I4 → WP-I5 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **41–73 PT**
+- Intelligence: WP-I4 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **39–69 PT**
 
 ### In Arbeit / Review
 
@@ -57,8 +57,7 @@ Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **348,3–596,
 | WP-19.13 WP-19 Modulabnahme (E2E, Viewports, Rollenmatrix, Status „vorlaeufig“) | IN_PROGRESS | `acc45/qa/wp19-13-modulabnahme` | Stand (automatisch): Teilumfang nach #243, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). |
 | WP-I4 Interne Vorgaben: Verwaltung | IN_PROGRESS | `intelligence/wp-i4-interne-vorgaben-verwalt` | SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). Stand (automatisch): Teilumfang nach #256, Status IN_PROGRESS; Rest offen (Titel nennt nur einen Teil). Offene Betreiberfragen: (1) Darf die Planung die Vorgaben lesen und ändern? (2) Welche Betriebsratssicht, falls überhaupt (§ 87 BetrVG, BLOCKED auf Betreiber)? (3) Braucht es ein Protokoll für Löschen/Deaktivieren? (4) Tarif 'pro' = Grenze 25 des Business-Tarifs bestätigen? (5) Muss eine geänderte Vorgabe neu getestet werden (nur die Oberfläche erzwingt, nicht der Server)? Nachtrag 2026-11-18 (SSOT-Klassifizierung): Feld pr um #177 ergänzt (älterer Entwurf „Interne Vorgaben Verwaltung“, offen, nicht gemergt; der gemergte Teil ist #256).
 Nachtrag 2026-11-25 (Betreiber): Antworten auf die fünf Fragen: 1.1 B (Planung liest innerhalb ihrer Zuständigkeit, nur berechtigte Leitungen ändern); 1.2 vorläufig A, Ziel B (Betriebsrat Leserecht auf Vorgaben und relevante Änderungsprotokolle; produktive Aktivierung erst nach rechtlicher Rückmeldung, Schalter AUS); 1.3 C (Deaktivieren statt Löschen, Änderungsprotokoll, gesetzliche Lösch- und Aufbewahrungspflichten bleiben); 1.4 A (Grenze 25 für `pro` vorläufig, zentral konfigurierbar); 1.5 B jetzt (serverseitige Validierung und Prüfung), C Plan-Probelauf im Umfang WP-I8/I9. |
-| WP-I5 Vorgaben wirksam machen | IN_PROGRESS | `intelligence/wp-i5-vorgaben-wirksam-machen` | SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). |
-| WP-I7 Planer-Kern (Rechnung) | IN_PROGRESS | `intelligence/wp-i7-planer-kern` | SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). Nachtrag 2026-11-26: BLOCKED nur wegen WP-I5; WP-I5 ist mit #566 in integration/release-v4 gemergt (Status dort vom Koordinator nachzuziehen). Teil 1 (I5-4 Aggregate) lokal, Schalter AUS; Rest (eigener Planer, Rangfolge, Verbessern, Wunsch, übrige Regelarten im Plan) offen. |
+| WP-I7 Planer-Kern (Rechnung) | IN_PROGRESS | `intelligence/wp-i7-planer-kern` | SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). Nachtrag 2026-11-26: BLOCKED nur wegen WP-I5; WP-I5 ist mit #566 in integration/release-v4 gemergt. Teil 1 (I5-4 Aggregate) mit #572 integriert, Schalter AUS. Nachtrag 2026-11-27: Teil 2 (Aggregate einmal je Lauf, Tagesnachführung) lokal; Rest (eigener Planer, Rangfolge, Verbessern, Wunsch, übrige Regelarten im Plan, Betriebsmodus, Hinweis seit dem Vorschlag) offen. |
 | WP-I16 Betriebssteuerung und Transparenz (Schalter, BR-Pausierung, Notschalter) | IN_PROGRESS | `intelligence/wp-i16-pause` | SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). PR #238 (WP-I16 Teil 1: Steuerung und Transparenz, Betrieb, Betriebsrat-Pause, Schalter aus): offen, Freigabe ausstehend, nicht gemergt. Grund: neues Schreibrecht für den Betriebsrat (nur kiSteuerung.pause.aktiv über PUT /api/bestand) und akzeptiertes Restrisiko (Leitung hält roles.assign und kann die Betriebsrat-Rolle vergeben und damit die Pause aufheben). Betreiberentscheidungen: Recht freigeben; Minderung des roles.assign-Umwegs (bestehende BR-Mitglieder benachrichtigen, BR-Konto vor der Pause vorausgesetzt, Rollenvergabe Betriebsrat durch Leitung untersagen); Plan-Lücken: wer bestätigt, direktes BR-Recht, Ja-nach-Nein durch Leitung, Frage vor Einschalten Pflicht, Beschäftigteninformation, Notschalter, KI-Kennzeichnung. Entscheidungsstand 2026-11-14 (Statusstufe entschieden, keine Freigabe zur Produktion): Betreiber 2026-11-14: Betriebsrat-Schreibrecht (PR #238) ist NICHT freigegeben. Weiter offen: KI-Pause aktivieren und aufheben (wer darf was), wer BR-Konten zuweist, Umgehung der Pause über die Rollenvergabe durch die Leitung (roles.assign). PR #238 bleibt angehalten. Nachtrag 2026-11-18 (SSOT-Klassifizierung): Feld pr um #238 ergänzt (offen, angehalten, nicht gemergt).
 Nachtrag 2026-11-25 (Betreiber): P2-8: Variante A als technisches Ziel: Betriebsrat darf Intelligence in seinem Zuständigkeitsbereich pausieren; jede Änderung protokolliert; Rollenvergabe darf die Schutzmaßnahme nicht umgehen; normale Dienstplanung bleibt funktionsfähig; Wiederaktivierung durch die Leitung unter den geltenden Freigaberegeln. Produktive Rechte und endgültige Wiederaktivierungsregeln erst nach rechtlicher Prüfung (Schalter AUS).
 Nachtrag 2026-11-25: Betreiberentscheidung P2-8 Variante A (Betriebsrat pausiert, Leitung hebt auf, Rollenvergabe darf die Pause nicht aushebeln; produktive Rechte und Wiederaktivierungsregeln erst nach rechtlicher Prüfung). Umgesetzt auf neuer Basis als Branch intelligence/wp-i16-pause (ersetzt #238; Schließen empfohlen): Betriebsrat-Schreibrecht hinter CENTRIC_KI_BR_PAUSE (Vorgabe AUS, nicht freigegeben), Aufheben nur Leitung mit Compare-and-set, Betriebsrat-Konten bei aktiver Pause gesperrt, Protokoll. Offen: Review, Integration, rechtliche Prüfung, Wiederaktivierungsregel, Vier-Augen/Konten-Regel nach dem Aufheben, Betreiber-Notschalter je Betrieb, Verdrahtung. Status IN_PROGRESS, nicht INTEGRATED. |
@@ -86,11 +85,11 @@ Nachtrag 2026-11-25 (Review PR #540: Status korrigiert): Status IN_PROGRESS, int
 
 RST-1 (folge, 0,5–1 PT) · RST-2 (folge, 2–3 PT) · RST-3 (folge, 1–2 PT) · RST-5 (folge, 2,5–4 PT) · RST-9 (folge, 1–1,5 PT) · FREIGABE-S2 (folge, 0,5–1 PT) · WEBSITE-W3b (acc45, 0,5 PT) · ABN-S2-de (acc45, 0,25–0,5 PT) · ABN-S2-H (acc45, 0,25–0,5 PT) · MODINERT-L3 (acc45, 0,25–0,5 PT) · K4-P2 (acc45, 0,5 PT)
 
-### In Arbeit, fortsetzbar (16)
+### In Arbeit, fortsetzbar (17)
 
-WP-40 (acc45, 1,5–2,25 PT offen) · WP-28b (folge, 0,5–1 PT offen) · WP-19.1 (wp19, 2–3 PT offen) · WP-I4 (intelligence, 4–7 PT offen) · WP-I16 (intelligence, 4–7 PT offen) · WP-I19 (intelligence, 8–14 PT offen) · WP-I20 (intelligence, 8–14 PT offen) · WP-I24 (intelligence, 2,5–4,5 PT offen) · WP-I29 (intelligence, 9–15 PT offen) · WP-I30 (intelligence, 2–4 PT offen) · WP-I31 (intelligence, 4,5–7,5 PT offen) · IMP-6 (acc45, 1,5–2,5 PT offen) · IMP-8 (acc45, 1–1,5 PT offen) · WP-48-GB (acc45, 0,5–1,5 PT offen) · WP-ZEIT (acc45, 4,5–7,5 PT offen) · V4-1 (folge, 1–1,5 PT offen)
+WP-40 (acc45, 1,5–2,25 PT offen) · WP-28b (folge, 0,5–1 PT offen) · WP-19.1 (wp19, 2–3 PT offen) · WP-I4 (intelligence, 4–7 PT offen) · WP-I7 (intelligence, 7–13 PT offen) · WP-I16 (intelligence, 4–7 PT offen) · WP-I19 (intelligence, 8–14 PT offen) · WP-I20 (intelligence, 8–14 PT offen) · WP-I24 (intelligence, 2,5–4,5 PT offen) · WP-I29 (intelligence, 9–15 PT offen) · WP-I30 (intelligence, 2–4 PT offen) · WP-I31 (intelligence, 4,5–7,5 PT offen) · IMP-6 (acc45, 1,5–2,5 PT offen) · IMP-8 (acc45, 1–1,5 PT offen) · WP-48-GB (acc45, 0,5–1,5 PT offen) · WP-ZEIT (acc45, 4,5–7,5 PT offen) · V4-1 (folge, 1–1,5 PT offen)
 
-### Integriert in `integration/centric-complete` (119)
+### Integriert in `integration/centric-complete` (120)
 
 | Paket | Beleg (PR, Merge-Commit) | Review |
 |---|---|---|
@@ -136,6 +135,7 @@ WP-40 (acc45, 1,5–2,25 PT offen) · WP-28b (folge, 0,5–1 PT offen) · WP-19.
 | WP-19.0 WP-19 Kern-Nacharbeit (Aktivierung, Mitbestimmungsbestätigung, Regelwerte, Einhängepunkte) | PR #82 gemergt am 2026-11-04 (Merge a9faf7ef in integration/centric-complete; Kopf 59079b5); beide Commits sind Vorfahren von integration/release-v4 | fünf Opus-Review-Runden (wp19-0-nachweis.md Abschnitte 11–15), PR #82 |
 | WP-I2 Live-Prüfung Schichtfolge-Editor | PR #152 in integration/release-v4 | PR #152 in integration/release-v4 |
 | WP-I3 Regelbaukasten vervollständigen (8 Regelarten) | PR #108 in integration/release-v4 (gemergt 2026-11-07) | PR #108 in integration/release-v4 (gemergt 2026-11-07) |
+| WP-I5 Vorgaben wirksam machen | PR #566 in integration/release-v4 (Merge 7d73f2be) | Review und Delta-Review PR #566 (Befunde behoben, Abschnitt Delta-Review in docs/acc45/WP-I5-nachweis.md) |
 | WP-I6 Planungsreife | PR #138 in integration/release-v4 | PR #138 in integration/release-v4 |
 | WP-I10 Architekturabgleich Spezifikation auf heutigen Stack | PR #70 in integration/release-v4 | – |
 | WP-I11 Faktenpaket-Vertrag (Positivliste, Alias) | #86 (intelligence/wp-i11-integration) | Opus-Sicherheitsreview + Delta-Review (2 Runden) |
@@ -218,7 +218,7 @@ WP-40 (acc45, 1,5–2,25 PT offen) · WP-28b (folge, 0,5–1 PT offen) · WP-19.
 
 ✓ belegt · T teilweise (z. B. nur Server-Teilumfang) · – nicht erreicht oder nicht belegt. „Staging“, „Freigabe“ und
 „prod.“ stehen nur mit Beleg auf ✓. Gezeigt sind alle Pakete mit mindestens einer erreichten Stufe; alle übrigen
-92 offenen Entwicklungspakete stehen auf allen Stufen auf „–“.
+91 offenen Entwicklungspakete stehen auf allen Stufen auf „–“.
 
 | Paket | Status | impl. | lokal | Review | integr. | Staging | Freigabe | prod. |
 |---|---|---|---|---|---|---|---|---|
@@ -291,6 +291,7 @@ WP-40 (acc45, 1,5–2,25 PT offen) · WP-28b (folge, 0,5–1 PT offen) · WP-19.
 | WP-19.12 | BLOCKED | T | T | T | T | – | – | – |
 | WP-I2 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | WP-I3 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
+| WP-I5 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | WP-I6 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | WP-I10 | INTEGRATED | ✓ | ✓ | – | ✓ | – | – | – |
 | WP-I11 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |

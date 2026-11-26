@@ -20,9 +20,22 @@
    gleicher Personenkennung, bekommt nie die Blöcke eines anderen). Der Planer
    (planeMonat) setzt Einteilungen nacheinander und erzeugt dabei je Einteilung
    einen neuen Betriebsstand; `aggregateFortschreiben` übernimmt die Blöcke
-   dorthin und verwirft genau die Monatsblöcke der geänderten Person/Tage —
-   nur, wenn sich sonst nichts geändert hat (alle übrigen Felder dieselben
-   Objekte), sonst wird neu gelesen.
+   dorthin — nur, wenn sich sonst nichts geändert hat (alle übrigen Felder
+   dieselben Objekte), sonst wird neu gelesen.
+
+   Einmal je Lauf (WP-I7 Teil 2): Die Blöcke werden je Lauf EINMAL aufgebaut und
+   danach tageweise nachgeführt, statt nach jeder Einteilung ganze Monate neu zu
+   lesen. Eine Einteilung (Person, Tag) ändert Tagesklassen nur an diesem Tag:
+   personTag liest die eigene Abweichung des Tags, die Folge und die
+   Abwesenheit; die Postenbesetzung hängt von den Abweichungen ANDERER Personen
+   am selben Tag ab, nie von anderen Tagen. Darum wird genau dieser Tag zum
+   Nachlesen vorgemerkt — bei der eingeteilten Person, im Betrieb mit
+   Posten-Dienstarten bei allen Personen mit einem Block dieses Monats. Gelesen
+   wird erst beim nächsten Zugriff, mit Kosten (ein Schritt je vorgemerktem
+   Tag) VOR dem Lesen; reicht das Budget nicht oder scheitert das Lesen, bleibt
+   der Block unverändert vorgemerkt (kein halb nachgeführter Block).
+   Präfixsummen des Blocks verfallen beim Nachlesen und werden bei Bedarf neu
+   (mit Kosten) gebildet.
 
    Rein: keine Uhr, kein Zufall, keine Ablage, kein Protokoll. Die Blöcke liegen
    nur im Speicher des Einstiegs und verlassen ihn nie (kein Personenbezug in
@@ -84,12 +97,13 @@ export function aggregatZaehler(speicher, m, personId, lies, kosten) {
   /* Die zuletzt benutzten Blöcke dieses Zählers (aufeinanderfolgende Tage liegen meist im selben Monat): kein Schlüssel je Tag. */
   let letzter = null, vorletzter = null;
   const block = (n) => {
-    if (letzter && n >= letzter.t0 && n < letzter.t0 + letzter.tage) return letzter;
-    if (vorletzter && n >= vorletzter.t0 && n < vorletzter.t0 + vorletzter.tage) { const x = vorletzter; vorletzter = letzter; letzter = x; return x; }
+    if (letzter && n >= letzter.t0 && n < letzter.t0 + letzter.tage) { if (letzter.neu.size) nachlesen(letzter); return letzter; }
+    if (vorletzter && n >= vorletzter.t0 && n < vorletzter.t0 + vorletzter.tage) { const x = vorletzter; vorletzter = letzter; letzter = x; if (x.neu.size) nachlesen(x); return x; }
     const mo = monatVon(n);
     const key = `${pid}|${mo.schluessel}`;
     let b = jeP.get(key);
     if (!b) b = lesen(mo, key);
+    else if (b.neu.size) nachlesen(b);
     vorletzter = letzter; letzter = b;
     return b;
   };
@@ -104,9 +118,27 @@ export function aggregatZaehler(speicher, m, personId, lies, kosten) {
       if (e.abw) { abw[i] = 1; abwTot++; }
     }
     tot.set(ABW, abwTot);
-    const b = { t0: mo.t0, tage: mo.tage, kl, abw, tot, pre: new Map() };
+    /* neu: vorgemerkte Tage (Index im Monat), die nach einer Einteilung nachgelesen werden (aggregateFortschreiben). */
+    const b = { t0: mo.t0, tage: mo.tage, mon: mo.schluessel, kl, abw, tot, pre: new Map(), neu: new Set() };
     jeP.set(key, b);
     return b;
+  };
+  /* Vorgemerkte Tage nachlesen: Kosten vorab (ein Schritt je Tag), erst alles lesen, dann übernehmen — wirft `kosten` oder `lies`,
+     bleibt der Block unverändert und vorgemerkt. */
+  const nachlesen = (b) => {
+    const tage = [...b.neu];
+    kosten(tage.length);
+    const neu = tage.map((i) => lies(`${b.mon}-${zwei(i + 1)}`));
+    for (let j = 0; j < tage.length; j++) {
+      const i = tage[j], e = neu[j], alt = b.kl[i];
+      if (alt !== undefined) b.tot.set(alt, b.tot.get(alt) - 1);
+      if (e.klasse !== undefined) b.tot.set(e.klasse, (b.tot.get(e.klasse) || 0) + 1);
+      const a = e.abw ? 1 : 0;
+      b.tot.set(ABW, b.tot.get(ABW) - b.abw[i] + a);
+      b.kl[i] = e.klasse; b.abw[i] = a;
+    }
+    b.pre.clear();
+    b.neu.clear();
   };
 
   const praefix = (b, k) => {
@@ -145,10 +177,13 @@ export function aggregatZaehler(speicher, m, personId, lies, kosten) {
   };
 }
 
+
 /**
- * Der Planer hat in `neuM` gegenüber `altM` genau die genannten Einteilungen geändert: Blöcke übernehmen, die betroffenen Monatsblöcke
- * verwerfen. Übernommen wird nur, wenn alle übrigen Felder dieselben Objekte sind, nur `abweichungen` neu ist und der Betrieb keine
- * Posten-Dienstarten hat (deren Besetzung hängt von anderen Personen ab); sonst wird neu gelesen.
+ * Der Planer hat in `neuM` gegenüber `altM` genau die genannten Einteilungen geändert: Blöcke übernehmen und die geänderten Tage zum
+ * Nachlesen vormerken (eingeteilte Person; mit Posten-Dienstarten alle Personen mit einem Block des Monats). Übernommen wird nur, wenn
+ * alle übrigen Felder dieselben Objekte sind, nur `abweichungen` neu ist und jeder Tag ein gültiges Datum JJJJ-MM-TT ist; sonst wird
+ * neu gelesen. Arbeit hier: je Änderung ein Schlüssel (ohne Posten) bzw. ein Durchlauf über die Blöcke des Betriebsstands (mit Posten;
+ * ihre Zahl ist durch das Budget beschränkt, jeder Block kostete beim Lesen mindestens 28 Schritte). Das Nachlesen kostet beim Zugriff.
  * Der alte Stand verliert seine Blöcke (sie gehören jetzt zum neuen).
  * @param {{ jeBetrieb: WeakMap<object, Map<string, any>> } | null | undefined} speicher
  * @param {any} altM @param {any} neuM
@@ -162,14 +197,22 @@ export function aggregateFortschreiben(speicher, altM, neuM, aenderungen) {
   speicher.jeBetrieb.delete(altM);
   const ka = Object.keys(altM), kn = Object.keys(neuM);
   if (ka.length !== kn.length || kn.some((k) => k !== "abweichungen" && neuM[k] !== altM[k])) return false;
+  /* Erst alle Tage prüfen, dann vormerken (kein halbes Fortschreiben). */
+  const tage = [];
+  for (const a of aenderungen) {
+    if (!a || typeof a.tag !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(a.tag)) return false;
+    const n = tagNr(a.tag);
+    if (!Number.isFinite(n) || tagAus(n) !== a.tag) return false;
+    const mo = monatVon(n);
+    tage.push({ pid: String(a.personId), mon: mo.schluessel, i: n - mo.t0 });
+  }
   /* Review #572 A1: Die Postenbesetzung (personTag → postenBesatzung) hängt von den Einteilungen ANDERER Personen am selben Tag ab —
      eine Einteilung auf einen Posten kann eine andere Person aus der Besetzung verdrängen (sie hat dann wieder ihren Quelldienst).
-     Sonst liest personTag nur die eigene Einteilung, Folge und Abwesenheit. Mit Posten-Dienstarten wird daher nicht übernommen
-     (fail-closed: der neue Stand liest neu). */
-  if ((Array.isArray(neuM.dienstarten) ? neuM.dienstarten : []).some((x) => x && x.posten)) return false;
-  for (const a of aenderungen) {
-    if (!a || typeof a.tag !== "string") return false;
-    jeP.delete(`${String(a.personId)}|${a.tag.slice(0, 7)}`);
+     Darum wird der Tag dann bei allen Personen vorgemerkt, nicht nur bei der eingeteilten. Andere Tage ändern sich nie. */
+  const posten = (Array.isArray(neuM.dienstarten) ? neuM.dienstarten : []).some((x) => x && x.posten);
+  for (const t of tage) {
+    if (posten) { for (const b of jeP.values()) if (b.mon === t.mon) b.neu.add(t.i); }
+    else { const b = jeP.get(`${t.pid}|${t.mon}`); if (b) b.neu.add(t.i); }
   }
   speicher.jeBetrieb.set(neuM, jeP);
   return true;

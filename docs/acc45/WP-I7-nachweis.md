@@ -82,3 +82,73 @@ Lokal, TZ=UTC, `--maxWorkers=1`:
 2. **Budget großer Betriebe.** Mit 300 Personen und 50 Langzeitregeln ist das Budget (200000) in der Ersatzsuche über 62 Tage aufgebraucht (Rest offen, fail-closed). Entscheidung: Budget unverändert lassen oder für den Planer-Einstieg gezielt erhöhen (mit Messtest)? Empfehlung: unverändert, bis der eigene Planer (Rest WP-I7) die Aggregate einmal je Lauf für alle Personen aufbaut.
 3. **KI-Pause und der bestehende Planungsassistent.** Umgesetzt: Die Pause hält die neuen Aggregate an (Automatik fail-closed). Nicht umgesetzt: den ganzen Planungsassistenten bei Pause sperren — das würde die normale Dienstplanung beeinträchtigen. Entscheidung, ob „Pause hält die Automatik an“ auch den bisherigen Assistenten (`planeMonat`) meint. Empfehlung: nein (Assistent ist ACC45-Bestand ohne KI); der neue Planer (Rest WP-I7) hält bei Pause an.
 4. **Lange Muster** (z. B. „höchstens 40 Frühdienste in Folge“) sind nicht Teil von I5-4 und bleiben offen. Entscheidung, ob sie mit Aggregaten (Folgenlängen je Monat) gerechnet werden sollen.
+
+---
+
+# WP-I7 Planer-Kern — Teil 2: Aggregate einmal je Lauf (Tagesnachführung)
+
+Basis `origin/integration/release-v4` (a8a2cbaa, nach #572 und #571). Nur synthetische Daten, kein KI-Anteil, Schalter `PLANER_AGGREGATE_AN` weiter AUS, keine Oberflächendatei geändert.
+
+## Klassifikation des Rests von WP-I7
+
+| Teil | Einordnung | Begründung |
+|---|---|---|
+| Aggregate einmal je Lauf aufbauen | **ausführbar — dieser Schritt** | Voraussetzung für den eigenen Planer (Rückfrage 2 aus Teil 1); in sich abgeschlossen, gegen frische Rechnung prüfbar |
+| eigener Planer `planer.js` (ganzer Plan, feste Punkte, Blöcke vor Einzeltagen, Verbessern mit festem Budget und Startwert, Rangfolge) | ausführbar, nächster Teil | Rangfolge und Ziel stehen im Plan (Block K, I7); groß, daher eigener Schritt; Laufzeitziel „< 1 Minute bis etwa 80 Personen“ ist laut Plan erst im Pilot zu messen |
+| Wunschregel, Grenz-/Besetzungs-/Paar-/Verteilungsregel im Plan | ausführbar nach dem Planer | brauchen den ganzen Plan (WP-I5-Nachweis Punkt 1) |
+| Hinweis „seit dem Vorschlag geändert“ | ausführbar nach dem Planer | braucht einen gespeicherten Vorschlag |
+| Betriebsmodus-Schalter (automatisch / Knopfdruck / aus) speichern | teilweise blockiert | Speichern technisch möglich; **Entscheidung** offen, ob „nicht planungsreif“ den Vorschlag sperrt (WP-I6 offener Punkt 1) und welcher Modus Vorgabe ist |
+| lange Muster (> 62 Tage) | **blockiert (Entscheidung)** | Rückfrage 4 aus Teil 1 |
+| Vorschlag „Montag frei“ nach Nachtdienst-Wochenende | **blockiert (Entscheidung)** | in Plan und Spezifikation nicht beschrieben (Bedingung, Stärke, Geltung); nichts erfunden |
+| Freischaltung der Aggregate, Budget großer Betriebe | **blockiert (Entscheidung)** | Rückfragen 1 und 2 aus Teil 1 (neue Messwerte unten) |
+
+## Umsetzung
+
+- `server/lib/engine/planeraggregate.mjs`: `aggregateFortschreiben` verwirft keine Monatsblöcke mehr, sondern merkt genau den geänderten Tag zum Nachlesen vor (`block.neu`). Ohne Posten-Dienstarten bei der eingeteilten Person; mit Posten-Dienstarten bei allen Personen mit einem Block dieses Monats (Review #572 A1: die Postenbesetzung hängt von den Abweichungen anderer Personen am selben Tag ab). Bisher wurde im Betrieb mit Posten gar nichts übernommen.
+- Begründung der Tagesgrenze (Code gelesen): `personTag` liest die eigene Abweichung des Tags, die Folge (`planDienst`, `teilzeitDienst`, `schichtmodellLageAm` lesen keine Abweichungen) und die Abwesenheit; `postenBesatzung(m, eid, d, …)` liest nur Abweichungen des Tags `d`. Eine Einteilung ändert also nie einen anderen Tag.
+- Nachlesen beim nächsten Zugriff (`aggregatZaehler`): Kosten (ein Schritt je vorgemerktem Tag) VOR dem Lesen; erst alles lesen, dann übernehmen. Wirft das Budget oder das Lesen, bleibt der Block unverändert und vorgemerkt. Präfixsummen verfallen und werden bei Bedarf mit Kosten neu gebildet.
+- Ungültige Tage (kein Kalenderdatum JJJJ-MM-TT, z. B. 30. Februar) → keine Übernahme, der neue Stand liest neu (vorher: `slice(0, 7)` ohne Prüfung).
+- Arbeit in `aggregateFortschreiben` selbst: je Änderung ein Schlüssel (ohne Posten) bzw. ein Durchlauf über die Blöcke des Betriebsstands (mit Posten); deren Zahl ist durch das Budget beschränkt (jeder Block kostete beim Lesen mindestens 28 Schritte, also höchstens etwa 7100 Blöcke bei 200000).
+- Unverändert: Schalter AUS, ein Budget je äußerem Einstieg, Mandantengrenze (WeakMap je Betriebsstand), KI-Pause, Teilzeit/Urlaub/Abwesenheit (in `vorgabenwirkung.mjs` und `fachlogik.js` nur je ein Kommentar), `assistent.jsx` unberührt.
+
+## Rot → grün
+
+- Neu `pruefungen/intelligence-planer-aggregate-lauf.test.js` (8 Tests, läuft über `pruefung:intelligence`): Gleichwertigkeit in 200 Zufallsfällen (mit/ohne Posten, Abwesenheit, Präfixsummen, Verdrängung einer anderen Person) gegen frische Rechnung; Kosten; Budget aufgebraucht; Lesefehler; ungültige Tage; Vormerkung mit/ohne Posten; demo1 mit Posten: 12 Einteilungen, nach jedem Fortschreiben dieselben Befunde wie frisch (mindestens eine Verdrängung, Befunde kommen vor); `planeMonat` demo1 wiederholbar, setzt ein, Prüfweg ohne Muss-Befund.
+- Gegen den Stand vor der Quelländerung: 7 von 8 rot (der `planeMonat`-Test ist auch vorher grün: er prüft Korrektheit, nicht Menge); dazu 1 rot in der bestehenden Datei.
+- Bestehender Test geändert (Erwartung durch die Änderung gekippt, nicht abgeschwächt): `intelligence-planer-aggregate.test.js` Abschnitt 4 „aggregateFortschreiben …“ erwartete das Verwerfen des Monats `a|2026-11`; jetzt bleibt der Block und genau Tag 17 ist vorgemerkt (zusätzliche Erwartung). Titel des A1-Tests angepasst (Erwartung unverändert: wie frisch gerechnet).
+
+## Mutationen (je einzeln, zurückgesetzt)
+
+Posten: nur eingeteilte Person vorgemerkt 4 rot (Lauf mit beiden Dateien) · Nachlesen ohne Kosten 2 · Präfixsummen nicht verworfen 2 · Summen nicht nachgeführt 3 · Abwesenheit nicht nachgeführt 1 · Datumsprüfung entfällt 1 · Kosten nach dem Lesen (halb nachgeführt) 2 · Posten: Tag in allen Monaten vorgemerkt 2 · Vormerkung nicht geleert 1 · Nachlesen beim Zugriff entfällt 4. Die Mutationen 2–10 liefen wegen Speicherknappheit des Laptops nur gegen die Abschnitte 1–3 der neuen Datei; ein erster gemeinsamer Lauf wurde wegen Speicherdruck abgebrochen und verworfen.
+
+## Messung (Laptop Celeron N4120, TZ=UTC, `--maxWorkers=1`, synthetisch demo1, 86 Personen, mit Posten)
+
+`planeMonat` Dezember, alle Nachtdienste frei gemacht, Muss „höchstens 70 Nachtdienste im Kalenderjahr“, Aggregate ausdrücklich an:
+
+| Stand | ohne Vorgaben | 1 Jahresregel | 5 Jahresregeln |
+|---|---|---|---|
+| vorher (Teil 1: mit Posten keine Übernahme) | 7,7 s, 194 gesetzt | 2,8 s, **9 gesetzt**, 30 offen wegen Budget | 2,9 s, **8 gesetzt**, 30 offen wegen Budget |
+| Teil 2 (Tagesnachführung) | 7,0 s, 194 gesetzt | 4,4 s, **55 gesetzt**, 23 offen wegen Budget | 3,7 s, **29 gesetzt**, 27 offen wegen Budget |
+
+Bestehender Messtest (Abschnitt 6, feste Obergrenze relativ zum Lauf ohne Vorgaben) grün: `planeMonat` demo1 mit 50 Langzeitregeln 2,0 s gegen 7,6 s ohne (gesetzt 0: Regeln im Demo-Jahr schon verletzt bzw. Budget); 300 Personen × 62 Tage ohne 4,8 s, mit 50 Langzeitregeln 7,4 s, Worst-Case 7,6 s (Budget jeweils aufgebraucht, Rest offen).
+
+Befund: Das Neulesen nach jeder Einteilung ist beseitigt; das Budget reicht jetzt für ein Mehrfaches an Einteilungen. Es ist aber auch so vor Monatsende aufgebraucht — der verbleibende Hauptposten sind die Zählschritte je Prüfung (12 je Kalenderjahr, Person, Vorgabe und Kandidat), nicht mehr das Lesen. Das ist die offene Budgetentscheidung, kein Rechenfehler; der Rest bleibt fail-closed offen und sichtbar.
+
+## Tests und Typprüfung (lokal, TZ=UTC, `--maxWorkers=1`)
+
+- `intelligence-planer-aggregate` + `intelligence-planer-aggregate-lauf`: 2 Dateien, 30/30 grün (mit Messteil).
+- `intelligence-vorgaben-wirkung`, `engine-einsatz`, `prozess-wachen`: 106/106 grün; `intelligence-vorgaben-einstiege`, `schutzregeln-ersatzsuche`, `engine-luckenursache`: 60/60 grün.
+- `npx tsc -p jsconfig.json --noEmit` grün; `eslint` auf die geänderten Dateien 0 Fehler (5 Warnungen in `src/lib/fachlogik.js`, schon auf der Basis); `node werkzeug/verdrahtung-pruefen.mjs` ok; `node werkzeug/acc45-backlog.mjs pruefen` ok.
+- v4-3b-*: keine Oberflächendatei geändert, lokal nicht gelaufen (CI). Vollregression in CI.
+
+## SSOT
+
+WP-I5 auf `INTEGRATED` (#566, Merge 7d73f2be, Review und Delta-Review im WP-I5-Nachweis). WP-I7 bleibt `IN_PROGRESS`; Teil 1 als #572 integriert eingetragen, Teil 2 lokal.
+
+## Offene Rückfragen (Teil 2)
+
+1. **Budget für den Planer-Einstieg** (präzisiert Rückfrage 2 aus Teil 1): Nach Teil 2 ist das Lesen kein Engpass mehr; in demo1 reicht das Budget von 200000 für 55 von 78 Einteilungen bei einer Jahresregel. Entscheidung: (a) Budget unverändert (Rest offen, fail-closed); (b) eigenes, höheres Budget nur für den Planer-Einstieg mit Messtest; (c) im eigenen Planer den Zählstand je Vorgabe und Person zwischenspeichern und wie die Blöcke nachführen. Empfehlung: (c) im nächsten Teil, bis dahin (a).
+2. **„Montag frei“**: Bedingung (welche Dienste, welches Wochenende), Stärke (Vorschlag, Soll, Muss) und Geltung festlegen; ohne Festlegung wird nichts gebaut.
+3. **Betriebsmodus**: Vorgabe-Modus und ob „nicht planungsreif“ den Vorschlag sperrt (aus WP-I6).
+
+C/D: keine neuen Pakete, Werkzeuge oder Doku-Familien; nur dieser Abschnitt.

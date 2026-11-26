@@ -120,7 +120,7 @@ export function neuesVorgabenBudget(aufwand = VORGABEN_WIRKUNG_GRENZE.aufwand, o
 
 /**
  * Der Planer hat aus `altM` den Stand `neuM` gemacht, indem er genau diese Einteilungen gesetzt hat ([{ personId, tag }]): die Aggregate
- * des Budgets wandern mit, die Monatsblöcke der geänderten Tage werden neu gelesen (aggregateFortschreiben prüft, dass sich sonst nichts
+ * des Budgets wandern mit, die geänderten Tage werden beim nächsten Zugriff nachgelesen (mit Posten bei allen Personen; aggregateFortschreiben prüft, dass sich sonst nichts
  * geändert hat). Ohne Aggregate: nichts.
  * @param {ReturnType<typeof neuesVorgabenBudget> | null | undefined} budget @param {any} altM @param {any} neuM
  * @param {{ personId: any, tag: string }[]} aenderungen
