@@ -553,6 +553,12 @@ export function regelwertAnwenden(m, befund, tag) {
    bleibt die Grenze eine Sperre — Ausschalten und Art. 16/17 gehen immer.
    -------------------------------------------------------------------------- */
 export const MODULPROTOKOLL_GRENZE = 2000;
+/** Art des Eintrags „Zuordnung im Bereichsplan durch die Schichtverantwortung“ (WP-19.4, modul-bereichsplan.mjs): trägt Person|Tag
+    und Bereich vorher/nachher — nur für Leitung und Planung (Vollsicht), nicht für den Betriebsrat (moduleinstellungenSicht). */
+export const BEREICH_PROTOKOLL_ART = "bereich-zuordnung";
+/** Belegte Plätze der gemeinsamen Grenze (MODULPROTOKOLL_GRENZE): ohne Einträge der Art BEREICH_PROTOKOLL_ART — die haben eigene
+    Grenzen (BEREICH_GRENZEN in modul-bereichsplan.mjs) und verdrängen oder sperren nie Schalter, Regelwerte oder Vorgaben (Review #578 B-1). */
+export const modulprotokollBelegt = (liste) => (Array.isArray(liste) ? liste : []).filter((x) => !istObjekt(x) || x.art !== BEREICH_PROTOKOLL_ART).length;
 /** Aufbewahrungsregel des Modulprotokolls — Entwurfswert, fachlich zu bestätigen (FN-32). Löscht erst mit Prüfstatus „geprueft". */
 export const MODULPROTOKOLL_FRIST = Object.freeze({ regelId: "AUFB-MODULPROTOKOLL-01", monate: 24, pruefstatus: "vorlaeufig",
   quelle: "Art. 5 Abs. 1 lit. e und Abs. 2 DSGVO (Speicherbegrenzung, Rechenschaft); § 87 Abs. 1 Nr. 6 BetrVG (Nachweis der Einführung)",
@@ -830,8 +836,8 @@ export function branchenmoduleZusammen(altM, neuM, sitzung, darfOrgEdit, liste =
   if (ereignisse.length) {
     let bisher = Array.isArray(altE.modulprotokoll) ? altE.modulprotokoll : [];
     /* An der Grenze zuerst die nach der Frist fälligen Einträge entfernen (statt Dauersperre). */
-    if (bisher.length + ereignisse.length > MODULPROTOKOLL_GRENZE) bisher = modulprotokollFaellig(altM, jetzt.slice(0, 10), { regel: protokollRegel }).rest;
-    if (bisher.length + ereignisse.length > MODULPROTOKOLL_GRENZE && ereignisse.some((x) => x.art !== "ausgeschaltet"))
+    if (modulprotokollBelegt(bisher) + ereignisse.length > MODULPROTOKOLL_GRENZE) bisher = modulprotokollFaellig(altM, jetzt.slice(0, 10), { regel: protokollRegel }).rest;
+    if (modulprotokollBelegt(bisher) + ereignisse.length > MODULPROTOKOLL_GRENZE && ereignisse.some((x) => x.art !== "ausgeschaltet"))
       return { grund: `Modulprotokoll: Die Grenze von ${MODULPROTOKOLL_GRENZE} Einträgen ist erreicht. Ausschalten geht weiter; `
         + "alles andere wieder, sobald ältere Einträge nach einer geprüften Aufbewahrungsregel entfallen dürfen "
         + "(Einträge in der Frist und zustandsbegründende Einträge werden nicht verdrängt; Prüfung/Freigabe der Regel erforderlich, FN-32)." };
@@ -879,6 +885,11 @@ export function modulProtokollZeilen(altB, neuB) {
       else if (x.art === "mitbestimmung") zeilen.push(`Branchenmodul ${kennung(x.modul)}: Mitbestimmung erneut bestätigt`);
       else if (x.art === "parameter") zeilen.push(`Branchenmodul ${kennung(x.modul)}: Parameter geändert`);
       else if (x.modul === "vorgaben" && VORGABEN_PROTOKOLL_TEXT[x.art]) zeilen.push(`Interne Vorgabe ${kennung(x.regelId)} ${VORGABEN_PROTOKOLL_TEXT[x.art]}`);
+      else if (x.art === BEREICH_PROTOKOLL_ART) {
+        /* Nur die Zahl — keine Person, kein Tag, kein Bereich (WP-14b, M1). */
+        const n = Number.isInteger(x.anzahl) && x.anzahl > 0 ? x.anzahl : 0;
+        zeilen.push(`Branchenmodul bereichsplan: ${n} ${n === 1 ? "Zuordnung" : "Zuordnungen"} durch die Schichtverantwortung geändert`);
+      }
       else if (x.art === "moduldaten-loeschung" || x.art === "moduldaten-berichtigung") {
         const n = Number.isInteger(x.anzahl) && x.anzahl > 0 ? x.anzahl : 0;
         zeilen.push(`Branchenmodul ${kennung(x.modul)}: Datenschutz-${x.art === "moduldaten-loeschung" ? "Löschung (Art. 17 DSGVO)" : "Berichtigung (Art. 16 DSGVO)"}, `
@@ -995,7 +1006,9 @@ export function moduleinstellungenSicht(e, rolle, vorgabenBetriebsrat = false) {
      Aktivierungsstand, Bestätigung und Protokoll — das Protokoll nach Positivkatalog (ohne Grund/Aktenzeichen). */
   if (rolle === "betriebsrat") {
     /* Das Protokoll der internen Vorgaben (WP-I4): nur bei offenem Schalter (AUS, Entscheidung 2026-11-25, 1.2), dann ohne Person. */
-    if (hat(e, "modulprotokoll")) aus.modulprotokoll = modulprotokollPositiv(e.modulprotokoll.filter((x) => !istObjekt(x) || x.modul !== "vorgaben" || vorgabenBetriebsrat === true)
+    /* Zuordnungen im Bereichsplan (WP-19.4): keine Einzelzuordnung und keine Person für den Betriebsrat — der Eintrag entfällt ganz. */
+    if (hat(e, "modulprotokoll")) aus.modulprotokoll = modulprotokollPositiv(e.modulprotokoll.filter((x) => !istObjekt(x) || x.art !== BEREICH_PROTOKOLL_ART)
+      .filter((x) => !istObjekt(x) || x.modul !== "vorgaben" || vorgabenBetriebsrat === true)
       .map((x) => (istObjekt(x) && x.modul === "vorgaben" ? ohne(x, ["von"]) : x)));
     return aus;
   }
