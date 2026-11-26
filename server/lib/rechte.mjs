@@ -39,7 +39,8 @@ import { anlagenZusammen } from "./modul-anlagen.mjs";
 import { maschinenqualZusammen } from "./modul-maschinenqual.mjs";
 import { geteilterdienstZusammen } from "./modul-geteilterdienst.mjs";
 import { postenZusammen } from "./modul-posten.mjs";
-import { bereichsplanZusammen, bereichsPlanSchicht, bereichsprotokollEintrag, bereichsprotokollAnhaengen } from "./modul-bereichsplan.mjs";
+import { bereichsplanZusammen, bereichsPlanSchicht, bereichsprotokollEintrag, bereichsprotokollAnhaengen, bereichsprotokollVoll } from "./modul-bereichsplan.mjs";
+import { createHash } from "node:crypto";
 import { fallAusAbwesenheit, svZustaendig, krankSchrittErlaubt, krankmeldungMitteilungen } from "./krankmeldung.mjs";
 import { klaerungFuerRolle, KLAERUNG_ROLLEN } from "./klaerung.mjs";
 import { ausschreibungDerEinheit, eintragDerEinheit, bestandSichtBetreiber, bestandSicht, SICHT_ROLLEN, schichtKontext, schichtPersonSicht, betriebSichtSchicht, OBEN_FELDER,
@@ -1777,6 +1778,15 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
         ausnahme: moduldatenAusnahme });
       if (modulweg.grund) return { verweigert: modulweg.grund };
       geschickt = modulweg.mandant;
+    }
+    /* E1 (Betreiberentscheidung 2026-11-26): Zuordnungen im Bereichsplan durch Leitung, Planung (und Kundenrolle) — ein Eintrag im
+       Änderungsprotokoll, nach allen Schreibwegen gegen den gespeicherten Stand (was wirklich gespeichert wird), im selben Betriebsobjekt.
+       Weist nie ab (fail-open, modul-bereichsplan.mjs bereichsprotokollVoll). Ausgenommen mit eigener Spur: Ausnahmeweg Art. 16/17
+       (eigener Eintrag moduldaten-*, das Gelöschte darf nicht im Protokoll weiterleben) und der Löschlauf der Leitung (Fristablauf). */
+    if (umfang === SCHREIBEN_VOLL && optionen.loeschlauf !== true
+      && !(moduldatenAusnahme && typeof moduldatenAusnahme === "object" && moduldatenAusnahme.modul === "bereichsplan")) {
+      geschickt = bereichsprotokollVoll(ort.betrieb, geschickt, { am: new Date().toISOString(), von: sitzung.person ?? null, rolle,
+        pruefsumme: (t) => createHash("sha256").update(t, "utf8").digest("hex") }).mandant;
     }
     /* Harte Schutzregeln setzt der Server selbst durch (WP-11, B2): Eine neue
        oder geänderte Einteilung, die schutzEinsatz sperrt, wird abgewiesen —

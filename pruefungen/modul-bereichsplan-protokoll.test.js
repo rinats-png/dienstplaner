@@ -22,8 +22,9 @@ import { createElement as h } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { BRANCHENMODULE, MODULPROTOKOLL_GRENZE, modulProtokollZeilen, moduleinstellungenSicht, modulprotokollBelegt, branchenmoduleZusammen }
   from "../server/lib/branchenmodule.mjs";
-import { bereichsprotokollEintrag, bereichsprotokollAnhaengen, BEREICH_PROTOKOLL_ART, BEREICH_GRENZEN, BEREICH_PROTOKOLL_GRENZEN, protokollBytes }
-  from "../server/lib/modul-bereichsplan.mjs";
+import { bereichsprotokollEintrag, bereichsprotokollAnhaengen, BEREICH_PROTOKOLL_ART, BEREICH_GRENZEN, BEREICH_PROTOKOLL_GRENZEN, protokollBytes,
+  bereichsprotokollVoll, bereichsprotokollExport, bereichsprotokollArchivieren, bereichsprotokollPruefsumme } from "../server/lib/modul-bereichsplan.mjs";
+import { createHash } from "node:crypto";
 import { vorgabenZusammen } from "../server/lib/vorgaben.mjs";
 import { bestandFuerRolle, zusammenfuehren } from "../server/lib/rechte.mjs";
 import { auskunftBauen } from "../server/lib/auskunft.mjs";
@@ -69,7 +70,9 @@ function leitungGegenprobe(g) {
     const w = schreibeAls(g, r, (x) => { x.bereichsPlan = { ...x.bereichsPlan, [`s1|${DI}`]: "b2" }; });
     expect(w.verweigert, r).toBeFalsy();
     expect(w.mandanten[0].bereichsPlan[`s1|${DI}`], r).toBe("b2");
-    expect(protokollVon(w), r).toEqual(protokollVon(g));
+    /* E1: Das Gespeicherte bleibt byte-gleich davor; dazu genau ein Eintrag der Leitung/Planung (eigenes Kontingent). */
+    expect(protokollVon(w).slice(0, -1), r).toEqual(protokollVon(g));
+    expect(protokollVon(w).at(-1), r).toMatchObject({ art: BEREICH_PROTOKOLL_ART, rolle: r === "LT" ? "leitung" : "planung", anzahl: 1 });
   }
 }
 const neueEintraege = (g) => protokollVon(g).filter((x) => x.art === BEREICH_PROTOKOLL_ART);
@@ -284,11 +287,13 @@ describe("Teil A — Schreibweg der Schichtverantwortung (zusammenfuehren)", () 
     }
   });
 
-  it("Stand E1 (Entscheidung offen): Planung und Leitung schreiben Zuordnungen ohne Eintrag — die Spezifikation nennt nur den Weg der Schichtverantwortung", () => {
-    for (const r of ["PL", "LT"]) {
+  /* Vorher „Stand E1 (Entscheidung offen)“: erwartete KEINEN Eintrag für Planung und Leitung. Gekippt durch die Betreiberentscheidung E1
+     (2026-11-26): auch Leitung und Planung werden protokolliert — die Erwartung ist jetzt genau ein Eintrag mit Rolle (Teil E1 unten). */
+  it("E1 (entschieden): Planung, Leitung und Kundenrolle schreiben Zuordnungen → genau ein Eintrag mit Rolle", () => {
+    for (const [r, rolle, von] of [["PL", "planung", "p1"], ["LT", "leitung", "l1"], ["KD", "kunde", "k1"]]) {
       const w = schreibeAls(bestand(), r, (m) => { m.bereichsPlan = { [`a1|${MO}`]: "b1" }; });
       expect(w.verweigert, r).toBeFalsy();
-      expect(protokollVon(w), r).toEqual([ALTEINTRAG]);
+      expect(protokollVon(w), r).toEqual([ALTEINTRAG, expect.objectContaining({ art: BEREICH_PROTOKOLL_ART, rolle, von })]);
     }
   });
 
@@ -303,6 +308,225 @@ describe("Teil A — Schreibweg der Schichtverantwortung (zusammenfuehren)", () 
     expect(r.verweigert).toBeFalsy();
     expect(neueEintraege(r)).toHaveLength(1);
     expect(r.mandanten.find((m) => m.id === "m2")).toEqual(zweiter);
+  });
+});
+
+describe("Teil E1 — Leitung und Planung (Betreiberentscheidung 2026-11-26; Invarianten L1–L10, WP19-MODULPLAN.md 17.1)", () => {
+  const vollEintraege = (g) => neueEintraege(g).filter((x) => x.rolle !== undefined);
+  /** n Einträge der Leitung (eigenes Kontingent), Kennungen auf Länge `lang` gestreckt. */
+  const fuellLeitung = (n, { zuordnungen = 1, lang = 2 } = {}) => Array.from({ length: n }, (_, i) => ({ art: BEREICH_PROTOKOLL_ART, modul: "bereichsplan",
+    am: "2026-10-01T08:00:00.000Z", von: "l1".padEnd(lang, "x"), rolle: "leitung", einheit: "e1".padEnd(lang, "x"), anzahl: zuordnungen,
+    zuordnungen: Array.from({ length: zuordnungen }, (_, j) => ({ person: "a1".padEnd(lang, "x"), tag: MO, vorher: `v${i}-${j}`.padEnd(lang, "x"), nachher: null })) }));
+
+  it("L2: Form — gleiche Art und gleicher Inhalt wie bei der SV, dazu `rolle`; nur Kennungen; Gespeichertes byte-gleich davor", () => {
+    const vorher = Date.now();
+    const g = bestand({ plan: { [`a1|${MO}`]: "b1" } });
+    const r = schreibeAls(g, "PL", (m) => { m.bereichsPlan = { [`a1|${MO}`]: "b2", [`s1|${DI}`]: "b1" }; });
+    expect(r.verweigert).toBeFalsy();
+    const p = protokollVon(r);
+    expect(p[0]).toEqual(ALTEINTRAG);
+    expect(p).toHaveLength(2);
+    expect(Object.keys(p[1]).sort()).toEqual(["am", "anzahl", "art", "einheit", "modul", "rolle", "von", "zuordnungen"]);
+    expect(p[1]).toMatchObject({ art: "bereich-zuordnung", modul: "bereichsplan", von: "p1", rolle: "planung", einheit: "e1", anzahl: 2,
+      zuordnungen: [{ person: "a1", tag: MO, vorher: "b1", nachher: "b2" }, { person: "s1", tag: DI, vorher: null, nachher: "b1" }] });
+    expect(Date.parse(p[1].am)).toBeGreaterThanOrEqual(vorher - 1000);
+    expect(JSON.stringify(p[1])).not.toMatch(/Wohnbereich|Na1|Ns1|Np1/);
+  });
+
+  it("L2: unverändertes Speichern und Speichern anderer Felder → kein Eintrag; über mehrere Einheiten → einheit null", () => {
+    const g = bestand({ plan: { [`a1|${MO}`]: "b1" } });
+    for (const r of ["LT", "PL"]) {
+      expect(protokollVon(schreibeAls(g, r, () => {})), r).toEqual([ALTEINTRAG]);
+      expect(protokollVon(schreibeAls(g, r, (m) => { m.abweichungen = { [`a1|${MO}`]: "F" }; })), r).toEqual([ALTEINTRAG]);
+    }
+    const quer = schreibeAls(g, "LT", (m) => { m.bereichsPlan = { [`a1|${MO}`]: "b1", [`x2|${MO}`]: "b3", [`a1|${DI}`]: "b2" }; });
+    expect(vollEintraege(quer)[0]).toMatchObject({ einheit: null, anzahl: 2 });
+  });
+
+  it("L4: jede Absage im vollen Weg → kein Ergebnis; Zuordnung und Protokoll bleiben, wie sie sind", () => {
+    const faelle = {
+      "unbekannter Bereich": (m) => { m.bereichsPlan = { [`a1|${MO}`]: "b9" }; },
+      "Schlüssel ungültig": (m) => { m.bereichsPlan = { "a1|2026-02-30": "b1" }; },
+      "Bereich mit Zuordnung entfernt": (m) => { m.bereichsPlan = { [`a1|${MO}`]: "b2" }; m.einheiten[0].bereiche = m.einheiten[0].bereiche.filter((b) => b.id !== "b2"); },
+    };
+    for (const [was, fn] of Object.entries(faelle)) for (const r of ["LT", "PL"]) {
+      const g = bestand({ plan: { [`s1|${MO}`]: "b1" } });
+      const vorher = kopie(g);
+      const w = schreibeAls(g, r, fn);
+      expect(w.verweigert, `${was} ${r}`).toBeTruthy();
+      expect(w.mandanten, was).toBeUndefined();
+      expect(g, was).toEqual(vorher);
+    }
+  });
+
+  it("L5: mehr als 100 Zuordnungen in einem Speichern → nie abgewiesen, ein verdichteter Eintrag (Anzahl, Prüfsumme, keine Einzelwerte)", () => {
+    const J = BEREICH_PROTOKOLL_GRENZEN.jeSpeichern;
+    const plan = (n) => Object.fromEntries(Array.from({ length: n }, (_, i) => [`a1|${tagPlus(-300 + i)}`, "b1"]));
+    const genau = schreibeAls(bestand(), "LT", (m) => { m.bereichsPlan = plan(J); });
+    expect(vollEintraege(genau)[0].zuordnungen).toHaveLength(J);
+    const g = bestand();
+    const r = schreibeAls(g, "LT", (m) => { m.bereichsPlan = plan(J + 1); });
+    expect(r.verweigert).toBeFalsy();
+    expect(Object.keys(r.mandanten[0].bereichsPlan)).toHaveLength(J + 1);
+    const e = vollEintraege(r)[0];
+    expect(Object.keys(e).sort()).toEqual(["am", "anzahl", "art", "einheit", "modul", "pruefsumme", "rolle", "verdichtet", "von"]);
+    expect(e).toMatchObject({ anzahl: J + 1, verdichtet: true, rolle: "leitung", einheit: "e1" });
+    const liste = bereichsprotokollEintrag(g.mandanten[0].bereichsPlan, r.mandanten[0].bereichsPlan, { am: "x", von: "l1", einheit: null }).zuordnungen;
+    expect(e.pruefsumme).toBe(createHash("sha256").update(JSON.stringify(liste), "utf8").digest("hex"));
+    expect(JSON.stringify(e)).not.toMatch(/a1\||"tag"|"zuordnungen"|"vorher"/);
+    /* Alles gelöscht (die Leitung lässt bereichsPlan weg, Modul wirkt): eine Änderung je Zuordnung, verdichtet. */
+    const weg = schreibeAls(r, "PL", (m) => { delete m.bereichsPlan; });
+    expect(weg.verweigert).toBeFalsy();
+    expect(weg.mandanten[0].bereichsPlan).toBeUndefined();
+    expect(vollEintraege(weg).at(-1)).toMatchObject({ rolle: "planung", anzahl: J + 1, verdichtet: true });
+  });
+
+  it("L6: SV-Art voll (2000 SV-Einträge) → SV abgewiesen, Leitung und Planung speichern und protokollieren weiter", () => {
+    const g = bestand({ protokoll: fuellBereich(BEREICH_PROTOKOLL_GRENZEN.eintraege) });
+    expect(schreibeAls(g, "SV", (m) => { m.bereichsPlan = { [`a1|${MO}`]: "b1" }; }).verweigert).toMatch(/voll/);
+    for (const r of ["LT", "PL"]) {
+      const w = schreibeAls(g, r, (m) => { m.bereichsPlan = { [`a1|${MO}`]: "b1" }; });
+      expect(w.verweigert, r).toBeFalsy();
+      expect(vollEintraege(w), r).toHaveLength(1);
+    }
+  });
+
+  it("L6/L7: Kontingent von Leitung/Planung erschöpft → Speichern geht durch, kein Eintrag, Zeile „ohne Eintrag“; SV bleibt frei", () => {
+    const G = BEREICH_PROTOKOLL_GRENZEN.eintraege;
+    const platz = schreibeAls(bestand({ protokoll: fuellLeitung(G - 1) }), "PL", (m) => { m.bereichsPlan = { [`a1|${MO}`]: "b1" }; });
+    expect(vollEintraege(platz)).toHaveLength(G);
+    const g = bestand({ protokoll: fuellLeitung(G) });
+    const vorher = kopie(protokollVon(g));
+    for (const r of ["LT", "PL"]) {
+      const w = schreibeAls(g, r, (m) => { m.bereichsPlan = { [`a1|${MO}`]: "b1" }; });
+      expect(w.verweigert, r).toBeFalsy();
+      expect(w.mandanten[0].bereichsPlan, r).toEqual({ [`a1|${MO}`]: "b1" });
+      expect(protokollVon(w), r).toEqual(vorher);
+      expect(modulProtokollZeilen(g, w), r).toEqual(["Branchenmodul bereichsplan: 1 Zuordnung ohne Eintrag im Änderungsprotokoll geändert"]);
+    }
+    /* Die SV wird von Einträgen der Leitung nie ausgesperrt (eigene Zählung). */
+    const sv = schreibeAls(g, "SV", (m) => { m.bereichsPlan = { [`a1|${MO}`]: "b2" }; });
+    expect(sv.verweigert).toBeFalsy();
+    expect(neueEintraege(sv).at(-1)).toMatchObject({ von: "s1", einheit: "e1" });
+    expect(neueEintraege(sv).at(-1)).not.toHaveProperty("rolle");
+    /* Gesamtbytes des Kontingents ebenso (rein): genau passend gespeichert, ein Byte weniger → voll. */
+    const alt = { bereichsPlan: {} }, neu = { bereichsPlan: { [`a1|${MO}`]: "b1" }, einstellungen: { modulprotokoll: fuellLeitung(2) } };
+    const e = bereichsprotokollVoll(alt, neu, { am: "x", von: "l1", rolle: "leitung" }).eintrag;
+    const grenze = protokollBytes(fuellLeitung(2)) + protokollBytes(e);
+    expect(bereichsprotokollVoll(alt, neu, { am: "x", von: "l1", rolle: "leitung", grenzen: { ...BEREICH_PROTOKOLL_GRENZEN, gesamtBytes: grenze } }).voll).toBeUndefined();
+    expect(bereichsprotokollVoll(alt, neu, { am: "x", von: "l1", rolle: "leitung", grenzen: { ...BEREICH_PROTOKOLL_GRENZEN, gesamtBytes: grenze - 1 } }).voll).toBe(true);
+  });
+
+  it("L6 Worst Case (gemessen): beide Kontingente mit größten Einträgen voll, dazu gemeinsame Grenze voll — Betrieb ≪ RUMPF_MAX; Leitung speichert", () => {
+    const RUMPF_MAX = 6 * 1024 * 1024;
+    const k = (c) => c.repeat(60);
+    const gross = (rolle) => ({ art: BEREICH_PROTOKOLL_ART, modul: "bereichsplan", am: "2026-11-26T10:00:00.000Z", von: k("s"), ...(rolle ? { rolle } : {}),
+      einheit: k("e"), anzahl: 100, zuordnungen: Array.from({ length: 100 }, () => ({ person: k("p"), tag: MO, vorher: k("v"), nachher: k("n") })) });
+    const fuell = (rolle) => { const l = []; while (protokollBytes([...l, gross(rolle)]) <= BEREICH_PROTOKOLL_GRENZEN.gesamtBytes) l.push(gross(rolle)); return l; };
+    const sv = fuell(null), lt = fuell("leitung");
+    const g = bestand({ protokoll: [...fuellAndere(MODULPROTOKOLL_GRENZE), ...sv, ...lt] });
+    const w = schreibeAls(g, "LT", (m) => { m.bereichsPlan = { [`a1|${MO}`]: "b1" }; });
+    expect(w.verweigert).toBeFalsy();
+    expect(w.mandanten[0].bereichsPlan[`a1|${MO}`]).toBe("b1");
+    /* Nicht abgewiesen; Gespeichertes byte-gleich davor, höchstens ein kleiner Eintrag dazu (passt er nicht mehr: keiner). */
+    expect(protokollVon(w).slice(0, protokollVon(g).length)).toEqual(protokollVon(g));
+    expect(protokollVon(w).length - protokollVon(g).length).toBeLessThanOrEqual(1);
+    expect(protokollBytes(vollEintraege(w))).toBeLessThanOrEqual(BEREICH_PROTOKOLL_GRENZEN.gesamtBytes);
+    const bytes = protokollBytes(w.mandanten[0]);
+    /* Gemessen (WP19-MODULPLAN.md 17.1 L6): je 43 größte Einträge, SV 1 034 323 B, Leitung 1 035 097 B. */
+    expect([sv.length, lt.length]).toEqual([43, 43]);
+    expect(protokollBytes(sv)).toBeLessThanOrEqual(BEREICH_PROTOKOLL_GRENZEN.gesamtBytes);
+    expect(protokollBytes(lt)).toBeLessThanOrEqual(BEREICH_PROTOKOLL_GRENZEN.gesamtBytes);
+    expect(bytes).toBeLessThan(RUMPF_MAX / 2);
+  }, 120000);
+
+  it("L1/L3: mitgeschicktes Protokoll zählt nicht — Leitung leert oder fälscht es im selben Speichern: Gespeichertes plus genau ein Eintrag des Servers", () => {
+    const g = schreibeAls(bestand(), "SV", (m) => { m.bereichsPlan = { [`a1|${MO}`]: "b1" }; });
+    const vorher = kopie(protokollVon(g));
+    for (const fn of [(m) => { m.einstellungen.modulprotokoll = []; }, (m) => { m.einstellungen.modulprotokoll.push({ art: BEREICH_PROTOKOLL_ART, rolle: "leitung", von: "x" }); }]) {
+      const r = schreibeAls(g, "LT", (m) => { fn(m); m.bereichsPlan = { [`a1|${MO}`]: "b2" }; });
+      expect(r.verweigert).toBeFalsy();
+      expect(protokollVon(r).slice(0, -1)).toEqual(vorher);
+      expect(protokollVon(r).at(-1)).toMatchObject({ rolle: "leitung", von: "l1", zuordnungen: [{ person: "a1", tag: MO, vorher: "b1", nachher: "b2" }] });
+    }
+  });
+
+  it("L8: Modul geplant (echte Registry) oder aus → Leitung/Planung abgewiesen, kein Eintrag; Ausnahmeweg Art. 17 → kein Zuordnungseintrag, eigene Spur", () => {
+    for (const r of ["LT", "PL"]) {
+      const g = bestand();
+      const vorher = kopie(g);
+      expect(schreibeAlsEcht(g, r, (m) => { m.bereichsPlan = { [`a1|${MO}`]: "b1" }; }).verweigert, r).toMatch(/wirkt in diesem Betrieb nicht/);
+      expect(g).toEqual(vorher);
+    }
+    const EIN = "2026-10-01T08:00:00.000Z";
+    const aus = bestand({ plan: { [`a1|${MO}`]: "b1", [`s1|${MO}`]: "b2" } });
+    aus.mandanten[0].einstellungen.branchenmodule = { bereichsplan: { an: false, eingeschaltetAm: EIN, geaendertAm: EIN, geaendertVon: "l1" } };
+    expect(schreibeAls(aus, "LT", (m) => { m.bereichsPlan = { [`a1|${MO}`]: "b2" }; }).verweigert).toMatch(/nur lesbar/);
+    const loesch = { modul: "bereichsplan", art: "loeschung", grund: "art17", eintraege: { bereichsPlan: [`a1|${MO}`] } };
+    const art17 = schreibeAls(aus, "LT", (m) => { delete m.bereichsPlan[`a1|${MO}`]; m.moduldatenAusnahme = loesch; });
+    expect(art17.verweigert, art17.verweigert).toBeFalsy();
+    expect(art17.mandanten[0].bereichsPlan).toEqual({ [`s1|${MO}`]: "b2" });
+    expect(neueEintraege(art17)).toEqual([]);
+    expect(JSON.stringify(protokollVon(art17))).not.toContain(`a1|${MO}`);
+    expect(protokollVon(art17).at(-1)).toMatchObject({ art: "moduldaten-loeschung", modul: "bereichsplan", feld: "bereichsPlan", anzahl: 1 });
+    expect(modulProtokollZeilen(aus, art17)).toContain("Branchenmodul bereichsplan: 1 Zuordnung ohne Eintrag im Änderungsprotokoll geändert");
+  });
+
+  it("L8: Löschlauf der Leitung (Fristablauf, optionen.loeschlauf) → kein Zuordnungseintrag; Zeile „ohne Eintrag“", () => {
+    const g = bestand({ plan: { [`a1|${MO}`]: "b1" } });
+    const s = kopie(bestandFuerRolle(g, SITZUNGEN.LT));
+    delete s.mandanten[0].bereichsPlan[`a1|${MO}`];
+    const r = zusammenfuehren(g, s, SITZUNGEN.LT, { liste: AKTIV, loeschlauf: true });
+    expect(r.verweigert).toBeFalsy();
+    expect(r.mandanten[0].bereichsPlan).toEqual({});
+    expect(protokollVon(r)).toEqual([ALTEINTRAG]);
+    expect(modulProtokollZeilen(g, r)).toEqual(["Branchenmodul bereichsplan: 1 Zuordnung ohne Eintrag im Änderungsprotokoll geändert"]);
+  });
+
+  it("L9: Leitungssitzung ohne Person → von null (keine erfundene Kennung), Eintrag mit Rolle; Mandantentrennung byte-gleich", () => {
+    const g = bestand();
+    const zweiter = kopie(g.mandanten[0]);
+    zweiter.id = "m2"; zweiter.name = "Anderer Betrieb";
+    g.mandanten.push(zweiter);
+    const sitzung = { ...SITZUNGEN.LT, person: null };
+    const s = kopie(bestandFuerRolle(g, sitzung));
+    s.mandanten[0].bereichsPlan = { [`a1|${MO}`]: "b1" };
+    const r = zusammenfuehren(g, s, sitzung, { liste: AKTIV });
+    expect(r.verweigert).toBeFalsy();
+    expect(vollEintraege(r)).toEqual([expect.objectContaining({ von: null, rolle: "leitung" })]);
+    expect(r.mandanten.find((m) => m.id === "m2")).toEqual(zweiter);
+  });
+
+  it("L10: Lesen — Leitung/Planung vollständig, Betriebsrat nichts davon, SV/Beschäftigte kein Modulprotokoll; Auskunft nur Positivkatalog; Betriebsprotokoll nur Zahl", () => {
+    const vorher = bestand();
+    const g = schreibeAls(vorher, "LT", (m) => { m.bereichsPlan = { [`a1|${MO}`]: "b1", [`s1|${MO}`]: "b2" }; });
+    for (const r of ["LT", "PL"]) expect(neueEintraege(bestandFuerRolle(g, SITZUNGEN[r])), r).toEqual(neueEintraege(g));
+    for (const r of ["SV", "MA"]) expect(bestandFuerRolle(g, SITZUNGEN[r]).mandanten[0].einstellungen.modulprotokoll, r).toBeUndefined();
+    const br = bestandFuerRolle(g, SITZUNGEN.BR).mandanten[0].einstellungen.modulprotokoll || [];
+    expect(br).toEqual([ALTEINTRAG]);
+    expect(JSON.stringify(br)).not.toMatch(/zuordnungen|rolle|a1\|/);
+    const m = g.mandanten[0];
+    const a = auskunftBauen(m, m.personen.find((p) => p.id === "l1"), { raum: "r", erstellt: "2026-11-26T10:00:00.000Z", umfang: "selbst" });
+    expect(a.modulhandlungen.filter((x) => x.art === BEREICH_PROTOKOLL_ART).map((x) => Object.keys(x).sort()))
+      .toEqual([["am", "anzahl", "art", "modul", "von"]]);
+    expect(modulProtokollZeilen(vorher, g)).toEqual(["Branchenmodul bereichsplan: 2 Zuordnungen durch die Leitung geändert"]);
+    const viele = Object.fromEntries(Array.from({ length: 101 }, (_, i) => [`a1|${tagPlus(-200 + i)}`, "b1"]));
+    const v = schreibeAls(g, "PL", (x) => { x.bereichsPlan = { ...x.bereichsPlan, ...viele }; });
+    expect(modulProtokollZeilen(g, v)).toEqual(["Branchenmodul bereichsplan: 101 Zuordnungen durch die Planung geändert (zusammengefasst)"]);
+  });
+
+  it("A1/E1: Archivierung greift für Einträge von Leitung und Planung (gleiche Art) — Export und Entfernen der ältesten n", async () => {
+    let g = schreibeAls(bestand(), "SV", (m) => { m.bereichsPlan = { [`a1|${MO}`]: "b1" }; });
+    g = schreibeAls(g, "LT", (m) => { m.bereichsPlan = { [`a1|${MO}`]: "b2" }; });
+    g = schreibeAls(g, "PL", (m) => { m.bereichsPlan = { [`a1|${MO}`]: "b1" }; });
+    const e = g.mandanten[0].einstellungen;
+    const ex = bereichsprotokollExport(e);
+    expect(ex.eintraege.map((x) => x.rolle ?? "sv")).toEqual(["sv", "leitung", "planung"]);
+    const r = await bereichsprotokollArchivieren(e, { anzahl: 3, bytes: ex.bytes, pruefsumme: await bereichsprotokollPruefsumme(ex.text), exportGespeichert: true },
+      { am: "2026-11-26T10:00:00.000Z", von: "l1" });
+    expect(r).not.toHaveProperty("status");
+    expect(r.einstellungen.modulprotokoll.filter((x) => x.art === BEREICH_PROTOKOLL_ART)).toEqual([]);
+    expect(r.einstellungen.modulprotokoll[0]).toEqual(ALTEINTRAG);
   });
 });
 
@@ -347,14 +571,31 @@ describe("Teil A — Oberfläche (nur lesend, nur Leitung und Planung)", () => {
   it("zeigt wer, wann, Person, Tag und Bereich vorher → nachher in Worten; andere Einheit: keine Einträge", () => {
     const m = g().mandanten[0];
     const html = renderToStaticMarkup(h(BereichsProtokoll, { m, einheitId: "e1" }));
-    for (const t of ["Änderungen der Schichtverantwortung", "V Ns1", "V Na1", MO, "Wohnbereich Nord → Wohnbereich Süd"]) expect(html).toContain(t);
+    /* E1: Überschrift „Änderungsprotokoll der Zuordnungen“ (vorher „Änderungen der Schichtverantwortung“), die Rolle steht am Eintrag. */
+    for (const t of ["Änderungsprotokoll der Zuordnungen", "V Ns1 (Schichtverantwortung)", "V Na1", MO, "Wohnbereich Nord → Wohnbereich Süd"]) expect(html).toContain(t);
     expect(renderToStaticMarkup(h(BereichsProtokoll, { m, einheitId: "e2" }))).toContain("Keine Änderungen");
   });
   it("Schichtverantwortung (einheit) sieht die Liste nicht; Leitung/Planung (voll) sehen sie", () => {
     const m = g().mandanten[0];
     const k = (recht) => ({ m, einheitId: "e1", datum: MO, personenImDienst: [], bereichSchreiben: recht, eigeneEinheit: "e1", akt: { setzeFeld: () => {} } });
-    expect(renderToStaticMarkup(h(BereichsErgaenzung, { k: k("einheit") }))).not.toContain("Änderungen der Schichtverantwortung");
-    expect(renderToStaticMarkup(h(BereichsErgaenzung, { k: k("voll") }))).toContain("Änderungen der Schichtverantwortung");
+    expect(renderToStaticMarkup(h(BereichsErgaenzung, { k: k("einheit") }))).not.toContain("Änderungsprotokoll der Zuordnungen");
+    expect(renderToStaticMarkup(h(BereichsErgaenzung, { k: k("voll") }))).toContain("Änderungsprotokoll der Zuordnungen");
+  });
+  it("E1: Einträge von Leitung und Planung mit Rolle in Worten; über mehrere Einheiten in jeder Einheit; verdichtet nur die Anzahl", () => {
+    const g1 = schreibeAls(bestand({ plan: { [`a1|${MO}`]: "b1" } }), "PL", (m) => { m.bereichsPlan = { [`a1|${MO}`]: "b2" }; });
+    const g2 = schreibeAls(g1, "LT", (m) => { m.bereichsPlan = { ...m.bereichsPlan, [`x2|${MO}`]: "b3", [`a1|${DI}`]: "b1" }; });
+    const viele = Object.fromEntries(Array.from({ length: BEREICH_PROTOKOLL_GRENZEN.jeSpeichern + 1 }, (_, i) => [`a1|${tagPlus(-200 + i)}`, "b1"]));
+    const g3 = schreibeAls(g2, "LT", (m) => { m.bereichsPlan = { ...m.bereichsPlan, ...viele }; });
+    expect(g3.verweigert).toBeFalsy();
+    const m = g3.mandanten[0];
+    const e1 = renderToStaticMarkup(h(BereichsProtokoll, { m, einheitId: "e1" }));
+    expect(e1).toContain("V Np1 (Planung)");
+    expect(e1).toContain("Wohnbereich Nord → Wohnbereich Süd");
+    expect(e1).toContain("V Nl1 (Leitung, mehrere oder keine Einheit)");
+    expect(e1).toContain(`${BEREICH_PROTOKOLL_GRENZEN.jeSpeichern + 1} Zuordnungen geändert (zusammengefasst, ohne Einzelangaben)`);
+    const e2 = renderToStaticMarkup(h(BereichsProtokoll, { m, einheitId: "e2" }));
+    expect(e2).toContain("Station 3");                                                // Eintrag über e1 und e2 erscheint auch in e2
+    expect(e2).not.toContain("(Planung)");                                            // der Eintrag der Planung betrifft nur e1
   });
 });
 
@@ -472,7 +713,25 @@ describe("Teil B — über die echten Handler (PUT und Teilweg)", { timeout: 300
       expect(l.status, JSON.stringify(l).slice(0, 300)).toBe(200);
       const nachL = await gespeichert(r.name);
       expect(nachL.bereichsPlan[`a1|${tag(2)}`]).toBe("b2");
-      expect(nachL.einstellungen.modulprotokoll).toEqual(vorher.einstellungen.modulprotokoll);
+      /* E1: Gespeichertes byte-gleich davor, dazu genau der Eintrag der Leitung (eigenes Kontingent, die volle SV-Art sperrt ihn nicht). */
+      expect(nachL.einstellungen.modulprotokoll.slice(0, -1)).toEqual(vorher.einstellungen.modulprotokoll);
+      expect(nachL.einstellungen.modulprotokoll.at(-1)).toMatchObject({ art: BEREICH_PROTOKOLL_ART, rolle: "leitung", von: "l1", anzahl: 1 });
+    });
+
+    it(`${weg}: E1 Leitung — angenommen → Zuordnung und Eintrag mit Rolle gespeichert; abgewiesen → Platte unverändert`, async () => {
+      const r = await raum();
+      const w = await svSchreibt(r, weg, (p) => ({ ...p, [`a1|${tag(3)}`]: "b1", [`x2|${tag(3)}`]: "b3" }), r.lt);
+      expect(w.status, JSON.stringify(w).slice(0, 300)).toBe(200);
+      const m = await gespeichert(r.name);
+      expect(m.einstellungen.modulprotokoll[0]).toEqual(ALTEINTRAG);
+      expect(m.einstellungen.modulprotokoll.filter((x) => x.art === BEREICH_PROTOKOLL_ART)).toEqual([expect.objectContaining({ rolle: "leitung", von: "l1",
+        einheit: null, anzahl: 2, zuordnungen: [{ person: "a1", tag: tag(3), vorher: null, nachher: "b1" }, { person: "x2", tag: tag(3), vorher: null, nachher: "b3" }] })]);
+      const vorher = await gespeichert(r.name);
+      const nein = await svSchreibt(r, weg, (p) => ({ ...p, [`a1|${tag(4)}`]: "b9" }), r.lt);
+      expect(nein.status).toBe(403);
+      const nachher = await gespeichert(r.name);
+      expect(nachher.bereichsPlan).toEqual(vorher.bereichsPlan);
+      expect(nachher.einstellungen.modulprotokoll).toEqual(vorher.einstellungen.modulprotokoll);
     });
   }
 });

@@ -325,6 +325,8 @@ export function bereichsprotokollEintrag(altO, neuO, { am, von, einheit }) {
 /**
  * Eigene Grenzen dieser Art (Review #578 B-1/B-2): Sie zählen NICHT zur gemeinsamen Grenze des Modulprotokolls
  * (modulprotokollBelegt) und sperren nur das Zuordnen durch die Schichtverantwortung — nie Leitung, Planung oder andere Einträge.
+ * E1: dieselben Werte gelten getrennt für die Einträge der Schichtverantwortung (ohne `rolle`) und die von Leitung/Planung (mit
+ * `rolle`, bereichsprotokollVoll) — Worst Case der Art also 2 × 1 MiB ≤ 1/3 von RUMPF_MAX.
  * Worst Case Bytes: alle Einträge dieser Art zusammen höchstens `gesamtBytes` (1 MiB, UTF-8 der JSON-Form), also ≤ 1/6 von
  * RUMPF_MAX (6 MiB, server/funktionen/daten.mjs) — unabhängig von der Zahl der Einheiten, weil die Grenze je Betrieb gilt.
  * Ein Eintrag: höchstens `jeSpeichern` Zuordnungen und `eintragBytes`; je Zuordnung höchstens ≈ 240 Byte (Kennungen ≤ 60 Zeichen).
@@ -351,11 +353,63 @@ export function bereichsprotokollAnhaengen(einstellungen, eintrag, { grenzen = B
     return { grund: `Bereichsplan: höchstens ${grenzen.jeSpeichern} Änderungen je Speichern (Änderungsprotokoll) — bitte in kleineren Schritten speichern.` };
   const b = protokollBytes(eintrag);
   if (b > grenzen.eintragBytes) return { grund: "Bereichsplan: Die Änderung ist für das Änderungsprotokoll zu groß — bitte in kleineren Schritten speichern." };
-  const eigene = bisher.filter((x) => istObjekt(x) && x.art === BEREICH_PROTOKOLL_ART);
+  /* E1: Gezählt werden nur Einträge der Schichtverantwortung (ohne `rolle`) — Einträge von Leitung und Planung sperren die SV nie. */
+  const eigene = bisher.filter((x) => istObjekt(x) && x.art === BEREICH_PROTOKOLL_ART && !hat(x, "rolle"));
   if (eigene.length + 1 > grenzen.eintraege || protokollBytes(eigene) + b > grenzen.gesamtBytes)
     return { grund: "Bereichsplan: Das Änderungsprotokoll der Zuordnungen ist voll. Zuordnen durch die Schichtverantwortung geht erst wieder, "
       + "wenn die Leitung das Änderungsprotokoll archiviert hat (Export und Vermerk); Leitung und Planung ordnen weiter zu." };
   return { einstellungen: { ...e, modulprotokoll: [...bisher, eintrag] } };
+}
+
+/* ---- E1 (Betreiberentscheidung 2026-11-26): Änderungsprotokoll auch für Leitung und Planung (voller Schreibweg) ----
+   Gleiche Art und gleicher Inhalt wie bei der Schichtverantwortung (nur Kennungen, vorher → nachher), dazu `rolle`; Einträge ohne
+   `rolle` stammen von der Schichtverantwortung. Risikogerecht und fail-open (WP19-MODULPLAN.md 17.1, L1–L10): Das Protokoll hindert
+   Leitung und Planung NIE am Speichern. Mehr als `jeSpeichern` Zuordnungen oder mehr als `eintragBytes` in einem Speichern →
+   ein verdichteter Eintrag (Anzahl, Prüfsumme der Einzelliste, keine Einzelwerte). Eigenes Kontingent (`eintraege`/`gesamtBytes`
+   zählen nur Einträge mit `rolle`); ist es erschöpft, entsteht kein Eintrag, das Speichern geht durch, und die Spur ist die Zeile im
+   Betriebsprotokoll des Servers (modulProtokollZeilen: „ohne Eintrag im Änderungsprotokoll“). Platz schafft die Archivierung. */
+/** Rolle des vollen Schreibwegs → Angabe im Eintrag. */
+export const BEREICH_PROTOKOLL_ROLLEN = Object.freeze({ leitung: "leitung", planer: "planung", kunde: "kunde" });
+/** Eintrag aus dem vollen Schreibweg (Leitung, Planung, Kundenrolle)? @param {any} x */
+export const bereichsprotokollVonVoll = (x) => istObjekt(x) && x.art === BEREICH_PROTOKOLL_ART && hat(x, "rolle");
+
+/** Die Einheit, zu der alle berührten Bereiche gehören (alter oder neuer Stand), sonst null. */
+function einheitDerAenderung(altM, neuM, zuordnungen) {
+  const ixN = bereichsIndex(neuM), ixA = bereichsIndex(altM);
+  const ids = new Set();
+  for (const z of zuordnungen) for (const b of [z.vorher, z.nachher]) {
+    if (b === null) continue;
+    const t = ixN.get(b) || ixA.get(b);
+    ids.add(t ? String(t.einheitId) : "\u0000");
+  }
+  return ids.size === 1 && !ids.has("\u0000") ? [...ids][0] : null;
+}
+
+/**
+ * Hängt zu einer Änderung des Bereichsplans im vollen Schreibweg (Leitung, Planung) genau einen Eintrag an — oder, bei
+ * erschöpftem Kontingent, keinen (`voll: true`). Weist nie ab. Ohne Änderung: `eintrag: null`, `mandant` unverändert (dasselbe Objekt).
+ * @param {any} altM gespeicherter Betrieb
+ * @param {any} neuM zu speichernder Betrieb (nach allen Schreibwegen; sein Modulprotokoll ist das vom Server gesetzte)
+ * @param {{ am: string, von: any, rolle: string, pruefsumme?: (text: string) => string, grenzen?: typeof BEREICH_PROTOKOLL_GRENZEN }} k
+ * @returns {{ mandant: any, eintrag: any, voll?: boolean }}
+ */
+export function bereichsprotokollVoll(altM, neuM, { am, von, rolle, pruefsumme, grenzen = BEREICH_PROTOKOLL_GRENZEN }) {
+  if (!istObjekt(neuM)) return { mandant: neuM, eintrag: null };
+  const roh = bereichsprotokollEintrag(altM && altM.bereichsPlan, neuM.bereichsPlan, { am, von, einheit: null });
+  if (!roh) return { mandant: neuM, eintrag: null };
+  const kopf = { art: roh.art, modul: roh.modul, am: roh.am, von: roh.von,
+    rolle: hat(BEREICH_PROTOKOLL_ROLLEN, rolle) ? BEREICH_PROTOKOLL_ROLLEN[rolle] : String(rolle).slice(0, 20),
+    einheit: einheitDerAenderung(altM, neuM, roh.zuordnungen), anzahl: roh.anzahl };
+  /** @type {Record<string, any>} */
+  let eintrag = { ...kopf, zuordnungen: roh.zuordnungen };
+  if (roh.anzahl > grenzen.jeSpeichern || protokollBytes(eintrag) > grenzen.eintragBytes)
+    eintrag = { ...kopf, verdichtet: true, ...(typeof pruefsumme === "function" ? { pruefsumme: pruefsumme(JSON.stringify(roh.zuordnungen)) } : {}) };
+  const e = istObjekt(neuM.einstellungen) ? neuM.einstellungen : {};
+  const bisher = Array.isArray(e.modulprotokoll) ? e.modulprotokoll : [];
+  const eigene = bisher.filter(bereichsprotokollVonVoll);
+  if (eigene.length + 1 > grenzen.eintraege || protokollBytes(eigene) + protokollBytes(eintrag) > grenzen.gesamtBytes)
+    return { mandant: neuM, eintrag: null, voll: true };
+  return { mandant: { ...neuM, einstellungen: { ...e, modulprotokoll: [...bisher, eintrag] } }, eintrag };
 }
 
 /* ---- Archivierung durch die Leitung (E7 b, Betreiberentscheidung 2026-11-26; Invarianten A1–A12, WP19-MODULPLAN.md 17.1) ----

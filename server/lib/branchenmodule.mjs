@@ -553,7 +553,8 @@ export function regelwertAnwenden(m, befund, tag) {
    bleibt die Grenze eine Sperre — Ausschalten und Art. 16/17 gehen immer.
    -------------------------------------------------------------------------- */
 export const MODULPROTOKOLL_GRENZE = 2000;
-/** Art des Eintrags „Zuordnung im Bereichsplan durch die Schichtverantwortung“ (WP-19.4, modul-bereichsplan.mjs): trägt Person|Tag
+/** Art des Eintrags „Zuordnung im Bereichsplan durch die Schichtverantwortung“ (WP-19.4, modul-bereichsplan.mjs; seit E1 auch Leitung und
+    Planung, erkennbar an `rolle`): trägt Person|Tag
     und Bereich vorher/nachher — nur für Leitung und Planung (Vollsicht), nicht für den Betriebsrat (moduleinstellungenSicht). */
 export const BEREICH_PROTOKOLL_ART = "bereich-zuordnung";
 /** Vermerk der Archivierung dieser Einträge durch die Leitung (E7, modul-bereichsplan.mjs `bereichsprotokollArchivieren`) — nicht für den Betriebsrat. */
@@ -866,6 +867,15 @@ export function modulProtokollZeilen(altB, neuB) {
   /* Neu ist, was im gespeicherten Protokoll nicht steht — nicht „ab der alten Länge": Seit der Frist
      (MODULPROTOKOLL_FRIST) können vorne Einträge entfallen, während hinten neue dazukommen. */
   const altP = new Map(betriebe(altB).map((m) => [m.id, new Set(protokollVon(m).map((x) => JSON.stringify(x)))]));
+  const altPlan = new Map(betriebe(altB).map((m) => [m.id, m.bereichsPlan]));
+  /** E1: Zahl der geänderten Zuordnungen im Bereichsplan (nur Zeichenketten zählen als Bereich, wie bereichsprotokollEintrag). */
+  const planAenderungen = (a, n) => {
+    const wert = (o, k) => (istObjekt(o) && hat(o, k) && typeof o[k] === "string" ? o[k] : null);
+    let z = 0;
+    for (const k of new Set([...Object.keys(istObjekt(a) ? a : {}), ...Object.keys(istObjekt(n) ? n : {})])) if (wert(a, k) !== wert(n, k)) z++;
+    return z;
+  };
+  const DURCH = Object.freeze({ leitung: "die Leitung", planung: "die Planung", kunde: "die Kundenrolle" });
   const kennung = (x) => String(x || "").replace(/[^A-Za-z0-9-]/g, "").slice(0, 60);
   const feldname = (x) => String(x || "").replace(/[^A-Za-z0-9]/g, "").slice(0, 40);
   const zeilen = [];
@@ -878,8 +888,10 @@ export function modulProtokollZeilen(altB, neuB) {
       for (const k of bekannt) if (!jetzt.has(k)) weg++;
       if (weg) zeilen.push(`Modulprotokoll: ${weg} ${weg === 1 ? "Eintrag" : "Einträge"} nach Ablauf der Aufbewahrungsfrist entfernt`);
     }
+    let zuordnungEintrag = false;
     for (const x of protokollVon(m)) {
       if (!istObjekt(x) || bekannt.has(JSON.stringify(x))) continue;
+      if (x.art === BEREICH_PROTOKOLL_ART) zuordnungEintrag = true;
       if (x.art === "regelwert") zeilen.push(`Regelwert ${kennung(x.regelId)}: ${REGELWERT_STUFEN.includes(x.stufe) ? x.stufe : "?"}, ${REGELWERT_PRUEFSTATUS.includes(x.pruefstatus) ? x.pruefstatus : "?"}`);
       else if (x.art === "regelwert-entfernt") zeilen.push(`Regelwert ${kennung(x.regelId)} entfernt`);
       else if (x.art === "eingeschaltet") zeilen.push(`Branchenmodul ${kennung(x.modul)} eingeschaltet${x.grundlage ? " (Mitbestimmung bestätigt)" : ""}`);
@@ -890,13 +902,21 @@ export function modulProtokollZeilen(altB, neuB) {
       else if (x.art === BEREICH_PROTOKOLL_ART) {
         /* Nur die Zahl — keine Person, kein Tag, kein Bereich (WP-14b, M1). */
         const n = Number.isInteger(x.anzahl) && x.anzahl > 0 ? x.anzahl : 0;
-        zeilen.push(`Branchenmodul bereichsplan: ${n} ${n === 1 ? "Zuordnung" : "Zuordnungen"} durch die Schichtverantwortung geändert`);
+        /* E1: Einträge mit `rolle` stammen aus dem vollen Schreibweg (Leitung, Planung, Kundenrolle). */
+        const durch = hat(x, "rolle") ? (hat(DURCH, x.rolle) ? DURCH[x.rolle] : "eine Rolle mit vollem Schreibrecht") : "die Schichtverantwortung";
+        zeilen.push(`Branchenmodul bereichsplan: ${n} ${n === 1 ? "Zuordnung" : "Zuordnungen"} durch ${durch} geändert${x.verdichtet === true ? " (zusammengefasst)" : ""}`);
       }
       else if (x.art === "moduldaten-loeschung" || x.art === "moduldaten-berichtigung") {
         const n = Number.isInteger(x.anzahl) && x.anzahl > 0 ? x.anzahl : 0;
         zeilen.push(`Branchenmodul ${kennung(x.modul)}: Datenschutz-${x.art === "moduldaten-loeschung" ? "Löschung (Art. 17 DSGVO)" : "Berichtigung (Art. 16 DSGVO)"}, `
           + `${n} ${n === 1 ? "Eintrag" : "Einträge"} in ${feldname(x.feld)}`);
       }
+    }
+    /* E1 „kein Schreiben ohne Spur“: Geändert ohne neuen Eintrag (Kontingent von Leitung/Planung erschöpft, Ausnahmeweg Art. 16/17,
+       Löschlauf) — dass und wie viele, ohne Person, Tag oder Bereich; Rolle und Zeit trägt die Zeile des Betriebsprotokolls. */
+    if (altPlan.has(m.id) && !zuordnungEintrag) {
+      const n = planAenderungen(altPlan.get(m.id), m.bereichsPlan);
+      if (n) zeilen.push(`Branchenmodul bereichsplan: ${n} ${n === 1 ? "Zuordnung" : "Zuordnungen"} ohne Eintrag im Änderungsprotokoll geändert`);
     }
   }
   return zeilen.slice(0, 50);
