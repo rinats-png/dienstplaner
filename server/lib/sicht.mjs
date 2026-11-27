@@ -758,6 +758,9 @@ export const BETRIEB = {
      (Mitbestimmung nach § 87 BetrVG, rechtliche Rückmeldung offen); die Lesesicht ohne Personenbezug steht hinter
      VORGABEN_BETRIEBSRAT_LESEN (AUS, 1.2), das Protokoll der Vorgaben ebenso (moduleinstellungenSicht). */
   vorgaben: [WEG, R((w, ctx) => vorgabenBetriebsratSicht(w, ctx.vorgabenBetriebsrat))],
+  /* Anheften (WP-I7 Teil 6, anheften.mjs): Karte „Person|Tag“ → Stempel. Planung und Leitung (Vollsicht) lesen sie; Beschäftigte,
+     Schichtverantwortung und Betriebsrat nichts (Vorlage #595: „fest“ für Beschäftigte ist eine offene Entscheidung, bis dahin nichts). */
+  angeheftet: [WEG, WEG],
   /* Mehrere Schichtmodelle je Betrieb (IMP-6 Teil 2, schichtzuordnung.mjs): vollständig nur Planung, Leitung und
      Kundenrolle; sie wirken noch nicht auf die Planrechnung. Beschäftigte und Schichtverantwortung (SCHICHT übernimmt die
      Spalte) seit IMP-6 Q4 nur die Modelle ihrer eigenen Zuordnungen ohne Stempel; der Betriebsrat nichts. */

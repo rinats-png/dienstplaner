@@ -142,6 +142,8 @@ function reicherBestand() {
     tarif: "basis", seit: "2026-01-01", bis: null, testTage: 0, selbstAngelegt: false, preisgestaltung: {},
     rabattGrund: "", kontakt: "k@example.org", kontaktName: "K", anschrift: "Weg 1", ustId: "", notiz: "",
     raum: null, lohnarten: [], aufbewahrung: null, aushaenge: [], checklisten: [], listeneintraege: [], vorgaben: [],
+    /* WP-I7 Teil 6: Anheften (Karte „Person|Tag“; Leitung/Planung). */
+    angeheftet: {},
     /* IMP-6 Teil 2: ein gültiges Schichtmodell (Dienstarten des Betriebs). */
     schichtmodelle: [{ id: "wechsel", name: "Wechsel", tage: ["F", "N", "-"], geaendertAm: "2026-01-01T00:00:00.000Z", geaendertVon: "l1", version: 1 }],
   }] };
