@@ -265,3 +265,10 @@ alte Nachweise/alter Lauf bei gleichem Digest, „produkt“/„image“/„sich
 - C-c (umgesetzt): Der Abbruchbeleg für die Rückhalt-Kette (`abbruchBelegt`) muss neben `id` und `releaseId` auch
   `kandidat` und `digest` der Freigabedatei dieses Release und eine lesbare `zeit`, die nicht in der Zukunft liegt, tragen;
   das Dateimuster ist verankert (`abbruch-*.json`).
+- C-1 (umgesetzt, Delta-Review #600): Versuchskennungen nur in Kleinschreibung (Schema); Eindeutigkeits-, Ableitungs- und
+  Release-ID-Vergleiche zusätzlich kleingeschrieben — eine nur in der Schreibweise verschiedene Kennung ist keine neue.
+- C-2 (offene Grenze): `ursache.behebung` wird nur auf Existenz in HEAD geprüft (Pfad unter `docs/`), nicht inhaltlich;
+  die inhaltliche Bewertung der Ursachenbehebung trägt der Betreiber mit seiner Quittung (WH4) und dem Vier-Augen-Review (WH8).
+- C-3 (umgesetzt): `ursache.aenderung` „keine“ trotz anderem Commit **und** anderem Digest ist kein NO-GO (keine
+  künstliche Pflicht), erscheint aber als Hinweis in `manuelleBestaetigungen` und in der Belegzeile von G5
+  („Deklaration … — Betreiber prüft“). Nur Commit oder nur Digest verschieden bleibt NO-GO (WH2).

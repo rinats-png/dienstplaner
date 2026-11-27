@@ -117,8 +117,9 @@ export const REL_PRAEFIX = "REL-";
 /** RST-5 Wiederholung: welche Änderung die Abbruchursache am Kandidaten verlangt. Nur „keine“ erlaubt denselben
  *  Kandidaten und Digest; jede andere verlangt einen anderen Commit und Digest (Betreiberpräzisierung 2026-11-27). */
 export const URSACHE_ARTEN = Object.freeze(["keine", "produkt", "image", "sicherheit"]);
-/** Versuchskennung: eigens vergeben (nicht aus Release-ID, Commit oder Digest abgeleitet), einmalig. */
-export const VERSUCH_MUSTER = /^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$/;
+/** Versuchskennung: eigens vergeben (nicht aus Release-ID, Commit oder Digest abgeleitet), einmalig. Nur Kleinbuchstaben
+ *  (Delta-Review #600 C-1: eine nur in der Schreibweise verschiedene Kennung ist keine neue); Vergleiche zusätzlich klein. */
+export const VERSUCH_MUSTER = /^[a-z0-9][a-z0-9._-]{2,63}$/;
 
 const tiefFrieren = (o) => { Object.values(o).forEach((v) => { if (v && typeof v === "object") tiefFrieren(v); }); return Object.freeze(o); };
 /** GATE-EW1 (Gate-Entwurf 2026-11-24 v2, A.4; Betreiberentscheidungen F1–F10): einmalige Erstwechsel-Ausnahme der
@@ -1060,7 +1061,8 @@ export function g5Migration(bericht, freigabe, liste = null, konfig = KONFIG_STA
     // Mischung mit der (verbrauchten) Erstwechsel-Ausnahme und jede Basis außerhalb ohneRevisionslabel.
     const r = wiederholungPruefen({ ...(istObjekt(kontext) ? kontext : {}), freigabe, basis: bericht.basis }, konfig);
     for (const x of r.gruende) nogo(g, `Wiederholung (RST-5): ${x}`);
-    g.belege.push(...r.belege);
+    g.belege.push(...r.belege, ...(r.hinweise || []));
+    g.manuell.push(...(r.hinweise || []));
   } else if ((konfig.ohneRevisionslabel || []).some((o) => o.commit === bericht.basis)) {
     // Review #598 C-1: der Ausnahmeweg zählt nur, solange G6 die Ausnahme (und damit E6) wirklich prüft
     if (istObjekt(freigabe?.erstwechselAusnahme) && konfig.sicherung?.widerrufbuchProbePflicht !== true) {
@@ -1495,12 +1497,13 @@ export function wiederholungPruefen(k, konfig = KONFIG_STANDARD) {
   // oder sicherheitsrelevanten Bestandteilen, sind ein anderer Commit und ein anderer Digest zwingend. Keine künstliche
   // Unterschiedsanforderung. Die Versuchskennung ist eigens vergeben und nicht aus Release-ID, Commit oder Digest abgeleitet.
   const aenderung = u.aenderung !== "keine";
+  const klein = (s) => String(s ?? "").toLowerCase();
   const kurzHex = [k.kandidat, k.digest, v.kandidatCommit, v.digest].filter((h) => typeof h === "string")
     .map((h) => h.replace(/^sha256:/, "").slice(0, 7).toLowerCase()).filter((h) => /^[0-9a-f]{7}$/.test(h));
   pruef("WH2", [
     wenn(v.releaseId !== k.releaseId, `vorversuch.releaseId ${v.releaseId} = --release-id (jeder Versuch hat eine eigene Release-ID für Freigabedatei und Ablage)`),
-    wenn(![k.releaseId, v.releaseId].includes(w.versuch), `versuch ${w.versuch} = Release-ID (Versuchskennung eigens vergeben, nicht abgeleitet)`),
-    wenn(!kurzHex.some((h) => w.versuch.toLowerCase().includes(h)), `versuch ${w.versuch} enthält Commit oder Digest (nicht daraus ableitbar)`),
+    wenn(![k.releaseId, v.releaseId].map(klein).includes(klein(w.versuch)), `versuch ${w.versuch} = Release-ID (Versuchskennung eigens vergeben, nicht abgeleitet)`),
+    wenn(!kurzHex.some((h) => klein(w.versuch).includes(h)), `versuch ${w.versuch} enthält Commit oder Digest (nicht daraus ableitbar)`),
     wenn(!aenderung || v.kandidatCommit !== k.kandidat, `ursache.aenderung ${u.aenderung}: anderer Commit zwingend, Kandidat = Kandidat des Vorversuchs`),
     wenn(!aenderung || v.digest !== k.digest, `ursache.aenderung ${u.aenderung}: anderer Digest zwingend, ${k.digest} = Digest des Vorversuchs`),
     wenn(aenderung || (v.kandidatCommit === k.kandidat) === (v.digest === k.digest), "ursache.aenderung keine, aber nur Commit oder nur Digest verschieden (Kandidat und Bild passen nicht zusammen)"),
@@ -1604,14 +1607,17 @@ export function wiederholungPruefen(k, konfig = KONFIG_STANDARD) {
         : `Wiederholung ${k.releaseId} schon genutzt (${spur.text}) — weiterer Versuch nur als neue Release-ID mit ${k.releaseId} als Vorversuch und neuer Freigabe`,
     // Versuchskennung einmalig: keine andere Freigabedatei (HEAD oder Geschichte) trägt dieselbe Kennung
     ...(!Array.isArray(x.versuche) ? ["Versuchskennungen in HEAD und Geschichte nicht ermittelbar (fail-closed)"]
-      : [...new Set(x.versuche.filter((y) => istObjekt(y) && y.versuch === w.versuch && y.datei !== `${konfig.freigabeVerzeichnis}/${k.releaseId}.freigabe.json`).map((y) => y.datei))]
+      : [...new Set(x.versuche.filter((y) => istObjekt(y) && klein(y.versuch) === klein(w.versuch) && y.datei !== `${konfig.freigabeVerzeichnis}/${k.releaseId}.freigabe.json`).map((y) => y.datei))]
         .map((d) => `Versuchskennung ${w.versuch} schon verwendet (${d}) — jede Kennung gilt für genau einen Versuch`)),
   ]);
   // WH8 (Review #600 C-1, wie E14): Freigabe-PR mit Code-Owner-Freigabe durch den Inhaber (≠ Autor, letzter Kopf), Rulesets, CODEOWNERS
   pruef("WH8", vierAugenGruende(x.vierAugen, x.codeowners, konfig, []));
 
-  if (gruende.length) return { gruende, belege: [] };
-  return { gruende, belege: [`Wiederholung (RST-5) des abgebrochenen Erstwechsels ${v.releaseId} (Digest ${v.digest}) ausdrücklich freigegeben durch `
+  // Delta-Review #600 C-3: „keine“ deklariert, aber Commit und Digest neu — zulässig (keine künstliche Pflicht), aber sichtbar
+  const hinweise = !aenderung && v.kandidatCommit !== k.kandidat && v.digest !== k.digest
+    ? [`Wiederholung (RST-5): Deklaration ursache.aenderung „keine“ trotz anderem Commit und Digest als der Vorversuch — Betreiber prüft`] : [];
+  if (gruende.length) return { gruende, belege: [], hinweise };
+  return { gruende, hinweise, belege: [`Wiederholung (RST-5) des abgebrochenen Erstwechsels ${v.releaseId} (Digest ${v.digest}) ausdrücklich freigegeben durch `
     + `${fr.freigegebenDurch} am ${fr.datum}; Staging-Lauf ${st.lauf} und Migrationsnachweis am neuen Digest ${k.digest}`] };
 }
 

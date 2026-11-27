@@ -2889,7 +2889,7 @@ describe("GATE-EW1/EW2: Erstwechsel-Ausnahme der Widerrufbuch-Probe (G6) und Nac
     const WH_NACHWEIS = "docs/acc45/releases/v4-r2/nachweise/staging-migration.json";
     const WH_FREIGABE = "docs/acc45/releases/v4-r2.freigabe.json";
     const ABBRUCH_ZEIT = "2026-11-18T10:00:00Z";
-    const VERSUCH = "EW-2026-11-19-A";
+    const VERSUCH = "ew-2026-11-19-a";
     const BEHEBUNG = "docs/acc45/releases/v4-r2/ursachenbehebung.md";
     const URSACHE = { aenderung: "produkt", behebung: BEHEBUNG };
     const quittungWh = (v = VOR, versuch = VERSUCH, u = URSACHE) => `Ich gebe den Auslieferungsversuch ${versuch} (v4-r2) des Erstwechsels ausdrücklich frei (Kandidat ${M}, Digest ${D}, Basis ${C274}). `
@@ -3130,10 +3130,15 @@ describe("GATE-EW1/EW2: Erstwechsel-Ausnahme der Widerrufbuch-Probe (G6) und Nac
     it("Versuch ≠ Softwareversion: gleicher Kandidat und Digest, Ursache ohne Änderung, neue Versuchskennung, frische Nachweise → alle Gates GO", () => {
       const gleich = { vor: { kandidatCommit: M, digest: D }, ursache: { aenderung: "keine" } };
       const r = pruefeWh(whAufbauen(gleich));
+      expect(r.manuelleBestaetigungen.join(" ")).not.toMatch(/Deklaration ursache\.aenderung/);
       expect(r.gates.map((g) => [g.id, g.ergebnis, g.gruende])).toEqual(r.gates.map((g) => [g.id, "GO", []]));
       expect(gateVon(r, "G6").belege.join(" ")).toMatch(/Rückhalt durch die freigegebene Wiederholung v4-r2 ersetzt/);
       // keine künstliche Unterschiedsanforderung: ein anderer Commit und Digest ist bei „keine“ erlaubt, aber nicht verlangt
-      expect(gateVon(pruefeWh(whAufbauen({ ursache: { aenderung: "keine" } })), "G5").ergebnis).toBe("GO");
+      // Delta-Review #600 C-3: „keine“ trotz anderem Commit und Digest — kein NO-GO, aber sichtbarer Hinweis (manuell + Beleg)
+      const neuBeides = pruefeWh(whAufbauen({ ursache: { aenderung: "keine" } }));
+      expect(gateVon(neuBeides, "G5").ergebnis).toBe("GO");
+      expect(neuBeides.manuelleBestaetigungen.join(" ")).toMatch(/G5: Wiederholung \(RST-5\): Deklaration ursache\.aenderung „keine“ trotz anderem Commit und Digest als der Vorversuch — Betreiber prüft/);
+      expect(gateVon(neuBeides, "G5").belege.join(" ")).toMatch(/trotz anderem Commit und Digest/);
       // alte Nachweise am gleichen Digest: vor dem Abbruch erstellt oder Lauf vor dem Abbruch gestartet → NO-GO
       whRot(whAufbauen({ ...gleich, nachweis: { erstellt: "2026-11-17T12:00:00Z" } }), "WH5", /nicht nach dem Abbruch des Vorversuchs — kein neuer Lauf/);
       const alterLauf = whAufbauen(gleich); alterLauf.wiederholung.stagingLauf.run_started_at = "2026-11-17T09:00:00Z";
@@ -3162,7 +3167,7 @@ describe("GATE-EW1/EW2: Erstwechsel-Ausnahme der Widerrufbuch-Probe (G6) und Nac
       // eine andere Freigabedatei (Vorversuch v4-r1x) trägt dieselbe Kennung
       const doppelt = whAufbauen();
       datei("docs/acc45/releases/v4-r1x.freigabe.json", { releaseId: "v4-r1x", wiederholung: { versuch: VERSUCH } });
-      whRot(doppelt, "WH7", /Versuchskennung EW-2026-11-19-A schon verwendet \(docs\/acc45\/releases\/v4-r1x\.freigabe\.json\)/);
+      whRot(doppelt, "WH7", /Versuchskennung ew-2026-11-19-a schon verwendet \(docs\/acc45\/releases\/v4-r1x\.freigabe\.json\)/);
       rmSync(join(w, "docs/acc45/releases/v4-r1x.freigabe.json"));
       whRot(whAufbauen({ versucheGeschichte: [{ datei: "docs/acc45/releases/v4-r1.freigabe.json", versuch: VERSUCH }] }), "WH7", /schon verwendet \(docs\/acc45\/releases\/v4-r1\.freigabe\.json\)/);
       // frühere Fassung der eigenen Freigabedatei mit derselben Kennung ist kein Doppel (WH7-Spuren prüfen den Verbrauch)
@@ -3171,8 +3176,23 @@ describe("GATE-EW1/EW2: Erstwechsel-Ausnahme der Widerrufbuch-Probe (G6) und Nac
       whRot(whAufbauen({ versuch: "v4-r2" }), "WH2", /versuch v4-r2 = Release-ID/);
       whRot(whAufbauen({ versuch: "v4-r1" }), "WH2", /versuch v4-r1 = Release-ID/);
       whRot(whAufbauen({ versuch: `versuch-${D.slice(7, 19)}` }), "WH2", /enthält Commit oder Digest/);
-      whRot(whAufbauen({ versuch: `EW-${M.slice(0, 7)}` }), "WH2", /enthält Commit oder Digest/);
-      whRot(whAufbauen({ versuch: "TODO-1" }), "WH4", /Platzhalter: TODO-1/);
+      whRot(whAufbauen({ versuch: `ew-${M.slice(0, 7)}` }), "WH2", /enthält Commit oder Digest/);
+      // Delta-Review #600 C-1: Kennung nur in Kleinschreibung; Schreibweise macht keine Kennung neu
+      for (const versuch of ["V4-R2", "v4-R2", "EW-2026-11-19-A", `versuch-${D.slice(7, 14).toUpperCase()}`, `EW-${M.slice(0, 7)}`]) {
+        const r = pruefeWh(whAufbauen({ versuch }));
+        expect(gateVon(r, "G10").gruende.join(" "), versuch).toMatch(/wiederholung\.versuch/);
+        expect(gateVon(r, "G5").ergebnis, versuch).toBe("NO-GO");
+      }
+      const gross = whAufbauen();
+      datei("docs/acc45/releases/v4-r1x.freigabe.json", { releaseId: "v4-r1x", wiederholung: { versuch: "EW-2026-11-19-A" } });
+      whRot(gross, "WH7", /Versuchskennung ew-2026-11-19-a schon verwendet \(docs\/acc45\/releases\/v4-r1x\.freigabe\.json\)/);
+      rmSync(join(w, "docs/acc45/releases/v4-r1x.freigabe.json"));
+      whRot(whAufbauen({ versucheGeschichte: [{ datei: "docs/acc45/releases/v4-r1.freigabe.json", versuch: "Ew-2026-11-19-A" }] }), "WH7", /schon verwendet/);
+      // auch beim direkten Aufruf greift zuerst das Schema (Großbuchstaben ⇒ WH0)
+      whAufbauen();
+      const fGross = JSON.parse(roh(WH_FREIGABE)); fGross.wiederholung.versuch = "v4-R2";
+      expect(wiederholungPruefen({ freigabe: fGross, releaseId: "v4-r2" }).gruende).toEqual([expect.stringMatching(/^WH0: .*wiederholung\.versuch/)]);
+      whRot(whAufbauen({ versuch: "todo-1" }), "WH4", /Platzhalter: todo-1/);
       for (const versuch of ["", "a", "mit Leerzeichen", "-x1", "ä-1"]) {
         expect(gateVon(pruefeWh(whAufbauen({ versuch })), "G10").gruende.join(" "), versuch).toMatch(/wiederholung\.versuch/);
       }
