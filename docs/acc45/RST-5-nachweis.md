@@ -168,5 +168,50 @@ NO-GO-Ergebnisse (G1–G10) bleiben, G5 trägt bei Basis 274bfa0 ohne Freigabeda
    Entscheidung). Gleiches gilt nach einem **Abbruch nach T0 mit Rücksprung auf 274bfa0**: Die Ausnahme ist dann nach
    E15/F10 verbraucht, und der reguläre Weg bleibt durch G5 dauerhaft NO-GO, bis das Werkzeug geändert ist. **Als
    ausdrückliche Betreiberentscheidung vorgemerkt** (Review #598 C-2).
+   **Entschieden 2026-11-27 (Betreiber):** ein erneuter kontrollierter Wechsel bleibt grundsätzlich möglich, aber nur
+   über den neuen Pfad `wiederholung` (Abschnitt 3.4); die verbrauchte Ausnahme wird nie wiederverwendet; bis dahin NO-GO.
 3. Kopplung (Review #598 C-1): G5 nimmt den Ausnahmeweg nur an, solange `sicherung.widerrufbuchProbePflicht` true ist
    (nur dann prüft G6 die Ausnahme und damit E6); sonst G5 NO-GO. Per Test abgesichert.
+
+### 3.4 Wiederholung eines abgebrochenen Erstwechsels (Betreiberentscheidung 2026-11-27)
+
+Wortlaut: „Nach einem abgebrochenen Erstwechsel mit Rückkehr auf 274bfa0 muss ein erneuter kontrollierter Wechsel
+grundsätzlich möglich bleiben. Keine automatische Wiederverwendung der verbrauchten Erstwechsel-Ausnahme. Ein neuer
+Versuch benötigt eine ausdrückliche Betreiberfreigabe und vollständige, aktuelle, an den exakten Kandidaten-Digest
+gebundene Nachweise. Bis dahin bleibt NO-GO verbindlich.“
+
+Umsetzung (`werkzeug/release-pruefung.mjs`, kleinste fail-closed Variante): neues optionales Feld der Freigabedatei
+`docs/acc45/releases/<neue-id>.freigabe.json`. Nur das Format ist festgelegt; es wird nichts vorausgefüllt und nichts
+aus anderen Angaben abgeleitet:
+
+```json
+"wiederholung": {
+  "vorversuch": { "releaseId": "<id des Vorversuchs>", "kandidatCommit": "<40 Hex>", "digest": "sha256:<64 hex>",
+                  "abbruchNachweis": "docs/acc45/releases/<id des Vorversuchs>/abbruch-<…>.json" },
+  "freigabe":   { "freigegebenDurch": "<Betreiber>", "datum": "JJJJ-MM-TT", "quittung": "<fester Wortlaut, KONFIG wiederholung.quittungVorlage>" },
+  "staging":    { "lauf": "<run_id>-<run_attempt>", "nachweis": "docs/acc45/releases/<neue-id>/nachweise/<datei>.json", "sha256": "<64 hex>" }
+}
+```
+
+Das Schema ist streng (genau diese Schlüssel, Typen, Formate); ein Fehler macht die Freigabedatei ungültig (G10 NO-GO, G5
+NO-GO). G5 prüft dann WH1–WH6 (jede Verletzung ein Grund „Wiederholung (RST-5): WH<n>: …“):
+
+| Regel | verlangt |
+|---|---|
+| WH1 | Basis aus `ohneRevisionslabel` (274bfa0); **keine** `erstwechselAusnahme` zugleich — die verbrauchte Ausnahme wird nie wiederverwendet, ihr Verbrauch (E15/F10) bleibt bestehen |
+| WH2 | neue Release-ID, neuer Kandidat, neuer Digest ≠ Digest des Vorversuchs; Vorversuch-Digest ≠ Basisbild |
+| WH3 | Abbruchbeleg des Vorversuchs in HEAD unter `docs/acc45/releases/<id>/abbruch-*.json`; JSON mit `id` aus der Abbruchtabelle A.8, `releaseId`/`kandidat`/`digest` = Vorversuch, `zeit` nicht in der Zukunft (Format wie `abbruch-A-VOR.json`) |
+| WH4 | ausdrückliche Betreiberfreigabe: `quittung` im festen Wortlaut (bindet neuen Digest, Kandidat, Vorversuch-Digest, Abbruchbeleg), `datum` nicht vor dem Abbruch und nicht in der Zukunft, keine Platzhalter |
+| WH5 | Staging-Nachweis am **neuen** Digest wie E6 (Bytes per SHA-256, `ergebnis` success, `commit`/`baum`/`lauf`/`laufCommit`, S1–S6, Skript-SHA-256, ≤ 7 Tage) **und** nach dem Abbruch erstellt; Migrationsnachweis (`migrationsprobe`) Pflicht wie in 3.1 |
+| WH6 | Lauf-API und Artefakt-Bytes wie E7 (`staging-gate.yml`, `workflow_dispatch`, `completed/success`, `head_sha` = Kandidat oder Schnitt) |
+
+Alle übrigen Gates bleiben unverändert; insbesondere verlangt G6 auf diesem Weg die reguläre, aktuelle
+Widerrufbuch-Probe (keine Ausnahme). Ohne vollständiges Feld bleibt G5 NO-GO. Es gibt keinen CLI-Schalter, keine
+Konfigurationsoption und keine Statusdatei für diesen Weg; Workflow unverändert (der Lauf ist derselbe Staging-Gate-Lauf
+wie in 3.1, am neuen Digest).
+
+Tests: `pruefungen/release-pruefung.test.js`, Block „RST-5 Wiederholung“ (positiv inkl. Schnitt-Lauf, übrige Gates
+byte-gleich zu „ohne Feld“; kein/leeres/falsches Feld, automatische Ableitung, Freigabe fehlt/leer/anderer Wortlaut/vor
+dem Abbruch/Zukunft/Platzhalter, gleicher Digest/Kandidat/Release-ID, Abbruchbeleg in allen Fehlformen, Replay des
+Vorversuchs (Digest, Migrationsnachweis, Erstellzeit, Lauf, Bytes), Frist abgelaufen, Ausnahme und Wiederholung zugleich,
+andere Basis, G6 regulär). Zahlen und Mutationen: PR-Beschreibung.

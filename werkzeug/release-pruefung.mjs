@@ -35,7 +35,9 @@
      G5  Migration: Startschreibvorgänge W-1…W-9 und Startblock gegen die Basis
          (Migrationsbericht); geändert oder neu ⇒ NO-GO bis Betreiberfreigabe. RST-5: Erstwechsel von einem Bild aus
          ohneRevisionslabel (274bfa0) nur mit Migrationsnachweis am exakten Kandidaten-Digest aus einem Runner-Lauf
-         (Feld migrationsprobe des Staging-Nachweises, G6 E6/E7); sonst NO-GO. Lokal/statisch ersetzt ihn nie
+         (Feld migrationsprobe des Staging-Nachweises, G6 E6/E7); sonst NO-GO. Lokal/statisch ersetzt ihn nie.
+         Nach einem abgebrochenen Erstwechsel nur über das Feld wiederholung der Freigabedatei (WH1–WH6: eigene
+         ausdrückliche Betreiberfreigabe, neuer Digest, alle Nachweise neu; die verbrauchte Ausnahme nie wieder)
      G6  Sicherung, Restore-Probe, Widerrufbuch-Probe: vollständig und aktuell. Einzige Ausnahme (GATE-EW1, Gate-Entwurf
          2026-11-24 v2 A.4–A.8): erstwechselAusnahme.widerrufbuchProbe in der Freigabedatei, nur Release v4-r1, nur
          vor T0, bis 2026-12-31; Bedingungen E1–E15 (alle UND), sonst NO-GO; Sicherung und Restore-Probe bleiben
@@ -237,6 +239,16 @@ export const KONFIG_STANDARD = Object.freeze({
     regeln: ["W-1", "W-2", "W-3", "W-4", "W-5", "W-6", "W-7", "W-8", "W-9"],
     zusatz: ["fixture", "start", "kennungen", "gegenprobe", "abgleich"],
     fixtureBaum: "876c77d96a690036fda85ee8f3abfeda5bc11b059e0910478ee8ff67916a3d1b",
+  }),
+  // RST-5 Wiederholung (Betreiberentscheidung 2026-11-27): erneuter Erstwechsel nach einem abgebrochenen Versuch mit
+  // Rückkehr auf 274bfa0. Eigener Pfad (Freigabedatei-Feld `wiederholung`, G5 WH1–WH6), nie die verbrauchte
+  // Erstwechsel-Ausnahme; ausdrückliche Betreiberfreigabe im festen Wortlaut; alle Nachweise neu am neuen Digest.
+  wiederholung: tiefFrieren({
+    stagingMaxTage: 7,
+    quittungVorlage: "Ich gebe den erneuten Erstwechsel {releaseId} ausdrücklich frei (Kandidat {kandidat}, Digest {digest}, "
+      + "Basis {basis}). Der abgebrochene Vorversuch {vorRelease} (Kandidat {vorKandidat}, Digest {vorDigest}, Abbruchbeleg "
+      + "{abbruch}) wird nicht wiederverwendet; seine Erstwechsel-Ausnahme bleibt verbraucht. Alle Nachweise stammen aus "
+      + "einem neuen Lauf am Digest {digest}.",
   }),
   sicherung: Object.freeze({ sicherungMaxStunden: 26, restoreProbeMaxTage: 35, widerrufbuchProbeMaxTage: 35, widerrufbuchProbePflicht: true }),
   erstwechselAusnahme: ERSTWECHSEL_AUSNAHME,
@@ -1021,7 +1033,7 @@ export function migrationsnachweisPruefen(mp, digest, konfig = KONFIG_STANDARD) 
   return fe;
 }
 
-export function g5Migration(bericht, freigabe, liste = null, konfig = KONFIG_STANDARD) {
+export function g5Migration(bericht, freigabe, liste = null, konfig = KONFIG_STANDARD, kontext = null) {
   const g = gate("G5", "Datenmigration und Startschreibvorgänge");
   if (!bericht || !Array.isArray(bericht.eintraege) || bericht.fehler) {
     return nogo(g, `Änderungen gegen den vorigen Release nicht ermittelbar${bericht?.fehler ? ": " + bericht.fehler : ""} (fail-closed)`);
@@ -1033,7 +1045,13 @@ export function g5Migration(bericht, freigabe, liste = null, konfig = KONFIG_STA
   // RST-5 (Betreiberentscheidung 2026-11-27): Erstwechsel von einem Bild ohne Revisionslabel (274bfa0) braucht den
   // Migrationsnachweis am exakten Kandidaten-Digest aus einem Runner-Lauf. Prüfbar ist er nur als Pflichtfeld des
   // Staging-Nachweises der Freigabedatei (G6 E6, Lauf und Artefakt E7); ohne diesen Weg: NO-GO (fail-closed).
-  if ((konfig.ohneRevisionslabel || []).some((o) => o.commit === bericht.basis)) {
+  if (freigabe?.wiederholung !== undefined) {
+    // RST-5 Wiederholung (Betreiberentscheidung 2026-11-27): eigener Pfad mit eigener Freigabe; WH1 sperrt jede
+    // Mischung mit der (verbrauchten) Erstwechsel-Ausnahme und jede Basis außerhalb ohneRevisionslabel.
+    const r = wiederholungPruefen({ ...(istObjekt(kontext) ? kontext : {}), freigabe, basis: bericht.basis }, konfig);
+    for (const x of r.gruende) nogo(g, `Wiederholung (RST-5): ${x}`);
+    g.belege.push(...r.belege);
+  } else if ((konfig.ohneRevisionslabel || []).some((o) => o.commit === bericht.basis)) {
     // Review #598 C-1: der Ausnahmeweg zählt nur, solange G6 die Ausnahme (und damit E6) wirklich prüft
     if (istObjekt(freigabe?.erstwechselAusnahme) && konfig.sicherung?.widerrufbuchProbePflicht !== true) {
       nogo(g, "Migrationsnachweis (RST-5): Erstwechsel-Ausnahme gesetzt, aber G6 prüft sie nicht (widerrufbuchProbePflicht ≠ true) — E6 läuft nicht (fail-closed)");
@@ -1042,7 +1060,8 @@ export function g5Migration(bericht, freigabe, liste = null, konfig = KONFIG_STA
     } else {
       nogo(g, `Migrationsnachweis (RST-5) für den Erstwechsel von ${bericht.basis} fehlt: nur als Feld migrationsprobe eines Staging-Nachweises `
         + "aus einem Runner-Lauf am Kandidaten-Digest prüfbar (Freigabedatei erstwechselAusnahme…staging, G6 E6/E7); ein lokaler "
-        + "oder statischer Nachweis ersetzt ihn nicht (fail-closed)");
+        + "oder statischer Nachweis ersetzt ihn nicht (fail-closed); nach einem abgebrochenen Erstwechsel nur über eine "
+        + "ausdrücklich freigegebene Wiederholung (Feld wiederholung)");
     }
   }
   const zuPruefen = [...bericht.betroffen];
@@ -1376,6 +1395,160 @@ export function erstwechselPruefen(k, konfig = KONFIG_STANDARD) {
     auflagen: [{ art: "nachholpruefung-widerrufbuch", releaseId: a.releaseId, fristStunden: c.nachholFristStunden,
       repoFristStunden: c.repoFristStunden, ablage: a.nachholAblage, abbruchBedingungen: [...c.abbruchBedingungen] }],
   };
+}
+
+/* --------------------------- RST-5 Wiederholung eines abgebrochenen Erstwechsels */
+
+const WH_FELDER = ["vorversuch", "freigabe", "staging"];
+const WH_VORVERSUCH = ["releaseId", "kandidatCommit", "digest", "abbruchNachweis"];
+const WH_FREIGABE = ["freigegebenDurch", "datum", "quittung"];
+const STAGING_LAUF = /^[1-9]\d{0,19}-[1-9]\d{0,3}$/;
+
+/** Strenge Schemaprüfung des Felds wiederholung (genau diese Schlüssel, Typen, Formate; kein Standardwert). */
+function wiederholungSchema(f) {
+  if (f.wiederholung === undefined) return [];
+  const w = f.wiederholung;
+  if (!genauSchluessel(w, WH_FELDER)) return [`wiederholung: genau die Schlüssel ${WH_FELDER.join(", ")}`];
+  const fe = [];
+  const v = w.vorversuch, fr = w.freigabe, st = w.staging;
+  const text = (x) => typeof x === "string" && x.trim() !== "";
+  if (!(genauSchluessel(v, WH_VORVERSUCH) && typeof v.releaseId === "string" && RELEASE_ID.test(v.releaseId) && hex40(v.kandidatCommit) &&
+    typeof v.digest === "string" && DIGEST.test(v.digest) && text(v.abbruchNachweis))) {
+    fe.push(`wiederholung.vorversuch: genau { ${WH_VORVERSUCH.join(", ")} } (Release-ID, 40 Hex, sha256:<64 hex>, Pfad)`);
+  }
+  if (!(genauSchluessel(fr, WH_FREIGABE) && text(fr.freigegebenDurch) && typeof fr.datum === "string" && DATUM.test(fr.datum) && text(fr.quittung))) {
+    fe.push(`wiederholung.freigabe: genau { ${WH_FREIGABE.join(", ")} } mit Text, datum JJJJ-MM-TT`);
+  }
+  if (!(genauSchluessel(st, ["lauf", "nachweis", "sha256"]) && typeof st.lauf === "string" && STAGING_LAUF.test(st.lauf) && text(st.nachweis) &&
+    typeof st.sha256 === "string" && HEX64.test(st.sha256))) {
+    fe.push("wiederholung.staging: genau { lauf (<id>-<versuch>), nachweis, sha256 (64 Hex) }");
+  }
+  return fe;
+}
+
+/**
+ * RST-5 Wiederholung (Betreiberentscheidung 2026-11-27): Ein erneuter Erstwechsel nach einem abgebrochenen Versuch mit
+ * Rückkehr auf 274bfa0 ist nur über das Feld wiederholung der Freigabedatei möglich — nie über die (verbrauchte)
+ * Erstwechsel-Ausnahme. k = { freigabe (Schema gültig), releaseId, kandidat, digest, basis, jetztMs, wh: gesammelte Angaben
+ * { stagingRoh, abbruchRoh, skriptRoh, baumKandidat, stagingLauf, stagingArtefakt } }. Jede verletzte Bedingung ergibt genau
+ * einen Grund „WH<n>: …“ (fail-closed). Liefert { gruende, belege }.
+ *   WH1 Pfad: Basis aus ohneRevisionslabel, keine erstwechselAusnahme zugleich
+ *   WH2 Vorversuch ≠ neuer Versuch (Release-ID, Kandidat, Digest; Vorversuch-Digest ≠ Basis)
+ *   WH3 Abbruchbeleg des Vorversuchs in HEAD (Abbruch-ID nach A.8, releaseId/kandidat/digest gleich, zeit nicht in der Zukunft)
+ *   WH4 ausdrückliche Betreiberfreigabe: fester Wortlaut, Datum nicht vor dem Abbruch und nicht in der Zukunft, keine Platzhalter
+ *   WH5 Staging-Nachweis am NEUEN Digest (wie E6, ≤ 7 Tage, nach dem Abbruch erstellt, Migrationsnachweis Pflicht)
+ *   WH6 Lauf-API und Artefakt-Bytes (wie E7)
+ */
+export function wiederholungPruefen(k, konfig = KONFIG_STANDARD) {
+  const c = konfig.erstwechselAusnahme.widerrufbuchProbe;
+  const cw = konfig.wiederholung;
+  const f = k.freigabe;
+  const w = f.wiederholung, v = w.vorversuch, fr = w.freigabe, st = w.staging;
+  const x = istObjekt(k.wh) ? k.wh : {};
+  const gruende = [];
+  const pruef = (id, fehler) => { const fe = fehler.filter(Boolean); if (fe.length) gruende.push(`${id}: ${fe.join("; ")}`); };
+  const wenn = (bedingung, t) => (bedingung ? null : t);
+  if (!istObjekt(cw)) return { gruende: ["Konfiguration wiederholung fehlt (fail-closed)"], belege: [] };
+  const basisDigest = (konfig.ohneRevisionslabel || []).find((o) => o.commit === k.basis)?.digest;
+
+  pruef("WH1", [
+    wenn(typeof basisDigest === "string", `Basis ${k.basis} ist kein Bild aus ohneRevisionslabel — Wiederholung gilt nur für einen Erstwechsel`),
+    wenn(f.erstwechselAusnahme === undefined, "erstwechselAusnahme zugleich gesetzt — die verbrauchte Ausnahme wird nie wiederverwendet; Wiederholung ist ein eigener Pfad"),
+  ]);
+  pruef("WH2", [
+    wenn(v.releaseId !== k.releaseId, `vorversuch.releaseId ${v.releaseId} = --release-id (neuer Versuch braucht eine neue Release-ID)`),
+    wenn(v.kandidatCommit !== k.kandidat, "vorversuch.kandidatCommit = Kandidat (kein neuer Kandidat)"),
+    wenn(v.digest !== k.digest, `Kandidaten-Digest ${k.digest} = Digest des Vorversuchs (kein neues Bild)`),
+    wenn(v.digest !== basisDigest, "vorversuch.digest = Bild der Basis"),
+  ]);
+
+  // WH3: Abbruchbeleg des Vorversuchs (Format wie abbruch-A-VOR.json: id, releaseId, kandidat, digest, zeit; weitere Felder frei)
+  const relVor = `${konfig.freigabeVerzeichnis}/${v.releaseId}/`;
+  let ab = null;
+  const wh3 = [];
+  if (!v.abbruchNachweis.startsWith(relVor) || !/^abbruch-[A-Za-z0-9._-]+\.json$/.test(v.abbruchNachweis.slice(relVor.length))) {
+    wh3.push(`abbruchNachweis nicht unter ${relVor}abbruch-*.json`);
+  } else if (!x.abbruchRoh) wh3.push(`${v.abbruchNachweis} fehlt in HEAD`);
+  else {
+    ab = jsonLesen(Buffer.from(x.abbruchRoh).toString("utf8")).wert;
+    if (!istObjekt(ab)) { wh3.push("Abbruchbeleg ist kein JSON-Objekt"); ab = null; }
+  }
+  const abZeit = ab && typeof ab.zeit === "string" ? Date.parse(ab.zeit) : NaN;
+  if (ab) {
+    wh3.push(
+      wenn(typeof ab.id === "string" && c.abbruchBedingungen.includes(ab.id), `Abbruchbeleg: id ${JSON.stringify(ab.id ?? null)} ist keine Abbruchbedingung (A.8)`),
+      wenn(ab.releaseId === v.releaseId && ab.kandidat === v.kandidatCommit && ab.digest === v.digest, "Abbruchbeleg: releaseId/kandidat/digest ≠ vorversuch"),
+      wenn(Number.isFinite(abZeit) && abZeit <= k.jetztMs, "Abbruchbeleg: zeit fehlt oder liegt in der Zukunft"),
+    );
+  }
+  pruef("WH3", wh3);
+
+  // WH4: ausdrückliche Betreiberfreigabe dieses Versuchs (kein Default, nie aus anderen Angaben abgeleitet)
+  const werte = { releaseId: k.releaseId, kandidat: k.kandidat, digest: k.digest, basis: k.basis, vorRelease: v.releaseId,
+    vorKandidat: v.kandidatCommit, vorDigest: v.digest, abbruch: v.abbruchNachweis };
+  const quittung = cw.quittungVorlage.replace(/\{(\w+)\}/g, (_, n) => String(werte[n]));
+  const freigabeTag = Date.parse(`${fr.datum}T00:00:00Z`);
+  pruef("WH4", [
+    wenn(fr.quittung === quittung, "freigabe.quittung weicht vom festen Wortlaut ab (ausdrückliche Betreiberfreigabe genau dieses Versuchs)"),
+    wenn(Number.isFinite(abZeit) && tagesEnde(fr.datum) > abZeit, "freigabe.datum liegt vor dem Abbruch des Vorversuchs (oder Abbruchzeit unbekannt)"),
+    wenn(Number.isFinite(freigabeTag) && freigabeTag <= k.jetztMs, "freigabe.datum liegt in der Zukunft"),
+    ...[fr.freigegebenDurch, fr.datum, v.abbruchNachweis, st.nachweis].filter((t) => PLATZHALTER.some((m) => m.test(t)))
+      .map((t) => `Platzhalter: ${String(t).slice(0, 40)}`),
+  ]);
+
+  // WH5: Staging-Nachweis am neuen Digest (Bytes per SHA-256 gebunden; Inhalt wie E6; neuer Lauf nach dem Abbruch)
+  const praefix = `${konfig.freigabeVerzeichnis}/${k.releaseId}/nachweise/`;
+  const rohN = x.stagingRoh ? Buffer.from(x.stagingRoh) : null;
+  let nw = null;
+  const wh5 = [];
+  if (!st.nachweis.startsWith(praefix) || !/^[A-Za-z0-9][A-Za-z0-9._-]*\.json$/.test(st.nachweis.slice(praefix.length))) wh5.push(`staging.nachweis nicht unter ${praefix}`);
+  else if (!rohN) wh5.push(`${st.nachweis} fehlt in HEAD`);
+  else if (sha256(rohN) !== st.sha256) wh5.push("SHA-256 des Nachweises ≠ staging.sha256");
+  else {
+    nw = jsonLesen(rohN.toString("utf8")).wert;
+    if (!istObjekt(nw)) { wh5.push("Nachweis ist kein JSON-Objekt"); nw = null; }
+  }
+  const schnitt = hex40(f.schnittCommit) ? f.schnittCommit : null;
+  if (nw) {
+    const wb = istObjekt(nw.widerrufbuch) ? nw.widerrufbuch : {};
+    const proben = istObjekt(wb.proben) ? wb.proben : {};
+    const erstellt = Date.parse(typeof nw.erstellt === "string" ? nw.erstellt : "");
+    const skript = x.skriptRoh ? sha256(Buffer.from(x.skriptRoh)) : null;
+    wh5.push(
+      wenn(nw.ergebnis === "success", `ergebnis '${nw.ergebnis}', erwartet success`),
+      wenn(nw.digest === k.digest, `digest ${nw.digest} ≠ ${k.digest} (Nachweis des Vorversuchs oder eines anderen Bilds)`),
+      wenn(nw.commit === k.kandidat, `commit ${nw.commit} ≠ Kandidat`),
+      wenn(hex40(nw.baum) && nw.baum === x.baumKandidat, "baum ≠ Baum(Kandidat)"),
+      wenn(nw.lauf === st.lauf, `lauf ${nw.lauf} ≠ ${st.lauf}`),
+      wenn(nw.laufCommit === k.kandidat || (schnitt !== null && nw.laufCommit === schnitt), "laufCommit ist weder Kandidat noch Schnitt"),
+      wenn(wb.art === c.stagingArt, `widerrufbuch.art '${wb.art}' ≠ ${c.stagingArt}`),
+      wenn(Object.keys(proben).length === c.stagingProben.length && c.stagingProben.every((p) => proben[p] === "ok"), `Proben ${c.stagingProben.join("–")} nicht alle ok`),
+      wenn(skript !== null && wb.skriptSha256 === skript, `skriptSha256 ≠ SHA-256 von ${c.stagingSkript} im Kandidaten`),
+      wenn(Number.isFinite(erstellt) && erstellt <= k.jetztMs + 5 * 60_000, "erstellt fehlt oder liegt in der Zukunft"),
+      wenn(!Number.isFinite(erstellt) || k.jetztMs - erstellt <= cw.stagingMaxTage * 86400_000, `zu alt (erstellt ${nw.erstellt}, höchstens ${cw.stagingMaxTage} Tage)`),
+      wenn(!Number.isFinite(erstellt) || (Number.isFinite(abZeit) && erstellt > abZeit), "erstellt nicht nach dem Abbruch des Vorversuchs — kein neuer Lauf"),
+      ...migrationsnachweisPruefen(nw.migrationsprobe, k.digest, konfig).map((y) => `Migrationsnachweis: ${y}`),
+    );
+  }
+  pruef("WH5", wh5);
+
+  // WH6: Lauf-API (GET actions/runs/<id>) und Artefakt-Bytes (wie E7)
+  const lauf = x.stagingLauf;
+  const [laufId, versuch] = st.lauf.split("-").map(Number);
+  pruef("WH6", !istObjekt(lauf) ? ["Lauf-API nicht lesbar (fail-closed)"] : [
+    wenn(lauf.id === laufId && lauf.run_attempt === versuch, `Lauf ${lauf.id}-${lauf.run_attempt} ≠ ${st.lauf}`),
+    wenn(lauf.path === c.stagingWorkflow, `path ${lauf.path} ≠ ${c.stagingWorkflow}`),
+    wenn(lauf.event === "workflow_dispatch", `event ${lauf.event} ≠ workflow_dispatch`),
+    wenn(lauf.status === "completed" && lauf.conclusion === "success", `Lauf ${lauf.status}/${lauf.conclusion}, erwartet completed/success`),
+    wenn(lauf.head_sha === k.kandidat || (schnitt !== null && lauf.head_sha === schnitt), `head_sha ${lauf.head_sha} ist weder Kandidat noch Schnitt`),
+    wenn(!nw || nw.laufCommit === lauf.head_sha, "head_sha ≠ laufCommit des Nachweises"),
+    wenn(rohN !== null && Array.isArray(x.stagingArtefakt) && x.stagingArtefakt.some((b) => Buffer.from(b).equals(rohN)),
+      `Artefakt ${c.stagingArtefakt} enthält keine Datei mit den Bytes des Nachweises (oder nicht lesbar)`),
+  ]);
+
+  if (gruende.length) return { gruende, belege: [] };
+  return { gruende, belege: [`Wiederholung (RST-5) des abgebrochenen Erstwechsels ${v.releaseId} (Digest ${v.digest}) ausdrücklich freigegeben durch `
+    + `${fr.freigegebenDurch} am ${fr.datum}; Staging-Lauf ${st.lauf} und Migrationsnachweis am neuen Digest ${k.digest}`] };
 }
 
 /* ------------------------------------------ Nachhol-Modus (GATE-EW2, A.7) */
@@ -1756,6 +1929,7 @@ export function freigabeSchema(f) {
     else if (f.migration.abgedeckt !== undefined && (!Array.isArray(f.migration.abgedeckt) || !f.migration.abgedeckt.every((x) => typeof x === "string"))) fe.push("migration.abgedeckt: falsche Struktur");
   }
   fe.push(...ausnahmeSchema(f)); // GATE-EW1: schnittCommit, erstwechselAusnahme, nachholAbweichung streng
+  fe.push(...wiederholungSchema(f)); // RST-5 Wiederholung: Feld wiederholung streng
   return fe;
 }
 
@@ -1812,7 +1986,7 @@ export function auswerten(e, konfig = KONFIG_STANDARD) {
     g2Review({ prs, commitsOhnePr: ohne, anzahlCommits: commitsOk ? e.commits.length : undefined, prAngaben: istObjekt(e.prAngaben) ? e.prAngaben : {}, dokBelege: reviewNachweiseLesen(e.reviewTexte || []), ssotBelege: ssotReviewBelege(e.ssot), freigabe }),
     g3Schalter({ codeNamen: e.codeNamen, klassen: e.klassen, vorlagen: e.vorlagen || [], unfertig: e.unfertig, quelltexte: e.quelltexte, freigabe, composeDateien: e.composeDateien, vorlagenStand: e.vorlagenStand ?? null }, konfig),
     g4Bild({ digest: e.digest, kandidat: e.kandidat, bild: bildAngabenLesen(e.bildRoh), liste, berichtVorhanden: e.berichtVorhanden, jetztMs: e.jetztMs }, konfig),
-    g5Migration(bericht, freigabe, liste, konfig),
+    g5Migration(bericht, freigabe, liste, konfig, { releaseId: e.releaseId, kandidat: e.kandidat, digest: e.digest, jetztMs: e.jetztMs, wh: e.wiederholung }),
     g6Sicherung(e.nachweise, e.jetztMs, konfig, { freigabe, freigabeRoh: roheFreigabe, schemaFehler: roheFreigabe ? freigabeSchema(roheFreigabe) : [],
       releaseId: e.releaseId, basis: e.basis, kandidat: e.kandidat, digest: e.digest, liste, erstwechsel: e.erstwechsel,
       releaseDateien: e.releaseDateien, rueckhalt: e.rueckhalt }),
@@ -2034,6 +2208,37 @@ function fassungenLesen(w, pfad) {
 }
 /** Nachweise eines Abbruchs vor dem V4-Start (F10, OFFEN-1): docs/acc45/releases/<id>/abbruch-A-VOR[-n].json */
 const ABBRUCH_VOR = /^abbruch-A-VOR(?:-[1-9]\d{0,2})?\.json$/;
+
+/**
+ * RST-5 Wiederholung: Angaben für WH3, WH5, WH6. Dateien nur aus HEAD (Staging-Nachweis, Abbruchbeleg) bzw. dem Kandidaten
+ * (Skript); offline Git/Netz aus fixture.wiederholung { baumKandidat, stagingLauf, stagingArtefakt (Base64) }.
+ */
+function wiederholungSammeln(e, kq, hq, { online, wurzel: w, gh, ghRoh, fx }, konfig) {
+  const c = konfig.erstwechselAusnahme.widerrufbuchProbe;
+  const wh = e.freigabe.wiederholung;
+  const x = {
+    stagingRoh: pfadSicher(wh.staging?.nachweis) ? hq.lesenRoh(wh.staging.nachweis) : null,
+    abbruchRoh: pfadSicher(wh.vorversuch?.abbruchNachweis) ? hq.lesenRoh(wh.vorversuch.abbruchNachweis) : null,
+    skriptRoh: kq.lesenRoh(c.stagingSkript),
+  };
+  if (!online) {
+    const f = istObjekt(fx.wiederholung) ? fx.wiederholung : {};
+    return { ...x, baumKandidat: f.baumKandidat ?? null, stagingLauf: f.stagingLauf ?? null,
+      stagingArtefakt: Array.isArray(f.stagingArtefakt) ? f.stagingArtefakt.map((b) => Buffer.from(String(b), "base64")) : null };
+  }
+  const versuch = (fn) => { try { return fn(); } catch { return null; } };
+  x.baumKandidat = versuch(() => git(w, ["rev-parse", `${e.kandidat}^{tree}`]));
+  const [laufId] = String(wh.staging?.lauf || "").split("-");
+  if (/^[1-9]\d*$/.test(laufId)) {
+    x.stagingLauf = versuch(() => gh(`repos/${konfig.repo}/actions/runs/${laufId}`));
+    x.stagingArtefakt = versuch(() => {
+      const art = (gh(`repos/${konfig.repo}/actions/runs/${laufId}/artifacts?per_page=100`).artifacts || []).filter((y) => y.name === c.stagingArtefakt && !y.expired);
+      if (art.length !== 1 || !Number.isInteger(art[0].id)) return null;
+      return zipEntpacken(ghRoh(`repos/${konfig.repo}/actions/artifacts/${art[0].id}/zip`)).map((y) => y.daten);
+    });
+  }
+  return x;
+}
 
 /** GATE-EW1: Angaben für E3, E6, E7, E13, E14, E15. Offline: Git/Netz aus fixture.erstwechsel, Dateien aus --wurzel. */
 function erstwechselSammeln(e, kq, hq, { online, wurzel: w, gh, ghRoh, fx }, konfig) {
@@ -2301,6 +2506,7 @@ export function sammeln(opt, konfig = KONFIG_STANDARD) {
   e.listeSha256 = listeRoh ? sha256(Buffer.from(listeRoh)) : null;
   e.headCommit = online ? (() => { try { return git(w, ["rev-parse", "HEAD"]); } catch { return null; } })() : (hex40(fx.headCommit) ? fx.headCommit : null);
   if (istObjekt(e.freigabe) && e.freigabe.erstwechselAusnahme !== undefined) e.erstwechsel = erstwechselSammeln(e, kq, hq, ctx, konfig);
+  if (istObjekt(e.freigabe) && istObjekt(e.freigabe.wiederholung)) e.wiederholung = wiederholungSammeln(e, kq, hq, ctx, konfig);
   e.rueckhalt = rueckhaltSammeln(e, hq, ctx, konfig);
 
   if (!online) {

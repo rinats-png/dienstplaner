@@ -2883,6 +2883,162 @@ describe("GATE-EW1/EW2: Erstwechsel-Ausnahme der Widerrufbuch-Probe (G6) und Nac
       expect(gateVon(r, "G5").gruende.filter((x) => /Migrationsnachweis \(RST-5\)/.test(x))).toHaveLength(1);
     });
   });
+
+  describe("RST-5 Wiederholung (Betreiberentscheidung 2026-11-27): erneuter Erstwechsel nur mit eigener Freigabe und neuen Nachweisen", () => {
+    const VOR = { releaseId: "v4-r1", kandidatCommit: "e".repeat(40), digest: D_ALT, abbruchNachweis: "docs/acc45/releases/v4-r1/abbruch-A-START.json" };
+    const WH_NACHWEIS = "docs/acc45/releases/v4-r2/nachweise/staging-migration.json";
+    const WH_FREIGABE = "docs/acc45/releases/v4-r2.freigabe.json";
+    const ABBRUCH_ZEIT = "2026-11-18T10:00:00Z";
+    const quittungWh = (v = VOR) => `Ich gebe den erneuten Erstwechsel v4-r2 ausdrücklich frei (Kandidat ${M}, Digest ${D}, Basis ${C274}). `
+      + `Der abgebrochene Vorversuch ${v.releaseId} (Kandidat ${v.kandidatCommit}, Digest ${v.digest}, Abbruchbeleg ${v.abbruchNachweis}) `
+      + `wird nicht wiederverwendet; seine Erstwechsel-Ausnahme bleibt verbraucht. Alle Nachweise stammen aus einem neuen Lauf am Digest ${D}.`;
+    /** Freigabedatei v4-r2 mit Feld wiederholung, Abbruchbeleg des Vorversuchs, neuer Staging-Nachweis; liefert die Fixture. */
+    function whAufbauen({ vor = {}, abbruch = {}, ohneAbbruch = false, nachweis = {}, frei = {}, staging = {}, feld, freigabe = {}, ew = {} } = {}) {
+      datei("deploy/FREIGEGEBENE-IMAGES.md", LISTE_EW());
+      datei(SKRIPT, "#!/usr/bin/env bash\n# synthetisch (Test GATE-EW1)\n");
+      const v = { ...VOR, ...vor };
+      if (!ohneAbbruch) datei(v.abbruchNachweis, { id: "A-START", releaseId: v.releaseId, kandidat: v.kandidatCommit, digest: v.digest, zeit: ABBRUCH_ZEIT, ...abbruch });
+      datei(WH_NACHWEIS, { ...STAGING(), laufCommit: M, ...nachweis });
+      const nachweisRoh = roh(WH_NACHWEIS);
+      const wh = feld !== undefined ? feld : { vorversuch: v, freigabe: { freigegebenDurch: "Betreiber", datum: "2026-11-19", quittung: quittungWh(v), ...frei },
+        staging: { lauf: "4242-1", nachweis: WH_NACHWEIS, sha256: sha(nachweisRoh), ...staging } };
+      datei(WH_FREIGABE, { ...FREIGABE, releaseId: "v4-r2", basisCommit: C274, migration: { ...FREIGABE.migration, basisCommit: C274 },
+        vorlagenHashes: hashesIn(w, [".env.example", "deploy/compose.yml", "Dockerfile"]), wiederholung: wh, ...freigabe });
+      const fx = JSON.parse(JSON.stringify(fixtureGo()).replaceAll("b".repeat(40), C274));
+      fx.wiederholung = { baumKandidat: BAUM, stagingLauf: { ...kopie(EW.erstwechsel.stagingLauf), head_sha: M },
+        stagingArtefakt: [Buffer.from("axe").toString("base64"), nachweisRoh.toString("base64")], ...ew };
+      return fx;
+    }
+    const pruefeWh = (fx, opt = {}) => pruefe(fx, { releaseId: "v4-r2", ...opt });
+    /** G5 NO-GO, genau ein Grund mit der Bedingung id (WH1 … WH6), der zum Muster passt. */
+    function whRot(fx, id, muster = /./, opt) {
+      const g = gateVon(pruefeWh(fx, opt), "G5");
+      expect(g.ergebnis, id).toBe("NO-GO");
+      const z = g.gruende.filter((x) => x.startsWith(`Wiederholung (RST-5): ${id}: `));
+      expect(z, `${id} in ${g.gruende.join(" | ")}`).toHaveLength(1);
+      expect(z[0]).toMatch(muster);
+      return g;
+    }
+    const nurAndere = (r) => r.gates.filter((g) => g.id !== "G5").map((g) => [g.id, g.ergebnis, g.gruende]);
+
+    it("Konfiguration: tief eingefroren, fester Wortlaut mit beiden Digests; kein CLI-Schalter", () => {
+      const cw = KONFIG_STANDARD.wiederholung;
+      const tief = (o) => Object.isFrozen(o) && Object.values(o).every((v) => v === null || typeof v !== "object" || tief(v));
+      expect(tief(cw)).toBe(true);
+      expect(cw.stagingMaxTage).toBe(7);
+      for (const p of ["{releaseId}", "{digest}", "{vorDigest}", "{vorKandidat}", "{abbruch}", "bleibt verbraucht", "ausdrücklich frei"]) expect(cw.quittungVorlage).toContain(p);
+      for (const a of ["--wiederholung", "--vorversuch"]) expect(() => argumenteLesen([a]), a).toThrow(/unbekannte Option/);
+    });
+
+    it("positiv: vollständige Wiederholung → G5 GO mit Belegzeile; alle anderen Gates byte-gleich zu „ohne Feld“", () => {
+      const r = pruefeWh(whAufbauen());
+      const g5 = gateVon(r, "G5");
+      expect([g5.ergebnis, g5.gruende]).toEqual(["GO", []]);
+      expect(g5.belege.join(" ")).toMatch(/Wiederholung \(RST-5\) des abgebrochenen Erstwechsels v4-r1 .* ausdrücklich freigegeben durch Betreiber am 2026-11-19; Staging-Lauf 4242-1/);
+      expect(gateVon(r, "G10").ergebnis).toBe("GO");
+      const ohne = pruefeWh(whAufbauen({ freigabe: { wiederholung: undefined } }));
+      expect(nurAndere(r)).toEqual(nurAndere(ohne));
+      // Schnitt-Lauf wie beim Erstwechsel zulässig, wenn schnittCommit in der Freigabedatei steht
+      const fx = whAufbauen({ nachweis: { laufCommit: S }, freigabe: { schnittCommit: S }, ew: {} });
+      fx.wiederholung.stagingLauf.head_sha = S;
+      expect(gateVon(pruefeWh(fx), "G5").ergebnis).toBe("GO");
+    });
+
+    it("kein Feld, leeres/falsches Feld, automatische Ableitung (Abbruchbeleg + Nachweis ohne Freigabe) → NO-GO", () => {
+      const g = gateVon(pruefeWh(whAufbauen({ freigabe: { wiederholung: undefined } })), "G5");
+      expect(g.ergebnis).toBe("NO-GO");
+      expect(g.gruende.join(" ")).toMatch(/Migrationsnachweis \(RST-5\) für den Erstwechsel .* fehlt: .*ausdrücklich freigegebene Wiederholung \(Feld wiederholung\)/);
+      expect(g.belege.join(" ")).not.toMatch(/Wiederholung/);
+      for (const feld of [true, {}, null, [], "ja", { vorversuch: VOR }]) {
+        const r = pruefeWh(whAufbauen({ feld }));
+        expect(gateVon(r, "G5").ergebnis, JSON.stringify(feld)).toBe("NO-GO");
+        expect(gateVon(r, "G10").gruende.join(" "), JSON.stringify(feld)).toMatch(/Freigabedatei: wiederholung/);
+      }
+    });
+
+    it("Feld ohne ausdrückliche Freigabe: fehlend, leer, anderer Wortlaut, vor dem Abbruch, in der Zukunft, Platzhalter → NO-GO", () => {
+      for (const frei of [{ freigegebenDurch: "" }, { freigegebenDurch: "  " }, { datum: "19.11.2026" }, { quittung: "" }]) {
+        const r = pruefeWh(whAufbauen({ frei }));
+        expect(gateVon(r, "G5").ergebnis, JSON.stringify(frei)).toBe("NO-GO");
+        expect(gateVon(r, "G10").gruende.join(" ")).toMatch(/wiederholung\.freigabe/);
+      }
+      const ohneFreigabe = whAufbauen();
+      const f = JSON.parse(roh(WH_FREIGABE)); delete f.wiederholung.freigabe; datei(WH_FREIGABE, f);
+      expect(gateVon(pruefeWh(ohneFreigabe), "G10").gruende.join(" ")).toMatch(/wiederholung: genau die Schlüssel/);
+      whRot(whAufbauen({ frei: { quittung: QUITTUNG() } }), "WH4", /vom festen Wortlaut ab/);                 // Quittung der alten Ausnahme
+      whRot(whAufbauen({ frei: { quittung: quittungWh().replace(D, D_ALT) } }), "WH4", /vom festen Wortlaut ab/);
+      whRot(whAufbauen({ frei: { datum: "2026-11-17" } }), "WH4", /vor dem Abbruch/);
+      whRot(whAufbauen({ frei: { datum: "2026-11-21" } }), "WH4", /in der Zukunft/);
+      whRot(whAufbauen({ frei: { freigegebenDurch: "TODO" } }), "WH4", /Platzhalter: TODO/);
+    });
+
+    it("gleicher Digest, gleicher Kandidat oder gleiche Release-ID wie der Vorversuch; Vorversuch = Basisbild → NO-GO WH2", () => {
+      whRot(whAufbauen({ vor: { digest: D } }), "WH2", /= Digest des Vorversuchs \(kein neues Bild\)/);
+      whRot(whAufbauen({ vor: { kandidatCommit: M } }), "WH2", /kein neuer Kandidat/);
+      whRot(whAufbauen({ vor: { digest: D274 } }), "WH2", /vorversuch\.digest = Bild der Basis/);
+      const g = whRot(whAufbauen({ vor: { releaseId: "v4-r2", abbruchNachweis: "docs/acc45/releases/v4-r2/abbruch-A-START.json" } }), "WH2", /neue Release-ID/);
+      expect(g.gruende.some((x) => / WH3: /.test(x))).toBe(false);
+    });
+
+    it("Abbruchbeleg fehlt, falscher Ort, keine Abbruchbedingung, anderer Vorversuch, Zeit fehlt/Zukunft, kein JSON → NO-GO WH3", () => {
+      whRot(whAufbauen({ ohneAbbruch: true }), "WH3", /fehlt in HEAD/);
+      whRot(whAufbauen({ vor: { abbruchNachweis: "docs/acc45/releases/v4-r2/abbruch-A-START.json" } }), "WH3", /nicht unter docs\/acc45\/releases\/v4-r1\/abbruch-\*\.json/);
+      whRot(whAufbauen({ vor: { abbruchNachweis: "docs/acc45/releases/v4-r1/nachhol/t0.json" } }), "WH3", /nicht unter/);
+      whRot(whAufbauen({ abbruch: { id: "A-NEU" } }), "WH3", /keine Abbruchbedingung/);
+      whRot(whAufbauen({ abbruch: { digest: D } }), "WH3", /≠ vorversuch/);
+      whRot(whAufbauen({ abbruch: { kandidat: M } }), "WH3", /≠ vorversuch/);
+      whRot(whAufbauen({ abbruch: { zeit: undefined } }), "WH3", /zeit fehlt/);
+      whRot(whAufbauen({ abbruch: { zeit: "2026-11-21T00:00:00Z" } }), "WH3", /Zukunft/);
+      const fx = whAufbauen(); datei(VOR.abbruchNachweis, "{kaputt");
+      whRot(fx, "WH3", /kein JSON-Objekt/);
+    });
+
+    it("Replay des Vorversuchs: alter Digest, alter Migrationsnachweis, vor dem Abbruch erstellt, alter Lauf, fremde Bytes → NO-GO WH5/WH6", () => {
+      whRot(whAufbauen({ nachweis: { digest: D_ALT } }), "WH5", /digest sha256:d+ ≠ sha256:c+ \(Nachweis des Vorversuchs/);
+      whRot(whAufbauen({ nachweis: { migrationsprobe: MP_GUT({ digest: D_ALT }) } }), "WH5", /Migrationsnachweis: .*≠ Kandidaten-Digest/);
+      whRot(whAufbauen({ nachweis: { erstellt: "2026-11-17T12:00:00Z" } }), "WH5", /nicht nach dem Abbruch des Vorversuchs — kein neuer Lauf/);
+      whRot(whAufbauen({ nachweis: { commit: VOR.kandidatCommit } }), "WH5", /commit .* ≠ Kandidat/);
+      const alt = whAufbauen(); alt.wiederholung.stagingLauf.head_sha = VOR.kandidatCommit;
+      whRot(alt, "WH6", /head_sha e+ ist weder Kandidat noch Schnitt/);
+      whRot(whAufbauen({ ew: { stagingArtefakt: [Buffer.from("alter Nachweis").toString("base64")] } }), "WH6", /enthält keine Datei mit den Bytes/);
+      whRot(whAufbauen({ staging: { sha256: "1".repeat(64) } }), "WH5", /SHA-256 des Nachweises ≠ staging\.sha256/);
+      whRot(whAufbauen({ staging: { nachweis: "docs/acc45/releases/v4-r1/nachweise/staging-migration.json" } }), "WH5", /nicht unter docs\/acc45\/releases\/v4-r2\/nachweise\//);
+    });
+
+    it("Migrationsnachweis und übrige Nachweise voll: fehlend, lokal, rot, Proben, Lauf-API → NO-GO; Frist abgelaufen → NO-GO", () => {
+      whRot(whAufbauen({ nachweis: { migrationsprobe: undefined } }), "WH5", /migrationsprobe fehlt/);
+      whRot(whAufbauen({ nachweis: { migrationsprobe: { ...MP_GUT(), art: "migrationsprobe-lokal", digest: null } } }), "WH5", /lokaler Nachweis/);
+      whRot(whAufbauen({ nachweis: { migrationsprobe: MP_GUT({ ergebnis: "fehlgeschlagen" }) } }), "WH5", /ergebnis 'fehlgeschlagen'/);
+      whRot(whAufbauen({ nachweis: { ergebnis: "failure" } }), "WH5", /ergebnis 'failure'/);
+      whRot(whAufbauen({ nachweis: { widerrufbuch: { ...STAGING().widerrufbuch, proben: { S1: "ok" } } } }), "WH5", /Proben/);
+      whRot(whAufbauen({ nachweis: { baum: "9".repeat(40) } }), "WH5", /baum/);
+      whRot(whAufbauen({ ew: { stagingLauf: null } }), "WH6", /Lauf-API nicht lesbar/);
+      for (const [k, v] of [["event", "push"], ["conclusion", "failure"], ["path", ".github/workflows/deploy.yml"], ["run_attempt", 2]]) {
+        const fx = whAufbauen(); fx.wiederholung.stagingLauf[k] = v;
+        whRot(fx, "WH6");
+      }
+      whRot(whAufbauen(), "WH5", /zu alt/, { jetztMs: Date.parse("2026-11-26T12:00:01Z") });   // 7 d + 1 s nach erstellt
+    });
+
+    it("verbrauchte Ausnahme nie wiederverwendet: Ausnahme und Wiederholung zugleich, andere Basis → WH1; G6 bleibt regulär", () => {
+      const bericht = (basis) => migrationsbericht({ basis, kandidat: M, geaenderteDateien: ["src/App.jsx"], neueDateien: [] }, KONFIG_STANDARD);
+      const fx = whAufbauen();
+      const f = JSON.parse(roh(WH_FREIGABE));
+      const k = { releaseId: "v4-r2", kandidat: M, digest: D, jetztMs: JETZT_MS, wh: { ...fx.wiederholung, stagingRoh: roh(WH_NACHWEIS),
+        abbruchRoh: roh(VOR.abbruchNachweis), skriptRoh: roh(SKRIPT), stagingArtefakt: fx.wiederholung.stagingArtefakt.map((b) => Buffer.from(b, "base64")) } };
+      expect([g5Migration(bericht(C274), f, null, KONFIG_STANDARD, k).ergebnis, g5Migration(bericht(C274), f, null, KONFIG_STANDARD, k).gruende]).toEqual(["GO", []]);
+      const beide = g5Migration(bericht(C274), { ...f, erstwechselAusnahme: { widerrufbuchProbe: {} } }, null, KONFIG_STANDARD, k);
+      expect(beide.gruende).toEqual([expect.stringMatching(/^Wiederholung \(RST-5\): WH1: erstwechselAusnahme zugleich gesetzt — die verbrauchte Ausnahme wird nie wiederverwendet/)]);
+      const andere = g5Migration(bericht(B), f, null, KONFIG_STANDARD, k);
+      expect(andere.gruende.join(" ")).toMatch(/WH1: Basis b+ ist kein Bild aus ohneRevisionslabel/);
+      // ohne gesammelte Angaben (kontext fehlt): fail-closed
+      expect(g5Migration(bericht(C274), f, null, KONFIG_STANDARD).ergebnis).toBe("NO-GO");
+      // G6 bleibt auf dem regulären Weg (keine Ausnahme): ohne Widerrufbuch-Probe NO-GO
+      const ohneProbe = whAufbauen(); delete ohneProbe.nachweise.widerrufbuchProbe;
+      expect(gateVon(pruefeWh(ohneProbe), "G6").gruende.join(" ")).toMatch(/Widerrufbuch-Probe .*Nachweis fehlt/);
+      expect(gateVon(pruefeWh(ohneProbe), "G6").belege.join(" ")).not.toMatch(/ERSTWECHSEL-AUSNAHME/);
+    });
+  });
     it("T-N8: Lauf-API: anderer Pfad, Ereignis, head_sha, conclusion, Versuch; Artefakt-Bytes anders; API weg → NO-GO E7", () => {
       for (const [k, v] of [["path", ".github/workflows/deploy.yml"], ["event", "push"], ["head_sha", "9".repeat(40)], ["conclusion", "failure"],
         ["status", "in_progress"], ["run_attempt", 2], ["id", 4243]]) {
