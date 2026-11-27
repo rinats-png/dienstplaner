@@ -780,7 +780,7 @@ E9 Grund als Freitext oder Aktenzeichen im Vermerk? Heute keiner (Freitext könn
 E10 Auskunft/Löschung (Art. 15/17) für archivierte Einträge: Sie liegen nur noch im Paket der Leitung – Auskunft und Löschanspruch muss der Betrieb
 dort bedienen (E5 gilt fort). (Kanzlei/FN-32; Empfehlung: Hinweis im Dialog und in der Anleitung.)
 E11 Aufbewahrungsfrist des Pakets und Freigabe des Fristlaufs (a) – unverändert offen (FN-32).
-Hinweis Oberfläche: nicht gebaut. Ein Knopf „Änderungsprotokoll archivieren“ (nur Leitung) bräuchte in `src/module/bereichsplan-pflege.js`
+Hinweis Oberfläche (Stand 2026-11-26; gebaut am 27.11., siehe 17.2: Export und Zustand ja, Entfernen gesperrt): nicht gebaut. Ein Knopf „Änderungsprotokoll archivieren“ (nur Leitung) bräuchte in `src/module/bereichsplan-pflege.js`
 den Sitzungsschlüssel aus `src/speicher.js` (bisher importiert kein Modul `speicher.js`), eine Rollenangabe „nur Leitung“ im Modulkontext
 (`src/module/zugriff.js`; `bereichSchreiben: "voll"` gilt auch für die Planung) und nach dem Archivieren ein Neuladen des Stands (der Kontext
 kommt aus der V4-gepinnten `kern.jsx`). Vorschlag für den nächsten Schritt: Funktion in `speicher.js` wie `selbstauskunftEntscheiden`, Export mit
@@ -885,3 +885,27 @@ ignoriert (1), Betriebsrat sieht Vermerk (1), Oberfläche ohne Hinweis (1), Verm
 vielen Archivierungen (≈ 1700) sperren sie auf lange Sicht Einschalten, Parameter und Vorgaben (Ausschalten, Deaktivieren, Art. 16/17 und weitere
 Archivierungen gehen weiter). Ein großer Bereichsplan selbst (bis 200 000 Schlüssel ≈ 5 MiB) zusammen mit dem Modulprotokoll kann RUMPF_MAX
 überschreiten – vorbestehend, unabhängig von E1.
+
+### 17.2 Oberfläche der Archivierung (WP-19.4, 2026-11-27)
+
+Betreiberentscheidungen 26.11. (E7 b, E8, E9, Kopplung `speicher.js`/`zugriff.js` genehmigt): Archivablage = DMS bzw. geeigneter Kundenort, Download allein ist
+kein Nachweis, keine neue Serverinfrastruktur; der destruktive Schritt (Entfernen aus dem Live-Protokoll) darf in der Oberfläche nicht aktivierbar sein, solange
+Ablauf und Freigaben nicht geklärt sind; E2 keine SV-Sicht, E3 keine BR-Sicht; Rechte wie am Server. Neue Datei `src/module/bereichsplan-archiv.js` (V4-Pins:
+`einstellungen.jsx`, `kern.jsx`, `bereichsplan.jsx`, `posten.jsx`, `assistent.jsx` unverändert); Einhängung in `BereichsErgaenzung` (`bereichsplan-pflege.js`, eine Zeile).
+
+| Nr | Invariante | Umsetzung / Beleg |
+|---|---|---|
+| U1 | Abschnitt „Änderungsprotokoll archivieren“ nur für die Leitung (Server A7): Kontextfeld `protokollArchiv` (`protokollArchivFuer`, `zugriff.js`); Planung (`voll`), Schichtverantwortung, Beschäftigte, Betriebsrat, Unbekanntes: nein, Fail-closed. | Test U1 |
+| U2 | Der Export entfernt nichts. JSON-Paket nach A2 (`art, modul, erstellt, anzahl, bytes, pruefsumme, pruefsummeUeber, eintraege`, optional `aktenzeichen`), `bytes`/`pruefsumme` über `JSON.stringify(eintraege)` wie am Server; Download über `lade` (`src/lib/download.js`). Hinweis: Download allein ist kein Nachweis; Ablage im DMS bzw. an einem geeigneten Ort des Kunden, nicht auf dem Server; Auskunft/Löschung dort (E10). | `bereichsArchivPaket`, `bereichsArchivExportieren`; Tests U2, U6 (der Server nimmt genau diese Werte an) |
+| U3 | Entfernen gesperrt: `ARCHIV_ENTFERNEN_FREIGEGEBEN = false`; Schaltfläche `disabled`/`aria-disabled` mit Hinweis (Ablauf: Ablage, Auskunft/Löschung, Aufbewahrungsfrist; Freigaben offen). Die Sperre sitzt im Auslöser selbst (`bereichsArchivEntfernen`): ohne Freigabe geht nie eine Anfrage hinaus, auch nicht mit Bestätigung. Nach einer Freigabe zusätzlich nur mit ausdrücklicher Bestätigung der Leitung („Export abgelegt“) und ausdrücklicher Erfolgsantwort. | Test U3 (Auslöser mit `senden`-Spion und `fetch`-Spion) |
+| U4 | Fail-closed, sichtbar (`role="alert"`): Protokoll unlesbar (keine Liste), keine Einträge, ungültiges Aktenzeichen, Prüfsumme nicht berechenbar, Download nicht ausgeführt (`lade` false/wirft), Serverfehler, nicht ausdrückliche Erfolgsantwort — nie „erfolgreich“, kein Paket. `speicher.js` `bereichsprotokollArchivierenSenden` wirft bei allem außer 200 + `ok` + Anzahl. | Tests U4, „Serverweg aus speicher.js“ |
+| U5 | Sichtbar, nie stiller Zustand: Zahl/Größe der Einträge, laufende Lücke (Kontingent erschöpft), Höchstzahl der Lückenvermerke (`hoechstzahl`), bisherige Archivierungsvermerke (Person, Anzahl, Zeitraum, Bytes, Prüfsumme, Aktenzeichen). | Test U5 |
+| U6 | E9: optionales Aktenzeichen nur nach `AKTENZEICHEN_MUSTER` (vorhandenes Muster, kein Freitext). Kleine Serverergänzung in `bereichsprotokollArchivieren`: `aktenzeichen` optional, sonst 400 (nicht still verworfen); im Vermerk nur, wenn angegeben. | Test U6; Vermerk-Form ohne Aktenzeichen unverändert (`modul-bereichsplan-archiv`) |
+
+**Nicht gebaut / offen (Betreiber).** Freigabe des Entfernens (Ablauf E8, Auskunft/Löschung E10, Aufbewahrungsfrist E11, `von: null` aus #583); nach der Freigabe: Konstante
+umlegen, Bestätigungsfeld „Export im DMS abgelegt“ und Neuladen des Stands (der Kontext kommt aus der V4-gepinnten `kern.jsx`) ergänzen; E2E gehört zu WP-19.13.
+
+**Belege (lokal, TZ=UTC, ein vitest-Prozess, `--maxWorkers=1`).** Neu `pruefungen/modul-bereichsplan-archiv-ui.test.js` (19 Fälle). Mutationen einzeln (14, alle erkannt, Quelle danach
+byte-gleich): Sperre aus (3 rot), Auslöser ohne Gate (1), Planung darf auch (1), Download-Prüfung weg (1), Aktenzeichen-Muster UI weg (2), `speicher.js` ohne Erfolgsprüfung (1),
+Server-Aktenzeichen ungeprüft (1), Lücke nicht angezeigt (2), unlesbar gilt als lesbar (2), Sperrhinweis weg (1), Prüfsumme über falschen Text (1), Aktenzeichen nicht im Vermerk (1),
+Entfernen ohne Bestätigung (1), Abschnitt für alle (1). Regression (alle grün): alle `v4-3b-*` und `v4-3c-branchenmodule` (15 Dateien, 179 Tests), alle `modul-*` (40 Dateien, 1071), `branchenmodule`, `branchen-andock`, `branchen-app`, `rechtematrix*`, `prozess-wachen`, `routen-inventar`, `verdrahtung`, `speicher-409-konfliktsperre`, `ci-abdeckung`, `rollen-failclosed` (11 Dateien, 926); tsc, eslint, `verdrahtung-pruefen`, `acc45-backlog pruefen` sauber. Nicht belegt: unabhängiges Review, E2E (WP-19.13).
