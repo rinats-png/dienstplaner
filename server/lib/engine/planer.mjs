@@ -7,8 +7,11 @@
    1. Feste Punkte: Alles, was schon im Plan steht (Abweichungen, Folge,
       Abwesenheiten), bleibt stehen. Der Planer setzt nur zusätzliche
       Einteilungen für Personen ohne Dienst an diesem Tag; er ändert oder
-      entfernt nie einen Eintrag des Bestands. („Anheften“ hat kein Datenfeld —
-      nicht gebaut.)
+      entfernt nie einen Eintrag des Bestands. Anheften (WP-I7 Teil 6,
+      anheften.mjs): an einem angehefteten Tag setzt er für die Person nichts
+      (auch „frei“ bleibt frei); eine unlesbare Karte heißt: nichts rechnen
+      (Status „ungueltig“). Angeheftetes steht im Bestand (abweichungen) und
+      zählt damit überall als gesetzt, auch in den Aggregaten der Vorgaben.
    2. Aufbauen, Blöcke vor Einzeltagen: erst Nachtblöcke (zusammenhängende
       Tage mit Lücke im selben Nachtdienst), dann Wochenendblöcke (Samstag +
       Sonntag mit Lücke im selben Dienst), dann die übrigen Tage. Ein Block wird
@@ -78,6 +81,7 @@ import { dim_, pad, addDays, dow } from "../regelwerk.mjs";
 import { nachtAnteil, nachtschwelle } from "../fachpruefung.mjs";
 import { kiPauseAktiv, kiSteuerungLesen, kiSteuerungUnlesbar, kiPlanerEntscheidung, KI_PLANER_SCHALTER } from "../ki-steuerung.mjs";
 import { planungsreife, vorschlagErlaubt } from "./planungsreife.mjs";
+import { anheftungenLesen, anheftungSperrt } from "./anheften.mjs";
 import { lueckenUrsache, budgetNeu } from "./luckenursache.mjs";
 import { neuesVorgabenBudget, vorgabenPlanFortschreiben } from "../vorgabenwirkung.mjs";
 import { VORGABEN_WIRKUNG_GRENZE } from "../vorgaben.mjs";
@@ -165,6 +169,8 @@ export function nachpruefen(m, stand, eigene, vorgabenBudget) {
   const basis = (m && m.abweichungen) || {};
   const hat = Object.prototype.hasOwnProperty;
   const opt = { vorgabenBudget, vorgabenAutomatisch: true };
+  /* Anheften: keine eigene Einteilung an einem angehefteten Tag (unlesbare Karte: keine besteht). */
+  const anh = anheftungenLesen(m);
   let gesetz = 0, muss = 0, soll = 0, offenV = 0, durch = true, verdraengte = 0;
   /* Bestandspersonen an jedem Tag mit eigener Einteilung unverändert (gegen den Bestand, nicht gegen „ohne diese eine“: auch das
      Zusammenwirken mehrerer Einteilungen am selben Tag, mehrere Posten, Hineinziehen und Verdrängen). */
@@ -176,7 +182,7 @@ export function nachpruefen(m, stand, eigene, vorgabenBudget) {
     const p = m.personen.find((x) => x.id === e.personId);
     const da = m.dienstarten.find((x) => x.id === e.dienstId);
     const k = `${e.personId}|${e.datum}`;
-    if (!p || !da || !stand || !stand.abweichungen || stand.abweichungen[k] !== e.dienstId) { durch = false; continue; }
+    if (!p || !da || !stand || !stand.abweichungen || stand.abweichungen[k] !== e.dienstId || anheftungSperrt(anh, e.personId, e.datum)) { durch = false; continue; }
     const ohne = { ...stand, abweichungen: { ...stand.abweichungen } };
     if (hat.call(basis, k)) ohne.abweichungen[k] = basis[k]; else delete ohne.abweichungen[k];
     if (personTag(ohne, p, e.datum).dienstId) { durch = false; continue; }
@@ -213,6 +219,9 @@ export function planeVorschlag(m, ym, opt = {}) {
   let pause = true;
   try { pause = kiPauseAktiv(m.einstellungen); } catch { pause = true; }
   if (pause) return leer(m, ym, "pausiert", "Intelligence pausiert", startwert);
+  /* Anheften: unlesbare Karte ⇒ nichts rechnen (nie stilles Weglassen). */
+  const anh = anheftungenLesen(m);
+  if (!anh.ok) return leer(m, ym, "ungueltig", anh.grund, startwert);
 
   const grenze = o.aufwand === undefined ? PLANER_STANDARD.aufwand : o.aufwand;
   const zuege = o.zuege === undefined ? PLANER_STANDARD.zuege : o.zuege;
@@ -268,7 +277,7 @@ export function planeVorschlag(m, ym, opt = {}) {
   /** Höchstzahl der Kandidaten, die je Stelle wegen Verdrängung nacheinander versucht werden (verdrängt einer, meist alle: Postenbesetzung). */
   const VERSUCHE = 3;
   /* `lst`: Anmeldung der Vorwärtsprüfung im Aufrufbudget (reicht es nicht: nicht einsetzbar). */
-  const einsetzbar = (stand, p, d, da, jeP, lst, lstP) => (jeP[p.id] || 0) < maxProPerson && !personTag(stand, p, d).dienstId
+  const einsetzbar = (stand, p, d, da, jeP, lst, lstP) => (jeP[p.id] || 0) < maxProPerson && !anheftungSperrt(anh, p.id, d) && !personTag(stand, p, d).dienstId
     && !hindernisBefunde(stand, p, d, da, pruefOpt).some((b) => stufeRang(b.stufe) >= 2)
     && vorwaerts(stand, p, d, da, lst, undefined, lstP) === null;
 
@@ -465,7 +474,7 @@ export function planeVorschlag(m, ym, opt = {}) {
   });
   /* Unvollständige Ursachen (Budget, Vorgaben nicht vollständig geprüft) bleiben sichtbar: Zahl im Ergebnis, nie still. */
   const ursachenUnvollstaendig = offenMitUrsache.filter((x) => x.ursache === "unvollstaendig" || x.vorgabenUnvollstaendig).length;
-  return { status: "ok", grund: null, ym, startwert, gesetzt, offen: offenMitUrsache, ursachenUnvollstaendig, abweichungen: ergebnis.stand.abweichungen,
+  return { status: "ok", grund: null, ym, startwert, gesetzt, offen: offenMitUrsache, ursachenUnvollstaendig, angeheftet: [...anh.aktiv].filter((k) => k.slice(-10, -3) === ym).length, abweichungen: ergebnis.stand.abweichungen,
     rang: bewertung.rang, nichtBewertet: [...NICHT_BEWERTET], aufwand: { grenze, verbraucht: grenze - A.rest, ausgeschoepft: A.ausgeschoepft || PB.ausgeschoepft, planbefund: { grenze: pbGrenze, verbraucht: pbGrenze - PB.rest, ausgeschoepft: PB.ausgeschoepft } }, verbessert };
 }
 

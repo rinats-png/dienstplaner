@@ -33,6 +33,8 @@ import { kiBetriebsratPauseAn } from "./schalter.mjs";
 import { paketfelderGeprueft, preisgestaltungFuerKunde } from "./paketstand.mjs";
 import { modulSchreibwegeAnwenden } from "./modulschreibwege.mjs";
 import { vorgabenZusammen } from "./vorgaben.mjs";
+import { anheftenZusammen } from "./anheften.mjs";
+import { anheftungenLesen } from "./engine/anheften.mjs";
 import { schichtzuordnungZusammen, schichtmodellAbsageCode } from "./schichtzuordnung.mjs";
 import { textimportOrgVerweigert } from "./import/org.mjs";
 import { anlagenZusammen } from "./modul-anlagen.mjs";
@@ -1713,6 +1715,11 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
         tarif: ort.betrieb.tarif, jetzt: new Date().toISOString() });
       if (vorgaben.grund) return { verweigert: vorgaben.grund };
       geschickt = vorgaben.mandant;
+      /* Anheften (WP-I7 Teil 6): anheften und lösen nur Leitung und Planung (sonst wirkungslos); eine geänderte angeheftete Einteilung
+         verliert genau ihre Anheftung (Vermerk in der Karte, Modulprotokoll); Stempel vom Server (anheften.mjs). */
+      const anheften = anheftenZusammen(ort.betrieb, geschickt, sitzung, { jetzt: new Date().toISOString() });
+      if (anheften.grund) return { verweigert: anheften.grund };
+      geschickt = anheften.mandant;
       /* Mehrere Schichtmodelle je Person (IMP-6 Teil 2, Betreiberentscheidung 2026-11-13): wer heute Schichtfolge und Personal
          pflegt (org.edit oder pattern.edit, dazu staff.edit). Form, Überschneidung, unbekanntes Modell und Rückwirkung
          (vergangene, abgeschlossene, freigegebene Monate) weist der Server ab (Lücken sind zulässig: Frage 5 vom 2026-11-14); Wann/Wer/Version vom Server. Ohne Recht wirkungslos. */
@@ -1869,6 +1876,8 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
           /* Interne Vorgaben (WP-I4) ebenso: nur über vorgabenZusammen (org.edit), nie mit dem neuen Betrieb. */
           const neuerBetrieb = { ...moduleinstellungenVerwerfen(geschickt) };
           delete neuerBetrieb.vorgaben;
+          /* Anheftungen (WP-I7 Teil 6) ebenso: nur über anheftenZusammen. */
+          delete neuerBetrieb.angeheftet;
           /* Schichtmodelle und Zuordnungen (IMP-6 Teil 2) ebenso: nur über schichtzuordnungZusammen (Planung, Leitung). */
           delete neuerBetrieb.schichtmodelle;
           if (Array.isArray(neuerBetrieb.personen))
@@ -2362,10 +2371,15 @@ export function einheitZusammen(altM, neuM, sitzung) {
         const altO = a && typeof a === "object" ? a : {};
         const neuO = n && typeof n === "object" && !Array.isArray(n) ? n : null;
         if (!neuO) return nein("abweichungen: ungültige Form.");
+        /* Anheften (WP-I7 Teil 6): Eine angeheftete Einteilung ändert die Schichtverantwortung nicht (kein neues Recht, auch nicht das
+           Aufheben); eine unlesbare Karte sperrt jede Änderung (fail closed). */
+        const anh = anheftungenLesen(altM);
         for (const k of new Set([...Object.keys(altO), ...Object.keys(neuO)])) {
           if (gleich(altO[k], neuO[k])) continue;
           const [pid, tag] = String(k).split("|");
           if (!pid || !TAG.test(tag || "")) return nein("abweichungen: ungültiger Schlüssel.");
+          if (!anh.ok) return nein("Anheftungen des Betriebs sind nicht lesbar – bitte die Leitung ansprechen.");
+          if (anh.aktiv.has(String(k))) return nein(`Die Einteilung am ${tag} ist angeheftet; ändern können sie Planung und Leitung.`);
           if (!personen.has(pid)) return nein("Eine geänderte Person gehört nicht zum Betrieb.");
           if (!imBereich(pid, tag))
             return nein(ohneEinheit(pid, tag) ? OHNE_EINHEIT : `${personen.get(pid).nachname || "Diese Person"} gehört am ${tag} nicht zu deinem Bereich.`);

@@ -68,7 +68,7 @@ const lies = (d) => {
 
 /** WP-I16: Ausnahmeliste „neu seit der Basis, ohne Literale“: Dateien, die es auf der Basis nicht gab und deshalb nicht in der
  *  (historischen, unveränderten) Fixture stehen. Genau eine Datei, 0 Form-/Farbliterale (Test unten prüft beides). */
-const NEU_SEIT_BASIS = Object.freeze(["src/ansichten/ki-steuerung.jsx"]);
+const NEU_SEIT_BASIS = Object.freeze(["src/ansichten/ki-steuerung.jsx", "src/ansichten/anheftungen.jsx"]);
 
 /** Basis des Schnitts (origin/integration/release-v4 mit V4-3b Schnitt 1–11 und Querschnitt Teil 1, #466). */
 const BASIS = "a9e524e5";
@@ -201,17 +201,17 @@ describe("V4-3b Querschnitt Teil 2: Messung", () => {
   it("Zeile: Form-Literale 24 → 9, Farbliterale 10; Form 18/24 → 21/24, „voll V4“ 9/24 → 13/24; Inline-Stile 428, Dialog 12", async () => {
     const inv = await inventar();
     const e = jeHauptansicht(inv)[ZEILE];
-    expect([e.dateien, e.sichtbar, e.zeilen]).toEqual([34, 25, 6562]); /* WP-I16: +ki-steuerung.jsx (vorher 33/24/6408) */
+    expect([e.dateien, e.sichtbar, e.zeilen]).toEqual([35, 26, 6608]); /* WP-I16: +ki-steuerung.jsx (vorher 33/24/6408); WP-I7 Teil 6: +anheftungen.jsx (vorher 34/25/6562) */
     expect(e.formLiterale).toBe(9);
     expect(e.farbLiterale).toBe(10);
-    expect(e.farbrein).toBe(20); /* WP-I16: +ki-steuerung.jsx (vorher 19) */
-    expect(e.formErreicht).toBe(22); /* WP-I16: +ki-steuerung.jsx (Über Baustein, voll V4); vorher 21 */
-    expect([e.overlayDirekt, e.ueberBaustein, e.tokenDirekt]).toEqual([10, 6, 6]); /* vorher [10, 5, 6] */
+    expect(e.farbrein).toBe(21); /* WP-I16: +ki-steuerung.jsx (vorher 19); WP-I7 Teil 6: +anheftungen.jsx (vorher 20) */
+    expect(e.formErreicht).toBe(23); /* WP-I16: +ki-steuerung.jsx (Über Baustein, voll V4); vorher 21; WP-I7 Teil 6: +anheftungen.jsx (vorher 22) */
+    expect([e.overlayDirekt, e.ueberBaustein, e.tokenDirekt]).toEqual([10, 7, 6]); /* vorher [10, 5, 6]; WP-I7 Teil 6: +anheftungen.jsx (Card) */
     /* Ohne V4-Form bleiben drei Dateien ohne jedes Form- oder Farbliteral (nichts umzustellen; Hebung ist V4-3c). */
     expect(e.ohneForm).toEqual(["src/ansichten/bestaetigungstext.jsx", "src/gestalt/icons.jsx", "src/ui/scrollbereich.jsx"]);
     /* „voll V4“ = Form und Farbe ohne Literale; Inline-Stile zählen nicht (separat: 428, V4-3d). Voll werden handbuch,
        tourleiste, ringregler, schrittleiste; kommandoleiste, leisten, ziehen (Farbe) und ui/bausteine (Radius) nicht. */
-    expect(e.voll).toBe(14); /* vorher 13 */
+    expect(e.voll).toBe(15); /* vorher 13; WP-I16 14; WP-I7 Teil 6: +anheftungen.jsx */
     expect(e.inlineStil).toBe(452); /* WP-I16: +24 Inline-Stile in ki-steuerung.jsx (vorher 428; vorgaben.jsx hat 30) */
     expect(e.dialog).toBe(12);
     const je = Object.fromEntries(inv.eintraege.filter((x) => hauptansicht(x) === ZEILE).map((x) => [x.datei, x]));
@@ -225,7 +225,7 @@ describe("V4-3b Querschnitt Teil 2: Messung", () => {
        123 → 127 (von 159). Seit Schnitt 14 (Selbsttest) trägt v4-3b-selbsttest.test.js die Gesamtsummen (18/13/146/128/159);
        hier bleibt der Anteil der Zeile Querschnitt/Bausteine: Form erreicht und Nenner wie nach Teil 2. */
     const z = zusammenfassung(inv).ohneV4;
-    expect([z.formErreicht, z.sichtbar]).toEqual([147, 160]); /* WP-I16: +ki-steuerung.jsx; vorher [146, 159] */
+    expect([z.formErreicht, z.sichtbar]).toEqual([148, 161]); /* WP-I16: +ki-steuerung.jsx; vorher [146, 159]; WP-I7 Teil 6: +anheftungen.jsx (vorher [147, 160]) */
   }, 60000);
 
   it("feste Tabelle: jede Stelle trägt genau die Stufe der Zuordnungsregel; 15 Stellen", async () => {
@@ -255,7 +255,8 @@ describe("V4-3b Querschnitt Teil 2: Messung", () => {
     const inv = await inventar();
     const alle = inv.eintraege.filter((x) => x.gruppe !== "V4" && hauptansicht(x) === ZEILE).map((x) => x.datei).sort();
     /* WP-I16: Ausnahmeliste genau eine Datei; in der Fixture nicht vorhanden, in der Messung ohne jedes Form- oder Farbliteral. */
-    expect(NEU_SEIT_BASIS).toEqual(["src/ansichten/ki-steuerung.jsx"]);
+    /* WP-I7 Teil 6: + src/ansichten/anheftungen.jsx (Anzeige Anheften, ohne Form-/Farbliterale und ohne Inline-Stile). */
+    expect(NEU_SEIT_BASIS).toEqual(["src/ansichten/ki-steuerung.jsx", "src/ansichten/anheftungen.jsx"]);
     for (const d of NEU_SEIT_BASIS) {
       expect(d in fx.schnitte[SCHNITT].dateien, `${d} steht nicht in der Fixture`).toBe(false);
       const x = inv.eintraege.find((y) => y.datei === d);
