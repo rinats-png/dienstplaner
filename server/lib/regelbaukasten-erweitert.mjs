@@ -97,6 +97,10 @@ const zeitraumFehlt = (r) => offen(r, "Der Zeitraum (von/bis) fehlt oder ist ung
      „Nachtblöcke höchstens 3 Nächte, danach 2 Tage frei": aufeinanderfolgende
      Tage mit einer Klasse aus `klassen` sind ein Block; er darf nicht länger
      als `max` sein, und die `danachFrei` Tage danach müssen Freiklasse sein.
+   parameter.art "montagFrei":
+     { art, klassen: [Klasse…], frei?: "frei" }
+     „Montag frei nach einem Nachtdienst-Wochenende": stehen Samstag UND
+     Sonntag Klassen aus `klassen`, ist der folgende Montag die Freiklasse.
    kontext: { tage, von, bis, stichtag? }
    -------------------------------------------------------------------------- */
 /** @param {any} regelOderId @param {any} [kontext] */
@@ -161,6 +165,30 @@ export function musterregel(regelOderId, kontext) {
     const fakten = { art: p.art, max, danachFrei: danach, verstoesse, unsicher };
     if (verstoesse.length) return verletzt(r, `${r.bezeichnung}: ${verstoesse.length} Verstoß(e), erster ab ${verstoesse[0].von}`, fakten);
     if (unsicher) return offen(r, "Block am Rand des Zeitraums oder Tage ohne Angabe", fakten);
+    return erfuellt(r, `${r.bezeichnung}: erfüllt`, fakten);
+  }
+  if (p.art === "montagFrei") {
+    /* Montag frei nach einem Wochenende in `klassen` (WP-I7 Teil 5, Betreiberentscheidung 26.11.: konfigurierbare betriebliche Vorgabe,
+       nicht pauschal). Auslöser: Samstag UND Sonntag mit einer Klasse aus `klassen` (die Dienstarten wählt der Betrieb, z. B. Nacht).
+       Dann ist der folgende Montag die Freiklasse. Stärke und Geltung kommen aus der Vorgabe (Muss/Soll, Betrieb/Einheit/Gruppe/Personen). */
+    const klassen = klassenListe(p.klassen, r, "klassen");
+    const liste = tageVonBis(k.von, k.bis);
+    if (!liste) return zeitraumFehlt(r);
+    const verstoesse = [];
+    let unsicher = 0, wochenenden = 0;
+    for (const mo of liste) {
+      if (dow(mo) !== 0 || addDays(mo, -2) < k.von) continue;
+      const sa = klasseAn(tage, addDays(mo, -2)), so = klasseAn(tage, addDays(mo, -1)), m = klasseAn(tage, mo);
+      if (sa === undefined || so === undefined) { if ((sa === undefined || klassen.includes(sa)) && (so === undefined || klassen.includes(so))) unsicher++; continue; }
+      if (!klassen.includes(sa) || !klassen.includes(so)) continue;
+      wochenenden++;
+      if (m === undefined) { unsicher++; continue; }
+      if (m !== frei) verstoesse.push({ von: addDays(mo, -2), bis: mo, tag: mo, laenge: 1, grund: "montag_nicht_frei" });
+    }
+    const fakten = { art: p.art, wochenenden, verstoesse, unsicher };
+    if (verstoesse.length) return verletzt(r, `${r.bezeichnung}: ${verstoesse.length} Verstoß(e), erster am ${verstoesse[0].tag}`, fakten);
+    if (unsicher) return offen(r, "Wochenende oder Montag ohne Angabe", fakten);
+    if (!wochenenden) return nichtAnwendbar(r, "voraussetzung_fehlt", "Im Zeitraum liegt kein Wochenende mit diesen Diensten.");
     return erfuellt(r, `${r.bezeichnung}: erfüllt`, fakten);
   }
   throw new Error(`Regelbaukasten: ${r.id} hat unvollständige Parameter (art).`);

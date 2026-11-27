@@ -820,3 +820,55 @@ describe("9. Zählregeln rechnen mit Präfixsummen: gleiches Ergebnis wie der Re
     }
   });
 });
+
+describe("10. „Montag frei“ nach einem Wochenende mit gewählten Diensten (WP-I7 Teil 5, konfigurierbare betriebliche Vorgabe)", () => {
+  /* 2026-11-21 Samstag, 22. Sonntag, 23. Montag. */
+  const SA = "2026-11-21", SO = "2026-11-22", MO = "2026-11-23";
+  const MF = (extra = {}) => V("mofrei", { name: "Montag frei nach Nachtwochenende", parameter: { art: "montagFrei", klassen: ["N"] }, ...extra });
+  it("Verwaltung: gültig beschrieben, Selbsttest (Testlauf) grün; ohne Dienstarten abgewiesen", () => {
+    expect(pruefeVorgabe(MF())).toBeNull();
+    const t = vorgabeTestlauf(MF());
+    expect(t.ok, JSON.stringify(t).slice(0, 300)).toBe(true);
+    expect(t.ergebnisse.length).toBe(2);
+    expect(pruefeVorgabe(MF({ parameter: { art: "montagFrei", klassen: [] } }))).not.toBeNull();
+  });
+  it("Muss: Dienst am Montag nach Samstag- und Sonntagsnacht = Achtung; Montag frei, nur eine Nacht am Wochenende oder andere Dienste = nichts", () => {
+    const b = nurVorgabe(pruefe([MF()], { [SA]: "N", [SO]: "N" }, { d: MO, da: "F" }));
+    expect(b.map((x) => [x.regel, x.stufe])).toEqual([["vorgabeMuss", "achtung"]]);
+    expect(pruefe([MF()], { [SA]: "S", [SO]: "N" }, { d: MO, da: "F" })).toEqual([]);
+    expect(pruefe([MF()], { [SA]: "N", [SO]: "F" }, { d: MO, da: "F" })).toEqual([]);
+    expect(pruefe([MF()], { [SA]: "N", [SO]: "N" }, { d: "2026-11-24", da: "F" }), "Dienstag").toEqual([]);
+  });
+  it("auch die Einteilung am Wochenende wird geprüft (Sonntagsnacht, wenn Samstag N und Montag schon Dienst hat); Vorbestand nicht angelastet", () => {
+    expect(nurVorgabe(pruefe([MF()], { [SA]: "N", [MO]: "F" }, { d: SO, da: "N" })).map((x) => x.regel)).toEqual(["vorgabeMuss"]);
+    expect(nurVorgabe(pruefe([MF()], { [SO]: "N", [MO]: "F" }, { d: SA, da: "N" })).map((x) => x.regel)).toEqual(["vorgabeMuss"]);
+    expect(pruefe([MF()], { [SA]: "N", [MO]: "F" }, { d: SO, da: "F" }), "Sonntag Frühdienst löst nicht aus").toEqual([]);
+  });
+  it("Stärke und Geltung aus der Vorgabe: Soll = Hinweis; Geltung einzelne Personen; abwesender Montag = nicht vollständig, nie „frei“", () => {
+    expect(nurVorgabe(pruefe([MF({ staerke: "soll" })], { [SA]: "N", [SO]: "N" }, { d: MO, da: "F" })).map((x) => [x.regel, x.stufe])).toEqual([["vorgabeSoll", "hinweis"]]);
+    expect(pruefe([MF({ geltung: { art: "personen", personen: ["andere"] } })], { [SA]: "N", [SO]: "N" }, { d: MO, da: "F" })).toEqual([]);
+    expect(vorgabePlanwirkung(MF()).wirkt).toBe(true);
+  });
+  it("Planer und Planungsassistent: keine Nacht am Montag nach einem Nachtwochenende der Person (Muss), offen statt Verletzung; ohne Vorgabe eingeteilt", async () => {
+    const F = await import("../src/lib/fachlogik.js");
+    const { baueLeerenBetrieb } = await import("../server/lib/leerbetrieb.mjs");
+    const { planeVorschlag } = await import("../server/lib/engine/planer.mjs");
+    const m = baueLeerenBetrieb({ name: "T", branche: "pflege", email: "x@example.org", land: "HE", raum: "r" }).mandanten[0];
+    m.personen = [{ id: "p1", vorname: "A", nachname: "B", eintritt: "2020-01-01", zugehoerigkeit: [{ einheitId: m.einheiten[0].id, ab: "2020-01-01" }], wochenstunden: 40, status: "aktiv", qualifikationen: [] }];
+    m.dienstarten = m.dienstarten.map((d) => (d.id === "N" ? { ...d, mindest: { mo_do: 1, fr: 0, sa: 0, so: 0 } } : d));
+    m.abweichungen = { [`p1|${SA}`]: "N", [`p1|${SO}`]: "N" };
+    m.vorgaben = [MF()];
+    const ym = "2026-11";
+    const a = F.planeMonat(structuredClone(m), ym, { maxProPerson: 31 });
+    expect(a.gesetzt.some((g) => g.datum === MO)).toBe(false);
+    expect(a.offen.some((x) => x.datum === MO && x.dienstId === "N")).toBe(true);
+    const r = planeVorschlag(structuredClone(m), ym, { freigabe: true, zuege: 0, maxProPerson: 31 });
+    expect(r.gesetzt.some((g) => g.datum === MO)).toBe(false);
+    const o = r.offen.find((x) => x.datum === MO && x.dienstId === "N");
+    expect(o).toBeTruthy();
+    expect(o.grund || (o.regeln || []).join(",")).toContain("vorgabe");
+    /* Gegenprobe ohne Vorgabe: am Montag eingeteilt (sonst prüfte der Test nichts). */
+    const ohne = F.planeMonat({ ...structuredClone(m), vorgaben: [] }, ym, { maxProPerson: 31 });
+    expect(ohne.gesetzt.some((g) => g.datum === MO)).toBe(true);
+  }, 300000);
+});

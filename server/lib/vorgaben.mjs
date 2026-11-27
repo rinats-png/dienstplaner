@@ -391,7 +391,7 @@ export const PARAMETER_FELDER = Object.freeze({
   besetzungsregel: [T("anforderungen.0.art", "Art", "wahl", { optionen: ["anzahl", "anzahlMit", "quoteMit"] }),
     T("anforderungen.0.merkmal", "Merkmal (Qualifikation)", "text", { optional: true }), T("anforderungen.0.min", "Mindestens", "zahl")],
   paarregel: [T("wenn", "Wenn vorhanden"), T("dann", "dann auch"), T("min", "Mindestens", "zahl", { optional: true })],
-  musterregel: [T("art", "Muster", "wahl", { optionen: ["verbotenFolge", "hoechstensFolge"] }),
+  musterregel: [T("art", "Muster", "wahl", { optionen: ["verbotenFolge", "hoechstensFolge", "montagFrei"] }),
     T("von", "Nach Dienstart(en)", "liste", { optional: true }), T("dann", "kein(e) Dienstart(en)", "liste", { optional: true }),
     T("klassen", "Dienstart(en) im Block", "liste", { optional: true }), T("max", "Höchstens in Folge", "zahl", { optional: true }),
     T("danachFrei", "Danach frei (Tage)", "zahl", { optional: true })],
@@ -514,6 +514,13 @@ export function beispielFaelle(v) {
         const ok = [...k(p.max), ...frei, "frei"], zuLang = [...k(p.max + 1), ...frei, "frei"];
         return [{ id: "1-im-Rahmen", erwartet: "erfuellt", kontext: { tage: tage(TAG0, ok), von: TAG0, bis: addT(TAG0, ok.length - 1) } },
           { id: "2-zu-lang", erwartet: "verletzt", kontext: { tage: tage(TAG0, zuLang), von: TAG0, bis: addT(TAG0, zuLang.length - 1) } }];
+      }
+      if (p.art === "montagFrei" && Array.isArray(p.klassen) && p.klassen.length) {
+        /* Samstag, Sonntag, Montag nach TAG0 (ein Montag). */
+        const sa = addT(TAG0, 5);
+        const k = p.klassen[0];
+        return [{ id: "1-montag-frei", erwartet: "erfuellt", kontext: { tage: tage(sa, [k, k, "frei"]), von: sa, bis: addT(sa, 2) } },
+          { id: "2-montag-dienst", erwartet: "verletzt", kontext: { tage: tage(sa, [k, k, k]), von: sa, bis: addT(sa, 2) } }];
       }
       return null;
     }

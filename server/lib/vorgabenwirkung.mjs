@@ -124,6 +124,8 @@ export function vorgabePlanwirkung(v, opt = {}) {
 
 /** Halbe Fensterbreite einer Musterregel (Fenster d ± halb): Folge = max + danachFrei + 1, verbotene Folge = Abstand (NaN, wenn unbrauchbar). */
 function musterHalb(p) {
+  /* Montag frei (WP-I7 Teil 5): Samstag bis Montag; jeder der drei Tage liegt in d ± 2. */
+  if (p.art === "montagFrei") return 2;
   return p.art === "hoechstensFolge" ? Number(p.max) + (Number(p.danachFrei) || 0) + 1 : Number(p.abstandTage === undefined ? 1 : p.abstandTage);
 }
 
