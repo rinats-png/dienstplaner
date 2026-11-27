@@ -7169,7 +7169,7 @@
       "agent": "sonnet",
       "modell": "opus",
       "konfliktzonen": [],
-      "pr": [],
+      "pr": ["#597"],
       "nachweis": "Release-Stillstand-Analyse 2026-11-24, Abschnitt 7; docs/acc45/RELEASE-PROZESS.md; docs/acc45/RST-2-nachweis.md",
       "akzeptanz": "Trockenlauf ist Standard; erzeugt außerhalb des Kandidaten Vorlage der Freigabedatei, vorlagenHashes, G2-Belegliste, G8/G9-Listen und Übergabe; rc-Zweig und Entwurfs-PR nur mit ausdrücklichem Flag (--anlegen); ändert nie einen bestehenden Kandidaten (Test); zweiter Lauf auf denselben Kandidaten byte-gleich (Test); kein Netzaufruf außer GET; kein Bildbau, kein Deploy",
       "tests": "Unit (Trockenlauf, Idempotenz, Schutz bestehender rc-Zweig)",
