@@ -414,6 +414,21 @@ export async function lies() {
 }
 
 /**
+ * WP-I16: Liest den Stand des Servers NUR zum Vergleichen (Bestätigung einer Änderung). Setzt weder ETag noch Zugang noch
+ * Teilweg-Basis: Der ETag rückt nie vor, ohne dass der lokale Bestand den Serverstand mitbekommt (sonst würde ein späterer
+ * Voll-PUT mit altem Bestand eine fremde Änderung still überschreiben, statt mit 409 abgewiesen zu werden).
+ * Wirft bei jedem Fehler und wenn die Antwort aus dem Speicher des Dienstarbeiters stammt (nie eine Bestätigung).
+ * @returns {Promise<any>} der Bestand in der Sicht der Rolle
+ */
+export async function liesZumVergleich() {
+  const gelesenFuer = token;
+  const { status, daten, ausSpeicher } = await ruf("bestand");
+  if (token !== gelesenFuer) throw new Error("nicht-angemeldet");
+  if (status !== 200 || ausSpeicher || !daten || !daten.bestand) throw new Error("Lesen fehlgeschlagen.");
+  return daten.bestand;
+}
+
+/**
  * WP-48.5: Den eben gelesenen Stand als Basis des Teilwegs übernehmen — nur dort aufrufen, wo die Oberfläche ihn
  * als lokalen Stand übernimmt. Ohne Fähigkeit `teile` (Schalter aus) wird der Teilweg ausgeschaltet: Voll-PUT wie
  * bisher. Steht auf dem Teilweg noch etwas aus (Frage, unklar, „neu laden"), bleibt der Zustand (false).
