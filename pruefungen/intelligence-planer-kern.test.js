@@ -802,15 +802,16 @@ describe("9. Planbefunde im Assistenten und im Planer (Nachtdienste in Folge, §
     const hoechst = planbefundAufwandHoechst(ms, 2026);
     let z = zaehler();
     expect(planbefundeNeu(ms, p, S, da(m0, "N"), z.f)).toBe(null);
-    /* Nacht an einem Sonntag: Nachtlauf 2 · (4 + 1), Jahresbilanz 365, Auslöseprüfung 110; dann die Ersatzruhe in 9 Monatsansichten. */
+    /* Nacht an einem Sonntag: Nachtlauf 2 · (4 + 1), Jahresbilanz 2 · 365 (letzter Sonntag + Zählung, Review #588), Auslöseprüfung 110;
+       dann die Ersatzruhe in 9 Monatsansichten. */
     expect(z.aufrufe).toBe(2);
-    expect(z.erste).toBe(2 * 5 + 365 + 110);
+    expect(z.erste).toBe(2 * 5 + 2 * 365 + 110);
     expect(z.summe).toBeGreaterThan(z.erste);
     expect(z.summe).toBeLessThanOrEqual(hoechst);
     for (const rest of [0, z.erste - 1, z.erste, z.summe - 1]) { const y = zaehler(rest); expect(planbefundeNeu(ms, p, S, da(m0, "N"), y.f), String(rest)).toBe("aufwand"); }
     expect(planbefundeNeu(ms, p, S, da(m0, "N"), zaehler(z.summe).f)).toBe(null);
     z = zaehler(); expect(planbefundeNeu(ms, p, S, da(m0, "F"), z.f)).toBe(null);
-    expect(z.erste, "Tagdienst am Sonntag: Jahresbilanz, Auslöseprüfung").toBe(365 + 110);
+    expect(z.erste, "Tagdienst am Sonntag: Jahresbilanz, Auslöseprüfung").toBe(2 * 365 + 110);
     z = zaehler(); expect(planbefundeNeu(ms, p, D, da(m0, "F"), z.f)).toBe(null);
     expect([z.aufrufe, z.summe], "Werktag ohne gearbeitete Sonn-/Feiertage in Reichweite: nur die Auslöseprüfung").toEqual([1, 110]);
     const mitF = structuredClone(ms); mitF.abweichungen[`${p.id}|${D}`] = "F";
@@ -840,20 +841,97 @@ describe("9. Planbefunde im Assistenten und im Planer (Nachtdienste in Folge, §
     expect(planbefundeNeu(structuredClone(vor), p, d, da(vor, "F"), () => true)).toBe(null);
   }, 120000);
 
-  it("Aufwand ist echte Arbeit (Review #588 B-3): Rechenzeit je angemeldetem Personentag im Mittel unter 5 µs (gemessen rund 0,5–0,6 µs); die Grenze ist damit eine Schranke von höchstens 200 s", () => {
-    const m = mitLuecken("demo3");
-    let k = 0, ms = 0;
-    for (const id of ["N", "F"]) for (const p of m.personen.slice(0, 12)) for (const d of TAGE) {
-      if (F.personTag(m, p, d).dienstId) continue;
-      const t0 = performance.now();
-      planbefundeNeu(m, p, d, m.dienstarten.find((x) => x.id === id), (x) => { k += x; return true; });
-      ms += performance.now() - t0;
+  /** Eine Person im leeren Betrieb HE, Plan 1.8.2026–30.6.2027: Werktage Frühdienst, Sonntage frei, `frei` frei, `sonntag` gearbeitet. */
+  const einePerson = (frei, sonntag) => {
+    const m0 = baueLeerenBetrieb({ name: "T", branche: "pflege", email: "x@example.org", land: "HE", raum: "r" }).mandanten[0];
+    const p = { id: "p1", vorname: "A", nachname: "B", eintritt: "2020-01-01", zugehoerigkeit: [{ einheitId: m0.einheiten[0].id, ab: "2020-01-01" }], wochenstunden: 40, status: "aktiv", qualifikationen: [] };
+    m0.personen = [p];
+    for (let t = "2026-08-01"; t <= "2027-06-30"; t = add(t, 1)) m0.abweichungen[`p1|${t}`] = istSonntag(t) ? "-" : "F";
+    for (const t of frei) m0.abweichungen[`p1|${t}`] = "-";
+    m0.abweichungen[`p1|${sonntag}`] = "F";
+    return { m0, p };
+  };
+  const ersatzIn = (st, von, bis) => F.pruefen(st, von, bis).filter((b) => b.art === "ersatzruhe").map((b) => b.datum);
+
+  it("ersatzruhe (Review #588, Kette nach dem Monat): Sonntagsdienst 21.2.2027 nach der Einteilung am 27.2.2027 nimmt den einzigen Ersatztag des 26.12.2026 — die Ansicht Dezember zeigt einen neuen Befund, die Einteilung lehnt ab", () => {
+    /* Ein Anspruch NACH dem Monat (21.2.2027, Sonntagsfrist enger, wird vor den Feiertagsansprüchen zugeordnet) kann einen in der Ansicht
+       Dezember gemeldeten Befund erzeugen: Die Aussage „Ansprüche nach dem Monat beeinflussen die gemeldeten nicht“ war falsch. */
+    const { m0, p } = einePerson(["2026-10-03", "2026-11-10", "2027-02-15", "2027-02-27", "2027-04-20", "2027-04-21", "2027-04-22", "2027-04-23", "2027-04-24"], "2027-02-21");
+    const d = "2027-02-27";
+    const vor = structuredClone(m0), nach = { ...vor, abweichungen: { ...vor.abweichungen, [`p1|${d}`]: "F" } };
+    expect(ersatzIn(vor, "2026-12-01", "2026-12-31")).toEqual([]);
+    expect(ersatzIn(nach, "2026-12-01", "2026-12-31")).toEqual(["2026-12-26"]);
+    expect(planbefundeNeu(vor, p, d, da(vor, "F"), () => true)).toMatchObject({ regel: "ersatzruhe", tag: "2026-12-26" });
+    /* Gegenprobe: ein weiterer freier Werktag in Reichweite des 21.2. */
+    vor.abweichungen["p1|2027-02-16"] = "-";
+    expect(planbefundeNeu(structuredClone(vor), p, d, da(vor, "F"), () => true)).toBe(null);
+  }, 120000);
+
+  it("ersatzruhe (Review #588, Lagebild): das 14-Tage-Lagebild ab 24.12.2026 sagt dasselbe wie die Monatsansichten — nach der angenommenen Einteilung am 2.3.2027 kein neuer Befund zum 26.12.", () => {
+    const { m0, p } = einePerson(["2026-10-03", "2026-11-10", "2027-02-15", "2027-03-02", "2027-04-20", "2027-04-21", "2027-04-22", "2027-04-23", "2027-04-24"], "2027-02-28");
+    const d = "2027-03-02";
+    const vor = structuredClone(m0), nach = { ...vor, abweichungen: { ...vor.abweichungen, [`p1|${d}`]: "F" } };
+    expect(planbefundeNeu(vor, p, d, da(vor, "F"), () => true), "Monatsansichten unverändert: angenommen").toBe(null);
+    /* Vor der Angleichung zeigte das Lagebild (eigene Zuordnung über 24.12. ± 56) nachher 26.12. und 1.1., die Monatsansichten nur den 1.1. */
+    for (const st of [vor, nach]) {
+      const lage = ersatzIn(st, "2026-12-24", "2027-01-06");
+      const monate = [...ersatzIn(st, "2026-12-01", "2026-12-31"), ...ersatzIn(st, "2027-01-01", "2027-01-31")].filter((t) => t >= "2026-12-24" && t <= "2027-01-06");
+      expect(lage).toEqual(monate);
     }
-    expect(k).toBeGreaterThan(100000);
-    const usJe = (ms * 1000) / k;
-    if (process.env.MESSUNG_DATEI) writeFileSync(process.env.MESSUNG_DATEI, JSON.stringify({ einheiten: k, ms, usJe }, null, 1));
-    expect(usJe).toBeLessThan(5);
-    expect(PLANBEFUND_GRENZE * 5 / 1e6).toBeLessThanOrEqual(200);
+    expect(ersatzIn(nach, "2026-12-24", "2027-01-06")).toEqual(ersatzIn(vor, "2026-12-24", "2027-01-06"));
+  }, 120000);
+
+  it("ersatzruhe (Lagebild): jeder Schnitt (14 Tage, Monatsgrenzen, Jahreswechsel) gleich den Monatsansichten — Zufallspläne, Ansicht = Ausschnitt der Monate", () => {
+    const zp = zufallsPlan(11, 5);
+    const m0 = baueLeerenBetrieb({ name: "T", branche: "pflege", email: "x@example.org", land: "HE", raum: "r" }).mandanten[0];
+    m0.personen = [{ id: "p1", vorname: "A", nachname: "B", eintritt: "2020-01-01", zugehoerigkeit: [{ einheitId: m0.einheiten[0].id, ab: "2020-01-01" }], wochenstunden: 40, status: "aktiv", qualifikationen: [] }];
+    const st = { ...m0, abweichungen: zp.ab };
+    const monat = (f) => { const l = add(`${add(f, 32).slice(0, 7)}-01`, -1); return ersatzIn(st, f, l); };
+    const alle = new Set(); for (const f of ["2026-10-01", "2026-11-01", "2026-12-01", "2027-01-01", "2027-02-01"]) for (const t of monat(f)) alle.add(t);
+    expect(alle.size, "Vorbedingung: es gibt Befunde").toBeGreaterThan(0);
+    for (const von of ["2026-10-20", "2026-11-24", "2026-12-24", "2027-01-15"]) {
+      const bis = add(von, 13);
+      expect(ersatzIn(st, von, bis), von).toEqual([...alle].filter((t) => t >= von && t <= bis).sort());
+    }
+  }, 120000);
+
+  it("Aufwand ist echte Arbeit (Review #588 B-3): Rechenzeit je angemeldetem Personentag im Median von drei Läufen unter 3 µs (gemessen rund 0,3–0,6 µs); die Grenze ist damit eine Schranke von höchstens 120 s", () => {
+    const m = mitLuecken("demo3");
+    const laeufe = [];
+    for (let lauf = 0; lauf < 3; lauf++) {
+      let k = 0, ms = 0;
+      for (const id of ["N", "F"]) for (const p of m.personen.slice(0, 12)) for (const d of TAGE) {
+        if (F.personTag(m, p, d).dienstId) continue;
+        const t0 = performance.now();
+        planbefundeNeu(m, p, d, m.dienstarten.find((x) => x.id === id), (x) => { k += x; return true; });
+        ms += performance.now() - t0;
+      }
+      expect(k).toBeGreaterThan(100000);
+      laeufe.push({ einheiten: k, ms, usJe: (ms * 1000) / k });
+    }
+    const median = laeufe.map((x) => x.usJe).sort((a, b) => a - b)[1];
+    if (process.env.MESSUNG_DATEI) writeFileSync(process.env.MESSUNG_DATEI, JSON.stringify({ laeufe, median }, null, 1));
+    expect(median).toBeLessThan(3);
+    expect(PLANBEFUND_GRENZE * 3 / 1e6).toBeLessThanOrEqual(120);
+  }, 300000);
+
+  it("Planer (Review #588): Reserve der Nachprüfung auch für Einteilungen ohne Anmeldung (Rufbereitschaft am Tag) — Verbrauch nie über der Grenze; großes Budget: Ergebnis unverändert", () => {
+    const m0 = baueLeerenBetrieb({ name: "T", branche: "pflege", email: "x@example.org", land: "HE", raum: "r" }).mandanten[0];
+    m0.personen = [1, 2, 3, 4].map((i) => ({ id: `p${i}`, vorname: "A", nachname: `B${i}`, eintritt: "2020-01-01", zugehoerigkeit: [{ einheitId: m0.einheiten[0].id, ab: "2020-01-01" }], wochenstunden: 40, status: "aktiv", qualifikationen: [] }));
+    m0.dienstarten = [{ ...m0.dienstarten[0], id: "R", name: "Ruf am Tag", kurz: "R", start: "08:00", ende: "16:00", pause: 0, form: "ruf", rufbereitschaft: true, ruhezeitNeutral: true, mindest: { mo_do: 1, fr: 1, sa: 1, so: 1 } }];
+    const h = planbefundAufwandHoechst(m0, 2026);
+    /* Vorbedingung: eine Einteilung meldet hier nichts an. */
+    expect(planbefundeNeu(structuredClone(m0), m0.personen[0], "2026-12-01", m0.dienstarten[0], () => false)).toBe(null);
+    for (const pb of [0, h - 1, h, 3 * h]) {
+      const r = planeVorschlag(structuredClone(m0), YM, { freigabe: true, planbefundAufwand: pb, zuege: 0 });
+      expect(r.status).toBe("ok");
+      expect(r.aufwand.planbefund.verbraucht, String(pb)).toBeLessThanOrEqual(pb);
+      expect(r.gesetzt.length, String(pb)).toBe(Math.floor(pb / h));
+      expect(r.offen.some((x) => x.grund === "aufwand")).toBe(true);
+    }
+    const gross = planeVorschlag(structuredClone(m0), YM, { freigabe: true, zuege: 0 });
+    expect(gross.gesetzt.length, "Höchstzahl 3 je Person").toBe(12);
+    expect(gross.aufwand.planbefund.ausgeschoepft).toBe(false);
   }, 300000);
 
   /* Review #588 B-1: Fälle des Zufallsvergleichs (Seed 7, Durchlauf 644, 670, 758, 1001 aus dem Skript des Reviewers), nachgebaut mit
@@ -996,7 +1074,7 @@ describe("9. Planbefunde im Assistenten und im Planer (Nachtdienste in Folge, §
     expect(e).not.toContain("nachtschwelle(st.einstellungen)");
     const b = readFileSync("server/lib/engine/befunde.mjs", "utf8");
     const pr = b.slice(b.indexOf("export function pruefen("), b.indexOf("export function nachtfolgeBefunde("));
-    for (const x of ["nachtfolgeBefunde(m, p, von, bis, vor)", "ersatzruheBefunde(m, p, von, bis, arbeitet)", "sonntagsfreiBefund(m, p, von, bis, arbeitet)"]) expect(pr).toContain(x);
+    for (const x of ["nachtfolgeBefunde(m, p, von, bis, vor)", "ersatzruheMonatsweise(m, p, von, bis, arbeitet)", "sonntagsfreiBefund(m, p, von, bis, arbeitet)"]) expect(pr).toContain(x);
     for (const x of ["ersatzruhetage(", "freieSonntage(", "maxNachtFolge + 1"]) expect(pr).not.toContain(x);
   });
 });

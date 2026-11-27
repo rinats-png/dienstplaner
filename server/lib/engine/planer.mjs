@@ -136,8 +136,12 @@ const leer = (m, ym, status, grund, startwert) => ({ status, grund, ym, startwer
   rang: null, nichtBewertet: [...NICHT_BEWERTET], aufwand: null, verbessert: 0 });
 
 /** Vorwärtsprüfung (folgeVorwaerts) und Planbefunde (planbefundeNeu) einer Einteilung: null = besteht, "aufwand" = Budget leer, sonst der
-    Grund („folgeVorwaerts“ oder die Regel des Planbefunds). Dieselben Prüfungen wie planeMonat, in derselben Reihenfolge. */
+    Grund („folgeVorwaerts“ oder die Regel des Planbefunds). Dieselben Prüfungen wie planeMonat, in derselben Reihenfolge.
+    Vorab `leistenPlan(0)`: die Reserve der Nachprüfung im Budget der Planbefunde wird für JEDE neue Einteilung geprüft, auch wenn
+    planbefundeNeu nichts anmeldet (z. B. Rufbereitschaft am Tag, Dienstwechsel ohne neuen Arbeitstag; Review #588): sonst läge der
+    Verbrauch nach der Nachprüfung über der Grenze. Am Fachergebnis ändert das nichts (nur Budget leer ⇒ „aufwand“). */
 const vorwaerts = (vorher, p, d, da, leisten, stand, leistenPlan = leisten) => {
+  if (!leistenPlan(0)) return "aufwand";
   const f = folgeVorwaerts(vorher, p, d, da, leisten, stand);
   if (f !== null) return f === "aufwand" ? f : "folgeVorwaerts";
   const z = planbefundeNeu(vorher, p, d, da, leistenPlan, stand);
