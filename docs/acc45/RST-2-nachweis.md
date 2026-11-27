@@ -61,3 +61,11 @@ Mutationen (je einzeln, danach zurückgelegt, Hash der Datei bestätigt):
 - G2: Reviews und PR-Bestätigung prüft weiterhin nur `release-pruefung.mjs` online; das Werkzeug liefert die Kandidatenliste.
 - Die Vorlagen-Hashes gelten für den Baum von S; nach dem Release-Merge ist Baum(M) = Baum(S) (RELEASE-PROZESS Abschnitt 1).
 - Review: Opus unabhängig (SSOT-Vorgabe), noch nicht erfolgt.
+
+## 5. Hinweise aus dem Review (C, nur dokumentiert, kein Code)
+
+- Testlücken (niedrig, offen): flacher Klon (Fail-closed-Zweig ohne eigenen Test), Pfade mit Steuerzeichen, Replace-Objekte
+  (`refs/replace`, nur durch `GIT_NO_REPLACE_OBJECTS` abgedeckt), Aufrufprotokoll-Test gilt nur für den Trockenlauf, nicht für `--anlegen`.
+- Die Vorlagen-Hashes liefert `release-pruefung.mjs` aus dem Checkout, in dem das Werkzeug läuft (Prozessaufruf, `--wurzel` = Repository);
+  gelesen werden sie aus dem Schnitt-Commit. Das Werkzeug des Checkouts ist also nicht der Kandidat; maßgeblich bleibt die Endprüfung
+  auf `main`-HEAD (RELEASE-PROZESS Abschnitt 4).
