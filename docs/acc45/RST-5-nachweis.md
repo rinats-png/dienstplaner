@@ -170,6 +170,8 @@ NO-GO-Ergebnisse (G1–G10) bleiben, G5 trägt bei Basis 274bfa0 ohne Freigabeda
    ausdrückliche Betreiberentscheidung vorgemerkt** (Review #598 C-2).
    **Entschieden 2026-11-27 (Betreiber):** ein erneuter kontrollierter Wechsel bleibt grundsätzlich möglich, aber nur
    über den neuen Pfad `wiederholung` (Abschnitt 3.4); die verbrauchte Ausnahme wird nie wiederverwendet; bis dahin NO-GO.
+   Präzisiert am selben Tag: neuer Auslieferungsversuch ≠ neue Softwareversion — derselbe Kandidat und Digest sind
+   zulässig, wenn die Ursache ohne Änderung behoben ist; neue einmalige Versuchskennung und neue Freigabe sind Pflicht.
 3. Kopplung (Review #598 C-1): G5 nimmt den Ausnahmeweg nur an, solange `sicherung.widerrufbuchProbePflicht` true ist
    (nur dann prüft G6 die Ausnahme und damit E6); sonst G5 NO-GO. Per Test abgesichert.
 
@@ -180,12 +182,35 @@ grundsätzlich möglich bleiben. Keine automatische Wiederverwendung der verbrau
 Versuch benötigt eine ausdrückliche Betreiberfreigabe und vollständige, aktuelle, an den exakten Kandidaten-Digest
 gebundene Nachweise. Bis dahin bleibt NO-GO verbindlich.“
 
+Präzisierung (Betreiber, 2026-11-27): „Unterscheide verbindlich zwischen einem neuen Auslieferungsversuch und einer neuen
+Softwareversion. Ein endgültig abgebrochener Auslieferungsversuch darf grundsätzlich mit demselben unveränderlichen
+Kandidaten und Image-Digest wiederholt werden, sofern: die Abbruchursache nachweislich behoben wurde; keine Änderung am
+Softwarestand erforderlich ist; keine entgegenstehenden Sicherheitsbefunde vorliegen; eine neue, eindeutige
+Versuchskennung verwendet wird; eine neue ausdrückliche Betreiberfreigabe vorliegt; sämtliche Nachweise aktuell und an
+den exakten Digest gebunden sind; der vorherige Versuch nachvollziehbar abgeschlossen bzw. abgebrochen wurde; keine
+verbrauchte Ausnahme oder Freigabe wiederverwendet wird; sämtliche übrigen Gates erfüllt sind. Ein anderer Commit oder
+Digest ist zwingend erforderlich, wenn die Abbruchursache eine Änderung am Produkt, am Image oder an
+sicherheitsrelevanten Bestandteilen des Kandidaten erfordert. Erzeuge keine künstlichen Commits oder Images
+ausschließlich zur Erfüllung einer formalen Unterschiedsanforderung.“
+
+**Release-ID, Versuchskennung und Softwarestand (Zusammenspiel):** Die Release-ID des Erstwechsels bleibt laut Runbook
+`v4-r1`; nur sie trägt die einmalige Erstwechsel-Ausnahme (E1), die nach einem Start bzw. Abbruch verbraucht ist
+(E15/F10). Freigabedatei, Nachweis-Ablage und Abbruch-/Nachhol-Spuren sind im Werkzeug je Release-ID abgelegt; deshalb
+bekommt jeder weitere Auslieferungsversuch eine **eigene Release-ID** für seine Freigabedatei (z. B. `v4-r1w2`) — das ist
+eine Ablage-Kennung, keine neue Softwareversion. Die **Versuchskennung** (`versuch`) vergibt der Betreiber eigens; sie
+ist nicht aus Release-ID, Commit oder Digest abgeleitet und in allen Freigabedateien (HEAD und Geschichte) einmalig.
+Der **Softwarestand** ist allein durch Kandidat und Digest bestimmt: Er darf gleich bleiben, wenn die Ursache ohne
+Änderung behoben ist (`ursache.aenderung` „keine“), und muss sich ändern, wenn die Ursache eine Änderung an Produkt,
+Image oder Sicherheitsteilen verlangt („produkt“, „image“, „sicherheit“).
+
 Umsetzung (`werkzeug/release-pruefung.mjs`, kleinste fail-closed Variante): neues optionales Feld der Freigabedatei
 `docs/acc45/releases/<neue-id>.freigabe.json`. Nur das Format ist festgelegt; es wird nichts vorausgefüllt und nichts
 aus anderen Angaben abgeleitet:
 
 ```json
 "wiederholung": {
+  "versuch":    "<eigens vergebene Versuchskennung, einmalig, nicht aus Release-ID/Commit/Digest abgeleitet>",
+  "ursache":    { "aenderung": "keine|produkt|image|sicherheit", "behebung": "docs/<…>.md (Beleg der Ursachenbehebung in HEAD)" },
   "vorversuch": { "releaseId": "<id des Vorversuchs>", "kandidatCommit": "<40 Hex>", "digest": "sha256:<64 hex>",
                   "abbruchNachweis": "docs/acc45/releases/<id des Vorversuchs>/abbruch-<…>.json" },
   "freigabe":   { "freigegebenDurch": "<Betreiber>", "datum": "JJJJ-MM-TT", "quittung": "<fester Wortlaut, KONFIG wiederholung.quittungVorlage>" },
@@ -200,12 +225,12 @@ NO-GO). G5 prüft dann WH0–WH8 (jede Verletzung ein Grund „Wiederholung (RST
 |---|---|
 | WH0 | Feld gültig (auch beim direkten Aufruf; ein ungültiges Feld wirft nie, sondern ergibt einen Grund) |
 | WH1 | Basis aus `ohneRevisionslabel` (274bfa0); **keine** `erstwechselAusnahme` zugleich — die verbrauchte Ausnahme wird nie wiederverwendet, ihr Verbrauch (E15/F10) bleibt bestehen |
-| WH2 | neue Release-ID, neuer Kandidat, neuer Digest ≠ Digest des Vorversuchs; Vorversuch-Digest ≠ Basisbild |
+| WH2 | eigene Release-ID (Ablage) ≠ Vorversuch; Versuchskennung ≠ Release-IDs und ohne Commit-/Digest-Präfix; Beleg der Ursachenbehebung in HEAD; bei `aenderung` „keine“ sind gleicher Kandidat **und** gleicher Digest zulässig (kein künstlicher Unterschied verlangt; nur Commit oder nur Digest verschieden ist widersprüchlich); bei „produkt“/„image“/„sicherheit“ sind anderer Commit **und** anderer Digest zwingend; Vorversuch-Digest ≠ Basisbild |
 | WH3 | Abbruchbeleg des Vorversuchs in HEAD unter `docs/acc45/releases/<id>/abbruch-*.json`; JSON mit `id` aus der Abbruchtabelle A.8, `releaseId`/`kandidat`/`digest` = Vorversuch, `zeit` nicht in der Zukunft (Format wie `abbruch-A-VOR.json`) |
-| WH4 | ausdrückliche Betreiberfreigabe: `quittung` im festen Wortlaut (bindet neuen Digest, Kandidat, Vorversuch-Digest, Abbruchbeleg), `datum` nicht vor dem Abbruch und nicht in der Zukunft, keine Platzhalter |
-| WH5 | Staging-Nachweis am **neuen** Digest wie E6 (Bytes per SHA-256, `ergebnis` success, `commit`/`baum`/`lauf`/`laufCommit`, S1–S6, Skript-SHA-256, ≤ 7 Tage) **und** nach dem Abbruch erstellt; Migrationsnachweis (`migrationsprobe`) Pflicht wie in 3.1 |
-| WH6 | Lauf-API und Artefakt-Bytes wie E7 (`staging-gate.yml`, `workflow_dispatch`, `completed/success`, `head_sha` = Kandidat oder Schnitt) |
-| WH7 | dieser Versuch ist noch nicht genutzt (Gegenstück zu E15): keine Datei unter `<neue-id>/nachhol/` oder `<neue-id>/abbruch-*.json` in HEAD oder seiner Geschichte und keine frühere Fassung der Freigabedatei mit Ausnahme. Ein weiterer Versuch braucht eine **neue** Release-ID mit diesem als Vorversuch und eine neue Freigabe (Review #600 B-2) |
+| WH4 | ausdrückliche Betreiberfreigabe: `quittung` im festen Wortlaut (bindet Versuchskennung, Release-ID, Kandidat, Digest, Basis, Vorversuch, Abbruchbeleg, Ursachenbeleg und Art der Änderung und bestätigt „keine entgegenstehenden Sicherheitsbefunde“), `datum` nicht vor dem Abbruch und nicht in der Zukunft, keine Platzhalter |
+| WH5 | Staging-Nachweis am exakten Digest dieses Versuchs wie E6 (Bytes per SHA-256, `ergebnis` success, `commit`/`baum`/`lauf`/`laufCommit`, S1–S6, Skript-SHA-256, ≤ 7 Tage) **und** nach dem Abbruch erstellt; Migrationsnachweis (`migrationsprobe`) Pflicht wie in 3.1 |
+| WH6 | Lauf-API und Artefakt-Bytes wie E7 (`staging-gate.yml`, `workflow_dispatch`, `completed/success`, `head_sha` = Kandidat oder Schnitt); Lauf **nach dem Abbruch gestartet** (`run_started_at`) — auch bei gleichem Digest kein Replay des Vorversuch-Laufs |
+| WH7 | dieser Versuch ist noch nicht genutzt (Gegenstück zu E15): keine Datei unter `<neue-id>/nachhol/` oder `<neue-id>/abbruch-*.json` in HEAD oder seiner Geschichte und keine frühere Fassung der Freigabedatei mit Ausnahme. Spuren des **Vorversuchs** sind erwartet (in dessen Ablage), der **aktuelle** Versuch darf keine eigenen haben. Die Versuchskennung steht in keiner anderen Freigabedatei (HEAD oder Geschichte). Ein weiterer Versuch braucht eine eigene Release-ID, eine neue Versuchskennung und eine neue Freigabe (Review #600 B-2) |
 | WH8 | Vier-Augen wie E14: Rulesets mit Code-Owner-Review, CODEOWNERS allein beim Inhaber, PR der Freigabedatei nach `main` mit Code-Owner-Freigabe des Inhabers (≠ Autor, auf dem letzten Kopf); eine Quittung des Maschinenkontos genügt nicht (Review #600 C-1) |
 
 **Wirkung auf andere Gates (präzise):** G6 verlangt auf diesem Weg die reguläre, aktuelle Widerrufbuch-Probe (keine
@@ -216,11 +241,27 @@ v4-r1 → v4-r2 → v4-r3). Eine fehlende oder unlesbare Freigabedatei des Vorve
 NO-GO. Ohne gültiges Feld bleibt der Rückhalt wie bisher (NACHHOL-GO verlangt; nach einem Abbruch NO-GO). Alle übrigen
 Gates (G1–G4, G7–G10) sind unverändert. Ohne vollständiges Feld bleibt G5 NO-GO. Es gibt keinen CLI-Schalter, keine
 Konfigurationsoption und keine Statusdatei für diesen Weg; Workflow unverändert (der Lauf ist derselbe Staging-Gate-Lauf
-wie in 3.1, am neuen Digest).
+wie in 3.1, am Digest dieses Versuchs). Vier-Augen (WH8) und die reguläre Widerrufbuch-Probe (G6) gelten unverändert.
 
 Tests: `pruefungen/release-pruefung.test.js`, Block „RST-5 Wiederholung“ (positiv Ende zu Ende: alle Gates GO inkl. G6 mit
 regulärer Probe und ersetztem Rückhalt, Schnitt-Lauf; G1–G4/G7–G10 gleich zu „ohne Feld“; Rückhalt-Negativfälle; WH7 Kopf/
 Geschichte/beides/frühere Ausnahme; WH8 wie E14; WH0; kein/leeres/falsches Feld, automatische Ableitung, Freigabe fehlt/leer/anderer Wortlaut/vor
 dem Abbruch/Zukunft/Platzhalter, gleicher Digest/Kandidat/Release-ID, Abbruchbeleg in allen Fehlformen, Replay des
 Vorversuchs (Digest, Migrationsnachweis, Erstellzeit, Lauf, Bytes), Frist abgelaufen, Ausnahme und Wiederholung zugleich,
-andere Basis, G6 regulär). Zahlen und Mutationen: PR-Beschreibung.
+andere Basis, G6 regulär; Versuchsmodell: gleicher Kandidat/Digest mit „keine“ + neue Kennung + frische Nachweise ⇒ GO,
+alte Nachweise/alter Lauf bei gleichem Digest, „produkt“/„image“/„sicherheit“ mit gleichem Digest, Kennung doppelt
+(HEAD/Geschichte), abgeleitet, ungültig ⇒ NO-GO). Zahlen und Mutationen: PR-Beschreibung.
+
+**Offene Grenzen und Betreiberhinweise (Delta-Review #600):**
+
+- C-a (Betreiberhinweis, nicht gebaut): WH8 verlangt die Vier-Augen-Freigabe nur für den PR der Freigabedatei, nicht für
+  die PRs, die die Gate-Logik selbst einführen (#598, #600). Diese PRs sollen per Code-Owner-Review des Betreibers
+  gemergt werden (Gate-Logik-PRs nie ohne Vier-Augen).
+- C-b (offene Grenze): WH3 bindet den Abbruchbeleg an Vorversuch, Abbruchtabelle und Zeit, aber nicht an die
+  Freigabeliste. Eine Pflicht „Vorversuch-Kandidat als `gesperrt` mit A-Grund“ widerspräche dem Versuchsmodell: Bei
+  gleichem Kandidaten und Digest muss dieselbe Zeile für den neuen Versuch wieder `aktiv` sein (G4). Den tatsächlichen
+  Rücksprung belegt der Abbruchbeleg selbst (Runbook); eine Bindung an die Geschichte der Freigabeliste wäre eine eigene
+  Entscheidung.
+- C-c (umgesetzt): Der Abbruchbeleg für die Rückhalt-Kette (`abbruchBelegt`) muss neben `id` und `releaseId` auch
+  `kandidat` und `digest` der Freigabedatei dieses Release und eine lesbare `zeit`, die nicht in der Zukunft liegt, tragen;
+  das Dateimuster ist verankert (`abbruch-*.json`).

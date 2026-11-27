@@ -114,6 +114,11 @@ export const ID_MUSTER = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 export const REL_AUSNAHME_IDS = Object.freeze(["REL-0", "REL-0c", "REL-1", "REL-2", "REL-3", "REL-4"]);
 /** Präfix der Release-Prozess-Pakete (exakt, ohne Normalisierung; „rel-1“ ist kein REL-Paket). */
 export const REL_PRAEFIX = "REL-";
+/** RST-5 Wiederholung: welche Änderung die Abbruchursache am Kandidaten verlangt. Nur „keine“ erlaubt denselben
+ *  Kandidaten und Digest; jede andere verlangt einen anderen Commit und Digest (Betreiberpräzisierung 2026-11-27). */
+export const URSACHE_ARTEN = Object.freeze(["keine", "produkt", "image", "sicherheit"]);
+/** Versuchskennung: eigens vergeben (nicht aus Release-ID, Commit oder Digest abgeleitet), einmalig. */
+export const VERSUCH_MUSTER = /^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$/;
 
 const tiefFrieren = (o) => { Object.values(o).forEach((v) => { if (v && typeof v === "object") tiefFrieren(v); }); return Object.freeze(o); };
 /** GATE-EW1 (Gate-Entwurf 2026-11-24 v2, A.4; Betreiberentscheidungen F1–F10): einmalige Erstwechsel-Ausnahme der
@@ -240,15 +245,20 @@ export const KONFIG_STANDARD = Object.freeze({
     zusatz: ["fixture", "start", "kennungen", "gegenprobe", "abgleich"],
     fixtureBaum: "876c77d96a690036fda85ee8f3abfeda5bc11b059e0910478ee8ff67916a3d1b",
   }),
-  // RST-5 Wiederholung (Betreiberentscheidung 2026-11-27): erneuter Erstwechsel nach einem abgebrochenen Versuch mit
-  // Rückkehr auf 274bfa0. Eigener Pfad (Freigabedatei-Feld `wiederholung`, G5 WH0–WH8, G6-Rückhalt), nie die verbrauchte
-  // Erstwechsel-Ausnahme; ausdrückliche Betreiberfreigabe im festen Wortlaut; alle Nachweise neu am neuen Digest.
+  // RST-5 Wiederholung (Betreiberentscheidung 2026-11-27, Präzisierung Versuch ≠ Softwareversion): neuer
+  // Auslieferungsversuch nach einem abgebrochenen Erstwechsel mit Rückkehr auf 274bfa0. Eigener Pfad (Freigabedatei-Feld
+  // `wiederholung`, G5 WH0–WH8, G6-Rückhalt), nie die verbrauchte Erstwechsel-Ausnahme. Derselbe Kandidat/Digest ist
+  // zulässig, wenn die Ursache ohne Änderung behoben ist (ursache.aenderung „keine“); sonst ist ein anderer Commit und
+  // Digest zwingend. Neue, einmalige Versuchskennung; ausdrückliche Betreiberfreigabe im festen Wortlaut; alle Nachweise
+  // neu (Lauf nach dem Abbruch) am exakten Digest.
   wiederholung: tiefFrieren({
     stagingMaxTage: 7,
-    quittungVorlage: "Ich gebe den erneuten Erstwechsel {releaseId} ausdrücklich frei (Kandidat {kandidat}, Digest {digest}, "
-      + "Basis {basis}). Der abgebrochene Vorversuch {vorRelease} (Kandidat {vorKandidat}, Digest {vorDigest}, Abbruchbeleg "
-      + "{abbruch}) wird nicht wiederverwendet; seine Erstwechsel-Ausnahme bleibt verbraucht. Alle Nachweise stammen aus "
-      + "einem neuen Lauf am Digest {digest}.",
+    ursacheArten: URSACHE_ARTEN,
+    quittungVorlage: "Ich gebe den Auslieferungsversuch {versuch} ({releaseId}) des Erstwechsels ausdrücklich frei (Kandidat "
+      + "{kandidat}, Digest {digest}, Basis {basis}). Der Vorversuch {vorRelease} (Kandidat {vorKandidat}, Digest {vorDigest}) "
+      + "ist abgebrochen (Abbruchbeleg {abbruch}); die Abbruchursache ist behoben (Beleg {behebung}); erforderliche Änderung "
+      + "am Kandidaten: {aenderung}. Es liegen keine entgegenstehenden Sicherheitsbefunde vor. Keine verbrauchte Ausnahme "
+      + "oder Freigabe wird wiederverwendet; alle Nachweise stammen aus einem neuen Lauf am Digest {digest}.",
   }),
   sicherung: Object.freeze({ sicherungMaxStunden: 26, restoreProbeMaxTage: 35, widerrufbuchProbeMaxTage: 35, widerrufbuchProbePflicht: true }),
   erstwechselAusnahme: ERSTWECHSEL_AUSNAHME,
@@ -1410,7 +1420,8 @@ export function erstwechselPruefen(k, konfig = KONFIG_STANDARD) {
 
 /* --------------------------- RST-5 Wiederholung eines abgebrochenen Erstwechsels */
 
-const WH_FELDER = ["vorversuch", "freigabe", "staging"];
+const WH_FELDER = ["versuch", "vorversuch", "ursache", "freigabe", "staging"];
+const WH_URSACHE = ["aenderung", "behebung"];
 const WH_VORVERSUCH = ["releaseId", "kandidatCommit", "digest", "abbruchNachweis"];
 const WH_FREIGABE = ["freigegebenDurch", "datum", "quittung"];
 const STAGING_LAUF = /^[1-9]\d{0,19}-[1-9]\d{0,3}$/;
@@ -1421,8 +1432,13 @@ function wiederholungSchema(f) {
   const w = f.wiederholung;
   if (!genauSchluessel(w, WH_FELDER)) return [`wiederholung: genau die Schlüssel ${WH_FELDER.join(", ")}`];
   const fe = [];
-  const v = w.vorversuch, fr = w.freigabe, st = w.staging;
+  const v = w.vorversuch, fr = w.freigabe, st = w.staging, u = w.ursache;
   const text = (x) => typeof x === "string" && x.trim() !== "";
+  if (!(typeof w.versuch === "string" && VERSUCH_MUSTER.test(w.versuch))) fe.push(`wiederholung.versuch: Kennung nach ${VERSUCH_MUSTER.source}`);
+  if (!(genauSchluessel(u, WH_URSACHE) && URSACHE_ARTEN.includes(u.aenderung) && typeof u.behebung === "string" && pfadSicher(u.behebung) &&
+    u.behebung.startsWith("docs/"))) {
+    fe.push(`wiederholung.ursache: genau { aenderung (${URSACHE_ARTEN.join("|")}), behebung (Pfad unter docs/) }`);
+  }
   if (!(genauSchluessel(v, WH_VORVERSUCH) && typeof v.releaseId === "string" && RELEASE_ID.test(v.releaseId) && hex40(v.kandidatCommit) &&
     typeof v.digest === "string" && DIGEST.test(v.digest) && text(v.abbruchNachweis))) {
     fe.push(`wiederholung.vorversuch: genau { ${WH_VORVERSUCH.join(", ")} } (Release-ID, 40 Hex, sha256:<64 hex>, Pfad)`);
@@ -1444,12 +1460,14 @@ function wiederholungSchema(f) {
  * { stagingRoh, abbruchRoh, skriptRoh, baumKandidat, stagingLauf, stagingArtefakt } }. Jede verletzte Bedingung ergibt genau
  * einen Grund „WH<n>: …“ (fail-closed). Liefert { gruende, belege }.
  *   WH1 Pfad: Basis aus ohneRevisionslabel, keine erstwechselAusnahme zugleich
- *   WH2 Vorversuch ≠ neuer Versuch (Release-ID, Kandidat, Digest; Vorversuch-Digest ≠ Basis)
+ *   WH2 neuer Versuch: eigene Release-ID, eigens vergebene Versuchskennung; gleicher Kandidat/Digest nur bei ursache.aenderung
+ *       „keine“, sonst anderer Commit und Digest zwingend; Beleg der Ursachenbehebung in HEAD; Vorversuch-Digest ≠ Basis
  *   WH3 Abbruchbeleg des Vorversuchs in HEAD (Abbruch-ID nach A.8, releaseId/kandidat/digest gleich, zeit nicht in der Zukunft)
  *   WH4 ausdrückliche Betreiberfreigabe: fester Wortlaut, Datum nicht vor dem Abbruch und nicht in der Zukunft, keine Platzhalter
  *   WH5 Staging-Nachweis am NEUEN Digest (wie E6, ≤ 7 Tage, nach dem Abbruch erstellt, Migrationsnachweis Pflicht)
- *   WH6 Lauf-API und Artefakt-Bytes (wie E7)
- *   WH7 dieser Versuch noch nicht genutzt (keine Nachhol- oder Abbruchspur des aktuellen Release in HEAD und Geschichte)
+ *   WH6 Lauf-API und Artefakt-Bytes (wie E7), Lauf nach dem Abbruch gestartet
+ *   WH7 dieser Versuch noch nicht genutzt (keine Nachhol- oder Abbruchspur des aktuellen Release in HEAD und Geschichte);
+ *       Versuchskennung in keiner anderen Freigabedatei (HEAD oder Geschichte)
  *   WH8 Vier-Augen wie E14 (Freigabe-PR mit Code-Owner-Freigabe des Inhabers ≠ Autor, Rulesets, CODEOWNERS)
  * Ungültiges Feld (auch beim direkten Aufruf): WH0.
  */
@@ -1460,7 +1478,7 @@ export function wiederholungPruefen(k, konfig = KONFIG_STANDARD) {
   // Review #600 C-2: nie werfen — ohne gültiges Feld ein Grund (fail-closed), auch beim direkten Aufruf
   const schema = wiederholungSchema({ wiederholung: f.wiederholung ?? null });
   if (schema.length) return { gruende: [`WH0: Feld wiederholung ungültig: ${schema.join("; ")}`], belege: [] };
-  const w = f.wiederholung, v = w.vorversuch, fr = w.freigabe, st = w.staging;
+  const w = f.wiederholung, v = w.vorversuch, fr = w.freigabe, st = w.staging, u = w.ursache;
   const x = istObjekt(k.wh) ? k.wh : {};
   const gruende = [];
   const pruef = (id, fehler) => { const fe = fehler.filter(Boolean); if (fe.length) gruende.push(`${id}: ${fe.join("; ")}`); };
@@ -1472,11 +1490,22 @@ export function wiederholungPruefen(k, konfig = KONFIG_STANDARD) {
     wenn(typeof basisDigest === "string", `Basis ${k.basis} ist kein Bild aus ohneRevisionslabel — Wiederholung gilt nur für einen Erstwechsel`),
     wenn(f.erstwechselAusnahme === undefined, "erstwechselAusnahme zugleich gesetzt — die verbrauchte Ausnahme wird nie wiederverwendet; Wiederholung ist ein eigener Pfad"),
   ]);
+  // WH2 (Präzisierung 2026-11-27): neuer Auslieferungsversuch ≠ neue Softwareversion. Gleicher Kandidat und Digest sind
+  // zulässig, wenn die Ursache ohne Änderung behoben ist („keine“); verlangt die Ursache eine Änderung an Produkt, Image
+  // oder sicherheitsrelevanten Bestandteilen, sind ein anderer Commit und ein anderer Digest zwingend. Keine künstliche
+  // Unterschiedsanforderung. Die Versuchskennung ist eigens vergeben und nicht aus Release-ID, Commit oder Digest abgeleitet.
+  const aenderung = u.aenderung !== "keine";
+  const kurzHex = [k.kandidat, k.digest, v.kandidatCommit, v.digest].filter((h) => typeof h === "string")
+    .map((h) => h.replace(/^sha256:/, "").slice(0, 7).toLowerCase()).filter((h) => /^[0-9a-f]{7}$/.test(h));
   pruef("WH2", [
-    wenn(v.releaseId !== k.releaseId, `vorversuch.releaseId ${v.releaseId} = --release-id (neuer Versuch braucht eine neue Release-ID)`),
-    wenn(v.kandidatCommit !== k.kandidat, "vorversuch.kandidatCommit = Kandidat (kein neuer Kandidat)"),
-    wenn(v.digest !== k.digest, `Kandidaten-Digest ${k.digest} = Digest des Vorversuchs (kein neues Bild)`),
+    wenn(v.releaseId !== k.releaseId, `vorversuch.releaseId ${v.releaseId} = --release-id (jeder Versuch hat eine eigene Release-ID für Freigabedatei und Ablage)`),
+    wenn(![k.releaseId, v.releaseId].includes(w.versuch), `versuch ${w.versuch} = Release-ID (Versuchskennung eigens vergeben, nicht abgeleitet)`),
+    wenn(!kurzHex.some((h) => w.versuch.toLowerCase().includes(h)), `versuch ${w.versuch} enthält Commit oder Digest (nicht daraus ableitbar)`),
+    wenn(!aenderung || v.kandidatCommit !== k.kandidat, `ursache.aenderung ${u.aenderung}: anderer Commit zwingend, Kandidat = Kandidat des Vorversuchs`),
+    wenn(!aenderung || v.digest !== k.digest, `ursache.aenderung ${u.aenderung}: anderer Digest zwingend, ${k.digest} = Digest des Vorversuchs`),
+    wenn(aenderung || (v.kandidatCommit === k.kandidat) === (v.digest === k.digest), "ursache.aenderung keine, aber nur Commit oder nur Digest verschieden (Kandidat und Bild passen nicht zusammen)"),
     wenn(v.digest !== basisDigest, "vorversuch.digest = Bild der Basis"),
+    wenn(x.behebungVorhanden === true, `ursache.behebung ${u.behebung} fehlt in HEAD (Beleg der Ursachenbehebung)`),
   ]);
 
   // WH3: Abbruchbeleg des Vorversuchs (Format wie abbruch-A-VOR.json: id, releaseId, kandidat, digest, zeit; weitere Felder frei)
@@ -1501,15 +1530,15 @@ export function wiederholungPruefen(k, konfig = KONFIG_STANDARD) {
   pruef("WH3", wh3);
 
   // WH4: ausdrückliche Betreiberfreigabe dieses Versuchs (kein Default, nie aus anderen Angaben abgeleitet)
-  const werte = { releaseId: k.releaseId, kandidat: k.kandidat, digest: k.digest, basis: k.basis, vorRelease: v.releaseId,
-    vorKandidat: v.kandidatCommit, vorDigest: v.digest, abbruch: v.abbruchNachweis };
+  const werte = { versuch: w.versuch, releaseId: k.releaseId, kandidat: k.kandidat, digest: k.digest, basis: k.basis, vorRelease: v.releaseId,
+    vorKandidat: v.kandidatCommit, vorDigest: v.digest, abbruch: v.abbruchNachweis, behebung: u.behebung, aenderung: u.aenderung };
   const quittung = cw.quittungVorlage.replace(/\{(\w+)\}/g, (_, n) => String(werte[n]));
   const freigabeTag = Date.parse(`${fr.datum}T00:00:00Z`);
   pruef("WH4", [
     wenn(fr.quittung === quittung, "freigabe.quittung weicht vom festen Wortlaut ab (ausdrückliche Betreiberfreigabe genau dieses Versuchs)"),
     wenn(Number.isFinite(abZeit) && tagesEnde(fr.datum) > abZeit, "freigabe.datum liegt vor dem Abbruch des Vorversuchs (oder Abbruchzeit unbekannt)"),
     wenn(Number.isFinite(freigabeTag) && freigabeTag <= k.jetztMs, "freigabe.datum liegt in der Zukunft"),
-    ...[fr.freigegebenDurch, fr.datum, v.abbruchNachweis, st.nachweis].filter((t) => PLATZHALTER.some((m) => m.test(t)))
+    ...[fr.freigegebenDurch, fr.datum, w.versuch, u.behebung, v.abbruchNachweis, st.nachweis].filter((t) => PLATZHALTER.some((m) => m.test(t)))
       .map((t) => `Platzhalter: ${String(t).slice(0, 40)}`),
   ]);
 
@@ -1557,6 +1586,8 @@ export function wiederholungPruefen(k, konfig = KONFIG_STANDARD) {
     wenn(lauf.path === c.stagingWorkflow, `path ${lauf.path} ≠ ${c.stagingWorkflow}`),
     wenn(lauf.event === "workflow_dispatch", `event ${lauf.event} ≠ workflow_dispatch`),
     wenn(lauf.status === "completed" && lauf.conclusion === "success", `Lauf ${lauf.status}/${lauf.conclusion}, erwartet completed/success`),
+    // auch bei gleichem Digest: nur ein Lauf, der nach dem Abbruch gestartet wurde (kein Replay des Vorversuch-Laufs)
+    wenn(Number.isFinite(abZeit) && Date.parse(lauf.run_started_at ?? lauf.created_at ?? "") > abZeit, "Lauf nicht nach dem Abbruch des Vorversuchs gestartet (run_started_at) — kein neuer Lauf"),
     wenn(lauf.head_sha === k.kandidat || (schnitt !== null && lauf.head_sha === schnitt), `head_sha ${lauf.head_sha} ist weder Kandidat noch Schnitt`),
     wenn(!nw || nw.laufCommit === lauf.head_sha, "head_sha ≠ laufCommit des Nachweises"),
     wenn(rohN !== null && Array.isArray(x.stagingArtefakt) && x.stagingArtefakt.some((b) => Buffer.from(b).equals(rohN)),
@@ -1570,7 +1601,12 @@ export function wiederholungPruefen(k, konfig = KONFIG_STANDARD) {
   pruef("WH7", [spur === undefined ? "Spuren des aktuellen Release nicht ermittelt (fail-closed)"
     : spur === null ? null
       : spur.unklar ? `Spuren des aktuellen Release nicht prüfbar: ${spur.text}`
-        : `Wiederholung ${k.releaseId} schon genutzt (${spur.text}) — weiterer Versuch nur als neue Release-ID mit ${k.releaseId} als Vorversuch und neuer Freigabe`]);
+        : `Wiederholung ${k.releaseId} schon genutzt (${spur.text}) — weiterer Versuch nur als neue Release-ID mit ${k.releaseId} als Vorversuch und neuer Freigabe`,
+    // Versuchskennung einmalig: keine andere Freigabedatei (HEAD oder Geschichte) trägt dieselbe Kennung
+    ...(!Array.isArray(x.versuche) ? ["Versuchskennungen in HEAD und Geschichte nicht ermittelbar (fail-closed)"]
+      : [...new Set(x.versuche.filter((y) => istObjekt(y) && y.versuch === w.versuch && y.datei !== `${konfig.freigabeVerzeichnis}/${k.releaseId}.freigabe.json`).map((y) => y.datei))]
+        .map((d) => `Versuchskennung ${w.versuch} schon verwendet (${d}) — jede Kennung gilt für genau einen Versuch`)),
+  ]);
   // WH8 (Review #600 C-1, wie E14): Freigabe-PR mit Code-Owner-Freigabe durch den Inhaber (≠ Autor, letzter Kopf), Rulesets, CODEOWNERS
   pruef("WH8", vierAugenGruende(x.vierAugen, x.codeowners, konfig, []));
 
@@ -2251,6 +2287,32 @@ function fassungenLesen(w, pfad) {
 const ABBRUCH_VOR = /^abbruch-A-VOR(?:-[1-9]\d{0,2})?\.json$/;
 
 /**
+ * RST-5 Wiederholung (WH7): Versuchskennung jeder Freigabedatei in HEAD und in jeder früheren Fassung (Geschichte von HEAD).
+ * Offline: HEAD aus --wurzel, Geschichte aus fixture.wiederholung.versucheGeschichte ([{ datei, versuch }]). null = nicht
+ * ermittelbar (fail-closed).
+ */
+function versucheSammeln(e, hq, { online, wurzel: w, fx }, konfig) {
+  const verz = `${konfig.freigabeVerzeichnis}/`;
+  const muster = { test: (y) => typeof y === "string" && y.startsWith(verz) && !y.slice(verz.length).includes("/") && y.endsWith(".freigabe.json") };
+  if (!Array.isArray(e.releaseDateien)) return null;
+  const aus = [];
+  const nehmen = (datei, text) => { const j = jsonLesen(text).wert; if (istObjekt(j) && istObjekt(j.wiederholung) && typeof j.wiederholung.versuch === "string") aus.push({ datei, versuch: j.wiederholung.versuch }); };
+  for (const p of e.releaseDateien.filter((y) => muster.test(y))) nehmen(p, hq.lesen(p));
+  if (!online) {
+    const g = istObjekt(fx.wiederholung) ? fx.wiederholung.versucheGeschichte : undefined;
+    if (!Array.isArray(g)) return null;
+    return [...aus, ...g.filter((y) => istObjekt(y) && typeof y.datei === "string" && typeof y.versuch === "string")];
+  }
+  if (geschichteGekuerzt(w)) return null;
+  try {
+    const pfade = [...new Set(git(w, ["log", "--full-history", "--no-renames", "--format=", "--name-only", "HEAD", "--", konfig.freigabeVerzeichnis])
+      .split("\n").filter((y) => muster.test(y)))];
+    for (const p of pfade) for (const b of fassungenLesen(w, p)) nehmen(p, Buffer.from(b).toString("utf8"));
+  } catch { return null; }
+  return aus;
+}
+
+/**
  * RST-5 Wiederholung: Angaben für WH3, WH5, WH6. Dateien nur aus HEAD (Staging-Nachweis, Abbruchbeleg) bzw. dem Kandidaten
  * (Skript); offline Git/Netz aus fixture.wiederholung { baumKandidat, stagingLauf, stagingArtefakt (Base64) }.
  */
@@ -2264,6 +2326,8 @@ function wiederholungSammeln(e, kq, hq, ctx, konfig) {
     skriptRoh: kq.lesenRoh(c.stagingSkript),
     codeowners: kq.lesen(".github/CODEOWNERS"),
     spur: ausnahmeSpur(hq, e.releaseId, ctx, konfig), // WH7: offline aus fixture.nachhol[<releaseId>]
+    behebungVorhanden: pfadSicher(wh.ursache?.behebung) ? hq.gibt(wh.ursache.behebung) === true : false,
+    versuche: versucheSammeln(e, hq, ctx, konfig), // WH7: Versuchskennungen aller Freigabedateien (HEAD und Geschichte)
   };
   if (!online) {
     const f = istObjekt(fx.wiederholung) ? fx.wiederholung : {};
@@ -2471,13 +2535,20 @@ function ausnahmeSpur(hq, releaseId, { online, wurzel: w, fx }, konfig) {
   return pfade.length ? { unklar: false, text: pfade.slice(0, 5).join(", ") } : null;
 }
 
-/** RST-5 Wiederholung: liegt in HEAD ein gültiger Abbruchbeleg dieses Release (id nach A.8, releaseId gleich)? */
-function abbruchBelegt(e, hq, releaseId, konfig) {
+/**
+ * RST-5 Wiederholung: liegt in HEAD ein gültiger Abbruchbeleg dieses Release? id nach A.8, releaseId gleich, kandidat
+ * (40 Hex) und digest (sha256:<64 hex>) gleich denen seiner Freigabedatei (fv), zeit lesbar und nicht in der Zukunft
+ * (Delta-Review #600 C-c).
+ */
+function abbruchBelegt(e, hq, releaseId, konfig, fv) {
   const relVerz = `${konfig.freigabeVerzeichnis}/${releaseId}/`;
   const ids = konfig.erstwechselAusnahme.widerrufbuchProbe.abbruchBedingungen;
-  return (Array.isArray(e.releaseDateien) ? e.releaseDateien : []).filter((p) => p.startsWith(relVerz) && /^abbruch-[A-Za-z0-9._-]+.json$/.test(p.slice(relVerz.length)))
+  return (Array.isArray(e.releaseDateien) ? e.releaseDateien : []).filter((p) => p.startsWith(relVerz) && /^abbruch-[A-Za-z0-9._-]+\.json$/.test(p.slice(relVerz.length)))
     .some((p) => { const roh = hq.lesenRoh(p); const j = roh ? jsonLesen(Buffer.from(roh).toString("utf8")).wert : null;
-      return istObjekt(j) && j.releaseId === releaseId && typeof j.id === "string" && ids.includes(j.id); });
+      const zeit = istObjekt(j) && typeof j.zeit === "string" ? Date.parse(j.zeit) : NaN;
+      return istObjekt(j) && j.releaseId === releaseId && typeof j.id === "string" && ids.includes(j.id) && istObjekt(fv) &&
+        hex40(j.kandidat) && j.kandidat === fv.kandidatCommit && typeof j.digest === "string" && DIGEST.test(j.digest) && j.digest === fv.digest &&
+        Number.isFinite(zeit) && Number.isFinite(e.jetztMs) && zeit <= e.jetztMs; });
 }
 
 function rueckhaltSammeln(e, hq, ctx, konfig) {
@@ -2491,10 +2562,10 @@ function rueckhaltSammeln(e, hq, ctx, konfig) {
       // nie eine Datei unter <id>/nachhol/ oder <id>/abbruch-* in HEAD oder seiner Geschichte)
       const spur = ausnahmeSpur(hq, releaseId, ctx, konfig);
       // H-2: „nicht prüfbar“ und „Spuren gefunden“ getrennt melden (beide NO-GO)
-      if (spur) aus.push({ datei, releaseId, art: spur.unklar ? "unklar" : "spur", abbruchBelegt: abbruchBelegt(e, hq, releaseId, konfig), fehler: spur.unklar ? `ohne Ausnahme; Spuren nicht prüfbar: ${spur.text}` : `ohne Ausnahme, aber Spuren einer Nutzung: ${spur.text}` });
+      if (spur) aus.push({ datei, releaseId, art: spur.unklar ? "unklar" : "spur", abbruchBelegt: abbruchBelegt(e, hq, releaseId, konfig, j.wert), fehler: spur.unklar ? `ohne Ausnahme; Spuren nicht prüfbar: ${spur.text}` : `ohne Ausnahme, aber Spuren einer Nutzung: ${spur.text}` });
       continue;
     }
-    aus.push({ datei, releaseId, daten: nachholDaten(hq, releaseId, ctx, konfig), abbruchBelegt: abbruchBelegt(e, hq, releaseId, konfig) });
+    aus.push({ datei, releaseId, daten: nachholDaten(hq, releaseId, ctx, konfig), abbruchBelegt: abbruchBelegt(e, hq, releaseId, konfig, j.wert) });
   }
   return aus;
 }
