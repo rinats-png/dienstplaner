@@ -48,7 +48,7 @@ const lies = (d) => readFileSync(path.join(WURZEL, d), "utf8").replace(/\r\n/g, 
 
 /** WP-I16: Ausnahmeliste „neu seit der Basis, ohne Literale“: Dateien, die es auf der Basis nicht gab und deshalb nicht in der
  *  (historischen, unveränderten) Fixture stehen. Genau eine Datei, 0 Form-/Farbliterale (Test unten prüft beides). */
-const NEU_SEIT_BASIS = Object.freeze(["src/ansichten/ki-steuerung.jsx"]);
+const NEU_SEIT_BASIS = Object.freeze(["src/ansichten/ki-steuerung.jsx", "src/ansichten/anheftungen.jsx"]);
 
 /** Basis des Schnitts (origin/integration/release-v4 mit V4-3b Schnitt 1–11, #465). */
 const BASIS = "63a3469b";
@@ -182,11 +182,11 @@ describe("V4-3b Querschnitt Teil 1: Messung", () => {
     const e = jeHauptansicht(inv)[ZEILE];
     /* WP-I16: +1 Datei src/ansichten/ki-steuerung.jsx (154 Zeilen, keine Form-/Farbliterale; Fixture-Eintrag sha256 null,
        erzeugt mit werkzeug/v4-radiusstufen-basis.mjs). Vorher 33 / 24 / 6408. */
-    expect(e.dateien).toBe(34);
-    expect(e.sichtbar).toBe(25);
-    expect(e.zeilen).toBe(6562); /* V4-3d-B1: +17 Zeilen in src/ui/bausteine.jsx (vorher 6391) */
+    expect(e.dateien).toBe(35); /* WP-I7 Teil 6: +anheftungen.jsx (vorher 34) */
+    expect(e.sichtbar).toBe(26); /* vorher 25 */
+    expect(e.zeilen).toBe(6608); /* V4-3d-B1: +17 Zeilen in src/ui/bausteine.jsx (vorher 6391); WP-I7 Teil 6: +46 anheftungen.jsx (vorher 6562) */
     expect(e.farbLiterale).toBe(10);
-    expect(e.farbrein).toBe(20); /* WP-I16: +ki-steuerung.jsx (vorher 19) */
+    expect(e.farbrein).toBe(21); /* WP-I16: +ki-steuerung.jsx (vorher 19); WP-I7 Teil 6: +anheftungen.jsx (vorher 20) */
     expect(e.inlineStil).toBe(452); /* WP-I16: +24 Inline-Stile in ki-steuerung.jsx (vorher 428; vorgaben.jsx hat 30) */
     expect(e.dialog).toBe(12);
     /* Stand der Zeile nach Teil 1 (gemessen auf a9e524e5): Form-Literale 24, Form 18/24 (10 / 5 / 3), „voll V4“ 9/24,
@@ -230,7 +230,8 @@ describe("V4-3b Querschnitt Teil 1: Messung", () => {
     const inv = await inventar();
     const alle = inv.eintraege.filter((x) => x.gruppe !== "V4" && hauptansicht(x) === ZEILE).map((x) => x.datei).sort();
     /* WP-I16: Ausnahmeliste genau eine Datei; in der Fixture nicht vorhanden, in der Messung ohne jedes Form- oder Farbliteral. */
-    expect(NEU_SEIT_BASIS).toEqual(["src/ansichten/ki-steuerung.jsx"]);
+    /* WP-I7 Teil 6: + src/ansichten/anheftungen.jsx (Anzeige Anheften, 46 Zeilen, ohne Form-/Farbliterale und ohne Inline-Stile). */
+    expect(NEU_SEIT_BASIS).toEqual(["src/ansichten/ki-steuerung.jsx", "src/ansichten/anheftungen.jsx"]);
     for (const d of NEU_SEIT_BASIS) {
       expect(d in fx.schnitte[SCHNITT].dateien, `${d} steht nicht in der Fixture`).toBe(false);
       const x = inv.eintraege.find((y) => y.datei === d);

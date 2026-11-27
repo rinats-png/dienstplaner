@@ -522,6 +522,10 @@ export function raeumen(m, heuteIso, { module = BRANCHENMODULE, regeln = {} } = 
     }
     gekuerzt[feld] = neu;
   }
+  /* Anheften (WP-I7 Teil 6, Review #602 B-1/C1): Die Karte „Person|Tag“ geht mit der Plandatenfrist wie die Einteilung selbst (nur nach
+     Datum; Anonymisierung lässt den Schlüssel pseudonym, wie in abweichungen). Eine unlesbare Karte bleibt liegen (nie still löschen). */
+  if (istObjekt(m.angeheftet))
+    gekuerzt.angeheftet = Object.fromEntries(Object.entries(m.angeheftet).filter(([k]) => { const tag = tagVon(k); return !(tag && tag < st.plan); }));
   const personenNeu = (m.personen || []).map((p) => (faellig.has(p.id)
     ? { ...anonymisiere(p), anonymSeit: heuteIso } : p));
   /* Personalangaben im Freeze (WP-16, Nachtrag dritter Review H-1: `nm` je Person und Monat für die Lohnausgabe)

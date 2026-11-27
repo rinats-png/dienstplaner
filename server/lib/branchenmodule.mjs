@@ -874,6 +874,8 @@ export function branchenmoduleZusammen(altM, neuM, sitzung, darfOrgEdit, liste =
   return fertig();
 }
 
+/** Anheften (WP-I7 Teil 6, anheften.mjs): Art des Eintrags im Modulprotokoll → Text der Zeile im Betriebsprotokoll. */
+const ANHEFTEN_PROTOKOLL_TEXT = Object.freeze({ "anheften-gesetzt": "angeheftet", "anheften-geloest": "gelöst", "anheften-aufgehoben": "durch Änderung nicht mehr angeheftet" });
 /** Interne Vorgaben (WP-I4, vorgaben.mjs): Art des Eintrags im Modulprotokoll → Text der Zeile im Betriebsprotokoll. */
 const VORGABEN_PROTOKOLL_TEXT = Object.freeze({ "vorgabe-angelegt": "angelegt", "vorgabe-aktiviert": "aktiviert", "vorgabe-deaktiviert": "deaktiviert",
   "vorgabe-geaendert": "geändert", "vorgabe-geloescht": "gelöscht (Entwurf)" });
@@ -924,6 +926,11 @@ export function modulProtokollZeilen(altB, neuB) {
       else if (x.art === "mitbestimmung") zeilen.push(`Branchenmodul ${kennung(x.modul)}: Mitbestimmung erneut bestätigt`);
       else if (x.art === "parameter") zeilen.push(`Branchenmodul ${kennung(x.modul)}: Parameter geändert`);
       else if (x.modul === "vorgaben" && VORGABEN_PROTOKOLL_TEXT[x.art]) zeilen.push(`Interne Vorgabe ${kennung(x.regelId)} ${VORGABEN_PROTOKOLL_TEXT[x.art]}`);
+      else if (x.modul === "anheften" && ANHEFTEN_PROTOKOLL_TEXT[x.art]) {
+        /* Nur Zahl und Rolle — kein Person|Tag (WP-I7 Teil 6). */
+        const n = Number.isInteger(x.anzahl) && x.anzahl > 0 ? x.anzahl : 0;
+        zeilen.push(`Anheften: ${n} ${n === 1 ? "Einteilung" : "Einteilungen"} ${ANHEFTEN_PROTOKOLL_TEXT[x.art]} (${x.von === "planer" ? "die Planung" : hat(DURCH, x.von) ? DURCH[x.von] : "andere Rolle"})`);
+      }
       else if (x.art === BEREICH_PROTOKOLL_ART) {
         /* Nur die Zahl — keine Person, kein Tag, kein Bereich (WP-14b, M1). */
         const n = Number.isInteger(x.anzahl) && x.anzahl > 0 ? x.anzahl : 0;
@@ -1058,6 +1065,8 @@ export function moduleinstellungenSicht(e, rolle, vorgabenBetriebsrat = false) {
     /* Ebenso der Vermerk ihrer Archivierung durch die Leitung (E7, A12) und der Lückenvermerk (E1, Review #590 B-2). */
     if (hat(e, "modulprotokoll")) aus.modulprotokoll = modulprotokollPositiv(e.modulprotokoll.filter((x) => !istObjekt(x) || (x.art !== BEREICH_PROTOKOLL_ART && x.art !== BEREICH_ARCHIV_ART && x.art !== BEREICH_LUECKE_ART))
       .filter((x) => !istObjekt(x) || x.modul !== "vorgaben" || vorgabenBetriebsrat === true)
+      /* Anheften (WP-I7 Teil 6): Planungsvorgänge, nicht für den Betriebsrat (vorläufig, wie die Karte selbst). */
+      .filter((x) => !istObjekt(x) || x.modul !== "anheften")
       .map((x) => (istObjekt(x) && x.modul === "vorgaben" ? ohne(x, ["von"]) : x)));
     return aus;
   }

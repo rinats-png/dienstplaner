@@ -25,6 +25,7 @@ import { sperrtBefund as sperrtArt } from "../bestaetigungen.mjs";
 import { memo, besetzung, personTag, abwesenheitAm, abwArt, stundenkonto, istStunden, nachweisStand, qualGueltig } from "./plan.mjs";
 import { heute } from "./zeit.mjs";
 import { n1, DOW } from "./textformat.mjs";
+import { anheftungenLesen, anheftungSperrt } from "./anheften.mjs";
 
 /* Rang der Warnstufen (src/warnstufen.js hält dieselbe Tabelle mit Beschriftung; Test: gleicher Rang). */
 const STUFEN_RANG = { hinweis: 1, achtung: 2, recht: 3 };
@@ -384,12 +385,16 @@ export function ersatzVorschlaege(m, d, dienstId, ctx, opt) {
      Geprüft wird in stabiler Reihenfolge der Personenkennung, nicht der Eingabe: Ist das gemeinsame Budget (WP-I5) aufgebraucht,
      trifft es immer dieselben Personen. */
   const eingabe = new Map(m.personen.map((x, i) => [x, i]));   // gleichstarke Ergebnisse behalten die Reihenfolge der Eingabe
+  /* Anheften (WP-I7 Teil 6): an einem angehefteten Tag (auch „frei“) schlägt die Suche die Person nicht vor — die Automatik (planeMonat,
+     Planer) setzt dort nichts; unlesbare Karte: niemand (fail closed, anheften.mjs). Eine manuelle Änderung hebt die Anheftung auf (Server). */
+  const anh = anheftungenLesen(m);
   const out = [];
   for (const p of [...m.personen].sort((a, b2) => (String(a.id) < String(b2.id) ? -1 : String(a.id) > String(b2.id) ? 1 : 0))) {
     const t = personTag(m, p, d);
     if (t.dienstId) continue;                      // hat bereits Dienst
     const bef = hindernisBefunde(m, p, d, da, { vorgabenBudget, vorgabenAutomatisch });
     const g = bef.filter((b) => stufeRang(b.stufe) >= 2).map((b) => b.text);
+    if (anheftungSperrt(anh, p.id, d)) g.push(anh.ok ? "Einteilung an diesem Tag angeheftet" : "Anheftungen nicht lesbar");
     const kto = ctx ? (ctx.konten.has(p.id) ? ctx.konten.get(p.id) : 0) : stundenkonto(m, p, ym);
     const eigene = ctx ? (ctx.einspruenge[p.id] || 0) : (einspruengeJe[p.id] || 0);
     const passendeQuals = fehlendeQuals.filter((q) => qualGueltig(m, p, q));
