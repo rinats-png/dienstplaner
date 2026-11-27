@@ -49,16 +49,21 @@ export const KI_ROLLEN_AUSLOESEN = Object.freeze(["leitung", "planer", "mitarbei
 export const KI_GESPERRT = Object.freeze({ F7A: "serverseitige Maskierung der Tabelle vor der Leck-Prüfung fehlt" });
 
 export const KI_FELD = "kiSteuerung";
-const KI_TEILE = Object.freeze(["betrieb", "funktion", "frage", "pauseAufheben", "pauseSetzen", "leitungPause", "planerModus"]);
+const KI_TEILE = Object.freeze(["betrieb", "funktion", "frage", "pauseAufheben", "pauseSetzen", "leitungPause", "planerModus", "planerSchalter"]);
 /** Betriebsmodus der Planer-Funktion (WP-I7 Teil 5, Betreiberentscheidung 26.11.): aus, nur auf Knopfdruck, automatisch. Gespeichert in
     `kiSteuerung.planerModus` ({ modus, am, vonRolle, vonPerson }); ändern darf nur die Leitung. Ein fehlender oder unbekannter Wert ist
     hier nie „automatisch“: was gilt, sagt planerModusWirksam (engine/planer.mjs; Vorgabe AUS bis zur Freigabe). */
 export const KI_PLANER_MODI = Object.freeze(["aus", "knopfdruck", "automatisch"]);
+/** Eigener Schalter des deterministischen Planers je Betrieb (WP-I7 Teil 6, Betreiberentscheidung 27.11.): `kiSteuerung.planerSchalter`
+    ({ an, am, vonRolle, vonPerson }), getrennt von den Funktionen mit Modellaufrufen (F13 „Planvorschlag“ bleibt nur die KI-Erklärfunktion).
+    Ändern darf nur die Leitung (nicht Demo). Fehlend oder unlesbar = AUS. Vorrangig bleiben Pause, Hauptschalter und die Frage nach der
+    Mitbestimmungsvertretung (kiPlanerEntscheidung); global PLANER_AN (engine/planer.mjs). */
+export const KI_PLANER_SCHALTER = "planerSchalter";
 export const KI_PROTOKOLL_GRENZE = 200;
 export const KI_FRAGE_ANTWORTEN = Object.freeze(["ja", "nein"]);
 
 export const KI_RECHTE = Object.freeze({
-  leitung: Object.freeze(["betrieb", "funktion", "frage", "pauseAufheben", "leitungPause", "planerModus"]),
+  leitung: Object.freeze(["betrieb", "funktion", "frage", "pauseAufheben", "leitungPause", "planerModus", "planerSchalter"]),
   betriebsrat: Object.freeze(["pauseSetzen"]),
 });
 
@@ -76,12 +81,13 @@ const nrOk = (n) => n === undefined || (Number.isInteger(n) && n >= 0 && n <= 1e
 const pauseOk = (p) => istObjekt(p) && typeof p.aktiv === "boolean" && stempelOk(p) && nrOk(p.nr);
 const nrVon = (p) => (p && Number.isInteger(p.nr) ? p.nr : 0);
 const planerModusOk = (x) => istObjekt(x) && typeof x.modus === "string" && KI_PLANER_MODI.includes(x.modus) && stempelOk(x);
+const schalterOk = (x) => istObjekt(x) && typeof x.an === "boolean" && stempelOk(x);
 
 /**
  * Der gespeicherte Stand, streng gelesen. Alles Ungültige heißt „nicht vorhanden“
  * (also aus); ein einzelner kaputter Eintrag macht nur sich selbst zu „aus“.
  * @param {any} e einstellungen des Betriebs
- * @returns {null | { betrieb: any, funktionen: Record<string, any>, betriebsratFrage: any, pause: any, pauseUngueltig: boolean, leitungPause: any, leitungPauseUngueltig: boolean, planerModus: any, planerModusUngueltig: boolean, protokoll: any[] }}
+ * @returns {null | { betrieb: any, funktionen: Record<string, any>, betriebsratFrage: any, pause: any, pauseUngueltig: boolean, leitungPause: any, leitungPauseUngueltig: boolean, planerModus: any, planerModusUngueltig: boolean, planerSchalter: any, planerSchalterUngueltig: boolean, protokoll: any[] }}
  */
 export function kiSteuerungLesen(e) {
   if (!istObjekt(e) || !hat(e, KI_FELD) || !istObjekt(e[KI_FELD])) return null;
@@ -104,6 +110,8 @@ export function kiSteuerungLesen(e) {
     leitungPauseUngueltig: hat(s, "leitungPause") && !pauseOk(s.leitungPause),
     planerModus: planerModusOk(s.planerModus) ? { ...s.planerModus } : null,
     planerModusUngueltig: hat(s, "planerModus") && !planerModusOk(s.planerModus),
+    planerSchalter: schalterOk(s.planerSchalter) ? { ...s.planerSchalter } : null,
+    planerSchalterUngueltig: hat(s, "planerSchalter") && !schalterOk(s.planerSchalter),
     protokoll: Array.isArray(s.protokoll) ? s.protokoll.filter((x) => istObjekt(x) && typeof x.art === "string" && stempelOk(x)).slice(-KI_PROTOKOLL_GRENZE) : [],
   };
 }
@@ -141,7 +149,8 @@ export function intelligenceEntscheidung(betrieb, funktion, rolle, o = {}) {
 }
 
 /**
- * Der betriebliche Teil der Entscheidung (Schritte 4–7 oben, eine Stelle; auch für den Planer, WP-I7 Teil 5): Pause (auch ein
+ * Der betriebliche Teil der Entscheidung (Schritte 4–7 oben, eine Stelle; der Planer hat seit WP-I7 Teil 6 einen eigenen Schalter,
+ * kiPlanerEntscheidung — F13 schaltet ihn nicht mehr): Pause (auch ein
  * unlesbarer Stand) vor jedem Schalter, Hauptschalter an, Frage nach der Mitbestimmungsvertretung beantwortet („ja“ erst nach
  * aufgehobener Pause), Schalter der Funktion an. Ohne Rolle und Prozessschalter (die prüft der Aufrufer). Rein; wirft nie.
  * @param {any} einstellungen @param {string} funktion
@@ -150,17 +159,48 @@ export function intelligenceEntscheidung(betrieb, funktion, rolle, o = {}) {
 export function kiBetriebsEntscheidung(einstellungen, funktion) {
   try {
     if (typeof funktion !== "string" || !KI_FUNKTIONEN.includes(funktion) || hat(KI_GESPERRT, funktion)) return "KI_FUNKTION";
-    if (kiSteuerungUnlesbar(einstellungen)) return "KI_PAUSIERT";
-    const s = kiSteuerungLesen(einstellungen);
-    if (!s) return "KI_AUS";
-    /* Die Pause geht vor jedem Schalter. Ein unlesbarer Pausenstand (vorhanden, aber ungültig) zählt als aktiv. */
-    if (s.pauseUngueltig || (s.pause && s.pause.aktiv === true) || s.leitungPauseUngueltig || (s.leitungPause && s.leitungPause.aktiv === true)) return "KI_PAUSIERT";
-    if (!s.betrieb || s.betrieb.an !== true) return "KI_AUS";
-    if (!s.betriebsratFrage) return "KI_AUS";
-    /* „Ja“: erst nach der ausdrücklichen Aufhebung einer Pause durch die Leitung (vorhanden und aufgehoben) — die „ja“-Pause liegt
-       heute in `leitungPause`, im Altbestand in `pause`; ohne jede aufgehobene Pause bleibt es gesperrt (fail closed). */
-    if (s.betriebsratFrage.antwort === "ja" && !((s.leitungPause && s.leitungPause.aktiv === false) || (s.pause && s.pause.aktiv === false))) return "KI_PAUSIERT";
-    if (!hat(s.funktionen, funktion) || s.funktionen[funktion].an !== true) return "KI_AUS";
+    const v = betriebsVoraussetzungen(einstellungen);
+    if (v.code !== "OK") return v.code;
+    if (!hat(v.s.funktionen, funktion) || v.s.funktionen[funktion].an !== true) return "KI_AUS";
+    return "OK";
+  } catch {
+    return "KI_EINGABE";
+  }
+}
+
+/**
+ * Die gemeinsamen Voraussetzungen des Betriebs (Schritte 4–6, eine Stelle für Funktionen und Planer): Pause (auch ein unlesbarer Stand)
+ * vor jedem Schalter, Hauptschalter an, Frage nach der Mitbestimmungsvertretung beantwortet („ja“ erst nach aufgehobener Pause).
+ * Wirft nur bei Programmfehlern (die Aufrufer fangen).
+ * @param {any} einstellungen
+ * @returns {{ code: "OK" | "KI_AUS" | "KI_PAUSIERT", s: any }}
+ */
+function betriebsVoraussetzungen(einstellungen) {
+  if (kiSteuerungUnlesbar(einstellungen)) return { code: "KI_PAUSIERT", s: null };
+  const s = kiSteuerungLesen(einstellungen);
+  if (!s) return { code: "KI_AUS", s };
+  /* Die Pause geht vor jedem Schalter. Ein unlesbarer Pausenstand (vorhanden, aber ungültig) zählt als aktiv. */
+  if (s.pauseUngueltig || (s.pause && s.pause.aktiv === true) || s.leitungPauseUngueltig || (s.leitungPause && s.leitungPause.aktiv === true)) return { code: "KI_PAUSIERT", s };
+  if (!s.betrieb || s.betrieb.an !== true) return { code: "KI_AUS", s };
+  if (!s.betriebsratFrage) return { code: "KI_AUS", s };
+  /* „Ja“: erst nach der ausdrücklichen Aufhebung einer Pause durch die Leitung (vorhanden und aufgehoben) — die „ja“-Pause liegt
+     heute in `leitungPause`, im Altbestand in `pause`; ohne jede aufgehobene Pause bleibt es gesperrt (fail closed). */
+  if (s.betriebsratFrage.antwort === "ja" && !((s.leitungPause && s.leitungPause.aktiv === false) || (s.pause && s.pause.aktiv === false))) return { code: "KI_PAUSIERT", s };
+  return { code: "OK", s };
+}
+
+/**
+ * Der betriebliche Teil der Entscheidung für den deterministischen Planer (WP-I7 Teil 6, Betreiberentscheidung 27.11.): dieselben
+ * Voraussetzungen wie jede Funktion (Pause, Hauptschalter, Mitbestimmungsfrage; betriebsVoraussetzungen), dann der EIGENE Schalter
+ * `planerSchalter` — nicht F13 (Modellaufrufe). Fehlend oder unlesbar = AUS. Rein; wirft nie.
+ * @param {any} einstellungen
+ * @returns {"OK" | "KI_AUS" | "KI_PAUSIERT" | "KI_EINGABE"}
+ */
+export function kiPlanerEntscheidung(einstellungen) {
+  try {
+    const v = betriebsVoraussetzungen(einstellungen);
+    if (v.code !== "OK") return v.code;
+    if (v.s.planerSchalterUngueltig || !v.s.planerSchalter || v.s.planerSchalter.an !== true) return "KI_AUS";
     return "OK";
   } catch {
     return "KI_EINGABE";
@@ -192,8 +232,10 @@ export function kiSteuerungAnwenden(alt, absicht, sitzung, jetzt) {
     ? { betrieb: alt.betrieb, funktionen: { ...alt.funktionen }, betriebsratFrage: alt.betriebsratFrage, pause: alt.pauseUngueltig ? { aktiv: true, nr: 1, am: jetzt, vonRolle: "system", vonPerson: null } : alt.pause,
       leitungPause: alt.leitungPauseUngueltig ? { aktiv: true, nr: 1, am: jetzt, vonRolle: "system", vonPerson: null } : alt.leitungPause,
       /* Unlesbarer Betriebsmodus: beim nächsten Schreiben AUS (fail closed), nie geraten. */
-      planerModus: alt.planerModusUngueltig ? { modus: "aus", am: jetzt, vonRolle: "system", vonPerson: null } : alt.planerModus, protokoll: [...alt.protokoll] }
-    : { betrieb: null, funktionen: {}, betriebsratFrage: null, pause: null, leitungPause: null, planerModus: null, protokoll: [] };
+      planerModus: alt.planerModusUngueltig ? { modus: "aus", am: jetzt, vonRolle: "system", vonPerson: null } : alt.planerModus,
+      /* Unlesbarer Schalter des Planers: beim nächsten Schreiben AUS (fail closed). */
+      planerSchalter: alt.planerSchalterUngueltig ? { an: false, am: jetzt, vonRolle: "system", vonPerson: null } : alt.planerSchalter, protokoll: [...alt.protokoll] }
+    : { betrieb: null, funktionen: {}, betriebsratFrage: null, pause: null, leitungPause: null, planerModus: null, planerSchalter: null, protokoll: [] };
   const ereignisse = [];
   if (absicht === undefined || absicht === null) return { stand, ereignisse };
   /* Ohne Recht an irgendeinem Teil zählt die Anfrage nicht: Der gespeicherte Stand bleibt (wie branchenmoduleZusammen). */
@@ -275,6 +317,16 @@ export function kiSteuerungAnwenden(alt, absicht, sitzung, jetzt) {
       ereignisse.push({ art: "planermodus", ziel: "planer", wert: w.modus, ...stempel });
     }
   }
+  /* Eigener Schalter des deterministischen Planers (WP-I7 Teil 6): nur die Leitung; erwartet „an“ (wahr oder falsch), sonst abgewiesen.
+     Allein schaltet er nichts frei: Pause, Hauptschalter, Frage und PLANER_AN gehen vor (kiPlanerEntscheidung, planerModusWirksam). */
+  if (hat(absicht, KI_PLANER_SCHALTER) && darfRecht("planerSchalter")) {
+    const w = absicht[KI_PLANER_SCHALTER];
+    if (!istObjekt(w) || (hat(w, "an") && typeof w.an !== "boolean")) return { grund: "Intelligence-Steuerung: Der Schalter des Planers braucht den Wert „an“ (wahr oder falsch)." };
+    if (hat(w, "an") && w.an !== (stand.planerSchalter ? stand.planerSchalter.an : false)) {
+      stand.planerSchalter = { an: w.an, ...stempel };
+      ereignisse.push({ art: w.an ? "planer-an" : "planer-aus", ziel: "planer", wert: w.an, ...stempel });
+    }
+  }
   if (hat(absicht, "funktionen") && darfRecht("funktion")) {
     const w = absicht.funktionen;
     if (!istObjekt(w)) return { grund: "Intelligence-Steuerung: Die Funktionen brauchen je Kennung den Wert „an“." };
@@ -300,6 +352,7 @@ function standFuerAblage(s) {
   if (s.pause) aus.pause = s.pause;
   if (s.leitungPause) aus.leitungPause = s.leitungPause;
   if (s.planerModus) aus.planerModus = s.planerModus;
+  if (s.planerSchalter) aus.planerSchalter = s.planerSchalter;
   if (s.protokoll.length) aus.protokoll = s.protokoll;
   return aus;
 }
@@ -380,7 +433,7 @@ export function kiSteuerungSicht(e, rolle) {
     betrieb: ohnePerson(s2.betrieb),
     funktionen: Object.fromEntries(Object.entries(s2.funktionen).map(([k, v]) => [k, ohnePerson(v)])),
     betriebsratFrage: ohnePerson(s2.betriebsratFrage), pause: ohnePerson(s2.pause), leitungPause: ohnePerson(s2.leitungPause),
-    planerModus: ohnePerson(s2.planerModus), protokoll: s2.protokoll.map(ohnePerson) }) };
+    planerModus: ohnePerson(s2.planerModus), planerSchalter: ohnePerson(s2.planerSchalter), protokoll: s2.protokoll.map(ohnePerson) }) };
 }
 
 /**

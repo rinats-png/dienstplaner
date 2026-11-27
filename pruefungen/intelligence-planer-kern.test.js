@@ -27,7 +27,7 @@ import { writeFileSync, readFileSync } from "node:fs";
 import * as PL from "../server/lib/engine/planer.mjs";
 import { planeVorschlag, nachpruefen, rangVergleich, zufallAus, PLANER_AN, PLANER_GRENZE, PLANER_STANDARD, RANGFOLGE, NICHT_BEWERTET } from "../server/lib/engine/planer.mjs";
 import { neuesVorgabenBudget } from "../server/lib/vorgabenwirkung.mjs";
-import { kiSteuerungZusammen, kiSteuerungSicht, kiPauseAktiv, kiBetriebsEntscheidung } from "../server/lib/ki-steuerung.mjs";
+import { kiSteuerungZusammen, kiSteuerungSicht, kiPauseAktiv, kiBetriebsEntscheidung, kiPlanerEntscheidung, intelligenceEntscheidung, KI_FUNKTIONEN } from "../server/lib/ki-steuerung.mjs";
 import { stufeRang, planbefundeNeu, planbefundAufwandHoechst, PLANBEFUND_GRENZE } from "../server/lib/engine/einsatz.mjs";
 import { ersatzruheBefunde } from "../server/lib/engine/befunde.mjs";
 import { baueLeerenBetrieb } from "../server/lib/leerbetrieb.mjs";
@@ -1100,9 +1100,10 @@ describe("9. Planbefunde im Assistenten und im Planer (Nachtdienste in Folge, §
 describe("10. Betriebsmodus je Betrieb, Planungsreife, Ursache offener Stellen (WP-I7 Teil 5, Betreiberentscheidung 26.11.)", () => {
   const T0 = "2026-11-27T10:00:00.000Z";
   const LEIT = { rolle: "leitung", person: "L1" };
-  /** Freischaltung des Betriebs (Betreiberentscheidung 27.11.): Hauptschalter, Frage beantwortet („nein“), Funktion F13 „Planvorschlag“. */
+  /** Freischaltung des Betriebs (Betreiberentscheidung 27.11.): Hauptschalter, Frage beantwortet („nein“), eigener Planer-Schalter
+      (WP-I7 Teil 6; vorher F13 „Planvorschlag“). */
   const st = { am: T0, vonRolle: "leitung" };
-  const FREI = Object.freeze({ betrieb: { an: true, ...st }, betriebsratFrage: { antwort: "nein", ...st }, funktionen: { F13: { an: true, ...st } } });
+  const FREI = Object.freeze({ betrieb: { an: true, ...st }, betriebsratFrage: { antwort: "nein", ...st }, planerSchalter: { an: true, ...st } });
   const mitSteuerung = (m, k) => ({ ...m, einstellungen: { ...m.einstellungen, kiSteuerung: k } });
   const freigeschaltet = (m) => mitSteuerung(m, structuredClone(FREI));
   const mitModus = (m, modus) => mitSteuerung(m, { ...structuredClone(FREI), planerModus: { modus, ...st } });
@@ -1118,7 +1119,8 @@ describe("10. Betriebsmodus je Betrieb, Planungsreife, Ursache offener Stellen (
     expect(PLANER_AN).toBe(false);
     expect(PL.planerModusWirksam(mitModus({ einstellungen: {} }, "automatisch").einstellungen)).toBe("aus");
     expect(PL.planerModusWirksam({ kiSteuerung: structuredClone(FREI) }, true), "freigeschaltet, kein Modus: Standard").toBe("knopfdruck");
-    expect(PL.PLANER_FUNKTION).toBe("F13");
+    expect(PL.PLANER_SCHALTER).toBe("planerSchalter");
+    expect(PL).not.toHaveProperty("PLANER_FUNKTION");
     for (const w of ["aus", "knopfdruck", "automatisch"]) expect(PL.planerModusWirksam(mitModus({ einstellungen: {} }, w).einstellungen, true)).toBe(w);
     for (const kaputt of [{ planerModus: { modus: "immer", am: T0 } }, { planerModus: { modus: "automatisch" } }, { planerModus: "automatisch" }, { planerModus: null }])
       expect(PL.planerModusWirksam({ kiSteuerung: { ...structuredClone(FREI), ...kaputt } }, true), JSON.stringify(kaputt)).toBe("aus");
@@ -1190,30 +1192,70 @@ describe("10. Betriebsmodus je Betrieb, Planungsreife, Ursache offener Stellen (
     expect(PL.planerEinstieg(freigeschaltet(m), "2026-13", { freigabe: true, knopf: true }).status).toBe("ungueltig");
   }, 300000);
 
-  it("Funktionsschalter des Betriebs (Betreiberentscheidung 27.11.): nur mit Hauptschalter, beantworteter Frage und Funktion F13 an; globale Schalter vorrangig; nur die Leitung schaltet", () => {
+  it("Planer-Schalter des Betriebs (WP-I7 Teil 6, Betreiberentscheidung 27.11.): nur mit Hauptschalter, beantworteter Frage und eigenem Schalter an; globale Schalter vorrangig; nur die Leitung schaltet", () => {
     const m = klein();
     const ohne = (teil) => { const k = structuredClone(FREI); delete k[teil]; return k; };
     const fall = (k) => PL.planerEinstieg(mitSteuerung(m, k), YM, { freigabe: true, knopf: true, zuege: 0 });
     for (const [name, k] of [["ohne Hauptschalter", ohne("betrieb")], ["Hauptschalter aus", { ...structuredClone(FREI), betrieb: { an: false, ...st } }],
-      ["Frage offen", ohne("betriebsratFrage")], ["ohne Funktion", ohne("funktionen")], ["F13 aus", { ...structuredClone(FREI), funktionen: { F13: { an: false, ...st } } }],
-      ["andere Funktion an", { ...structuredClone(FREI), funktionen: { F3: { an: true, ...st } } }], ["F13 ohne Stempel (unlesbar)", { ...structuredClone(FREI), funktionen: { F13: { an: true } } }]]) {
+      ["Frage offen", ohne("betriebsratFrage")], ["ohne Planer-Schalter", ohne("planerSchalter")], ["Planer-Schalter aus", { ...structuredClone(FREI), planerSchalter: { an: false, ...st } }],
+      ["Planer-Schalter ohne Stempel (unlesbar)", { ...structuredClone(FREI), planerSchalter: { an: true } }],
+      ["Planer-Schalter kein Objekt (unlesbar)", { ...structuredClone(FREI), planerSchalter: true }], ["Planer-Schalter null (unlesbar)", { ...structuredClone(FREI), planerSchalter: null }],
+      ["Planer-Schalter an als Text (unlesbar)", { ...structuredClone(FREI), planerSchalter: { an: "true", ...st } }]]) {
       const r = fall(k);
       expect([r.status, r.modus, r.gesetzt.length], name).toEqual(["aus", "aus", 0]);
       expect(r.grund, name).toContain("nicht freigeschaltet");
-      expect(kiBetriebsEntscheidung({ kiSteuerung: k }, "F13"), name).toBe("KI_AUS");
+      expect(kiPlanerEntscheidung({ kiSteuerung: k }), name).toBe("KI_AUS");
       expect(PL.planerModusWirksam(k ? { kiSteuerung: k } : {}, true), name).toBe("aus");
     }
-    /* „Ja“ (Vertretung vorhanden) ohne aufgehobene Pause: pausiert (vorrangig); mit aufgehobener Leitungs-Pause: frei. */
+    /* „Ja“ (Vertretung vorhanden) ohne aufgehobene Pause: pausiert (vorrangig); mit aufgehobener Leitungs-Pause: frei (Voraussetzungen bleiben). */
     expect(fall({ ...structuredClone(FREI), betriebsratFrage: { antwort: "ja", ...st } }).status).toBe("pausiert");
+    expect(kiPlanerEntscheidung({ kiSteuerung: { ...structuredClone(FREI), betriebsratFrage: { antwort: "ja", ...st } } })).toBe("KI_PAUSIERT");
     expect(fall({ ...structuredClone(FREI), betriebsratFrage: { antwort: "ja", ...st }, leitungPause: { aktiv: false, nr: 2, ...st } }).status).toBe("ok");
+    for (const p of [{ pause: { aktiv: true, ...st } }, { leitungPause: { aktiv: true, ...st } }, { pause: "kaputt" }])
+      expect(kiPlanerEntscheidung({ kiSteuerung: { ...structuredClone(FREI), ...p } }), JSON.stringify(p)).toBe("KI_PAUSIERT");
     /* Ohne PLANER_AN/Freigabe nützt auch die volle Freischaltung nichts. */
     expect(PL.planerEinstieg(freigeschaltet(m), YM, { knopf: true }).status).toBe("aus");
-    /* Schreibweg: F13 schaltet nur die Leitung (bestehender Weg der Funktionsschalter). */
+    /* Schreibweg: den Planer-Schalter schaltet nur die Leitung (nicht Demo); Stempel vom Server; ungültig abgewiesen; Sicht des Betriebsrats ohne Person. */
     const alt = { id: "b1", einstellungen: { kiSteuerung: { betrieb: { an: true, ...st }, betriebsratFrage: { antwort: "nein", ...st } } } };
-    const absicht = { id: "b1", einstellungen: { kiSteuerung: { funktionen: { F13: { an: true } } } } };
-    expect(kiSteuerungZusammen(alt, absicht, LEIT, { jetzt: T0 }).mandant.einstellungen.kiSteuerung.funktionen.F13).toMatchObject({ an: true, vonRolle: "leitung" });
-    for (const rolle of ["planer", "betriebsrat", "schichtverantwortung", "mitarbeiter"])
-      expect((kiSteuerungZusammen(alt, absicht, { rolle, person: "x" }, { jetzt: T0 }).mandant.einstellungen.kiSteuerung.funktionen || {}).F13, rolle).toBeUndefined();
+    const absicht = (w) => ({ id: "b1", einstellungen: { kiSteuerung: { planerSchalter: w } } });
+    const ok = kiSteuerungZusammen(alt, absicht({ an: true, am: "gefälscht", vonPerson: "X" }), LEIT, { jetzt: T0 });
+    expect(ok.mandant.einstellungen.kiSteuerung.planerSchalter).toEqual({ an: true, am: T0, vonRolle: "leitung", vonPerson: "L1" });
+    expect(ok.mandant.einstellungen.kiSteuerung.protokoll.map((x) => [x.art, x.ziel, x.wert])).toEqual([["planer-an", "planer", true]]);
+    expect(kiPlanerEntscheidung(ok.mandant.einstellungen)).toBe("OK");
+    for (const rolle of ["planer", "betriebsrat", "schichtverantwortung", "mitarbeiter", "kunde", "betreiber"])
+      expect(kiSteuerungZusammen(alt, absicht({ an: true }), { rolle, person: "x" }, { jetzt: T0 }).mandant.einstellungen.kiSteuerung.planerSchalter, rolle).toBeUndefined();
+    expect(kiSteuerungZusammen(alt, absicht({ an: true }), { ...LEIT, demo: true }, { jetzt: T0 }).mandant.einstellungen.kiSteuerung.planerSchalter, "Demo").toBeUndefined();
+    for (const w of [{ an: "ja" }, "an", null]) expect(kiSteuerungZusammen(alt, absicht(w), LEIT, { jetzt: T0 }).grund, JSON.stringify(w)).toContain("Schalter des Planers");
+    expect(kiSteuerungSicht(ok.mandant.einstellungen, "betriebsrat").kiSteuerung.planerSchalter).toEqual({ an: true, am: T0, vonRolle: "leitung" });
+    const kaputt = { id: "b1", einstellungen: { kiSteuerung: { planerSchalter: { an: true } } } };
+    expect(kiSteuerungZusammen(kaputt, { id: "b1", einstellungen: { kiSteuerung: { betriebsratFrage: { antwort: "nein" } } } }, LEIT, { jetzt: T0 })
+      .mandant.einstellungen.kiSteuerung.planerSchalter, "unlesbar: beim nächsten Schreiben AUS").toMatchObject({ an: false, vonRolle: "system" });
+  }, 300000);
+
+  it("Doppelnutzung F13 aufgelöst (Betreiberentscheidung 27.11.): F13 an allein gibt den Planer nicht frei, F13 aus sperrt ihn nicht; F13 und andere Funktionen entscheiden wie bisher", () => {
+    const m = klein();
+    const fall = (k) => PL.planerEinstieg(mitSteuerung(m, k), YM, { freigabe: true, knopf: true, zuege: 0 });
+    const nurF13 = { betrieb: { an: true, ...st }, betriebsratFrage: { antwort: "nein", ...st }, funktionen: { F13: { an: true, ...st } } };
+    const r1 = fall(nurF13);
+    expect([r1.status, r1.modus, r1.gesetzt.length], "F13 an, ohne Planer-Schalter").toEqual(["aus", "aus", 0]);
+    expect(kiBetriebsEntscheidung({ kiSteuerung: nurF13 }, "F13"), "F13 selbst bleibt frei").toBe("OK");
+    const r2 = fall({ ...structuredClone(FREI), funktionen: { F13: { an: false, ...st } } });
+    expect([r2.status, r2.modus], "F13 aus, Planer-Schalter an").toEqual(["ok", "knopfdruck"]);
+    expect(r2.gesetzt.length).toBeGreaterThan(0);
+    /* Golden: Der Planer-Schalter ändert die Entscheidung keiner Funktion (intelligenceEntscheidung) — alle Funktionen, Rollen und Stände. */
+    const staende = [{}, { kiSteuerung: nurF13 }, { kiSteuerung: { ...nurF13, betriebsratFrage: { antwort: "ja", ...st } } },
+      { kiSteuerung: { ...nurF13, pause: { aktiv: true, ...st } } }, { kiSteuerung: { ...nurF13, funktionen: { F3: { an: true, ...st }, F13: { an: false, ...st } } } },
+      { kiSteuerung: { betriebsratFrage: { antwort: "nein", ...st } } }, { kiSteuerung: "kaputt" }];
+    let n = 0;
+    for (const e of staende) for (const f of [...KI_FUNKTIONEN, "F99"]) for (const rolle of ["leitung", "planer", "mitarbeiter", "betriebsrat"]) for (const prozess of ["an", "aus"]) {
+      const ohneS = intelligenceEntscheidung({ einstellungen: e }, f, rolle, { prozess });
+      for (const ps of [{ an: true, ...st }, { an: false, ...st }, "kaputt"]) {
+        const mitS = e.kiSteuerung && typeof e.kiSteuerung === "object" ? { kiSteuerung: { ...e.kiSteuerung, planerSchalter: ps } } : e;
+        expect(intelligenceEntscheidung({ einstellungen: mitS }, f, rolle, { prozess }), `${JSON.stringify(e).slice(0, 60)} ${f} ${rolle} ${prozess}`).toEqual(ohneS);
+        n++;
+      }
+    }
+    expect(n).toBe(staende.length * (KI_FUNKTIONEN.length + 1) * 4 * 2 * 3);
   }, 300000);
 
   it("nicht planungsreif: kein Vorschlag (auch kein teilweiser), sondern die fehlenden Voraussetzungen ohne Personenbezug — in jedem Modus", () => {

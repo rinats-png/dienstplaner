@@ -20,6 +20,7 @@ import { auskunftBauen } from "../server/lib/auskunft.mjs";
 import {
   KI_FUNKTIONEN, kiBrPauseAktiv, KI_ROLLEN_AUSLOESEN, KI_GESPERRT, intelligenceErlaubt, intelligenceEntscheidung, kiSteuerungLesen,
   kiSteuerungVerwerfen, kiSteuerungAnwenden, kiSteuerungProtokollZeilen, kiSteuerungSicht, KI_PROTOKOLL_GRENZE, betriebsratKontenZeilen,
+  betriebsratKontenSperre, kiPauseAktiv,
 } from "../server/lib/ki-steuerung.mjs";
 import { FUNKTIONEN_IDS } from "../server/lib/intelligence/schemas.mjs";
 import { ROLLEN_ERLAUBT, FREISCHALTUNG_GESPERRT } from "../server/lib/intelligence/positivliste.mjs";
@@ -768,6 +769,46 @@ describe("Art. 15 DSGVO: die Personenkennung im Pausenstand (Betreiberentscheidu
       const a = auskunftBauen(m, m.personen.find((x) => x.id === "r1"), { raum: "r", erstellt: "2026-11-26T10:00:00.000Z", umfang, eigeneSicht: sicht });
       const text = JSON.stringify(a);
       expect(text).not.toMatch(/kiSteuerung|vonPerson|pause-gesetzt|betriebsratFrage/);
+    }
+  });
+});
+
+describe("Testlücke D5 (Review #595, I16-Invariante): unlesbare Steuerung und Leitung-Pause lösen NIE die Betriebsrat-Kontensperre aus", () => {
+  const st = { am: "2026-11-27T10:00:00.000Z", vonRolle: "leitung" };
+  /** Stände, die Intelligence pausieren (fail closed), aber keine Betriebsrat-Pause sind: das ganze Feld unlesbar, die Einstellungen
+      selbst kein Objekt, eine aktive oder unlesbare Leitung-Pause (auch als „ja“-Pause). */
+  const OHNE_BR_PAUSE = [
+    ["kiSteuerung Text", { kiSteuerung: "kaputt" }], ["kiSteuerung Liste", { kiSteuerung: [] }], ["kiSteuerung Zahl", { kiSteuerung: 5 }],
+    ["kiSteuerung Wahrheitswert", { kiSteuerung: true }], ["kiSteuerung null", { kiSteuerung: null }],
+    ["Einstellungen Text", "kaputt"], ["Einstellungen Liste", []],
+    ["Leitung-Pause aktiv", { kiSteuerung: { leitungPause: { aktiv: true, nr: 1, ...st } } }],
+    ["Leitung-Pause unlesbar", { kiSteuerung: { leitungPause: "kaputt" } }],
+    ["„ja“ mit Leitung-Pause", { kiSteuerung: { betrieb: { an: true, ...st }, betriebsratFrage: { antwort: "ja", ...st }, leitungPause: { aktiv: true, nr: 1, ...st } } }],
+    ["Leitung-Pause aktiv, BR-Pause aufgehoben", { kiSteuerung: { pause: { aktiv: false, nr: 2, ...st }, leitungPause: { aktiv: true, nr: 1, ...st } } }],
+  ];
+  const mitE = (e) => { const b = kopie(bestand()); b.mandanten[0].einstellungen = e; return b; };
+  const aendern = (b) => { const n = kopie(b); n.mandanten[0].personen.find((x) => x.id === "r1").rolle = "mitarbeiter"; return n; };
+  const neuesKonto = (b) => { const n = kopie(b); n.mandanten[0].personen.push(person("r2", "betriebsrat")); return n; };
+
+  it("kiBrPauseAktiv nein, betriebsratKontenSperre frei und Rollenvergabe erlaubt — obwohl Intelligence pausiert ist", () => {
+    for (const [name, e] of OHNE_BR_PAUSE) {
+      expect(kiPauseAktiv(e), `${name}: pausiert (fail closed)`).toBe(true);
+      expect(kiBrPauseAktiv(e), name).toBe(false);
+      const b = mitE(e);
+      for (const neu of [aendern(b), neuesKonto(b)]) {
+        expect(betriebsratKontenSperre(b.mandanten[0], neu.mandanten[0]), name).toEqual({ ok: true, grund: null });
+        expect(rollenwechselErlaubt(b, neu, SITZ.leitung).ok, name).toBe(true);
+      }
+    }
+  });
+
+  it("Gegenprobe: nur die Betriebsrat-Pause (aktiv oder ihr eigener unlesbarer Stand) sperrt — auch neben einer Leitung-Pause", () => {
+    for (const [name, k] of [["BR-Pause aktiv", { pause: { aktiv: true, nr: 1, ...st } }], ["BR-Pause unlesbar", { pause: "kaputt" }],
+      ["BR-Pause und Leitung-Pause", { pause: { aktiv: true, nr: 1, ...st }, leitungPause: { aktiv: true, nr: 1, ...st } }]]) {
+      const b = mitE({ kiSteuerung: k });
+      expect(kiBrPauseAktiv(b.mandanten[0].einstellungen), name).toBe(true);
+      expect(betriebsratKontenSperre(b.mandanten[0], aendern(b).mandanten[0]).ok, name).toBe(false);
+      expect(rollenwechselErlaubt(b, aendern(b), SITZ.leitung).ok, name).toBe(false);
     }
   });
 });

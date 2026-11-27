@@ -4,7 +4,7 @@ Erzeugt von `werkzeug/acc45-backlog.mjs` aus `docs/acc45/work-packages.json` (ni
 
 **Kritischer Pfad gemeinsam** (offener Entwicklungsaufwand, ohne extern): WP-I4 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **39–69 PT**
 **Ohne Intelligence:** WP-16 → WP-19.7 → WP-19.6 → WP-19.13 → WP-42a → WP-42 = **21–33,5 PT**
-**Offener Entwicklungsaufwand:** 342,7–586,65 PT in 137 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
+**Offener Entwicklungsaufwand:** 341,9–585,45 PT in 137 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
 
 WP-09 ist nur Livegang-Reihenfolge und zählt im Pfad nicht als Abhängigkeit. Der Graph zeigt nur offene Pakete.
 
@@ -61,7 +61,7 @@ flowchart LR
     SSOT_UK1["SSOT-UK1<br/>BLOCKED"]
     SSOT_UK2["SSOT-UK2<br/>BLOCKED"]
     RC_WECHSEL["RC-WECHSEL<br/>BLOCKED"]
-    K4_P2["K4-P2<br/>READY"]
+    K4_P2["K4-P2<br/>REVIEW"]
     K4_P5["K4-P5<br/>BLOCKED"]
     K4_P6["K4-P6<br/>BLOCKED"]
     K4_P8["K4-P8<br/>BLOCKED"]
@@ -137,7 +137,7 @@ flowchart LR
     REL_2["REL-2<br/>BLOCKED"]
     REL_3["REL-3<br/>BLOCKED"]
     REL_4["REL-4<br/>BLOCKED"]
-    RST_1["RST-1<br/>READY"]
+    RST_1["RST-1<br/>REVIEW"]
     RST_2["RST-2<br/>REVIEW"]
     RST_3["RST-3<br/>READY"]
     RST_4["RST-4<br/>BLOCKED"]
@@ -631,7 +631,7 @@ flowchart LR
 | REL-3 | folge | P1 | 1–2 | 1–2 | REL-1, WP-09 | – | opus | BLOCKED |
 | REL-4 | folge | P1 | 1–1,5 | 1–1,5 | REL-3, E-7, E-8 | – | sonnet | BLOCKED |
 | DRIFT-D1-D3 | acc45 | P3 | 0,5–1 | 0 | – | – | sonnet | INTEGRATED |
-| RST-1 | folge | P2 | 0,5–1 | 0,5–1 | – | – | sonnet (Text) + opus (Gegenlesen) | READY |
+| RST-1 | folge | P2 | 0,5–1 | 0,1–0,2 | – | – | sonnet (Text) + opus (Gegenlesen) | REVIEW |
 | RST-2 | folge | P2 | 2–3 | 0,4–0,6 | – | – | opus | REVIEW |
 | RST-3 | folge | P1 | 1–2 | 1–2 | – | – | sonnet | READY |
 | RST-4 | folge | P3 | 1 | 1 | RST-2 | – | sonnet | BLOCKED |
@@ -665,7 +665,7 @@ flowchart LR
 | SSOT-UK2 | acc45 | P2 | 0,25–0,5 | 0,25–0,5 | SSOT-UK1 | – | sonnet | BLOCKED |
 | RC-WECHSEL | acc45 | P1 | 0,5–1 | 0,5–1 | GATE-EW1, GATE-EW2, GATE-EW3, GATE-EW4, GATE-EW5, RST-5, RST-7 | – | opus | BLOCKED |
 | K4-P1 | folge | P1 | 0,5–1 | 0,5–1 | – | – | sonnet | BLOCKED |
-| K4-P2 | acc45 | P2 | 0,5 | 0,5 | – | – | sonnet | READY |
+| K4-P2 | acc45 | P2 | 0,5 | 0,1 | – | – | sonnet | REVIEW |
 | K4-P3 | folge | P1 | 1–1,5 | 0 | – | – | sonnet | INTEGRATED |
 | K4-P4 | folge | P1 | 1,5–2 | 0 | K4-P3 | – | opus | INTEGRATED |
 | K4-P5 | acc45 | P2 | 1 | 1 | K4-P1 | – | sonnet | BLOCKED |

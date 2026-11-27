@@ -4,9 +4,9 @@
   "anzahl": 295,
   "statusZaehlung": {
     "BLOCKED": 112,
-    "READY": 25,
+    "READY": 23,
     "IN_PROGRESS": 23,
-    "REVIEW": 12,
+    "REVIEW": 14,
     "INTEGRATED": 120,
     "DONE": 3
   },
@@ -15,8 +15,8 @@
       "pakete": 143,
       "offen": 57,
       "restPT": {
-        "min": 74.1,
-        "max": 126.65
+        "min": 73.69999999999999,
+        "max": 126.25
       }
     },
     "wp19": {
@@ -39,8 +39,8 @@
       "pakete": 62,
       "offen": 41,
       "restPT": {
-        "min": 40.099999999999994,
-        "max": 70.5
+        "min": 39.7,
+        "max": 69.7
       }
     },
     "extern": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 342.7,
-    "max": 586.65
+    "min": 341.90000000000003,
+    "max": 585.45
   },
   "kritischerPfad": {
     "summe": 54,
@@ -2404,9 +2404,9 @@
       "pr": ["#572","#574"],
       "nachweis": "docs/acc45/WP-I7-nachweis.md",
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block K)",
-      "tests": "pruefungen/intelligence-planer-aggregate*.test.js, pruefungen/intelligence-planer-kern.test.js",
+      "tests": "pruefungen/intelligence-planer-aggregate*.test.js, pruefungen/intelligence-planer-kern.test.js, pruefungen/intelligence-anheften.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). Nachtrag 2026-11-26: BLOCKED nur wegen WP-I5; WP-I5 ist mit #566 in integration/release-v4 gemergt. Teil 1 (I5-4 Aggregate) mit #572 integriert, Schalter AUS. Nachtrag 2026-11-27: Teil 2 (Aggregate einmal je Lauf, Tagesnachführung) mit #574 integriert. Nachtrag 2026-11-28: Teil 3 lokal (eigener Planer, erste Scheibe ohne Oberfläche, Schalter AUS); Rest (Tausch zweier Personen, Verteilung/Wunsch bewerten, übrige Regelarten im Plan, Anheften, Betriebsmodus, Hinweis seit dem Vorschlag, Anschluss an die Oberfläche) offen. Nachtrag 2026-11-26 (Review #577, Schwere B, Betreiberentscheidung 26.11.): Postenverdrängung im bestehenden planeMonat behoben (verdraengt gemeinsam in server/lib/engine/einsatz.mjs; verdrängte Personen geprüft, Muss/ab Achtung = nicht einteilen, Grund verdraengung; Aufwand je Aufruf), lokal auf Branch intelligence/wp-i7-planemonat-verdraengung; Beleg docs/acc45/WP-I7-nachweis.md Abschnitt „Nachtrag: Postenverdrängung im bestehenden planeMonat“. Delta-Review #579 B-1 (Besetzungsänderung ohne Dienständerung, keinAlleindienst) behoben: bei Verdrängung alle Personen der Dienste mit geänderter Besetzung geprüft (neue Befunde ab Achtung = nicht einteilen), Kosten angemeldet; Beleg im selben Abschnitt. Nachtrag 2026-11-26 (Review #579, Betreiberentscheidung 26.11.): Dienste in Folge auch vorwärts — planeMonat und Planer prüfen die späteren Diensttage der Person (folgeVorwaerts in server/lib/engine/einsatz.mjs, hindernisBefunde frisch, neuer Befund ab Achtung = Kandidat nicht, nächster; alle = offen mit Grund folgeVorwaerts; Aufwand vorab, eigener Zähler), lokal auf Branch intelligence/wp-i7-folge-vorwaerts; Beleg docs/acc45/WP-I7-nachweis.md Abschnitt „Nachtrag: Dienste in Folge auch vorwärts“. Nachtrag 2026-11-26 (Opus-Review #584 B-1, Betreiberentscheidung 26.11. Variante A): Planbefunde nachtfolge (betrieblich, wie folge), sonntagsfrei und ersatzruhe (§ 11 ArbZG, sperrend) in planeMonat und Planer über planbefundeNeu (einsatz.mjs; Rechnung aus pruefen herausgelöst, befunde.mjs, Ausgabe byte-gleich), nicht bewertbar = abgelehnt, Aufwand vorab (eigener Zähler); lokal auf Branch intelligence/wp-i5-nachtfolge-ersatzruhe; Beleg docs/acc45/WP-I7-nachweis.md Abschnitt „Nachtrag: Planbefunde nachtfolge, ersatzruhe, sonntagsfrei“. Opus-Review #588 (Kopf b958f2bb) B-1/B-2/B-3 behoben: Ersatzruhe je berührter Monatsansicht exakt wie die Prüfansicht (Zufallsvergleich 13 000 Durchläufe, 8 Länder, 0 Fehlannahmen), Nachtlauf durch d > Grenze sperrt auch die Verlängerung, Aufwand in Personentagen (PLANBEFUND_GRENZE 40 Mio ≈ 20–26 s), Planer mit eigenem Planbefund-Budget; Mutationen N0–N8 alle erkannt. Nachtrag 2026-11-26 (Betreiberentscheidung 26.11., Rückfrage 4): Teil 4 lange Musterregeln (Fenster 63–372 Tage) mit den Aggregaten in server/lib/vorgabenwirkung.mjs (musterVerschaerft, Bestätigung durch den Baukasten), darüber offen; Schalter AUS, keine Budgeterhöhung; lokal auf Branch intelligence/wp-i7-lange-muster; Beleg docs/acc45/WP-I7-nachweis.md Abschnitt „Teil 4“. Nachtrag 2026-11-27: Teil 5 (Branch intelligence/wp-i7-teil-5) - Korrekturen aus #588 (Lagebild = Monatsansicht, Kosten 2 x Jahr, Reserve ohne Anmeldung, Messtest Median, Kette nach dem Monat), Betriebsmodus aus/knopfdruck/automatisch (Vorgabe AUS, nur Leitung) mit Planungsreife und Ursache offener Stellen, ungültige Muss-Vorgaben nicht still, Vorgabe „Montag frei“; Anheften nur als Datenmodell-Vorlage; PLANER_AN/PLANER_AGGREGATE_AN unverändert AUS."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). Nachtrag 2026-11-26: BLOCKED nur wegen WP-I5; WP-I5 ist mit #566 in integration/release-v4 gemergt. Teil 1 (I5-4 Aggregate) mit #572 integriert, Schalter AUS. Nachtrag 2026-11-27: Teil 2 (Aggregate einmal je Lauf, Tagesnachführung) mit #574 integriert. Nachtrag 2026-11-28: Teil 3 lokal (eigener Planer, erste Scheibe ohne Oberfläche, Schalter AUS); Rest (Tausch zweier Personen, Verteilung/Wunsch bewerten, übrige Regelarten im Plan, Anheften, Betriebsmodus, Hinweis seit dem Vorschlag, Anschluss an die Oberfläche) offen. Nachtrag 2026-11-26 (Review #577, Schwere B, Betreiberentscheidung 26.11.): Postenverdrängung im bestehenden planeMonat behoben (verdraengt gemeinsam in server/lib/engine/einsatz.mjs; verdrängte Personen geprüft, Muss/ab Achtung = nicht einteilen, Grund verdraengung; Aufwand je Aufruf), lokal auf Branch intelligence/wp-i7-planemonat-verdraengung; Beleg docs/acc45/WP-I7-nachweis.md Abschnitt „Nachtrag: Postenverdrängung im bestehenden planeMonat“. Delta-Review #579 B-1 (Besetzungsänderung ohne Dienständerung, keinAlleindienst) behoben: bei Verdrängung alle Personen der Dienste mit geänderter Besetzung geprüft (neue Befunde ab Achtung = nicht einteilen), Kosten angemeldet; Beleg im selben Abschnitt. Nachtrag 2026-11-26 (Review #579, Betreiberentscheidung 26.11.): Dienste in Folge auch vorwärts — planeMonat und Planer prüfen die späteren Diensttage der Person (folgeVorwaerts in server/lib/engine/einsatz.mjs, hindernisBefunde frisch, neuer Befund ab Achtung = Kandidat nicht, nächster; alle = offen mit Grund folgeVorwaerts; Aufwand vorab, eigener Zähler), lokal auf Branch intelligence/wp-i7-folge-vorwaerts; Beleg docs/acc45/WP-I7-nachweis.md Abschnitt „Nachtrag: Dienste in Folge auch vorwärts“. Nachtrag 2026-11-26 (Opus-Review #584 B-1, Betreiberentscheidung 26.11. Variante A): Planbefunde nachtfolge (betrieblich, wie folge), sonntagsfrei und ersatzruhe (§ 11 ArbZG, sperrend) in planeMonat und Planer über planbefundeNeu (einsatz.mjs; Rechnung aus pruefen herausgelöst, befunde.mjs, Ausgabe byte-gleich), nicht bewertbar = abgelehnt, Aufwand vorab (eigener Zähler); lokal auf Branch intelligence/wp-i5-nachtfolge-ersatzruhe; Beleg docs/acc45/WP-I7-nachweis.md Abschnitt „Nachtrag: Planbefunde nachtfolge, ersatzruhe, sonntagsfrei“. Opus-Review #588 (Kopf b958f2bb) B-1/B-2/B-3 behoben: Ersatzruhe je berührter Monatsansicht exakt wie die Prüfansicht (Zufallsvergleich 13 000 Durchläufe, 8 Länder, 0 Fehlannahmen), Nachtlauf durch d > Grenze sperrt auch die Verlängerung, Aufwand in Personentagen (PLANBEFUND_GRENZE 40 Mio ≈ 20–26 s), Planer mit eigenem Planbefund-Budget; Mutationen N0–N8 alle erkannt. Nachtrag 2026-11-26 (Betreiberentscheidung 26.11., Rückfrage 4): Teil 4 lange Musterregeln (Fenster 63–372 Tage) mit den Aggregaten in server/lib/vorgabenwirkung.mjs (musterVerschaerft, Bestätigung durch den Baukasten), darüber offen; Schalter AUS, keine Budgeterhöhung; lokal auf Branch intelligence/wp-i7-lange-muster; Beleg docs/acc45/WP-I7-nachweis.md Abschnitt „Teil 4“. Nachtrag 2026-11-27: Teil 5 (Branch intelligence/wp-i7-teil-5) - Korrekturen aus #588 (Lagebild = Monatsansicht, Kosten 2 x Jahr, Reserve ohne Anmeldung, Messtest Median, Kette nach dem Monat), Betriebsmodus aus/knopfdruck/automatisch (Vorgabe AUS, nur Leitung) mit Planungsreife und Ursache offener Stellen, ungültige Muss-Vorgaben nicht still, Vorgabe „Montag frei“; Anheften nur als Datenmodell-Vorlage; PLANER_AN/PLANER_AGGREGATE_AN unverändert AUS. Nachtrag 2026-11-27 (Teil 6, Branch intelligence/wp-i7-teil-6): eigener Planer-Schalter kiSteuerung.planerSchalter getrennt von F13; Testlücke D5; Anheften (Karte angeheftet, Schreibweg server/lib/anheften.mjs, Anzeige src/ansichten/anheftungen.jsx); Verteilung (Stufe C) nicht gebaut, Fachfrage vorgelegt; PLANER_AN/PLANER_AGGREGATE_AN AUS."
     },
     {
       "id": "WP-I8",
@@ -7127,25 +7127,25 @@
       "prio": "P2",
       "aufwandPT": {"min":0.5,"max":1},
       "abhaengigkeiten": [],
-      "status": "READY",
+      "status": "REVIEW",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"Branch acc45/release/rst-1-kadenz (e4b55ac5): docs/acc45/RELEASE-PROZESS.md berichtigt (§2 Teil-Umfang und Kadenz, Kandidat-Lebensdauer 7 Tage, Wechselregel neue ID; §3 Merge nur nach Freigabe; §4 Pflichtnachweis Migration #598; §9 tägliche Routine als Beschreibung); Z. 44 war schon durch #529 berichtigt; keine Gate-Regel, kein Workflow geändert"},
+        "lokalGetestet": {"wert":true,"beleg":"lokal 2026-11-27 (Windows, TZ=UTC, --maxWorkers=1): pruefungen/release-prozess-kadenz.test.js 36/36 (33 Mutationen rot bei Rückfall), in pruefung:acc45-werkzeuge; release-pruefung.test.js gefiltert (RELEASE-PROZESS.md-Struktur mit Titel-Datumsformat, OF-13) grün; Wachen/ssot-Tests grün"},
         "reviewt": {"wert":false,"beleg":null},
         "integriert": {"wert":false,"beleg":null},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
       },
-      "branch": null,
-      "agent": null,
+      "branch": "acc45/release/rst-1-kadenz",
+      "agent": "sonnet",
       "modell": "sonnet (Text) + opus (Gegenlesen)",
       "konfliktzonen": [],
-      "pr": [],
-      "nachweis": "Release-Stillstand-Analyse 2026-11-24, Abschnitt 7; docs/acc45/RELEASE-PROZESS.md",
+      "pr": ["#603"],
+      "nachweis": "Release-Stillstand-Analyse 2026-11-24, Abschnitt 7; docs/acc45/RELEASE-PROZESS.md (Berichtigungsvermerk 2026-11-27; Kandidat verfällt nicht nach 7 Tagen, getrennte Fristen für Bildabfrage und Nachweise nach Betreiberentscheidung 2026-11-27, ersetzt die SSOT-Akzeptanz Kandidat-Lebensdauer höchstens 7 Tage); pruefungen/release-prozess-kadenz.test.js. Offen: Gegenlesen Opus; Routine-Aktivierung und Hotfix-Pfad sind Betreiberentscheidungen",
       "akzeptanz": "Verbleibende Widersprüche in RELEASE-PROZESS.md (Z. 34/36 kein Teil-Release/Kadenz; Z. 44 Rolle Claude baut Bild ist durch #529 bereits behoben) entfernt und an die geltende Regel angeglichen (Betreiber löst Bildbau aus); Kadenz Staging 12–24 h, Produktion 3–7 Tage, Kandidat-Lebensdauer höchstens 7 Tage, Wechselregel nur mit neuer ID; tägliche Release-Manager-Routine beschrieben; keine Gate-Regel geändert",
       "tests": "doku-Test, Gegenlesen Opus",
-      "dateien": "docs/acc45/RELEASE-PROZESS.md",
+      "dateien": "docs/acc45/RELEASE-PROZESS.md, pruefungen/release-prozess-kadenz.test.js, pruefungen/release-pruefung.test.js (Titelbindung auf Datumsformat), package.json (Skript pruefung:acc45-werkzeuge)",
       "notiz": "Umfangsklasse: OPTIONAL-WERKZEUG. Prioritätsbegründung: P2: Prozess-/Doku-Optimierung, der Release ist ohne sie zulässig. Prioritätsumkehr behoben (Review #531 A-3): Die Abhängigkeit RST-1 → RST-9 (P2 an P3, optionales Werkzeug) ist entfernt, eine Doku-Berichtigung braucht kein Werkzeug; Status READY. Stand nach #529: Z. 44 (Rolle Claude baut Bild) ist bereits behoben (Claude bereitet den Bildbau vor, der Betreiber löst aus); offen sind nur Z. 34/36 (kein Teil-Release; Kadenz). Konflikte mit anderen Doku-PRs an RELEASE-PROZESS.md vor dem Start prüfen. Abweichung von der Analyse-Arbeitspriorität: Die Release-Stillstand-Analyse empfahl „SSOT-Prio P2 wegen G9“; das wäre eine G9-Umgehung und ist laut Betreiber verboten. Die Priorität hier ist fachlich begründet. Quelle: Release-Stillstand-Analyse 2026-11-24 (Abschnitt 7) und Koordinator-Vorgabe 2026-11-24. Aufwand SCHÄTZUNG, nicht gemessen. Konfliktzone (Dateien, nicht im SSOT-Zonenvokabular): docs/acc45/RELEASE-PROZESS.md."
     },
     {
@@ -7157,8 +7157,8 @@
       "abhaengigkeiten": [],
       "status": "REVIEW",
       "stufen": {
-        "implementiert": {"wert":true,"beleg":"Branch acc45/release/rst-2-kandidaten-werkzeug: werkzeug/release-kandidat.mjs (Trockenlauf Standard, --ausgabe außerhalb des Repos, --anlegen nur lokaler Zweig release/rc-<id>), Test pruefungen/release-kandidat.test.js (in pruefung:acc45-werkzeuge); Push und Entwurfs-PR bewusst nicht im Werkzeug (RST-2-nachweis.md Abschnitt 4); release-pruefung.mjs und Workflows unverändert"},
-        "lokalGetestet": {"wert":true,"beleg":"lokal 2026-11-27 (Windows, TZ=UTC, --maxWorkers=1): release-kandidat 17/17; 15 Mutationen je Schutz rot (M6 erst nach ergänztem Test)"},
+        "implementiert": {"wert":true,"beleg":"Branch acc45/release/rst-2-kandidaten-werkzeug: werkzeug/release-kandidat.mjs (Trockenlauf Standard, --ausgabe außerhalb des Repos, --anlegen nur lokaler Zweig release/rc-<id>), Test pruefungen/release-kandidat.test.js (in pruefung:acc45-werkzeuge); Push und Entwurfs-PR zuerst bewusst nicht im Werkzeug (PR #597), danach als ausdrücklich aktivierter Ausführungsmodus --ausfuehren nach Betreiberentscheidung 2026-11-27 (PR #601; feste Allowlist, nur Zielzweig release/rc-<id>, force nur als --force-with-lease=<ref>:, Entwurfs-PR gegen main, nie Merge; RST-2-nachweis.md Abschnitte 4 und 6); release-pruefung.mjs und Workflows unverändert"},
+        "lokalGetestet": {"wert":true,"beleg":"lokal 2026-11-27 (Windows, TZ=UTC, --maxWorkers=1): release-kandidat 17/17; 15 Mutationen je Schutz rot (M6 erst nach ergänztem Test). Folge-PR Ausführungsmodus (--ausfuehren, Betreiberentscheidung 2026-11-27) 2026-11-27: release-kandidat 41/41 und prozess-wachen grün; 32 Mutationen je Schutz rot (N2, N24, N27 erst nach ergänzten Testfällen); CI-Aussagen und Härtungen (force-with-lease, Push-Ziel, gh-Umgebung, Lesebefehl-Optionen) gebunden"},
         "reviewt": {"wert":false,"beleg":null},
         "integriert": {"wert":false,"beleg":null},
         "stagingGeprueft": {"wert":false,"beleg":null},
@@ -7169,9 +7169,9 @@
       "agent": "sonnet",
       "modell": "opus",
       "konfliktzonen": [],
-      "pr": ["#597"],
+      "pr": ["#597","#601"],
       "nachweis": "Release-Stillstand-Analyse 2026-11-24, Abschnitt 7; docs/acc45/RELEASE-PROZESS.md; docs/acc45/RST-2-nachweis.md",
-      "akzeptanz": "Trockenlauf ist Standard; erzeugt außerhalb des Kandidaten Vorlage der Freigabedatei, vorlagenHashes, G2-Belegliste, G8/G9-Listen und Übergabe; rc-Zweig und Entwurfs-PR nur mit ausdrücklichem Flag (--anlegen); ändert nie einen bestehenden Kandidaten (Test); zweiter Lauf auf denselben Kandidaten byte-gleich (Test); kein Netzaufruf außer GET; kein Bildbau, kein Deploy",
+      "akzeptanz": "Trockenlauf ist Standard; erzeugt außerhalb des Kandidaten Vorlage der Freigabedatei, vorlagenHashes, G2-Belegliste, G8/G9-Listen und Übergabe; rc-Zweig und Entwurfs-PR nur mit ausdrücklichem Flag (--anlegen); ändert nie einen bestehenden Kandidaten (Test); zweiter Lauf auf denselben Kandidaten byte-gleich (Test); kein Netzaufruf außer GET im Standard und bei --anlegen (nur git ls-remote); Betreiberentscheidung 2026-11-27: ein ausdrücklich aktivierter Ausführungsmodus --ausfuehren darf zusätzlich den rc-Zweig pushen und einen Entwurfs-PR erstellen (nie Merge, nie geschützte Zweige, kein ausdrücklicher Workflow-Start, kein Deploy, keine Veröffentlichung eines Release-Images); kein Bildbau, kein Deploy",
       "tests": "Unit (Trockenlauf, Idempotenz, Schutz bestehender rc-Zweig)",
       "dateien": "werkzeug/release-kandidat.mjs, pruefungen/",
       "notiz": "Umfangsklasse: OPTIONAL-WERKZEUG. Prioritätsbegründung: P2: Handarbeit funktioniert; Nutzen entsteht erst bei vielen Kandidaten. Reviewbedarf: Opus unabhängig. Keine Änderung an werkzeug/release-pruefung.mjs und keine Gate-Konfiguration. Abweichung von der Analyse-Arbeitspriorität: Die Release-Stillstand-Analyse empfahl „SSOT-Prio P2 wegen G9“; das wäre eine G9-Umgehung und ist laut Betreiber verboten. Die Priorität hier ist fachlich begründet. Quelle: Release-Stillstand-Analyse 2026-11-24 (Abschnitt 7) und Koordinator-Vorgabe 2026-11-24. Aufwand SCHÄTZUNG, nicht gemessen. Konfliktzone (Dateien, nicht im SSOT-Zonenvokabular): werkzeug/, pruefungen/."
@@ -8079,22 +8079,22 @@
       "prio": "P2",
       "aufwandPT": {"min":0.5,"max":0.5},
       "abhaengigkeiten": [],
-      "status": "READY",
+      "status": "REVIEW",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #599, Branch acc45/release/k4-p2-heuristik-zaehler (26292cc7): werkzeug/k4-heuristik-zaehler.mjs, Nachweis docs/acc45/K4-P2-nachweis.md"},
+        "lokalGetestet": {"wert":true,"beleg":"lokal 2026-11-27 (Windows, TZ=UTC, --maxWorkers=1): pruefungen/k4-heuristik-zaehler.test.js 48/48 (inkl. Selbststart-/starten-Fall beider Schichten, Review #599 B-1); Zahlen gegen K4-P3-Plan mit Leseschicht von 274bfa0 und heutiger; 24 Mutationen je Schutz rot; prozess-wachen, ci-abdeckung, acc45-status, ssot-belege gruen. CI-Schritt fehlt (Ausnahme vorlaeufig in ci-abdeckung-ausnahmen.json); Aufruf am Produktionsbild nicht probiert"},
         "reviewt": {"wert":false,"beleg":null},
         "integriert": {"wert":false,"beleg":null},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
       },
-      "branch": null,
-      "agent": null,
+      "branch": "acc45/release/k4-p2-heuristik-zaehler",
+      "agent": "k4p2-Schreiber",
       "modell": "sonnet",
       "konfliktzonen": [],
-      "pr": [],
-      "nachweis": "Entwurf Wiederherstellung und K4 2026-11-24 (Scratchpad, nicht im Repo) Teil C",
+      "pr": ["#599"],
+      "nachweis": "docs/acc45/K4-P2-nachweis.md",
       "akzeptanz": "Zähler läuft gegen die Leseschicht von 274bfa0 und des Kandidaten, gibt nur Zahlen je Klasse aus, nie Werte; Ausgabetest „kein Wert“; vorher prüfen, ob 274bfa0 bestandLesen gleich anbietet",
       "tests": "Unit (Ausgabetest)",
       "dateien": "werkzeug/, pruefungen/",

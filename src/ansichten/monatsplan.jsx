@@ -15,6 +15,7 @@ import { Freigabeleiste } from "./freigabeleiste.jsx";
 import { Wochenliste } from "./wochenliste.jsx";
 import { TeamAuslastungLeiste } from "./teamauslastungleiste.jsx";
 import { Tagesfazit } from "./tagesfazit.jsx";
+import { Anheftungen } from "./anheftungen.jsx";
 import { Standortwahl, Standortleiste, Zelle } from "../ui/leisten.jsx";
 import { aktive, abwesenheitAm, besetzung, teamAuslastung, ALLE_STANDORTE, einheitenAmStandort, sollAnzeige, besetztText, BEDARF_OFFEN_TEXT } from "../lib/fachlogik.js";
 import { darf } from "../lib/berechtigung.js";
@@ -66,6 +67,7 @@ export function Monatsplan({ sitz, ym, setYm, oeffneTag, akt, schmal,
           <Zeitwahl onZurueck={() => shift(-1)} onHeute={() => setYm(d0.slice(0, 7))} onWeiter={() => shift(1)} /></div>}>{MON[mo - 1]} {y}</H1>
 
       <Freigabeleiste sitz={sitz} ym={ym} akt={akt} />
+      <Anheftungen m={m} ym={ym} />
 
       {standortId === ALLE_STANDORTE && (
         <Standortleiste m={m} wert={standortId} setWert={setStandortId} />)}
