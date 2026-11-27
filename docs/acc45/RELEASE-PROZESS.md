@@ -89,11 +89,15 @@ getrennt zu halten:
     `werkzeug/release-pruefung.mjs`; [RUNBOOK-ERSTWECHSEL-V4R1.md](RUNBOOK-ERSTWECHSEL-V4R1.md) Abschnitt „Abbruch vor dem Start aus Codeursache“:
     der alte Kandidat wird in der Freigabeliste `gesperrt`, die Ausnahme ist nicht verbraucht). Eine andere ID hätte keine Ausnahme der
     Widerrufbuch-Probe (G6, §8) und wäre dauerhaft NO-GO, solange `v4-r1.freigabe.json` nicht in HEAD liegt.
-  - **Nach verbrauchter Ausnahme** (erster tatsächlicher V4-Start, F10): eine neue Release-ID gilt nur über den vorgesehenen Wiederholungspfad
-    (PR #600, WH1 bis WH8; **noch nicht gemergt, in Review**, deshalb hier nicht als geltend beschrieben).
-  - **Abgebrochener Auslieferungsversuch:** Vorgesehen ist (Betreiberentscheidung 2026-11-27; die Umsetzung im Gate ist PR #600, **noch nicht gemergt, in
-    Review**), den Versuch mit **demselben Kandidaten und Digest** zu wiederholen: neue Versuchskennung, neue Betreiberfreigabe und aktuelle,
-    an den Digest gebundene Nachweise. Ein anderer Commit oder Digest ist nur bei einer Änderung an Produkt, Bild oder Sicherheitsteilen nötig.
+  - **Nach verbrauchter Ausnahme** (erster tatsächlicher V4-Start, F10): ein weiterer Versuch gilt nur über den Wiederholungspfad
+    (Freigabedatei-Feld `wiederholung`, G5 WH0 bis WH8, G6-Rückhalt; eingeführt mit PR #600, Merge-Stand: siehe Git-Historie). Ohne diesen Pfad
+    im Werkzeug bleibt der Fall NO-GO. Die verbrauchte Ausnahme wird nie wiederverwendet.
+  - **Abgebrochener Auslieferungsversuch (Versuchsmodell, Betreiberentscheidung 2026-11-27):** Ein neuer Auslieferungsversuch ist keine neue
+    Softwareversion. Der Versuch darf mit **demselben Kandidaten und Digest** wiederholt werden: neue Versuchskennung, neue ausdrückliche
+    Betreiberfreigabe, Beleg der Ursachenbehebung und aktuelle, an den Digest gebundene Nachweise aus einem neuen Lauf. Ein anderer Commit oder
+    Digest ist nur bei einer Änderung an Produkt, Bild oder Sicherheitsteilen nötig; keine künstlichen Commits oder Bilder. Freigabedatei und
+    Ablage des Versuchs haben eine eigene Ablage-Kennung (z. B. `v4-r1w2`); der Erstwechsel selbst bleibt `v4-r1`. Im Gate eingeführt mit
+    PR #600 (Merge-Stand: siehe Git-Historie); Einzelheiten [RST-5-nachweis.md](RST-5-nachweis.md) 3.4.
   - **Folge-Releases** nach einem abgeschlossenen `v4-r1`: neue Release-ID wie in §1 und §8.
   - Neustart mit **demselben Digest** nach A-START/A-ABN (Umgebungsursache) ist kein Kandidatenwechsel (§8).
   `werkzeug/release-kandidat.mjs` bricht bei einem vorhandenen Zweig auf anderem Commit oder einer vergebenen Release-ID ab
@@ -104,7 +108,7 @@ getrennt zu halten:
 
 | Rolle | Aufgabe |
 |---|---|
-| Claude (Entwicklung, Integration) | PRs, Reviews, Integration, Kandidat nach `main` (B-9, **nur nach ausdrücklicher Merge-Freigabe des Betreibers**, §7), Kandidaten-Unterlagen (RST-2: Trockenlauf Standard, nur lesend; `--anlegen` nur lokaler Zweig; `--ausfuehren` mit Push und Entwurfs-PR nur auf ausdrücklichen Auftrag des Betreibers, PR #601 noch in Review und nicht gemergt), Bildbau **vorbereiten** (Befehl und Unterlagen liefern, nicht auslösen), Release-Prüfung, Listen-PR, Berichte |
+| Claude (Entwicklung, Integration) | PRs, Reviews, Integration, Kandidat nach `main` (B-9, **nur nach ausdrücklicher Merge-Freigabe des Betreibers**, §7), Kandidaten-Unterlagen (RST-2, Ausführungsmodus mit PR #601 gemergt, c9a1f8d1: Trockenlauf Standard, nur lesend; `--anlegen` nur lokaler Zweig; `--ausfuehren` mit Push und Entwurfs-PR nur auf ausdrücklichen Auftrag des Betreibers; Push und PR können reguläre CI-Workflows auslösen; kein Veröffentlichen eines Bilds), Bildbau **vorbereiten** (Befehl und Unterlagen liefern, nicht auslösen), Release-Prüfung, Listen-PR, Berichte |
 | Unabhängiger Prüfer (Agent F oder zweites Modell) | Review je PR, Beleg in `REVIEW-NACHWEIS*.md` oder PR-Text |
 | Betreiber | Freigabedatei commiten; Migration freigeben; Sicherung und Restore-Probe; **löst aus**: `workflow_dispatch` von „Auslieferung“ mit Umgebung `produktion` (ab dem zweiten Wechsel) oder `deploy.sh` von Hand (erster Wechsel, O-2 a); Live-Abnahme; Entscheidung bei Rückweg |
 
@@ -292,6 +296,11 @@ Stand der Analyse 2026-11-24 (nur lesende Abfragen).
 | Merge Kandidat nach `main` (B-9) | pro Release | `BETREIBER-ANLEITUNG-ERSTRELEASE.md`; `BETREIBER-BRANCHSCHUTZ.md` §5 | Betreiber | Betreiber |
 | Produktionsdeployment | pro Release | §3 (Rollen) | **Nur der Betreiber löst aus** | bleibt unter unmittelbarer Betreiberkontrolle. Stufe 3 erst nach dem erfolgreichen ersten V4-Produktionswechsel und nur mit gesonderter Freigabe |
 | Live-Abnahme, Beobachtung 24 h, Go/No-Go | pro Release | §4 (Phasen 5, 6) | Betreiber | Betreiber |
+
+**Betreiberhinweise (Review #601, RST-2 Ausführungsmodus):** (1) Mehrere `remote.origin.url` in der Arbeitsumgebung: ein Push ginge an alle;
+vor dem Einsatz von `--ausfuehren` genau eine URL einstellen. (2) `gh` löst das Repository aus den Remotes auf (`upstream`, `gh repo set-default`);
+vor dem Einsatz prüfen. (3) Der Job `bild` in `deploy.yml` ist technisch nicht auf `main` beschränkt; das gilt nur als organisatorische Regel.
+(4) Der Branch-Schutz für `main` ist eine offene Betreiberhandlung (siehe Tabelle).
 
 Die Wirksamkeit der technischen Berechtigungsgrenzen wird tatsächlich geprüft, bevor der Inhaber-Token aus der Arbeitsumgebung entfernt wird. Der Inhaber-Token dient nie dazu, die neuen Beschränkungen zu umgehen. Die Umsetzung (Konto, Bau-Workflow, Rulesets) folgt als eigene Pakete; dieser Abschnitt ändert keinen Workflow.
 
