@@ -11,6 +11,9 @@
        Lösch-/Datenschutzlauf, Schleifen begrenzt, Nachweis im Gate-Modus.
    (D) Workflow-Patch docs/acc45/workflow-patches/rst-5/ (auf die GATE-EW3-Vollfassung): passt, = Vollfassung, nur
        Zusätze, Rechte/Auslöser/Aktivierung unverändert; der Nachweisschritt bindet migrationsprobe an DIGEST.
+   (E) Release-Gate (Betreiberentscheidung 2026-11-27): werkzeug/release-pruefung.mjs verlangt migrationsprobe als
+       notwendigen Nachweis (E6, G5); Konstanten gespiegelt und gebunden; Runner-Nachweis der Vollfassung besteht E6/E7,
+       lokal, Replay, fehlend oder rot nicht.
    Docker läuft hier nicht; der Docker-Teil läuft erst im Runner nach Übernahme beider Patches (siehe README).
    Lokaler Lauf mit Server: pruefungen/rst5-migrationsprobe-lauf.test.js.
    ========================================================================== */
@@ -23,6 +26,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import * as MP from "../deploy/sicherung/ci/migrationsprobe-staging.mjs";
 import { planBauen } from "../werkzeug/synthetischer-altbestand.mjs";
+import * as RP from "../werkzeug/release-pruefung.mjs";
+import { createHash } from "node:crypto";
 
 const yaml = createRequire(import.meta.url)("js-yaml");
 const WURZEL = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -348,5 +353,75 @@ describe("(D) Workflow-Patch rst-5 (Vorschlag; .github/workflows bleibt unverän
   });
   it("die echte Workflow-Datei ist nicht geändert (Patch nur als Vorschlag)", () => {
     expect(lesen(WF_REL)).not.toMatch(/migrationsprobe/);
+  });
+});
+
+describe("(E) Release-Gate: Migrationsnachweis ist notwendig und an den exakten Digest gebunden (Betreiberentscheidung 2026-11-27)", () => {
+  const C = /** @type {any} */ (RP.KONFIG_STANDARD).migrationsnachweis;
+  const { w, zusatz } = MP.bewerten(gut());
+  const gate = (/** @type {any} */ x = {}) => ({ ...MP.nachweisBauen({ modus: "gate", digest: D, altDigest: ALT, w, zusatz }), ...x });
+  it("Konfiguration des Werkzeugs = Konstanten dieses Kerns und des Workflow-Patches (Spiegel, gebunden)", () => {
+    expect(C.feld).toBe("migrationsprobe");
+    expect(C.art).toBe(gate().art);
+    expect(C.artLokal).toBe(MP.nachweisBauen({ modus: "lokal", w, zusatz }).art);
+    expect(C.bindung).toBe(gate().bindung);
+    expect(C.ergebnis).toBe(MP.OK);
+    expect([...C.regeln]).toEqual([...MP.W_IDS]);
+    expect([...C.zusatz]).toEqual([...MP.ZUSATZ_IDS]);
+    expect(C.fixtureBaum).toBe(MP.FIXTURE_BAUM);
+    expect(C.altDigest).toBe(ALT);
+    expect(lesen(VOLL_REL)).toContain(`ALT_DIGEST: "${C.altDigest}"`);
+  });
+  it("nachweisBauen im Gate-Modus am Kandidaten-Digest besteht; jede andere Form nicht", () => {
+    expect(RP.migrationsnachweisPruefen(gate(), D)).toEqual([]);
+    const rot = (/** @type {any} */ mp, /** @type {string} */ digest = D) => RP.migrationsnachweisPruefen(mp, digest).join(" | ");
+    expect(rot(MP.nachweisBauen({ modus: "lokal", digest: D, altDigest: ALT, w, zusatz }))).toMatch(/lokaler Nachweis/);
+    expect(rot(gate(), `sha256:${"e".repeat(64)}`)).toMatch(/≠ Kandidaten-Digest/);                 // Replay an anderem Kandidaten
+    expect(rot(MP.nachweisBauen({ modus: "gate", digest: null, altDigest: ALT, w, zusatz }))).toMatch(/digest/);
+    expect(rot(MP.nachweisBauen({ modus: "gate", digest: ALT, altDigest: ALT, w, zusatz }))).toMatch(/digest/);
+    const schlecht = MP.bewerten({ ...gut(), probeExit: "1\n" });
+    expect(rot(MP.nachweisBauen({ modus: "gate", digest: D, altDigest: ALT, ...schlecht }))).toMatch(/ergebnis 'fehlgeschlagen'/);
+    const ohne = MP.bewerten({ ...gut(), probe: null });
+    expect(rot(MP.nachweisBauen({ modus: "gate", digest: D, altDigest: ALT, ...ohne }))).toMatch(/ergebnis 'nicht bewertbar'/);
+  });
+
+  /** Nachweisschritt der RST-5-Vollfassung wie im Runner ausführen und E6/E7 des Werkzeugs darauf anwenden. */
+  const e6e7 = (/** @type {any} */ mp) => {
+    const schritt = yaml.load(lesen(VOLL_REL)).jobs.gate.steps.find((/** @type {any} */ s) => /^Nachweis zusammenstellen/.test(s.name || ""));
+    const d = tmp(); const arbeit = path.join(d, "arbeit"), runner = path.join(d, "runner");
+    const skriptRel = "deploy/sicherung/ci/widerrufbuch-ende-zu-ende.sh";
+    mkdirSync(path.join(arbeit, path.dirname(skriptRel)), { recursive: true }); mkdirSync(path.join(runner, "wb-proben"), { recursive: true });
+    writeFileSync(path.join(arbeit, skriptRel), "#!/bin/sh\n");
+    for (const p of ["S1", "S2", "S3", "S4", "S5", "S6"]) writeFileSync(path.join(runner, "wb-proben", p), "ok\n");
+    if (mp !== undefined) writeFileSync(path.join(runner, "migrationsprobe.json"), JSON.stringify(mp));
+    const M = "a".repeat(40), S = "3".repeat(40), BAUM = "6".repeat(40);
+    const r = spawnSync("bash", ["-c", schritt.run], { cwd: arbeit, encoding: "utf8", timeout: 60000,
+      env: { ...process.env, RUNNER_TEMP: runner, DIGEST: D, ALT_DIGEST: ALT, REVISION: M, BAUM, GITHUB_SHA: S, LAUF: "4242-1", ERGEBNIS: "success" } });
+    expect(r.status, r.stderr).toBe(0);
+    const roh = readFileSync(path.join(arbeit, "staging-nachweis", "staging-nachweis.json"));
+    const E = /** @type {any} */ (RP.KONFIG_STANDARD).erstwechselAusnahme.widerrufbuchProbe;
+    const a = { releaseId: "v4-r1", basisCommit: E.basisCommit, kandidatCommit: M, schnittCommit: S, digest: D, nachholFristStunden: 24,
+      repoFristStunden: 48, gueltigBis: E.gueltigBis, abbruchBedingungen: [...E.abbruchBedingungen], nachholAblage: "docs/acc45/releases/v4-r1/nachhol/",
+      staging: { lauf: "4242-1", nachweis: "docs/acc45/releases/v4-r1/nachweise/staging-nachweis.json", sha256: createHash("sha256").update(roh).digest("hex") },
+      quittung: "-" };
+    const k = { releaseId: "v4-r1", kandidat: M, digest: D, basis: E.basisCommit, jetztMs: Date.now(), releaseDateien: [],
+      freigabe: { releaseId: "v4-r1", basisCommit: E.basisCommit, kandidatCommit: M, digest: D, schnittCommit: S, erstwechselAusnahme: { widerrufbuchProbe: a } },
+      erstwechsel: { stagingRoh: roh, skriptRoh: Buffer.from("#!/bin/sh\n"), baeume: { kandidat: BAUM, schnitt: BAUM }, kandidatEltern: ["2".repeat(40), S],
+        stagingArtefakt: [roh], stagingLauf: { id: 4242, run_attempt: 1, path: WF_REL, event: "workflow_dispatch", status: "completed", conclusion: "success", head_sha: S } } };
+    return RP.erstwechselPruefen(k, RP.KONFIG_STANDARD).gruende.filter((/** @type {string} */ g) => /^E[67]:/.test(g));
+  };
+  it("Runner-Nachweis der RST-5-Vollfassung besteht E6 und E7; ohne Probe, lokal, Replay oder rot ⇒ E6", () => {
+    expect(e6e7(gate())).toEqual([]);
+    for (const [mp, muster] of /** @type {Array<[any, RegExp]>} */ ([
+      [undefined, /digest '<fehlt>'/],                                                     // Workflow setzt „nicht bewertbar“, digest null
+      [MP.nachweisBauen({ modus: "lokal", w, zusatz }), /digest '<fehlt>'/],               // Workflow übernimmt lokal nicht
+      [gate({ digest: `sha256:${"e".repeat(64)}` }), /digest '<fehlt>'/],                  // Replay: nicht DIGEST ⇒ nicht übernommen
+      [gate({ ergebnis: MP.FEHL }), /ergebnis 'fehlgeschlagen'/],
+    ])) {
+      const g = e6e7(mp);
+      expect(g, JSON.stringify(mp)?.slice(0, 80)).toHaveLength(1);
+      expect(g[0]).toMatch(/^E6: Migrationsnachweis: /);
+      expect(g[0]).toMatch(muster);
+    }
   });
 });

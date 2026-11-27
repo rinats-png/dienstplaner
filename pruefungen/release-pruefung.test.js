@@ -16,6 +16,7 @@ import {
   codeNamenFinden, vorlageLesen, wertAufloesen, abweichend, bildAngabenLesen, prsAusCommits, commitsOhnePr,
   argumenteLesen, ssotReviewBelege, freigabeSchema, basisPruefen, ausfuehrOptionen, ausfuehren, vorlageUnlesbar,
   vorlagenStandErmitteln, kurzfassung, urteilPositiv, REL_AUSNAHME_IDS, nachholPruefen, nachholSammeln, zipEntpacken,
+  migrationsnachweisPruefen,
 } from "../werkzeug/release-pruefung.mjs";
 
 const WURZEL = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -2578,9 +2579,19 @@ describe("GATE-EW1/EW2: Erstwechsel-Ausnahme der Widerrufbuch-Probe (G6) und Nac
     zeileListe("sha256:0861adee", "1a56988d3c406aff99281f96c2d7da1dc24d7af7", "gesperrt", "alt"),
     ...extra,
   ]);
+  const MN = KONFIG_STANDARD.migrationsnachweis;
+  /** RST-5: Migrationsnachweis eines Runner-Laufs am Kandidaten-Digest (Form von nachweisBauen, Modus gate). */
+  const MP_GUT = (x = {}) => ({
+    art: "migrationsprobe-staging", digest: D, altDigest: D274, bindung: "digest",
+    fixture: { saat: 20261125, groesse: 20, tage: 7, baum: MN.fixtureBaum },
+    w: MN.regeln.map((id) => ({ id, ergebnis: "bestanden", grund: "synthetisch" })),
+    zusatz: MN.zusatz.map((id) => ({ id, ergebnis: "bestanden", grund: "synthetisch" })),
+    ergebnis: "bestanden", ...x,
+  });
   const STAGING = (skriptSha = sha(roh(SKRIPT))) => ({
     digest: D, commit: M, laufCommit: S, baum: BAUM, lauf: "4242-1", ergebnis: "success", erstellt: "2026-11-19T12:00:00Z",
     widerrufbuch: { art: "widerrufbuch-staging-funktionstest", proben: { S1: "ok", S2: "ok", S3: "ok", S4: "ok", S5: "ok", S6: "ok" }, skriptSha256: skriptSha },
+    migrationsprobe: MP_GUT(),
   });
 
   /** Schreibt Liste, Skript, CODEOWNERS, Staging-Nachweis und Freigabedatei (mit Ausnahme) nach w; liefert die Fixture. */
@@ -2748,6 +2759,121 @@ describe("GATE-EW1/EW2: Erstwechsel-Ausnahme der Widerrufbuch-Probe (G6) und Nac
       const g = erwarte(aufbauen(), "E6", { jetztMs: Date.parse("2026-11-26T12:00:01Z") }); // 7 d + 1 s nach erstellt
       expect(g.gruende.join(" ")).toMatch(/E6: .*zu alt/);
     });
+
+  describe("RST-5 (Betreiberentscheidung 2026-11-27): Migrationsnachweis am exakten Digest ist notwendig (E6, G5)", () => {
+    /** E6 NO-GO, Grund nennt den Migrationsnachweis (und optional das Muster). */
+    const mpRot = (mp, muster = /./) => {
+      const g = erwarte(aufbauen({ nachweis: { migrationsprobe: mp } }), "E6");
+      const e6 = g.gruende.find((x) => x.includes(" E6: "));
+      expect(e6, JSON.stringify(mp)).toMatch(/Migrationsnachweis: /);
+      expect(e6).toMatch(muster);
+      return e6;
+    };
+    const LOKAL = { art: "migrationsprobe-lokal", digest: null, altDigest: null, bindung: "lokal (Quellstand, kein Digest)",
+      fixture: MP_GUT().fixture, w: MP_GUT().w, zusatz: MP_GUT().zusatz, ergebnis: "bestanden" };
+
+    it("Konfiguration: tief eingefroren; altDigest = Bild der Basis 274bfa0; Regeln = Startschreibvorgänge W-1…W-9", () => {
+      const tief = (o) => Object.isFrozen(o) && Object.values(o).every((v) => v === null || typeof v !== "object" || tief(v));
+      expect(tief(MN)).toBe(true);
+      expect(MN.altDigest).toBe(D274);
+      expect(KONFIG_STANDARD.ohneRevisionslabel.find((o) => o.commit === C274).digest).toBe(MN.altDigest);
+      expect([...MN.regeln]).toEqual(KONFIG_STANDARD.startschreibvorgaenge.map((x) => x.id));
+      expect([MN.feld, MN.art, MN.artLokal, MN.bindung, MN.ergebnis]).toEqual(["migrationsprobe", "migrationsprobe-staging",
+        "migrationsprobe-lokal", "digest", "bestanden"]);
+    });
+
+    it("positiv: Runner-Nachweis am Kandidaten-Digest → G6 GO (E6 ohne Grund), G5 GO mit Belegzeile; Funktion ohne Grund", () => {
+      const r = pruefe(aufbauen());
+      expect(gateVon(r, "G6").ergebnis).toBe("GO");
+      expect(gateVon(r, "G5").ergebnis).toBe("GO");
+      expect(gateVon(r, "G5").belege.join(" ")).toMatch(/Migrationsnachweis \(RST-5\): Pflichtfeld migrationsprobe .*G6 E6/);
+      expect(migrationsnachweisPruefen(MP_GUT(), D)).toEqual([]);
+      // Reihenfolge der Zusatzproben ist frei (nachweisBauen prüft nur Vorhandensein)
+      expect(migrationsnachweisPruefen(MP_GUT({ zusatz: [...MP_GUT().zusatz].reverse() }), D)).toEqual([]);
+    });
+
+    it("fehlend, null, kein Objekt, Platzhalter des Workflows („nicht bewertbar“, digest null) → NO-GO E6", () => {
+      mpRot(undefined, /migrationsprobe fehlt — Runner-Lauf am Kandidaten-Digest ist Pflicht/);
+      mpRot(null, /fehlt/);
+      for (const x of ["kaputt", 1, true, []]) mpRot(x, /kein Objekt/);
+      mpRot({ art: "migrationsprobe-staging", digest: null, ergebnis: "nicht bewertbar", grund: "kein Nachweis an diesem Digest" },
+        /digest '<fehlt>' ist nicht sha256/);
+    });
+
+    it("lokaler oder statischer Nachweis (art migrationsprobe-lokal) → NO-GO E6, auch mit eingetragenem Digest", () => {
+      mpRot(LOKAL, /lokaler Nachweis \(migrationsprobe-lokal, ohne Digest\) — ersetzt den Runner-Lauf am Kandidaten-Digest nie/);
+      mpRot({ ...LOKAL, digest: D, altDigest: D274, bindung: "digest" }, /lokaler Nachweis/);
+      mpRot(MP_GUT({ art: "migrationsprobe" }), /art 'migrationsprobe' ≠ migrationsprobe-staging/);
+      mpRot(MP_GUT({ art: undefined }), /art '<fehlt>'/);
+      mpRot(MP_GUT({ bindung: "lokal (Quellstand, kein Digest)" }), /bindung/);
+      mpRot(MP_GUT({ bindung: null }), /bindung/);
+    });
+
+    it("falscher Digest, Replay eines älteren Kandidaten, Altbild-Digest → NO-GO E6", () => {
+      mpRot(MP_GUT({ digest: D_ALT }), /digest sha256:d+ ≠ Kandidaten-Digest .*älterer Kandidat/);
+      // Replay: vollständiger, bestandener Nachweis eines früheren Kandidaten im Staging-Nachweis des neuen
+      mpRot(MP_GUT({ digest: "sha256:" + "e".repeat(64) }), /≠ Kandidaten-Digest/);
+      const alt = mpRot(MP_GUT({ digest: D274 }), /altDigest = digest \(Altbild statt Kandidat\)/);
+      expect(alt).toMatch(/≠ Kandidaten-Digest/);
+      mpRot(MP_GUT({ altDigest: D }), /altDigest = digest/);
+      mpRot(MP_GUT({ altDigest: null }), /altDigest '<fehlt>' fehlt/);
+      mpRot(MP_GUT({ altDigest: undefined }), /altDigest/);
+      mpRot(MP_GUT({ altDigest: "sha256:" + "f".repeat(64) }), /altDigest sha256:f+ ≠ Bild der Basis 274bfa0/);
+      // Kandidat = Altbild (direkt, ohne die anderen Gates)
+      expect(migrationsnachweisPruefen(MP_GUT({ digest: D274, altDigest: D274 }), D274).join(" ")).toMatch(/Kandidaten-Digest = Bild der Basis 274bfa0/);
+    });
+
+    it("ergebnis ≠ bestanden oder Regeln nicht alle bestanden → NO-GO E6", () => {
+      for (const e of ["fehlgeschlagen", "nicht bewertbar", "ok", "success", "Bestanden", undefined]) mpRot(MP_GUT({ ergebnis: e }), /ergebnis/);
+      const w = (i, x) => MP_GUT().w.map((r, j) => (j === i ? { ...r, ...x } : r));
+      mpRot(MP_GUT({ w: w(8, { ergebnis: "fehlgeschlagen" }) }), /W-1…W-9 nicht vollständig/);   // ergebnis bestanden, W-9 rot
+      mpRot(MP_GUT({ w: w(6, { ergebnis: "nicht bewertbar" }) }), /W-1…W-9/);
+      mpRot(MP_GUT({ w: MP_GUT().w.slice(0, 8) }), /W-1…W-9/);
+      mpRot(MP_GUT({ w: [...MP_GUT().w].reverse() }), /W-1…W-9/);
+      mpRot(MP_GUT({ w: [...MP_GUT().w, { id: "W-10", ergebnis: "bestanden" }] }), /W-1…W-9/);
+      mpRot(MP_GUT({ w: w(0, { id: "W-0" }) }), /W-1…W-9/);
+      mpRot(MP_GUT({ w: null }), /W-1…W-9/);
+      mpRot(MP_GUT({ zusatz: MP_GUT().zusatz.slice(1) }), /zusatz: fixture, start, kennungen, gegenprobe, abgleich nicht alle bestanden/);
+      mpRot(MP_GUT({ zusatz: MP_GUT().zusatz.map((z) => (z.id === "gegenprobe" ? { ...z, ergebnis: "fehlgeschlagen" } : z)) }), /zusatz/);
+      mpRot(MP_GUT({ zusatz: [...MP_GUT().zusatz, { id: "extra", ergebnis: "fehlgeschlagen" }] }), /zusatz/);
+      mpRot(MP_GUT({ fixture: { ...MP_GUT().fixture, baum: "9".repeat(64) } }), /fixture\.baum ≠ Fixture 876c77d96a69…/);
+      mpRot(MP_GUT({ fixture: undefined }), /fixture\.baum/);
+    });
+
+    it("Format: Digest nicht exakt sha256:<64 hex klein> → NO-GO E6", () => {
+      for (const d of ["sha256:0861adee", `sha256:${"C".repeat(64)}`, `${D}\n`, ` ${D}`, `sha512:${"c".repeat(64)}`, "ghcr.io/x/y:latest",
+        `ghcr.io/x/y@${D}`, `sha256:${"c".repeat(65)}`, 42]) {
+        mpRot(MP_GUT({ digest: d }), /digest .*nicht sha256:<64 hex>/);
+        mpRot(MP_GUT({ altDigest: d }), /altDigest .*nicht sha256:<64 hex>/);
+      }
+      // Kandidaten-Digest selbst ungültig (direkt): nie gültig, auch wenn beide gleich sind
+      expect(migrationsnachweisPruefen(MP_GUT({ digest: "sha256:0861adee" }), "sha256:0861adee").join(" ")).toMatch(/Kandidaten-Digest ist nicht sha256/);
+      expect(migrationsnachweisPruefen(MP_GUT(), undefined).length).toBeGreaterThan(0);
+      expect(migrationsnachweisPruefen(MP_GUT(), D, { ...KONFIG_STANDARD, migrationsnachweis: undefined })).toEqual(["Konfiguration migrationsnachweis fehlt (fail-closed)"]);
+    });
+
+    it("G5: Erstwechsel von 274bfa0 ohne Staging-Weg → NO-GO (auch ohne geänderte Quellen); andere Basis unverändert", () => {
+      const bericht = (basis, geaendert = []) => migrationsbericht({ basis, kandidat: M, geaenderteDateien: geaendert, neueDateien: [] }, KONFIG_STANDARD);
+      const ohne = g5Migration(bericht(C274, ["src/App.jsx"]), null);
+      expect(ohne.ergebnis).toBe("NO-GO");
+      expect(ohne.gruende).toEqual([expect.stringMatching(/^Migrationsnachweis \(RST-5\) für den Erstwechsel von 274bfa0\S+ fehlt: .*Runner-Lauf am Kandidaten-Digest .*lokaler oder statischer Nachweis ersetzt ihn nicht/)]);
+      const mitFreigabe = g5Migration(bericht(C274, ["server/lib/widerrufbuch.mjs"]),
+        { migration: { freigegeben: true, basisCommit: C274, abgedeckt: ["W-4"], bericht: "x.md" } });
+      expect(mitFreigabe.gruende.filter((x) => /RST-5/.test(x))).toHaveLength(1);
+      const mitAusnahme = g5Migration(bericht(C274, ["src/App.jsx"]), { erstwechselAusnahme: { widerrufbuchProbe: {} } });
+      expect([mitAusnahme.ergebnis, mitAusnahme.gruende]).toEqual(["GO", []]);
+      expect(g5Migration(bericht(C274), { erstwechselAusnahme: "ja" }).ergebnis).toBe("NO-GO");
+      // andere Basis (mit Revisionslabel): Verhalten wie vor RST-5
+      for (const f of [null, { erstwechselAusnahme: { widerrufbuchProbe: {} } }]) {
+        const g = g5Migration(bericht(B, ["src/App.jsx"]), f);
+        expect([g.ergebnis, g.gruende, g.belege.join(" ")]).toEqual(["GO", [], `keine Startschreib-Quelle seit ${B} geändert`]);
+      }
+      // Gesamtprüfung: Basis 274bfa0 ohne Ausnahmefeld ⇒ G5 NO-GO mit genau diesem Grund
+      const fx = aufbauen({ freigabe: { erstwechselAusnahme: undefined } });
+      const r = pruefe(fx);
+      expect(gateVon(r, "G5").gruende.filter((x) => /Migrationsnachweis \(RST-5\)/.test(x))).toHaveLength(1);
+    });
+  });
     it("T-N8: Lauf-API: anderer Pfad, Ereignis, head_sha, conclusion, Versuch; Artefakt-Bytes anders; API weg → NO-GO E7", () => {
       for (const [k, v] of [["path", ".github/workflows/deploy.yml"], ["event", "push"], ["head_sha", "9".repeat(40)], ["conclusion", "failure"],
         ["status", "in_progress"], ["run_attempt", 2], ["id", 4243]]) {

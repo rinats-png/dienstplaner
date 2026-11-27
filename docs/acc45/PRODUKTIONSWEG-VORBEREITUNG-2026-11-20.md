@@ -485,6 +485,7 @@ Jede Zeile braucht einen Beleg (Datei, Lauf, Protokollzeile). Ohne Beleg: No-Go.
 | F-2a | Manuell zu prüfende Pakete ohne Gate-Schutz (WP-44, WP-15, WP-07b): Funktionsisolation und Betreiberhandlung am Kandidaten bestätigt, Abschnitt 5a | Abschnitt 5a, Betreiberbestätigung je Punkt | offen |
 | F-3 | Kandidatenbild gebaut; Digest, Label = Commit, Provenienz `vcs.revision` = Commit | `deploy.yml` Lauf, Abschnitt 1.3 | offen (kein Bild) |
 | F-4 | Staging-Abnahme per Digest bestanden | STAGING-PLAN-V4 §9 | offen |
+| F-4a | **Migrationsnachweis am exakten Kandidaten-Digest (notwendig, Betreiberentscheidung 2026-11-27):** Feld `migrationsprobe` im Staging-Nachweis eines **erfolgreichen Runner-Laufs** von `staging-gate.yml` (GATE-EW3 + RST-5-Patch): `art` `migrationsprobe-staging`, `digest` = Kandidaten-Digest (`sha256:<64 hex>`), `altDigest` = Bild 274bfa0 und ≠ `digest`, `ergebnis` `bestanden`, W-1…W-9 und Zusatzproben bestanden. Ein lokaler oder statischer Docker-Nachweis (`migrationsprobe-lokal`, `digest: null`, Lauf auf dem Arbeitsrechner) ersetzt den Runner-Lauf **nie**. Fehlt, unlesbar, anderer/älterer Digest oder nicht bestanden: No-Go | `werkzeug/release-pruefung.mjs` G5 (Erstwechsel von 274bfa0) und G6 E6/E7 (Bytes = Artefakt des Laufs); `docs/acc45/RST-5-nachweis.md` Teil 3 | offen (Patches nicht übernommen, kein Lauf) |
 | F-5 | Restore-Probe K0–K11 bestanden | Bericht Abschnitt 4 | offen |
 | F-6 | Sicherung außer Haus läuft, erster Restore belegt (Ablage **und** Widerrufbücher) | `probe-status.json`, `widerrufbuch-probe-status.json` | offen |
 | F-7 | Umgebung `produktion` mit Prüfer; Werte nur dort; keine Repository-Werte | `gh api …/environments` | offen |
@@ -606,7 +607,7 @@ Es wurde keine Freigabedatei angelegt oder geändert. Gesamt: **NO-GO, Exit 1** 
 | G2 Review je PR | NO-GO | 324 PR ohne maschinell prüfbaren Review-Beleg (Bestätigung durch den Betreiber in `reviewBestaetigt`); 149 Commits ohne PR |
 | G3 Schalter | NO-GO | Freigabedatei ohne `vorlagenHashes` (Vorlagen nicht gebunden); die Schalterprüfung selbst nannte keinen aktiven Schalter |
 | G4 Bild | NO-GO | Digest und Bildangaben fehlen (kein Bild gebaut) |
-| G5 Migration/Startschreibvorgänge | NO-GO | seit `274bfa0` geändert: W-1 bis W-9, STARTBLOCK; wartet auf `migration.freigegeben` |
+| G5 Migration/Startschreibvorgänge | NO-GO | seit `274bfa0` geändert: W-1 bis W-9, STARTBLOCK; wartet auf `migration.freigegeben`. Seit 2026-11-27 (RST-5, F-4a) zusätzlich: Migrationsnachweis am Kandidaten-Digest fehlt (ohne Freigabedatei mit Staging-Nachweis) |
 | G6 Sicherung/Restore | NO-GO | Nachweise für Sicherung außer Haus, Restore-Probe, Widerrufbuch-Probe und `v4-r1.freigabe.json` fehlen |
 | G7 Rückweg | NO-GO | `rueckweg.strategie` fehlt in der Freigabedatei |
 | G8 offene P0/P1 im Kandidaten | NO-GO | 16 Pakete, u. a. WP-16, WP-16c, WP-19, WP-19.1, WP-19.3, WP-21, WP-48, WP-14c |

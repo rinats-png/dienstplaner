@@ -420,7 +420,7 @@ describe("GATE-EW3 × GATE-EW1 (#535)", () => {
     expect(fx.stagingLauf).toMatch(FELDER_535.lauf);
   });
 
-  it.skipIf(!mit535 || typeof (/** @type {any} */ (RP).erstwechselPruefen) !== "function")("erstwechselPruefen: der erzeugte Nachweis besteht E6 und E7; ohne baum nicht", () => {
+  it.skipIf(!mit535 || typeof (/** @type {any} */ (RP).erstwechselPruefen) !== "function")("erstwechselPruefen: der erzeugte Nachweis besteht E6 bis auf den Migrationsnachweis (RST-5) und E7; ohne baum nicht", () => {
     const M = "a".repeat(40), S = "3".repeat(40), BAUM = "6".repeat(40), D = `sha256:${"d".repeat(64)}`;
     const pruefen = (/** @type {string} */ text) => {
       const erg = nachweisErzeugen(yaml.load(text), { umgebung: { REVISION: M, GITHUB_SHA: S, BAUM, DIGEST: D, LAUF: "4242-1" } });
@@ -437,7 +437,9 @@ describe("GATE-EW3 × GATE-EW1 (#535)", () => {
           stagingLauf: { id: 4242, run_attempt: 1, path: WF_REL, event: "workflow_dispatch", status: "completed", conclusion: "success", head_sha: S } } };
       return /** @type {any} */ (RP).erstwechselPruefen(k, RP.KONFIG_STANDARD).gruende.filter((/** @type {string} */ g) => /^E[67]:/.test(g));
     };
-    expect(pruefen(gepatcht)).toEqual([]);
+    // RST-5 (Betreiberentscheidung 2026-11-27): E6 verlangt zusätzlich das Feld migrationsprobe. Die EW3-Fassung allein
+    // trägt es nicht ⇒ genau dieser eine Grund; mit dem RST-5-Patch besteht der Nachweis (pruefungen/rst5-migrationsprobe.test.js, E).
+    expect(pruefen(gepatcht)).toEqual([expect.stringMatching(/^E6: Migrationsnachweis: migrationsprobe fehlt — Runner-Lauf am Kandidaten-Digest ist Pflicht/)]);
     expect(pruefen(gepatcht.replace("baum: process.env.BAUM || null, ", "")).join("\n")).toMatch(/^E6: .*baum/);
   });
 });
