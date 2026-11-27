@@ -44,6 +44,11 @@ export function bereichSchreibenFuer(rolle) {
   return rolle === "subplaner" ? "einheit" : null;
 }
 
+/** Archivierung des Änderungsprotokolls der Zuordnungen: wie am Server (A7) nur die Rolle Leitung — nicht Planung, nicht Schichtverantwortung; alles andere: nein (fail-closed). @param {any} rolle */
+export function protokollArchivFuer(rolle) {
+  return rolle === "leitung";
+}
+
 /**
  * Der Basiskontext für die Moduloberflächen.
  * @param {{ sitz?: any, kontext?: any }} o
@@ -61,6 +66,7 @@ export function modulKontext({ sitz, kontext } = {}) {
     berichtZugriff,
     postenSchreiben: postenSchreibenFuer(rolle),
     bereichSchreiben: bereichSchreibenFuer(rolle),
+    protokollArchiv: protokollArchivFuer(rolle),
     person: person && person.id !== undefined && person.id !== null ? String(person.id) : null,
     eigeneEinheit: eigene,
     personen: m && Array.isArray(m.personen) ? m.personen.filter(istObjekt) : [],

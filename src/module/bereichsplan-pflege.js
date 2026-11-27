@@ -25,6 +25,7 @@ import {
   pruefeBereiche, zuordnungSetzen, bereichHinzufuegen, bereichAendern, bereichSollSetzen, bereichEntfernen, BEREICH_GRENZEN, BEREICH_PROTOKOLL_ART,
   bereichsprotokollLueckeOffen, bereichsprotokollLueckeHoechstzahl,
 } from "../../server/lib/modul-bereichsplan.mjs";
+import { BereichsArchiv } from "./bereichsplan-archiv.js";
 
 const RAHMEN = { border: "1px solid currentColor", borderRadius: "var(--v4-r-klein)", padding: 12, overflowWrap: "anywhere" };
 const FELD = { display: "grid", gap: 4, maxWidth: "100%" };
@@ -175,5 +176,7 @@ export function BereichsErgaenzung({ k }) {
   return h(Fragment, null,
     h(BereichsZuordnung, { m: k.m, einheitId: k.einheitId, datum: k.datum, personenImDienst: k.personenImDienst, schreibe: zuordnen }),
     pflegen && h(BereichsPflege, { key: String(k.einheitId), m: k.m, einheitId: k.einheitId, schreibe: pflegen }),
-    pflegen && h(BereichsProtokoll, { m: k.m, einheitId: k.einheitId }));
+    pflegen && h(BereichsProtokoll, { m: k.m, einheitId: k.einheitId }),
+    /* Archivierung des Protokolls (E7 b): nur Leitung (k.protokollArchiv), Export; das Entfernen ist gesperrt (bereichsplan-archiv.js). */
+    pflegen && h(BereichsArchiv, { k }));
 }

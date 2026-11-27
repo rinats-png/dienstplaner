@@ -18,7 +18,7 @@
    BEREICH-BESETZUNG-01), nie eine Sperre; nur bei aktivem Modul.
    Rein: keine Ablage, keine Uhr.
    ========================================================================== */
-import { modulAktiv, BRANCHENMODULE, BEREICH_PROTOKOLL_ART, BEREICH_ARCHIV_ART, BEREICH_LUECKE_ART } from "./branchenmodule.mjs";
+import { modulAktiv, BRANCHENMODULE, BEREICH_PROTOKOLL_ART, BEREICH_ARCHIV_ART, BEREICH_LUECKE_ART, AKTENZEICHEN_MUSTER } from "./branchenmodule.mjs";
 import { REGELN_BRANCHEN, alsEinteilungsBefund } from "./branchenkatalog.mjs";
 
 export const BEREICH_GRENZEN = Object.freeze({ bereicheJeEinheit: 50, planEintraege: 200_000, aenderungenSchicht: 500, tageSpanne: 731,
@@ -490,7 +490,7 @@ export async function bereichsprotokollPruefsumme(text) {
  * Ergebnis, sonst nichts (fail-closed; die Eingabe bleibt unverändert). 400: Form; 409: Export passt nicht zum gespeicherten Stand.
  * Grenzen bleiben, wie sie sind (A10); der Vermerk wird auch an der gemeinsamen Grenze geschrieben (wie Ausschalten, Art. 16/17).
  * @param {any} einstellungen gespeicherte Einstellungen des Betriebs (frisch gelesen)
- * @param {any} angabe { anzahl, bytes, pruefsumme, exportGespeichert: true }
+ * @param {any} angabe { anzahl, bytes, pruefsumme, exportGespeichert: true, aktenzeichen? } (E9: optional, nur AKTENZEICHEN_MUSTER, kein Freitext)
  * @param {{ am: string, von: any }} k
  * @returns {Promise<{ einstellungen: any, vermerk: any } | { status: 400 | 409, grund: string }>}
  */
@@ -500,6 +500,9 @@ export async function bereichsprotokollArchivieren(einstellungen, angabe, { am, 
     return { status: 400, grund: "Archivieren: Erst den Export herunterladen und bestätigen, dass er gespeichert ist." };
   if (!Number.isInteger(a.anzahl) || a.anzahl < 1 || !Number.isInteger(a.bytes) || a.bytes < 2 || typeof a.pruefsumme !== "string" || !PRUEFSUMME.test(a.pruefsumme))
     return { status: 400, grund: "Archivieren: Anzahl, Bytes und Prüfsumme des Exports fehlen oder sind ungültig." };
+  /* E9: nur ein Aktenzeichen nach dem vorhandenen Muster, nie Freitext; ein ungültiges wird nicht still verworfen. */
+  if (a.aktenzeichen !== undefined && a.aktenzeichen !== null && (typeof a.aktenzeichen !== "string" || !AKTENZEICHEN_MUSTER.test(a.aktenzeichen)))
+    return { status: 400, grund: "Archivieren: Das Aktenzeichen hat nicht die vorgesehene Form (Buchstabenkürzel und Ziffern, höchstens 20 Zeichen)." };
   const e = istObjekt(einstellungen) ? einstellungen : {};
   const ex = bereichsprotokollExport(e, { anzahl: a.anzahl });
   if (ex.anzahl !== a.anzahl || ex.bytes !== a.bytes || (await bereichsprotokollPruefsumme(ex.text)) !== a.pruefsumme)
@@ -507,7 +510,8 @@ export async function bereichsprotokollArchivieren(einstellungen, angabe, { am, 
       + "Nichts entfernt — bitte neu exportieren." };
   const zeit = (x) => (typeof x.am === "string" ? x.am.slice(0, 40) : null);
   const vermerk = { art: BEREICH_ARCHIV_ART, modul: "bereichsplan", am, von: von === undefined ? null : von, anzahl: ex.anzahl, bytes: ex.bytes,
-    pruefsumme: a.pruefsumme, erster: zeit(ex.eintraege[0]), letzter: zeit(ex.eintraege[ex.eintraege.length - 1]) };
+    pruefsumme: a.pruefsumme, erster: zeit(ex.eintraege[0]), letzter: zeit(ex.eintraege[ex.eintraege.length - 1]),
+    ...(typeof a.aktenzeichen === "string" ? { aktenzeichen: a.aktenzeichen } : {}) };
   const weg = new Set(ex.eintraege);
   return { einstellungen: { ...e, modulprotokoll: [...e.modulprotokoll.filter((x) => !weg.has(x)), vermerk] }, vermerk };
 }
