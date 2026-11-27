@@ -19,6 +19,7 @@ import { LinienDiagramm } from "../ui/diagramme.jsx";
 import { feiertag } from "../../server/lib/feiertage.mjs";
 import { nachtschwelle } from "../../server/lib/fachpruefung.mjs";
 import { KrankmeldungenOffen } from "./krankmeldungen-offen.jsx";
+import { festEingeplant, FEST_EINGEPLANT_TEXT } from "./anheftungen.jsx";
 
 /* ==========================================================================
    MEINE SCHICHTEN — die Sicht der Mitarbeiterrolle
@@ -188,6 +189,7 @@ export function MeineSchichten({ sitz, akt, ym }) {
               {da && nachtAnteil(da, m.einstellungen) >= nachtschwelle(m.einstellungen)
                 && <Pill size="sm" tone="violet">Nacht</Pill>}
               {t.quelle === "abweichung" && <Pill size="sm" tone="warn">geändert</Pill>}
+              {festEingeplant(m, ich.id, d) && <Pill size="sm">{FEST_EINGEPLANT_TEXT}</Pill>}
             </div>);
         })}</div>
       </Card>

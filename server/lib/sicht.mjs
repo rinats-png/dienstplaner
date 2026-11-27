@@ -30,6 +30,7 @@ import { vorgabenBetriebsratSicht, VORGABEN_BETRIEBSRAT_LESEN } from "./vorgaben
 import { kiSteuerungSicht, kiSteuerungSichtVoll } from "./ki-steuerung.mjs";
 import { abschlussStatus } from "./monatsabschluss.mjs";
 import { istBetriebsSchluessel, istMonatsSchluessel } from "./isteinfrieren.mjs";
+import { anheftungenLesen } from "./engine/anheften.mjs";
 
 /* Die vier Entscheidungen. Reduziert heißt: Die Regel ist eine Funktion. */
 export const VOLL = "voll";
@@ -758,7 +759,8 @@ export const BETRIEB = {
      VORGABEN_BETRIEBSRAT_LESEN (AUS, 1.2), das Protokoll der Vorgaben ebenso (moduleinstellungenSicht). */
   vorgaben: [WEG, R((w, ctx) => vorgabenBetriebsratSicht(w, ctx.vorgabenBetriebsrat))],
   /* Anheften (WP-I7 Teil 6, anheften.mjs): Karte „Person|Tag“ → Stempel. Planung und Leitung (Vollsicht) lesen sie; Beschäftigte,
-     Schichtverantwortung und Betriebsrat nichts (Vorlage #595: „fest“ für Beschäftigte ist eine offene Entscheidung, bis dahin nichts). */
+     Schichtverantwortung und Betriebsrat nicht. Beschäftigte bekommen seit Teil 7 (Betreiberentscheidung 27.11.) nur den abgeleiteten
+     Hinweis `festEingeplant` an eigenen Einteilungen (bestandSicht), nie die Karte. */
   angeheftet: [WEG, WEG],
   /* Mehrere Schichtmodelle je Betrieb (IMP-6 Teil 2, schichtzuordnung.mjs): vollständig nur Planung, Leitung und
      Kundenrolle; sie wirken noch nicht auf die Planrechnung. Beschäftigte und Schichtverantwortung (SCHICHT übernimmt die
@@ -858,7 +860,30 @@ export function bestandSicht(bestand, sitzung, eigener) {
        nur in der Antwort (wie sichtIstDaten), ein gespeichertes zählt nie. */
     if (sitzung && sitzung.rolle === "mitarbeiter" && planFreigabeAktiv(eigener))
       aus.mandanten[0].sichtEntwuerfe = { heute: laufenderTag() };
+    /* Anheften (WP-I7 Teil 7, Betreiberentscheidung 27.11.): Beschäftigte sehen an ihren EIGENEN Einteilungen den Hinweis „Fest
+       eingeplant“ — nur ein Kennzeichen je eigenem Person|Tag, ohne Wann/Wer, ohne fremde Anheftungen, ohne Protokoll; die Karte
+       selbst bleibt WEG. Nie gespeichert (rechte.mjs abgeleiteteEntfernen, teilweg.mjs NUR_SERVER), keine Rechte daraus. */
+    if (sitzung && sitzung.rolle === "mitarbeiter") {
+      const fest = festEingeplantEigene(eigener, aus.mandanten[0], sitzung.person);
+      if (Object.keys(fest).length) aus.mandanten[0].festEingeplant = fest;
+    }
   }
+  return aus;
+}
+
+/**
+ * „Fest eingeplant“ für die eigene Person: { "<ich>|<JJJJ-MM-TT>": true } für jede aktive Anheftung einer eigenen Einteilung, die in
+ * der Sicht der Person steht (eine verborgene Entwurfseinteilung verrät der Hinweis nicht). Unlesbare Karte: kein Hinweis (nie eine
+ * Aussage, die nicht sicher ist). Rein.
+ * @param {any} roh gespeicherter Betrieb @param {any} sichtBetrieb Betrieb in der Sicht der Person @param {any} ich
+ */
+export function festEingeplantEigene(roh, sichtBetrieb, ich) {
+  const aus = {};
+  if (ich === null || ich === undefined || ich === "") return aus;
+  const l = anheftungenLesen(roh);
+  if (!l.ok) return aus;
+  const abw = sichtBetrieb && sichtBetrieb.abweichungen && typeof sichtBetrieb.abweichungen === "object" ? sichtBetrieb.abweichungen : {};
+  for (const k of l.aktiv) if (eigenerSchluessel(k, ich) && Object.prototype.hasOwnProperty.call(abw, k)) aus[k] = true;
   return aus;
 }
 

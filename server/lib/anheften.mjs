@@ -18,6 +18,8 @@
    - Unlesbare gespeicherte Karte: Der unverändert zurückgeschickte Wert zählt nicht als Schreiben (Review #602 B-2: Speichern geht weiter,
      die Karte bleibt unlesbar, Planer `ungueltig`, SV gesperrt). Reparatur: Leitung/Planung schicken eine gültige Zuordnung; gültige alte
      Einträge behalten ihren Stempel, ein unverändert mitgeschickter unlesbarer Eintrag wird abgewiesen (nie still neu angeheftet).
+     Ändert eine Anfrage bei unlesbarer Karte eine Einteilung mit gültigem aktivem Eintrag, wird dieser trotzdem als aufgehoben vermerkt
+     (Review #602 C, WP-I7 Teil 7); die Reparatur heftet den geänderten Wert so nie still an.
    - Verwaiste Anheftung (Einteilung fehlt, z. B. nach dem Datenschutzlauf): wird beim nächsten Speichern als aufgehoben vermerkt
      (Stempel „system“, Protokoll) und sperrt nie das Speichern (Review #602 B-1). „Nur eingetragene Einteilung“ gilt für neu Angeheftetes.
    - Der Datenschutzlauf (aufbewahrung.mjs raeumen) kürzt die Karte mit der Plandatenfrist wie abweichungen.
@@ -63,8 +65,10 @@ export function anheftenZusammen(altM, neuM, sitzung, o) {
     /* Review #602 B-2: Der unverändert zurückgeschickte gespeicherte Wert ist keine Absicht (Voll-PUT, Teilweg) — auch ein unlesbarer
        Wert sperrt so nie das normale Speichern. */
     const schreibt = darfAnheften(sitzung) && hat(neuM, ANGEHEFTET_FELD) && !(hatAlt && gleich(neuM[ANGEHEFTET_FELD], altRoh));
-    /* Unlesbarer gespeicherter Stand ohne Reparatur: bleibt, wie er ist (kein Aufheben möglich, der Planer rechnet nicht, SV bleibt gesperrt). */
-    if (!alt.ok && !schreibt) return { mandant: mitKarte(altRoh) };
+    /* Unlesbarer gespeicherter Stand ohne Reparatur: bleibt, wie er ist (der Planer rechnet nicht, SV bleibt gesperrt). Ist die Karte ein
+       Objekt, werden ihre der Form nach gültigen aktiven Einträge trotzdem als aufgehoben vermerkt, wenn diese Anfrage ihre Einteilung
+       ändert (Review #602 C: sonst heftete die spätere Reparatur den geänderten Wert still an); die übrigen Einträge bleiben unverändert. */
+    if (!alt.ok && !schreibt && !istObjekt(altRoh)) return { mandant: mitKarte(altRoh) };
 
     /** Ergebnis: Schlüssel → Eintrag; Zähler für das Protokoll. */
     const aus = {};
@@ -99,7 +103,8 @@ export function anheftenZusammen(altM, neuM, sitzung, o) {
       /* Nicht mehr mitgeschickt: gelöst (angeheftet) bzw. Vermerk entfernt (aufgehoben). */
       for (const s of altAktiv) if (!hat(w, s)) geloest++;
     } else {
-      for (const [s, x] of Object.entries(altK)) aus[s] = x;
+      /* Unlesbar (ohne Reparatur): alle gespeicherten Einträge, auch die unlesbaren, bleiben; nur gültige können unten aufgehoben werden. */
+      for (const [s, x] of Object.entries(alt.ok ? altK : altRoh)) aus[s] = x;
     }
     /* Manuelle Änderung der Einteilung hebt genau deren Anheftung auf (nur, was vorher schon angeheftet war; was diese Anfrage neu anheftet,
        heftet den neuen Wert an). */
