@@ -16,7 +16,7 @@ import {
   codeNamenFinden, vorlageLesen, wertAufloesen, abweichend, bildAngabenLesen, prsAusCommits, commitsOhnePr,
   argumenteLesen, ssotReviewBelege, freigabeSchema, basisPruefen, ausfuehrOptionen, ausfuehren, vorlageUnlesbar,
   vorlagenStandErmitteln, kurzfassung, urteilPositiv, REL_AUSNAHME_IDS, nachholPruefen, nachholSammeln, zipEntpacken,
-  migrationsnachweisPruefen,
+  migrationsnachweisPruefen, wiederholungPruefen,
 } from "../werkzeug/release-pruefung.mjs";
 
 const WURZEL = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -2893,9 +2893,13 @@ describe("GATE-EW1/EW2: Erstwechsel-Ausnahme der Widerrufbuch-Probe (G6) und Nac
       + `Der abgebrochene Vorversuch ${v.releaseId} (Kandidat ${v.kandidatCommit}, Digest ${v.digest}, Abbruchbeleg ${v.abbruchNachweis}) `
       + `wird nicht wiederverwendet; seine Erstwechsel-Ausnahme bleibt verbraucht. Alle Nachweise stammen aus einem neuen Lauf am Digest ${D}.`;
     /** Freigabedatei v4-r2 mit Feld wiederholung, Abbruchbeleg des Vorversuchs, neuer Staging-Nachweis; liefert die Fixture. */
-    function whAufbauen({ vor = {}, abbruch = {}, ohneAbbruch = false, nachweis = {}, frei = {}, staging = {}, feld, freigabe = {}, ew = {} } = {}) {
+    function whAufbauen({ vor = {}, abbruch = {}, ohneAbbruch = false, nachweis = {}, frei = {}, staging = {}, feld, freigabe = {}, ew = {},
+      vorFreigabe = { ...FREIGABE, erstwechselAusnahme: { widerrufbuchProbe: {} } }, nachholR2 = { historie: [], fruehereAusnahme: false } } = {}) {
       datei("deploy/FREIGEGEBENE-IMAGES.md", LISTE_EW());
       datei(SKRIPT, "#!/usr/bin/env bash\n# synthetisch (Test GATE-EW1)\n");
+      datei(".github/CODEOWNERS", "# Release-Pfade (F9, E14 b)\n" + C.codeOwnerPfade.map((p) => `/${p} @rinats-png`).join("\n") + "\n");
+      // Freigabedatei des abgebrochenen Vorversuchs v4-r1 (trägt die verbrauchte Ausnahme; Rückhalt G6)
+      if (vorFreigabe !== null) datei("docs/acc45/releases/v4-r1.freigabe.json", vorFreigabe);
       const v = { ...VOR, ...vor };
       if (!ohneAbbruch) datei(v.abbruchNachweis, { id: "A-START", releaseId: v.releaseId, kandidat: v.kandidatCommit, digest: v.digest, zeit: ABBRUCH_ZEIT, ...abbruch });
       datei(WH_NACHWEIS, { ...STAGING(), laufCommit: M, ...nachweis });
@@ -2905,8 +2909,9 @@ describe("GATE-EW1/EW2: Erstwechsel-Ausnahme der Widerrufbuch-Probe (G6) und Nac
       datei(WH_FREIGABE, { ...FREIGABE, releaseId: "v4-r2", basisCommit: C274, migration: { ...FREIGABE.migration, basisCommit: C274 },
         vorlagenHashes: hashesIn(w, [".env.example", "deploy/compose.yml", "Dockerfile"]), wiederholung: wh, ...freigabe });
       const fx = JSON.parse(JSON.stringify(fixtureGo()).replaceAll("b".repeat(40), C274));
-      fx.wiederholung = { baumKandidat: BAUM, stagingLauf: { ...kopie(EW.erstwechsel.stagingLauf), head_sha: M },
+      fx.wiederholung = { baumKandidat: BAUM, stagingLauf: { ...kopie(EW.erstwechsel.stagingLauf), head_sha: M }, vierAugen: kopie(EW.erstwechsel.vierAugen),
         stagingArtefakt: [Buffer.from("axe").toString("base64"), nachweisRoh.toString("base64")], ...ew };
+      fx.nachhol = { ...kopie(EW.nachhol), ...(nachholR2 === null ? {} : { "v4-r2": nachholR2 }) };
       return fx;
     }
     const pruefeWh = (fx, opt = {}) => pruefe(fx, { releaseId: "v4-r2", ...opt });
@@ -2919,7 +2924,6 @@ describe("GATE-EW1/EW2: Erstwechsel-Ausnahme der Widerrufbuch-Probe (G6) und Nac
       expect(z[0]).toMatch(muster);
       return g;
     }
-    const nurAndere = (r) => r.gates.filter((g) => g.id !== "G5").map((g) => [g.id, g.ergebnis, g.gruende]);
 
     it("Konfiguration: tief eingefroren, fester Wortlaut mit beiden Digests; kein CLI-Schalter", () => {
       const cw = KONFIG_STANDARD.wiederholung;
@@ -2930,14 +2934,21 @@ describe("GATE-EW1/EW2: Erstwechsel-Ausnahme der Widerrufbuch-Probe (G6) und Nac
       for (const a of ["--wiederholung", "--vorversuch"]) expect(() => argumenteLesen([a]), a).toThrow(/unbekannte Option/);
     });
 
-    it("positiv: vollständige Wiederholung → G5 GO mit Belegzeile; alle anderen Gates byte-gleich zu „ohne Feld“", () => {
+    it("positiv Ende zu Ende: vollständige Wiederholung → alle Gates GO (G5 Belegzeile, G6 regulär + Rückhalt ersetzt); ohne Feld G5 und G6 NO-GO", () => {
       const r = pruefeWh(whAufbauen());
+      expect(r.gates.map((g) => [g.id, g.ergebnis, g.gruende])).toEqual(r.gates.map((g) => [g.id, "GO", []]));
+      expect([r.gesamt, r.exitCode]).toEqual(["GO", 3]);
       const g5 = gateVon(r, "G5");
-      expect([g5.ergebnis, g5.gruende]).toEqual(["GO", []]);
       expect(g5.belege.join(" ")).toMatch(/Wiederholung \(RST-5\) des abgebrochenen Erstwechsels v4-r1 .* ausdrücklich freigegeben durch Betreiber am 2026-11-19; Staging-Lauf 4242-1/);
-      expect(gateVon(r, "G10").ergebnis).toBe("GO");
+      const g6 = gateVon(r, "G6");
+      expect(g6.belege.join(" ")).toMatch(/Erstwechsel-Ausnahme v4-r1 abgebrochen; Rückhalt durch die freigegebene Wiederholung v4-r2 ersetzt/);
+      expect(g6.belege.join(" ")).toMatch(/Widerrufbuch-Probe \(widerrufbuch-probe-status\.json\)/);
       const ohne = pruefeWh(whAufbauen({ freigabe: { wiederholung: undefined } }));
-      expect(nurAndere(r)).toEqual(nurAndere(ohne));
+      expect(gateVon(ohne, "G5").ergebnis).toBe("NO-GO");
+      expect(gateVon(ohne, "G6").gruende.join(" ")).toMatch(/Ausnahme v4-r1 nicht abgeschlossen/);
+      // übrige Gates (außer G5, G6) unverändert
+      const ohneG56 = (x) => x.gates.filter((g) => !["G5", "G6"].includes(g.id)).map((g) => [g.id, g.ergebnis, g.gruende]);
+      expect(ohneG56(r)).toEqual(ohneG56(ohne));
       // Schnitt-Lauf wie beim Erstwechsel zulässig, wenn schnittCommit in der Freigabedatei steht
       const fx = whAufbauen({ nachweis: { laufCommit: S }, freigabe: { schnittCommit: S }, ew: {} });
       fx.wiederholung.stagingLauf.head_sha = S;
@@ -3025,7 +3036,8 @@ describe("GATE-EW1/EW2: Erstwechsel-Ausnahme der Widerrufbuch-Probe (G6) und Nac
       const fx = whAufbauen();
       const f = JSON.parse(roh(WH_FREIGABE));
       const k = { releaseId: "v4-r2", kandidat: M, digest: D, jetztMs: JETZT_MS, wh: { ...fx.wiederholung, stagingRoh: roh(WH_NACHWEIS),
-        abbruchRoh: roh(VOR.abbruchNachweis), skriptRoh: roh(SKRIPT), stagingArtefakt: fx.wiederholung.stagingArtefakt.map((b) => Buffer.from(b, "base64")) } };
+        abbruchRoh: roh(VOR.abbruchNachweis), skriptRoh: roh(SKRIPT), codeowners: roh(".github/CODEOWNERS").toString("utf8"), spur: null,
+        stagingArtefakt: fx.wiederholung.stagingArtefakt.map((b) => Buffer.from(b, "base64")) } };
       expect([g5Migration(bericht(C274), f, null, KONFIG_STANDARD, k).ergebnis, g5Migration(bericht(C274), f, null, KONFIG_STANDARD, k).gruende]).toEqual(["GO", []]);
       const beide = g5Migration(bericht(C274), { ...f, erstwechselAusnahme: { widerrufbuchProbe: {} } }, null, KONFIG_STANDARD, k);
       expect(beide.gruende).toEqual([expect.stringMatching(/^Wiederholung \(RST-5\): WH1: erstwechselAusnahme zugleich gesetzt — die verbrauchte Ausnahme wird nie wiederverwendet/)]);
@@ -3037,6 +3049,73 @@ describe("GATE-EW1/EW2: Erstwechsel-Ausnahme der Widerrufbuch-Probe (G6) und Nac
       const ohneProbe = whAufbauen(); delete ohneProbe.nachweise.widerrufbuchProbe;
       expect(gateVon(pruefeWh(ohneProbe), "G6").gruende.join(" ")).toMatch(/Widerrufbuch-Probe .*Nachweis fehlt/);
       expect(gateVon(pruefeWh(ohneProbe), "G6").belege.join(" ")).not.toMatch(/ERSTWECHSEL-AUSNAHME/);
+    });
+
+    it("Review #600 B-1: Rückhalt v4-r1 nur durch gültige Wiederholung; ungültig, Datei fehlt, Spur unklar → G6 NO-GO; Spur „genutzt“ → GO", () => {
+      const g6 = (fx) => gateVon(pruefeWh(fx), "G6");
+      const rot = g6(whAufbauen({ frei: { quittung: "anders" } }));
+      expect(rot.gruende.join(" ")).toMatch(/Ausnahme v4-r1: Rückhalt nur über eine gültige Wiederholung — 1 Grund\/Gründe in G5/);
+      const ohneVorDatei = whAufbauen({ vorFreigabe: null }); rmSync(join(w, "docs/acc45/releases/v4-r1.freigabe.json"), { force: true });
+      expect(g6(ohneVorDatei).gruende.join(" ")).toMatch(/v4-r1\.freigabe\.json .*Rückhalt NO-GO/);
+      // Ausnahme aus der v4-r1-Datei entfernt, Spuren vorhanden: mit gültiger Wiederholung GO; Spuren nicht prüfbar: NO-GO
+      const spur = whAufbauen({ vorFreigabe: { ...FREIGABE } });
+      spur.nachhol["v4-r1"] = { ...spur.nachhol["v4-r1"], historie: [VOR.abbruchNachweis] };
+      expect(g6(spur).ergebnis).toBe("GO");
+      const unklar = whAufbauen({ vorFreigabe: { ...FREIGABE } });
+      delete unklar.nachhol["v4-r1"].historie;
+      expect(g6(unklar).gruende.join(" ")).toMatch(/Spuren nicht prüfbar/);
+      // Wiederholung eines anderen Release ohne Abbruchbeleg von v4-r1 ersetzt den Rückhalt nicht
+      const kette = whAufbauen({ vor: { releaseId: "v4-r1x", abbruchNachweis: "docs/acc45/releases/v4-r1x/abbruch-A-START.json" } });
+      rmSync(join(w, VOR.abbruchNachweis), { force: true });
+      expect(gateVon(pruefeWh(kette), "G5").ergebnis).toBe("GO");
+      expect(g6(kette).gruende.join(" ")).toMatch(/Ausnahme v4-r1 nicht abgeschlossen/);
+      // mit gültigem Abbruchbeleg von v4-r1 (Kette v4-r1 → v4-r1x → v4-r2): GO; ungültige Abbruch-ID: NO-GO
+      datei(VOR.abbruchNachweis, { id: "A-START", releaseId: "v4-r1", kandidat: VOR.kandidatCommit, digest: VOR.digest, zeit: ABBRUCH_ZEIT });
+      expect(g6(kette).ergebnis).toBe("GO");
+      datei(VOR.abbruchNachweis, { id: "A-UNBEKANNT", releaseId: "v4-r1", kandidat: VOR.kandidatCommit, digest: VOR.digest, zeit: ABBRUCH_ZEIT });
+      expect(g6(kette).ergebnis).toBe("NO-GO");
+    });
+
+    it("Review #600 B-2: dieser Versuch schon genutzt (Abbruch/Nachhol des aktuellen Release in HEAD, nur Geschichte, beides, frühere Ausnahme) → WH7", () => {
+      const eigen = "docs/acc45/releases/v4-r2/abbruch-A-START.json";
+      const kopf = whAufbauen();
+      datei(eigen, { id: "A-START", releaseId: "v4-r2", kandidat: M, digest: D, zeit: "2026-11-19T18:00:00Z" });
+      datei("docs/acc45/releases/v4-r2/nachhol/t0.json", { t0: "2026-11-19T17:00:00Z" });
+      whRot(kopf, "WH7", /Wiederholung v4-r2 schon genutzt \(.*abbruch-A-START\.json.*\) — weiterer Versuch nur als neue Release-ID mit v4-r2 als Vorversuch und neuer Freigabe/);
+      rmSync(join(w, "docs/acc45/releases/v4-r2/nachhol"), { recursive: true, force: true }); rmSync(join(w, eigen), { force: true });
+      whRot(whAufbauen({ nachholR2: { historie: ["docs/acc45/releases/v4-r2/nachhol/t0.json"], fruehereAusnahme: false } }), "WH7", /schon genutzt \(docs\/acc45\/releases\/v4-r2\/nachhol\/t0\.json/);
+      const beides = whAufbauen({ nachholR2: { historie: [eigen], fruehereAusnahme: false } });
+      datei(eigen, { id: "A-START", releaseId: "v4-r2", kandidat: M, digest: D, zeit: "2026-11-19T18:00:00Z" });
+      whRot(beides, "WH7", /schon genutzt/);
+      rmSync(join(w, eigen), { force: true });
+      whRot(whAufbauen({ nachholR2: { historie: [], fruehereAusnahme: true } }), "WH7", /frühere Fassung der Freigabedatei mit erstwechselAusnahme/);
+      whRot(whAufbauen({ nachholR2: null }), "WH7", /nicht prüfbar/);
+      // ein Staging-Nachweis unter v4-r2/nachweise/ ist keine Spur
+      expect(gateVon(pruefeWh(whAufbauen()), "G5").ergebnis).toBe("GO");
+    });
+
+    it("Review #600 C-1: Vier-Augen wie E14 (WH8): Freigabe-PR ohne Code-Owner-Freigabe, vom Autor selbst, Abfrage gescheitert, CODEOWNERS fehlt → NO-GO", () => {
+      const va = (aendern) => { const fx = whAufbauen(); aendern(fx.wiederholung.vierAugen); return fx; };
+      whRot(va((x) => { x.prs["701"].reviews = []; }), "WH8", /PR der Freigabedatei ohne Code-Owner-Freigabe/);
+      whRot(va((x) => { x.prs["701"].autor = "rinats-png"; }), "WH8", /PR der Freigabedatei ohne Code-Owner-Freigabe/);
+      whRot(va((x) => { x.prs["701"].reviews[0].commit = "9".repeat(40); }), "WH8", /letzter Kopf/);
+      whRot(va((x) => { x.fehler = ["GET rules/branches/main: 404"]; }), "WH8", /GitHub-Abfrage gescheitert/);
+      whRot(va((x) => { x.regeln.main = []; }), "WH8", /Ruleset main/);
+      whRot(whAufbauen({ ew: { vierAugen: null } }), "WH8", /GitHub-Abfrage gescheitert/);
+      const ohneCo = whAufbauen(); rmSync(join(w, ".github/CODEOWNERS"));
+      whRot(ohneCo, "WH8", /CODEOWNERS fehlt/);
+      // Paket-PRs (GATE-EW1/EW2) gehören nicht zu WH8
+      expect(gateVon(pruefeWh(va((x) => { x.paketPrs = {}; })), "G5").ergebnis).toBe("GO");
+    });
+
+    it("Review #600 C-2: ungültiges Feld beim direkten Aufruf wirft nicht (WH0, fail-closed)", () => {
+      const b = migrationsbericht({ basis: C274, kandidat: M, geaenderteDateien: [], neueDateien: [] }, KONFIG_STANDARD);
+      for (const feld of [{}, { vorversuch: null, freigabe: null, staging: null }, null, "x", { vorversuch: VOR }]) {
+        let g;
+        expect(() => { g = g5Migration(b, { wiederholung: feld }, null, KONFIG_STANDARD, {}); }, JSON.stringify(feld)).not.toThrow();
+        expect(g.gruende.join(" ")).toMatch(/WH0: Feld wiederholung ungültig/);
+      }
+      expect(wiederholungPruefen({ freigabe: null }).gruende).toEqual([expect.stringMatching(/^WH0: /)]);
     });
   });
     it("T-N8: Lauf-API: anderer Pfad, Ereignis, head_sha, conclusion, Versuch; Artefakt-Bytes anders; API weg → NO-GO E7", () => {

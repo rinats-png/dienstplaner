@@ -194,24 +194,33 @@ aus anderen Angaben abgeleitet:
 ```
 
 Das Schema ist streng (genau diese Schlüssel, Typen, Formate); ein Fehler macht die Freigabedatei ungültig (G10 NO-GO, G5
-NO-GO). G5 prüft dann WH1–WH6 (jede Verletzung ein Grund „Wiederholung (RST-5): WH<n>: …“):
+NO-GO). G5 prüft dann WH0–WH8 (jede Verletzung ein Grund „Wiederholung (RST-5): WH<n>: …“):
 
 | Regel | verlangt |
 |---|---|
+| WH0 | Feld gültig (auch beim direkten Aufruf; ein ungültiges Feld wirft nie, sondern ergibt einen Grund) |
 | WH1 | Basis aus `ohneRevisionslabel` (274bfa0); **keine** `erstwechselAusnahme` zugleich — die verbrauchte Ausnahme wird nie wiederverwendet, ihr Verbrauch (E15/F10) bleibt bestehen |
 | WH2 | neue Release-ID, neuer Kandidat, neuer Digest ≠ Digest des Vorversuchs; Vorversuch-Digest ≠ Basisbild |
 | WH3 | Abbruchbeleg des Vorversuchs in HEAD unter `docs/acc45/releases/<id>/abbruch-*.json`; JSON mit `id` aus der Abbruchtabelle A.8, `releaseId`/`kandidat`/`digest` = Vorversuch, `zeit` nicht in der Zukunft (Format wie `abbruch-A-VOR.json`) |
 | WH4 | ausdrückliche Betreiberfreigabe: `quittung` im festen Wortlaut (bindet neuen Digest, Kandidat, Vorversuch-Digest, Abbruchbeleg), `datum` nicht vor dem Abbruch und nicht in der Zukunft, keine Platzhalter |
 | WH5 | Staging-Nachweis am **neuen** Digest wie E6 (Bytes per SHA-256, `ergebnis` success, `commit`/`baum`/`lauf`/`laufCommit`, S1–S6, Skript-SHA-256, ≤ 7 Tage) **und** nach dem Abbruch erstellt; Migrationsnachweis (`migrationsprobe`) Pflicht wie in 3.1 |
 | WH6 | Lauf-API und Artefakt-Bytes wie E7 (`staging-gate.yml`, `workflow_dispatch`, `completed/success`, `head_sha` = Kandidat oder Schnitt) |
+| WH7 | dieser Versuch ist noch nicht genutzt (Gegenstück zu E15): keine Datei unter `<neue-id>/nachhol/` oder `<neue-id>/abbruch-*.json` in HEAD oder seiner Geschichte und keine frühere Fassung der Freigabedatei mit Ausnahme. Ein weiterer Versuch braucht eine **neue** Release-ID mit diesem als Vorversuch und eine neue Freigabe (Review #600 B-2) |
+| WH8 | Vier-Augen wie E14: Rulesets mit Code-Owner-Review, CODEOWNERS allein beim Inhaber, PR der Freigabedatei nach `main` mit Code-Owner-Freigabe des Inhabers (≠ Autor, auf dem letzten Kopf); eine Quittung des Maschinenkontos genügt nicht (Review #600 C-1) |
 
-Alle übrigen Gates bleiben unverändert; insbesondere verlangt G6 auf diesem Weg die reguläre, aktuelle
-Widerrufbuch-Probe (keine Ausnahme). Ohne vollständiges Feld bleibt G5 NO-GO. Es gibt keinen CLI-Schalter, keine
+**Wirkung auf andere Gates (präzise):** G6 verlangt auf diesem Weg die reguläre, aktuelle Widerrufbuch-Probe (keine
+Ausnahme). Der **Folge-Release-Rückhalt** (GATE-EW2, G6) für den Release mit Erstwechsel-Ausnahme (`v4-r1`) gilt nur dann
+als erledigt, wenn die aktuelle Freigabe eine in G5 vollständig gültige Wiederholung (WH0–WH8) trägt **und** entweder
+`vorversuch.releaseId` = dieser Release ist oder dieser Release einen gültigen Abbruchbeleg in HEAD hat (Kette, z. B.
+v4-r1 → v4-r2 → v4-r3). Eine fehlende oder unlesbare Freigabedatei des Vorversuchs und „Spuren nicht prüfbar“ bleiben
+NO-GO. Ohne gültiges Feld bleibt der Rückhalt wie bisher (NACHHOL-GO verlangt; nach einem Abbruch NO-GO). Alle übrigen
+Gates (G1–G4, G7–G10) sind unverändert. Ohne vollständiges Feld bleibt G5 NO-GO. Es gibt keinen CLI-Schalter, keine
 Konfigurationsoption und keine Statusdatei für diesen Weg; Workflow unverändert (der Lauf ist derselbe Staging-Gate-Lauf
 wie in 3.1, am neuen Digest).
 
-Tests: `pruefungen/release-pruefung.test.js`, Block „RST-5 Wiederholung“ (positiv inkl. Schnitt-Lauf, übrige Gates
-byte-gleich zu „ohne Feld“; kein/leeres/falsches Feld, automatische Ableitung, Freigabe fehlt/leer/anderer Wortlaut/vor
+Tests: `pruefungen/release-pruefung.test.js`, Block „RST-5 Wiederholung“ (positiv Ende zu Ende: alle Gates GO inkl. G6 mit
+regulärer Probe und ersetztem Rückhalt, Schnitt-Lauf; G1–G4/G7–G10 gleich zu „ohne Feld“; Rückhalt-Negativfälle; WH7 Kopf/
+Geschichte/beides/frühere Ausnahme; WH8 wie E14; WH0; kein/leeres/falsches Feld, automatische Ableitung, Freigabe fehlt/leer/anderer Wortlaut/vor
 dem Abbruch/Zukunft/Platzhalter, gleicher Digest/Kandidat/Release-ID, Abbruchbeleg in allen Fehlformen, Replay des
 Vorversuchs (Digest, Migrationsnachweis, Erstellzeit, Lauf, Bytes), Frist abgelaufen, Ausnahme und Wiederholung zugleich,
 andere Basis, G6 regulär). Zahlen und Mutationen: PR-Beschreibung.
