@@ -45,10 +45,12 @@ function befunde(text) {
   if (!/Abgelaufene Nachweise werden erneuert/.test(s2)) b.push("Alter: abgelaufene Nachweise werden erneuert fehlt");
   if (!/Ein neuer Kandidat ist nur bei konkreten Gründen nötig/.test(s2) || !/Alter allein ist kein Grund/.test(s2)) b.push("Alter: neuer Kandidat nur bei konkreten Gründen fehlt");
   if (!/unverändertes, weiterhin geeignetes Bild darf mit\s+aktualisierten Nachweisen erneut bewertet werden/.test(s2)) b.push("Alter: unverändertes Bild mit aktualisierten Nachweisen erneut bewerten fehlt");
-  if (!/demselben Kandidaten und Digest/.test(s2) || !/neue Versuchskennung/.test(s2) || !/#600[^\n]*\n?[^\n]*noch nicht gemergt/.test(s2)) b.push("Versuchsmodell (derselbe Digest, neue Versuchskennung, #600 nicht gemergt) fehlt");
+  // #600 (Versuchsmodell): beschrieben, aber nicht als gemergt behauptet; die Aussage stimmt vor und nach dem Merge
+  if (!/demselben Kandidaten und Digest/.test(s2) || !/neue Versuchskennung/.test(s2) || !/eingeführt mit\s+PR #600/.test(s2) || !/Merge-Stand: siehe Git-Historie/.test(s2)) b.push("Versuchsmodell (derselbe Digest, neue Versuchskennung, eingeführt mit #600, Merge-Stand Git-Historie) fehlt");
+  if (/#600[^\n]{0,80}gemergt/.test(s2)) b.push("#600 als gemergt oder nicht gemergt behauptet (Merge-Stand steht in der Git-Historie)");
   if (!/Ein Kandidat wird \*\*nie still geändert\*\*/.test(s2) || !/neuem Digest, neuer Listenzeile, neuer Freigabedatei/.test(s2)) b.push("Wechselregel (nie still, neuer Schnitt/Digest/Zeile/Freigabedatei) fehlt");
   if (!/Die Release-ID bleibt \x60v4-r1\x60/.test(s2) || !/F3/.test(s2) || !/RUNBOOK-ERSTWECHSEL-V4R1\.md/.test(s2)) b.push("Wechselregel: Release-ID bleibt v4-r1 vor T0 (F3, Runbook) fehlt");
-  if (!/#600[^\n]*noch nicht gemergt/.test(s2)) b.push("Wechselregel: Wiederholungspfad #600 nicht als 'noch nicht gemergt' benannt");
+  if (!/Wiederholungspfad[\s\S]{0,200}eingeführt mit PR #600, Merge-Stand: siehe Git-Historie/.test(s2) || !/verbrauchte Ausnahme wird nie wiederverwendet/.test(s2)) b.push("Wechselregel: Wiederholungspfad (#600, Merge-Stand, Ausnahme nie wiederverwendet) fehlt");
   // Verboten: pauschale neue Release-ID (widerspricht Runbook, F3 und releaseIds ["v4-r1"])
   if (/nur mit \*{0,2}neuer Release-ID\*{0,2}/.test(text) || /braucht neue Release-ID/.test(text) || /\(neue Release-ID, §2/.test(text)) b.push("pauschale Aussage 'neue Release-ID' (widerspricht Runbook/F3)");
   // Verbotene Gegenaussagen (Negativprüfung)
@@ -62,7 +64,12 @@ function befunde(text) {
   const claude = s3.split("\n").find((z) => z.startsWith("| Claude (")) ?? "";
   const betreiber = s3.split("\n").find((z) => z.startsWith("| Betreiber |")) ?? "";
   if (!/Merge-Freigabe des Betreibers\*\*, §7\)/.test(claude)) b.push("Rolle Claude: Merge-Freigabe ohne Einschränkung");
-  if (!/\x60--ausfuehren\x60 mit Push und Entwurfs-PR nur auf ausdrücklichen Auftrag/.test(claude) || !/#601 noch in Review und nicht gemergt/.test(claude) || !/Trockenlauf Standard, nur lesend/.test(claude)) b.push("Rolle Claude: RST-2-Modi (Trockenlauf, --anlegen, --ausfuehren, #601 in Review) fehlen");
+  if (!/\x60--ausfuehren\x60 mit Push und Entwurfs-PR nur auf ausdrücklichen Auftrag/.test(claude) || !/PR #601 gemergt/.test(claude) || !/Trockenlauf Standard, nur lesend/.test(claude)
+    || !/\x60--anlegen\x60 nur lokaler Zweig/.test(claude) || !/reguläre CI-Workflows auslösen/.test(claude) || !/kein Veröffentlichen eines Bilds/.test(claude)) b.push("Rolle Claude: RST-2-Modi (Trockenlauf, --anlegen, --ausfuehren, #601 gemergt, CI-Hinweis, kein Bild) fehlen");
+  if (/#601[^\n]{0,40}(in Review|nicht gemergt)/.test(text)) b.push("#601 noch als in Review/nicht gemergt dargestellt");
+  const s7 = abschnitt(text, "## 7. Dauerhafte und pro-Release-Freigaben (Übersicht, Stand 2026-11-24)");
+  if (!/Betreiberhinweise \(Review #601/.test(s7) || !/Mehrere \x60remote\.origin\.url\x60/.test(s7) || !/genau eine URL/.test(s7) || !/gh repo set-default/.test(s7)
+    || !/Job \x60bild\x60 in \x60deploy\.yml\x60 ist technisch nicht auf \x60main\x60 beschränkt/.test(s7) || !/Branch-Schutz für \x60main\x60 ist eine offene Betreiberhandlung/.test(s7)) b.push("§7: Betreiberhinweise aus Review #601 fehlen");
   if (!/Bildbau \*\*vorbereiten\*\*/.test(claude) || /Bild bauen/.test(claude)) b.push("Rolle Claude: Bildbau nur vorbereiten");
   if (!/nur nach ausdrücklicher Merge-Freigabe des Betreibers/.test(claude)) b.push("Rolle Claude: Merge nach main nur nach Merge-Freigabe");
   if (!/\*\*löst aus\*\*/.test(betreiber)) b.push("Rolle Betreiber: löst aus");
@@ -129,11 +136,17 @@ describe("RELEASE-PROZESS.md: Berichtigung RST-1 (Kadenz, Teil-Umfang, Rollen, R
     ["Wechsel pauschal neue ID (§4)", (t) => t.replace("(neuer Schnitt und Digest; die Release-ID richtet sich nach §2 Wechselregel, für den Erstwechsel bleibt sie `v4-r1`)", "(neue Release-ID, §2 Wechselregel)"), "§4"],
     ["Wechsel pauschal neue ID (§9)", (t) => t.replace("ein neuer Schnitt braucht neuen Digest, neue Listenzeile, neue Freigabedatei und Mitteilung; die Release-ID folgt §2, für den Erstwechsel vor T0 bleibt sie `v4-r1`)", "ein neuer Schnitt braucht neue Release-ID und Mitteilung, §2)"), "Routine-Tabelle"],
     ["Release-ID bleibt v4-r1 gestrichen", (t) => t.replace("Die Release-ID bleibt `v4-r1`", "Die Release-ID wechselt"), "Release-ID bleibt v4-r1"],
-    ["#600 als gemergt", (t) => t.replaceAll("noch nicht gemergt", "gemergt"), "#600"],
+    ["#600 als gemergt", (t) => t.replaceAll("eingeführt mit PR #600, Merge-Stand: siehe Git-Historie", "mit PR #600 gemergt"), "#600"],
+    ["#600 als noch nicht gemergt", (t) => t.replace("PR #600 (Merge-Stand: siehe Git-Historie)", "PR #600 (noch nicht gemergt)"), "#600"],
+    ["Wiederverwendung der Ausnahme nicht ausgeschlossen", (t) => t.replace("Die verbrauchte Ausnahme wird nie wiederverwendet.", "Die Ausnahme darf erneut genutzt werden."), "Ausnahme nie wiederverwendet"],
+    ["CI-Hinweis RST-2 gestrichen", (t) => t.replace("; Push und PR können reguläre CI-Workflows auslösen", ""), "CI-Hinweis"],
+    ["RST-2 veröffentlicht Bild", (t) => t.replace("; kein Veröffentlichen eines Bilds", "; Bild wird veröffentlicht"), "kein Bild"],
+    ["Betreiberhinweis remote.origin.url gestrichen", (t) => t.replace("genau eine URL einstellen", "beliebig viele URLs"), "Review #601"],
+    ["Betreiberhinweis Branch-Schutz gestrichen", (t) => t.replace("Der Branch-Schutz für \x60main\x60 ist eine offene Betreiberhandlung", "Der Branch-Schutz ist eingerichtet"), "Review #601"],
     ["M1 alte Kadenz gilt weiter", (t) => t.replace("**Kadenz (berichtigt 2026-11-27;", "Es gilt weiter: höchstens ein Release je Woche.\n\n**Kadenz (berichtigt 2026-11-27;"), "Es gilt weiter"],
     ["M6 Merge auch ohne Freigabe bei Sicherheitskorrektur", (t) => t.replace("**nur nach ausdrücklicher Merge-Freigabe des Betreibers**, §7)", "**nur nach ausdrücklicher Merge-Freigabe des Betreibers, bei Sicherheitskorrekturen auch ohne**, §7)"), "Merge-Freigabe"],
     ["M7 Kandidat darf still nachgebessert werden", (t) => t.replace("**nie still geändert** (kein Nachbessern", "**nie still geändert** (außer: er darf still nachgebessert werden; kein Nachbessern"), "still"],
-    ["RST-2 #601 als gemergt", (t) => t.replace("PR #601 noch in Review und nicht gemergt", "PR #601 gemergt"), "RST-2-Modi"],
+    ["RST-2 #601 wieder in Review", (t) => t.replace("Ausführungsmodus mit PR #601 gemergt, c9a1f8d1", "Ausführungsmodus PR #601 noch in Review"), "#601"],
     ["Routine gibt frei", (t) => t.replace("gibt nichts frei.", "gibt frei."), "keine Workflow-Änderung/Freigabe"],
     ["Entscheidung neuer Kandidat gestrichen", (t) => t.replace("**Neuer Kandidat ja/nein**", "Einschätzung"), "ja/nein"],
   ];
