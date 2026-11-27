@@ -35,7 +35,13 @@
      für K4 gegen eine Sicherungskopie oder bei gestopptem Dienst laufen lassen (Daten `:ro`).
    - Mailklasse: `reserviert` = Domäne endet auf .example, .invalid, .test, .localhost oder ist example.com/net/org
      (RFC 2606); alles andere, auch eine fehlerhafte Adresse, ist `sonstige` (vorsichtig gezählt).
-   - Grenzen: höchstens 50000 Schlüssel, 5000 Räume, 300 s Gesamtzeit, 60 s je Lesevorgang; darüber NICHT_BEWERTBAR.
+   - Grenzen: höchstens 50000 Schlüssel, 5000 Räume, 300 s Gesamtzeit, 25 s je Lesevorgang (unter den 30 s der
+     Raumsperre, deren Meldung einen Raumnamen enthält); darüber NICHT_BEWERTBAR.
+   - Selbststart (/starten): legt einen t--Raum mit Betriebsname und Inhaber-Mail im Betriebsfeld kontakt an, ohne Personen
+     und Konto, dazu die Liste selbststarts. Darum: Mailklasse des Betriebskontakts je Betrieb, t--Raum mit sonstiger
+     Kontaktmail = Treffer (raeumeTAuffaellig), jeder Eintrag in selbststarts = Treffer.
+   - Meldungen der fremden Leseschicht: console.log/error/warn/info/debug sind stumm, ein später Fehler aus ihr gibt nur
+     das feste Wort LESEFEHLER aus. Ein Prozess-Abbruch von außen oder Node selbst (Speicher) liegt außerhalb.
 
    Aufruf:
      node werkzeug/k4-heuristik-zaehler.mjs zaehlen <Ablage> [--leseschicht <Wurzel>]
@@ -51,7 +57,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const WURZEL = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 /* ------------------------------ Festlegungen ------------------------------------------------------------------- */
-export const GRENZEN = Object.freeze({ maxSchluessel: 50000, maxRaeume: 5000, zeitMs: 300000, leseMs: 60000, maxAusgabeBytes: 4096 });
+export const GRENZEN = Object.freeze({ maxSchluessel: 50000, maxRaeume: 5000, zeitMs: 300000, leseMs: 25000, maxAusgabeBytes: 4096 });
 
 /** Räume mit festen Testnamen: Pilot-Seeds (werkzeug/pilot-seeds.mjs) und der synthetische Altbestand (K4-P3). */
 export const SEED_RAEUME = Object.freeze(["pilot-seed-p", "pilot-seed-s"]);
@@ -65,7 +71,7 @@ const RESERVIERTE_DOMAENEN = new Set(["example.com", "example.net", "example.org
 export const ZAHLEN_KLASSEN = Object.freeze([
   "schluesselGesamt", "schluesselKern", "schluesselScherbe", "schluesselAltform", "schluesselKonto", "schluesselZugangscode", "schluesselUebrige",
   "raeume", "raeumeT", "raeumeDemo", "raeumeSeed", "raeumeAltSynth", "raeumeOhneMuster", "raeumeAltform",
-  "betriebe", "betriebeSelbstAngelegt",
+  "betriebe", "betriebeSelbstAngelegt", "betriebeMailReserviert", "betriebeMailSonstige", "betriebeOhneMail", "raeumeTAuffaellig", "selbststartEintraege",
   "personen", "personenSeedMuster", "personenOhneMuster", "personenMailReserviert", "personenMailSonstige", "personenOhneMail",
   "abwesenheiten", "abwesenheitenKrank", "krankmeldungenFaelle",
   "erfassungstage", "stempel", "einteilungen",
@@ -73,12 +79,13 @@ export const ZAHLEN_KLASSEN = Object.freeze([
 ]);
 /** Klassen, die auf etwas „nicht erkennbar Synthetisches" hinweisen (Entwurf K4, Schritt S1). */
 export const TREFFER_KLASSEN = Object.freeze([
-  "raeumeOhneMuster", "personenOhneMuster", "personenMailSonstige", "kontenMailSonstige", "abwesenheitenKrank", "krankmeldungenFaelle",
+  "raeumeOhneMuster", "raeumeTAuffaellig", "betriebeMailSonstige", "selbststartEintraege", "personenOhneMuster", "personenMailSonstige", "kontenMailSonstige",
+  "abwesenheitenKrank", "krankmeldungenFaelle",
 ]);
 export const ERGEBNISSE = Object.freeze(["NICHT_BEWERTBAR", "TREFFER", "KEINE_TREFFER"]);
 export const GRUENDE = Object.freeze([
   "ABLAGE_FEHLT", "ABLAGE_LEER", "LESESCHICHT_FEHLT", "LESESCHICHT_UNBRAUCHBAR", "ZU_VIELE_SCHLUESSEL", "ZU_VIELE_RAEUME",
-  "SCHLUESSEL_FORM", "RAUM_UNLESBAR", "RAUM_FORM_UNERWARTET", "RAUM_DOPPELT", "SCHERBE_OHNE_KERN", "KONTO_UNLESBAR", "JOURNAL_OFFEN",
+  "SCHLUESSEL_FORM", "RAUM_UNLESBAR", "RAUM_FORM_UNERWARTET", "RAUM_DOPPELT", "SCHERBE_OHNE_KERN", "KONTO_UNLESBAR", "SELBSTSTARTS_UNLESBAR", "JOURNAL_OFFEN",
   "ZEITGRENZE", "LESEFEHLER", "AUSGABE_UNZULAESSIG",
 ]);
 const LESEMODI = Object.freeze(["streng", "einfach", "keiner"]);
@@ -122,11 +129,18 @@ function feld(/** @type {any} */ o, /** @type {string} */ name, /** @type {"arra
   return v;
 }
 
-/** Zählt einen Betrieb in `z`. Wirft Error("FORM") bei unerwarteter Gestalt (dann ist der Bestand nicht bewertbar). */
+/**
+ * Zählt einen Betrieb in `z`. Wirft Error("FORM") bei unerwarteter Gestalt (dann ist der Bestand nicht bewertbar).
+ * Gibt die Mailklasse der Betriebskontakt-Adresse zurück (`kontakt`, auch `email`; die schlimmere zählt): ein Selbststart
+ * (`/starten`) legt dort die Mail des Inhabers ab, ohne Personen und ohne Konto.
+ * @returns {"keine"|"reserviert"|"sonstige"}
+ */
 export function zaehleBetrieb(/** @type {any} */ m, /** @type {Record<string, number>} */ z) {
   if (!istObjekt(m)) throw new Error("FORM");
   z.betriebe++;
   if (m.selbstAngelegt === true) z.betriebeSelbstAngelegt++;
+  const betriebMail = schlimmer(mailKlasse(m.kontakt), mailKlasse(m.email));
+  if (betriebMail === "reserviert") z.betriebeMailReserviert++; else if (betriebMail === "sonstige") z.betriebeMailSonstige++; else z.betriebeOhneMail++;
   for (const p of feld(m, "personen", "array")) {
     if (!istObjekt(p)) throw new Error("FORM");
     z.personen++;
@@ -143,6 +157,7 @@ export function zaehleBetrieb(/** @type {any} */ m, /** @type {Record<string, nu
   z.erfassungstage += Object.keys(feld(m, "erfassung", "objekt")).length;
   z.stempel += Object.keys(feld(m, "einstempeln", "objekt")).length;
   z.einteilungen += Object.keys(feld(m, "abweichungen", "objekt")).length;
+  return /** @type {"keine"|"reserviert"|"sonstige"} */ (betriebMail);
 }
 
 /* ------------------------------ Ausgabe ------------------------------------------------------------------------ */
@@ -227,12 +242,13 @@ export async function zaehlen({ ablage, leseschicht = WURZEL, grenzen = {} }) {
   } catch { grund("ABLAGE_FEHLT"); return aus(); }
 
   /* Leseschicht laden (Ablage-Wurzel nur für diese Zeit setzen; Meldungen der Schicht unterdrücken). */
-  const vorher = { daten: process.env.CENTRIC_DATEN, ablage: process.env.CENTRIC_ABLAGE, log: console.log };
+  const KONSOLE = /** @type {const} */ (["log", "error", "warn", "info", "debug"]);
+  const vorher = { daten: process.env.CENTRIC_DATEN, ablage: process.env.CENTRIC_ABLAGE, konsole: KONSOLE.map((n) => console[n]) };
   /** @type {any} */ let getStore, bestandLesen, bestandLesenStreng;
   try {
     process.env.CENTRIC_DATEN = path.resolve(ablage);
     process.env.CENTRIC_ABLAGE = "dateien";
-    console.log = () => {};
+    for (const n of KONSOLE) console[n] = () => {};
     const laden = (/** @type {string} */ n) => import(pathToFileURL(path.join(path.resolve(leseschicht), "server", "lib", `${n}.mjs`)).href);
     let ablageModul, bestandModul;
     try { [ablageModul, bestandModul] = await Promise.all([laden("ablage"), laden("bestand")]); } catch { grund("LESESCHICHT_FEHLT"); return aus(); }
@@ -245,7 +261,7 @@ export async function zaehlen({ ablage, leseschicht = WURZEL, grenzen = {} }) {
     return await auswerten({ store, lesen, lesemodus, G, start, grund, aus, gruende });
   } catch { grund("LESEFEHLER"); return aus(); }
   finally {
-    console.log = vorher.log;
+    KONSOLE.forEach((n, i) => { console[n] = vorher.konsole[i]; });
     if (vorher.daten === undefined) delete process.env.CENTRIC_DATEN; else process.env.CENTRIC_DATEN = vorher.daten;
     if (vorher.ablage === undefined) delete process.env.CENTRIC_ABLAGE; else process.env.CENTRIC_ABLAGE = vorher.ablage;
   }
@@ -269,6 +285,7 @@ async function auswerten({ store, lesen, lesemodus, G, start, grund, aus, gruend
   /** @type {Map<string, {kern: boolean, alt: boolean, scherben: string[]}>} */ const raeume = new Map();
   const raum = (/** @type {string} */ r) => { let x = raeume.get(r); if (!x) raeume.set(r, (x = { kern: false, alt: false, scherben: [] })); return x; };
   /** @type {string[]} */ const konten = [];
+  let hatSelbststarts = false;
   for (const k of schluessel) {
     if (k.startsWith("kern:")) { z.schluesselKern++; raum(k.slice(5)).kern = true; }
     else if (k.startsWith("bestand:")) { z.schluesselAltform++; raum(k.slice(8)).alt = true; }
@@ -280,6 +297,7 @@ async function auswerten({ store, lesen, lesemodus, G, start, grund, aus, gruend
     else if (k.startsWith("account:")) { z.schluesselKonto++; konten.push(k); }
     else if (k.startsWith("konto:")) z.schluesselZugangscode++;
     else if (k.startsWith("journal:")) grund("JOURNAL_OFFEN");
+    else if (k === "selbststarts") hatSelbststarts = true;
     else z.schluesselUebrige++;
   }
   if (raeume.size > G.maxRaeume) grund("ZU_VIELE_RAEUME");
@@ -307,7 +325,9 @@ async function auswerten({ store, lesen, lesemodus, G, start, grund, aus, gruend
       }
       const b = await lese(lesen(store, r));
       if (!b || !b.bestand || !Array.isArray(b.bestand.mandanten)) { grund("RAUM_FORM_UNERWARTET"); continue; }
-      for (const mandant of b.bestand.mandanten) zaehleBetrieb(mandant, z);
+      let tAuffaellig = false;
+      for (const mandant of b.bestand.mandanten) if (zaehleBetrieb(mandant, z) === "sonstige") tAuffaellig = true;
+      if (m.t && tAuffaellig) z.raeumeTAuffaellig++;
     } catch (e) {
       grund(e && /** @type {Error} */ (e).message === "FORM" ? "RAUM_FORM_UNERWARTET" : "RAUM_UNLESBAR");
     }
@@ -323,6 +343,15 @@ async function auswerten({ store, lesen, lesemodus, G, start, grund, aus, gruend
       const kl = schlimmer(mailKlasse(a.email), mailKlasse(a.emailNorm));
       if (kl === "reserviert") z.kontenMailReserviert++; else if (kl === "sonstige") z.kontenMailSonstige++; else z.kontenOhneMail++;
     } catch { grund("KONTO_UNLESBAR"); }
+  }
+
+  /* 4. Nachfassliste der Selbststarts (Name und Mail des Inhabers): jeder Eintrag ist ein Treffer, nie Inhalt. */
+  if (hatSelbststarts) {
+    try {
+      const liste = await lese(store.get("selbststarts", { type: "json" }));
+      if (!Array.isArray(liste)) throw new Error("x");
+      z.selbststartEintraege = liste.length;
+    } catch { grund("SELBSTSTARTS_UNLESBAR"); }
   }
 
   if (gruende.size) return aus(lesemodus);
@@ -345,11 +374,18 @@ export async function main(argv) {
     if (rest.length !== 2 || rest[0] !== "--leseschicht" || !rest[1] || rest[1].startsWith("--")) { console.error(KURZHILFE); return 2; }
     leseschicht = rest[1];
   }
-  const bericht = await zaehlen({ ablage, leseschicht });
+  /** @type {any} */ let bericht;
+  try { bericht = await zaehlen({ ablage, leseschicht }); } catch { bericht = nichtBewertbar([{ code: "LESEFEHLER", anzahl: 1 }]); }
   const text = berichtZeilen(bericht).join("\n");
   if (Buffer.byteLength(text) > GRENZEN.maxAusgabeBytes) { console.log(berichtZeilen(nichtBewertbar([{ code: "AUSGABE_UNZULAESSIG", anzahl: 1 }])).join("\n")); return 1; }
   console.log(text);
   return bericht.bewertbar ? 0 : 1;
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) process.exit(await main(process.argv.slice(2)));
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  /* Auch ein später Fehler aus der fremden Leseschicht (Zeitgeber, abgewiesenes Versprechen) gibt nie einen Stacktrace aus. */
+  const fest = () => { process.stdout.write(berichtZeilen(nichtBewertbar([{ code: "LESEFEHLER", anzahl: 1 }])).join("\n") + "\n"); process.exit(1); };
+  process.on("unhandledRejection", fest);
+  process.on("uncaughtException", fest);
+  process.exit(await main(process.argv.slice(2)));
+}

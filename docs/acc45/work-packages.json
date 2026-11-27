@@ -8082,7 +8082,7 @@
       "status": "REVIEW",
       "stufen": {
         "implementiert": {"wert":true,"beleg":"PR #599, Branch acc45/release/k4-p2-heuristik-zaehler (26292cc7): werkzeug/k4-heuristik-zaehler.mjs, Nachweis docs/acc45/K4-P2-nachweis.md"},
-        "lokalGetestet": {"wert":true,"beleg":"lokal 2026-11-27 (Windows, TZ=UTC, --maxWorkers=1): pruefungen/k4-heuristik-zaehler.test.js 40/40; Zahlen gegen K4-P3-Plan mit Leseschicht von 274bfa0 und heutiger; 17 Mutationen je Schutz rot. CI-Schritt fehlt (Ausnahme vorlaeufig in ci-abdeckung-ausnahmen.json); Aufruf am Produktionsbild nicht probiert"},
+        "lokalGetestet": {"wert":true,"beleg":"lokal 2026-11-27 (Windows, TZ=UTC, --maxWorkers=1): pruefungen/k4-heuristik-zaehler.test.js 48/48 (inkl. Selbststart-/starten-Fall beider Schichten, Review #599 B-1); Zahlen gegen K4-P3-Plan mit Leseschicht von 274bfa0 und heutiger; 24 Mutationen je Schutz rot; prozess-wachen, ci-abdeckung, acc45-status, ssot-belege gruen. CI-Schritt fehlt (Ausnahme vorlaeufig in ci-abdeckung-ausnahmen.json); Aufruf am Produktionsbild nicht probiert"},
         "reviewt": {"wert":false,"beleg":null},
         "integriert": {"wert":false,"beleg":null},
         "stagingGeprueft": {"wert":false,"beleg":null},

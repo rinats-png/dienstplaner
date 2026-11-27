@@ -14,7 +14,7 @@ import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { dateiname } from "../server/lib/ablage.mjs";
 import { REF_PRODUKTION, baumHash, erzeugen, planBauen } from "../werkzeug/synthetischer-altbestand.mjs";
 import {
@@ -230,7 +230,7 @@ describe("Ausgabetest „kein Wert“: Lockvogel in Daten und Pfad kommt nie in 
       expect(alles, w).not.toContain(w);
     const b = json(r.stdout);
     expect(b).toMatchObject({ bewertbar: true, ergebnis: "TREFFER" });
-    expect(b.zahlen).toMatchObject({ raeume: 1, raeumeOhneMuster: 1, personen: 2, personenOhneMuster: 2, personenSeedMuster: 0, personenMailSonstige: 2,
+    expect(b.zahlen).toMatchObject({ raeume: 1, raeumeOhneMuster: 1, personen: 2, personenOhneMuster: 2, personenSeedMuster: 0, personenMailSonstige: 2, betriebeMailSonstige: 1,
       abwesenheiten: 1, abwesenheitenKrank: 1, krankmeldungenFaelle: 1, erfassungstage: 1, stempel: 1, einteilungen: 1,
       konten: 1, kontenMailSonstige: 1, schluesselZugangscode: 1, schluesselUebrige: 1 });
     expect(nurZahlen(b)).toBe(true);
@@ -454,9 +454,89 @@ describe("nur lesend, kein Netz, keine Löschung", () => {
     const code = QUELLE.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
     for (const muster of [/writeFile/, /appendFile/, /unlink/, /\brmSync\b|\brm\(/, /\bmkdir/, /\brename/, /copyFile/, /createWriteStream/, /truncate/, /\bchmod/, /symlink/,
       /child_process/, /\bspawn|(^|[^.\w])exec(File)?\(|\bfork\(/, /node:(http|https|net|tls|dgram|dns|worker_threads|cluster)/, /\bfetch\(/, /WebSocket|XMLHttpRequest/,
-      /store\.(set|setJSON|delete)\b/, /process\.exit\(\s*[^a-z]/i])
+      /store\.(set|setJSON|delete)\b/, /process\.exit\(\s*[^a-z1]/i])
       expect(code, String(muster)).not.toMatch(muster);
     expect(code).toMatch(/import \{ lstatSync \} from "node:fs";/);
     expect(code).not.toMatch(/readFile|readdir|createReadStream/);
+  });
+});
+
+describe("Selbststart (/starten): echter Betrieb im t--Raum ist nie KEINE_TREFFER (Review B-1)", () => {
+  const NAME = "Muellermann Pflegedienst GmbH", MAIL = "inhaber@muellermann-pflege.de";
+  /** Legt mit der Provisionierung der gegebenen Schicht einen Selbststart an (t--Raum, Betriebsname, Inhaber-Mail, keine Personen). */
+  const selbststart = async (/** @type {string} */ schicht, /** @type {string} */ n, /** @type {string} */ mail, /** @type {boolean} */ liste) => {
+    const d = neuerOrdner(n);
+    const vorher = { d: process.env.CENTRIC_DATEN, a: process.env.CENTRIC_ABLAGE };
+    process.env.CENTRIC_DATEN = d; process.env.CENTRIC_ABLAGE = "dateien";
+    try {
+      const imp = (/** @type {string} */ p) => import(pathToFileURL(path.join(schicht, p)).href);
+      const { getStore } = await imp("server/lib/ablage.mjs");
+      const { testbetriebAnlegen } = await imp("server/lib/provisionierung.mjs");
+      const store = getStore({ name: "centric", consistency: "strong" });
+      const r = await testbetriebAnlegen(store, { name: NAME, branche: "pflege", email: mail, land: "HE", durch: "Selbststart" });
+      expect(r.ok).toBe(true);
+      expect(r.raum.startsWith("t-")).toBe(true);
+      if (liste) await store.setJSON("selbststarts", [{ raum: r.raum, name: NAME, email: mail, zugaenge: 4 }]);
+    } finally {
+      if (vorher.d === undefined) delete process.env.CENTRIC_DATEN; else process.env.CENTRIC_DATEN = vorher.d;
+      if (vorher.a === undefined) delete process.env.CENTRIC_ABLAGE; else process.env.CENTRIC_ABLAGE = vorher.a;
+    }
+    return d;
+  };
+  for (const [titel, schicht, kz] of [["Schicht von 274bfa0", () => LAYER_ALT, "a"], ["Schicht des Kopfes", () => WURZEL, "k"]]) {
+    it(`${titel}: echte Kontaktmail → TREFFER (mit und ohne Liste selbststarts), nie Name oder Mail in der Ausgabe`, async () => {
+      for (const liste of [false, true]) {
+        const d = await selbststart(schicht(), `selbst-${kz}-${liste}`, MAIL, liste);
+        for (const lese of [LAYER_ALT, WURZEL]) {
+          const b = await zaehlen({ ablage: d, leseschicht: lese });
+          expect(b.bewertbar, JSON.stringify(b.gruende)).toBe(true);
+          expect(b.ergebnis).toBe("TREFFER");
+          expect(b.zahlen).toMatchObject({ raeume: 1, raeumeT: 1, raeumeTAuffaellig: 1, betriebe: 1, betriebeMailSonstige: 1, personen: 0, selbststartEintraege: liste ? 1 : 0 });
+        }
+        const r = cli(["zaehlen", d]);
+        expect(r.status).toBe(0);
+        for (const w of ["uellermann", "inhaber", "pflege.de", "@"]) expect(r.stdout + r.stderr, w).not.toContain(w);
+      }
+    });
+    it(`${titel}: reservierte Kontaktmail ohne Liste → KEINE_TREFFER; mit Eintrag in selbststarts → TREFFER`, async () => {
+      const d = await selbststart(schicht(), `selbst-res-${kz}`, "inhaber@example.invalid", false);
+      expect(await zaehlen({ ablage: d })).toMatchObject({ ergebnis: "KEINE_TREFFER", zahlen: { raeumeT: 1, raeumeTAuffaellig: 0, betriebeMailReserviert: 1, selbststartEintraege: 0 } });
+      const e = await selbststart(schicht(), `selbst-res2-${kz}`, "inhaber@example.invalid", true);
+      expect(await zaehlen({ ablage: e })).toMatchObject({ ergebnis: "TREFFER", zahlen: { raeumeTAuffaellig: 0, selbststartEintraege: 1 } });
+    });
+  }
+  it("Betriebsfeld email zählt wie kontakt; fehlende Adresse ist keine; Rückgabe von zaehleBetrieb", () => {
+    expect(zaehleBetrieb(betrieb({ kontakt: "a@example.invalid" }), leer())).toBe("reserviert");
+    expect(zaehleBetrieb(betrieb({ kontakt: "a@example.invalid", email: "b@firma.de" }), leer())).toBe("sonstige");
+    expect(zaehleBetrieb(betrieb({ kontakt: "" }), leer())).toBe("keine");
+    expect(zaehleBetrieb(betrieb({ kontakt: 5 }), leer())).toBe("sonstige");
+  });
+  it("selbststarts unlesbar oder keine Liste → NICHT_BEWERTBAR", async () => {
+    let d = sauber("ss1");
+    writeFileSync(path.join(d, "centric", dateiname("selbststarts")), "kein json");
+    expect(grundCodes(await zaehlen({ ablage: d }))).toContain("SELBSTSTARTS_UNLESBAR");
+    d = sauber("ss2");
+    ablegen(d, "selbststarts", { raum: "x" });
+    expect(grundCodes(await zaehlen({ ablage: d }))).toContain("SELBSTSTARTS_UNLESBAR");
+  });
+});
+
+describe("Meldungen der fremden Leseschicht (Review C-1)", () => {
+  it("Lesefrist unter den 30 s der Raumsperre", () => { expect(GRENZEN.leseMs).toBeLessThan(30000); });
+  it("console.error/warn/info/debug der Schicht und ein später Fehler gelangen nie in die Ausgabe", () => {
+    const fake = path.join(T, "fake-laut"); mkdirSync(path.join(fake, "server", "lib"), { recursive: true });
+    writeFileSync(path.join(fake, "server", "lib", "ablage.mjs"), [
+      "export const getStore = () => { console.error('Lockvogel-Raum err'); console.warn('Lockvogel warn'); console.info('Lockvogel info'); console.debug('Lockvogel dbg');",
+      "  return { list: async () => ({ blobs: [{ key: 'bestand:t-x' }] }), getWithMetadata: async () => ({ data: {}, metadata: {} }), get: async () => ({}), getMetadata: async () => null }; };",
+    ].join("\n"));
+    writeFileSync(path.join(fake, "server", "lib", "bestand.mjs"), [
+      "export const bestandLesen = async () => { console.error('Lockvogel-Raum gesperrt'); setTimeout(() => { throw new Error('Lockvogel-Stack'); }, 10);",
+      "  await new Promise((r) => setTimeout(r, 400)); return { bestand: { mandanten: [] } }; };",
+    ].join("\n"));
+    const r = cli(["zaehlen", sauber("laut"), "--leseschicht", fake]);
+    expect(r.status).toBe(1);
+    expect(r.stdout).toContain("LESEFEHLER");
+    expect(r.stdout + r.stderr).not.toContain("Lockvogel");
+    expect(r.stderr).toBe("");
   });
 });
