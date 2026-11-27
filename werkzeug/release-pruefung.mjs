@@ -33,11 +33,14 @@
      G4  Bild: Digest vollständig, Bildangaben mit Abfragezeit, Revisionslabel
          und SLSA-Provenienz = Kandidat, Freigabeliste gültig, Zeile `aktiv`
      G5  Migration: Startschreibvorgänge W-1…W-9 und Startblock gegen die Basis
-         (Migrationsbericht); geändert oder neu ⇒ NO-GO bis Betreiberfreigabe
+         (Migrationsbericht); geändert oder neu ⇒ NO-GO bis Betreiberfreigabe. RST-5: Erstwechsel von einem Bild aus
+         ohneRevisionslabel (274bfa0) nur mit Migrationsnachweis am exakten Kandidaten-Digest aus einem Runner-Lauf
+         (Feld migrationsprobe des Staging-Nachweises, G6 E6/E7); sonst NO-GO. Lokal/statisch ersetzt ihn nie
      G6  Sicherung, Restore-Probe, Widerrufbuch-Probe: vollständig und aktuell. Einzige Ausnahme (GATE-EW1, Gate-Entwurf
          2026-11-24 v2 A.4–A.8): erstwechselAusnahme.widerrufbuchProbe in der Freigabedatei, nur Release v4-r1, nur
          vor T0, bis 2026-12-31; Bedingungen E1–E15 (alle UND), sonst NO-GO; Sicherung und Restore-Probe bleiben
-         Pflicht; Ergebnis: Belegzeile + Auflage (auflagen). Folge-Release mit Basis = Kandidat einer Ausnahme: NO-GO,
+         Pflicht; E6 verlangt zusätzlich das Feld migrationsprobe (RST-5, migrationsnachweisPruefen);
+         Ergebnis: Belegzeile + Auflage (auflagen). Folge-Release mit Basis = Kandidat einer Ausnahme: NO-GO,
          solange deren Nachhol-Ablage nicht NACHHOL-GO ist (GATE-EW2; einzige Abweichung A-REPO + nachholAbweichung)
      G7  Rückweg: Zeile `vorherig` oder dokumentierte Entscheidung O-1/O-2;
          `ruecksprung` NO-GO, wenn Basis oder Zeile `vorherig` ein Bild ohne
@@ -220,6 +223,21 @@ export const KONFIG_STANDARD = Object.freeze({
     { id: "W-9", was: "Speicherkern: Standvermerke beim Schreiben", quellen: ["server/lib/scherben.mjs", "server/lib/bestand.mjs", "server/lib/ablage.mjs"] },
   ],
   startblockQuellen: ["server.mjs"],
+  // RST-5 (Betreiberentscheidung 2026-11-27): Migrationsnachweis W-1…W-9 am exakten Kandidaten-Digest, notwendig für jeden
+  // Erstwechsel von einem Bild aus ohneRevisionslabel (G5) und Pflichtfeld `migrationsprobe` des Staging-Nachweises (G6 E6,
+  // Runner-Lauf über E7 gebunden). Spiegel von deploy/sicherung/ci/migrationsprobe-staging.mjs (per Test gebunden). Ein
+  // lokaler oder statischer Nachweis (art migrationsprobe-lokal, digest null) ersetzt den Runner-Lauf nie.
+  migrationsnachweis: tiefFrieren({
+    feld: "migrationsprobe",
+    art: "migrationsprobe-staging",
+    artLokal: "migrationsprobe-lokal",
+    bindung: "digest",
+    ergebnis: "bestanden",
+    altDigest: "sha256:0b1929273a79d6c010c9a0303b0d624a8e61e3555df77c08773bd573dd3e452f", // Bild der Basis 274bfa0 (ALT_DIGEST)
+    regeln: ["W-1", "W-2", "W-3", "W-4", "W-5", "W-6", "W-7", "W-8", "W-9"],
+    zusatz: ["fixture", "start", "kennungen", "gegenprobe", "abgleich"],
+    fixtureBaum: "876c77d96a690036fda85ee8f3abfeda5bc11b059e0910478ee8ff67916a3d1b",
+  }),
   sicherung: Object.freeze({ sicherungMaxStunden: 26, restoreProbeMaxTage: 35, widerrufbuchProbeMaxTage: 35, widerrufbuchProbePflicht: true }),
   erstwechselAusnahme: ERSTWECHSEL_AUSNAHME,
   ssot: "docs/acc45/work-packages.json",
@@ -961,7 +979,49 @@ export function migrationsbericht({ basis, kandidat, geaenderteDateien, neueDate
   };
 }
 
-export function g5Migration(bericht, freigabe, liste = null) {
+/**
+ * RST-5 (Betreiberentscheidung 2026-11-27): Migrationsnachweis — Feld `migrationsprobe` des Staging-Nachweises
+ * (deploy/sicherung/ci/migrationsprobe-staging.mjs, nachweisBauen im Modus gate). Gültig nur als Runner-Lauf am exakten
+ * Kandidaten-Digest: art migrationsprobe-staging, digest = Kandidaten-Digest (sha256:<64 hex>), altDigest = Bild der Basis
+ * 274bfa0 und ≠ digest, bindung digest, ergebnis bestanden, W-1…W-9 und alle Zusatzproben bestanden, Fixture-Baum gleich.
+ * Fehlend, unlesbar, lokal oder nicht bewertbar ⇒ Gründe (fail-closed). Liefert die Gründe; leer = gültig.
+ */
+export function migrationsnachweisPruefen(mp, digest, konfig = KONFIG_STANDARD) {
+  const c = konfig.migrationsnachweis;
+  if (!istObjekt(c)) return ["Konfiguration migrationsnachweis fehlt (fail-closed)"];
+  if (mp === undefined || mp === null) return [`${c.feld} fehlt — Runner-Lauf am Kandidaten-Digest ist Pflicht (RST-5)`];
+  if (!istObjekt(mp)) return [`${c.feld} ist kein Objekt (nicht bewertbar)`];
+  if (mp.art === c.artLokal) {
+    return [`${c.feld} ist ein lokaler Nachweis (${c.artLokal}, ohne Digest) — ersetzt den Runner-Lauf am Kandidaten-Digest nie`];
+  }
+  // Review #598 C-3: String() wirft bei Objekten ohne toString/Symbol.toPrimitive ⇒ sauberer Grund statt Ausnahme
+  const s = (x) => { try { return String(x ?? "<fehlt>"); } catch { return "<unlesbar>"; } };
+  const t = (x) => s(x).replace(/[\u0000-\u001f\u007f]/g, "?").slice(0, 80); // eslint-disable-line no-control-regex
+  const fe = [];
+  const soll = (ok, text) => { if (!ok) fe.push(text); };
+  const istDigest = (x) => typeof x === "string" && DIGEST.test(x);
+  soll(mp.art === c.art, `${c.feld}.art '${t(mp.art)}' ≠ ${c.art}`);
+  soll(istDigest(digest), "Kandidaten-Digest ist nicht sha256:<64 hex>");
+  if (!istDigest(mp.digest)) fe.push(`${c.feld}.digest '${t(mp.digest)}' ist nicht sha256:<64 hex>`);
+  else soll(mp.digest === digest, `${c.feld}.digest ${mp.digest} ≠ Kandidaten-Digest ${t(digest)} (anderes Bild oder älterer Kandidat)`);
+  if (!istDigest(mp.altDigest)) fe.push(`${c.feld}.altDigest '${t(mp.altDigest)}' fehlt oder ist nicht sha256:<64 hex>`);
+  else {
+    soll(mp.altDigest !== mp.digest, `${c.feld}.altDigest = digest (Altbild statt Kandidat)`);
+    soll(mp.altDigest === c.altDigest, `${c.feld}.altDigest ${mp.altDigest} ≠ Bild der Basis 274bfa0`);
+  }
+  if (istDigest(digest)) soll(digest !== c.altDigest, "Kandidaten-Digest = Bild der Basis 274bfa0");
+  soll(mp.bindung === c.bindung, `${c.feld}.bindung '${t(mp.bindung)}' ≠ ${c.bindung}`);
+  soll(mp.ergebnis === c.ergebnis, `${c.feld}.ergebnis '${t(mp.ergebnis)}', erwartet ${c.ergebnis}`);
+  const bestanden = (x, id) => istObjekt(x) && x.id === id && x.ergebnis === c.ergebnis;
+  soll(Array.isArray(mp.w) && mp.w.length === c.regeln.length && c.regeln.every((id, i) => bestanden(mp.w[i], id)),
+    `${c.feld}.w: ${c.regeln[0]}…${c.regeln[c.regeln.length - 1]} nicht vollständig und in Reihenfolge bestanden`);
+  soll(Array.isArray(mp.zusatz) && mp.zusatz.length === c.zusatz.length && c.zusatz.every((id) => mp.zusatz.some((z) => bestanden(z, id))),
+    `${c.feld}.zusatz: ${c.zusatz.join(", ")} nicht alle bestanden`);
+  soll(istObjekt(mp.fixture) && mp.fixture.baum === c.fixtureBaum, `${c.feld}.fixture.baum ≠ Fixture ${c.fixtureBaum.slice(0, 12)}…`);
+  return fe;
+}
+
+export function g5Migration(bericht, freigabe, liste = null, konfig = KONFIG_STANDARD) {
   const g = gate("G5", "Datenmigration und Startschreibvorgänge");
   if (!bericht || !Array.isArray(bericht.eintraege) || bericht.fehler) {
     return nogo(g, `Änderungen gegen den vorigen Release nicht ermittelbar${bericht?.fehler ? ": " + bericht.fehler : ""} (fail-closed)`);
@@ -969,6 +1029,21 @@ export function g5Migration(bericht, freigabe, liste = null) {
   // Die Basis muss ein Release laut Freigabeliste sein (aktiv, vorherig oder gesperrt), sonst ist der Vergleich wertlos.
   if (liste && !liste.zeilen.some((z) => z.commit === bericht.basis && (z.status === "aktiv" || z.status === "vorherig"))) {
     nogo(g, `Basis ${bericht.basis} steht in keiner Zeile aktiv oder vorherig der Freigabeliste (FREIGEGEBENE-IMAGES.md); gesperrte Zeilen sind keine Basis`);
+  }
+  // RST-5 (Betreiberentscheidung 2026-11-27): Erstwechsel von einem Bild ohne Revisionslabel (274bfa0) braucht den
+  // Migrationsnachweis am exakten Kandidaten-Digest aus einem Runner-Lauf. Prüfbar ist er nur als Pflichtfeld des
+  // Staging-Nachweises der Freigabedatei (G6 E6, Lauf und Artefakt E7); ohne diesen Weg: NO-GO (fail-closed).
+  if ((konfig.ohneRevisionslabel || []).some((o) => o.commit === bericht.basis)) {
+    // Review #598 C-1: der Ausnahmeweg zählt nur, solange G6 die Ausnahme (und damit E6) wirklich prüft
+    if (istObjekt(freigabe?.erstwechselAusnahme) && konfig.sicherung?.widerrufbuchProbePflicht !== true) {
+      nogo(g, "Migrationsnachweis (RST-5): Erstwechsel-Ausnahme gesetzt, aber G6 prüft sie nicht (widerrufbuchProbePflicht ≠ true) — E6 läuft nicht (fail-closed)");
+    } else if (istObjekt(freigabe?.erstwechselAusnahme)) {
+      g.belege.push(`Migrationsnachweis (RST-5): Pflichtfeld ${konfig.migrationsnachweis?.feld} des Staging-Nachweises, geprüft in G6 E6 (Runner-Lauf E7)`);
+    } else {
+      nogo(g, `Migrationsnachweis (RST-5) für den Erstwechsel von ${bericht.basis} fehlt: nur als Feld migrationsprobe eines Staging-Nachweises `
+        + "aus einem Runner-Lauf am Kandidaten-Digest prüfbar (Freigabedatei erstwechselAusnahme…staging, G6 E6/E7); ein lokaler "
+        + "oder statischer Nachweis ersetzt ihn nicht (fail-closed)");
+    }
   }
   const zuPruefen = [...bericht.betroffen];
   if (bericht.startblockGeaendert) zuPruefen.push("STARTBLOCK");
@@ -1246,6 +1321,8 @@ export function erstwechselPruefen(k, konfig = KONFIG_STANDARD) {
       wenn(skript !== null && wb.skriptSha256 === skript, `skriptSha256 ≠ SHA-256 von ${c.stagingSkript} im Kandidaten`),
       wenn(Number.isFinite(erstellt) && erstellt <= k.jetztMs + 5 * 60_000, "erstellt fehlt oder liegt in der Zukunft"),
       wenn(!Number.isFinite(erstellt) || k.jetztMs - erstellt <= c.stagingMaxTage * 86400_000, `zu alt (erstellt ${nw.erstellt}, höchstens ${c.stagingMaxTage} Tage)`),
+      // RST-5 (Betreiberentscheidung 2026-11-27): Migrationsnachweis am exakten Digest ist Pflichtfeld dieses Nachweises
+      ...migrationsnachweisPruefen(nw.migrationsprobe, k.digest, konfig).map((x) => `Migrationsnachweis: ${x}`),
     );
   }
   pruef("E6", e6);
@@ -1735,7 +1812,7 @@ export function auswerten(e, konfig = KONFIG_STANDARD) {
     g2Review({ prs, commitsOhnePr: ohne, anzahlCommits: commitsOk ? e.commits.length : undefined, prAngaben: istObjekt(e.prAngaben) ? e.prAngaben : {}, dokBelege: reviewNachweiseLesen(e.reviewTexte || []), ssotBelege: ssotReviewBelege(e.ssot), freigabe }),
     g3Schalter({ codeNamen: e.codeNamen, klassen: e.klassen, vorlagen: e.vorlagen || [], unfertig: e.unfertig, quelltexte: e.quelltexte, freigabe, composeDateien: e.composeDateien, vorlagenStand: e.vorlagenStand ?? null }, konfig),
     g4Bild({ digest: e.digest, kandidat: e.kandidat, bild: bildAngabenLesen(e.bildRoh), liste, berichtVorhanden: e.berichtVorhanden, jetztMs: e.jetztMs }, konfig),
-    g5Migration(bericht, freigabe, liste),
+    g5Migration(bericht, freigabe, liste, konfig),
     g6Sicherung(e.nachweise, e.jetztMs, konfig, { freigabe, freigabeRoh: roheFreigabe, schemaFehler: roheFreigabe ? freigabeSchema(roheFreigabe) : [],
       releaseId: e.releaseId, basis: e.basis, kandidat: e.kandidat, digest: e.digest, liste, erstwechsel: e.erstwechsel,
       releaseDateien: e.releaseDateien, rueckhalt: e.rueckhalt }),
