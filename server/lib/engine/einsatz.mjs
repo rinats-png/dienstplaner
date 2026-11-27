@@ -257,7 +257,8 @@ const ersatzAufwandAnsicht = (m, f, l) => {
 
 /**
  * Obergrenze des Aufwands von planbefundeNeu für eine Einteilung an einem Tag des Jahres `jahr` in Personentagen (für Reserven, z. B.
- * die Nachprüfung des Planers): Nachtlauf 2 · (maxNachtFolge + 1), Jahresbilanz 366, Auslöseprüfung 110, Ersatzruhe in höchstens 9
+ * die Nachprüfung des Planers): Nachtlauf 2 · (maxNachtFolge + 1), Jahresbilanz 2 · 366 (sonntagsfreiBefund sucht den letzten Sonntag, freieSonntage
+ * zählt: zweimal das ganze Jahr), Auslöseprüfung 110, Ersatzruhe in höchstens 9
  * Monatsansichten zu je zwei Ständen mit der größten Zahl an Feiertagen in einem Fenster von 143 Tagen (Jahre jahr − 1 … jahr + 1).
  */
 export function planbefundAufwandHoechst(m, jahr) {
@@ -269,7 +270,7 @@ export function planbefundAufwandHoechst(m, jahr) {
   let h = 0;
   for (let i = 0; i < fei.length; i++) { const bis = addDays(fei[i], n - 1); let k = i; while (k < fei.length && fei[k] <= bis) k++; h = Math.max(h, k - i); }
   const ansicht = n + (Math.ceil(n / 7) + 1) * 2 * ERSATZ_WEITE_SONNTAG + h * 2 * ERSATZ_WEITE_FEIERTAG;
-  return 2 * ((Number.isInteger(max) && max >= 1 ? max : 0) + 1) + 366 + 2 * ERSATZ_WEITE_FEIERTAG + 9 * 2 * ansicht;
+  return 2 * ((Number.isInteger(max) && max >= 1 ? max : 0) + 1) + 2 * 366 + 2 * ERSATZ_WEITE_FEIERTAG + 9 * 2 * ansicht;
 }
 
 /**
@@ -285,11 +286,12 @@ export function planbefundAufwandHoechst(m, jahr) {
  *   Sonntag in ± 13 bzw. Feiertag in ± 55 Tagen d als Ersatzruhetag brauchen kann (sonst liest keine Zuordnung d). Dann für JEDE
  *   Monatsansicht, deren Rechnung d lesen kann (Monat ± 111), genau die Rechnung der Prüfansicht (ersatzruheBefunde Monatsanfang …
  *   Monatsende) vorher und nachher; ein Befund, den es in einer dieser Ansichten vorher nicht gab, lehnt ab. Alle anderen Monatsansichten
- *   lesen d nicht und bleiben gleich. Ansichten mit anderem Schnitt (z. B. 14 Tage) sind nicht abgeglichen (Nachweis). Bundesland
+ *   lesen d nicht und bleiben gleich. Ansichten mit anderem Schnitt (z. B. 14 Tage) rechnen die Ersatzruhe je Kalendermonat
+ *   (pruefen → ersatzruheMonatsweise, WP-I7 Teil 5) und sind damit abgedeckt. Bundesland
  *   unbekannt (Feiertage nicht bestimmbar): nicht bewertbar.
  * Nicht bewertbar ⇒ abgelehnt (ohne Rechenarbeit, ohne Aufwand). Aufwand in Personentagen (Tage, die eine Regel betrachtet), als
  * Obergrenze VOR der Arbeit über `leisten(k)` angemeldet (false = Budget leer ⇒ "aufwand"): Nachtlauf 2 · (maxNachtFolge + 1),
- * Jahresbilanz Tage des Jahres, Auslöseprüfung der Ersatzruhe 110, Ersatzruhe je Ansicht und Stand ersatzAufwandAnsicht. Ohne neuen
+ * Jahresbilanz zweimal die Tage des Jahres (Suche des letzten Sonntags und Zählung, Review #588), Auslöseprüfung der Ersatzruhe 110, Ersatzruhe je Ansicht und Stand ersatzAufwandAnsicht. Ohne neuen
  * Nacht- oder Arbeitstag an d keine Arbeit und kein Aufwand. `stand` (wahlweise): der Stand mit der Einteilung; sonst der Stand davor mit
  * der Abweichung p|d = da. Der Stand danach unterscheidet sich für p nur am Tag d (eine Einteilung; Posten wirken nur am selben Tag).
  * @param {any} vorher @param {any} p @param {string} d @param {any} da @param {(k: number) => boolean} leisten @param {any} [stand]
@@ -312,7 +314,7 @@ export function planbefundeNeu(vorher, p, d, da, leisten, stand) {
   if (arbeitNeu && !LAENDER_KENNUNG.has(landFuerEinheit(vorher, einheitAm(p, d))))
     return { tag: d, regel: "ersatzruhe", text: "Bundesland unbekannt: Feiertage und Ersatzruhetage nicht bewertbar" };
   const jahr = d.slice(0, 4);
-  const k = (nachtNeu ? 2 * (max + 1) : 0) + (sonntag ? tageZwischen(`${jahr}-01-01`, `${jahr}-12-31`) : 0) + (arbeitNeu ? 2 * ERSATZ_WEITE_FEIERTAG : 0);
+  const k = (nachtNeu ? 2 * (max + 1) : 0) + (sonntag ? 2 * tageZwischen(`${jahr}-01-01`, `${jahr}-12-31`) : 0) + (arbeitNeu ? 2 * ERSATZ_WEITE_FEIERTAG : 0);
   if (!k) return null;
   if (!leisten(k)) return "aufwand";
   if (nachtNeu) {

@@ -27,8 +27,11 @@ Nachweisschritt bindet `migrationsprobe` an `DIGEST`.
 | unverändert | alles andere (Auslöser, Rechte, Bindung B-3, S1–S6, Browserabnahme, Artefakt) |
 
 Ein Fehlschlag oder „nicht bewertbar“ der Migrationsprobe bricht den Job ab ⇒ `ergebnis` im Nachweis ist nicht
-`success` ⇒ `werkzeug/release-pruefung.mjs` (E6) lehnt den Nachweis ab. Die Gate-Regeln in `release-pruefung.mjs`
-werden **nicht** geändert; ein eigenes Pflichtfeld `migrationsprobe` in E6 bräuchte einen SSOT-Auftrag.
+`success` ⇒ `werkzeug/release-pruefung.mjs` (E6) lehnt den Nachweis ab. **Seit der Betreiberentscheidung 2026-11-27**
+verlangt E6 zusätzlich das Feld `migrationsprobe` selbst (`migrationsnachweisPruefen`: Runner-Art, `digest` = Kandidaten-
+Digest, `altDigest` = Bild 274bfa0 ≠ `digest`, `ergebnis` bestanden, W-1…W-9 und Zusatzproben bestanden); G5 verlangt den
+Nachweis für jeden Erstwechsel von 274bfa0. Ohne diesen Patch (nur GATE-EW3) ist E6 daher NO-GO; ein lokaler Nachweis
+(`migrationsprobe-lokal`, `digest: null`) ersetzt den Runner-Lauf nie (`docs/acc45/RST-5-nachweis.md`, Teil 3).
 
 ## Was der Schritt im Runner tut (nur synthetisch, nur 127.0.0.1)
 

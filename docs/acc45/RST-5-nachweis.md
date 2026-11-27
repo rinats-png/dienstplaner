@@ -101,6 +101,7 @@ Bewertung je Regel (fail-closed; „nicht bewertbar“ ist nie „bestanden“, 
 3. Aktivierung `STAGING_GATE_AKTIV` und Lauf am Kandidaten-Digest (N-9); erst damit ist die Migrationsprobe am
    exakten Digest belegt (N-2). Ob E6 in `release-pruefung.mjs` das Feld `migrationsprobe` zusätzlich verlangen soll,
    ist eine eigene SSOT-Entscheidung; bis dahin bindet der Jobstatus (`ergebnis: success` nur mit bestandener Probe).
+   **Entschieden 2026-11-27: ja, umgesetzt in Teil 3.**
 4. Grenze W-7: Im lokalen Lauf meldet der Löschlauf `0 Testräume geprüft` — die Fixture enthält keine Testräume, W-7
    belegt also „läuft ohne Fehler, hält nichts aus dem Altbestand für einen Testraum und löscht nichts“ (die Regel
    verlangt 0 geprüft und 0 gelöscht, Review #594 B-2), nicht das Löschen selbst (das prüft `pruefung:aufraeumen`).
@@ -121,3 +122,51 @@ Bewertung je Regel (fail-closed; „nicht bewertbar“ ist nie „bestanden“, 
   `ergebnis` ein bekannter Wert ist.
 - C-3: `CENTRIC_UEBERWACHUNG` steht im Gate und jetzt auch im lokalen Lauf auf Vorgabe (an, ohne Alarmkanal, nur Log),
   wie in Produktion; vorher setzte der lokale Lauf sie auf `aus` (Muster aus K4-P4).
+
+## Teil 3 (2026-11-27): Migrationsnachweis als notwendiger Nachweis im Release-Gate
+
+Auftrag: Betreiberentscheidung 2026-11-27 (SSOT-Auftrag zu 2.4 Punkt 3): „Der Migrationsnachweis muss vor der endgültigen
+V4-Freigabe verbindlich an den exakten Kandidaten-Digest gebunden und als notwendiger Nachweis geprüft werden. […] Ein
+lokaler oder statischer Docker-Nachweis ersetzt nicht den tatsächlichen erfolgreichen Runner-Lauf.“ Kein neues Paket
+(RST-5, Gate-Umfeld REL-1/GATE-EW1). Basis `origin/integration/release-v4` (`2b9ec544`, inkl. #594). Keine Änderung an
+`.github/workflows/*`, kein Deployment, kein VPS, keine Freigabe- oder Statusdatei angelegt.
+
+### 3.1 Wo geprüft wird
+
+| Stelle | Regel |
+|---|---|
+| `werkzeug/release-pruefung.mjs` `migrationsnachweisPruefen` | gültig nur: `art` = `migrationsprobe-staging`; `digest` exakt `sha256:<64 hex>` und = Kandidaten-Digest; `altDigest` exakt `sha256:<64 hex>`, = Bild der Basis 274bfa0 und ≠ `digest`; `bindung` = `digest`; `ergebnis` = `bestanden`; `w` genau W-1…W-9 in Reihenfolge, je bestanden; `zusatz` genau fixture/start/kennungen/gegenprobe/abgleich, je bestanden; `fixture.baum` = `FIXTURE_BAUM`. `art` `migrationsprobe-lokal` ⇒ eigener Grund „ersetzt den Runner-Lauf nie“. Fehlend, kein Objekt, nicht bewertbar ⇒ Grund (fail-closed) |
+| G6 E6 (Erstwechsel-Ausnahme) | Pflichtfeld `migrationsprobe` des Staging-Nachweises. Der Nachweis ist per SHA-256 an die Freigabedatei und per E7 an das Artefakt eines erfolgreichen `workflow_dispatch`-Laufs von `staging-gate.yml` gebunden ⇒ nur ein Runner-Lauf kann ihn liefern |
+| G5 (Datenmigration) | Basis aus `ohneRevisionslabel` (Erstwechsel von 274bfa0): ohne Staging-Weg der Freigabedatei (`erstwechselAusnahme`) NO-GO „Migrationsnachweis (RST-5) … fehlt“ — auch wenn keine Startschreib-Quelle geändert ist. Mit Ausnahmefeld: Belegzeile, Prüfung in E6. Andere Basis: unverändert |
+| `KONFIG_STANDARD.migrationsnachweis` | Spiegel von `deploy/sicherung/ci/migrationsprobe-staging.mjs` (Art, Regeln, Zusatzproben, Fixture-Baum) und `ALT_DIGEST` der Workflow-Vollfassung; tief eingefroren, per Test gebunden |
+
+Wirkung heute: Die GATE-EW3-Fassung allein liefert kein `migrationsprobe` ⇒ E6 NO-GO; erst GATE-EW3 **und** der RST-5-Patch
+mit einem erfolgreichen Lauf am Kandidaten-Digest erfüllen E6. Die übrigen Gate-Regeln sind unverändert; bekannte
+NO-GO-Ergebnisse (G1–G10) bleiben, G5 trägt bei Basis 274bfa0 ohne Freigabedatei einen Grund mehr.
+
+### 3.2 Tests
+
+- `pruefungen/release-pruefung.test.js`, Block „RST-5 (Betreiberentscheidung 2026-11-27)“: Konfiguration; positiv (G5/G6
+  GO, Belegzeile); fehlend/null/kein Objekt/Platzhalter des Workflows; lokal (auch mit eingetragenem Digest); falscher
+  Digest, Replay eines älteren Kandidaten, Altbild-Digest, `altDigest` fehlend/fremd/= `digest`; `ergebnis` ≠ bestanden,
+  einzelne Regel rot bei Gesamt „bestanden“, Regeln unvollständig/umsortiert/fremd, Zusatzprobe fehlt/rot, Fixture-Baum;
+  Digest-Formate (kurz, Großbuchstaben, Zeilenumbruch, Leerzeichen, sha512, Tag, Referenz, 65 Hex, Zahl); G5 mit und
+  ohne Ausnahmefeld, andere Basis unverändert. Der gültige Staging-Nachweis der bestehenden GATE-EW1-Tests trägt jetzt
+  `migrationsprobe`.
+- `pruefungen/rst5-migrationsprobe.test.js` (E): Spiegel der Konstanten; `nachweisBauen` (gate) besteht, lokal/anderer
+  Digest/rot/nicht bewertbar nicht; Nachweisschritt der RST-5-Vollfassung wie im Runner erzeugt einen Nachweis, der E6 und
+  E7 besteht; ohne Probe-Datei, lokal, Replay oder rot genau ein E6-Grund.
+- `pruefungen/workflow-patch-ew3.test.js`: EW3-Fassung allein ⇒ genau der E6-Grund „migrationsprobe fehlt“.
+- Zahlen und Mutationen: PR-Beschreibung.
+
+### 3.3 Offen
+
+1. Betreiber: GATE-EW3- und RST-5-Patch übernehmen, `STAGING_GATE_AKTIV`, Lauf am Kandidaten-Digest (unverändert 2.4).
+2. Ein regulärer Weg ohne Erstwechsel-Ausnahme (Basis 274bfa0, z. B. nach einem Abbruch A-VOR ohne neue Ausnahme) hat
+   heute keinen an einen Runner-Lauf gebundenen Staging-Verweis in der Freigabedatei ⇒ G5 bleibt dort NO-GO (fail-closed).
+   Soll dieser Weg möglich werden, braucht es ein Feld mit Lauf/Nachweis/SHA-256 wie `staging` und E7-Prüfung (eigene
+   Entscheidung). Gleiches gilt nach einem **Abbruch nach T0 mit Rücksprung auf 274bfa0**: Die Ausnahme ist dann nach
+   E15/F10 verbraucht, und der reguläre Weg bleibt durch G5 dauerhaft NO-GO, bis das Werkzeug geändert ist. **Als
+   ausdrückliche Betreiberentscheidung vorgemerkt** (Review #598 C-2).
+3. Kopplung (Review #598 C-1): G5 nimmt den Ausnahmeweg nur an, solange `sicherung.widerrufbuchProbePflicht` true ist
+   (nur dann prüft G6 die Ausnahme und damit E6); sonst G5 NO-GO. Per Test abgesichert.

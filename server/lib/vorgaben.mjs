@@ -98,7 +98,11 @@ function groessenFehler(v) {
   const zahl = (name, x, von, bis) => (x === undefined || ganzIn(x, von, bis) ? null : `${name} ist eine ganze Zahl von ${von} bis ${bis} (höchstens ${bis}).`);
   switch (v && v.regelart) {
     case "zaehlregel": return fensterFehler(p.fenster) || zahl("Grenze", p.grenze, 0, G.zaehlGrenze) || zahl("Länge des Fensters", p.fenster && p.fenster.laenge, 1, G.fensterLaenge);
-    case "musterregel": return zahl("Höchstens in Folge", p.max, 1, G.folgeMax) || zahl("Danach frei", p.danachFrei, 0, G.danachFrei);
+    case "musterregel":
+      /* „Montag frei“: der Auslöser sind Dienste, nie die Freiklasse (sonst löste jedes freie Wochenende aus; Review #595 C2). */
+      if (p.art === "montagFrei" && Array.isArray(p.klassen) && p.klassen.some((k) => String(k).trim().toLowerCase() === String(p.frei || "frei").toLowerCase()))
+        return "„Montag frei“: Die Dienstarten am Wochenende dürfen nicht „frei“ sein.";
+      return zahl("Höchstens in Folge", p.max, 1, G.folgeMax) || zahl("Danach frei", p.danachFrei, 0, G.danachFrei);
     case "besetzungsregel":
       for (const a of Array.isArray(p.anforderungen) ? p.anforderungen : []) {
         if (a && (a.art === "anzahl" || a.art === "anzahlMit")) { const f = zahl("Mindestens", a.min, 0, G.personen); if (f) return f; }
@@ -391,7 +395,7 @@ export const PARAMETER_FELDER = Object.freeze({
   besetzungsregel: [T("anforderungen.0.art", "Art", "wahl", { optionen: ["anzahl", "anzahlMit", "quoteMit"] }),
     T("anforderungen.0.merkmal", "Merkmal (Qualifikation)", "text", { optional: true }), T("anforderungen.0.min", "Mindestens", "zahl")],
   paarregel: [T("wenn", "Wenn vorhanden"), T("dann", "dann auch"), T("min", "Mindestens", "zahl", { optional: true })],
-  musterregel: [T("art", "Muster", "wahl", { optionen: ["verbotenFolge", "hoechstensFolge"] }),
+  musterregel: [T("art", "Muster", "wahl", { optionen: ["verbotenFolge", "hoechstensFolge", "montagFrei"] }),
     T("von", "Nach Dienstart(en)", "liste", { optional: true }), T("dann", "kein(e) Dienstart(en)", "liste", { optional: true }),
     T("klassen", "Dienstart(en) im Block", "liste", { optional: true }), T("max", "Höchstens in Folge", "zahl", { optional: true }),
     T("danachFrei", "Danach frei (Tage)", "zahl", { optional: true })],
@@ -514,6 +518,13 @@ export function beispielFaelle(v) {
         const ok = [...k(p.max), ...frei, "frei"], zuLang = [...k(p.max + 1), ...frei, "frei"];
         return [{ id: "1-im-Rahmen", erwartet: "erfuellt", kontext: { tage: tage(TAG0, ok), von: TAG0, bis: addT(TAG0, ok.length - 1) } },
           { id: "2-zu-lang", erwartet: "verletzt", kontext: { tage: tage(TAG0, zuLang), von: TAG0, bis: addT(TAG0, zuLang.length - 1) } }];
+      }
+      if (p.art === "montagFrei" && Array.isArray(p.klassen) && p.klassen.length) {
+        /* Samstag, Sonntag, Montag nach TAG0 (ein Montag). */
+        const sa = addT(TAG0, 5);
+        const k = p.klassen[0];
+        return [{ id: "1-montag-frei", erwartet: "erfuellt", kontext: { tage: tage(sa, [k, k, "frei"]), von: sa, bis: addT(sa, 2) } },
+          { id: "2-montag-dienst", erwartet: "verletzt", kontext: { tage: tage(sa, [k, k, k]), von: sa, bis: addT(sa, 2) } }];
       }
       return null;
     }

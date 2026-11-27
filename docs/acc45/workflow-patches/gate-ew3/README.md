@@ -73,6 +73,7 @@ bestanden); der Docker-Teil läuft erst nach der Übernahme (WT-1).
 | `widerrufbuch.art` | E6: `widerrufbuch-staging-funktionstest` | fest |
 | `widerrufbuch.proben` | E6: genau S1–S6, je `ok` | Marken `$RUNNER_TEMP/wb-proben/S<n>`; fehlt eine: `fehler` |
 | `widerrufbuch.skriptSha256` | E6: SHA-256 von `deploy/sicherung/ci/widerrufbuch-ende-zu-ende.sh` in M | `sha256sum` im Checkout (`GITHUB_SHA`; Baum = Baum(M) ⇒ gleiche Bytes) |
+| `migrationsprobe` | E6 (seit RST-5, Betreiberentscheidung 2026-11-27): Pflicht; `art` = `migrationsprobe-staging`, `digest` = Freigabe-Digest, `altDigest` = Bild 274bfa0 ≠ `digest`, `ergebnis` = `bestanden`, W-1…W-9 und Zusatzproben bestanden | **nicht** in dieser Fassung — erst der RST-5-Patch (`../rst-5/`) ergänzt es; ohne ihn ist E6 NO-GO |
 | Artefakt | E7: genau ein Artefakt `staging-nachweis`, Bytes = Nachweisdatei | `actions/upload-artifact`, Name `staging-nachweis`, 30 Tage |
 | Lauf | E7: `path` = `.github/workflows/staging-gate.yml`, `event` = `workflow_dispatch`, `completed/success` | Workflow-Datei und Auslöser |
 | `bindung` | — (nur Beleg) | `gleich` (Lauf auf M) oder `schnitt` (Lauf auf S) |

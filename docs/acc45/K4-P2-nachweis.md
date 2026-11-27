@@ -125,5 +125,6 @@ Kopie von `server/lib` des Stands 274bfa0 (Test). Zuerst auf der synthetischen A
 - Gelesen wird ohne Sperre: gegen einen laufenden Betrieb kann ein Raum zwischen Vorprüfung und Lesen wechseln; für K4 gegen
   Sicherungskopie oder bei gestopptem Dienst.
 - `t-` ist die Kennung der Selbststart-Räume (`/starten`, `provisionierung.mjs`): Dort stehen echter Betriebsname und Inhaber-Mail im Betriebsfeld `kontakt`, ohne Personen und ohne `account:`-Schlüssel, dazu die Liste `selbststarts`. Der Entwurf nennt `t-` als Testmuster; das wäre fail-open (Review B-1). Darum zählt ein `t-`-Raum nur ohne sonstige Kontaktmail und ohne Eintrag in `selbststarts` als unauffällig.
+- Ein Selbststart ohne Mail ist nur über die Liste `selbststarts` sichtbar. Fehlt die Liste (gelöscht oder auf 500 Einträge gekürzt), ergibt so ein Raum KEINE_TREFFER, sichtbar nur als `raeumeT`.
 - Z-2 sieht nur Mailklassen und Namensmuster. Ein Betriebsname ohne Mail, ein Zugangscode-Name (`konto:`) oder Texte in Notizen bleiben ungesehen (`schluesselZugangscode`/`schluesselUebrige` zählen nur).
 - Kein Schwärzungs-Wrapper (K4-P1, bleibt zurückgestellt); die Ausgabe braucht keinen, weil sie nur Zahlen enthält.

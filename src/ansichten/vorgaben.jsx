@@ -33,7 +33,7 @@ const GELTUNG_TEXT = { betrieb: "ganzer Betrieb", einheit: "Einheit(en)", gruppe
 const STATUS_TEXT = { entwurf: "Entwurf", aktiv: "aktiv", inaktiv: "inaktiv" };
 const WAHL_TEXT = { hoechstens: "höchstens", mindestens: "mindestens", kalendermonat: "Kalendermonat", kalenderjahr: "Kalenderjahr", rollierend: "rollierend",
   tage: "Tage", wochen: "Wochen", monate: "Monate", anzahl: "Personen insgesamt", anzahlMit: "Personen mit Merkmal", quoteMit: "Anteil mit Merkmal (0 bis 1)",
-  verbotenFolge: "Verbotene Folge", hoechstensFolge: "Höchstens in Folge", frei: "Der Tag ist frei", dienstart: "Eine bestimmte Dienstart", keineDienstart: "Keine bestimmte Dienstart" };
+  verbotenFolge: "Verbotene Folge", hoechstensFolge: "Höchstens in Folge", montagFrei: "Montag frei nach einem Wochenende mit diesen Diensten", frei: "Der Tag ist frei", dienstart: "Eine bestimmte Dienstart", keineDienstart: "Keine bestimmte Dienstart" };
 
 const neueId = () => `vg-${Math.random().toString(36).slice(2, 9)}`;
 const leer = () => ({ id: neueId(), name: "", beschreibung: "", regelart: "zaehlregel", parameter: {}, geltung: { art: "betrieb" }, bezug: "monat",
