@@ -1,0 +1,256 @@
+# Staging-Gate (C2, Vorbereitung): testet den tatsächlichen Release-Kandidaten per UNVERÄNDERLICHEM Digest.
+#
+# Stand: VORBEREITET, AUSGESCHALTET. Nichts hiervon läuft, bis der Betreiber die Repository-Variable
+# STAGING_GATE_AKTIV auf "true" setzt (Betreiberaufgabe, docs/acc45/STAGING-O2-VORBEREITUNG.md). Ohne sie
+# wird der Job übersprungen.
+#
+# Grenzen (per Prüfung festgenagelt, pruefungen/staging-o2.test.js):
+#   - nur von Hand (workflow_dispatch); kein push, kein schedule, kein workflow_run, kein workflow_call;
+#   - keine automatische Auslieferung: es gibt keinen Schritt, der den VPS, SSH oder die Umgebung "produktion"
+#     berührt, und kein anderer Workflow ruft dieses Gate auf; deploy.yml bleibt unverändert;
+#   - Rechte: contents: read; der Job zusätzlich packages: read (nur zum Ziehen des Bilds). Kein write;
+#   - keine eigenen Geheimnisse: Verwalterschlüssel und Pfeffer entstehen zufällig je Lauf, werden maskiert und nie
+#     ausgegeben; das GITHUB_TOKEN geht nur per Standardeingabe an docker login;
+#   - das Bild wird per Digest gezogen und nach dem Ziehen gegen den Digest und gegen den Commit (Label
+#     org.opencontainers.image.revision = geprüfter Quellstand) abgeglichen; ein Tag ist nie zulässig;
+#   - Bindung B-3 (GATE-EW3): der Lauf darf auch auf dem Schnitt S (release/rc-<id>) starten, wenn das Bild auf dem
+#     Merge-Commit M gebaut wurde: M hat genau zwei Eltern, der zweite ist S, Baum(M) = Baum(S). Sonst Abbruch;
+#   - es wird kein Bild veröffentlicht, kein DNS und keine Infrastruktur verändert.
+# Der Lauf ist KEIN Ersatz für die Abnahme auf der Staging-VM (O2); er belegt dasselbe Bild vorab auf einem
+# Wegwerf-Runner. Widerrufbuch-Funktionstest S1–S6 (GATE-EW3, Gate-Entwurf A.10) am EXAKTEN Digest, nur mit
+# synthetischen Daten (die Logs und das Artefakt sind öffentlich). Nachweis: Artefakt staging-nachweis.json (Digest,
+# commit = Bild-Commit, laufCommit, baum, Lauf, Ergebnis, Proben S1–S6, skriptSha256) — das Format, das
+# werkzeug/release-pruefung.mjs (G6 Erstwechsel, E6/E7) verlangt.
+# RST-5: Migrationsprobe W-1…W-9 am EXAKTEN Digest auf der synthetischen 274bfa0-Fixture (K4-P3), geschrieben vom
+# 274bfa0-Bild; Nachweisfeld migrationsprobe (digest, altDigest, Fixture-Baum, W-1…W-9, Ergebnis).
+name: Staging-Gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      digest:
+        description: "Digest des Release-Kandidaten (sha256:<64 hex>), kein Tag"
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  BILD_REPO: ghcr.io/${{ github.repository }}
+  # Bild der Basis 274bfa0 (ohne Revisionslabel; = werkzeug/release-pruefung.mjs ohneRevisionslabel, per Test gebunden).
+  # Nur für die Migrationsprobe S1: es schreibt den synthetischen Altbestand; es läuft nie als Server.
+  ALT_DIGEST: "sha256:0b1929273a79d6c010c9a0303b0d624a8e61e3555df77c08773bd573dd3e452f"
+  RESTIC_VERSION: "0.18.1"
+  # SHA-256 von restic_0.18.1_linux_amd64.bz2 (wie betrieb-sicherung.yml)
+  RESTIC_SHA256: "680838f19d67151adba227e1570cdd8af12c19cf1735783ed1ba928bc41f363d"
+
+jobs:
+  gate:
+    if: ${{ vars.STAGING_GATE_AKTIV == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      packages: read
+    env:
+      DIGEST: ${{ inputs.digest }}
+    steps:
+      - name: Eingabe prüfen (nur Digest)
+        run: |
+          [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::Eingabe digest ist kein Digest (sha256:<64 hex>); Tags sind nicht zulässig."; exit 1; }
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+          # B-3: ganze Geschichte, damit der Merge-Commit M lesbar ist, wenn der Lauf auf dem Schnitt S startet
+          fetch-depth: 0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
+
+      - name: Chromium für Playwright installieren
+        run: npx --no-install playwright install --with-deps chromium
+
+      - name: Bild per Digest ziehen und abgleichen
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin >/dev/null
+          docker pull "$BILD_REPO@$DIGEST" >/dev/null
+          docker pull "$BILD_REPO@$ALT_DIGEST" >/dev/null
+          docker logout ghcr.io >/dev/null
+          gezogen="$(docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$BILD_REPO@$DIGEST")"
+          echo "$gezogen" | grep -qx "$BILD_REPO@$DIGEST" || { echo "::error::gezogenes Bild trägt den erwarteten Digest nicht"; exit 1; }
+          alt="$(docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$BILD_REPO@$ALT_DIGEST")"
+          echo "$alt" | grep -qx "$BILD_REPO@$ALT_DIGEST" || { echo "::error::Bild der Basis 274bfa0 trägt den erwarteten Digest nicht"; exit 1; }
+          rev="$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$BILD_REPO@$DIGEST")"
+          # Bindung: Lauf auf dem Bild-Commit selbst, oder (B-3) auf dem Schnitt S, wenn das Bild auf dem Merge-Commit M
+          # gebaut wurde (genau zwei Eltern, zweiter Elter = S, gleicher Baum, S Vorfahr von M).
+          if [ "$rev" = "$GITHUB_SHA" ]; then
+            bindung=gleich
+          elif [[ "$rev" =~ ^[0-9a-f]{40}$ ]] && git cat-file -e "$rev^{commit}" 2>/dev/null \
+            && [ "$(git rev-list --parents -n 1 "$rev" | wc -w)" -eq 3 ] \
+            && [ "$(git rev-parse "$rev^2")" = "$GITHUB_SHA" ] \
+            && [ "$(git rev-parse "$rev^{tree}")" = "$(git rev-parse "$GITHUB_SHA^{tree}")" ] \
+            && git merge-base --is-ancestor "$GITHUB_SHA" "$rev"; then
+            bindung=schnitt
+          else
+            echo "::error::Bild-Commit ($rev) ist weder der geprüfte Quellstand ($GITHUB_SHA) noch ein Merge-Commit mit zweitem Elter = Quellstand und gleichem Baum (B-3). Workflow auf dem Commit des Bilds oder auf dem Schnitt starten."
+            exit 1
+          fi
+          echo "REVISION=$rev" >> "$GITHUB_ENV"
+          echo "BAUM=$(git rev-parse "$rev^{tree}")" >> "$GITHUB_ENV"
+          echo "BINDUNG=$bindung" >> "$GITHUB_ENV"
+          echo "BILD=$BILD_REPO@$DIGEST" >> "$GITHUB_ENV"
+          echo "ALT_BILD=$BILD_REPO@$ALT_DIGEST" >> "$GITHUB_ENV"
+
+      # Container 1: wie auf der Produktion (NODE_ENV=production, gehärtet), Gate-Proben im Bild wie in pruefung.yml.
+      - name: Container starten (Produktionsmodus, gehärtet)
+        run: |
+          set -euo pipefail
+          ADMIN="$(openssl rand -hex 24)"; PFEFFER="$(openssl rand -hex 24)"
+          echo "::add-mask::$ADMIN"; echo "::add-mask::$PFEFFER"
+          docker run -d --name staging-gate-prod -p 127.0.0.1:3000:3000 \
+            -e CENTRIC_ADMIN="$ADMIN" -e CENTRIC_PFEFFER="$PFEFFER" \
+            -e CENTRIC_BASIS=http://127.0.0.1:3000 \
+            -e CENTRIC_VERTRAUTE_PROXYS=127.0.0.1,::1,172.16.0.0/12 \
+            --user 1000:1000 --read-only --tmpfs /tmp --cap-drop ALL \
+            -e CENTRIC_ZUSTAND=/zustand --tmpfs /zustand:uid=1000,gid=1000,mode=0700 \
+            --security-opt no-new-privileges:true --memory 512m \
+            "$BILD" >/dev/null
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:3000/gesund >/dev/null && break; sleep 1; done
+          curl -sf http://127.0.0.1:3000/gesund >/dev/null
+          NACHWEIS="$(docker exec staging-gate-prod node --input-type=module -e '
+            import "/app/werkzeug/betreiber-faktor-vorlauf.mjs";
+            const n = await globalThis.__verwalterEinrichten(process.env.CENTRIC_ADMIN);
+            if (!n) { console.error("kein Nachweis"); process.exit(1); }
+            console.log(n.nachweis + " " + n.geheimnis);' | tail -n 1)"
+          test -n "$NACHWEIS"
+          GEHEIMNIS="${NACHWEIS#* }"; NACHWEIS="${NACHWEIS%% *}"
+          echo "::add-mask::$NACHWEIS"; echo "::add-mask::$GEHEIMNIS"
+          echo "CENTRIC_ZWEIFAKTOR_NACHWEIS=$NACHWEIS" >> "$GITHUB_ENV"
+
+      - name: Gate-Proben im Bild (Smoke, Geo, Aufräumen)
+        run: |
+          docker exec -e CENTRIC_ZWEIFAKTOR_NACHWEIS staging-gate-prod node /app/werkzeug/staging-smoke.mjs
+          docker exec -e CENTRIC_ZWEIFAKTOR_NACHWEIS staging-gate-prod node /app/werkzeug/staging-geo.mjs
+          docker exec staging-gate-prod node /app/werkzeug/staging-aufraeumen.mjs
+          if docker exec staging-gate-prod test -e /app/pruefungen; then echo "pruefungen/ im Bild"; exit 1; fi
+
+      - name: Container 1 entfernen
+        if: ${{ always() }}
+        run: docker rm -fv staging-gate-prod >/dev/null 2>&1 || true
+
+      # Widerrufbuch-Funktionstest S1–S6 (GATE-EW3, Gate-Entwurf A.10) am gezogenen Digest-Bild, nur synthetische Daten.
+      # Je bestandener Probe entsteht $RUNNER_TEMP/wb-proben/S<n>; der Nachweis liest nur diese Marken.
+      - name: Widerrufbuch S1–S3 (Migration 274bfa0, Widerruf über die API, Neustart und Rücksprung)
+        timeout-minutes: 15
+        run: |
+          set -euo pipefail
+          WB_PROBEN="$RUNNER_TEMP/wb-proben" bash deploy/sicherung/ci/widerrufbuch-staging.sh
+
+      # RST-5: Migrationsprobe W-1…W-9 am gezogenen Digest-Bild, Fixture vom 274bfa0-Bild (nur synthetisch).
+      # Ergebnis $RUNNER_TEMP/migrationsprobe.json; „nicht bewertbar“ bricht ab wie „fehlgeschlagen“.
+      - name: Migrationsprobe W-1…W-9 (synthetischer 274bfa0-Bestand am Digest-Bild)
+        timeout-minutes: 12
+        run: |
+          set -euo pipefail
+          MP_NACHWEIS="$RUNNER_TEMP/migrationsprobe.json" bash deploy/sicherung/ci/migrationsprobe-staging.sh
+
+      - name: restic installieren (gepinnt, Prüfsumme)
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/bin"
+          curl -fsSL -o "$RUNNER_TEMP/restic.bz2" \
+            "https://github.com/restic/restic/releases/download/v${RESTIC_VERSION}/restic_${RESTIC_VERSION}_linux_amd64.bz2"
+          echo "${RESTIC_SHA256}  $RUNNER_TEMP/restic.bz2" | sha256sum -c -
+          bunzip2 -c "$RUNNER_TEMP/restic.bz2" >"$RUNNER_TEMP/bin/restic"
+          chmod 755 "$RUNNER_TEMP/bin/restic"
+          echo "$RUNNER_TEMP/bin" >>"$GITHUB_PATH"
+          "$RUNNER_TEMP/bin/restic" version
+
+      - name: Widerrufbuch S4–S6 (W1–W11 mit echtem restic am Digest-Bild)
+        timeout-minutes: 25
+        run: |
+          set -euo pipefail
+          WB_PROBEN="$RUNNER_TEMP/wb-proben"
+          mkdir -p "$WB_PROBEN"
+          LOG="$RUNNER_TEMP/wb-ende-zu-ende.log"
+          BILD="$BILD" bash deploy/sicherung/ci/widerrufbuch-ende-zu-ende.sh | tee "$LOG"
+          for n in 1 2 3 4 5 6 7 8 9 10 11; do
+            grep -q "^✔ W$n " "$LOG" || { echo "::error::W$n nicht bestanden"; exit 1; }
+          done
+          echo ok >"$WB_PROBEN/S4"
+          grep -q "^✔ W6 Rücksprung" "$LOG" || { echo "::error::S5 (W6 Rücksprung) nicht belegt"; exit 1; }
+          echo ok >"$WB_PROBEN/S5"
+          grep -q "^✔ W8 Erstlauf-Sperre" "$LOG" || { echo "::error::S6 (W8 Erstlauf-Sperre) nicht belegt"; exit 1; }
+          echo ok >"$WB_PROBEN/S6"
+
+      # Container 2: dasselbe Bild, nur NODE_ENV=development und Demo/Selbststart, damit die vorhandene Playwright-Suite
+      # (WP-33, e2e/) ihren synthetischen Demo-Bestand anlegen kann. Sie läuft gegen 127.0.0.1:3231, nie gegen Staging oder Produktion.
+      - name: Browserabnahme (Playwright, axe, 8 Viewports) gegen das Bild
+        env:
+          E2E_PORT: "3231"
+        run: |
+          set -euo pipefail
+          ADMIN="$(openssl rand -hex 24)"; PFEFFER="$(openssl rand -hex 24)"
+          echo "::add-mask::$ADMIN"; echo "::add-mask::$PFEFFER"
+          docker run -d --name staging-gate-e2e -p 127.0.0.1:3231:3000 \
+            -e NODE_ENV=development -e CENTRIC_DEMO=true -e CENTRIC_SELBSTSTART=true \
+            -e CENTRIC_ADMIN="$ADMIN" -e CENTRIC_PFEFFER="$PFEFFER" \
+            -e CENTRIC_BASIS=http://127.0.0.1:3231 \
+            -e CENTRIC_VERTRAUTE_PROXYS=127.0.0.1,::1,172.16.0.0/12 \
+            --user 1000:1000 --read-only --tmpfs /tmp --cap-drop ALL \
+            -e CENTRIC_ZUSTAND=/zustand --tmpfs /zustand:uid=1000,gid=1000,mode=0700 \
+            --security-opt no-new-privileges:true --memory 512m \
+            "$BILD" >/dev/null
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:3231/gesund >/dev/null && break; sleep 1; done
+          curl -sf http://127.0.0.1:3231/gesund >/dev/null
+          E2E_EXTERN_ADMIN="$ADMIN" npm run e2e
+
+      - name: Container 2 entfernen
+        if: ${{ always() }}
+        run: docker rm -fv staging-gate-e2e >/dev/null 2>&1 || true
+
+      - name: Nachweis zusammenstellen (ohne Geheimnisse)
+        if: ${{ always() }}
+        env:
+          ERGEBNIS: ${{ job.status }}
+          LAUF: ${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          mkdir -p staging-nachweis
+          SKRIPT_SHA256="$(sha256sum deploy/sicherung/ci/widerrufbuch-ende-zu-ende.sh | cut -d ' ' -f 1)" node -e '
+            const fs = require("fs");
+            let e2e = null;
+            try { const r = JSON.parse(fs.readFileSync("e2e/ergebnisse/ergebnis.json", "utf8")); e2e = r.stats || null; } catch {}
+            const marke = (p) => { try { return fs.readFileSync(`${process.env.RUNNER_TEMP}/wb-proben/${p}`, "utf8").trim() === "ok" ? "ok" : "fehler"; } catch { return "fehler"; } };
+            const proben = Object.fromEntries(["S1", "S2", "S3", "S4", "S5", "S6"].map((p) => [p, marke(p)]));
+            let mp = null;
+            try { mp = JSON.parse(fs.readFileSync(`${process.env.RUNNER_TEMP}/migrationsprobe.json`, "utf8")); } catch {}
+            const migrationsprobe = mp && mp.art === "migrationsprobe-staging" && mp.digest === process.env.DIGEST ? mp
+              : { art: "migrationsprobe-staging", digest: null, ergebnis: "nicht bewertbar", grund: "kein Nachweis an diesem Digest" };
+            fs.writeFileSync("staging-nachweis/staging-nachweis.json", JSON.stringify({
+              digest: process.env.DIGEST, commit: process.env.REVISION || null, laufCommit: process.env.GITHUB_SHA,
+              baum: process.env.BAUM || null, bindung: process.env.BINDUNG || null, lauf: process.env.LAUF,
+              ergebnis: process.env.ERGEBNIS, browserabnahme: e2e, erstellt: new Date().toISOString(),
+              widerrufbuch: { art: "widerrufbuch-staging-funktionstest", proben, skriptSha256: process.env.SKRIPT_SHA256 || null },
+              migrationsprobe,
+            }, null, 2) + "\n");'
+
+      - name: Nachweis und axe-Befunde als Artefakt
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: staging-nachweis
+          path: |
+            staging-nachweis/staging-nachweis.json
+            e2e/ergebnisse/axe
+            e2e/ergebnisse/ergebnis.json
+          retention-days: 30
+          if-no-files-found: warn
