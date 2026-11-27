@@ -1,6 +1,7 @@
 /* WP-39: aus src/App.jsx herausgeloest (Text unveraendert). */
 import { useState } from "react";
 import { planeMonat } from "../lib/fachlogik.js";
+import { offenText } from "../lib/assistentGruende.js";
 import { Sheet, Zelle } from "../ui/leisten.jsx";
 import { MON, fKurz } from "../lib/datum.js";
 import { C } from "../farben.js";
@@ -78,8 +79,7 @@ export function Assistent({ sitz, ym, akt, onClose }) {
               <div key={i} style={{ display: "flex", gap: 12, padding: "6px 0", fontSize: 12.5 }}>
                 <span style={{ color: C.dim, minWidth: 52, ...NUM }}>{fKurz(o.datum)}</span>
                 <span style={{ color: C.text, minWidth: 130 }}>{(map[o.dienstId] || {}).name}</span>
-                <span style={{ color: C.danger }}>
-                  {o.fehlt > 0 ? `${o.fehlt} fehlen` : ""}{o.qualFehlt ? (o.fehlt > 0 ? " · " : "") + "Qualifikation fehlt" : ""}</span>
+                <span style={{ color: C.danger }}>{offenText(o)}</span>
               </div>))}
           </div>
           <div style={{ fontSize: 12.5, color: C.dimmer, marginTop: 10, lineHeight: 1.5 }}>

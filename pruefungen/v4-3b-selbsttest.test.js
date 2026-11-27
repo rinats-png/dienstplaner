@@ -59,9 +59,12 @@ const ABLAUF = "src/ansichten/testablauf.jsx";
 
 /** Bewusste Abweichung von der Basis, nicht Teil des Radiusschnitts: QS-2 Nachtrag (PR #478) ersetzt in
  *  src/pruefung.jsx die Wandzeit-Zusicherung „Erster Aufbau unter 500 ms“ (+32 Zeilen, Zähler `fehl` in memo).
+ *  Zweite bewusste Abweichung (Planungsassistent, Gründe offener Stellen): die abweichende Kopie von planeMonat
+ *  (53 Zeilen) entfällt, der Selbsttest nutzt planeMonat aus src/lib/fachlogik.js; +3 Zeilen (zwei Imports, eine
+ *  Zusicherung): 7805 → 7755 Zeilen, zeilenMehr 32 → -18.
  *  Die Datei bleibt byte-genau festgelegt: Prüfsumme der Datei mit dieser einen Änderung. Jede weitere
  *  Änderung an der Datei macht die Prüfung rot, wie zuvor gegen die Basis. */
-const NACHTRAG_QS2 = { [PRUEF]: { sha256: "89d6888daa73a7e703b7cba6b63b16f43b0672dc2ca14511dc3dbd8f634eedd8", zeilenMehr: 32 } };
+const NACHTRAG_QS2 = { [PRUEF]: { sha256: "a028bb1745b3760f8839f30e8d1e1b3a7fab62d5f51952cb38a5ac3dc54ce385", zeilenMehr: -18 } };
 const erwartetSha = (fx, d) => (NACHTRAG_QS2[d] ? NACHTRAG_QS2[d].sha256 : fx.dateien[d].sha256);
 
 /** Feste Zuordnung je Stelle (Quelltextreihenfolge). alt = Radius vorher (px); keine feste Kante (Höhe aus Inhalt). */

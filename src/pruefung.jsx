@@ -22,7 +22,9 @@ import { orgSchluessel, orgAnzeigeName, orgNameMerken } from "../server/lib/impo
 /* WP-I12c: Den Szenarienvergleich (planKennzahlen) gibt es nur einmal, im Rechenkern
    (server/lib/engine/kennzahlen.mjs, weitergereicht über src/lib/fachlogik.js). Die frühere
    Kopie hier rief verteilung mit einem Monat statt von/bis auf (spanne undefined, wochenenden NaN). */
-import { planKennzahlen } from "./lib/fachlogik.js";
+import { planKennzahlen, planeMonat } from "./lib/fachlogik.js";
+/* Den Planungsassistenten (planeMonat) und die Klartexte seiner Gründe gibt es nur einmal (fachlogik.js, assistentGruende.js). */
+import { offenText } from "./lib/assistentGruende.js";
 let _dunkel = false;
 const istDunkel = () => _dunkel;
 function themaSetzen(dunkel) {
@@ -1739,59 +1741,6 @@ function urlaubsRang(m, w) {
   const p = m.personen.find((x) => x.id === w.personId);
   const zurueck = ((m.urlaubsrunde && m.urlaubsrunde.vorjahrZurueck) || []).includes(w.personId) ? 0 : 1;
   return [zurueck, w.prio || 3, w.erstellt || "", p ? p.nachname : ""];
-}
-
-/* --------------------------- Planungsassistent --------------------------- */
-/**
- * Füllt offene Stellen eines Monats automatisch.
- * Nutzt dieselbe Bewertung wie die Ersatzsuche und meldet, was offen bleibt.
- * Rechnet mit vorab ermittelten Konten, sonst wäre der Durchlauf zu langsam.
- */
-function planeMonat(m, ym, grenzen = {}) {
-  const [y, mo] = ym.split("-").map(Number);
-  const n = dim_(y, mo - 1);
-  const maxProPerson = grenzen.maxProPerson || 3;
-  const ctx = { konten: new Map(), einspruenge: {}, nachtAnzahl: new Map() };
-  const jahr = Number(ym.slice(0, 4));
-  for (const p of m.personen) {
-    ctx.konten.set(p.id, stundenkonto(m, p, ym));
-    ctx.nachtAnzahl.set(p.id, nachtJahr(m, p, jahr).anzahl);
-  }
-  for (const e of m.einspruenge || []) ctx.einspruenge[e.personId] = (ctx.einspruenge[e.personId] || 0) + 1;
-  const werte = [...ctx.konten.values()].sort((a, b) => a - b);
-  ctx.median = werte.length ? werte[Math.floor(werte.length / 2)] : 0;
-  ctx.mittelEinspruenge = m.personen.length ? (m.einspruenge || []).length / m.personen.length : 0;
-  const nw = [...ctx.nachtAnzahl.values()];
-  ctx.nachtMittel = nw.length ? nw.reduce((a, b) => a + b, 0) / nw.length : 0;
-
-  let arbeit = { ...m, abweichungen: { ...m.abweichungen } };
-  const gesetzt = [];
-  const offen = [];
-  const jePerson = {};
-
-  for (let i = 1; i <= n; i++) {
-    const d = `${ym}-${pad(i)}`;
-    for (const da of m.dienstarten) {
-      let schutz = 0;
-      while (schutz++ < 12) {
-        const b = besetzung(arbeit, d)[da.id];
-        if (b.diff >= 0 && !b.qualFehlt) break;
-        const kand = ersatzVorschlaege(arbeit, d, da.id, ctx)
-          .filter((x) => x.moeglich && (jePerson[x.person.id] || 0) < maxProPerson);
-        if (!kand.length) {
-          offen.push({ datum: d, dienstId: da.id, fehlt: Math.max(0, -b.diff), qualFehlt: b.qualFehlt });
-          break;
-        }
-        const beste = kand[0];
-        arbeit = { ...arbeit, abweichungen: { ...arbeit.abweichungen, [`${beste.person.id}|${d}`]: da.id } };
-        jePerson[beste.person.id] = (jePerson[beste.person.id] || 0) + 1;
-        gesetzt.push({ personId: beste.person.id, name: `${beste.person.vorname} ${beste.person.nachname}`,
-          datum: d, dienstId: da.id, punkte: beste.punkte, grund: beste.gruende.slice(0, 2).join(" · ") });
-      }
-    }
-  }
-  return { gesetzt, offen, abweichungen: arbeit.abweichungen,
-    betroffene: Object.keys(jePerson).length, ym };
 }
 
 /* ------------------- Eskalation bei nicht deckbarer Lücke ---------------- */
@@ -6514,6 +6463,7 @@ function selbsttest() {
     const je = {}; plan.gesetzt.forEach((g) => { je[g.personId] = (je[g.personId] || 0) + 1; });
     return Object.values(je).every((v2) => v2 <= 3); })());
   const nachPlan = { ...luecke, abweichungen: plan.abweichungen };
+  ok("Offene Stellen des Assistenten haben nie eine leere Anzeige", true, plan.offen.every((o) => offenText(o).length > 0 || o.fehlt === 0));
   ok("Assistent erzeugt keine Ruhezeitverstöße", 0,
     pruefen(nachPlan, `${ym}-01`, `${ym}-28`).filter((x) => x.art === "ruhezeit").length);
   ok("Assistent verletzt keine Einschränkungen", 0,
