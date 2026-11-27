@@ -49,7 +49,8 @@ done
 
 T="$(mktemp -d "$RUNNER_TEMP/rst5-XXXXXX")"
 chmod 700 "$T"
-mkdir -m 700 -p "$T/scratchpad/daten-mig-gate" "$T/scratchpad/daten-mig-gegen" "$T/zustand" "$T/sich" "$T/roh"
+mkdir -p "$T/scratchpad/daten-mig-gate" "$T/scratchpad/daten-mig-gegen" "$T/zustand" "$T/sich" "$T/roh"
+chmod 700 "$T/scratchpad" "$T/scratchpad/daten-mig-gate" "$T/scratchpad/daten-mig-gegen" "$T/zustand" "$T/sich" "$T/roh"
 DATEN="$T/scratchpad/daten-mig-gate"
 ROH="$T/roh"
 NUTZER="$(id -u):$(id -g)"
@@ -66,7 +67,7 @@ node "$HILFE" plan >"$T/plan.json"
 node "$HILFE" plan --gegenprobe >"$T/plan-gegen.json"
 PFEFFER="$(node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).pfeffer)' "$T/plan.json")"
 schreiben() { # plan ziel
-  docker run --rm -i --network none "${HART[@]}" -e TZ=UTC \
+  timeout 300 docker run --rm -i --network none "${HART[@]}" -e TZ=UTC \
     -v "$2:/ausgabe" \
     -v "$WURZEL/werkzeug/synthetischer-altbestand-schreiber.mjs:/ci/schreiber.mjs:ro" \
     --entrypoint node "$ALT_BILD" /ci/schreiber.mjs /app /ausgabe <"$1" | tail -n 1 | grep -q '^ERGEBNIS ' ||
@@ -83,7 +84,7 @@ kennungen() { # ordner (unter $T/scratchpad) → Exit der Probe
   local name
   name="$(basename "$1")"
   set +e
-  docker run --rm --network none "${HART[@]}" \
+  timeout 300 docker run --rm --network none "${HART[@]}" \
     -e CENTRIC_PFEFFER="$PFEFFER" -e CENTRIC_ABLAGE=dateien -e CENTRIC_APP=/app \
     -v "$1:/scratchpad/$name:ro" \
     -v "$WURZEL/deploy/betriebskennungen-pruefen.mjs:/ci/deploy/betriebskennungen-pruefen.mjs:ro" \
@@ -98,7 +99,7 @@ kennungen "$T/scratchpad/daten-mig-gegen" >"$ROH/gegenprobe.exit"
 rm -rf "$T/scratchpad/daten-mig-gegen"
 
 # --- 3. S0 mit dem Werkzeug des Digest-Bilds ----------------------------------------------------
-docker run --rm --network none "${HART[@]}" -e CENTRIC_ABLAGE=dateien \
+timeout 300 docker run --rm --network none "${HART[@]}" -e CENTRIC_ABLAGE=dateien \
   -v "$DATEN:/data:ro" -v "$T/sich:/sich" \
   --entrypoint node "$BILD" /app/werkzeug/ablage-sicherung.mjs sichern --quelle /data --ziel /sich/s0 --ruhe 0 >"$T/s0.log" 2>&1 ||
   { tail -n 20 "$T/s0.log"; fehl "S0: Sicherung der Fixture fehlgeschlagen"; }
@@ -110,7 +111,7 @@ S0_HOST="$T/sich/${S0#/sich/}"
 # --- 4. Erster Start des Digest-Bilds (gehärtet, Löschlauf/Datenschutzlauf Vorgabe) ------------
 [[ -z "$(find "$T/zustand" -mindepth 1 -print -quit)" ]] || fehl "Zustandsverzeichnis vor dem ersten Start nicht leer"
 START_MS="$(date +%s%3N)"
-docker run -d --name "$NAME" -p "127.0.0.1:$PORT:3000" "${HART[@]}" --memory 512m \
+timeout 120 docker run -d --name "$NAME" -p "127.0.0.1:$PORT:3000" "${HART[@]}" --memory 512m \
   -e CENTRIC_ADMIN="$ADMIN" -e CENTRIC_PFEFFER="$PFEFFER" -e CENTRIC_ZUSTELL_TAKT=aus \
   -e CENTRIC_VERTRAUTE_PROXYS=127.0.0.1,::1,172.16.0.0/12 \
   -e CENTRIC_ZUSTAND=/zustand -e CENTRIC_DATEN=/scratchpad/daten-mig-gate -e CENTRIC_ABLAGE=dateien \
@@ -119,10 +120,10 @@ docker run -d --name "$NAME" -p "127.0.0.1:$PORT:3000" "${HART[@]}" --memory 512
   -v "$WURZEL/deploy/migrationsprobe-regeln.mjs:/ci/deploy/migrationsprobe-regeln.mjs:ro" \
   "$BILD" >/dev/null
 for _ in $(seq 1 "$WARTEN_START"); do
-  curl -sf "http://127.0.0.1:$PORT/gesund" >/dev/null && break
+  curl -sf --max-time 5 "http://127.0.0.1:$PORT/gesund" >/dev/null && break
   sleep 1
 done
-curl -sf "http://127.0.0.1:$PORT/gesund" >/dev/null || { docker logs "$NAME" 2>&1 | tail -n 40; fehl "Start: /gesund antwortet nicht"; }
+curl -sf --max-time 5 "http://127.0.0.1:$PORT/gesund" >/dev/null || { timeout 30 docker logs "$NAME" 2>&1 | tail -n 40; fehl "Start: /gesund antwortet nicht"; }
 if [[ -e "$DATEN/.prozess" ]]; then echo ja; else echo nein; fi >"$ROH/prozess"
 if [[ -d "$T/zustand/schreibhalt" ]]; then echo ja; else echo nein; fi >"$ROH/schreibhalt"
 stat -c %s "$T/zustand/zugang-widerrufe.json" >"$ROH/buch-zugang" 2>/dev/null || echo 0 >"$ROH/buch-zugang"
@@ -130,7 +131,7 @@ stat -c %s "$T/zustand/konto-widerrufe.json" >"$ROH/buch-konto" 2>/dev/null || e
 
 # --- 5. Abgleich gegen S0, dann Migrationsprobe im laufenden Container -------------------------
 set +e
-docker run --rm --network none "${HART[@]}" \
+timeout 300 docker run --rm --network none "${HART[@]}" \
   -v "$S0_HOST:/s0:ro" -v "$DATEN:/daten:ro" \
   -v "$WURZEL/deploy/deploy-abgleich.mjs:/ci/deploy-abgleich.mjs:ro" \
   --entrypoint node "$BILD" /ci/deploy-abgleich.mjs /s0 /daten --start "$START_MS" >"$ROH/abgleich.json" 2>"$T/abgleich.err"
@@ -142,13 +143,13 @@ set -e
 
 # --- 6. Löschlauf und Datenschutzlauf (60 s nach dem Start) abwarten ---------------------------
 for _ in $(seq 1 "$WARTEN_LAEUFE"); do
-  docker logs "$NAME" >"$ROH/start.log" 2>&1
+  timeout 30 docker logs "$NAME" >"$ROH/start.log" 2>&1
   grep -Eq '^Löschlauf: ([0-9]+ Testräume|abgeschaltet)|Löschlauf fehlgeschlagen' "$ROH/start.log" &&
     grep -Eq '^Datenschutzlauf|Datenschutzlauf fehlgeschlagen' "$ROH/start.log" && break
   sleep 1
 done
-docker stop -t 20 "$NAME" >/dev/null
-docker logs "$NAME" >"$ROH/start.log" 2>&1
+timeout 60 docker stop -t 20 "$NAME" >/dev/null
+timeout 30 docker logs "$NAME" >"$ROH/start.log" 2>&1
 aufraeumen
 
 # --- 7. Bewerten und Nachweis ------------------------------------------------------------------

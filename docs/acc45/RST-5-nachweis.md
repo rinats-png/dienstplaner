@@ -79,8 +79,8 @@ Bewertung je Regel (fail-closed; „nicht bewertbar“ ist nie „bestanden“, 
 | W-2 | `Schreibhalt: Kanal bereit` und `<zustand>/schreibhalt/` vorhanden |
 | W-3 | kein Fehler/„nicht prüfen“ und der Startblock lief bis zum Widerrufbuch |
 | W-4 / W-5 | Zeile des Buchs im Protokoll, Buchdatei nicht leer, kein `WARNUNG Konto-Widerrufbuch` |
-| W-6 | Zustandsverzeichnis nutzbar, **keine** Epochenerneuerung (Altbestand kennt keine) |
-| W-7 | Löschlauf lief (Vorgabe an) mit 0 Fehlern; abgeschaltet ⇒ nicht bewertbar |
+| W-6 | Zustandsverzeichnis nutzbar; **keine** der Serverzeilen `Sicherungsschlüssel: neue Epoche (…)`, `… Ablage passt nicht zur Schlüsselepoche …`, `… frühere Schlüssel widerrufen`, `… Aufräumen nach neuer Epoche misslungen`, `… Schlüsselepoche nicht prüfbar` (Altbestand kennt keine Epoche) |
+| W-7 | Löschlauf lief (Vorgabe an) mit `0 Testräume geprüft, 0 gelöscht, 0 Fehler` — die Fixture hat keine Testräume, jede Zahl > 0 ist ein Befund; abgeschaltet ⇒ nicht bewertbar |
 | W-8 | Datenschutzlauf im Modus `vorschau` mit 0 Fehlern; `an` ⇒ fehlgeschlagen (V-6) |
 | W-9 | Migrationsprobe Exit 0, alle Zyklen gleich, Altform-Raum und zweiter Betrieb geprüft |
 | Zusatz | Fixture-Baum = `FIXTURE_BAUM`; Startprotokoll ohne `WARNUNG`; Kennungen 0, Gegenprobe 1; Abgleich gegen S0 Exit 0 ohne abweichend/fehlend |
@@ -102,5 +102,22 @@ Bewertung je Regel (fail-closed; „nicht bewertbar“ ist nie „bestanden“, 
    exakten Digest belegt (N-2). Ob E6 in `release-pruefung.mjs` das Feld `migrationsprobe` zusätzlich verlangen soll,
    ist eine eigene SSOT-Entscheidung; bis dahin bindet der Jobstatus (`ergebnis: success` nur mit bestandener Probe).
 4. Grenze W-7: Im lokalen Lauf meldet der Löschlauf `0 Testräume geprüft` — die Fixture enthält keine Testräume, W-7
-   belegt also „läuft ohne Fehler und löscht nichts aus dem Altbestand“, nicht das Löschen selbst (das prüft
-   `pruefung:aufraeumen`). Migrationsprobe und Abgleich laufen ohnehin vor dem Löschlauf (60 s nach dem Start).
+   belegt also „läuft ohne Fehler, hält nichts aus dem Altbestand für einen Testraum und löscht nichts“ (die Regel
+   verlangt 0 geprüft und 0 gelöscht, Review #594 B-2), nicht das Löschen selbst (das prüft `pruefung:aufraeumen`).
+   Migrationsprobe und Abgleich laufen vor dem Löschlauf (60 s nach dem Start); ein zweiter Abgleich danach würde
+   Löschungen nur als `nachStart` zeigen und ist deshalb nicht der Beleg.
+
+### Nachtrag (Review #594)
+
+- B-1: W-6 erkannte nur einen Text, den der Server nie ausgibt (`Schlüsselepoche erneuert` stammt aus
+  `werkzeug/ablage-sicherung.mjs`). Jetzt prüft W-6 die echten Zeilen aus `server/lib/schluesselepoche.mjs` und
+  `server.mjs`. Alle Erkennungstexte aller Regeln stehen in `SERVERTEXTE` und werden im Test wörtlich gegen ihre
+  Quelldatei geprüft (ändert der Server einen Text, wird der Test rot statt die Regel stumm).
+- B-2: W-7 verlangt für diese Fixture 0 geprüft und 0 gelöscht.
+- B-3: `mkdir -m 700 -p` (shellcheck SC2174) ersetzt durch `mkdir -p` + `chmod 700`. Lokal kein shellcheck verfügbar;
+  der Test verbietet das Muster, die CI (`betrieb-sicherung.yml`) prüft mit shellcheck.
+- C-1: jeder Docker-Aufruf mit `timeout`, jedes `curl` mit `--max-time` (per Test erzwungen).
+- C-2: der Nachweisschritt übernimmt `migrationsprobe` nur, wenn `digest = DIGEST`, `altDigest = ALT_DIGEST` und
+  `ergebnis` ein bekannter Wert ist.
+- C-3: `CENTRIC_UEBERWACHUNG` steht im Gate und jetzt auch im lokalen Lauf auf Vorgabe (an, ohne Alarmkanal, nur Log),
+  wie in Produktion; vorher setzte der lokale Lauf sie auf `aus` (Muster aus K4-P4).

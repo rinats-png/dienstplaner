@@ -49,7 +49,7 @@ const LOG_GUT = [
   "Funktionen: bestand /api/bestand",
   "CENTRIC läuft auf Port 3000, Daten: /scratchpad/daten-mig-gate",
   "Sicherungsschlüssel: Zustandsverzeichnis nutzbar",
-  "Löschlauf: 6 Testräume geprüft, 0 gelöscht, 0 Fehler",
+  "Löschlauf: 0 Testräume geprüft, 0 gelöscht, 0 Fehler",
   "Datenschutzlauf (vorschau): 6 Räume, 0 Betriebe bereinigt, 0 fällig (Vorschau), 0 Sicherungen entfernt, 0 Sicherungen fällig (Vorschau), 0 Sicherungen älter als 90 Tage (0 davon behalten), 0 alte Kalender-Termine entfernt (0 fällig), 0 Fehler",
 ].join("\n");
 const PROBE_GUT = [
@@ -104,11 +104,19 @@ describe("(A) bewerten: W-1…W-9 und Zusatzproben", () => {
     ["W-4 Buch nicht erhoben", (r) => { r.buchZugang = null; }, "W-4", MP.NB],
     ["W-5 Konto-Buch leer", (r) => { r.buchKonto = "0"; }, "W-5", MP.FEHL],
     ["W-5 nicht gestartet", (r) => { r.startLog = r.startLog.replace(/^Konto-Widerrufbuch: .*$/m, ""); }, "W-5", MP.FEHL],
-    ["W-6 Epoche erneuert", (r) => { r.startLog += "\nSicherungsschlüssel: Schlüsselepoche erneuert"; }, "W-6", MP.FEHL],
+    /* Review #594 B-1: echte Zeilen aus server/lib/schluesselepoche.mjs (:195, :198, :225, :259) und server.mjs (:576). */
+    ["W-6 Ablage passt nicht zur Epoche", (r) => { r.startLog += "\nSicherungsschlüssel: Ablage passt nicht zur Schlüsselepoche — neue Epoche, alle früheren Schlüssel ungültig."; }, "W-6", MP.FEHL],
+    ["W-6 neue Epoche (erstmals)", (r) => { r.startLog += "\nSicherungsschlüssel: neue Epoche (erstmals). Alle früheren Schlüssel sind ungültig."; }, "W-6", MP.FEHL],
+    ["W-6 frühere Schlüssel widerrufen", (r) => { r.startLog += "\nSicherungsschlüssel: 2 frühere Schlüssel widerrufen, 0 Fehler."; }, "W-6", MP.FEHL],
+    ["W-6 Aufräumen misslungen", (r) => { r.startLog += "\nSicherungsschlüssel: Aufräumen nach neuer Epoche misslungen: x"; }, "W-6", MP.FEHL],
+    ["W-6 Epoche nicht prüfbar", (r) => { r.startLog += "\nSicherungsschlüssel: Schlüsselepoche nicht prüfbar, Schlüssel gelten nicht: x"; }, "W-6", MP.FEHL],
     ["W-6 nicht im Protokoll", (r) => { r.startLog = r.startLog.replace(/^Sicherungsschlüssel: Zustandsverzeichnis nutzbar$/m, ""); }, "W-6", MP.NB],
     ["W-7 abgeschaltet", (r) => { r.startLog = r.startLog.replace(/^Löschlauf: .*$/m, "Löschlauf: abgeschaltet (CENTRIC_AUFRAEUMEN=aus)"); }, "W-7", MP.NB],
     ["W-7 nicht abgewartet", (r) => { r.startLog = r.startLog.replace(/^Löschlauf: .*$/m, ""); }, "W-7", MP.NB],
-    ["W-7 mit Fehler", (r) => { r.startLog = r.startLog.replace(/^Löschlauf: .*$/m, "Löschlauf: 6 Testräume geprüft, 0 gelöscht, 2 Fehler"); }, "W-7", MP.FEHL],
+    ["W-7 mit Fehler", (r) => { r.startLog = r.startLog.replace(/^Löschlauf: .*$/m, "Löschlauf: 0 Testräume geprüft, 0 gelöscht, 2 Fehler"); }, "W-7", MP.FEHL],
+    /* Review #594 B-2: die Fixture hat keine Testräume ⇒ jede geprüfte oder gelöschte Zahl > 0 ist ein Befund. */
+    ["W-7 löscht aus dem Altbestand", (r) => { r.startLog = r.startLog.replace(/^Löschlauf: .*$/m, "Löschlauf: 6 Testräume geprüft, 6 gelöscht, 0 Fehler"); }, "W-7", MP.FEHL],
+    ["W-7 hält Altbestand für Testräume", (r) => { r.startLog = r.startLog.replace(/^Löschlauf: .*$/m, "Löschlauf: 1 Testräume geprüft, 0 gelöscht, 0 Fehler"); }, "W-7", MP.FEHL],
     ["W-8 Modus an (V-6)", (r) => { r.startLog = r.startLog.replace("Datenschutzlauf (vorschau)", "Datenschutzlauf (an)"); }, "W-8", MP.FEHL],
     ["W-8 nicht im Protokoll", (r) => { r.startLog = r.startLog.replace(/^Datenschutzlauf .*$/m, ""); }, "W-8", MP.NB],
     ["W-8 mit Fehler", (r) => { r.startLog = r.startLog.replace(/0 Fehler$/m, "x").replace(/, 0 Fehler$/m, ", 1 Fehler"); }, "W-8", MP.FEHL],
@@ -125,6 +133,11 @@ describe("(A) bewerten: W-1…W-9 und Zusatzproben", () => {
     const e = MP.bewerten(r);
     expect(finde(e, id).ergebnis, finde(e, id).grund).toBe(erwartet);
     expect(MP.gesamt([...e.w, ...e.zusatz])).not.toBe(MP.OK);
+  });
+
+  it("Servertexte: jeder Erkennungstext der Regeln steht wörtlich in der Quelldatei (Review #594 B-1)", () => {
+    expect(MP.SERVERTEXTE.length).toBeGreaterThan(20);
+    for (const [datei, text] of MP.SERVERTEXTE) expect(lesen(datei).includes(text), `${datei}: ${text}`).toBe(true);
   });
 
   it("gesamt: nicht bewertbar ist nie bestanden; leer ist nicht bewertbar; fehlgeschlagen schlägt nicht bewertbar", () => {
@@ -244,6 +257,14 @@ describe("(C) Gate-Skript migrationsprobe-staging.sh", () => {
     expect(code).toMatch(/CENTRIC_DATEN=\/scratchpad\/daten-mig-gate/);
     expect(code).toMatch(/Zustandsverzeichnis vor dem ersten Start nicht leer/);
   });
+  it("jeder Docker-Aufruf und jedes curl mit Frist (Review #594 C-1); kein mkdir -m mit -p (SC2174)", () => {
+    const zeilen = code.split("\n");
+    const docker = zeilen.filter((x) => /docker (run|exec|logs|stop)\b/.test(x));
+    expect(docker.length).toBeGreaterThanOrEqual(9);
+    for (const z of docker) expect(z, z).toMatch(/timeout \d+ docker /);
+    for (const z of zeilen.filter((x) => /curl /.test(x))) expect(z, z).toMatch(/--max-time \d+/);
+    expect(code).not.toMatch(/mkdir -m \d+ -p|mkdir -p -m/);
+  });
   it("Schleifen und Wartezeiten begrenzt; Probe mit Frist", () => {
     for (const m of code.matchAll(/for _ in \$\(seq 1 "?\$(\w+)"?\)/g)) expect(code).toMatch(new RegExp(`^${m[1]}=\\d{1,3}$`, "m"));
     expect(code).not.toMatch(/while true|until /);
@@ -304,7 +325,7 @@ describe("(D) Workflow-Patch rst-5 (Vorschlag; .github/workflows bleibt unverän
     if (mp !== undefined) writeFileSync(path.join(d, "runner", "migrationsprobe.json"), typeof mp === "string" ? mp : JSON.stringify(mp));
     const r = spawnSync("bash", ["-c", schritt.run], { cwd: path.join(d, "arbeit"), encoding: "utf8", timeout: 60000,
       env: { ...process.env, RUNNER_TEMP: path.join(d, "runner"), DIGEST: digest, REVISION: "a".repeat(40), BAUM: "6".repeat(40),
-        GITHUB_SHA: "3".repeat(40), LAUF: "4242-1", ERGEBNIS: "success" } });
+        GITHUB_SHA: "3".repeat(40), LAUF: "4242-1", ERGEBNIS: "success", ALT_DIGEST: ALT } });
     expect(r.status, r.stderr).toBe(0);
     return JSON.parse(readFileSync(path.join(d, "arbeit", "staging-nachweis", "staging-nachweis.json"), "utf8"));
   };
@@ -319,6 +340,8 @@ describe("(D) Workflow-Patch rst-5 (Vorschlag; .github/workflows bleibt unverän
   it.each([
     ["fehlt", undefined, D], ["unlesbar", "{kaputt", D], ["anderer Digest", mpGut, `sha256:${"e".repeat(64)}`],
     ["lokaler Nachweis", MP.nachweisBauen({ modus: "lokal", w, zusatz }), D],
+    ["anderes Altbild (C-2)", { ...mpGut, altDigest: `sha256:${"f".repeat(64)}` }, D],
+    ["unbekanntes Ergebnis (C-2)", { ...mpGut, ergebnis: "ok" }, D],
   ])("migrationsprobe %s ⇒ nicht bewertbar, kein Digest", (_n, mp, digest) => {
     const n = nachweis(mp, digest);
     expect(n.migrationsprobe).toMatchObject({ ergebnis: "nicht bewertbar", digest: null });

@@ -1,5 +1,5 @@
 diff --git a/.github/workflows/staging-gate.yml b/.github/workflows/staging-gate.yml
-index f457f53bc3c266d119c4c35474536911f1ea766e..827eb662c887a8de1db80b23926ad17542faef3e 100644
+index f457f53bc3c266d119c4c35474536911f1ea766e..3238d167ecdf38394b6be14158ac5b30e3643a9c 100644
 --- a/.github/workflows/staging-gate.yml
 +++ b/.github/workflows/staging-gate.yml
 @@ -21,6 +21,8 @@
@@ -26,13 +26,15 @@ index f457f53bc3c266d119c4c35474536911f1ea766e..827eb662c887a8de1db80b23926ad175
        - name: restic installieren (gepinnt, Prüfsumme)
          run: |
            set -euo pipefail
-@@ -221,11 +231,16 @@ jobs:
+@@ -221,11 +231,18 @@ jobs:
              try { const r = JSON.parse(fs.readFileSync("e2e/ergebnisse/ergebnis.json", "utf8")); e2e = r.stats || null; } catch {}
              const marke = (p) => { try { return fs.readFileSync(`${process.env.RUNNER_TEMP}/wb-proben/${p}`, "utf8").trim() === "ok" ? "ok" : "fehler"; } catch { return "fehler"; } };
              const proben = Object.fromEntries(["S1", "S2", "S3", "S4", "S5", "S6"].map((p) => [p, marke(p)]));
 +            let mp = null;
 +            try { mp = JSON.parse(fs.readFileSync(`${process.env.RUNNER_TEMP}/migrationsprobe.json`, "utf8")); } catch {}
-+            const migrationsprobe = mp && mp.art === "migrationsprobe-staging" && mp.digest === process.env.DIGEST ? mp
++            const gebunden = mp && mp.art === "migrationsprobe-staging" && mp.digest === process.env.DIGEST
++              && mp.altDigest === process.env.ALT_DIGEST && ["bestanden", "fehlgeschlagen", "nicht bewertbar"].includes(mp.ergebnis);
++            const migrationsprobe = gebunden ? mp
 +              : { art: "migrationsprobe-staging", digest: null, ergebnis: "nicht bewertbar", grund: "kein Nachweis an diesem Digest" };
              fs.writeFileSync("staging-nachweis/staging-nachweis.json", JSON.stringify({
                digest: process.env.DIGEST, commit: process.env.REVISION || null, laufCommit: process.env.GITHUB_SHA,

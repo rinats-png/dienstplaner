@@ -81,7 +81,7 @@ export async function lauf({ nachweis = null, behalten = false } = {}) {
     server = spawn(process.execPath, ["server.mjs"], { cwd: WURZEL, stdio: ["ignore", "pipe", "pipe"],
       env: umgebung({ PORT: String(port), CENTRIC_DATEN: DATEN, CENTRIC_ZUSTAND: ZUSTAND, CENTRIC_STATIK: STATIK,
         CENTRIC_ADMIN: randomBytes(24).toString("hex"), CENTRIC_VERTRAUTE_PROXYS: "127.0.0.1,::1", NODE_ENV: "production",
-        CENTRIC_ZUSTELL_TAKT: "aus", CENTRIC_UEBERWACHUNG: "aus" }) });
+        CENTRIC_ZUSTELL_TAKT: "aus" }) });   // Überwachung wie im Gate und in Produktion auf Vorgabe (an, ohne Alarmkanal)
     server.stdout?.on("data", (d) => { log += d; });
     server.stderr?.on("data", (d) => { log += d; });
     const bis = Date.now() + WARTEN_START_MS;

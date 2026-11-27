@@ -43,6 +43,31 @@ export const OK = "bestanden", FEHL = "fehlgeschlagen", NB = "nicht bewertbar";
 const DIGEST_MUSTER = /^sha256:[0-9a-f]{64}$/;
 const MAX_GRUND = 200;
 
+/** Review #594 B-1: Jeder Text, an dem eine Regel eine Protokollzeile erkennt, stammt wörtlich aus dieser Datei
+    (Test: Teilzeichenkette der Datei). Ändert der Server einen Text, wird der Test rot statt die Regel stumm. */
+export const SERVERTEXTE = Object.freeze([
+  ["server.mjs", "läuft auf Port "], ["server.mjs", "} Start verweigert — "],
+  ["server.mjs", "Schreibhalt: Kanal bereit"],
+  ["server.mjs", "Betreibersitzungen ohne zweiten Faktor: "], ["server.mjs", " beendet, "],
+  ["server.mjs", "Betreibersitzungen ohne zweiten Faktor ließen sich nicht prüfen"],
+  ["server.mjs", "Widerrufbuch: "], ["server.mjs", " Einträge, "], ["server.mjs", " aus der Ablage eingesammelt, "],
+  ["server.mjs", " in der Ablage nachgezogen"],
+  ["server.mjs", "Konto-Widerrufbuch: "], ["server.mjs", " gesperrte Konten, "], ["server.mjs", " entzogene Beziehungen, "],
+  ["server.mjs", "WARNUNG Konto-Widerrufbuch"],
+  ["server.mjs", "Sicherungsschlüssel: Zustandsverzeichnis nutzbar"], ["server.mjs", "WARNUNG Sicherungsschlüssel"],
+  ["server.mjs", "Schlüsselepoche nicht prüfbar"],
+  ["server/lib/schluesselepoche.mjs", "Sicherungsschlüssel: neue Epoche ("],
+  ["server/lib/schluesselepoche.mjs", "Sicherungsschlüssel: Ablage passt nicht zur Schlüsselepoche"],
+  ["server/lib/schluesselepoche.mjs", " frühere Schlüssel widerrufen"],
+  ["server/lib/schluesselepoche.mjs", "Sicherungsschlüssel: Aufräumen nach neuer Epoche misslungen"],
+  ["server.mjs", "Löschlauf: abgeschaltet"], ["server.mjs", "Löschlauf fehlgeschlagen"], ["server.mjs", "Löschlauf: ${v.geprueft} Testräume geprüft, ${v.geloescht.length} gelöscht, "],
+  ["server.mjs", "Datenschutzlauf (${modus}): "], ["server.mjs", "Datenschutzlauf fehlgeschlagen"], ["server.mjs", "Datenschutzlauf: "],
+  ["deploy/migrationsprobe-lokal.mjs", "MIGRATIONSPROBE: "], ["deploy/migrationsprobe-lokal.mjs", "BESTANDEN      "],
+  ["deploy/migrationsprobe-lokal.mjs", "FEHLGESCHLAGEN "], ["deploy/migrationsprobe-lokal.mjs", ": unveränderter Schreibzyklus"],
+  ["deploy/migrationsprobe-lokal.mjs", " [Betrieb ${i + 1}/${mand.length}]"],
+  ["deploy/deploy-abgleich.mjs", "{ gleich, abweichend, fehlend, nachStart, ausgelassen, ok }"],
+]);
+
 /** Rohdaten im Ordner des Laufs (alle optional; fehlend ⇒ betroffene Regel „nicht bewertbar“). */
 export const ROHDATEN = Object.freeze({
   startLog: "start.log",            // vollständiges Protokoll des Kandidaten (bis nach Lösch- und Datenschutzlauf)
@@ -157,10 +182,12 @@ export function bewerten(roh, { erwarteterBaum = FIXTURE_BAUM } = {}) {
       : r("W-5", FEHL, "Buch konto-widerrufe.json leer oder fehlt"));
   }
 
-  // W-6 Schlüsselepoche: bei Daten aus 274bfa0 weder Epoche noch Bindung ⇒ nichts erneuert
+  // W-6 Schlüsselepoche: bei Daten aus 274bfa0 weder Epoche noch Bindung ⇒ nichts erneuert.
+  // Review #594 B-1: nur echte Servertexte (server/lib/schluesselepoche.mjs, server.mjs; Abgleich SERVERTEXTE im Test).
   if (log === null) w.push(ohneLog("W-6"));
   else if (/WARNUNG Sicherungsschlüssel|Schlüsselepoche nicht prüfbar/.test(log)) w.push(r("W-6", FEHL, "Zustandsverzeichnis oder Epoche nicht prüfbar"));
-  else if (/Schlüsselepoche erneuert/.test(log)) w.push(r("W-6", FEHL, "Epoche erneuert, obwohl der Altbestand keine kennt"));
+  else if (/^Sicherungsschlüssel: (neue Epoche \(|Ablage passt nicht zur Schlüsselepoche|\d+ frühere Schlüssel widerrufen|Aufräumen nach neuer Epoche misslungen)/m.test(log))
+    w.push(r("W-6", FEHL, "Epoche erneuert oder frühere Schlüssel widerrufen, obwohl der Altbestand keine Epoche kennt"));
   else w.push(/^Sicherungsschlüssel: Zustandsverzeichnis nutzbar/m.test(log) ? r("W-6", OK, "nichts erneuert, Zustandsverzeichnis nutzbar")
     : r("W-6", NB, "Prüfung des Zustandsverzeichnisses nicht im Protokoll"));
 
@@ -170,8 +197,12 @@ export function bewerten(roh, { erwarteterBaum = FIXTURE_BAUM } = {}) {
   else if (/Löschlauf fehlgeschlagen/.test(log)) w.push(r("W-7", FEHL, "Löschlauf fehlgeschlagen"));
   else {
     const z = zeile(log, /^Löschlauf: (\d+) Testräume geprüft, (\d+) gelöscht, (\d+) Fehler/m);
+    /* Review #594 B-2: Die Fixture hat keine Testräume ⇒ 0 geprüft, 0 gelöscht, 0 Fehler. Alles andere hieße: der
+       Löschlauf hält Räume des Altbestands für Testräume (oder löscht sie). */
     w.push(!z ? r("W-7", NB, "Löschlauf nicht im Protokoll (nicht abgewartet)")
-      : Number(z[3]) === 0 ? r("W-7", OK, `${z[1]} geprüft, ${z[2]} gelöscht, 0 Fehler`) : r("W-7", FEHL, `${z[3]} Fehler`));
+      : Number(z[3]) !== 0 ? r("W-7", FEHL, `${z[3]} Fehler`)
+      : Number(z[1]) !== 0 || Number(z[2]) !== 0 ? r("W-7", FEHL, `${z[1]} geprüft, ${z[2]} gelöscht — der Altbestand hat keine Testräume`)
+      : r("W-7", OK, "0 geprüft, 0 gelöscht, 0 Fehler (nichts aus dem Altbestand gelöscht)"));
   }
 
   // W-8 Datenschutzlauf: Vorschau (Vorgabe), nie „an“ ohne Entscheidung (V-6)

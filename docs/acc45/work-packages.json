@@ -7242,7 +7242,7 @@
       "status": "REVIEW",
       "stufen": {
         "implementiert": {"wert":true,"beleg":"Teil 1 PR #565 (gemergt): Betriebskennungen am Digest-Bild in widerrufbuch-staging.sh. Teil 2 PR #594: deploy/sicherung/ci/migrationsprobe-staging.mjs/.sh (Migrationsprobe W-1…W-9 am Digest, Fixture vom 274bfa0-Bild, Nachweis mit digest), werkzeug/migrationsprobe-synthetisch.mjs (lokaler Skriptlauf, dieselbe Fixture), Workflow-Patch-Vorschlag docs/acc45/workflow-patches/rst-5/; keine Workflow-Aenderung"},
-        "lokalGetestet": {"wert":true,"beleg":"Teil 1: 2026-11-25 rst5-staging-probe 10/10, 7 Mutationen rot. Teil 2 lokal 2026-11-27 (Windows, TZ=UTC, --maxWorkers=1): lokaler Skriptlauf 14/14 bestanden; rst5-migrationsprobe-lauf 1/1; rst5-migrationsprobe, rst5-staging-probe, workflow-patch-ew3, staging-o2, ci-abdeckung 227/227; 13/13 Mutationen rot; Docker-Teil nur im Runner nach Patch-Uebernahme (GATE-EW3, dann RST-5)"},
+        "lokalGetestet": {"wert":true,"beleg":"Teil 1: 2026-11-25 rst5-staging-probe 10/10, 7 Mutationen rot. Teil 2 lokal 2026-11-27 (Windows, TZ=UTC, --maxWorkers=1), nach Review #594 (B-1 W-6 echte Servertexte + SERVERTEXTE-Abgleich, B-2 W-7 0 geprueft/0 geloescht, B-3 SC2174, C-1..C-3): rst5-migrationsprobe-lauf 1/1; rst5-migrationsprobe, rst5-staging-probe, workflow-patch-ew3, staging-o2, ci-abdeckung, acc45-status, ssot-belege 292/292; 18/18 Mutationen rot; shellcheck lokal nicht verfuegbar (CI); Docker-Teil nur im Runner nach Patch-Uebernahme (GATE-EW3, dann RST-5)"},
         "reviewt": {"wert":false,"beleg":null},
         "integriert": {"wert":false,"beleg":null},
         "stagingGeprueft": {"wert":false,"beleg":null},

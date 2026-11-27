@@ -23,7 +23,7 @@ Nachweisschritt bindet `migrationsprobe` an `DIGEST`.
 |---|---|
 | Kopfkommentar | RST-5 beschrieben |
 | neuer Schritt nach „Widerrufbuch S1–S3“ | `Migrationsprobe W-1…W-9 (synthetischer 274bfa0-Bestand am Digest-Bild)`, `timeout-minutes: 12`, ruft nur `deploy/sicherung/ci/migrationsprobe-staging.sh` |
-| Nachweisschritt | neues Feld `migrationsprobe` aus `$RUNNER_TEMP/migrationsprobe.json`; nur übernommen, wenn `art = migrationsprobe-staging` und `digest = DIGEST`, sonst `{ ergebnis: "nicht bewertbar", digest: null }` |
+| Nachweisschritt | neues Feld `migrationsprobe` aus `$RUNNER_TEMP/migrationsprobe.json`; nur übernommen, wenn `art = migrationsprobe-staging`, `digest = DIGEST`, `altDigest = ALT_DIGEST` und `ergebnis` ∈ {bestanden, fehlgeschlagen, nicht bewertbar}, sonst `{ ergebnis: "nicht bewertbar", digest: null }` |
 | unverändert | alles andere (Auslöser, Rechte, Bindung B-3, S1–S6, Browserabnahme, Artefakt) |
 
 Ein Fehlschlag oder „nicht bewertbar“ der Migrationsprobe bricht den Job ab ⇒ `ergebnis` im Nachweis ist nicht

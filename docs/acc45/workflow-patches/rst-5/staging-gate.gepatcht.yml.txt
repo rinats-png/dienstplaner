@@ -233,7 +233,9 @@ jobs:
             const proben = Object.fromEntries(["S1", "S2", "S3", "S4", "S5", "S6"].map((p) => [p, marke(p)]));
             let mp = null;
             try { mp = JSON.parse(fs.readFileSync(`${process.env.RUNNER_TEMP}/migrationsprobe.json`, "utf8")); } catch {}
-            const migrationsprobe = mp && mp.art === "migrationsprobe-staging" && mp.digest === process.env.DIGEST ? mp
+            const gebunden = mp && mp.art === "migrationsprobe-staging" && mp.digest === process.env.DIGEST
+              && mp.altDigest === process.env.ALT_DIGEST && ["bestanden", "fehlgeschlagen", "nicht bewertbar"].includes(mp.ergebnis);
+            const migrationsprobe = gebunden ? mp
               : { art: "migrationsprobe-staging", digest: null, ergebnis: "nicht bewertbar", grund: "kein Nachweis an diesem Digest" };
             fs.writeFileSync("staging-nachweis/staging-nachweis.json", JSON.stringify({
               digest: process.env.DIGEST, commit: process.env.REVISION || null, laufCommit: process.env.GITHUB_SHA,
