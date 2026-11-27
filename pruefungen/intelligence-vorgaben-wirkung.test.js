@@ -804,10 +804,19 @@ describe("9. Zählregeln rechnen mit Präfixsummen: gleiches Ergebnis wie der Re
     expect(nurVorgabe(pruefe([mo], { [add(TAG, -3)]: "N", [add(TAG, -9)]: "N" }, { da: "N" }))).toHaveLength(1);
     expect(nurVorgabe(pruefe([mo], { [add(TAG, -3)]: "N" }, { da: "N" }))).toEqual([]);
   });
-  it("ein ungültiger Zeitraum oder ein ungültiges Muster wird nicht als „über 62 Tage“ gemeldet (nur gültig beschriebene, aber zu lange)", () => {
+  it("ein ungültiger Zeitraum oder ein ungültiges Muster wird nicht als „über 62 Tage“ gemeldet, fällt aber nicht still weg (WP-I7 Teil 5, Review #587 C1): nicht vollständig geprüft", () => {
+    /* Bis WP-I7 Teil 5 erwartet: kein Befund (still weg). Betreiberentscheidung 26.11.: ungültige/nicht bewertbare Muss-Muster dürfen nicht still wegfallen. */
     const kaputt = V("z", { regelart: "zaehlregel", parameter: { ereignis: "N", fenster: { art: "unsinn" }, richtung: "hoechstens", grenze: 2 } });
-    expect(pruefe([kaputt], {}, { da: "N" })).toEqual([]);
     const kaputtMuster = V("m", { parameter: { art: "hoechstensFolge", klassen: ["F"], max: "x", danachFrei: 0 } });
-    expect(pruefe([kaputtMuster], {})).toEqual([]);
+    for (const [v, da] of [[kaputt, "N"], [kaputtMuster, "F"]]) {
+      const b = pruefe([v], {}, { da });
+      expect(b.map((x) => [x.regel, x.stufe])).toEqual([["vorgabeOffen", "hinweis"]]);
+      expect(b[0].text).toContain("nicht auswertbar beschrieben");
+      expect(b[0].text).not.toContain("62 Tage");
+      const auto = vorgabenBefunde({ dienstarten: DA, vorgaben: [v] }, P, TAG, dienst(da), { dienstAm: () => null, automatisch: true });
+      expect(auto.map((x) => [x.regel, x.stufe]), "Automatik: Muss offen = Achtung").toEqual([["vorgabeOffen", "achtung"]]);
+      expect(pruefe([{ ...v, staerke: "soll" }], {}, { da }).map((x) => x.regel)).toEqual(["vorgabeOffen"]);
+      expect(pruefe([{ ...v, geltung: { art: "personen", personen: ["andere"] } }], {}, { da }), "gilt nicht für die Person: nichts").toEqual([]);
+    }
   });
 });

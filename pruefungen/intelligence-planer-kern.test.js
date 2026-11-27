@@ -27,6 +27,7 @@ import { writeFileSync, readFileSync } from "node:fs";
 import * as PL from "../server/lib/engine/planer.mjs";
 import { planeVorschlag, nachpruefen, rangVergleich, zufallAus, PLANER_AN, PLANER_GRENZE, PLANER_STANDARD, RANGFOLGE, NICHT_BEWERTET } from "../server/lib/engine/planer.mjs";
 import { neuesVorgabenBudget } from "../server/lib/vorgabenwirkung.mjs";
+import { kiSteuerungZusammen, kiSteuerungSicht } from "../server/lib/ki-steuerung.mjs";
 import { stufeRang, planbefundeNeu, planbefundAufwandHoechst, PLANBEFUND_GRENZE } from "../server/lib/engine/einsatz.mjs";
 import { baueLeerenBetrieb } from "../server/lib/leerbetrieb.mjs";
 import { FEST, zufall, betriebe } from "./engine-golden.fixture.mjs";
@@ -126,7 +127,9 @@ describe("2. Gleichwertigkeit zu planeMonat (ohne Blöcke, ohne Verbessern)", ()
       expect(b.abweichungen).toEqual(a.abweichungen);
       /* Gründe offener Stellen (Planbefunde seit der Betreiberentscheidung 26.11.) stehen nicht in der frischen Rechnung; sie müssen
          dieselben sein wie bei planeMonat. */
-      expect(b.offen.map(({ grund, ...x }) => x)).toEqual(offenFrisch(m, a.abweichungen));
+      expect(b.offen.map(({ grund, ursache, regeln, vorgabenUnvollstaendig, ...x }) => x)).toEqual(offenFrisch(m, a.abweichungen));
+      /* WP-I7 Teil 5: jede offene Stelle hat einen Grund oder eine Ursache (Kennung), nie nichts. */
+      for (const x of b.offen) expect(x.grund || x.ursache, `${x.datum}|${x.dienstId}`).toBeTruthy();
       const gruende = (l) => l.filter((x) => x.grund).map((x) => `${x.datum}|${x.dienstId}|${x.grund}`).sort();
       expect(gruende(b.offen)).toEqual(gruende(a.offen));
       expect(b.aufwand.ausgeschoepft).toBe(false);
@@ -153,7 +156,7 @@ describe("3. Ganzer Plan (demo3): feste Punkte, Prüfweg, Blöcke, Verbessern, W
   });
   it("jede eigene Einteilung besteht den Prüfweg frisch nachgeprüft (setzt nie einen Verstoß); offen und Rang wie frisch gerechnet", () => {
     expect(pruefwegFehler(m, r)).toEqual([]);
-    expect(r.offen.map(({ grund, ...x }) => x)).toEqual(offenFrisch(m, r.abweichungen));
+    expect(r.offen.map(({ grund, ursache, regeln, vorgabenUnvollstaendig, ...x }) => x)).toEqual(offenFrisch(m, r.abweichungen));
     expect(r.rang.besetzung).toBe(r.offen.reduce((s, x) => s + x.fehlt + (x.qualFehlt ? 1 : 0), 0));
     expect(r.rang.gesetz).toBe(0);
     expect(r.rang.muss).toBe(0);
@@ -1077,4 +1080,116 @@ describe("9. Planbefunde im Assistenten und im Planer (Nachtdienste in Folge, §
     for (const x of ["nachtfolgeBefunde(m, p, von, bis, vor)", "ersatzruheMonatsweise(m, p, von, bis, arbeitet)", "sonntagsfreiBefund(m, p, von, bis, arbeitet)"]) expect(pr).toContain(x);
     for (const x of ["ersatzruhetage(", "freieSonntage(", "maxNachtFolge + 1"]) expect(pr).not.toContain(x);
   });
+});
+
+describe("10. Betriebsmodus je Betrieb, Planungsreife, Ursache offener Stellen (WP-I7 Teil 5, Betreiberentscheidung 26.11.)", () => {
+  const T0 = "2026-11-27T10:00:00.000Z";
+  const LEIT = { rolle: "leitung", person: "L1" };
+  const mitModus = (m, modus) => ({ ...m, einstellungen: { ...m.einstellungen, kiSteuerung: { planerModus: { modus, am: T0, vonRolle: "leitung" } } } });
+  /** Kleiner Betrieb: leerer Betrieb HE, vier Personen mit Vertragsstunden, Frühdienst je Tag eine Person. */
+  const klein = () => {
+    const m = baueLeerenBetrieb({ name: "T", branche: "pflege", email: "x@example.org", land: "HE", raum: "r" }).mandanten[0];
+    m.personen = [1, 2, 3, 4].map((i) => ({ id: `p${i}`, vorname: "A", nachname: `B${i}`, eintritt: "2020-01-01", zugehoerigkeit: [{ einheitId: m.einheiten[0].id, ab: "2020-01-01" }], wochenstunden: 40, status: "aktiv", qualifikationen: [] }));
+    m.dienstarten = m.dienstarten.map((d) => (d.id === "F" ? { ...d, mindest: { mo_do: 1, fr: 1, sa: 1, so: 1 } } : d));
+    return m;
+  };
+
+  it("Schalter: PLANER_AN bleibt AUS; ohne Freigabe ist jeder gespeicherte Modus AUS; nach Freigabe Standard Knopfdruck, automatisch nur ausdrücklich; unbekannt/unlesbar = AUS", () => {
+    expect(PLANER_AN).toBe(false);
+    expect(PL.planerModusWirksam(mitModus({ einstellungen: {} }, "automatisch").einstellungen)).toBe("aus");
+    expect(PL.planerModusWirksam({}, true)).toBe("knopfdruck");
+    expect(PL.planerModusWirksam(undefined, true)).toBe("knopfdruck");
+    for (const w of ["aus", "knopfdruck", "automatisch"]) expect(PL.planerModusWirksam(mitModus({ einstellungen: {} }, w).einstellungen, true)).toBe(w);
+    for (const kaputt of [{ planerModus: { modus: "immer", am: T0 } }, { planerModus: { modus: "automatisch" } }, { planerModus: "automatisch" }, { planerModus: null }])
+      expect(PL.planerModusWirksam({ kiSteuerung: kaputt }, true), JSON.stringify(kaputt)).toBe("aus");
+    expect(PL.planerModusWirksam({ kiSteuerung: { planerModus: { modus: "automatisch", am: T0 } } }, /** @type {any} */ ("ja")), "nur genau true gibt frei").toBe("aus");
+  });
+
+  it("Schreibweg: nur die Leitung ändert den Modus (Stempel vom Server, Protokoll ohne Inhalt); andere Rollen wirkungslos; ungültiger Wert abgewiesen; Sicht des Betriebsrats ohne Person", () => {
+    const alt = { id: "b1", einstellungen: {} };
+    const absicht = (w) => ({ id: "b1", einstellungen: { kiSteuerung: { planerModus: w } } });
+    const ok = kiSteuerungZusammen(alt, absicht({ modus: "automatisch", am: "gefälscht", vonPerson: "X" }), LEIT, { jetzt: T0 });
+    expect(ok.mandant.einstellungen.kiSteuerung.planerModus).toEqual({ modus: "automatisch", am: T0, vonRolle: "leitung", vonPerson: "L1" });
+    expect(ok.mandant.einstellungen.kiSteuerung.protokoll.map((x) => [x.art, x.ziel, x.wert])).toEqual([["planermodus", "planer", "automatisch"]]);
+    for (const rolle of ["planer", "betriebsrat", "schichtverantwortung", "mitarbeiter", "kunde", "betreiber"]) {
+      const r = kiSteuerungZusammen(alt, absicht({ modus: "automatisch" }), { rolle, person: "x" }, { jetzt: T0 });
+      expect(r.mandant && r.mandant.einstellungen.kiSteuerung, rolle).toBeUndefined();
+    }
+    expect(kiSteuerungZusammen(alt, absicht({ modus: "automatisch" }), { ...LEIT, demo: true }, { jetzt: T0 }).mandant.einstellungen.kiSteuerung, "Demo").toBeUndefined();
+    for (const w of [{ modus: "immer" }, { modus: true }, "automatisch"])
+      expect(kiSteuerungZusammen(alt, absicht(w), LEIT, { jetzt: T0 }).grund, JSON.stringify(w)).toContain("Betriebsmodus");
+    const gleich = kiSteuerungZusammen(ok.mandant, absicht({ modus: "automatisch" }), LEIT, { jetzt: "2026-11-28T00:00:00.000Z" });
+    expect(gleich.mandant.einstellungen.kiSteuerung, "unverändert: keine Änderung").toEqual(ok.mandant.einstellungen.kiSteuerung);
+    expect(kiSteuerungSicht(ok.mandant.einstellungen, "betriebsrat").kiSteuerung.planerModus).toEqual({ modus: "automatisch", am: T0, vonRolle: "leitung" });
+    /* Unlesbarer gespeicherter Modus: beim nächsten Schreiben der Leitung (andere Änderung) AUS mit Stempel des Systems. */
+    const kaputt = { id: "b1", einstellungen: { kiSteuerung: { planerModus: { modus: "immer", am: T0 } } } };
+    const r = kiSteuerungZusammen(kaputt, { id: "b1", einstellungen: { kiSteuerung: { betriebsratFrage: { antwort: "nein" } } } }, LEIT, { jetzt: T0 });
+    expect(r.mandant.einstellungen.kiSteuerung.planerModus).toMatchObject({ modus: "aus", vonRolle: "system" });
+  });
+
+  it("planerEinstieg: aus / wartet auf Knopfdruck / pausiert / Knopfdruck rechnet / automatisch rechnet; ohne Freigabe nichts", () => {
+    const m = klein();
+    const leerErg = (r) => { expect(r.gesetzt).toEqual([]); expect(r.abweichungen).toEqual(m.abweichungen); };
+    let r = PL.planerEinstieg(mitModus(m, "automatisch"), YM, { knopf: true });
+    expect([r.status, r.modus]).toEqual(["aus", "aus"]); leerErg(r);
+    r = PL.planerEinstieg(m, YM, { freigabe: true });
+    expect([r.status, r.modus]).toEqual(["wartet", "knopfdruck"]); leerErg(r);
+    r = PL.planerEinstieg(mitModus(m, "aus"), YM, { freigabe: true, knopf: true });
+    expect(r.status).toBe("aus"); leerErg(r);
+    const pausiert = { ...m, einstellungen: { ...m.einstellungen, kiSteuerung: { pause: { aktiv: true } } } };
+    expect(PL.planerEinstieg(pausiert, YM, { freigabe: true, knopf: true }).status).toBe("pausiert");
+    const k = PL.planerEinstieg(m, YM, { freigabe: true, knopf: true, zuege: 0 });
+    expect([k.status, k.modus]).toEqual(["ok", "knopfdruck"]);
+    expect(k.gesetzt.length).toBeGreaterThan(0);
+    const direkt = planeVorschlag(m, YM, { freigabe: true, zuege: 0 });
+    expect(schluessel(k.gesetzt)).toEqual(schluessel(direkt.gesetzt));
+    const a = PL.planerEinstieg(mitModus(m, "automatisch"), YM, { freigabe: true, zuege: 0 });
+    expect([a.status, a.modus]).toEqual(["ok", "automatisch"]);
+    expect(PL.planerEinstieg(m, "2026-13", { freigabe: true, knopf: true }).status).toBe("ungueltig");
+  }, 300000);
+
+  it("nicht planungsreif: kein Vorschlag (auch kein teilweiser), sondern die fehlenden Voraussetzungen ohne Personenbezug — in jedem Modus", () => {
+    const m = klein();
+    m.personen = m.personen.map((p) => ({ ...p, wochenstunden: undefined }));   // Vertragsstunden fehlen (Pflichtpunkt)
+    for (const [modus, knopf] of [["knopfdruck", true], ["automatisch", false]]) {
+      const r = PL.planerEinstieg(mitModus(m, modus), YM, { freigabe: true, knopf });
+      expect(r.status, modus).toBe("nicht_planungsreif");
+      expect(r.gesetzt).toEqual([]);
+      expect(r.offen).toEqual([]);
+      expect(r.voraussetzungen.some((v) => v.punkt === "vertragsstunden")).toBe(true);
+      const text = JSON.stringify(r.voraussetzungen);
+      for (const p of m.personen) { expect(text).not.toContain(p.nachname); expect(text).not.toContain(`"${p.id}"`); }
+    }
+  }, 300000);
+
+  it("unerfüllbares Muss: Stelle offen mit Ursache (Kennung vorgabeMuss), nie eine Einteilung mit Muss-Verletzung; ungültige Muss-Vorgabe fällt nicht still weg", () => {
+    const m = klein();
+    m.personen = m.personen.slice(0, 1);
+    /* Muss: höchstens 1 F in Folge; die eine Person hat am 1.12. F, also ist der 2.12. mit ihr unerfüllbar. */
+    const vg = (parameter) => ({ id: "v1", name: "Hausregel", status: "aktiv", staerke: "muss", prioritaet: 1, regelart: "musterregel", geltung: { art: "betrieb" }, grundlage: { art: "hausregel" }, parameter });
+    m.vorgaben = [vg({ art: "hoechstensFolge", klassen: ["F"], max: 1 })];
+    m.abweichungen["p1|2026-12-01"] = "F";
+    const r = planeVorschlag(structuredClone(m), YM, { freigabe: true, zuege: 0, maxProPerson: 31 });
+    expect(r.status).toBe("ok");
+    expect(r.gesetzt.some((g) => g.datum === "2026-12-02")).toBe(false);
+    const o2 = r.offen.find((x) => x.datum === "2026-12-02" && x.dienstId === "F");
+    expect(o2).toMatchObject({ ursache: "hindernisse" });
+    expect(o2.regeln).toContain("vorgabeMuss");
+    expect(r.rang.muss).toBe(0);
+    /* Ungültig beschrieben (Muster ohne brauchbare Länge): vorher still weg, jetzt nicht vollständig geprüft (Automatik: Achtung). */
+    const u = structuredClone(m);
+    u.vorgaben = [vg({ art: "hoechstensFolge", klassen: ["F"], max: "viele" })];
+    const fd = u.dienstarten.find((x) => x.id === "F");
+    const b = F.hindernisBefunde(u, u.personen[0], "2026-12-02", fd, { vorgabenBudget: neuesVorgabenBudget(), vorgabenAutomatisch: true });
+    expect(b.find((x) => x.regel === "vorgabeOffen")).toMatchObject({ stufe: "achtung" });
+    expect(b.find((x) => x.regel === "vorgabeOffen").text).toContain("nicht auswertbar");
+    const ru = planeVorschlag(u, YM, { freigabe: true, zuege: 0, maxProPerson: 31 });
+    expect(ru.gesetzt).toEqual([]);
+    expect(ru.offen.length).toBeGreaterThan(0);
+    expect(ru.offen.every((x) => x.grund || x.ursache === "unvollstaendig")).toBe(true);
+    /* Soll ungültig: nur Hinweis (der Mensch bewertet), nie still. */
+    const s = structuredClone(u); s.vorgaben[0].staerke = "soll";
+    expect(F.hindernisBefunde(s, s.personen[0], "2026-12-02", fd, { vorgabenBudget: neuesVorgabenBudget(), vorgabenAutomatisch: true })
+      .find((x) => x.regel === "vorgabeOffen")).toMatchObject({ stufe: "hinweis" });
+  }, 300000);
 });

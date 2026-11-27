@@ -76,7 +76,9 @@
    ========================================================================== */
 import { dim_, pad, addDays, dow } from "../regelwerk.mjs";
 import { nachtAnteil, nachtschwelle } from "../fachpruefung.mjs";
-import { kiPauseAktiv } from "../ki-steuerung.mjs";
+import { kiPauseAktiv, kiSteuerungLesen } from "../ki-steuerung.mjs";
+import { planungsreife, vorschlagErlaubt } from "./planungsreife.mjs";
+import { lueckenUrsache, budgetNeu } from "./luckenursache.mjs";
 import { neuesVorgabenBudget, vorgabenPlanFortschreiben } from "../vorgabenwirkung.mjs";
 import { VORGABEN_WIRKUNG_GRENZE } from "../vorgaben.mjs";
 import { besetzung, personTag, stundenkonto } from "./plan.mjs";
@@ -449,6 +451,72 @@ export function planeVorschlag(m, ym, opt = {}) {
   const gesetzt = [...ergebnis.eigene.values()].sort((a, b) => (a.datum < b.datum ? -1 : a.datum > b.datum ? 1 : 0)
     || m.dienstarten.findIndex((x) => x.id === a.dienstId) - m.dienstarten.findIndex((x) => x.id === b.dienstId)
     || (String(a.personId) < String(b.personId) ? -1 : String(a.personId) > String(b.personId) ? 1 : 0));
-  return { status: "ok", grund: null, ym, startwert, gesetzt, offen: bewertung.offen, abweichungen: ergebnis.stand.abweichungen,
+  /* Ursache offener Stellen ohne Grund (WP-I7 Teil 5, Betreiberentscheidung 26.11.: unerfüllbares Muss ⇒ Stelle offen + Ursache, nie eine
+     Einteilung mit Muss-Verletzung): lueckenUrsache (WP-I8, Kennungen und Zahlen, keine Person) auf dem fertigen Stand, nach dem Planen
+     (ohne Wirkung auf den Plan). Ein Budget für alle Stellen (luckenursache: höchstens 400 Personenprüfungen) und ein eigenes Budget der
+     Vorgaben; reicht es nicht oder sind Vorgaben nicht vollständig geprüft (auch ungültig beschriebene Muss-Vorgaben), heißt die Ursache
+     „unvollstaendig“ — nie eine erfundene. */
+  const ursBudget = budgetNeu(), ursVorgaben = neuesVorgabenBudget(vorgabenAufwand, { aggregate: o.aggregate === true });
+  const offenMitUrsache = bewertung.offen.map((x) => {
+    if (x.grund) return x;
+    const r = lueckenUrsache(ergebnis.stand, x.datum, x.dienstId, { budget: ursBudget, vorgabenBudget: ursVorgaben });
+    if (!r || r.ok === false) return { ...x, ursache: "unvollstaendig", regeln: [] };
+    return { ...x, ursache: r.ursache, regeln: r.kleinste ? [...r.kleinste.regeln] : [], ...(r.vorgabenUnvollstaendig ? { vorgabenUnvollstaendig: true } : {}) };
+  });
+  return { status: "ok", grund: null, ym, startwert, gesetzt, offen: offenMitUrsache, abweichungen: ergebnis.stand.abweichungen,
     rang: bewertung.rang, nichtBewertet: [...NICHT_BEWERTET], aufwand: { grenze, verbraucht: grenze - A.rest, ausgeschoepft: A.ausgeschoepft || PB.ausgeschoepft, planbefund: { grenze: pbGrenze, verbraucht: pbGrenze - PB.rest, ausgeschoepft: PB.ausgeschoepft } }, verbessert };
+}
+
+/* ---------- Betriebsmodus (WP-I7 Teil 5, Betreiberentscheidung 26.11.) ----------
+   AUS / Knopfdruck / automatisch je Betrieb. Vorgabe AUS, solange der Planer nicht freigegeben ist (PLANER_AN, bleibt AUS); nach der
+   Freigabe ist Knopfdruck der Standard, automatisch nur, wenn die Leitung es ausdrücklich eingestellt hat (kiSteuerung.planerModus,
+   Schreibweg und Rechte in ki-steuerung.mjs). Unlesbarer oder unbekannter Wert = AUS (fail closed). */
+
+/**
+ * Der im Betrieb wirksame Modus.
+ * @param {any} einstellungen @param {boolean} [freigegeben] Freigabe des Planers (Vorgabe PLANER_AN; Prüfungen geben ausdrücklich frei)
+ * @returns {"aus" | "knopfdruck" | "automatisch"}
+ */
+export function planerModusWirksam(einstellungen, freigegeben = PLANER_AN) {
+  if (freigegeben !== true) return "aus";
+  let s;
+  try { s = kiSteuerungLesen(einstellungen); } catch { return "aus"; }
+  if (s && s.planerModusUngueltig) return "aus";
+  if (!s || !s.planerModus) return "knopfdruck";
+  const w = s.planerModus.modus;
+  return w === "knopfdruck" || w === "automatisch" ? w : "aus";
+}
+
+/**
+ * Äußerer Einstieg des Planers je Betrieb: Modus, KI-Pause, Planungsreife (WP-I6), dann planeVorschlag. Ein nicht planungsreifer Betrieb
+ * bekommt keinen Vorschlag (auch keinen teilweisen, der vollständig wirken könnte), sondern den Status „nicht_planungsreif“ mit den
+ * fehlenden Voraussetzungen (Punkt und Text der Prüfliste, ohne Personenkennungen). Im Modus Knopfdruck rechnet nur `knopf: true`
+ * (die Planung hat „Vorschlag erstellen“ gedrückt); sonst Status „wartet“.
+ * @param {any} m @param {string} ym
+ * @param {{ knopf?: boolean, heute?: string, freigabe?: boolean } & Record<string, any>} [opt] übrige Optionen wie planeVorschlag
+ */
+export function planerEinstieg(m, ym, opt = {}) {
+  const o = opt && typeof opt === "object" ? opt : {};
+  const startwert = o.startwert === undefined ? PLANER_STANDARD.startwert : o.startwert;
+  const fehler = eingabeFehler(m, ym, o);
+  if (fehler) return { ...leer(m, ym, "ungueltig", fehler, startwert), modus: "aus" };
+  const modus = planerModusWirksam(m.einstellungen, PLANER_AN || o.freigabe === true);
+  if (modus === "aus") return { ...leer(m, ym, "aus", "Planer im Betrieb aus", startwert), modus };
+  let pause = true;
+  try { pause = kiPauseAktiv(m.einstellungen); } catch { pause = true; }
+  if (pause) return { ...leer(m, ym, "pausiert", "Intelligence pausiert", startwert), modus };
+  const [y, mo] = ym.split("-").map(Number);
+  const zeitraum = { von: `${ym}-01`, bis: `${ym}-${pad(dim_(y, mo - 1))}` };
+  let reife = null;
+  try { reife = planungsreife(m, { ...zeitraum, heute: typeof o.heute === "string" ? o.heute : undefined }); } catch { reife = null; }
+  const e = vorschlagErlaubt(reife, modus, o.knopf === true);
+  if (!e.erlaubt) {
+    if (e.grund === "wartet_auf_knopfdruck") return { ...leer(m, ym, "wartet", "Vorschlag nur auf Knopfdruck", startwert), modus };
+    if (e.grund === "aus") return { ...leer(m, ym, "aus", "Planer im Betrieb aus", startwert), modus };
+    const fehlt = reife && Array.isArray(reife.luecken) ? reife.luecken.filter((l) => !l.hinweis).map((l) => ({ punkt: l.punkt, text: l.text })) : [];
+    return { ...leer(m, ym, "nicht_planungsreif", "Betrieb für diesen Monat nicht planungsreif: kein Vorschlag", startwert), modus,
+      voraussetzungen: fehlt.length ? fehlt : [{ punkt: "pruefung", text: "Die Planungsreife ließ sich nicht prüfen." }] };
+  }
+  const { knopf: _k, heute: _h, ...rest } = o; // eslint-disable-line no-unused-vars
+  return { ...planeVorschlag(m, ym, { ...rest, freigabe: true }), modus };
 }
