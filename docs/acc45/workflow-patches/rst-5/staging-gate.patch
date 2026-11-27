@@ -1,0 +1,47 @@
+diff --git a/.github/workflows/staging-gate.yml b/.github/workflows/staging-gate.yml
+index f457f53bc3c266d119c4c35474536911f1ea766e..3238d167ecdf38394b6be14158ac5b30e3643a9c 100644
+--- a/.github/workflows/staging-gate.yml
++++ b/.github/workflows/staging-gate.yml
+@@ -21,6 +21,8 @@
+ # synthetischen Daten (die Logs und das Artefakt sind öffentlich). Nachweis: Artefakt staging-nachweis.json (Digest,
+ # commit = Bild-Commit, laufCommit, baum, Lauf, Ergebnis, Proben S1–S6, skriptSha256) — das Format, das
+ # werkzeug/release-pruefung.mjs (G6 Erstwechsel, E6/E7) verlangt.
++# RST-5: Migrationsprobe W-1…W-9 am EXAKTEN Digest auf der synthetischen 274bfa0-Fixture (K4-P3), geschrieben vom
++# 274bfa0-Bild; Nachweisfeld migrationsprobe (digest, altDigest, Fixture-Baum, W-1…W-9, Ergebnis).
+ name: Staging-Gate
+ 
+ on:
+@@ -153,6 +155,14 @@ jobs:
+           set -euo pipefail
+           WB_PROBEN="$RUNNER_TEMP/wb-proben" bash deploy/sicherung/ci/widerrufbuch-staging.sh
+ 
++      # RST-5: Migrationsprobe W-1…W-9 am gezogenen Digest-Bild, Fixture vom 274bfa0-Bild (nur synthetisch).
++      # Ergebnis $RUNNER_TEMP/migrationsprobe.json; „nicht bewertbar“ bricht ab wie „fehlgeschlagen“.
++      - name: Migrationsprobe W-1…W-9 (synthetischer 274bfa0-Bestand am Digest-Bild)
++        timeout-minutes: 12
++        run: |
++          set -euo pipefail
++          MP_NACHWEIS="$RUNNER_TEMP/migrationsprobe.json" bash deploy/sicherung/ci/migrationsprobe-staging.sh
++
+       - name: restic installieren (gepinnt, Prüfsumme)
+         run: |
+           set -euo pipefail
+@@ -221,11 +231,18 @@ jobs:
+             try { const r = JSON.parse(fs.readFileSync("e2e/ergebnisse/ergebnis.json", "utf8")); e2e = r.stats || null; } catch {}
+             const marke = (p) => { try { return fs.readFileSync(`${process.env.RUNNER_TEMP}/wb-proben/${p}`, "utf8").trim() === "ok" ? "ok" : "fehler"; } catch { return "fehler"; } };
+             const proben = Object.fromEntries(["S1", "S2", "S3", "S4", "S5", "S6"].map((p) => [p, marke(p)]));
++            let mp = null;
++            try { mp = JSON.parse(fs.readFileSync(`${process.env.RUNNER_TEMP}/migrationsprobe.json`, "utf8")); } catch {}
++            const gebunden = mp && mp.art === "migrationsprobe-staging" && mp.digest === process.env.DIGEST
++              && mp.altDigest === process.env.ALT_DIGEST && ["bestanden", "fehlgeschlagen", "nicht bewertbar"].includes(mp.ergebnis);
++            const migrationsprobe = gebunden ? mp
++              : { art: "migrationsprobe-staging", digest: null, ergebnis: "nicht bewertbar", grund: "kein Nachweis an diesem Digest" };
+             fs.writeFileSync("staging-nachweis/staging-nachweis.json", JSON.stringify({
+               digest: process.env.DIGEST, commit: process.env.REVISION || null, laufCommit: process.env.GITHUB_SHA,
+               baum: process.env.BAUM || null, bindung: process.env.BINDUNG || null, lauf: process.env.LAUF,
+               ergebnis: process.env.ERGEBNIS, browserabnahme: e2e, erstellt: new Date().toISOString(),
+               widerrufbuch: { art: "widerrufbuch-staging-funktionstest", proben, skriptSha256: process.env.SKRIPT_SHA256 || null },
++              migrationsprobe,
+             }, null, 2) + "\n");'
+ 
+       - name: Nachweis und axe-Befunde als Artefakt
