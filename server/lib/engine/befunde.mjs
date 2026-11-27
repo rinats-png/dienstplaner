@@ -190,9 +190,11 @@ export function pruefen(m, von, bis) {
          im betrachteten Fenster liegt — für einen Anspruch am Rand ist die
          Antwort schlicht noch nicht bekannt, und eine Meldung „kein
          Ersatzruhetag" wäre dort schlicht falsch. */
-      /* Rechnung in ersatzruheBefunde und sonntagsfreiBefund (unten; gemeinsam mit dem Planungsassistenten), Ausgabe wie bisher. */
+      /* Rechnung in ersatzruheBefunde und sonntagsfreiBefund (unten; gemeinsam mit dem Planungsassistenten), Ausgabe wie bisher.
+         Ersatzruhe je Kalendermonat (ersatzruheMonatsweise): jede Ansicht, auch das 14-Tage-Lagebild, sagt für denselben Tag
+         dasselbe wie die Monatsansicht (WP-I7 Teil 5, Review #588). */
       const arbeitet = sonntagsArbeit(m, p);
-      for (const b of ersatzruheBefunde(m, p, von, bis, arbeitet)) push(b);
+      for (const b of ersatzruheMonatsweise(m, p, von, bis, arbeitet)) push(b);
 
       const so = sonntagsfreiBefund(m, p, von, bis, arbeitet);
       const letzterSo = so.letzterSo;
@@ -462,6 +464,22 @@ export function ersatzruheBefunde(m, p, von, bis, arbeitet = sonntagsArbeit(m, p
       text: o.art === "sonntag"
         ? `Dienst am Sonntag, ${fKurz(o.datum)}. Innerhalb von zwei Wochen steht kein freier Werktag zur Verfügung.`
         : `Dienst am Feiertag, ${fKurz(o.datum)}. Innerhalb von acht Wochen steht kein freier Werktag zur Verfügung.` });
+  }
+  return out;
+}
+
+/**
+ * Ersatzruhe-Befunde in `von` … `bis`, gerechnet je Kalendermonat (Rechnung der Monatsansicht: ersatzruheBefunde Monatsanfang …
+ * Monatsende) und auf den Zeitraum gefiltert. Die Zuordnung der Ersatzruhetage ist gierig und hängt am Fenster; mit demselben Schnitt
+ * wie die Monatsansicht sagt jede Ansicht (14-Tage-Lagebild, Startseite, freie Zeiträume) für einen Tag dasselbe wie der Monat, und die
+ * Prüfung des Planungsassistenten (planbefundeNeu, je Monatsansicht) deckt sie mit ab. Für einen ganzen Monat gleich ersatzruheBefunde.
+ */
+export function ersatzruheMonatsweise(m, p, von, bis, arbeitet = sonntagsArbeit(m, p)) {
+  const out = [];
+  for (let f = `${von.slice(0, 7)}-01`, n = 0; f <= bis && n < 1200; n++) {
+    const naechster = Number(f.slice(5, 7)) === 12 ? `${Number(f.slice(0, 4)) + 1}-01-01` : `${f.slice(0, 5)}${String(Number(f.slice(5, 7)) + 1).padStart(2, "0")}-01`;
+    for (const b of ersatzruheBefunde(m, p, f, addDays(naechster, -1), arbeitet)) if (b.datum >= von && b.datum <= bis) out.push(b);
+    f = naechster;
   }
   return out;
 }

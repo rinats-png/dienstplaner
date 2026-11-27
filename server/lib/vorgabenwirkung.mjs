@@ -124,6 +124,8 @@ export function vorgabePlanwirkung(v, opt = {}) {
 
 /** Halbe Fensterbreite einer Musterregel (Fenster d ± halb): Folge = max + danachFrei + 1, verbotene Folge = Abstand (NaN, wenn unbrauchbar). */
 function musterHalb(p) {
+  /* Montag frei (WP-I7 Teil 5): Samstag bis Montag; jeder der drei Tage liegt in d ± 2. */
+  if (p.art === "montagFrei") return 2;
   return p.art === "hoechstensFolge" ? Number(p.max) + (Number(p.danachFrei) || 0) + 1 : Number(p.abstandTage === undefined ? 1 : p.abstandTage);
 }
 
@@ -378,6 +380,9 @@ function vorbereiten(m, budget) {
   const sortiert = (l) => l.sort((a, b) => (a.prioritaet - b.prioritaet) || (String(a.id) < String(b.id) ? -1 : String(a.id) > String(b.id) ? 1 : 0));
   const wirkend = sortiert(aktiv.filter((v) => vorgabePlanwirkung(v, wo).wirkt));
   const ueberlang = sortiert(aktiv.filter((v) => VORGABEN_PLANARTEN.includes(v.regelart) && !vorgabePlanwirkung(v, wo).wirkt && ueberlangGueltig(v)));
+  /* Ungültig beschriebene Plan-Vorgaben (Muster ohne brauchbare Länge, Zählregel ohne gültigen Zeitraum; WP-I7 Teil 5, Review #587 C1):
+     sie rechnen nirgends, dürfen aber nicht still wegfallen — wie über der Grenze: nicht vollständig geprüft. */
+  const ungueltig = sortiert(aktiv.filter((v) => VORGABEN_PLANARTEN.includes(v.regelart) && !vorgabePlanwirkung(v, wo).wirkt && !ueberlangGueltig(v)));
   const kl = klassenAbbildung(m);
   /* Qualifikationsgruppe: Kennung, Kürzel oder Name einer Qualifikation des Betriebs → Kennung. */
   const qual = new Map();
@@ -387,7 +392,7 @@ function vorbereiten(m, budget) {
     qual.set(kleinText(q.id), String(q.id));
   }
   const regeln = new Map();
-  const vb = { dienstarten: m.dienstarten, qualifikationen: m.qualifikationen, einstellungen: m.einstellungen, wirkend, ueberlang, kl, aggregate: wo.aggregate, pause,
+  const vb = { dienstarten: m.dienstarten, qualifikationen: m.qualifikationen, einstellungen: m.einstellungen, wirkend, ueberlang, ungueltig, kl, aggregate: wo.aggregate, pause,
     qualFuer: (n) => qual.get(kleinText(n)),
     regelFuer(v) {
       if (!regeln.has(v)) regeln.set(v, vorgabeAlsRegel({ ...v, gueltigAb: null, gueltigBis: null, parameter: parameterKanonisch(v, kl) }, { wirkend: true }));
@@ -423,7 +428,7 @@ export function vorgabenBefunde(m, p, d, da, k) {
   const G = VORGABEN_WIRKUNG_GRENZE;
   const budget = k.budget || neuesVorgabenBudget();
   const vb = vorbereiten(m, budget);
-  if (!vb.wirkend.length && !vb.ueberlang.length) return [];
+  if (!vb.wirkend.length && !vb.ueberlang.length && !vb.ungueltig.length) return [];
   const kl = vb.kl;
   const aus = /** @type {{ regel: string, stufe: string, text: string, quelle: string, art: string, regelId: string | null }[]} */ ([]);
   let offen = false, offenMuss = false;
@@ -440,6 +445,11 @@ export function vorgabenBefunde(m, p, d, da, k) {
     const ueberAggregat = vb.aggregate && (v.regelart === "zaehlregel" || v.regelart === "musterregel");
     ungeprueft([v], ueberAggregat ? `${v.regelart === "musterregel" ? "Muster" : "Zeitraum"} über ${AGGREGAT_GRENZE.fensterTage} Tage`
       : `Zeitraum über ${G.fensterTage} Tage (${vb.pause ? "Aggregate des Planers angehalten: Intelligence pausiert" : "rechnet erst mit den Aggregaten des Planers"})`);
+  }
+  for (const v of vb.ungueltig) {
+    let g;
+    try { g = giltFuer(v, p, d, k.einheitAm, vb); } catch { g = "offen"; }
+    if (g !== "nein") ungeprueft([v], "Vorgabe nicht auswertbar beschrieben");
   }
   const pruef = vb.wirkend.slice(0, G.aktive);
   if (vb.wirkend.length > G.aktive) ungeprueft(vb.wirkend.slice(G.aktive), `mehr als ${G.aktive} aktive Vorgaben`);
@@ -497,6 +507,8 @@ export function vorgabenBefunde(m, p, d, da, k) {
       budget.rest -= kosten;
       const basis = vb.regelFuer(v);
       const grenze0 = Number(par.grenze);
+      /* Zählregel ohne Zahl als Grenze: nicht auswertbar, nie still „kein Befund“ (Review #595 C1). */
+      if (zaehl && (par.grenze === null || par.grenze === "" || typeof par.grenze === "boolean" || !Number.isFinite(grenze0))) { ungeprueft([v], "Vorgabe nicht auswertbar beschrieben"); continue; }
       const regelMit = (eff) => (zaehl && eff !== grenze0 ? { ...basis, parameter: { ...basis.parameter, grenze: eff } } : basis);
       const hinweisZu = (r, ohneTage) => `${r.eff !== grenze0 ? ` — anteilig: Grenze ${r.eff}${r.ganz ? "" : ", nicht ganzzahlig"}` : ""}${ohneTage ? " — ohne Urlaub und Krankheit" : ""}`;
       let treffer = null, hinweis = "", unklar = false;
