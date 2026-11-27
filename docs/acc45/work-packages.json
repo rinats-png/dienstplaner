@@ -4,9 +4,9 @@
   "anzahl": 295,
   "statusZaehlung": {
     "BLOCKED": 112,
-    "READY": 26,
+    "READY": 25,
     "IN_PROGRESS": 23,
-    "REVIEW": 11,
+    "REVIEW": 12,
     "INTEGRATED": 120,
     "DONE": 3
   },
@@ -39,8 +39,8 @@
       "pakete": 62,
       "offen": 41,
       "restPT": {
-        "min": 41.7,
-        "max": 72.9
+        "min": 40.099999999999994,
+        "max": 70.5
       }
     },
     "extern": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 344.3,
-    "max": 589.05
+    "min": 342.7,
+    "max": 586.65
   },
   "kritischerPfad": {
     "summe": 54,
@@ -7155,22 +7155,22 @@
       "prio": "P2",
       "aufwandPT": {"min":2,"max":3},
       "abhaengigkeiten": [],
-      "status": "READY",
+      "status": "REVIEW",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"Branch acc45/release/rst-2-kandidaten-werkzeug: werkzeug/release-kandidat.mjs (Trockenlauf Standard, --ausgabe außerhalb des Repos, --anlegen nur lokaler Zweig release/rc-<id>), Test pruefungen/release-kandidat.test.js (in pruefung:acc45-werkzeuge); Push und Entwurfs-PR bewusst nicht im Werkzeug (RST-2-nachweis.md Abschnitt 4); release-pruefung.mjs und Workflows unverändert"},
+        "lokalGetestet": {"wert":true,"beleg":"lokal 2026-11-27 (Windows, TZ=UTC, --maxWorkers=1): release-kandidat 17/17; 15 Mutationen je Schutz rot (M6 erst nach ergänztem Test)"},
         "reviewt": {"wert":false,"beleg":null},
         "integriert": {"wert":false,"beleg":null},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
       },
-      "branch": null,
-      "agent": null,
+      "branch": "acc45/release/rst-2-kandidaten-werkzeug",
+      "agent": "sonnet",
       "modell": "opus",
       "konfliktzonen": [],
-      "pr": [],
-      "nachweis": "Release-Stillstand-Analyse 2026-11-24, Abschnitt 7; docs/acc45/RELEASE-PROZESS.md",
+      "pr": ["#597"],
+      "nachweis": "Release-Stillstand-Analyse 2026-11-24, Abschnitt 7; docs/acc45/RELEASE-PROZESS.md; docs/acc45/RST-2-nachweis.md",
       "akzeptanz": "Trockenlauf ist Standard; erzeugt außerhalb des Kandidaten Vorlage der Freigabedatei, vorlagenHashes, G2-Belegliste, G8/G9-Listen und Übergabe; rc-Zweig und Entwurfs-PR nur mit ausdrücklichem Flag (--anlegen); ändert nie einen bestehenden Kandidaten (Test); zweiter Lauf auf denselben Kandidaten byte-gleich (Test); kein Netzaufruf außer GET; kein Bildbau, kein Deploy",
       "tests": "Unit (Trockenlauf, Idempotenz, Schutz bestehender rc-Zweig)",
       "dateien": "werkzeug/release-kandidat.mjs, pruefungen/",
