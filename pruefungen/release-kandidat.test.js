@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSyn
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { trockenlauf, rcAnlegen, unterlagenSchreiben, pfadklasse, pfadklassenZaehlen, lauf, main, argumenteLesen, aufrufErlaubt, ausfuehrenModus, ausfuehrungOffen } from "../werkzeug/release-kandidat.mjs";
+import { trockenlauf, rcAnlegen, unterlagenSchreiben, pfadklasse, pfadklassenZaehlen, lauf, main, argumenteLesen, aufrufErlaubt, ausfuehrenModus, ausfuehrungOffen, CI_HINWEIS } from "../werkzeug/release-kandidat.mjs";
 
 const WZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../werkzeug/release-kandidat.mjs");
 const ID = "v4-test";
@@ -274,7 +274,8 @@ describe("Kommandozeile", () => {
 
 const RC = (id) => `release/rc-${id}`;
 const spec = (id) => `refs/heads/${RC(id)}:refs/heads/${RC(id)}`;
-const PUSH = (id, remoteName = "origin") => ["push", "--", remoteName, spec(id)];
+const PUSH = (id, remoteName = "origin") => ["push", `--force-with-lease=refs/heads/${RC(id)}:`, "--no-follow-tags", "--", remoteName, spec(id)];
+const RELEASE_PRUEFUNG = path.join(path.dirname(WZ), "release-pruefung.mjs");
 const PR_LIST = (id) => ["pr", "list", "--head", RC(id), "--state", "all", "--json", "number", "--jq", "length"];
 const PR_NEU = (id, base = "main") => ["pr", "create", "--draft", "--base", base, "--head", RC(id), "--title", "T", "--body", "B"];
 
@@ -308,6 +309,10 @@ describe("Allowlist der Fremdaufrufe", () => {
     expect(aufrufErlaubt("git", PUSH("x1y"), true)).toBeNull();
     expect(aufrufErlaubt("gh", PR_LIST("x1y"), true)).toBeNull();
     expect(aufrufErlaubt("gh", PR_NEU("x1y"), true)).toBeNull();
+    expect(aufrufErlaubt("git", ["remote", "get-url", "origin"], false)).toBeNull();
+    expect(aufrufErlaubt("git", ["remote", "get-url", "--push", "origin"], false)).toBeNull();
+    expect(aufrufErlaubt("node", [RELEASE_PRUEFUNG, "--vorlagen-hashes", "--kandidat", schnitt, "--basis", basis, "--wurzel", "w"], false)).toBeNull();
+    expect(aufrufErlaubt("git", ["diff", "--name-only", "-z", "--no-renames", basis, schnitt], false)).toBeNull();
   });
 
   it("lehnt Push, gh und alles Schreibende außerhalb des Ausführungsmodus ab", () => {
@@ -319,7 +324,21 @@ describe("Allowlist der Fremdaufrufe", () => {
   it("lehnt force, fremde Ziele, Löschen, Merge und alles andere auch im Ausführungsmodus ab", () => {
     const rc = spec("x1y");
     const abgelehnt = [
-      ["git", ["push", "--force", "--", "origin", rc]], ["git", ["push", "--", "origin", `+${rc}`]], ["git", ["push", "-f", "--", "origin", rc]],
+      ["git", ["push", "--force", "origin", rc]], ["git", ["push", "--force-with-lease", "--no-follow-tags", "--", "origin", rc]],
+      ["git", ["push", `--force-with-lease=refs/heads/${RC("x1y")}:${schnitt}`, "--no-follow-tags", "--", "origin", rc]],
+      ["git", ["push", "--force-with-lease=refs/heads/main:", "--no-follow-tags", "--", "origin", rc]],
+      ["git", ["push", `--force-with-lease=refs/heads/${RC("x1y")}:`, "--", "origin", rc, "--tags"]], ["git", ["push", "--no-follow-tags", "--", "origin", rc, "x"]],
+      ["git", ["push", `--force-with-lease=refs/heads/${RC("x1y")}:`, "--", "origin", rc]],
+      ["git", ["push", `--force-with-lease=refs/heads/${RC("x1y")}:`, "--no-follow-tags", "origin", rc, "--"]],
+      ["gh", ["pr", "create", "--web", "--base", "main", "--head", RC("x1y"), "--title", "T", "--body", "B"]], ["gh", [...PR_NEU("x1y"), "--repo", "x/y"]],
+      ["gh", ["pr", "create", "--draft", "--base", "main", "--head", RC("x1y"), "--repo", "x/y", "--title", "T", "--body", "B"]],
+      ["git", ["diff", "--output=x.txt", "a", "b"]], ["git", ["diff", "-O/tmp/x"]], ["git", ["log", "--ext-diff"]], ["git", ["show", "--textconv", "a:b"]], ["git", ["diff", "--no-index", "a", "b"]],
+      ["node", [path.join(path.dirname(WZ), "..", "x", "release-pruefung.mjs"), "--vorlagen-hashes", "--kandidat", schnitt, "--basis", basis, "--wurzel", "w"]],
+      ["node", [RELEASE_PRUEFUNG, "--vorlagen-hashes", "--kandidat", "HEAD", "--basis", basis, "--wurzel", "w"]], ["node", [RELEASE_PRUEFUNG, "--nachhol"]],
+      ["git", ["remote", "set-url", "origin", "x"]], ["git", ["remote", "get-url", "--all", "origin"]],
+      ["git", ["push", "--", "origin", rc]],
+      ["git", ["push", `--force-with-lease=refs/heads/${RC("x1y")}:`, "--no-follow-tags", "-f", "origin", rc]],
+      ["git", ["push", `--force-with-lease=refs/heads/${RC("x1y")}:`, "--tags", "--", "origin", rc]], ["git", ["push", "--", "origin", `+${rc}`]], ["git", ["push", "-f", "--", "origin", rc]],
       ["git", ["push", "--force-with-lease", "--", "origin", rc]], ["git", ["push", "--", "origin", rc, "--tags"]], ["git", ["push", "origin", rc]],
       ["git", ["push", "--", "origin", "refs/heads/main:refs/heads/main"]], ["git", ["push", "--", "origin", "refs/heads/release/rc-x1y:refs/heads/main"]],
       ["git", ["push", "--", "origin", "refs/heads/integration/release-v4:refs/heads/integration/release-v4"]],
@@ -484,6 +503,112 @@ describe("Ausführungsmodus: Freigabe nur während des Laufs", () => {
     expect(ausfuehrungOffen()).toBe(false);
     expect(mitProtokoll(ghOk, () => ausfuehrenModus(k, e, "origin")).status).toBe("vollstaendig");
     expect(ausfuehrungOffen()).toBe(false);
+  });
+});
+
+describe("Ausführungsmodus: Härtungen (Wettlauf, Push-Ziel, gh-Umgebung)", () => {
+  it("Zweig entsteht zwischen Prüfung und Push: der Push scheitert, nichts wird geändert, kein PR", () => {
+    const k = klonMitRemote();
+    const id = "v4-ausf12";
+    const e = trockenlauf({ wurzel: k, kandidat: schnitt, basis, releaseId: id });
+    expect(rcAnlegen(k, e, "origin").ok).toBe(true);
+    const echt = lauf.exec; const aufrufe = [];
+    lauf.exec = (cmd, args, opt) => {
+      aufrufe.push([cmd, ...args]);
+      if (cmd === "gh") return args[1] === "list" ? "0\n" : "https://github.example/x/y/pull/9\n";
+      if (args[0] === "push") g(k, "push", "-q", remote, `${basis}:refs/heads/${RC(id)}`); // fremder Push zwischen Prüfung und Push
+      return echt(cmd, args, opt);
+    };
+    let r; try { r = ausfuehrenModus(k, e, "origin"); } finally { lauf.exec = echt; }
+    expect(r.ok).toBe(false);
+    expect(r.schritte.at(-1)).toEqual({ schritt: "Push", ergebnis: "fehlgeschlagen" });
+    expect(g(remote, "rev-parse", `refs/heads/${RC(id)}`)).toBe(basis);
+    expect(aufrufe.some(([cmd, a1, a2]) => cmd === "gh" && a1 === "pr" && a2 === "create")).toBe(false);
+    expect(aufrufe.find(([cmd, u]) => cmd === "git" && u === "push")).toEqual(["git", ...PUSH(id)]);
+  });
+
+  it("abweichende Push-URL (pushurl): Abbruch vor Push und PR, nichts verändert", () => {
+    const k = klonMitRemote();
+    const zweit = path.join(tmp, "zweit.git");
+    if (!existsSync(zweit)) execFileSync("git", ["init", "-q", "--bare", zweit]);
+    g(k, "config", "remote.origin.pushurl", zweit);
+    const id = "v4-ausf13";
+    const e = trockenlauf({ wurzel: k, kandidat: schnitt, basis, releaseId: id });
+    expect(rcAnlegen(k, e, "origin").ok).toBe(true);
+    const a = mitProtokoll(ghOk, (x) => ({ r: ausfuehrenModus(k, e, "origin"), x }));
+    expect(a.r.status).toBe("abgebrochen");
+    expect(a.r.text).toContain("Push-Ziel");
+    expect(a.x.some(([cmd, u]) => cmd === "gh" || u === "push")).toBe(false);
+    expect(refs(zweit)).toBe("");
+    expect(JSON.stringify(a.r)).not.toContain(zweit.replace(/\\/g, "/"));
+  });
+
+  it("gh bekommt keine Umgebungsvariablen, die Repository, Host oder Token umbiegen", () => {
+    const k = klonMitRemote();
+    const id = "v4-ausf14";
+    const e = trockenlauf({ wurzel: k, kandidat: schnitt, basis, releaseId: id });
+    expect(rcAnlegen(k, e, "origin").ok).toBe(true);
+    const alt = { GH_REPO: process.env.GH_REPO, GH_HOST: process.env.GH_HOST, GH_ENTERPRISE_TOKEN: process.env.GH_ENTERPRISE_TOKEN };
+    Object.assign(process.env, { GH_REPO: "fremd/repo", GH_HOST: "fremd.example", GH_ENTERPRISE_TOKEN: "geheim" });
+    const echt = lauf.exec; const envs = [];
+    lauf.exec = (cmd, args, opt) => { if (cmd === "gh") { envs.push(opt.env); return ghOk(args); } return echt(cmd, args, opt); };
+    try { expect(ausfuehrenModus(k, e, "origin").status).toBe("vollstaendig"); } finally {
+      lauf.exec = echt;
+      for (const [n, v] of Object.entries(alt)) { if (v === undefined) delete process.env[n]; else process.env[n] = v; }
+    }
+    expect(envs).toHaveLength(2);
+    for (const env of envs) for (const n of ["GH_REPO", "GH_HOST", "GH_ENTERPRISE_TOKEN"]) expect(env[n], n).toBeUndefined();
+  });
+});
+
+describe("Aussagen zu CI-Auslösern (an Texte und Workflows gebunden)", () => {
+  const WURZEL = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+  const lies = (rel) => readFileSync(path.join(WURZEL, rel), "utf8");
+
+  it("Übergabe, Ausgabe und PR-Text sagen ehrlich: Push/PR können reguläre CI auslösen, kein ausdrücklicher Workflow-Start", () => {
+    expect(CI_HINWEIS).toContain("können reguläre CI-Workflows auslösen");
+    expect(CI_HINWEIS).toContain("startet keinen Workflow ausdrücklich");
+    expect(CI_HINWEIS).toContain("öffentlich");
+    expect(CI_HINWEIS).toContain("deploy.yml");
+    const e = lauf1();
+    expect(e.uebergabe).toContain(CI_HINWEIS);
+    expect(e.uebergabe).toContain("keinen Workflow ausdrücklich gestartet");
+    expect(e.uebergabe).not.toMatch(/nichts ausgelöst|löst keine Workflows? aus/i);
+    const k = klonMitRemote();
+    const { out, err } = stumm(() => mitProtokoll(ghOk, () => main(ARGS(k, "v4-ausf11", "--anlegen", "--ausfuehren"))));
+    expect(JSON.parse(out).ausfuehrung.hinweis).toBe(CI_HINWEIS);
+    expect(err).toContain(CI_HINWEIS);
+  });
+
+  it("Nachweis, Prozessdokument und Werkzeugkopf tragen dieselbe Aussage", () => {
+    const n = lies("docs/acc45/RST-2-nachweis.md");
+    expect(n).toContain("KÖNNEN reguläre");
+    expect(n).toContain("kein ausdrücklicher Workflow-Start");
+    expect(n).toContain("workflow_dispatch");
+    expect(n).toContain("Betreiberauftrag");
+    expect(n).not.toMatch(/löst keine Workflows? aus/i);
+    const r = lies("docs/acc45/RELEASE-PROZESS.md");
+    expect(r).toContain("Push und PR können reguläre CI-Workflows auslösen");
+    const w = lies("werkzeug/release-kandidat.mjs");
+    expect(w).toContain("Push und Pull Request KÖNNEN reguläre CI-Workflows auslösen");
+    expect(w).not.toMatch(/kein Push, kein PR, kein Merge, kein Workflow,/);
+  });
+
+  it("Workflow-Bestand stützt die Aussage: Veröffentlichung nur in deploy.yml per workflow_dispatch", () => {
+    const dir = path.join(WURZEL, ".github", "workflows");
+    const dateien = readdirSync(dir).filter((f) => f.endsWith(".yml"));
+    const triggerblock = (text) => text.split(/^(?:permissions|env|concurrency|jobs):/m)[0];
+    const deploy = lies(".github/workflows/deploy.yml");
+    expect(triggerblock(deploy)).toMatch(/workflow_dispatch:/);
+    expect(triggerblock(deploy).replace(/#.*$/gm, "")).not.toMatch(/^\s*(push|pull_request|schedule|workflow_run):/m);
+    for (const f of dateien) {
+      const text = lies(".github/workflows/" + f);
+      if (f !== "deploy.yml") expect(text, f).not.toMatch(/push:\s*true|packages:\s*write/);
+    }
+    // reguläre Trigger, die ein Push auf release/rc-* trifft
+    for (const f of ["pruefung.yml", "sicherheit.yml", "lieferkette.yml", "betrieb-deploy.yml"]) {
+      expect(triggerblock(lies(".github/workflows/" + f)), f).toMatch(/push:\s*\n\s*branches:\s*\["\*\*"\]/);
+    }
   });
 });
 
