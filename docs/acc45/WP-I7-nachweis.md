@@ -623,3 +623,74 @@ WP-I7-Eintrag in `docs/acc45/work-packages.json` (Notiz „Teil 5“), `STATUS.m
 - **Anheften:** Konfliktregel entschieden (manuelle Änderung hebt nur die Anheftung der betroffenen Einteilung auf, nachvollziehbar und sichtbar) — in der Datenmodell-Vorlage im PR-Text; nicht gebaut.
 - **Tests:** neuer Test „Funktionsschalter des Betriebs“ (ohne Hauptschalter, Hauptschalter aus, Frage offen, ohne Funktion, F13 aus, andere Funktion, F13 ohne Stempel ⇒ AUS mit Code `KI_AUS`; „ja“ ohne aufgehobene Pause ⇒ pausiert, mit aufgehobener Leitungs-Pause ⇒ ok; ohne Freigabe nichts; F13 schaltet nur die Leitung); bestehende Abschnitt-10-Tests auf freigeschaltete Betriebe umgestellt (ohne Freischaltung jetzt AUS statt Knopfdruck — Erwartung durch die Entscheidung gekippt); `ursachenUnvollstaendig` geprüft. Gruppen nach der Änderung: 511/511, 167/167, 44/44, planer-kern 74/74; tsc grün, eslint ohne Befund.
 - **Mutationen:** M18 Modus ohne Betriebsfreischaltung 2 rot · M19 Einstieg ohne Betriebsfreischaltung zuerst überlebt (der Modus fängt es doppelt ab; gleicher Status), nach Zusicherung des Grunds 1 · M20 Funktionsschalter ignoriert 1 · M21 Frage ignoriert zuerst überlebt (Ausnahmepfad ergab ebenfalls „nicht OK“), nach Zusicherung des Codes `KI_AUS` 1 · M22 unvollständige Ursachen nicht gezählt 1. Quelle jeweils zurückgesetzt und verglichen.
+
+---
+
+# WP-I7 Planer-Kern — Teil 6: eigener Planer-Schalter, Testlücke D5, Anheften
+
+Basis `origin/integration/release-v4` (284d9a3d, enthält #595 Teil 5). Bestehendes Paket WP-I7, kein neues Paket. `PLANER_AN` und `PLANER_AGGREGATE_AN` unverändert AUS; `PLANBEFUND_GRENZE` (40 Mio) und 372-Tage-Obergrenze unverändert; keine Budgeterhöhung; keine Rechteänderung für Schichtverantwortung, Betriebsrat oder Beschäftigte; nur synthetische Daten. Ein Commit je Stufe.
+
+## Stufe A0 — Doppelnutzung F13 aufgelöst (Betreiberentscheidung 27.11.)
+
+- **Vorher (#595):** Der Funktionsschalter F13 „Planvorschlag“ (Klasse C, Modellaufrufe) war zugleich der betriebsspezifische Schalter des deterministischen Planers.
+- **Jetzt:** eigener Schalter `einstellungen.kiSteuerung.planerSchalter` = `{ an, am, vonRolle, vonPerson }` in der bestehenden Struktur und im bestehenden Schreibweg (`kiSteuerungAnwenden`): nur die Leitung (nicht Demo; `KI_RECHTE.leitung` + `planerSchalter`), Stempel vom Server, Protokoll `planer-an`/`planer-aus` (Ziel `planer`), Sicht des Betriebsrats ohne Personenkennung, ungültiger Wert abgewiesen, unlesbarer gespeicherter Wert = AUS (beim nächsten Schreiben `an: false`, `vonRolle: system`).
+- **Entscheidung:** `kiPlanerEntscheidung` (ki-steuerung.mjs) nutzt dieselben Voraussetzungen wie jede Funktion — eine Stelle `betriebsVoraussetzungen`: Pause (auch unlesbar) vor allem, Hauptschalter an, Frage nach der Mitbestimmungsvertretung beantwortet, „ja“ erst nach aufgehobener Pause (Voraussetzungen bleiben, im Test belegt) — danach nur der eigene Schalter. `kiBetriebsEntscheidung`/`intelligenceEntscheidung` unverändert (gleiche Reihenfolge, gleiche Codes; F13 bleibt nur die KI-Erklärfunktion). `planerModusWirksam`/`planerEinstieg` lesen `kiPlanerEntscheidung`; `PLANER_FUNKTION` entfällt (`PLANER_SCHALTER = "planerSchalter"`).
+- **Tests:** F13 an allein ⇒ Planer AUS; F13 aus + Planer-Schalter an ⇒ Planer rechnet; ohne/aus/unlesbar (ohne Stempel, kein Objekt, null, „an“ als Text) ⇒ AUS mit `KI_AUS`; Pause/Leitung-Pause/unlesbare Pause ⇒ `KI_PAUSIERT`; „ja“ ohne aufgehobene Pause ⇒ pausiert, mit aufgehobener ⇒ ok; nur die Leitung schaltet; Golden: `intelligenceEntscheidung` mit und ohne Planer-Schalter (an/aus/kaputt) gleich über alle 18 Funktionen + eine unbekannte, 4 Rollen, Prozess an/aus, 7 Stände, je 3 Werte des Schalters (3 192 Vergleiche); die bestehenden Steuerungstests (147) unverändert grün. Oberfläche für den Schalter nicht gebaut (der Planer hat noch keine; wie der Betriebsmodus).
+
+## Stufe A — Testlücke D5 (Review #595)
+
+Test in `intelligence-steuerung.test.js` (keine Codeänderung): unlesbares Feld `kiSteuerung` (Text, Liste, Zahl, Wahrheitswert, null), Einstellungen kein Objekt, aktive/unlesbare Leitung-Pause, „ja“-Pause, Leitung-Pause neben aufgehobener BR-Pause ⇒ `kiPauseAktiv` ja, aber `kiBrPauseAktiv` nein, `betriebsratKontenSperre` frei, `rollenwechselErlaubt` erlaubt (Herabstufen und neues BR-Konto). Gegenprobe: nur die Betriebsrat-Pause (aktiv oder eigener unlesbarer Stand) sperrt.
+
+## Stufe B — Anheften (Betreiberentscheidungen 26./27.11., Vorlage #595)
+
+**Invarianten (vor der Umsetzung festgelegt):** (1) Planer, Verbessern und `planeMonat` setzen an einem angehefteten Person-Tag nichts und ändern angeheftete Einträge nie — auch nicht über Posten (angeheftete Personen sind nie eigene Einteilungen und zählen in `verdraengt` immer mit). (2) Angeheftetes steht im Bestand (`abweichungen`) und zählt überall als gesetzt; die Aggregate der Vorgaben lesen den Bestand, keine Vormerkung je Tag veraltet. (3) Eine manuelle Änderung der Einteilung hebt ausschließlich deren Anheftung auf — sichtbar und nachvollziehbar. (4) Unlesbar ⇒ fail closed, nie stilles Weglassen. (5) Keine neuen Rechte.
+
+**Datenmodell (wie Vorlage):** eigene Karte `mandant.angeheftet = { "<personId>|<JJJJ-MM-TT>": { am, vonRolle } }`; aufgehoben zusätzlich `aufgehobenAm`, `aufgehobenVonRolle` (Vermerk bleibt sichtbar, bis Leitung/Planung ihn entfernt). Wert der Einteilung bleibt in `abweichungen` (Leser unverändert). Lesen: `server/lib/engine/anheften.mjs` (rein); Schreibweg: `server/lib/anheften.mjs`, eingehängt in `zusammenfuehren` nach den Vorgaben.
+
+**Wo die Vorlage offen war — kleinste fail-closed Variante:**
+- Stempel nur Rolle (`vonRolle`), keine Personenkennung (Vorlage: `von`).
+- Anheften nur für eine eingetragene Einteilung (Schlüssel in `abweichungen`, Dienst oder „-“); der Server leitet keinen Folge-/Schichtmodell-Dienst her — die Oberfläche schreibt ihn vorher als Abweichung.
+- Ungültiger Schlüssel, unbekannte Person: Absage mit Grund statt stillem Verwerfen.
+- Rechte: anheften/lösen nur Leitung und Planung (nicht Demo, nicht Kundenrolle); andere Rollen: mitgeschicktes Feld wirkungslos. Ändert die Kundenrolle (voller Schreibweg) eine angeheftete Einteilung, hebt das die Anheftung wie jede Änderung auf.
+- **Schichtverantwortung:** sieht die Karte nicht, schreibt sie nie (Feld „der Leitung vorbehalten“), und eine angeheftete Einteilung ändert sie nicht (Absage) — kein neues Recht, auch nicht das Aufheben. Unlesbare Karte ⇒ SV-Änderungen am Plan abgewiesen (Fachfrage 2).
+- Beschäftigte und Betriebsrat sehen weder Karte noch Protokolleinträge (Vorlage: „fest“ für Beschäftigte offen).
+- Veraltete Kopie: ein früher aktiver Eintrag mit altem Stempel heftet einen aufgehobenen Tag nicht neu an; neu angeheftet wird nur mit frischem Eintrag. Schickt die Anfrage das Feld nicht mit, bleibt die gespeicherte Karte.
+- Abwesenheit am angehefteten Tag hebt nichts auf (Befund wie bisher).
+- Unlesbare Karte: Planer Status `ungueltig` („Anheftungen nicht lesbar“), Ersatzsuche/`planeMonat` schlagen niemanden vor, die Anzeige meldet sie; Leitung/Planung reparieren durch Neusetzen.
+
+**Wirkung im Code:** `ersatzVorschlaege` (einsatz.mjs, gemeinsam für Planer und `planeMonat`): angeheftete Person nicht möglich, Hindernis „Einteilung an diesem Tag angeheftet“; Planer: `einsetzbar` (Blockfortsetzung, Verbessern) und `nachpruefen` (eigene Einteilung an angeheftetem Tag besteht nie); Ergebnis zählt `angeheftet` im Monat.
+
+**Protokoll und Grenzen:** Modulprotokoll, Modul `anheften`, Arten `anheften-gesetzt`/`-geloest`/`-aufgehoben` mit Anzahl, Zeit, Rolle — kein Person|Tag (Betriebsprotokoll z. B. „Anheften: 1 Einteilung durch Änderung nicht mehr angeheftet (die Planung)“). Grenzen wie die Vorgaben (`MODULPROTOKOLL_GRENZE`, 512 KiB über `modulprotokollUeberGrenze`): neues Anheften scheitert an der Grenze, Aufheben durch Änderung und Lösen gehen immer (wie Deaktivieren). Karte höchstens 3 000 Einträge bzw. 320 KiB (≈ 90 Byte je Eintrag; weit unter `RUMPF_MAX` 6 MiB); mehr beim Lesen = unlesbar. Neuer Betrieb ohne Karte; Sicherung/Export/Wiederherstellung über `VOLL_BETRIEB` zusammen mit `abweichungen`.
+
+**Sichtbar (klein):** `src/ansichten/anheftungen.jsx` (eigene Datei, nur lesend): angeheftete Einteilungen des Monats und „nicht mehr angeheftet — manuell geändert am … (Rolle)“; unlesbare Karte als Meldung. Einhängezeile in `monatsplan.jsx` (Zeilen 216 → 218: Import + Einhängezeile); `einstellungen.jsx` (377), kern/bereichsplan/posten/assistent unberührt. Anheften/Lösen in der Oberfläche mit der Planer-Oberfläche (Fachfrage 4).
+
+**Tests (`pruefungen/intelligence-anheften.test.js`, neu, 10):** Lesen (10 unlesbare Formen sperren alles); „frei“ angeheftet bleibt frei (Gegenprobe: ohne Anheften setzt der Planer dort), Nachprüfung, Ersatzsuche, `planeMonat`; unlesbare Karte; **Zufallsvergleich gegen naive Referenz** (12 Startwerte × mit/ohne Aggregate = 24 Läufe, feste Obergrenze; Referenz: Eintrag, Dienst laut `personTag` und keine eigene Einteilung an jedem angehefteten Person-Tag; mit und ohne Aggregate gleiches Ergebnis); zwei Demobetriebe mit Posten/Lücken (Verdrängung); Schreibweg end-to-end über `zusammenfuehren` (Rechte je Rolle, Stempel, Protokoll ohne Person|Tag, Aufheben nur der betroffenen Einteilung, Entfernen = Änderung, veraltete Kopie, Neu-Anheften, Lösen, Betriebsprotokoll, Anzeige, SV-Absage, Sicht je Rolle, BR-Protokollsicht, Grenzen der Karte und des Modulprotokolls).
+
+## Stufe C — Verteilung: nicht gebaut (Umfang), Fachfrage vorgelegt
+
+Weggelassen (Auftrag: bei zu großem Umfang). Grund: Die vorhandene `verteilungsregel` hat nur `groesse` (freier Text) und `maxAbweichung` und wirkt heute nicht im Plan (nur Testlauf, nicht in `VORGABEN_PLANARTEN`); welche Größe (Nächte, Wochenenden, Feiertage, Stunden) gemeint ist und wie mehrere Verteilungsregeln gegeneinander gewichtet werden, ist nicht bestimmt — das würde erfunden. `rang.verteilung` bleibt `null` („nicht bewertet“, nie „erfüllt“). Teilzeit anteilig weiter nur bei `ausnahmen.teilzeitAnteilig === true` (Zählregeln, unverändert). Entscheidungsfrage im PR-Text.
+
+**Machbarkeitsnotiz Variante C (Rechenbudget, nicht gebaut):**
+1. Idee: Automatik nimmt bei langen Mustern nur das Urteil `musterVerschaerft`, ohne das Fenster mit dem Baukasten zu rechnen.
+2. Ersparnis nur im Fall „verschärft“ (2 · Fensterlänge Schritte) — gerade dann lehnt die Automatik bei Muss ohnehin ab; im häufigen Fall „nicht verschärft“ spart C nichts.
+3. Gleichwertigkeit nicht voll belegt: der Baukasten unterscheidet `verletzt`/`offen` (unbekannte, abwesende Tage) und liefert Text/Hinweis; `musterVerschaerft` nur ja/nein.
+4. Soll/Wunsch-Befunde (Anzeige) brauchen den Baukasten weiter; nur Muss in der Automatik wäre betroffen.
+5. Ungültige/nicht bewertbare Muss-Muster müssten weiter `vorgabeOffen` ergeben (C1 #587) — in C gesondert abzusichern.
+6. Ergebnis: volle fachliche Gleichwertigkeit nicht nachgewiesen, Nutzen gering ⇒ Variante A bleibt; Budget 40 Mio und 372-Tage-Grenze unverändert.
+
+## Tests, Mutationen, Prüfungen (Teil 6)
+
+**Mutationen** (`i7b-mutationen.mjs`, Arbeitsablage; nacheinander, ein Prozess, feste Zeitgrenze, Quelle danach gegen die Sicherung verglichen und `git diff` sauber — jeweils ja): M1 Planer-Schalter ignoriert · M2 „ja“ ohne aufgehobene Pause · M3 unlesbarer Planer-Schalter gilt · M4 Planung darf den Planer-Schalter · M5 unlesbare Steuerung sperrt BR-Konten (D5) · M6 Leitung-Pause sperrt BR-Konten (D5) · M7 unlesbare Karte sperrt nicht · M8 Ersatzsuche ohne Anheften · M9 Planer ohne Prüfung der unlesbaren Karte · M10 Blockfortsetzung/Verbessern ohne Anheften · M11 Nachprüfung ohne Anheften · M12 Änderung hebt nicht auf · M13 Änderung hebt alle auf · M14 Kundenrolle heftet an · M15 SV ändert Angeheftetes · M16 veraltete Kopie heftet neu an · M17 Beschäftigte sehen die Karte · M18 BR sieht Protokolleinträge · M19 Anheften ohne eingetragene Einteilung. **19/19 erkannt.**
+
+**Tests (lokal, TZ=UTC, `--maxWorkers=1`, ein Prozess, freier Speicher vor jedem Lauf geprüft):** Intelligence-Gruppe (`intelligence-planer-*`, `intelligence-anheften`, `intelligence-steuerung*`, `intelligence-vorgaben*`, `intelligence-planungsreife*`, `intelligence-regelbaukasten*`) 22 Dateien 654/654; Rechte/Sicht/Engine/Wachen (`engine-*`, `sicht*`, `rechtematrix*`, `vollausgabe`, `wiederherstellung-*`, `betreiberfelder`, `kette-a-rundreise`, `modul-bereichsplan-protokoll`, `modul-inert`, `modulaktiv-allowlist`, `beschaeftigung`, `schutzregeln-ersatzsuche`, `konsistenz`, `warnen`, `imp6-*`, `geraete-wp21*`, `oberflaeche-render`, `wcag-wp40`, `prozess-wachen`, `ci-abdeckung`, `v4-inventar`, `routen-inventar`, `sitzungsinventar`) 39 Dateien — erster Lauf 2 Dateien rot (V4-3b-Inventar zählt die neue Datei), Inline-Stile aus der neuen Datei entfernt und Pins nachgeführt; danach alle `v4-3b-*` 14 Dateien 176/176 (bzw. Einzelwiederholung grün). `npx tsc -p jsconfig.json` grün; `eslint` auf alle geänderten Dateien ohne Befund (nur drei vorbestehende Warnungen in `monatsplan.jsx`). Keine Workflow-Änderung. Vollregression in CI.
+
+## SSOT (Teil 6)
+
+WP-I7-Eintrag in `docs/acc45/work-packages.json` (Notiz „Teil 6“, Testliste + `intelligence-anheften.test.js`), `STATUS.md` neu geschrieben, `acc45-backlog pruefen` OK; Status unverändert `IN_PROGRESS`.
+
+## Offene Fachfragen (Teil 6, kurz)
+
+1. **Verteilung:** Welche Größen (Nächte, Wochenenden, Feiertage, Stunden) und welche Gewichtung? Empfehlung: zunächst eine Größe „Nachtdienste je Person im Monat“ mit `maxAbweichung` der vorhandenen `verteilungsregel`, Teilzeit nur bei `teilzeitAnteilig === true`, nur als Rang „Verteilung“ nach Muss/Soll.
+2. **SV und Angeheftetes:** umgesetzt „SV ändert nicht“ (kein neues Recht); Alternative „SV-Änderung hebt auf“. Empfehlung: so lassen.
+3. **Beschäftigte:** „fest“ an eigenen Tagen zeigen? Umgesetzt: nichts.
+4. **Oberfläche** für Anheften/Lösen sowie Planer-Schalter/-Modus: mit der Planer-Oberfläche in eigener Datei.
