@@ -4,7 +4,7 @@ Erzeugt von `werkzeug/acc45-backlog.mjs` aus `docs/acc45/work-packages.json` (ni
 
 **Kritischer Pfad gemeinsam** (offener Entwicklungsaufwand, ohne extern): WP-I4 → WP-I7 → WP-I8 → WP-I9 → WP-I34 → WP-I37 = **39–69 PT**
 **Ohne Intelligence:** WP-16 → WP-19.7 → WP-19.6 → WP-19.13 → WP-42a → WP-42 = **21–33,5 PT**
-**Offener Entwicklungsaufwand:** 342,3–586,25 PT in 137 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
+**Offener Entwicklungsaufwand:** 341,9–585,45 PT in 137 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
 
 WP-09 ist nur Livegang-Reihenfolge und zählt im Pfad nicht als Abhängigkeit. Der Graph zeigt nur offene Pakete.
 
@@ -137,7 +137,7 @@ flowchart LR
     REL_2["REL-2<br/>BLOCKED"]
     REL_3["REL-3<br/>BLOCKED"]
     REL_4["REL-4<br/>BLOCKED"]
-    RST_1["RST-1<br/>READY"]
+    RST_1["RST-1<br/>REVIEW"]
     RST_2["RST-2<br/>REVIEW"]
     RST_3["RST-3<br/>READY"]
     RST_4["RST-4<br/>BLOCKED"]
@@ -631,7 +631,7 @@ flowchart LR
 | REL-3 | folge | P1 | 1–2 | 1–2 | REL-1, WP-09 | – | opus | BLOCKED |
 | REL-4 | folge | P1 | 1–1,5 | 1–1,5 | REL-3, E-7, E-8 | – | sonnet | BLOCKED |
 | DRIFT-D1-D3 | acc45 | P3 | 0,5–1 | 0 | – | – | sonnet | INTEGRATED |
-| RST-1 | folge | P2 | 0,5–1 | 0,5–1 | – | – | sonnet (Text) + opus (Gegenlesen) | READY |
+| RST-1 | folge | P2 | 0,5–1 | 0,1–0,2 | – | – | sonnet (Text) + opus (Gegenlesen) | REVIEW |
 | RST-2 | folge | P2 | 2–3 | 0,4–0,6 | – | – | opus | REVIEW |
 | RST-3 | folge | P1 | 1–2 | 1–2 | – | – | sonnet | READY |
 | RST-4 | folge | P3 | 1 | 1 | RST-2 | – | sonnet | BLOCKED |
