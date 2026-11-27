@@ -9,7 +9,7 @@ const GRUND_UNBEKANNT = "Grund nicht bewertbar – Stelle bleibt offen";
 /** Grund → Klartext für Leitung/Planung. Gesetzlich (§ 11 ArbZG) und betrieblich (Einstellung) getrennt benannt. */
 const GRUENDE = Object.freeze({
   verdraengung: "Die Einteilung würde eine andere Person aus ihrem Dienst verdrängen (Posten) und dort eine Regel verletzen oder ist nicht prüfbar – Stelle bleibt offen",
-  folgeVorwaerts: "Die Einteilung würde die Dienste in Folge an den Tagen danach über die Grenze verlängern – Stelle bleibt offen",
+  folgeVorwaerts: "Die Einteilung würde die Dienste in Folge an den Tagen danach über die Grenze verlängern oder ein Folgedienst ist nicht prüfbar (Dienst unbekannt) – Stelle bleibt offen",
   nachtfolge: "Zu viele Nachtdienste in Folge (betriebliche Grenze) oder Grenze nicht bewertbar – Stelle bleibt offen",
   ersatzruhe: "Ersatzruhetag nach Sonntags- oder Feiertagsarbeit wäre nicht gesichert (§ 11 Abs. 3 ArbZG) oder nicht bewertbar – Stelle bleibt offen",
   sonntagsfrei: "Weniger als 15 freie Sonntage im Jahr (§ 11 Abs. 1 ArbZG) – Stelle bleibt offen",
