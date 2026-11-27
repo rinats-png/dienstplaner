@@ -35,7 +35,9 @@
      G5  Migration: Startschreibvorgänge W-1…W-9 und Startblock gegen die Basis
          (Migrationsbericht); geändert oder neu ⇒ NO-GO bis Betreiberfreigabe. RST-5: Erstwechsel von einem Bild aus
          ohneRevisionslabel (274bfa0) nur mit Migrationsnachweis am exakten Kandidaten-Digest aus einem Runner-Lauf
-         (Feld migrationsprobe des Staging-Nachweises, G6 E6/E7); sonst NO-GO. Lokal/statisch ersetzt ihn nie
+         (Feld migrationsprobe des Staging-Nachweises, G6 E6/E7); sonst NO-GO. Lokal/statisch ersetzt ihn nie.
+         Nach einem abgebrochenen Erstwechsel nur über das Feld wiederholung der Freigabedatei (WH0–WH8: eigene
+         ausdrückliche Betreiberfreigabe, neuer Digest, alle Nachweise neu; die verbrauchte Ausnahme nie wieder)
      G6  Sicherung, Restore-Probe, Widerrufbuch-Probe: vollständig und aktuell. Einzige Ausnahme (GATE-EW1, Gate-Entwurf
          2026-11-24 v2 A.4–A.8): erstwechselAusnahme.widerrufbuchProbe in der Freigabedatei, nur Release v4-r1, nur
          vor T0, bis 2026-12-31; Bedingungen E1–E15 (alle UND), sonst NO-GO; Sicherung und Restore-Probe bleiben
@@ -112,6 +114,12 @@ export const ID_MUSTER = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 export const REL_AUSNAHME_IDS = Object.freeze(["REL-0", "REL-0c", "REL-1", "REL-2", "REL-3", "REL-4"]);
 /** Präfix der Release-Prozess-Pakete (exakt, ohne Normalisierung; „rel-1“ ist kein REL-Paket). */
 export const REL_PRAEFIX = "REL-";
+/** RST-5 Wiederholung: welche Änderung die Abbruchursache am Kandidaten verlangt. Nur „keine“ erlaubt denselben
+ *  Kandidaten und Digest; jede andere verlangt einen anderen Commit und Digest (Betreiberpräzisierung 2026-11-27). */
+export const URSACHE_ARTEN = Object.freeze(["keine", "produkt", "image", "sicherheit"]);
+/** Versuchskennung: eigens vergeben (nicht aus Release-ID, Commit oder Digest abgeleitet), einmalig. Nur Kleinbuchstaben
+ *  (Delta-Review #600 C-1: eine nur in der Schreibweise verschiedene Kennung ist keine neue); Vergleiche zusätzlich klein. */
+export const VERSUCH_MUSTER = /^[a-z0-9][a-z0-9._-]{2,63}$/;
 
 const tiefFrieren = (o) => { Object.values(o).forEach((v) => { if (v && typeof v === "object") tiefFrieren(v); }); return Object.freeze(o); };
 /** GATE-EW1 (Gate-Entwurf 2026-11-24 v2, A.4; Betreiberentscheidungen F1–F10): einmalige Erstwechsel-Ausnahme der
@@ -237,6 +245,21 @@ export const KONFIG_STANDARD = Object.freeze({
     regeln: ["W-1", "W-2", "W-3", "W-4", "W-5", "W-6", "W-7", "W-8", "W-9"],
     zusatz: ["fixture", "start", "kennungen", "gegenprobe", "abgleich"],
     fixtureBaum: "876c77d96a690036fda85ee8f3abfeda5bc11b059e0910478ee8ff67916a3d1b",
+  }),
+  // RST-5 Wiederholung (Betreiberentscheidung 2026-11-27, Präzisierung Versuch ≠ Softwareversion): neuer
+  // Auslieferungsversuch nach einem abgebrochenen Erstwechsel mit Rückkehr auf 274bfa0. Eigener Pfad (Freigabedatei-Feld
+  // `wiederholung`, G5 WH0–WH8, G6-Rückhalt), nie die verbrauchte Erstwechsel-Ausnahme. Derselbe Kandidat/Digest ist
+  // zulässig, wenn die Ursache ohne Änderung behoben ist (ursache.aenderung „keine“); sonst ist ein anderer Commit und
+  // Digest zwingend. Neue, einmalige Versuchskennung; ausdrückliche Betreiberfreigabe im festen Wortlaut; alle Nachweise
+  // neu (Lauf nach dem Abbruch) am exakten Digest.
+  wiederholung: tiefFrieren({
+    stagingMaxTage: 7,
+    ursacheArten: URSACHE_ARTEN,
+    quittungVorlage: "Ich gebe den Auslieferungsversuch {versuch} ({releaseId}) des Erstwechsels ausdrücklich frei (Kandidat "
+      + "{kandidat}, Digest {digest}, Basis {basis}). Der Vorversuch {vorRelease} (Kandidat {vorKandidat}, Digest {vorDigest}) "
+      + "ist abgebrochen (Abbruchbeleg {abbruch}); die Abbruchursache ist behoben (Beleg {behebung}); erforderliche Änderung "
+      + "am Kandidaten: {aenderung}. Es liegen keine entgegenstehenden Sicherheitsbefunde vor. Keine verbrauchte Ausnahme "
+      + "oder Freigabe wird wiederverwendet; alle Nachweise stammen aus einem neuen Lauf am Digest {digest}.",
   }),
   sicherung: Object.freeze({ sicherungMaxStunden: 26, restoreProbeMaxTage: 35, widerrufbuchProbeMaxTage: 35, widerrufbuchProbePflicht: true }),
   erstwechselAusnahme: ERSTWECHSEL_AUSNAHME,
@@ -1021,7 +1044,7 @@ export function migrationsnachweisPruefen(mp, digest, konfig = KONFIG_STANDARD) 
   return fe;
 }
 
-export function g5Migration(bericht, freigabe, liste = null, konfig = KONFIG_STANDARD) {
+export function g5Migration(bericht, freigabe, liste = null, konfig = KONFIG_STANDARD, kontext = null) {
   const g = gate("G5", "Datenmigration und Startschreibvorgänge");
   if (!bericht || !Array.isArray(bericht.eintraege) || bericht.fehler) {
     return nogo(g, `Änderungen gegen den vorigen Release nicht ermittelbar${bericht?.fehler ? ": " + bericht.fehler : ""} (fail-closed)`);
@@ -1033,7 +1056,14 @@ export function g5Migration(bericht, freigabe, liste = null, konfig = KONFIG_STA
   // RST-5 (Betreiberentscheidung 2026-11-27): Erstwechsel von einem Bild ohne Revisionslabel (274bfa0) braucht den
   // Migrationsnachweis am exakten Kandidaten-Digest aus einem Runner-Lauf. Prüfbar ist er nur als Pflichtfeld des
   // Staging-Nachweises der Freigabedatei (G6 E6, Lauf und Artefakt E7); ohne diesen Weg: NO-GO (fail-closed).
-  if ((konfig.ohneRevisionslabel || []).some((o) => o.commit === bericht.basis)) {
+  if (freigabe?.wiederholung !== undefined) {
+    // RST-5 Wiederholung (Betreiberentscheidung 2026-11-27): eigener Pfad mit eigener Freigabe; WH1 sperrt jede
+    // Mischung mit der (verbrauchten) Erstwechsel-Ausnahme und jede Basis außerhalb ohneRevisionslabel.
+    const r = wiederholungPruefen({ ...(istObjekt(kontext) ? kontext : {}), freigabe, basis: bericht.basis }, konfig);
+    for (const x of r.gruende) nogo(g, `Wiederholung (RST-5): ${x}`);
+    g.belege.push(...r.belege, ...(r.hinweise || []));
+    g.manuell.push(...(r.hinweise || []));
+  } else if ((konfig.ohneRevisionslabel || []).some((o) => o.commit === bericht.basis)) {
     // Review #598 C-1: der Ausnahmeweg zählt nur, solange G6 die Ausnahme (und damit E6) wirklich prüft
     if (istObjekt(freigabe?.erstwechselAusnahme) && konfig.sicherung?.widerrufbuchProbePflicht !== true) {
       nogo(g, "Migrationsnachweis (RST-5): Erstwechsel-Ausnahme gesetzt, aber G6 prüft sie nicht (widerrufbuchProbePflicht ≠ true) — E6 läuft nicht (fail-closed)");
@@ -1042,7 +1072,8 @@ export function g5Migration(bericht, freigabe, liste = null, konfig = KONFIG_STA
     } else {
       nogo(g, `Migrationsnachweis (RST-5) für den Erstwechsel von ${bericht.basis} fehlt: nur als Feld migrationsprobe eines Staging-Nachweises `
         + "aus einem Runner-Lauf am Kandidaten-Digest prüfbar (Freigabedatei erstwechselAusnahme…staging, G6 E6/E7); ein lokaler "
-        + "oder statischer Nachweis ersetzt ihn nicht (fail-closed)");
+        + "oder statischer Nachweis ersetzt ihn nicht (fail-closed); nach einem abgebrochenen Erstwechsel nur über eine "
+        + "ausdrücklich freigegebene Wiederholung (Feld wiederholung)");
     }
   }
   const zuPruefen = [...bericht.betroffen];
@@ -1156,6 +1187,40 @@ function ausnahmeSchema(f) {
   typ("staging", genauSchluessel(st, ["lauf", "nachweis", "sha256"]) && typeof st.lauf === "string" && /^[1-9]\d{0,19}-[1-9]\d{0,3}$/.test(st.lauf) &&
     typeof st.nachweis === "string" && typeof st.sha256 === "string" && HEX64.test(st.sha256));
   return fe;
+}
+
+/**
+ * Vier-Augen (E14; RST-5 WH8): Rulesets mit Code-Owner-Review, CODEOWNERS allein beim Inhaber, PR der Freigabedatei und
+ * die PRs der genannten Pakete je mit Code-Owner-Freigabe (APPROVED vom Inhaber ≠ Autor, auf dem letzten Kopf).
+ * Liefert die Gründe (null = erfüllt).
+ */
+function vierAugenGruende(vierAugen, codeowners, konfig, pakete) {
+  const c = konfig.erstwechselAusnahme.widerrufbuchProbe;
+  const wenn = (bedingung, text) => (bedingung ? null : text);
+  const inhaber = konfig.repo.split("/")[0];
+  const va = istObjekt(vierAugen) ? vierAugen : {};
+  const regeln = istObjekt(va.regeln) ? va.regeln : {};
+  const hat = (zweig, typ, pruefe = () => true) => Array.isArray(regeln[zweig]) && regeln[zweig].some((r) => istObjekt(r) && r.type === typ && pruefe(r));
+  const ownerReview = (r) => r.parameters?.require_code_owner_review === true;
+  const co = typeof codeowners === "string" ? codeownersLesen(codeowners) : null;
+  const prs = istObjekt(va.prs) ? va.prs : {};
+  const freigegeben = (nr) => {
+    const p = prs[nr];
+    return istObjekt(p) && p.gemergt === true && typeof p.autor === "string" && hex40(p.kopf) && Array.isArray(p.reviews) &&
+      p.reviews.some((r) => istObjekt(r) && r.state === "APPROVED" && r.autor === inhaber && r.autor !== p.autor && r.commit === p.kopf);
+  };
+  const paketPrs = istObjekt(va.paketPrs) ? va.paketPrs : {};
+  return [
+    wenn(Array.isArray(va.fehler) && va.fehler.length === 0, `GitHub-Abfrage gescheitert (fail-closed): ${Array.isArray(va.fehler) ? va.fehler.join("; ") : "keine Angaben"}`),
+    ...c.vierAugenZweige.map((z) => wenn(hat(z, "pull_request", ownerReview), `Ruleset ${z}: pull_request mit require_code_owner_review fehlt`)),
+    wenn(hat("main", "update"), "Ruleset main: update (Merge-Sperre Maschinenkonto) fehlt"),
+    wenn(co !== null, ".github/CODEOWNERS fehlt im Kandidaten"),
+    ...(co || []).filter((r) => !(r.besitzer.length === 1 && r.besitzer[0] === `@${inhaber}`)).map((r) => `CODEOWNERS-Regel ${r.muster} nicht allein @${inhaber}`),
+    ...(co ? c.codeOwnerPfade.filter((p) => !co.some((r) => r.muster === p || r.muster === `/${p}`)) : []).map((p) => `CODEOWNERS deckt ${p} nicht ab`),
+    wenn(Number.isInteger(va.freigabePr) && freigegeben(va.freigabePr), `PR der Freigabedatei ohne Code-Owner-Freigabe (≠ Autor, letzter Kopf): ${va.freigabePr ?? "unbekannt"}`),
+    ...pakete.map((id) => wenn(Array.isArray(paketPrs[id]) && paketPrs[id].length > 0 && paketPrs[id].every(freigegeben),
+      `${id}: PR ohne Code-Owner-Freigabe (≠ Autor, letzter Kopf) oder unbekannt`)),
+  ];
 }
 
 /** Quittung im festen Wortlaut (E8): Vorlage mit den Werten der Konfiguration und der Ausnahme. */
@@ -1342,30 +1407,7 @@ export function erstwechselPruefen(k, konfig = KONFIG_STANDARD) {
   ]);
 
   // E14: Vier-Augen (Rulesets, CODEOWNERS, Code-Owner-Review ≠ Autor auf dem letzten Kopf)
-  const inhaber = konfig.repo.split("/")[0];
-  const va = istObjekt(ew.vierAugen) ? ew.vierAugen : {};
-  const regeln = istObjekt(va.regeln) ? va.regeln : {};
-  const hat = (zweig, typ, pruefe = () => true) => Array.isArray(regeln[zweig]) && regeln[zweig].some((r) => istObjekt(r) && r.type === typ && pruefe(r));
-  const ownerReview = (r) => r.parameters?.require_code_owner_review === true;
-  const co = typeof ew.codeowners === "string" ? codeownersLesen(ew.codeowners) : null;
-  const prs = istObjekt(va.prs) ? va.prs : {};
-  const freigegeben = (nr) => {
-    const p = prs[nr];
-    return istObjekt(p) && p.gemergt === true && typeof p.autor === "string" && hex40(p.kopf) && Array.isArray(p.reviews) &&
-      p.reviews.some((r) => istObjekt(r) && r.state === "APPROVED" && r.autor === inhaber && r.autor !== p.autor && r.commit === p.kopf);
-  };
-  const paketPrs = istObjekt(va.paketPrs) ? va.paketPrs : {};
-  pruef("E14", [
-    wenn(Array.isArray(va.fehler) && va.fehler.length === 0, `GitHub-Abfrage gescheitert (fail-closed): ${Array.isArray(va.fehler) ? va.fehler.join("; ") : "keine Angaben"}`),
-    ...c.vierAugenZweige.map((z) => wenn(hat(z, "pull_request", ownerReview), `Ruleset ${z}: pull_request mit require_code_owner_review fehlt`)),
-    wenn(hat("main", "update"), "Ruleset main: update (Merge-Sperre Maschinenkonto) fehlt"),
-    wenn(co !== null, ".github/CODEOWNERS fehlt im Kandidaten"),
-    ...(co || []).filter((r) => !(r.besitzer.length === 1 && r.besitzer[0] === `@${inhaber}`)).map((r) => `CODEOWNERS-Regel ${r.muster} nicht allein @${inhaber}`),
-    ...(co ? c.codeOwnerPfade.filter((p) => !co.some((r) => r.muster === p || r.muster === `/${p}`)) : []).map((p) => `CODEOWNERS deckt ${p} nicht ab`),
-    wenn(Number.isInteger(va.freigabePr) && freigegeben(va.freigabePr), `PR der Freigabedatei ohne Code-Owner-Freigabe (≠ Autor, letzter Kopf): ${va.freigabePr ?? "unbekannt"}`),
-    ...c.vierAugenPakete.map((id) => wenn(Array.isArray(paketPrs[id]) && paketPrs[id].length > 0 && paketPrs[id].every(freigegeben),
-      `${id}: PR ohne Code-Owner-Freigabe (≠ Autor, letzter Kopf) oder unbekannt`)),
-  ]);
+  pruef("E14", vierAugenGruende(ew.vierAugen, ew.codeowners, konfig, c.vierAugenPakete));
 
   if (gruende.length) return { gruende, belege: [], auflagen: [] };
   return {
@@ -1376,6 +1418,207 @@ export function erstwechselPruefen(k, konfig = KONFIG_STANDARD) {
     auflagen: [{ art: "nachholpruefung-widerrufbuch", releaseId: a.releaseId, fristStunden: c.nachholFristStunden,
       repoFristStunden: c.repoFristStunden, ablage: a.nachholAblage, abbruchBedingungen: [...c.abbruchBedingungen] }],
   };
+}
+
+/* --------------------------- RST-5 Wiederholung eines abgebrochenen Erstwechsels */
+
+const WH_FELDER = ["versuch", "vorversuch", "ursache", "freigabe", "staging"];
+const WH_URSACHE = ["aenderung", "behebung"];
+const WH_VORVERSUCH = ["releaseId", "kandidatCommit", "digest", "abbruchNachweis"];
+const WH_FREIGABE = ["freigegebenDurch", "datum", "quittung"];
+const STAGING_LAUF = /^[1-9]\d{0,19}-[1-9]\d{0,3}$/;
+
+/** Strenge Schemaprüfung des Felds wiederholung (genau diese Schlüssel, Typen, Formate; kein Standardwert). */
+function wiederholungSchema(f) {
+  if (f.wiederholung === undefined) return [];
+  const w = f.wiederholung;
+  if (!genauSchluessel(w, WH_FELDER)) return [`wiederholung: genau die Schlüssel ${WH_FELDER.join(", ")}`];
+  const fe = [];
+  const v = w.vorversuch, fr = w.freigabe, st = w.staging, u = w.ursache;
+  const text = (x) => typeof x === "string" && x.trim() !== "";
+  if (!(typeof w.versuch === "string" && VERSUCH_MUSTER.test(w.versuch))) fe.push(`wiederholung.versuch: Kennung nach ${VERSUCH_MUSTER.source}`);
+  if (!(genauSchluessel(u, WH_URSACHE) && URSACHE_ARTEN.includes(u.aenderung) && typeof u.behebung === "string" && pfadSicher(u.behebung) &&
+    u.behebung.startsWith("docs/"))) {
+    fe.push(`wiederholung.ursache: genau { aenderung (${URSACHE_ARTEN.join("|")}), behebung (Pfad unter docs/) }`);
+  }
+  if (!(genauSchluessel(v, WH_VORVERSUCH) && typeof v.releaseId === "string" && RELEASE_ID.test(v.releaseId) && hex40(v.kandidatCommit) &&
+    typeof v.digest === "string" && DIGEST.test(v.digest) && text(v.abbruchNachweis))) {
+    fe.push(`wiederholung.vorversuch: genau { ${WH_VORVERSUCH.join(", ")} } (Release-ID, 40 Hex, sha256:<64 hex>, Pfad)`);
+  }
+  if (!(genauSchluessel(fr, WH_FREIGABE) && text(fr.freigegebenDurch) && typeof fr.datum === "string" && DATUM.test(fr.datum) && text(fr.quittung))) {
+    fe.push(`wiederholung.freigabe: genau { ${WH_FREIGABE.join(", ")} } mit Text, datum JJJJ-MM-TT`);
+  }
+  if (!(genauSchluessel(st, ["lauf", "nachweis", "sha256"]) && typeof st.lauf === "string" && STAGING_LAUF.test(st.lauf) && text(st.nachweis) &&
+    typeof st.sha256 === "string" && HEX64.test(st.sha256))) {
+    fe.push("wiederholung.staging: genau { lauf (<id>-<versuch>), nachweis, sha256 (64 Hex) }");
+  }
+  return fe;
+}
+
+/**
+ * RST-5 Wiederholung (Betreiberentscheidung 2026-11-27): Ein erneuter Erstwechsel nach einem abgebrochenen Versuch mit
+ * Rückkehr auf 274bfa0 ist nur über das Feld wiederholung der Freigabedatei möglich — nie über die (verbrauchte)
+ * Erstwechsel-Ausnahme. k = { freigabe (Schema gültig), releaseId, kandidat, digest, basis, jetztMs, wh: gesammelte Angaben
+ * { stagingRoh, abbruchRoh, skriptRoh, baumKandidat, stagingLauf, stagingArtefakt } }. Jede verletzte Bedingung ergibt genau
+ * einen Grund „WH<n>: …“ (fail-closed). Liefert { gruende, belege }.
+ *   WH1 Pfad: Basis aus ohneRevisionslabel, keine erstwechselAusnahme zugleich
+ *   WH2 neuer Versuch: eigene Release-ID, eigens vergebene Versuchskennung; gleicher Kandidat/Digest nur bei ursache.aenderung
+ *       „keine“, sonst anderer Commit und Digest zwingend; Beleg der Ursachenbehebung in HEAD; Vorversuch-Digest ≠ Basis
+ *   WH3 Abbruchbeleg des Vorversuchs in HEAD (Abbruch-ID nach A.8, releaseId/kandidat/digest gleich, zeit nicht in der Zukunft)
+ *   WH4 ausdrückliche Betreiberfreigabe: fester Wortlaut, Datum nicht vor dem Abbruch und nicht in der Zukunft, keine Platzhalter
+ *   WH5 Staging-Nachweis am NEUEN Digest (wie E6, ≤ 7 Tage, nach dem Abbruch erstellt, Migrationsnachweis Pflicht)
+ *   WH6 Lauf-API und Artefakt-Bytes (wie E7), Lauf nach dem Abbruch gestartet
+ *   WH7 dieser Versuch noch nicht genutzt (keine Nachhol- oder Abbruchspur des aktuellen Release in HEAD und Geschichte);
+ *       Versuchskennung in keiner anderen Freigabedatei (HEAD oder Geschichte)
+ *   WH8 Vier-Augen wie E14 (Freigabe-PR mit Code-Owner-Freigabe des Inhabers ≠ Autor, Rulesets, CODEOWNERS)
+ * Ungültiges Feld (auch beim direkten Aufruf): WH0.
+ */
+export function wiederholungPruefen(k, konfig = KONFIG_STANDARD) {
+  const c = konfig.erstwechselAusnahme.widerrufbuchProbe;
+  const cw = konfig.wiederholung;
+  const f = istObjekt(k.freigabe) ? k.freigabe : {};
+  // Review #600 C-2: nie werfen — ohne gültiges Feld ein Grund (fail-closed), auch beim direkten Aufruf
+  const schema = wiederholungSchema({ wiederholung: f.wiederholung ?? null });
+  if (schema.length) return { gruende: [`WH0: Feld wiederholung ungültig: ${schema.join("; ")}`], belege: [] };
+  const w = f.wiederholung, v = w.vorversuch, fr = w.freigabe, st = w.staging, u = w.ursache;
+  const x = istObjekt(k.wh) ? k.wh : {};
+  const gruende = [];
+  const pruef = (id, fehler) => { const fe = fehler.filter(Boolean); if (fe.length) gruende.push(`${id}: ${fe.join("; ")}`); };
+  const wenn = (bedingung, t) => (bedingung ? null : t);
+  if (!istObjekt(cw)) return { gruende: ["Konfiguration wiederholung fehlt (fail-closed)"], belege: [] };
+  const basisDigest = (konfig.ohneRevisionslabel || []).find((o) => o.commit === k.basis)?.digest;
+
+  pruef("WH1", [
+    wenn(typeof basisDigest === "string", `Basis ${k.basis} ist kein Bild aus ohneRevisionslabel — Wiederholung gilt nur für einen Erstwechsel`),
+    wenn(f.erstwechselAusnahme === undefined, "erstwechselAusnahme zugleich gesetzt — die verbrauchte Ausnahme wird nie wiederverwendet; Wiederholung ist ein eigener Pfad"),
+  ]);
+  // WH2 (Präzisierung 2026-11-27): neuer Auslieferungsversuch ≠ neue Softwareversion. Gleicher Kandidat und Digest sind
+  // zulässig, wenn die Ursache ohne Änderung behoben ist („keine“); verlangt die Ursache eine Änderung an Produkt, Image
+  // oder sicherheitsrelevanten Bestandteilen, sind ein anderer Commit und ein anderer Digest zwingend. Keine künstliche
+  // Unterschiedsanforderung. Die Versuchskennung ist eigens vergeben und nicht aus Release-ID, Commit oder Digest abgeleitet.
+  const aenderung = u.aenderung !== "keine";
+  const klein = (s) => String(s ?? "").toLowerCase();
+  const kurzHex = [k.kandidat, k.digest, v.kandidatCommit, v.digest].filter((h) => typeof h === "string")
+    .map((h) => h.replace(/^sha256:/, "").slice(0, 7).toLowerCase()).filter((h) => /^[0-9a-f]{7}$/.test(h));
+  pruef("WH2", [
+    wenn(v.releaseId !== k.releaseId, `vorversuch.releaseId ${v.releaseId} = --release-id (jeder Versuch hat eine eigene Release-ID für Freigabedatei und Ablage)`),
+    wenn(![k.releaseId, v.releaseId].map(klein).includes(klein(w.versuch)), `versuch ${w.versuch} = Release-ID (Versuchskennung eigens vergeben, nicht abgeleitet)`),
+    wenn(!kurzHex.some((h) => klein(w.versuch).includes(h)), `versuch ${w.versuch} enthält Commit oder Digest (nicht daraus ableitbar)`),
+    wenn(!aenderung || v.kandidatCommit !== k.kandidat, `ursache.aenderung ${u.aenderung}: anderer Commit zwingend, Kandidat = Kandidat des Vorversuchs`),
+    wenn(!aenderung || v.digest !== k.digest, `ursache.aenderung ${u.aenderung}: anderer Digest zwingend, ${k.digest} = Digest des Vorversuchs`),
+    wenn(aenderung || (v.kandidatCommit === k.kandidat) === (v.digest === k.digest), "ursache.aenderung keine, aber nur Commit oder nur Digest verschieden (Kandidat und Bild passen nicht zusammen)"),
+    wenn(v.digest !== basisDigest, "vorversuch.digest = Bild der Basis"),
+    wenn(x.behebungVorhanden === true, `ursache.behebung ${u.behebung} fehlt in HEAD (Beleg der Ursachenbehebung)`),
+  ]);
+
+  // WH3: Abbruchbeleg des Vorversuchs (Format wie abbruch-A-VOR.json: id, releaseId, kandidat, digest, zeit; weitere Felder frei)
+  const relVor = `${konfig.freigabeVerzeichnis}/${v.releaseId}/`;
+  let ab = null;
+  const wh3 = [];
+  if (!v.abbruchNachweis.startsWith(relVor) || !/^abbruch-[A-Za-z0-9._-]+\.json$/.test(v.abbruchNachweis.slice(relVor.length))) {
+    wh3.push(`abbruchNachweis nicht unter ${relVor}abbruch-*.json`);
+  } else if (!x.abbruchRoh) wh3.push(`${v.abbruchNachweis} fehlt in HEAD`);
+  else {
+    ab = jsonLesen(Buffer.from(x.abbruchRoh).toString("utf8")).wert;
+    if (!istObjekt(ab)) { wh3.push("Abbruchbeleg ist kein JSON-Objekt"); ab = null; }
+  }
+  const abZeit = ab && typeof ab.zeit === "string" ? Date.parse(ab.zeit) : NaN;
+  if (ab) {
+    wh3.push(
+      wenn(typeof ab.id === "string" && c.abbruchBedingungen.includes(ab.id), `Abbruchbeleg: id ${JSON.stringify(ab.id ?? null)} ist keine Abbruchbedingung (A.8)`),
+      wenn(ab.releaseId === v.releaseId && ab.kandidat === v.kandidatCommit && ab.digest === v.digest, "Abbruchbeleg: releaseId/kandidat/digest ≠ vorversuch"),
+      wenn(Number.isFinite(abZeit) && abZeit <= k.jetztMs, "Abbruchbeleg: zeit fehlt oder liegt in der Zukunft"),
+    );
+  }
+  pruef("WH3", wh3);
+
+  // WH4: ausdrückliche Betreiberfreigabe dieses Versuchs (kein Default, nie aus anderen Angaben abgeleitet)
+  const werte = { versuch: w.versuch, releaseId: k.releaseId, kandidat: k.kandidat, digest: k.digest, basis: k.basis, vorRelease: v.releaseId,
+    vorKandidat: v.kandidatCommit, vorDigest: v.digest, abbruch: v.abbruchNachweis, behebung: u.behebung, aenderung: u.aenderung };
+  const quittung = cw.quittungVorlage.replace(/\{(\w+)\}/g, (_, n) => String(werte[n]));
+  const freigabeTag = Date.parse(`${fr.datum}T00:00:00Z`);
+  pruef("WH4", [
+    wenn(fr.quittung === quittung, "freigabe.quittung weicht vom festen Wortlaut ab (ausdrückliche Betreiberfreigabe genau dieses Versuchs)"),
+    wenn(Number.isFinite(abZeit) && tagesEnde(fr.datum) > abZeit, "freigabe.datum liegt vor dem Abbruch des Vorversuchs (oder Abbruchzeit unbekannt)"),
+    wenn(Number.isFinite(freigabeTag) && freigabeTag <= k.jetztMs, "freigabe.datum liegt in der Zukunft"),
+    ...[fr.freigegebenDurch, fr.datum, w.versuch, u.behebung, v.abbruchNachweis, st.nachweis].filter((t) => PLATZHALTER.some((m) => m.test(t)))
+      .map((t) => `Platzhalter: ${String(t).slice(0, 40)}`),
+  ]);
+
+  // WH5: Staging-Nachweis am neuen Digest (Bytes per SHA-256 gebunden; Inhalt wie E6; neuer Lauf nach dem Abbruch)
+  const praefix = `${konfig.freigabeVerzeichnis}/${k.releaseId}/nachweise/`;
+  const rohN = x.stagingRoh ? Buffer.from(x.stagingRoh) : null;
+  let nw = null;
+  const wh5 = [];
+  if (!st.nachweis.startsWith(praefix) || !/^[A-Za-z0-9][A-Za-z0-9._-]*\.json$/.test(st.nachweis.slice(praefix.length))) wh5.push(`staging.nachweis nicht unter ${praefix}`);
+  else if (!rohN) wh5.push(`${st.nachweis} fehlt in HEAD`);
+  else if (sha256(rohN) !== st.sha256) wh5.push("SHA-256 des Nachweises ≠ staging.sha256");
+  else {
+    nw = jsonLesen(rohN.toString("utf8")).wert;
+    if (!istObjekt(nw)) { wh5.push("Nachweis ist kein JSON-Objekt"); nw = null; }
+  }
+  const schnitt = hex40(f.schnittCommit) ? f.schnittCommit : null;
+  if (nw) {
+    const wb = istObjekt(nw.widerrufbuch) ? nw.widerrufbuch : {};
+    const proben = istObjekt(wb.proben) ? wb.proben : {};
+    const erstellt = Date.parse(typeof nw.erstellt === "string" ? nw.erstellt : "");
+    const skript = x.skriptRoh ? sha256(Buffer.from(x.skriptRoh)) : null;
+    wh5.push(
+      wenn(nw.ergebnis === "success", `ergebnis '${nw.ergebnis}', erwartet success`),
+      wenn(nw.digest === k.digest, `digest ${nw.digest} ≠ ${k.digest} (Nachweis des Vorversuchs oder eines anderen Bilds)`),
+      wenn(nw.commit === k.kandidat, `commit ${nw.commit} ≠ Kandidat`),
+      wenn(hex40(nw.baum) && nw.baum === x.baumKandidat, "baum ≠ Baum(Kandidat)"),
+      wenn(nw.lauf === st.lauf, `lauf ${nw.lauf} ≠ ${st.lauf}`),
+      wenn(nw.laufCommit === k.kandidat || (schnitt !== null && nw.laufCommit === schnitt), "laufCommit ist weder Kandidat noch Schnitt"),
+      wenn(wb.art === c.stagingArt, `widerrufbuch.art '${wb.art}' ≠ ${c.stagingArt}`),
+      wenn(Object.keys(proben).length === c.stagingProben.length && c.stagingProben.every((p) => proben[p] === "ok"), `Proben ${c.stagingProben.join("–")} nicht alle ok`),
+      wenn(skript !== null && wb.skriptSha256 === skript, `skriptSha256 ≠ SHA-256 von ${c.stagingSkript} im Kandidaten`),
+      wenn(Number.isFinite(erstellt) && erstellt <= k.jetztMs + 5 * 60_000, "erstellt fehlt oder liegt in der Zukunft"),
+      wenn(!Number.isFinite(erstellt) || k.jetztMs - erstellt <= cw.stagingMaxTage * 86400_000, `zu alt (erstellt ${nw.erstellt}, höchstens ${cw.stagingMaxTage} Tage)`),
+      wenn(!Number.isFinite(erstellt) || (Number.isFinite(abZeit) && erstellt > abZeit), "erstellt nicht nach dem Abbruch des Vorversuchs — kein neuer Lauf"),
+      ...migrationsnachweisPruefen(nw.migrationsprobe, k.digest, konfig).map((y) => `Migrationsnachweis: ${y}`),
+    );
+  }
+  pruef("WH5", wh5);
+
+  // WH6: Lauf-API (GET actions/runs/<id>) und Artefakt-Bytes (wie E7)
+  const lauf = x.stagingLauf;
+  const [laufId, versuch] = st.lauf.split("-").map(Number);
+  pruef("WH6", !istObjekt(lauf) ? ["Lauf-API nicht lesbar (fail-closed)"] : [
+    wenn(lauf.id === laufId && lauf.run_attempt === versuch, `Lauf ${lauf.id}-${lauf.run_attempt} ≠ ${st.lauf}`),
+    wenn(lauf.path === c.stagingWorkflow, `path ${lauf.path} ≠ ${c.stagingWorkflow}`),
+    wenn(lauf.event === "workflow_dispatch", `event ${lauf.event} ≠ workflow_dispatch`),
+    wenn(lauf.status === "completed" && lauf.conclusion === "success", `Lauf ${lauf.status}/${lauf.conclusion}, erwartet completed/success`),
+    // auch bei gleichem Digest: nur ein Lauf, der nach dem Abbruch gestartet wurde (kein Replay des Vorversuch-Laufs)
+    wenn(Number.isFinite(abZeit) && Date.parse(lauf.run_started_at ?? lauf.created_at ?? "") > abZeit, "Lauf nicht nach dem Abbruch des Vorversuchs gestartet (run_started_at) — kein neuer Lauf"),
+    wenn(lauf.head_sha === k.kandidat || (schnitt !== null && lauf.head_sha === schnitt), `head_sha ${lauf.head_sha} ist weder Kandidat noch Schnitt`),
+    wenn(!nw || nw.laufCommit === lauf.head_sha, "head_sha ≠ laufCommit des Nachweises"),
+    wenn(rohN !== null && Array.isArray(x.stagingArtefakt) && x.stagingArtefakt.some((b) => Buffer.from(b).equals(rohN)),
+      `Artefakt ${c.stagingArtefakt} enthält keine Datei mit den Bytes des Nachweises (oder nicht lesbar)`),
+  ]);
+
+  // WH7 (Review #600 B-2, Gegenstück zu E15): jede Datei unter <releaseId>/nachhol/ oder <releaseId>/abbruch-*.json in HEAD
+  // oder seiner Geschichte (und jede frühere Fassung der Freigabedatei mit Ausnahme) heißt: dieser Versuch hat schon
+  // stattgefunden. Ein weiterer Versuch braucht eine NEUE Release-ID mit diesem als Vorversuch und eine neue Freigabe.
+  const spur = x.spur;
+  pruef("WH7", [spur === undefined ? "Spuren des aktuellen Release nicht ermittelt (fail-closed)"
+    : spur === null ? null
+      : spur.unklar ? `Spuren des aktuellen Release nicht prüfbar: ${spur.text}`
+        : `Wiederholung ${k.releaseId} schon genutzt (${spur.text}) — weiterer Versuch nur als neue Release-ID mit ${k.releaseId} als Vorversuch und neuer Freigabe`,
+    // Versuchskennung einmalig: keine andere Freigabedatei (HEAD oder Geschichte) trägt dieselbe Kennung
+    ...(!Array.isArray(x.versuche) ? ["Versuchskennungen in HEAD und Geschichte nicht ermittelbar (fail-closed)"]
+      : [...new Set(x.versuche.filter((y) => istObjekt(y) && klein(y.versuch) === klein(w.versuch) && y.datei !== `${konfig.freigabeVerzeichnis}/${k.releaseId}.freigabe.json`).map((y) => y.datei))]
+        .map((d) => `Versuchskennung ${w.versuch} schon verwendet (${d}) — jede Kennung gilt für genau einen Versuch`)),
+  ]);
+  // WH8 (Review #600 C-1, wie E14): Freigabe-PR mit Code-Owner-Freigabe durch den Inhaber (≠ Autor, letzter Kopf), Rulesets, CODEOWNERS
+  pruef("WH8", vierAugenGruende(x.vierAugen, x.codeowners, konfig, []));
+
+  // Delta-Review #600 C-3: „keine“ deklariert, aber Commit und Digest neu — zulässig (keine künstliche Pflicht), aber sichtbar
+  const hinweise = !aenderung && v.kandidatCommit !== k.kandidat && v.digest !== k.digest
+    ? [`Wiederholung (RST-5): Deklaration ursache.aenderung „keine“ trotz anderem Commit und Digest als der Vorversuch — Betreiber prüft`] : [];
+  if (gruende.length) return { gruende, belege: [], hinweise };
+  return { gruende, hinweise, belege: [`Wiederholung (RST-5) des abgebrochenen Erstwechsels ${v.releaseId} (Digest ${v.digest}) ausdrücklich freigegeben durch `
+    + `${fr.freigegebenDurch} am ${fr.datum}; Staging-Lauf ${st.lauf} und Migrationsnachweis am neuen Digest ${k.digest}`] };
 }
 
 /* ------------------------------------------ Nachhol-Modus (GATE-EW2, A.7) */
@@ -1490,6 +1733,19 @@ export function nachholPruefen(d, konfig = KONFIG_STANDARD) {
 /** Folge-Release-Rückhalt (SPEZ §3.3, Review #535 AU-1): jede Ausnahme eines anderen Release muss NACHHOL-GO sein. */
 function rueckhaltPruefen(g, k, konfig) {
   for (const r of Array.isArray(k.rueckhalt) ? k.rueckhalt : []) {
+    // Review #600 B-1 (RST-5 Wiederholung): Rückhalt des abgebrochenen Vorversuchs gilt nur dann als erledigt, wenn die
+    // aktuelle Freigabe eine in G5 vollständig gültige Wiederholung (WH0–WH8) genau dieses Vorversuchs trägt. Fehlende
+    // oder unlesbare Freigabedatei des Vorversuchs und „Spuren nicht prüfbar“ bleiben NO-GO.
+    const wh = istObjekt(k.freigabe) && istObjekt(k.freigabe.wiederholung) ? k.freigabe.wiederholung : null;
+    // Kette (v4-r3 nach v4-r2 nach v4-r1): ein anderer Vorversuch genügt nur, wenn auch dieser Release einen gültigen
+    // Abbruchbeleg in HEAD hat (abbruchBelegt, aus rueckhaltSammeln).
+    if (wh && (r.daten || r.art === "spur") && (wh.vorversuch?.releaseId === r.releaseId || r.abbruchBelegt === true)) {
+      const p = wiederholungPruefen({ freigabe: k.freigabe, releaseId: k.releaseId, kandidat: k.kandidat, digest: k.digest, basis: k.basis,
+        jetztMs: k.jetztMs, wh: k.wiederholung }, konfig);
+      if (!p.gruende.length) { g.belege.push(`Erstwechsel-Ausnahme ${r.releaseId} abgebrochen; Rückhalt durch die freigegebene Wiederholung ${k.releaseId} ersetzt (G5 WH0–WH8)`); continue; }
+      nogo(g, `Ausnahme ${r.releaseId}: Rückhalt nur über eine gültige Wiederholung — ${p.gruende.length} Grund/Gründe in G5 (fail-closed)`);
+      continue;
+    }
     if (!r.daten) { nogo(g, `Erstwechsel-Ausnahme: ${r.datei} ${r.fehler} — Rückhalt NO-GO (fail-closed)`); continue; }
     const n = nachholPruefen(r.daten, konfig);
     if (n.ergebnis === "NACHHOL-GO") { g.belege.push(`Erstwechsel-Ausnahme ${r.releaseId} abgeschlossen (NACHHOL-GO)`); continue; }
@@ -1756,6 +2012,7 @@ export function freigabeSchema(f) {
     else if (f.migration.abgedeckt !== undefined && (!Array.isArray(f.migration.abgedeckt) || !f.migration.abgedeckt.every((x) => typeof x === "string"))) fe.push("migration.abgedeckt: falsche Struktur");
   }
   fe.push(...ausnahmeSchema(f)); // GATE-EW1: schnittCommit, erstwechselAusnahme, nachholAbweichung streng
+  fe.push(...wiederholungSchema(f)); // RST-5 Wiederholung: Feld wiederholung streng
   return fe;
 }
 
@@ -1812,10 +2069,10 @@ export function auswerten(e, konfig = KONFIG_STANDARD) {
     g2Review({ prs, commitsOhnePr: ohne, anzahlCommits: commitsOk ? e.commits.length : undefined, prAngaben: istObjekt(e.prAngaben) ? e.prAngaben : {}, dokBelege: reviewNachweiseLesen(e.reviewTexte || []), ssotBelege: ssotReviewBelege(e.ssot), freigabe }),
     g3Schalter({ codeNamen: e.codeNamen, klassen: e.klassen, vorlagen: e.vorlagen || [], unfertig: e.unfertig, quelltexte: e.quelltexte, freigabe, composeDateien: e.composeDateien, vorlagenStand: e.vorlagenStand ?? null }, konfig),
     g4Bild({ digest: e.digest, kandidat: e.kandidat, bild: bildAngabenLesen(e.bildRoh), liste, berichtVorhanden: e.berichtVorhanden, jetztMs: e.jetztMs }, konfig),
-    g5Migration(bericht, freigabe, liste, konfig),
+    g5Migration(bericht, freigabe, liste, konfig, { releaseId: e.releaseId, kandidat: e.kandidat, digest: e.digest, jetztMs: e.jetztMs, wh: e.wiederholung }),
     g6Sicherung(e.nachweise, e.jetztMs, konfig, { freigabe, freigabeRoh: roheFreigabe, schemaFehler: roheFreigabe ? freigabeSchema(roheFreigabe) : [],
       releaseId: e.releaseId, basis: e.basis, kandidat: e.kandidat, digest: e.digest, liste, erstwechsel: e.erstwechsel,
-      releaseDateien: e.releaseDateien, rueckhalt: e.rueckhalt }),
+      releaseDateien: e.releaseDateien, rueckhalt: e.rueckhalt, wiederholung: e.wiederholung, jetztMs: e.jetztMs }),
     g7Rueckweg({ liste, kandidat: e.kandidat, digest: e.digest, basis: e.basis }, freigabe, konfig),
     g8Blocker(e.ssot, prs, freigabe, konfig, e.unfertig, e.klassen),
     g9Befunde(e.ssot, freigabe, konfig),
@@ -2035,6 +2292,99 @@ function fassungenLesen(w, pfad) {
 /** Nachweise eines Abbruchs vor dem V4-Start (F10, OFFEN-1): docs/acc45/releases/<id>/abbruch-A-VOR[-n].json */
 const ABBRUCH_VOR = /^abbruch-A-VOR(?:-[1-9]\d{0,2})?\.json$/;
 
+/**
+ * RST-5 Wiederholung (WH7): Versuchskennung jeder Freigabedatei in HEAD und in jeder früheren Fassung (Geschichte von HEAD).
+ * Offline: HEAD aus --wurzel, Geschichte aus fixture.wiederholung.versucheGeschichte ([{ datei, versuch }]). null = nicht
+ * ermittelbar (fail-closed).
+ */
+function versucheSammeln(e, hq, { online, wurzel: w, fx }, konfig) {
+  const verz = `${konfig.freigabeVerzeichnis}/`;
+  const muster = { test: (y) => typeof y === "string" && y.startsWith(verz) && !y.slice(verz.length).includes("/") && y.endsWith(".freigabe.json") };
+  if (!Array.isArray(e.releaseDateien)) return null;
+  const aus = [];
+  const nehmen = (datei, text) => { const j = jsonLesen(text).wert; if (istObjekt(j) && istObjekt(j.wiederholung) && typeof j.wiederholung.versuch === "string") aus.push({ datei, versuch: j.wiederholung.versuch }); };
+  for (const p of e.releaseDateien.filter((y) => muster.test(y))) nehmen(p, hq.lesen(p));
+  if (!online) {
+    const g = istObjekt(fx.wiederholung) ? fx.wiederholung.versucheGeschichte : undefined;
+    if (!Array.isArray(g)) return null;
+    return [...aus, ...g.filter((y) => istObjekt(y) && typeof y.datei === "string" && typeof y.versuch === "string")];
+  }
+  if (geschichteGekuerzt(w)) return null;
+  try {
+    const pfade = [...new Set(git(w, ["log", "--full-history", "--no-renames", "--format=", "--name-only", "HEAD", "--", konfig.freigabeVerzeichnis])
+      .split("\n").filter((y) => muster.test(y)))];
+    for (const p of pfade) for (const b of fassungenLesen(w, p)) nehmen(p, Buffer.from(b).toString("utf8"));
+  } catch { return null; }
+  return aus;
+}
+
+/**
+ * RST-5 Wiederholung: Angaben für WH3, WH5, WH6. Dateien nur aus HEAD (Staging-Nachweis, Abbruchbeleg) bzw. dem Kandidaten
+ * (Skript); offline Git/Netz aus fixture.wiederholung { baumKandidat, stagingLauf, stagingArtefakt (Base64) }.
+ */
+function wiederholungSammeln(e, kq, hq, ctx, konfig) {
+  const { online, wurzel: w, gh, ghRoh, fx } = ctx;
+  const c = konfig.erstwechselAusnahme.widerrufbuchProbe;
+  const wh = e.freigabe.wiederholung;
+  const x = {
+    stagingRoh: pfadSicher(wh.staging?.nachweis) ? hq.lesenRoh(wh.staging.nachweis) : null,
+    abbruchRoh: pfadSicher(wh.vorversuch?.abbruchNachweis) ? hq.lesenRoh(wh.vorversuch.abbruchNachweis) : null,
+    skriptRoh: kq.lesenRoh(c.stagingSkript),
+    codeowners: kq.lesen(".github/CODEOWNERS"),
+    spur: ausnahmeSpur(hq, e.releaseId, ctx, konfig), // WH7: offline aus fixture.nachhol[<releaseId>]
+    behebungVorhanden: pfadSicher(wh.ursache?.behebung) ? hq.gibt(wh.ursache.behebung) === true : false,
+    versuche: versucheSammeln(e, hq, ctx, konfig), // WH7: Versuchskennungen aller Freigabedateien (HEAD und Geschichte)
+  };
+  if (!online) {
+    const f = istObjekt(fx.wiederholung) ? fx.wiederholung : {};
+    return { ...x, vierAugen: f.vierAugen ?? null, baumKandidat: f.baumKandidat ?? null, stagingLauf: f.stagingLauf ?? null,
+      stagingArtefakt: Array.isArray(f.stagingArtefakt) ? f.stagingArtefakt.map((b) => Buffer.from(String(b), "base64")) : null };
+  }
+  const versuch = (fn) => { try { return fn(); } catch { return null; } };
+  x.baumKandidat = versuch(() => git(w, ["rev-parse", `${e.kandidat}^{tree}`]));
+  const [laufId] = String(wh.staging?.lauf || "").split("-");
+  if (/^[1-9]\d*$/.test(laufId)) {
+    x.stagingLauf = versuch(() => gh(`repos/${konfig.repo}/actions/runs/${laufId}`));
+    x.stagingArtefakt = versuch(() => {
+      const art = (gh(`repos/${konfig.repo}/actions/runs/${laufId}/artifacts?per_page=100`).artifacts || []).filter((y) => y.name === c.stagingArtefakt && !y.expired);
+      if (art.length !== 1 || !Number.isInteger(art[0].id)) return null;
+      return zipEntpacken(ghRoh(`repos/${konfig.repo}/actions/artifacts/${art[0].id}/zip`)).map((y) => y.daten);
+    });
+  }
+  x.vierAugen = vierAugenSammeln(e, w, gh, konfig, []);
+  return x;
+}
+
+/** Vier-Augen-Angaben (E14; RST-5 WH8): Rulesets, PR der Freigabedatei des Release, PRs der Pakete; jeder Fehler wird gemeldet. */
+function vierAugenSammeln(e, w, gh, konfig, pakete) {
+  const c = konfig.erstwechselAusnahme.widerrufbuchProbe;
+  const voll = ["--full-history", "--no-renames"];
+  const va = { regeln: {}, freigabePr: null, paketPrs: {}, prs: {}, fehler: [] };
+  const abfrage = (was, f) => { try { return f(); } catch (err) { va.fehler.push(`${was}: ${String(err?.message || err).split("\n")[0]}`); return null; } };
+  for (const z of c.vierAugenZweige) va.regeln[z] = abfrage(`GET rules/branches/${z}`, () => gh(`repos/${konfig.repo}/rules/branches/${encodeURIComponent(z)}`));
+  const gemergt = (sha) => gh(`repos/${konfig.repo}/commits/${sha}/pulls`).filter((p) => p.merged_at && konfig.freigabeZweige.includes(p.base?.ref));
+  va.freigabePr = abfrage("PR der Freigabedatei", () => {
+    const l = gemergt(git(w, ["log", "-1", ...voll, "--format=%H", "HEAD", "--", `${konfig.freigabeVerzeichnis}/${e.releaseId}.freigabe.json`]));
+    if (l.length !== 1) throw new Error(`${l.length} nach main gemergte PRs`);
+    return l[0].number;
+  });
+  for (const id of pakete) {
+    const p = Array.isArray(e.ssot?.pakete) ? e.ssot.pakete.find((x) => istObjekt(x) && x.id === id) : null;
+    const l = prListeLesen(p?.pr);
+    if (!p || l.fehler) { va.fehler.push(`${id}: nicht in der SSOT des Kandidaten oder pr ungültig`); continue; }
+    va.paketPrs[id] = l.nummern;
+  }
+  for (const nr of new Set([va.freigabePr, ...Object.values(va.paketPrs).flat()].filter(Number.isInteger))) {
+    va.prs[nr] = abfrage(`GET pulls/${nr}`, () => {
+      const p = gh(`repos/${konfig.repo}/pulls/${nr}`);
+      const r = gh(`repos/${konfig.repo}/pulls/${nr}/reviews?per_page=100`, ["--paginate", "--slurp"]).flat();
+      return { autor: p.user?.login ?? null, kopf: p.head?.sha ?? null, gemergt: !!p.merged_at,
+        reviews: r.map((x) => ({ state: x.state, autor: x.user?.login ?? null, commit: x.commit_id ?? null })) };
+    });
+  }
+  return va;
+}
+
 /** GATE-EW1: Angaben für E3, E6, E7, E13, E14, E15. Offline: Git/Netz aus fixture.erstwechsel, Dateien aus --wurzel. */
 function erstwechselSammeln(e, kq, hq, { online, wurzel: w, gh, ghRoh, fx }, konfig) {
   const c = konfig.erstwechselAusnahme.widerrufbuchProbe;
@@ -2093,30 +2443,7 @@ function erstwechselSammeln(e, kq, hq, { online, wurzel: w, gh, ghRoh, fx }, kon
     });
   }
   // E14: Rulesets, PR der Freigabedatei, PRs der Pakete GATE-EW1/EW2 (SSOT des Kandidaten); jeder Fehler wird gemeldet
-  const va = { regeln: {}, freigabePr: null, paketPrs: {}, prs: {}, fehler: [] };
-  const abfrage = (was, f) => { try { return f(); } catch (err) { va.fehler.push(`${was}: ${String(err?.message || err).split("\n")[0]}`); return null; } };
-  for (const z of c.vierAugenZweige) va.regeln[z] = abfrage(`GET rules/branches/${z}`, () => gh(`repos/${konfig.repo}/rules/branches/${encodeURIComponent(z)}`));
-  const gemergt = (sha) => gh(`repos/${konfig.repo}/commits/${sha}/pulls`).filter((p) => p.merged_at && konfig.freigabeZweige.includes(p.base?.ref));
-  va.freigabePr = abfrage("PR der Freigabedatei", () => {
-    const l = gemergt(git(w, ["log", "-1", ...voll, "--format=%H", "HEAD", "--", `${konfig.freigabeVerzeichnis}/${e.releaseId}.freigabe.json`]));
-    if (l.length !== 1) throw new Error(`${l.length} nach main gemergte PRs`);
-    return l[0].number;
-  });
-  for (const id of c.vierAugenPakete) {
-    const p = Array.isArray(e.ssot?.pakete) ? e.ssot.pakete.find((x) => istObjekt(x) && x.id === id) : null;
-    const l = prListeLesen(p?.pr);
-    if (!p || l.fehler) { va.fehler.push(`${id}: nicht in der SSOT des Kandidaten oder pr ungültig`); continue; }
-    va.paketPrs[id] = l.nummern;
-  }
-  for (const nr of new Set([va.freigabePr, ...Object.values(va.paketPrs).flat()].filter(Number.isInteger))) {
-    va.prs[nr] = abfrage(`GET pulls/${nr}`, () => {
-      const p = gh(`repos/${konfig.repo}/pulls/${nr}`);
-      const r = gh(`repos/${konfig.repo}/pulls/${nr}/reviews?per_page=100`, ["--paginate", "--slurp"]).flat();
-      return { autor: p.user?.login ?? null, kopf: p.head?.sha ?? null, gemergt: !!p.merged_at,
-        reviews: r.map((x) => ({ state: x.state, autor: x.user?.login ?? null, commit: x.commit_id ?? null })) };
-    });
-  }
-  ew.vierAugen = va;
+  ew.vierAugen = vierAugenSammeln(e, w, gh, konfig, c.vierAugenPakete);
   return ew;
 }
 
@@ -2214,6 +2541,22 @@ function ausnahmeSpur(hq, releaseId, { online, wurzel: w, fx }, konfig) {
   return pfade.length ? { unklar: false, text: pfade.slice(0, 5).join(", ") } : null;
 }
 
+/**
+ * RST-5 Wiederholung: liegt in HEAD ein gültiger Abbruchbeleg dieses Release? id nach A.8, releaseId gleich, kandidat
+ * (40 Hex) und digest (sha256:<64 hex>) gleich denen seiner Freigabedatei (fv), zeit lesbar und nicht in der Zukunft
+ * (Delta-Review #600 C-c).
+ */
+function abbruchBelegt(e, hq, releaseId, konfig, fv) {
+  const relVerz = `${konfig.freigabeVerzeichnis}/${releaseId}/`;
+  const ids = konfig.erstwechselAusnahme.widerrufbuchProbe.abbruchBedingungen;
+  return (Array.isArray(e.releaseDateien) ? e.releaseDateien : []).filter((p) => p.startsWith(relVerz) && /^abbruch-[A-Za-z0-9._-]+\.json$/.test(p.slice(relVerz.length)))
+    .some((p) => { const roh = hq.lesenRoh(p); const j = roh ? jsonLesen(Buffer.from(roh).toString("utf8")).wert : null;
+      const zeit = istObjekt(j) && typeof j.zeit === "string" ? Date.parse(j.zeit) : NaN;
+      return istObjekt(j) && j.releaseId === releaseId && typeof j.id === "string" && ids.includes(j.id) && istObjekt(fv) &&
+        hex40(j.kandidat) && j.kandidat === fv.kandidatCommit && typeof j.digest === "string" && DIGEST.test(j.digest) && j.digest === fv.digest &&
+        Number.isFinite(zeit) && Number.isFinite(e.jetztMs) && zeit <= e.jetztMs; });
+}
+
 function rueckhaltSammeln(e, hq, ctx, konfig) {
   const aus = [];
   for (const releaseId of konfig.erstwechselAusnahme.widerrufbuchProbe.releaseIds.filter((x) => x !== e.releaseId)) {
@@ -2225,10 +2568,10 @@ function rueckhaltSammeln(e, hq, ctx, konfig) {
       // nie eine Datei unter <id>/nachhol/ oder <id>/abbruch-* in HEAD oder seiner Geschichte)
       const spur = ausnahmeSpur(hq, releaseId, ctx, konfig);
       // H-2: „nicht prüfbar“ und „Spuren gefunden“ getrennt melden (beide NO-GO)
-      if (spur) aus.push({ datei, releaseId, fehler: spur.unklar ? `ohne Ausnahme; Spuren nicht prüfbar: ${spur.text}` : `ohne Ausnahme, aber Spuren einer Nutzung: ${spur.text}` });
+      if (spur) aus.push({ datei, releaseId, art: spur.unklar ? "unklar" : "spur", abbruchBelegt: abbruchBelegt(e, hq, releaseId, konfig, j.wert), fehler: spur.unklar ? `ohne Ausnahme; Spuren nicht prüfbar: ${spur.text}` : `ohne Ausnahme, aber Spuren einer Nutzung: ${spur.text}` });
       continue;
     }
-    aus.push({ datei, releaseId, daten: nachholDaten(hq, releaseId, ctx, konfig) });
+    aus.push({ datei, releaseId, daten: nachholDaten(hq, releaseId, ctx, konfig), abbruchBelegt: abbruchBelegt(e, hq, releaseId, konfig, j.wert) });
   }
   return aus;
 }
@@ -2301,6 +2644,7 @@ export function sammeln(opt, konfig = KONFIG_STANDARD) {
   e.listeSha256 = listeRoh ? sha256(Buffer.from(listeRoh)) : null;
   e.headCommit = online ? (() => { try { return git(w, ["rev-parse", "HEAD"]); } catch { return null; } })() : (hex40(fx.headCommit) ? fx.headCommit : null);
   if (istObjekt(e.freigabe) && e.freigabe.erstwechselAusnahme !== undefined) e.erstwechsel = erstwechselSammeln(e, kq, hq, ctx, konfig);
+  if (istObjekt(e.freigabe) && istObjekt(e.freigabe.wiederholung)) e.wiederholung = wiederholungSammeln(e, kq, hq, ctx, konfig);
   e.rueckhalt = rueckhaltSammeln(e, hq, ctx, konfig);
 
   if (!online) {
