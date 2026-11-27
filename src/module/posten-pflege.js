@@ -23,8 +23,9 @@
 import { createElement as h, useState, Fragment } from "react";
 import {
   postenLage, pruefeObjekte, einteilungSetzen, objektHinzufuegen, postenHinzufuegen, postenAendern, sollSetzen,
-  objektEntfernen, postenEntfernen, objekteAusDienstarten, postenIndex, POSTEN_GRENZEN,
+  objektEntfernen, postenEntfernen, objekteAusDienstarten, postenIndex, postenAbschnitte, POSTEN_GRENZEN,
 } from "../../server/lib/modul-posten.mjs";
+import { PostenWechsel } from "./posten-wechsel.js";
 
 const RAHMEN = { border: "1px solid currentColor", borderRadius: "var(--v4-r-klein)", padding: 12, overflowWrap: "anywhere" };
 const FELD = { display: "grid", gap: 4, maxWidth: "100%" };
@@ -70,7 +71,9 @@ export function PostenEinteilung({ m, datum, personenImDienst, schreibe }) {
   return h("div", { style: { ...RAHMEN, display: "grid", gap: 8 } },
     h("h3", { style: { margin: 0, fontSize: 15 } }, `Einteilung am ${datum}`),
     personen.map((p) => {
-      const aktuell = plan[`${p.id}|${datum}`];
+      /* Mit Postenwechsel zeigt die Auswahl den Anfangsposten (posten-wechsel.js zeigt und ändert die Wechsel). */
+      const roh = plan[`${p.id}|${datum}`];
+      const aktuell = Array.isArray(roh) ? (postenAbschnitte(roh) || [{ posten: "(nicht lesbar)" }])[0].posten : roh;
       const bekannt = alle.some((e) => e.posten.id === aktuell);
       return h("label", { key: p.id, style: FELD }, personName(p),
         h("select", { "aria-label": `Posten für ${personName(p)} am ${datum}`, style: EINGABE,
@@ -151,5 +154,6 @@ export function PostenErgaenzung({ k }) {
   return h(Fragment, null,
     h(PostenHinweise, { m: k.m, datum: k.datum, dienstId: k.dienstId, personenImDienst: k.personenImDienst }),
     h(PostenEinteilung, { m: k.m, datum: k.datum, personenImDienst: k.personenImDienst, schreibe }),
+    h(PostenWechsel, { m: k.m, datum: k.datum, dienstId: k.dienstId, personenImDienst: k.personenImDienst, schreibe: k.postenWechsel === true ? schreibe : null }),
     h(PostenPflege, { m: k.m, schreibe }));
 }

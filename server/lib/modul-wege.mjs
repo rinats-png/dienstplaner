@@ -31,6 +31,7 @@ import { funktionsZusammen } from "./modul-funktionsdienst.mjs";
 import { rotationZusammen } from "./modul-rotation.mjs";
 import { pflegeZusammen, pflegeQualAenderung } from "./modul-pflegequal.mjs";
 import { BRANCHENMODULE, modulAktiv, gleich } from "./branchenmodule.mjs";
+import { postenIdsVon } from "./modul-posten.mjs";
 import { betriebstag } from "./betriebszeit.mjs";
 
 const istObjekt = (x) => !!x && typeof x === "object" && !Array.isArray(x);
@@ -83,13 +84,14 @@ function loeschung(ktx, modul) {
 
 /** Wer an dem Tag auf einem Posten des Objekts eingeteilt ist (Postenplan „Person|Tag“ → Posten-Kennung).
     Maßgeblich ist der GESPEICHERTE Stand: Wer Posten und Eintrag im selben Speichern setzt, trägt nichts ein. */
-function darfEintragen(altM) {
+export function darfEintragen(altM) {
   const plan = istObjekt(altM && altM.postenPlan) ? altM.postenPlan : {};
   const objekte = Array.isArray(altM && altM.objekte) ? altM.objekte : [];
   return (objektId, datum, person) => {
-    const posten = plan[`${person}|${datum}`];
+    /* Postenwechsel (WP-19.1, W10): einer der Abschnitte des Tages auf einem Posten des Objekts genügt; unlesbar → keiner. */
+    const posten = postenIdsVon(plan[`${person}|${datum}`]);
     const o = objekte.find((x) => istObjekt(x) && x.id === objektId);
-    return posten !== undefined && !!o && Array.isArray(o.posten) && o.posten.some((p) => istObjekt(p) && p.id === posten);
+    return posten.length > 0 && !!o && Array.isArray(o.posten) && o.posten.some((p) => istObjekt(p) && posten.includes(p.id));
   };
 }
 

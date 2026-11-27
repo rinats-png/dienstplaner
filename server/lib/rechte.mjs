@@ -40,7 +40,7 @@ import { textimportOrgVerweigert } from "./import/org.mjs";
 import { anlagenZusammen } from "./modul-anlagen.mjs";
 import { maschinenqualZusammen } from "./modul-maschinenqual.mjs";
 import { geteilterdienstZusammen } from "./modul-geteilterdienst.mjs";
-import { postenZusammen } from "./modul-posten.mjs";
+import { postenZusammen, postenWechselZusammen } from "./modul-posten.mjs";
 import { bereichsplanZusammen, bereichsPlanSchicht, bereichsprotokollEintrag, bereichsprotokollAnhaengen, bereichsprotokollVoll } from "./modul-bereichsplan.mjs";
 import { createHash } from "node:crypto";
 import { fallAusAbwesenheit, svZustaendig, krankSchrittErlaubt, krankmeldungMitteilungen } from "./krankmeldung.mjs";
@@ -1708,6 +1708,9 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
       const ausnahmeFuer = (id) => !!moduldatenAusnahme && typeof moduldatenAusnahme === "object" && moduldatenAusnahme.modul === id;
       const posten = postenZusammen(geschickt, ort.betrieb, { bekannt: !ausnahmeFuer("posten") });
       if (posten.grund) return { verweigert: posten.grund };
+      /* Postenwechsel (WP-19.1, W3): neu anlegen oder ändern nur Leitung und Planung (nicht Kundenrolle, nicht Demo). */
+      const wechsel = postenWechselZusammen(geschickt, ort.betrieb, sitzung);
+      if (wechsel.grund) return { verweigert: wechsel.grund };
       /* Bereichsplan (WP-19): Bereiche je Einheit und Zuordnung, nur Neues oder Geändertes streng. */
       const bereiche = bereichsplanZusammen(geschickt, ort.betrieb, { bekannt: !ausnahmeFuer("bereichsplan") });
       if (bereiche.grund) return { verweigert: bereiche.grund };

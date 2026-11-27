@@ -65,6 +65,8 @@ export function modulKontext({ sitz, kontext } = {}) {
     wachbuchZugriff: wachbuchZugriffFuer(rolle),
     berichtZugriff,
     postenSchreiben: postenSchreibenFuer(rolle),
+    /* Postenwechsel (WP-19.1, W3): wie der Server nur Leitung und Planung und nie in einer Demo-Sitzung (Server 403 bleibt). */
+    postenWechsel: postenSchreibenFuer(rolle) && !(sitz && sitz.demo === true),
     bereichSchreiben: bereichSchreibenFuer(rolle),
     protokollArchiv: protokollArchivFuer(rolle),
     person: person && person.id !== undefined && person.id !== null ? String(person.id) : null,

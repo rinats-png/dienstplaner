@@ -480,7 +480,9 @@ Geprüft in `pruefungen/branchenmodule.test.js`.
   (`postenZusammen`: Kennungen, Soll 0 bis 99, Schlüssel mit echtem Tag, nur Neues oder Geändertes streng). Die
   Selbstauskunft nach Art. 15 DSGVO nennt die eigenen Einteilungen auf Posten (`postenzuordnungen`). Befunde nur
   als Hinweis und nur bei aktivem Modul. Die Posten-Dienstarten des Bestands (`posten: true`) bleiben unverändert.
-  Geprüft in `pruefungen/modul-posten.test.js`.
+  Postenwechsel innerhalb eines Dienstes (WP-19.1, Wert als Liste zeitlich abgegrenzter Abschnitte): anlegen und ändern
+  nur Leitung und Planung (`postenWechselZusammen`; nicht Kundenrolle, nicht Demo), Schreibweg der Schichtverantwortung
+  bleibt geschlossen; Sicht wie `postenPlan`. Geprüft in `pruefungen/modul-posten.test.js` und `modul-posten-wechsel.test.js`.
 - *Bereichsplan* (`server/lib/modul-bereichsplan.mjs`): ein neues Betriebsfeld und ein Feld an der Einheit. Die Bereiche
   (`einheiten[].bereiche`: Kennung, Name, Soll je Dienstart; keine Personendaten) liefert der Server mit den Einheiten
   an alle Rollen. `bereichsPlan` (Zuordnung, Schlüssel „Person|Tag“ → Bereich) sehen Beschäftigte nur für sich selbst,
