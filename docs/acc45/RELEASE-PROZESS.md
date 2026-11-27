@@ -1,4 +1,4 @@
-# Release-Prozess (REL-1, Stand 2026-11-20)
+# Release-Prozess (REL-1, Stand 2026-11-27)
 
 Diese Richtlinie legt fest, wie ein Stand von `integration/release-v4` in die Produktion kommt. Sie wiederholt
 vorhandene Dokumente nicht, sie verweist darauf. Lückenanalyse: [RELEASE-LUECKENANALYSE-2026-11-20.md](RELEASE-LUECKENANALYSE-2026-11-20.md).
@@ -7,6 +7,12 @@ Zielablauf (Betreiberauftrag 2026-11-20): Entwicklung → Review → vollständi
 Deployment → Live-Abnahme.
 
 Diese Richtlinie genehmigt kein Deployment. Sie ändert keinen Workflow.
+
+**Berichtigung 2026-11-27 (RST-1, nur Text, keine Gate-Regel geändert).** Berichtigt sind: (1) §2 „Es gibt keinen Teil-Release“ und die
+Kadenz „höchstens ein Release je Woche (Vorschlag)“, jetzt die vom Betreiber am 2026-11-24 beauftragte Kadenz, mit getrennten Altersbegriffen
+(Kandidat, Bildabfrage, Nachweise) und Wechselregel; (2) §3 Rolle Claude: „Kandidat nach `main`“ ohne Merge-Freigabe (der Rest der Zeile war schon durch #529 berichtigt: der Betreiber löst
+den Bildbau aus); (3) §4: der seit #598 notwendige Migrationsnachweis am Digest; (4) neuer §9: die tägliche Release-Manager-Routine als
+Beschreibung. Das Titeldatum ist auf 2026-11-27 aktualisiert (der Struktur-Test bindet nur noch das Datumsformat); die ältere Fassung stammt vom 2026-11-20, der Stand einzelner Abschnitte steht jeweils im Text.
 
 ## 1. Begriffe
 
@@ -34,17 +40,71 @@ Ein PR kommt nur in ein Paket, wenn alle Punkte gelten:
 5. Alle Gates sind grün auf genau dem Kopf-SHA des Kandidaten.
 
 Passt ein PR nicht, bleibt der ganze Kandidat NO-GO. Dann gilt: PR zurücknehmen (Revert-PR) **oder** auf das nächste
-Paket warten. Es gibt keinen Teil-Release.
+Paket warten.
 
-**Kadenz (Vorschlag, Entscheidung beim Betreiber):** höchstens ein Release je Woche. Mindestabstand 72 h zwischen zwei
-Releases, damit die Beobachtungsphase (Phase 6, 24 h) und eine Sicherungsrunde abgeschlossen sind. Dringende
-Sicherheitskorrekturen dürfen den Abstand unterschreiten; die Gates gelten trotzdem alle.
+**Teil-Umfang (berichtigt 2026-11-27).** Vorher stand hier „Es gibt keinen Teil-Release“. Das war zu pauschal und widersprach dem
+Betreiberauftrag vom 2026-11-24 (Teil-Umfang durch Schalter, wo fachlich und technisch geeignet). Es gilt:
+
+- Der Schnitt S ist unveränderlich (§1); einzelne Commits aus einem Kandidaten **wegzulassen** gibt es nicht (Baum(M) = Baum(S)).
+- Teil-Umfang entsteht über Nr. 3 (neue Funktion mit Schalter `AUS`, Standard bei unfertigem Umfang) und die einzeln begründeten Annahmen
+  nach Nr. 4. Ein Schalter ersetzt nie Sicherheit, Berechtigung oder Migration: Startschreibvorgänge W-1 bis W-9 laufen unabhängig von
+  Schaltern (G5).
+- Ein Release **ohne** V4-Migration (Korrektur auf dem produktiven Bild `274bfa0`) ist im heutigen Prozess nicht möglich: `deploy.yml`
+  liefert nur von `main` (`deploy.yml:203`), G10 verlangt den Kandidaten als Vorfahr von `main`-HEAD, und jeder Release außer `v4-r1`
+  ist in G6 NO-GO, solange `v4-r1.freigabe.json` nicht in HEAD liegt (§8). Eine Hotfix-Regel gibt es nicht; sie wäre eine
+  Betreiberentscheidung mit eigener Gate-Konfiguration und ist hier **nicht** beschlossen.
+
+**Kadenz (berichtigt 2026-11-27; Betreiberauftrag „Paralleler Entwicklungs- und Release-Betrieb“, 2026-11-24).** Vorher stand hier als
+Vorschlag „höchstens ein Release je Woche“; das widersprach der beauftragten Spanne. Zielkadenz (Takt der Prüfung, keine Pflicht zum Release):
+
+| Stufe | Kadenz | Bedingung |
+|---|---|---|
+| Integration | fortlaufend | nach Review und voller CI, wie bisher |
+| Staging | alle 12 bis 24 h | nur bei freigabefähigen Änderungen seit dem letzten Staging-Stand. **Heute nicht wirksam:** das Runner-Staging (`staging-gate.yml`) ist ausgeschaltet, solange der Betreiber `STAGING_GATE_AKTIV` nicht setzt (§7); bis dahin gibt es keinen Staging-Takt |
+| Produktion | 3 bis 7 Tage | nur wenn G1 bis G10 auf dem Kandidaten GO sind. Mindestabstand 72 h zwischen zwei Releases bleibt (Beobachtungsphase Phase 6, 24 h, und eine Sicherungsrunde) |
+| Sicherheitskorrektur | beschleunigt | darf den Abstand unterschreiten; die Gates gelten trotzdem alle |
+
+Keine künstlichen Releases ohne Mehrwert: Sind seit dem Stand `aktiv` keine freigabefähigen Änderungen hinzugekommen, entfällt der Schnitt.
+Die Website ist ein eigenes Release-Produkt mit eigenem Zyklus (Betreiber 2026-11-24, Option A); diese Richtlinie regelt nur die App.
+
+**Alter von Kandidat und Nachweisen; Wechselregel (neu 2026-11-27; Betreiberentscheidung 2026-11-27, Prozessregel).** Vier Altersbegriffe sind
+getrennt zu halten:
+
+| Was | Frist | Quelle |
+|---|---|---|
+| Release-Kandidat (unveränderlicher Schnitt S, Bild, Digest) | **keine automatische Frist.** Ein Kandidat verfällt nicht nach sieben Tagen | Betreiberentscheidung 2026-11-27 |
+| Bildabfrage (`--bild-info`, §4) | höchstens 7 Tage | `bildInfoMaxTage: 7` in `werkzeug/release-pruefung.mjs` (G4) |
+| Staging-Nachweis (E6, §8) | höchstens 7 Tage | `stagingMaxTage: 7` in `werkzeug/release-pruefung.mjs` |
+| weitere zeitgebundene Sicherheits- und Freigabenachweise | je Nachweis die Frist im Werkzeug (Sicherung höchstens 26 h, Restore-Probe und Widerrufbuch-Probe höchstens 35 Tage, G6) | `sicherung` in `werkzeug/release-pruefung.mjs` |
+
+- **Abgelaufene Nachweise werden erneuert**, der Kandidat bleibt dabei unverändert. Ein unverändertes, weiterhin geeignetes Bild darf mit
+  aktualisierten Nachweisen erneut bewertet werden (Phase 0 bis 2b, §4).
+- **Ein neuer Kandidat ist nur bei konkreten Gründen nötig:** fachlich (freigabefähige Änderungen im Delta, die ausgeliefert werden sollen),
+  technisch (Änderung an Produkt, Bild oder Sicherheitsteilen; roter Lauf auf S, dessen Ursache nur eine Codeänderung behebt, §6 G1),
+  sicherheitsrelevant (Befund im Kandidaten) oder betrieblich (Basis oder Vorgabe des Betreibers hat sich geändert). Alter allein ist kein Grund.
+- Ein Kandidat wird **nie still geändert** (kein Nachbessern am bestehenden Schnitt, kein Austausch des Bilds unter derselben Listenzeile). Ein
+  Wechsel ist nur mit **neuem Schnitt S, neuem Digest, neuer Listenzeile, neuer Freigabedatei** und einer ausdrücklichen Mitteilung an den Betreiber
+  zulässig. Welche **Release-ID** dabei gilt, steht nicht hier, sondern in den Regeln zum Erstwechsel:
+  - **Erstwechsel vor T0:** Die Release-ID bleibt `v4-r1` (Betreiberentscheidung F3; Konfiguration `releaseIds: ["v4-r1"]` in
+    `werkzeug/release-pruefung.mjs`; [RUNBOOK-ERSTWECHSEL-V4R1.md](RUNBOOK-ERSTWECHSEL-V4R1.md) Abschnitt „Abbruch vor dem Start aus Codeursache“:
+    der alte Kandidat wird in der Freigabeliste `gesperrt`, die Ausnahme ist nicht verbraucht). Eine andere ID hätte keine Ausnahme der
+    Widerrufbuch-Probe (G6, §8) und wäre dauerhaft NO-GO, solange `v4-r1.freigabe.json` nicht in HEAD liegt.
+  - **Nach verbrauchter Ausnahme** (erster tatsächlicher V4-Start, F10): eine neue Release-ID gilt nur über den vorgesehenen Wiederholungspfad
+    (PR #600, WH1 bis WH8; **noch nicht gemergt, in Review**, deshalb hier nicht als geltend beschrieben).
+  - **Abgebrochener Auslieferungsversuch:** Vorgesehen ist (Betreiberentscheidung 2026-11-27; die Umsetzung im Gate ist PR #600, **noch nicht gemergt, in
+    Review**), den Versuch mit **demselben Kandidaten und Digest** zu wiederholen: neue Versuchskennung, neue Betreiberfreigabe und aktuelle,
+    an den Digest gebundene Nachweise. Ein anderer Commit oder Digest ist nur bei einer Änderung an Produkt, Bild oder Sicherheitsteilen nötig.
+  - **Folge-Releases** nach einem abgeschlossenen `v4-r1`: neue Release-ID wie in §1 und §8.
+  - Neustart mit **demselben Digest** nach A-START/A-ABN (Umgebungsursache) ist kein Kandidatenwechsel (§8).
+  `werkzeug/release-kandidat.mjs` bricht bei einem vorhandenen Zweig auf anderem Commit oder einer vergebenen Release-ID ab
+  ([RST-2-nachweis.md](RST-2-nachweis.md) §1); das ist eine Werkzeug-Grenze, keine Aussage über die Wahl der ID. Das passt zu G1 bei rotem Lauf (§6):
+  neue SHA, kein Neustart.
 
 ## 3. Rollen
 
 | Rolle | Aufgabe |
 |---|---|
-| Claude (Entwicklung, Integration) | PRs, Reviews, Integration, Kandidat nach `main` (B-9), Bildbau **vorbereiten** (Befehl und Unterlagen liefern, nicht auslösen), Release-Prüfung, Listen-PR, Berichte |
+| Claude (Entwicklung, Integration) | PRs, Reviews, Integration, Kandidat nach `main` (B-9, **nur nach ausdrücklicher Merge-Freigabe des Betreibers**, §7), Kandidaten-Unterlagen (RST-2: Trockenlauf Standard, nur lesend; `--anlegen` nur lokaler Zweig; `--ausfuehren` mit Push und Entwurfs-PR nur auf ausdrücklichen Auftrag des Betreibers, PR #601 noch in Review und nicht gemergt), Bildbau **vorbereiten** (Befehl und Unterlagen liefern, nicht auslösen), Release-Prüfung, Listen-PR, Berichte |
 | Unabhängiger Prüfer (Agent F oder zweites Modell) | Review je PR, Beleg in `REVIEW-NACHWEIS*.md` oder PR-Text |
 | Betreiber | Freigabedatei commiten; Migration freigeben; Sicherung und Restore-Probe; **löst aus**: `workflow_dispatch` von „Auslieferung“ mit Umgebung `produktion` (ab dem zweiten Wechsel) oder `deploy.sh` von Hand (erster Wechsel, O-2 a); Live-Abnahme; Entscheidung bei Rückweg |
 
@@ -83,7 +143,13 @@ nach dem Kandidaten nur `docs/acc45/releases/` und `deploy/FREIGEGEBENE-IMAGES.m
 | 5 Live-Abnahme | Go-Kriterien G-a bis G-f innerhalb 60 min | Betreiber | Vermerk mit Uhrzeit | Produktionsweg §3.6 Phase 2 |
 | 6 Beobachtung und Rückweg | 24 h Beobachtung (`/gesund`, Alarm; Außenabruf wiederholt mit `CENTRIC_SMOKE_PROTOKOLL=<datei>`, eine JSON-Zeile je Lauf, [RST-7-nachweis](RST-7-nachweis.md)); Rückweg nach Entscheidungsbaum: R0, Vorwärts-Reparatur, Datenrücksprung nur bei Datenschaden | Betreiber | Protokoll, ggf. Listenzeile `gesperrt` | Produktionsweg §3.4–3.6 |
 
-Bricht eine Phase ab, beginnt der Ablauf wieder bei Phase 0 mit einem neuen Kandidaten.
+Bricht eine Phase ab, beginnt der Ablauf wieder bei Phase 0; abgelaufene Nachweise und Bildangaben werden erneuert. Ein neuer Kandidat ist nur bei den konkreten Gründen aus §2 nötig (neuer Schnitt und Digest; die Release-ID richtet sich nach §2 Wechselregel, für den Erstwechsel bleibt sie `v4-r1`); ein unverändertes, weiterhin geeignetes Bild wird mit aktualisierten Nachweisen erneut bewertet.
+
+**Pflichtnachweis Migration (ergänzt 2026-11-27, seit #598; Betreiberentscheidung 2026-11-27).** Beim Erstwechsel von `274bfa0` ist der
+Migrationsnachweis am **exakten Kandidaten-Digest** notwendig: das Feld `migrationsprobe` im Staging-Nachweis eines **erfolgreichen
+Runner-Laufs** von `staging-gate.yml` (E6, über E7 an den Lauf gebunden). Fehlt er, ist G5 NO-GO und E6 in G6 nicht erfüllt. Ein lokaler oder
+statischer Nachweis ersetzt den Runner-Lauf nicht. Das Gate ist schon so umgesetzt; hier steht nur, was die Phasen 1 bis 2b dafür vorlegen
+müssen. Einzelheiten: [RST-5-nachweis.md](RST-5-nachweis.md) Teil 3 und Freigabe-Checkliste F-4a im [Produktionsweg](PRODUKTIONSWEG-VORBEREITUNG-2026-11-20.md).
 
 **Bildangaben (`--bild-info`):** eine JSON-Datei `{ "abgefragtAm": "<ISO-Zeit>", "quelle": "docker buildx imagetools inspect …", "roh": <Ausgabe von --format '{{json .}}'> }`.
 Die Abfrage darf höchstens 7 Tage alt sein; Digest, Label und Provenienz darin müssen zum Kandidaten passen.
@@ -239,6 +305,34 @@ Vor dem ersten V4-Start gibt es keine Widerrufbücher, also keine Widerrufbuch-P
 - **Folge-Release:** Für jeden Release ≠ `v4-r1` muss `v4-r1.freigabe.json` in HEAD liegen; trägt sie die Ausnahme, ist G6 NO-GO, bis deren Nachhol-Ablage `NACHHOL-GO` ergibt (einzige Abweichung: nur A-REPO und `nachholAbweichung`). Die Basis spielt keine Rolle. **Folge: Jeder Release ≠ `v4-r1` (auch ein V3-Hotfix vor v4-r1) ist in G6 NO-GO, solange `v4-r1.freigabe.json` nicht in HEAD liegt.** Ohne Ausnahme in der Datei nur, wenn sie nie eingetragen wurde (keine frühere Fassung mit Ausnahme, nie Dateien unter `v4-r1/nachhol/` oder `v4-r1/abbruch-*`, auch nicht `abbruch-A-VOR.json`). Das gilt fail-closed auch nach einem A-VOR-Abbruch ohne V4-Start; einziger Ausweg ist, v4-r1 mit der Ausnahme abzuschließen, oder eine Codeänderung mit Gate-Freigabe. Endprüfung und `--nachhol` brauchen einen vollen Klon (flacher Klon ⇒ NO-GO `FLACHER-KLON`; `info/grafts` oder `refs/replace/*` ⇒ NO-GO `GRAFT-ODER-REPLACE`).
 - **Neustart nach A-START/A-ABN (Umgebungsursache):** derselbe Digest ohne neue Endprüfung, kein neues T0, keine Abbruchdatei; `abbruch-<ID>.json` nur bei endgültigem Abbruch (dann verbraucht, W-NACH).
 - **Staging auf S (B-3):** Workflow-Änderung als Patch (GATE-EW3, Betreiber übernimmt); ohne B-3 gilt: Staging-Lauf nur, solange `main` = M.
+
+## 9. Tägliche Release-Manager-Routine (Beschreibung, neu 2026-11-27)
+
+Nur Beschreibung. Sie aktiviert nichts, ändert keinen Workflow, genehmigt keinen Schnitt und kein Deployment und legt keine Statusdatei an.
+Ob und wann daraus eine geplante Routine wird, entscheidet der Betreiber; bis dahin führt eine laufende Claude-Sitzung sie einmal je Tag
+aus. Die Cloud-Routine ist laut [AUTONOMIE-ARCHITEKTUR.md](AUTONOMIE-ARCHITEKTUR.md) (Zeile „Fehlender Wiederanlauf“) nur ein Entwurf und nicht aktiv geändert. Die Routine
+liest nur; schreiben darf sie Statusbericht und Vorschlag. Sie löst nie Bildbau oder Deployment aus (§3).
+
+| Schritt | Inhalt | Quelle |
+|---|---|---|
+| 1 Stand | Kopf `integration/release-v4`; Kandidat (`release/rc-<id>`, Schnitt S, Alter in Tagen, Abstand zu `integration/release-v4`); Zeile `aktiv` der Freigabeliste; Delta seit `aktiv` (Anzahl PRs, Pfadklassen, Schalter, Migrationen) | `git`, `deploy/FREIGEGEBENE-IMAGES.md`, `node werkzeug/release-kandidat.mjs --kandidat <S> --basis <aktiv-Commit> --release-id <id>` (Trockenlauf) |
+| 2 Gates und Nachweisalter | Vorprüfung (Phase 0): welche Gates sind NO-GO und warum; **welche Nachweise und Bildangaben abgelaufen sind** (Fristen in §2); welche brauchen einen neuen Commit, welche nur Erneuerung, welche eine Betreiberhandlung | `node werkzeug/release-pruefung.mjs` (§4) |
+| 3 Staging | letzter Staging-Nachweis (Digest, Alter, `migrationsprobe`); solange `STAGING_GATE_AKTIV` nicht gesetzt ist: „Staging nicht aktiv“ | §4, §7 |
+| 4 Eignung | **Weitere Eignung** des (älteren) Kandidaten prüfen: Abstand zu `integration/release-v4`, bekannte Sicherheitsbefunde, abgelaufene Nachweise, Änderungen an Produkt, Bild oder Sicherheitsteilen; **Neuer Kandidat ja/nein** nur als Vorschlag nach der Tabelle darunter, mit Begründung | §2 |
+| 5 Bericht | erweitertes Statusformat des Betreiberauftrags 2026-11-24: Integrations-Commit, Release-Kandidat, Staging-Stand, Produktionsstand, seit dem letzten Release integrierte Änderungen, nächstes freigabefähiges Inkrement, Release-Blockaden, Betreiberhandlungen, Prognose nächster Release, Ergebnis des letzten Deployments; getrennt nach entwickelt, integriert, auf Staging, produktiv, fachlich freigegeben | Statusbericht |
+
+Entscheidung „neuer Kandidat“ (Vorschlag der Routine; der Betreiber entscheidet; **die Routine erzwingt nie einen neuen Schnitt oder Imagebau**; ein neuer Schnitt braucht neuen Digest, neue Listenzeile, neue Freigabedatei und Mitteilung; die Release-ID folgt §2, für den Erstwechsel vor T0 bleibt sie `v4-r1`):
+
+| Lage | Vorschlag |
+|---|---|
+| Kandidat unverändert geeignet (Gates, Sicherheit, Abstand), auch wenn älter | behalten; abgelaufene Nachweise und Bildangaben erneuern und erneut bewerten |
+| Nachweise oder Bildabfrage abgelaufen | nur erneuern (Betreiber- oder Runner-Handlung), kein neuer Kandidat |
+| Sicherheitsbefund im Kandidaten bekannt | neuer Schnitt mit der Korrektur, beschleunigt (§2) |
+| rotes G1 auf S, Ursache nur durch Codeänderung behebbar | neuer Schnitt (§6, G1 bei rotem Lauf) |
+| Änderung an Produkt, Bild oder Sicherheitsteilen nötig, oder großer Abstand zu `integration/release-v4` mit freigabefähigem Delta | neuen Schnitt vorschlagen, mit konkretem Grund; die Entscheidung trifft der Betreiber |
+| Delta seit `aktiv` ohne freigabefähige Änderung | kein Schnitt (keine künstlichen Releases) |
+
+Die Routine ändert keine Gate-Regel, keine Freigabeliste und keine Freigabedatei und gibt nichts frei.
 
 ## Anhang A — Vorschlag Workflow-Härtung (REL-2, nur Text)
 

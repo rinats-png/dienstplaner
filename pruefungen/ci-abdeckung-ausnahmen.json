@@ -14,6 +14,11 @@
     "vorlaeufig": true
   },
   {
+    "skript": "pruefung:k4-heuristik-zaehler",
+    "grund": "K4-P2: Schritt in .github/workflows/pruefung.yml fehlt noch, weil Workflow-Änderungen der Betreiber gebündelt macht (Patch-Vorschlag in der PR-Beschreibung); danach diesen Eintrag entfernen.",
+    "vorlaeufig": true
+  },
+  {
     "skript": "pruefung:rst5-migrationsprobe",
     "grund": "RST-5: lokaler Skriptlauf der synthetischen Migrationsprobe (echter Server, ≈ 2 min). Schritt in .github/workflows/pruefung.yml fehlt noch, weil Workflow-Änderungen der Betreiber gebündelt macht (Patch-Vorschlag docs/acc45/workflow-patches/rst-5/README.md); danach diesen Eintrag entfernen.",
     "vorlaeufig": true
