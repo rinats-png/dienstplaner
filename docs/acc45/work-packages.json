@@ -4,9 +4,9 @@
   "anzahl": 295,
   "statusZaehlung": {
     "BLOCKED": 112,
-    "READY": 25,
+    "READY": 24,
     "IN_PROGRESS": 23,
-    "REVIEW": 12,
+    "REVIEW": 13,
     "INTEGRATED": 120,
     "DONE": 3
   },
@@ -15,8 +15,8 @@
       "pakete": 143,
       "offen": 57,
       "restPT": {
-        "min": 74.1,
-        "max": 126.65
+        "min": 73.69999999999999,
+        "max": 126.25
       }
     },
     "wp19": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 342.7,
-    "max": 586.65
+    "min": 342.3,
+    "max": 586.25
   },
   "kritischerPfad": {
     "summe": 54,
@@ -8079,22 +8079,22 @@
       "prio": "P2",
       "aufwandPT": {"min":0.5,"max":0.5},
       "abhaengigkeiten": [],
-      "status": "READY",
+      "status": "REVIEW",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"PR #599, Branch acc45/release/k4-p2-heuristik-zaehler (26292cc7): werkzeug/k4-heuristik-zaehler.mjs, Nachweis docs/acc45/K4-P2-nachweis.md"},
+        "lokalGetestet": {"wert":true,"beleg":"lokal 2026-11-27 (Windows, TZ=UTC, --maxWorkers=1): pruefungen/k4-heuristik-zaehler.test.js 48/48 (inkl. Selbststart-/starten-Fall beider Schichten, Review #599 B-1); Zahlen gegen K4-P3-Plan mit Leseschicht von 274bfa0 und heutiger; 24 Mutationen je Schutz rot; prozess-wachen, ci-abdeckung, acc45-status, ssot-belege gruen. CI-Schritt fehlt (Ausnahme vorlaeufig in ci-abdeckung-ausnahmen.json); Aufruf am Produktionsbild nicht probiert"},
         "reviewt": {"wert":false,"beleg":null},
         "integriert": {"wert":false,"beleg":null},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
       },
-      "branch": null,
-      "agent": null,
+      "branch": "acc45/release/k4-p2-heuristik-zaehler",
+      "agent": "k4p2-Schreiber",
       "modell": "sonnet",
       "konfliktzonen": [],
-      "pr": [],
-      "nachweis": "Entwurf Wiederherstellung und K4 2026-11-24 (Scratchpad, nicht im Repo) Teil C",
+      "pr": ["#599"],
+      "nachweis": "docs/acc45/K4-P2-nachweis.md",
       "akzeptanz": "Zähler läuft gegen die Leseschicht von 274bfa0 und des Kandidaten, gibt nur Zahlen je Klasse aus, nie Werte; Ausgabetest „kein Wert“; vorher prüfen, ob 274bfa0 bestandLesen gleich anbietet",
       "tests": "Unit (Ausgabetest)",
       "dateien": "werkzeug/, pruefungen/",

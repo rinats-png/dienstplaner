@@ -18,17 +18,17 @@ oder `"teilweise"`, jeweils mit Beleg (PR, Commit, Nachweis). „Geplant“, „
 <!-- AUTO:BEGIN -->
 Erzeugt aus `docs/acc45/work-packages.json` (Schema 2) mit `node werkzeug/acc45-backlog.mjs status-schreiben` — nicht von Hand ändern.
 
-**Pakete gesamt:** 295 · BLOCKED 112 · READY 25 · IN_PROGRESS 23 · REVIEW 12 · INTEGRATED 120 · DONE 3
+**Pakete gesamt:** 295 · BLOCKED 112 · READY 24 · IN_PROGRESS 23 · REVIEW 13 · INTEGRATED 120 · DONE 3
 
 | Strang | Pakete | BLOCKED | READY | IN_PROGRESS | REVIEW | INTEGRATED | DONE | offener Aufwand PT |
 |---|---|---|---|---|---|---|---|---|
-| ACC45 | 143 | 42 | 5 | 7 | 3 | 84 | 2 | 74,1–126,65 |
+| ACC45 | 143 | 42 | 4 | 7 | 4 | 84 | 2 | 73,7–126,25 |
 | WP-19-Module | 15 | 12 | 0 | 2 | 0 | 1 | 0 | 62,5–97,5 |
 | Intelligence | 40 | 17 | 0 | 9 | 0 | 14 | 0 | 166–292 |
 | Folgepakete | 62 | 23 | 4 | 5 | 9 | 21 | 0 | 40,1–70,5 |
 | Extern/Entscheidungen | 35 | 18 | 16 | 0 | 0 | 0 | 1 | 20,35–46,1 |
 
-Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **342,7–586,65 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
+Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **342,3–586,25 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
 
 **Kritische Pfade** (offener Aufwand, Mitte der Spanne maßgeblich):
 
@@ -84,10 +84,13 @@ Nachtrag 2026-11-25 (Review PR #540: Status korrigiert): Status IN_PROGRESS, int
 | RST-5 Staging-Gate erweitern: Migrationsprobe mit synthetischem 274bfa0-Bestand, Betriebskennungen, Rechte/Mandanten, Widerrufbuch-Funktionstest, Bindung an exakten Digest | REVIEW | `acc45/release/rst-5-migrationsprobe` | Umfangsklasse: TECHN-ABHAENGIGKEIT. Prioritätsbegründung: P1: Ohne Probe der Migration W-1…W-9 auf einem alten Bestand und ohne Bindung des Nachweises an den exakten Digest ist der erste V4-Wechsel nicht sicher belegbar (Voraussetzung N-2/N-9 laut Koordinator-Vorgabe). Umfang: Das Gate läuft nur im Runner und nur mit synthetischen Daten: Bild mit synthetischem 274bfa0-Bestand starten, Migrationsprobe W-1…W-9, betriebskennungen-pruefen, Rechte- und Mandanten-Proben, Widerrufbuch-Funktionstest auf Staging, Nachweis-JSON mit exaktem Digest. Enthält auch die synthetische Migrationsprobe lokal als Skript (alten Stand erzeugen, Kandidat starten, Regeln prüfen; Quelle Freigabemodell-Vorschlag S-3, Bezug docs/acc45/EINRICHTUNGSKETTE-IONOS.md Abschnitt 1a); dafür wird kein eigenes Paket FREIGABE-S3 angelegt (gleiche Aufgabe, gleiche Fixture). Aktivierung (STAGING_GATE_AKTIV): Betreiberhandlung nach Stufe 1 (B2 = ja entschieden, noch nicht wirksam; N-9: nur nach belegter Digest-Bindung); wird hier nicht gesetzt. Workflow-Änderung nur als eigener PR mit Sicherheitsreview; Merge durch den Betreiber. Echte Datenkopie (P1-0) bleibt Betreiberhandlung. Reviewbedarf: Opus Sicherheit. Quelle: Release-Stillstand-Analyse 2026-11-24 (Abschnitt 7) und Koordinator-Vorgabe 2026-11-24. Aufwand SCHÄTZUNG, nicht gemessen. Konfliktzone (Dateien, nicht im SSOT-Zonenvokabular): .github/workflows/staging-gate.yml, werkzeug/, pruefungen/.
 Nachtrag 2026-11-25 (Betreiber): Verbindlich für v4-r1 (kleinerer Umfang bei Neustart: synthetischer Bestand, kein Altbestandsabgleich). K4 Pfad 0.
 Nachtrag 2026-11-27 (Betreiberentscheidung, SSOT-Auftrag zu RST-5-nachweis.md 2.4 Punkt 3): Migrationsnachweis verbindlich an den exakten Kandidaten-Digest gebunden und als notwendiger Nachweis im Release-Gate geprueft (Teil 3: G6 E6 und G5); kein neues Paket. Reviewt bleibt false bis zum Review des PR. |
+| K4-P2 K4 P-2: Heuristik-Zähler Z-2 (nur lesend, nur Zahlen je Klasse) | REVIEW | `acc45/release/k4-p2-heuristik-zaehler` | Umfangsklasse: SICHERHEIT-QUALITAET.
+Prioritätsbegründung: P2: Hilfsmittel für die Wahl des K4-Prüfwegs; Pfad 1 (Zählen) geht mit dem vorhandenen Skript bestaende-zaehlen.mjs auch ohne dieses Paket.
+Vorhandenes Skript: deploy/sicherung/hilfen/bestaende-zaehlen.mjs. K4-Grundregel: Der Betreiber beantwortet die Fragen F-1 bis F-6 selbst; es gelten keine Annahmen. Echtdaten nur in einer gesondert abgesicherten lokalen Umgebung, nie an KI-Dienste, öffentliche Runner, Cloud-Dienste oder öffentliche Repo-Bereiche; öffentliche Runner nur mit synthetischen Daten. Reihenfolge laut Entwurf: P-1, P-3, P-2, P-6, P-4, P-5, P-7/P-8. Quelle: Auftrag SSOT-Pakete 2 vom 2026-11-25 (Koordinator). Aufwand SCHÄTZUNG, nicht gemessen. |
 
-### Bereit zum Start (9)
+### Bereit zum Start (8)
 
-RST-1 (folge, 0,5–1 PT) · RST-3 (folge, 1–2 PT) · RST-9 (folge, 1–1,5 PT) · FREIGABE-S2 (folge, 0,5–1 PT) · WEBSITE-W3b (acc45, 0,5 PT) · ABN-S2-de (acc45, 0,25–0,5 PT) · ABN-S2-H (acc45, 0,25–0,5 PT) · MODINERT-L3 (acc45, 0,25–0,5 PT) · K4-P2 (acc45, 0,5 PT)
+RST-1 (folge, 0,5–1 PT) · RST-3 (folge, 1–2 PT) · RST-9 (folge, 1–1,5 PT) · FREIGABE-S2 (folge, 0,5–1 PT) · WEBSITE-W3b (acc45, 0,5 PT) · ABN-S2-de (acc45, 0,25–0,5 PT) · ABN-S2-H (acc45, 0,25–0,5 PT) · MODINERT-L3 (acc45, 0,25–0,5 PT)
 
 ### In Arbeit, fortsetzbar (17)
 
@@ -222,7 +225,7 @@ WP-40 (acc45, 1,5–2,25 PT offen) · WP-28b (folge, 0,5–1 PT offen) · WP-19.
 
 ✓ belegt · T teilweise (z. B. nur Server-Teilumfang) · – nicht erreicht oder nicht belegt. „Staging“, „Freigabe“ und
 „prod.“ stehen nur mit Beleg auf ✓. Gezeigt sind alle Pakete mit mindestens einer erreichten Stufe; alle übrigen
-90 offenen Entwicklungspakete stehen auf allen Stufen auf „–“.
+89 offenen Entwicklungspakete stehen auf allen Stufen auf „–“.
 
 | Paket | Status | impl. | lokal | Review | integr. | Staging | Freigabe | prod. |
 |---|---|---|---|---|---|---|---|---|
@@ -392,6 +395,7 @@ WP-40 (acc45, 1,5–2,25 PT offen) · WP-28b (folge, 0,5–1 PT offen) · WP-19.
 | GATE-EW4 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | GATE-EW5 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | MODINERT-L4 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
+| K4-P2 | REVIEW | ✓ | ✓ | – | – | – | – | – |
 | K4-P3 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | K4-P4 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
 | K4-P7 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
