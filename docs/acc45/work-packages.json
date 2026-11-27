@@ -7158,7 +7158,7 @@
       "status": "REVIEW",
       "stufen": {
         "implementiert": {"wert":true,"beleg":"Branch acc45/release/rst-2-kandidaten-werkzeug: werkzeug/release-kandidat.mjs (Trockenlauf Standard, --ausgabe außerhalb des Repos, --anlegen nur lokaler Zweig release/rc-<id>), Test pruefungen/release-kandidat.test.js (in pruefung:acc45-werkzeuge); Push und Entwurfs-PR bewusst nicht im Werkzeug (RST-2-nachweis.md Abschnitt 4); release-pruefung.mjs und Workflows unverändert"},
-        "lokalGetestet": {"wert":true,"beleg":"lokal 2026-11-27 (Windows, TZ=UTC, --maxWorkers=1): release-kandidat 17/17; 15 Mutationen je Schutz rot (M6 erst nach ergänztem Test)"},
+        "lokalGetestet": {"wert":true,"beleg":"lokal 2026-11-27 (Windows, TZ=UTC, --maxWorkers=1): release-kandidat 17/17; 15 Mutationen je Schutz rot (M6 erst nach ergänztem Test). Folge-PR Ausführungsmodus (--ausfuehren, Betreiberentscheidung 2026-11-27) 2026-11-27: release-kandidat 35/35 und prozess-wachen grün; 19 Mutationen je Schutz rot (N2 erst nach ergänztem Test)"},
         "reviewt": {"wert":false,"beleg":null},
         "integriert": {"wert":false,"beleg":null},
         "stagingGeprueft": {"wert":false,"beleg":null},
@@ -7169,7 +7169,7 @@
       "agent": "sonnet",
       "modell": "opus",
       "konfliktzonen": [],
-      "pr": ["#597"],
+      "pr": ["#597","#601"],
       "nachweis": "Release-Stillstand-Analyse 2026-11-24, Abschnitt 7; docs/acc45/RELEASE-PROZESS.md; docs/acc45/RST-2-nachweis.md",
       "akzeptanz": "Trockenlauf ist Standard; erzeugt außerhalb des Kandidaten Vorlage der Freigabedatei, vorlagenHashes, G2-Belegliste, G8/G9-Listen und Übergabe; rc-Zweig und Entwurfs-PR nur mit ausdrücklichem Flag (--anlegen); ändert nie einen bestehenden Kandidaten (Test); zweiter Lauf auf denselben Kandidaten byte-gleich (Test); kein Netzaufruf außer GET; kein Bildbau, kein Deploy",
       "tests": "Unit (Trockenlauf, Idempotenz, Schutz bestehender rc-Zweig)",
