@@ -1,10 +1,10 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { trockenlauf, rcAnlegen, unterlagenSchreiben, pfadklasse, pfadklassenZaehlen, lauf, main, argumenteLesen } from "../werkzeug/release-kandidat.mjs";
+import { trockenlauf, rcAnlegen, unterlagenSchreiben, pfadklasse, pfadklassenZaehlen, lauf, main, argumenteLesen, aufrufErlaubt, ausfuehrenModus, ausfuehrungOffen } from "../werkzeug/release-kandidat.mjs";
 
 const WZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../werkzeug/release-kandidat.mjs");
 const ID = "v4-test";
@@ -267,5 +267,258 @@ describe("Kommandozeile", () => {
     let code = 0;
     try { execFileSync("node", [WZ, "--kandidat", schnitt, "--basis", schnitt, "--release-id", ID, "--wurzel", repo], { stdio: "ignore" }); } catch (err) { code = err.status; }
     expect(code).toBe(1);
+  });
+});
+
+/* ------------------------------------------------------------------ RST-2 Folge: Ausführungsmodus */
+
+const RC = (id) => `release/rc-${id}`;
+const spec = (id) => `refs/heads/${RC(id)}:refs/heads/${RC(id)}`;
+const PUSH = (id, remoteName = "origin") => ["push", "--", remoteName, spec(id)];
+const PR_LIST = (id) => ["pr", "list", "--head", RC(id), "--state", "all", "--json", "number", "--jq", "length"];
+const PR_NEU = (id, base = "main") => ["pr", "create", "--draft", "--base", base, "--head", RC(id), "--title", "T", "--body", "B"];
+
+/** Protokolliert alle Fremdaufrufe; git läuft echt, gh ist ein Ersatz. */
+function mitProtokoll(gh, fn) {
+  const echt = lauf.exec;
+  const aufrufe = [];
+  lauf.exec = (cmd, args, opt) => {
+    aufrufe.push([cmd, ...args]);
+    if (cmd === "gh") return gh(args);
+    return echt(cmd, args, opt);
+  };
+  try { return fn(aufrufe); } finally { lauf.exec = echt; }
+}
+const ghOk = (args) => (args[1] === "list" ? "0\n" : "https://github.example/x/y/pull/77\n");
+const klonMitRemote = () => { const k = neuerKlon(); g(k, "remote", "set-url", "origin", remote); return k; };
+const stumm = (fn) => {
+  const l = vi.spyOn(console, "log").mockImplementation(() => {});
+  const f = vi.spyOn(console, "error").mockImplementation(() => {});
+  try { const r = fn(); return { r, out: l.mock.calls.map((c) => c.join(" ")).join("\n"), err: f.mock.calls.map((c) => c.join(" ")).join("\n") }; } finally { l.mockRestore(); f.mockRestore(); }
+};
+const schreibend = (aufrufe) => aufrufe.filter(([cmd, u]) => cmd === "gh" || (cmd === "git" && ["push", "branch"].includes(u)));
+const ARGS = (k, id, ...extra) => ["--kandidat", schnitt, "--basis", basis, "--release-id", id, "--wurzel", k, ...extra];
+
+describe("Allowlist der Fremdaufrufe", () => {
+  it("erlaubt die Lesebefehle und im Ausführungsmodus genau Push und Entwurfs-PR", () => {
+    expect(ausfuehrungOffen()).toBe(false); // Ruhezustand: geschlossen (erster Test der Datei im Lauf)
+    expect(aufrufErlaubt("git", ["log", "-z", "a..b"], false)).toBeNull();
+    expect(aufrufErlaubt("git", ["ls-remote", "--heads", "--", "origin", "refs/heads/release/rc-x1y"], false)).toBeNull();
+    expect(aufrufErlaubt("git", ["branch", "--no-track", RC("x1y"), schnitt], false)).toBeNull();
+    expect(aufrufErlaubt("git", PUSH("x1y"), true)).toBeNull();
+    expect(aufrufErlaubt("gh", PR_LIST("x1y"), true)).toBeNull();
+    expect(aufrufErlaubt("gh", PR_NEU("x1y"), true)).toBeNull();
+  });
+
+  it("lehnt Push, gh und alles Schreibende außerhalb des Ausführungsmodus ab", () => {
+    expect(aufrufErlaubt("git", PUSH("x1y"), false)).toBeTruthy();
+    expect(aufrufErlaubt("gh", PR_LIST("x1y"), false)).toBeTruthy();
+    expect(aufrufErlaubt("gh", PR_NEU("x1y"), false)).toBeTruthy();
+  });
+
+  it("lehnt force, fremde Ziele, Löschen, Merge und alles andere auch im Ausführungsmodus ab", () => {
+    const rc = spec("x1y");
+    const abgelehnt = [
+      ["git", ["push", "--force", "--", "origin", rc]], ["git", ["push", "--", "origin", `+${rc}`]], ["git", ["push", "-f", "--", "origin", rc]],
+      ["git", ["push", "--force-with-lease", "--", "origin", rc]], ["git", ["push", "--", "origin", rc, "--tags"]], ["git", ["push", "origin", rc]],
+      ["git", ["push", "--", "origin", "refs/heads/main:refs/heads/main"]], ["git", ["push", "--", "origin", "refs/heads/release/rc-x1y:refs/heads/main"]],
+      ["git", ["push", "--", "origin", "refs/heads/integration/release-v4:refs/heads/integration/release-v4"]],
+      ["git", ["push", "--", "origin", "refs/heads/release/v4-x:refs/heads/release/v4-x"]], ["git", ["push", "--", "origin", ":refs/heads/release/rc-x1y"]],
+      ["git", ["push", "--", "origin", "refs/heads/release/rc-x1y:refs/heads/release/rc-x1z"]], ["git", ["push", "--", "origin", "HEAD:refs/heads/release/rc-x1y"]],
+      ["git", ["push", "--", "https://example.invalid/r.git", rc]], ["git", ["push", "--", "../r", rc]], ["git", ["push", "--delete", "origin", RC("x1y")]],
+      ["git", ["merge", "origin/main"]], ["git", ["checkout", "main"]], ["git", ["reset", "--hard"]], ["git", ["fetch", "origin"]], ["git", ["update-ref", "-d", "refs/heads/main"]],
+      ["git", ["branch", "-D", RC("x1y")]], ["git", ["branch", "--no-track", "main", schnitt]], ["git", ["remote", "add", "x", "y"]], ["git", ["config", "x.y", "z"]],
+      ["gh", ["pr", "merge", "5", "--auto"]], ["gh", ["pr", "ready", "5"]], ["gh", ["api", "-X", "PUT", "repos/x/y/merge"]], ["gh", ["workflow", "run", "deploy.yml"]],
+      ["gh", PR_NEU("x1y").filter((a) => a !== "--draft")], ["gh", PR_NEU("x1y", "integration/release-v4")], ["gh", [...PR_NEU("x1y"), "--web"]],
+      ["gh", ["pr", "create", "--draft", "--base", "main", "--head", "main", "--title", "T", "--body", "B"]], ["gh", ["pr", "list", "--head", "main", "--state", "all", "--json", "number", "--jq", "length"]],
+      ["curl", ["https://example.invalid"]], ["ssh", ["x"]], ["node", ["x.mjs"]], ["git", "log"],
+    ];
+    for (const [cmd, args] of abgelehnt) expect(aufrufErlaubt(cmd, args, true), `${cmd} ${[].concat(args).join(" ")}`).toBeTruthy();
+  });
+});
+
+describe("Standard und --anlegen: kein Push, kein PR", () => {
+  it("Aufrufprotokoll von --anlegen: nur Lesebefehle, lokaler branch und ls-remote", () => {
+    const k = klonMitRemote();
+    const e = trockenlauf({ wurzel: k, kandidat: schnitt, basis, releaseId: "v4-anl1" });
+    const aufrufe = mitProtokoll(ghOk, (a) => { expect(rcAnlegen(k, e, "origin").ok).toBe(true); return a; });
+    expect(aufrufe.some(([cmd]) => cmd === "gh")).toBe(false);
+    const erlaubt = new Set(["rev-parse", "check-ref-format", "ls-remote", "branch"]);
+    for (const [cmd, u] of aufrufe) { expect(cmd).toBe("git"); expect(erlaubt.has(u)).toBe(true); }
+    expect(refs(remote)).not.toContain("v4-anl1");
+  });
+
+  it("main mit --anlegen ohne --ausfuehren: weder push noch gh; --ausfuehren allein ist ein Aufruffehler", () => {
+    const k = klonMitRemote();
+    const vorher = refs(remote);
+    const { r } = stumm(() => mitProtokoll(ghOk, (aufrufe) => ({ code: main(ARGS(k, "v4-anl2", "--anlegen")), aufrufe })));
+    expect(r.code).toBe(0);
+    expect(schreibend(r.aufrufe).map((a) => a[1])).toEqual(["branch"]);
+    expect(refs(remote)).toBe(vorher);
+    const z = stumm(() => mitProtokoll(ghOk, (aufrufe) => ({ code: main(ARGS(k, "v4-anl3", "--ausfuehren")), aufrufe })));
+    expect(z.r.code).toBe(2);
+    expect(z.r.aufrufe).toHaveLength(0);
+  });
+});
+
+describe("Ausführungsmodus (--anlegen --ausfuehren)", () => {
+  it("pusht den Zweig und erstellt genau einen Entwurfs-PR: Protokoll, Ausgabe, Freigabevorlage unverändert", () => {
+    const k = klonMitRemote();
+    const id = "v4-ausf1";
+    const { r, out, err } = stumm(() => mitProtokoll(ghOk, (aufrufe) => ({ code: main(ARGS(k, id, "--anlegen", "--ausfuehren")), aufrufe })));
+    expect(r.code).toBe(0);
+    const lesen = new Set(["rev-parse", "log", "rev-list", "diff", "show", "merge-base", "ls-tree", "cat-file", "check-ref-format", "ls-remote", "remote"]);
+    const rest = r.aufrufe.filter(([cmd, u]) => !(cmd === "node" || (cmd === "git" && lesen.has(u))));
+    expect(rest).toEqual([
+      ["git", "branch", "--no-track", RC(id), schnitt],
+      ["gh", ...PR_LIST(id)],
+      ["git", ...PUSH(id)],
+      ["gh", "pr", "create", "--draft", "--base", "main", "--head", RC(id), "--title", expect.any(String), "--body", expect.any(String)],
+    ]);
+    expect(g(remote, "rev-parse", `refs/heads/${RC(id)}`)).toBe(schnitt);
+    const j = JSON.parse(out);
+    expect(j.ausfuehrung.status).toBe("vollstaendig");
+    expect(j.ausfuehrung.prNummer).toBe(77);
+    expect(j.freigabeBereit).toBe(false);
+    expect(j.freigabeVorlage.kandidatCommit).toBeNull();
+    expect(j.freigabeVorlage.digest).toBeNull();
+    expect(`${out}\n${err}`).not.toMatch(/https?:\/\/|github\.example/i);
+  });
+
+  it("bestehender Remote-Zweig: Abbruch ohne Push und ohne PR, Zweig bleibt unverändert", () => {
+    const k = klonMitRemote();
+    const id = "v4-ausf2";
+    g(k, "push", "-q", "origin", `${basis}:refs/heads/${RC(id)}`);
+    const vorher = refs(remote);
+    const { r } = stumm(() => mitProtokoll(ghOk, (aufrufe) => ({ code: main(ARGS(k, id, "--anlegen", "--ausfuehren")), aufrufe })));
+    expect(r.code).toBe(1);
+    expect(r.aufrufe.some(([cmd, u]) => cmd === "gh" || u === "push")).toBe(false);
+    expect(refs(remote)).toBe(vorher);
+  });
+
+  it("lokaler Zweig auf anderem Commit, nicht bewertbar, fremdes Ziel, URL als Remote: Abbruch ohne schreibenden Aufruf", () => {
+    const k = klonMitRemote();
+    g(k, "branch", RC("v4-ausf3"), basis);
+    const e = trockenlauf({ wurzel: k, kandidat: schnitt, basis, releaseId: "v4-ausf3" });
+    const a = mitProtokoll(ghOk, (x) => ({ r: ausfuehrenModus(k, e, "origin"), x }));
+    expect(a.r.ok).toBe(false); expect(a.r.status).toBe("abgebrochen");
+    expect(schreibend(a.x)).toHaveLength(0);
+    const nb = trockenlauf({ wurzel: k, kandidat: schnitt, basis: schnitt, releaseId: "v4-ausf3" });
+    const b = mitProtokoll(ghOk, (x) => ({ r: ausfuehrenModus(k, nb, "origin"), x }));
+    expect(b.r.status).toBe("abgebrochen"); expect(b.x).toHaveLength(0);
+    const c = mitProtokoll(ghOk, (x) => ({ r: ausfuehrenModus(k, { ...e, rcZweig: "main" }, "origin"), x }));
+    expect(c.r.status).toBe("abgebrochen"); expect(c.x).toHaveLength(0);
+    expect(ausfuehrenModus(k, { ...e, rcZweig: "integration/release-v4", releaseId: "release-v4" }, "origin").status).toBe("abgebrochen");
+    expect(ausfuehrenModus(k, e, "https://example.invalid/r.git").status).toBe("abgebrochen");
+  });
+
+  it("schon vorhandener PR oder fehlgeschlagene PR-Abfrage: Abbruch vor dem Push", () => {
+    for (const [id, gh] of [["v4-ausf4", () => "1\n"], ["v4-ausf5", () => { throw new Error("gh kaputt"); }]]) {
+      const k = klonMitRemote();
+      const e = trockenlauf({ wurzel: k, kandidat: schnitt, basis, releaseId: id });
+      expect(rcAnlegen(k, e, "origin").ok).toBe(true);
+      const a = mitProtokoll(gh, (x) => ({ r: ausfuehrenModus(k, e, "origin"), x }));
+      expect(a.r.status).toBe("abgebrochen");
+      expect(a.x.some(([, u]) => u === "push")).toBe(false);
+      expect(g(k, "ls-remote", "--heads", "origin", `refs/heads/${RC(id)}`)).toBe("");
+    }
+  });
+
+  it("Push fehlgeschlagen: kein PR, ehrliche Meldung", () => {
+    const k = klonMitRemote();
+    const e = trockenlauf({ wurzel: k, kandidat: schnitt, basis, releaseId: "v4-ausf6" });
+    rcAnlegen(k, e, "origin");
+    const echt = lauf.exec; const aufrufe = [];
+    lauf.exec = (cmd, args, opt) => { aufrufe.push([cmd, ...args]); if (args[0] === "push") throw new Error("abgelehnt"); return cmd === "gh" ? "0\n" : echt(cmd, args, opt); };
+    let r; try { r = ausfuehrenModus(k, e, "origin"); } finally { lauf.exec = echt; }
+    expect(r.ok).toBe(false); expect(r.status).toBe("abgebrochen");
+    expect(r.schritte.at(-1)).toEqual({ schritt: "Push", ergebnis: "fehlgeschlagen" });
+    expect(aufrufe.some(([cmd, a1, a2]) => cmd === "gh" && a1 === "pr" && a2 === "create")).toBe(false);
+  });
+
+  it("PR-Erstellung scheitert nach dem Push: Zwischenzustand ehrlich (teilweise), nichts zurückgenommen, Exit 1", () => {
+    const k = klonMitRemote();
+    const id = "v4-ausf7";
+    const gh = (args) => { if (args[1] === "list") return "0\n"; throw new Error("create kaputt"); };
+    const { r, out } = stumm(() => mitProtokoll(gh, (aufrufe) => ({ code: main(ARGS(k, id, "--anlegen", "--ausfuehren")), aufrufe })));
+    expect(r.code).toBe(1);
+    const j = JSON.parse(out);
+    expect(j.ausfuehrung.status).toBe("teilweise");
+    expect(j.ausfuehrung.schritte.map((s) => s.ergebnis)).toContain("fehlgeschlagen");
+    expect(g(remote, "rev-parse", `refs/heads/${RC(id)}`)).toBe(schnitt);
+    expect(r.aufrufe.filter(([cmd, u]) => cmd === "git" && u === "push")).toHaveLength(1);
+    expect(r.aufrufe.some((a) => a.includes("--delete") || a.includes("--force") || a.includes("merge"))).toBe(false);
+  });
+
+  it("PR-Ausgabe ohne lesbare Nummer: teilweise, nie vollständig", () => {
+    const k = klonMitRemote();
+    const e = trockenlauf({ wurzel: k, kandidat: schnitt, basis, releaseId: "v4-ausf8" });
+    rcAnlegen(k, e, "origin");
+    const r = mitProtokoll((a) => (a[1] === "list" ? "0\n" : "erstellt\n"), () => ausfuehrenModus(k, e, "origin"));
+    expect(r.ok).toBe(false); expect(r.status).toBe("teilweise"); expect(r.prNummer).toBeNull();
+  });
+});
+
+describe("Ausführungsmodus: Schutz eines inzwischen entstandenen Remote-Zweigs", () => {
+  it("Zweig erst nach dem Anlegen auf dem Remote entstanden: kein Push, kein PR, Remote unverändert", () => {
+    const k = klonMitRemote();
+    const id = "v4-ausf9";
+    const e = trockenlauf({ wurzel: k, kandidat: schnitt, basis, releaseId: id });
+    expect(rcAnlegen(k, e, "origin").ok).toBe(true);
+    g(k, "push", "-q", "origin", `${basis}:refs/heads/${RC(id)}`);
+    const vorher = refs(remote);
+    const a = mitProtokoll(ghOk, (x) => ({ r: ausfuehrenModus(k, e, "origin"), x }));
+    expect(a.r.status).toBe("abgebrochen");
+    expect(a.x.some(([cmd, u]) => cmd === "gh" || u === "push")).toBe(false);
+    expect(refs(remote)).toBe(vorher);
+  });
+});
+
+describe("Ausführungsmodus: Freigabe nur während des Laufs", () => {
+  it("ist im Ruhezustand geschlossen und wird nach Erfolg und nach Abbruch wieder geschlossen", () => {
+    expect(ausfuehrungOffen()).toBe(false);
+    const k = klonMitRemote();
+    const e = trockenlauf({ wurzel: k, kandidat: schnitt, basis, releaseId: "v4-ausf10" });
+    expect(rcAnlegen(k, e, "origin").ok).toBe(true);
+    expect(mitProtokoll(() => "1", () => ausfuehrenModus(k, e, "origin")).status).toBe("abgebrochen");
+    expect(ausfuehrungOffen()).toBe(false);
+    expect(mitProtokoll(ghOk, () => ausfuehrenModus(k, e, "origin")).status).toBe("vollstaendig");
+    expect(ausfuehrungOffen()).toBe(false);
+  });
+});
+
+describe("Testlücken aus dem Review", () => {
+  it("flacher Klon: nicht bewertbar (fail-closed)", () => {
+    const k = neuerKlon();
+    writeFileSync(path.join(k, ".git", "shallow"), g(k, "rev-parse", `${schnitt}~1`) + "\n");
+    expect(g(k, "rev-parse", "--is-shallow-repository")).toBe("true");
+    const e = trockenlauf({ wurzel: k, kandidat: schnitt, basis, releaseId: ID });
+    expect(e.status).toBe("nicht-bewertbar");
+    expect(e.nichtBewertbarGruende.join(" ")).toContain("flacher");
+    expect(e.freigabeVorlage).toBeNull();
+  });
+
+  it("Steuerzeichen im Commit-Betreff erscheinen nur als Escape", () => {
+    const k = neuerKlon();
+    g(k, "commit", "-q", "--allow-empty", "-m", "Direkt \u001b[31mrot‮\u0007 Ende");
+    const e = trockenlauf({ wurzel: k, kandidat: "HEAD", basis, releaseId: ID });
+    const text = JSON.stringify(e, null, 2);
+    expect(e.g2Belege.commitsOhnePrBetreff.some((c) => c.betreff.includes("\\u001b"))).toBe(true);
+    expect(text).not.toMatch(/[\u0000-\u0008\u000b-\u001f\u007f‮]/);
+  });
+
+  it("Replace-Objekte ändern das Ergebnis nicht", () => {
+    const a = neuerKlon(); const b = neuerKlon();
+    const direkt = g(b, "log", "--format=%H", "--grep=Direkter Commit ohne PR", "-n", "1");
+    g(b, "replace", direkt, basis);
+    expect(g(b, "for-each-ref", "refs/replace/")).not.toBe("");
+    const x = trockenlauf({ wurzel: a, kandidat: schnitt, basis, releaseId: ID });
+    const y = trockenlauf({ wurzel: b, kandidat: schnitt, basis, releaseId: ID });
+    expect(JSON.stringify(y)).toBe(JSON.stringify(x));
+    expect(y.g2Belege.commitsOhnePrBetreff.map((c) => c.betreff)).toContain("Direkter Commit ohne PR");
+  });
+
+  it("Warnung: Vorlagen-Hashes kommen vom Werkzeug des Checkouts", () => {
+    expect(lauf1().warnungen.join(" ")).toContain("Werkzeug-Checkouts");
   });
 });

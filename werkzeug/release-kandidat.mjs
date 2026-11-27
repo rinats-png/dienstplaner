@@ -17,10 +17,17 @@
      - `--anlegen` legt ausschließlich einen LOKALEN Zweig release/rc-<id> auf dem
        Schnitt-Commit an (ohne Checkout). Er ändert nie einen bestehenden Kandidaten
        (lokal oder auf dem Remote vorhandener Zweig, vergebene Release-ID: Abbruch).
-     - Kein Push, kein PR, kein Merge, kein Workflow, kein Bildbau, kein Deploy,
-       kein Aufruf von gh/curl. Netz nur `git ls-remote` (lesend) bei `--anlegen`.
-       Push und Entwurfs-PR stehen als Befehlstext in der Übergabe; sie führt die
-       Koordination bzw. der Betreiber aus.
+     - Standard und `--anlegen`: kein Push, kein PR, kein Merge, kein Workflow, kein
+       Bildbau, kein Deploy, kein gh/curl. Netz nur `git ls-remote` (lesend) bei `--anlegen`.
+     - AUSFÜHRUNGSMODUS `--ausfuehren` (nur zusammen mit `--anlegen`, nie Standard, Betreiber-
+       entscheidung 2026-11-27): pusht den lokal auf dem Schnitt-Commit stehenden Zweig
+       release/rc-<id> (ohne force, nur dieser Zielzweig, nur wenn er auf dem Remote noch
+       nicht existiert) und erstellt einen ENTWURFS-PR (`gh pr create --draft`, Basis main).
+       Jeder Fremdaufruf läuft durch eine feste Allowlist (aufrufErlaubt, fail-closed). Nie:
+       Merge, force, Löschen, andere Zielzweige (main, integration/*, übrige release/*),
+       Workflow, Deploy. Die Freigabedatei bleibt Vorlage mit null-Feldern, `freigabeBereit`
+       false. Bei Fehler Abbruch; ein Zwischenzustand (z. B. gepusht, PR fehlt) wird ehrlich
+       ausgegeben, nichts wird zurückgenommen oder halb als Erfolg gemeldet.
      - Das Werkzeug erklärt nie „bereit“ oder „GO“: `freigabeBereit` ist immer false.
        Was nicht ermittelbar ist, steht als „nicht bewertbar“ (fail-closed, Exit 1).
      - Gate-Logik und Konfiguration bleiben in werkzeug/release-pruefung.mjs; dieses
@@ -31,11 +38,14 @@
      node werkzeug/release-kandidat.mjs --kandidat <schnitt-commit> --basis <voriger-release-commit>
          --release-id <id> [--ausgabe <verzeichnis>] [--wurzel <repo>] [--kurz]
      node werkzeug/release-kandidat.mjs … --anlegen     (nur lokaler Zweig release/rc-<id>)
+     node werkzeug/release-kandidat.mjs … --anlegen --ausfuehren   (zusätzlich Push und Entwurfs-PR)
+     node werkzeug/release-kandidat.mjs … --anlegen --ausfuehren   (zusätzlich Push + Entwurfs-PR)
    Umgebung: KANDIDAT_REMOTE (Standard origin) für die Prüfung auf einen bestehenden Remote-Zweig.
    Rückgabe: 0 Unterlagen vollständig erzeugt (kein Freigabeurteil) · 1 nicht bewertbar oder
    Anlegen verweigert · 2 Aufruffehler.
    ========================================================================== */
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -56,7 +66,69 @@ const optionen = (cwd, extra = {}) => ({
   cwd, encoding: "utf8", maxBuffer: 256 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"], timeout: ZEITGRENZE_MS,
   env: { ...process.env, GIT_NO_REPLACE_OBJECTS: "1" }, ...extra,
 });
-const git = (w, args, extra) => lauf.exec("git", args, optionen(w, extra));
+/* ------------------------------------------------ Allowlist der Fremdaufrufe */
+
+const RC_MUSTER = /^release\/rc-[a-z0-9][a-z0-9._-]{2,63}$/;
+const REMOTE_MUSTER = /^[A-Za-z0-9][A-Za-z0-9._-]{0,40}$/;
+const LESEN_GIT = new Set(["rev-parse", "log", "rev-list", "diff", "show", "merge-base", "ls-tree", "cat-file", "check-ref-format"]);
+const PR_BASIS = "main";
+const rcGueltig = (x) => typeof x === "string" && RC_MUSTER.test(x) && !x.includes("..") && !x.endsWith(".lock") && !x.endsWith(".");
+
+/** Nur im Ausführungsmodus (und nur dort) sind Push und PR-Erstellung freigeschaltet. */
+const kontext = { ausfuehren: false };
+/** Nur für Tests: Ist die Freigabe für Push und PR gerade offen? (Im Ruhezustand nie.) */
+export const ausfuehrungOffen = () => kontext.ausfuehren;
+
+/**
+ * Feste Allowlist aller Fremdaufrufe. Liefert null (erlaubt) oder den Grund der Ablehnung (fail-closed).
+ * Schreibend sind nur: git branch --no-track (lokal), git push (nur Ausführungsmodus, genau ein Zweig, ohne force)
+ * und gh pr create --draft (nur Ausführungsmodus, Basis main). Alles andere, auch jeder Merge, ist abgelehnt.
+ */
+export function aufrufErlaubt(cmd, args, ausfuehren = false) {
+  if (!Array.isArray(args) || args.some((a) => typeof a !== "string")) return "Argumente ungültig";
+  if (cmd === "git") {
+    const u = args[0];
+    if (LESEN_GIT.has(u)) return null;
+    if (u === "remote") return args.length === 1 ? null : "remote: nur Auflistung";
+    if (u === "ls-remote") return args.length === 5 && args[1] === "--heads" && args[2] === "--" && REMOTE_MUSTER.test(args[3]) && args[4].startsWith("refs/heads/") ? null : "ls-remote: nur --heads -- <remote> <ref>";
+    if (u === "branch") return args.length === 4 && args[1] === "--no-track" && rcGueltig(args[2]) && /^[0-9a-f]{40}$/.test(args[3]) ? null : "branch: nur --no-track release/rc-<id> <sha>";
+    if (u === "push") {
+      if (!ausfuehren) return "push nur im Ausführungsmodus";
+      const [, trenner, remote, spec] = args;
+      const m = /^refs\/heads\/(release\/rc-[^:]+):refs\/heads\/(release\/rc-[^:]+)$/.exec(spec || "");
+      if (args.length !== 4 || trenner !== "--" || !REMOTE_MUSTER.test(remote || "") || !m || m[1] !== m[2] || !rcGueltig(m[1])) {
+        return "push: nur -- <remote> refs/heads/release/rc-<id>:refs/heads/release/rc-<id> (kein force, kein anderes Ziel)";
+      }
+      return null;
+    }
+    return `git ${u}: nicht in der Allowlist`;
+  }
+  if (cmd === "node") {
+    return args.length === 8 && /release-pruefung\.mjs$/.test(args[0]) && args[1] === "--vorlagen-hashes" ? null : "node: nur release-pruefung.mjs --vorlagen-hashes";
+  }
+  if (cmd === "gh") {
+    if (!ausfuehren) return "gh nur im Ausführungsmodus";
+    if (args[0] === "pr" && args[1] === "list") {
+      return args.length === 10 && args[2] === "--head" && rcGueltig(args[3]) && args[4] === "--state" && args[5] === "all" && args[6] === "--json" && args[7] === "number" && args[8] === "--jq" && args[9] === "length"
+        ? null : "gh pr list: nur die feste Leseabfrage";
+    }
+    if (args[0] === "pr" && args[1] === "create") {
+      return args.length === 11 && args[2] === "--draft" && args[3] === "--base" && args[4] === PR_BASIS && args[5] === "--head" && rcGueltig(args[6]) &&
+        args[7] === "--title" && args[9] === "--body" && args[8].length > 0 && args[10].length > 0
+        ? null : "gh pr create: nur --draft --base main --head release/rc-<id>";
+    }
+    return "gh: nur pr list (lesen) und pr create --draft";
+  }
+  return `${cmd}: nicht in der Allowlist`;
+}
+
+/** Einziger Weg zu Fremdprozessen: Allowlist prüfen, dann ausführen (ohne Shell, mit Zeitgrenze aus den Optionen). */
+function starte(cmd, args, opt) {
+  const grund = aufrufErlaubt(cmd, args, kontext.ausfuehren);
+  if (grund) throw new Error(`Aufruf nicht erlaubt: ${grund}`);
+  return lauf.exec(cmd, args, opt);
+}
+const git = (w, args, extra) => starte("git", args, optionen(w, extra));
 const versuch = (f) => { try { return f(); } catch { return null; } };
 
 /** Alle Zeichen der Klassen C, Zl, Zp und besondere Leerzeichen als Escape (keine Terminal-/Log-Injektion). */
@@ -167,7 +239,7 @@ function g8g9Listen(w, kandidat, prs) {
 function vorlagenHashes(w, basis, kandidat) {
   let r;
   try {
-    r = lauf.exec("node", [path.join(HIER, "release-pruefung.mjs"), "--vorlagen-hashes", "--kandidat", kandidat, "--basis", basis, "--wurzel", w], optionen(w, { stdio: ["ignore", "pipe", "pipe"] }));
+    r = starte("node", [path.join(HIER, "release-pruefung.mjs"), "--vorlagen-hashes", "--kandidat", kandidat, "--basis", basis, "--wurzel", w], optionen(w, { stdio: ["ignore", "pipe", "pipe"] }));
   } catch (e) {
     return nichtBewertbar(`Vorlagen-Hashes nicht ermittelbar (release-pruefung Exit ${e && e.status != null ? e.status : "?"}): nicht gelistete oder unlesbare Vorlage`);
   }
@@ -178,6 +250,18 @@ function vorlagenHashes(w, basis, kandidat) {
     const vergleich = j.vergleichMitBasis ? Object.fromEntries(Object.entries(j.vergleichMitBasis).sort(([a], [b]) => a.localeCompare(b)).map(([f, v]) => [f, v.status])) : null;
     return { bewertbar: true, hashes: sortiert, vergleichMitBasis: vergleich };
   } catch { return nichtBewertbar("Vorlagen-Hashes: Ausgabe nicht lesbar"); }
+}
+
+/** Die Vorlagen-Hashes rechnet das release-pruefung.mjs des Checkouts, in dem dieses Werkzeug läuft (gelesen wird aus dem Schnitt). */
+function werkzeugHinweis(w, kandidat) {
+  const norm = (s) => createHash("sha256").update(String(s).replace(/\r\n/g, "\n")).digest("hex");
+  const imSchnitt = lesenAus(w, kandidat, "werkzeug/release-pruefung.mjs");
+  const lokal = versuch(() => readFileSync(path.join(HIER, "release-pruefung.mjs"), "utf8"));
+  const basis = "Vorlagen-Hashes werden vom release-pruefung.mjs des Werkzeug-Checkouts berechnet (gelesen wird aus dem Schnitt)";
+  if (lokal == null) return `${basis}; Werkzeug-Datei nicht lesbar`;
+  if (imSchnitt == null) return `${basis}; die Datei fehlt im Schnitt`;
+  if (norm(imSchnitt) !== norm(lokal)) return `${basis}; sie weicht von der Fassung im Schnitt ab`;
+  return null;
 }
 
 function pfadAnalyse(w, basis, kandidat) {
@@ -246,7 +330,7 @@ function uebergabeText(releaseId, basis, kandidat, rc) {
     "Nächste Schritte (je Schritt führt ihn die genannte Rolle aus):",
     "",
     `1. Koordination: lokalen Zweig anlegen: node werkzeug/release-kandidat.mjs --kandidat ${kandidat} --basis ${basis} --release-id ${releaseId} --ausgabe <verzeichnis außerhalb des Repositorys> --anlegen`,
-    `2. Koordination (Maschinenkonto): Zweig einmal pushen und Entwurfs-PR öffnen: git push origin ${rc} und gh pr create --draft --base main --head ${rc}. Das Werkzeug führt beides nicht aus.`,
+    `2. Koordination (Maschinenkonto): Zweig einmal pushen und Entwurfs-PR öffnen: git push origin ${rc} und gh pr create --draft --base main --head ${rc}. Oder, nur auf ausdrücklichen Auftrag, Schritt 1 mit dem Zusatz --ausfuehren (Push und Entwurfs-PR durch das Werkzeug, feste Allowlist). Ohne diesen Zusatz führt das Werkzeug beides nicht aus.`,
     `3. Claude: Vorprüfung aus dem Kandidaten-Worktree: node werkzeug/release-pruefung.mjs --kandidat ${kandidat} --basis ${basis} --digest <sha256:…> --release-id ${releaseId} --bild-info <datei>`,
     "4. Betreiber: Release-PR nach main mergen (Release-Commit M), Bildbau und Auslieferung selbst auslösen.",
     "5. Betreiber: Freigabedatei aus der Vorlage (freigabe-vorlage.json) ausfüllen: kandidatCommit = M, digest, freigegebenDurch, datum, rueckweg, Annahmen mit Grund; als docs/acc45/releases/<id>.freigabe.json commiten.",
@@ -291,6 +375,7 @@ export function trockenlauf({ wurzel, kandidat: kRev, basis: bRev, releaseId }) 
     status: bewertbar ? "unterlagen-erzeugt" : "nicht-bewertbar",
     freigabeBereit: false,
     nichtBewertbarGruende: nichtBew.sort(),
+    warnungen: [werkzeugHinweis(wurzel, kandidat)].filter(Boolean),
     basis: abschnitte.basis.bewertbar ? { commits: abschnitte.basis.anzahlCommits, listenstatus: abschnitte.basis.basisStatus } : null,
     pfade: abschnitte.pfade.bewertbar ? abschnitte.pfade : null,
     g2Belege: g2,
@@ -357,6 +442,74 @@ export function rcAnlegen(wurzel, e, remote = process.env.KANDIDAT_REMOTE || "or
   return { ok: true, text: `${e.rcZweig} lokal angelegt auf ${e.schnittCommit}; nicht gepusht (Push und Entwurfs-PR siehe Übergabe)` };
 }
 
+/* -------------------------------------------------------------- Ausführung */
+
+const GH_UMGEBUNG = { GH_PROMPT_DISABLED: "1", GH_NO_UPDATE_NOTIFIER: "1", NO_COLOR: "1" };
+
+function prTexte(e) {
+  return {
+    titel: `Release-Kandidat ${e.releaseId}: Schnitt ${e.schnittCommit.slice(0, 12)}`,
+    text: [
+      "Entwurf: Vorbereitung eines Release-Kandidaten (RST-2). Nicht mergen.",
+      "",
+      `Schnitt-Commit S: ${e.schnittCommit}`,
+      `Basis (voriger Release): ${e.basisCommit}`,
+      "",
+      "Kein Freigabeurteil (freigabeBereit: false). Freigabedatei, Release-Merge nach main, Bildbau und Auslieferung nur durch den Betreiber (RELEASE-PROZESS Abschnitt 4).",
+    ].join("\n"),
+  };
+}
+
+/**
+ * Ausführungsmodus: pusht den lokal angelegten Zweig und erstellt einen Entwurfs-PR. Voraussetzung: Zweig steht lokal auf dem
+ * Schnitt-Commit und existiert auf dem Remote nicht, kein PR zu diesem Zweig. Abbruch ohne Änderung, wenn das nicht stimmt.
+ * Ergebnis { ok, status, schritte, prNummer, text }; status: abgebrochen (nichts verändert), teilweise (gepusht, PR fehlt/unklar), vollstaendig.
+ */
+export function ausfuehrenModus(wurzel, e, remote = process.env.KANDIDAT_REMOTE || "origin") {
+  const schritte = [];
+  const abbruch = (text) => ({ ok: false, status: "abgebrochen", schritte, prNummer: null, text: `abgebrochen, nichts gepusht und kein PR erstellt: ${text}` });
+  if (e.status !== "unterlagen-erzeugt" || e.freigabeBereit !== false) return abbruch("nicht bewertbar (fail-closed)");
+  const rc = e.rcZweig;
+  if (!rcGueltig(rc) || rc !== `release/rc-${e.releaseId}`) return abbruch("Zielzweig nicht in der Allowlist (release/rc-<id>)");
+  if (!REMOTE_MUSTER.test(remote)) return abbruch("Remote-Name ungültig");
+  const remotes = versuch(() => git(wurzel, ["remote"]).split(/\r?\n/).filter(Boolean));
+  if (!remotes || !remotes.includes(remote)) return abbruch("Remote nicht konfiguriert");
+  const ref = `refs/heads/${rc}`;
+  const lokal = versuch(() => git(wurzel, ["rev-parse", "--verify", "--quiet", "--end-of-options", ref]).trim());
+  if (lokal !== e.schnittCommit) return abbruch("lokaler Zweig steht nicht auf dem Schnitt-Commit");
+  schritte.push({ schritt: "lokaler Zweig auf Schnitt-Commit geprüft", ergebnis: "ok" });
+  const entfernt = versuch(() => git(wurzel, ["ls-remote", "--heads", "--", remote, ref]).trim());
+  if (entfernt == null) return abbruch("Remote nicht lesbar");
+  if (entfernt !== "") return abbruch("Zweig existiert schon auf dem Remote (wird nie überschrieben)");
+  schritte.push({ schritt: "Zweig auf dem Remote nicht vorhanden geprüft", ergebnis: "ok" });
+  const ghOpt = optionen(wurzel, { env: { ...process.env, GIT_NO_REPLACE_OBJECTS: "1", ...GH_UMGEBUNG } });
+  const texte = prTexte(e);
+  kontext.ausfuehren = true;
+  try {
+    let vorhanden;
+    try { vorhanden = starte("gh", ["pr", "list", "--head", rc, "--state", "all", "--json", "number", "--jq", "length"], ghOpt).trim(); } catch { vorhanden = null; }
+    if (vorhanden !== "0") return abbruch(vorhanden == null ? "PR-Abfrage fehlgeschlagen (fail-closed)" : "zu diesem Zweig gibt es schon einen PR");
+    schritte.push({ schritt: "kein bestehender PR zum Zweig geprüft", ergebnis: "ok" });
+    try { starte("git", ["push", "--", remote, `${ref}:${ref}`], optionen(wurzel, { stdio: ["ignore", "ignore", "ignore"] })); } catch {
+      schritte.push({ schritt: "Push", ergebnis: "fehlgeschlagen" });
+      return { ok: false, status: "abgebrochen", schritte, prNummer: null, text: "Push fehlgeschlagen; es wurde kein PR erstellt. Ob der Zweig auf dem Remote entstanden ist, bitte prüfen (nichts wurde zurückgenommen)" };
+    }
+    schritte.push({ schritt: "Push", ergebnis: "ok" });
+    let roh;
+    try { roh = starte("gh", ["pr", "create", "--draft", "--base", PR_BASIS, "--head", rc, "--title", texte.titel, "--body", texte.text], ghOpt); } catch {
+      schritte.push({ schritt: "Entwurfs-PR", ergebnis: "fehlgeschlagen" });
+      return { ok: false, status: "teilweise", schritte, prNummer: null, text: `TEILWEISE: ${rc} ist gepusht, der Entwurfs-PR wurde NICHT erstellt (bitte prüfen; der Zweig wird nicht zurückgenommen)` };
+    }
+    const nr = /\/pull\/(\d{1,9})\b/.exec(String(roh));
+    if (!nr) {
+      schritte.push({ schritt: "Entwurfs-PR", ergebnis: "Nummer nicht lesbar" });
+      return { ok: false, status: "teilweise", schritte, prNummer: null, text: `TEILWEISE: ${rc} ist gepusht, der Entwurfs-PR ist unklar (Nummer nicht lesbar; bitte prüfen)` };
+    }
+    schritte.push({ schritt: "Entwurfs-PR", ergebnis: "ok" });
+    return { ok: true, status: "vollstaendig", schritte, prNummer: Number(nr[1]), text: `${rc} gepusht und Entwurfs-PR #${nr[1]} (draft, Basis ${PR_BASIS}) erstellt; nichts gemergt` };
+  } finally { kontext.ausfuehren = false; }
+}
+
 /* -------------------------------------------------------------------- CLI */
 
 export function argumenteLesen(argv) {
@@ -369,6 +522,7 @@ export function argumenteLesen(argv) {
       if (v === undefined || v.startsWith("--")) throw new Error(`${a} braucht einen Wert`);
       o[a.slice(2).replace(/-([a-z])/g, (_, c) => c.toUpperCase())] = v;
     } else if (a === "--anlegen") o.anlegen = true;
+    else if (a === "--ausfuehren") o.ausfuehren = true;
     else if (a === "--kurz") o.kurz = true;
     else throw new Error(`unbekannte Option: ${a}`);
   }
@@ -378,6 +532,8 @@ export function argumenteLesen(argv) {
 export function kurzfassung(e) {
   const z = [`Kandidat ${e.releaseId} · Schnitt ${e.schnittCommit} · Basis ${e.basisCommit} · ${e.status} · freigabeBereit: false`];
   for (const g of e.nichtBewertbarGruende) z.push(`  nicht bewertbar - ${g}`);
+  for (const w of e.warnungen || []) z.push(`  Warnung - ${w}`);
+  if (e.ausfuehrung) z.push(`  Ausführung: ${e.ausfuehrung.status}${e.ausfuehrung.prNummer ? ` (Entwurfs-PR #${e.ausfuehrung.prNummer})` : ""}`);
   if (e.pfade) z.push(`  ${e.pfade.geaenderteDateien} Dateien; kritisch: ${e.pfade.kritischeDateienGesamt}; Start-Schreibvorgänge: ${e.pfade.startschreibvorgaengeBetroffen.join(", ") || "keine"}`);
   if (e.g2Belege) z.push(`  G2-Kandidaten: ${e.g2Belege.prsGesamt} PRs, ${e.g2Belege.commitsOhnePrBetreffGesamt} Commits ohne PR-Betreff`);
   if (e.g8g9Listen) z.push(`  G8: ${e.g8g9Listen.g8.vorschau} (${e.g8g9Listen.g8.blockerGesamt}); G9: ${e.g8g9Listen.g9.vorschau} (${e.g8g9Listen.g9.blockerGesamt})`);
@@ -390,9 +546,10 @@ export function main(argv) {
   let o;
   try { o = argumenteLesen(argv); } catch (err) { fehler("Aufruf: " + err.message); return 2; }
   if (!o.kandidat || !o.basis || !o.releaseId || !RELEASE_ID.test(o.releaseId)) {
-    fehler("Aufruf: --kandidat <commit> --basis <commit> --release-id <id> [--ausgabe <verz>] [--anlegen] [--wurzel <repo>] [--kurz]");
+    fehler("Aufruf: --kandidat <commit> --basis <commit> --release-id <id> [--ausgabe <verz>] [--anlegen [--ausfuehren]] [--wurzel <repo>] [--kurz]");
     return 2;
   }
+  if (o.ausfuehren && !o.anlegen) { fehler("Aufruf: --ausfuehren gilt nur zusammen mit --anlegen"); return 2; }
   const wurzel = path.resolve(o.wurzel || path.join(HIER, ".."));
   let e;
   try { e = trockenlauf({ wurzel, kandidat: o.kandidat, basis: o.basis, releaseId: o.releaseId }); } catch (err) {
@@ -411,9 +568,18 @@ export function main(argv) {
     anlegen = rcAnlegen(wurzel, e);
     fehler("Anlegen: " + anlegen.text);
   }
+  let ausfuehrung = null;
+  if (o.ausfuehren && anlegen && anlegen.ok) {
+    ausfuehrung = ausfuehrenModus(wurzel, e);
+    e.ausfuehrung = { status: ausfuehrung.status, schritte: ausfuehrung.schritte, prNummer: ausfuehrung.prNummer };
+    fehler("Ausführung: " + ausfuehrung.text);
+  } else if (o.ausfuehren) {
+    e.ausfuehrung = { status: "abgebrochen", schritte: [], prNummer: null };
+    fehler("Ausführung: abgebrochen, nichts gepusht und kein PR erstellt (Anlegen nicht erfolgt)");
+  }
   if (o.kurz) console.log(kurzfassung(e));
   else { console.log(JSON.stringify(e, null, 2)); console.error(kurzfassung(e)); }
-  if (ausgabeFehler || (anlegen && !anlegen.ok)) return 1;
+  if (ausgabeFehler || (anlegen && !anlegen.ok) || (o.ausfuehren && !(ausfuehrung && ausfuehrung.ok))) return 1;
   return e.status === "unterlagen-erzeugt" ? 0 : 1;
 }
 
