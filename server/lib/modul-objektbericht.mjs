@@ -18,6 +18,7 @@
    Rein: keine Ablage, keine Uhr. Die Dienstzeit einer Person kommt als Funktion.
    ========================================================================== */
 import { wachbuchListe, WACHBUCH_ARTEN } from "./modul-wachbuch.mjs";
+import { postenBesetzung } from "./modul-posten.mjs";
 
 const istObjekt = (x) => !!x && typeof x === "object" && !Array.isArray(x);
 const TAG = /^\d{4}-\d{2}-\d{2}$/;
@@ -52,18 +53,24 @@ export function objektberichtDaten(m, { objektId, von, bis, zugriff, dienstzeit 
   if (!objekt) return { grund: "Objekt unbekannt." };
   if (typeof dienstzeit !== "function") throw new Error("objektberichtDaten: Dienstzeit fehlt.");
   const dienste = (Array.isArray(m.dienstarten) ? m.dienstarten : []).filter((d) => istObjekt(d) && d.id).map((d) => d.id).sort();
-  const plan = istObjekt(m.postenPlan) ? m.postenPlan : {};
   const posten = (Array.isArray(objekt.posten) ? objekt.posten : []).filter(istObjekt).slice().sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 
   const tageAus = tage.map((datum) => {
     const zeilen = [];
-    for (const dienstId of dienste) for (const p of posten) {
-      const soll = p.soll && Number.isInteger(p.soll[dienstId]) ? p.soll[dienstId] : 0;
-      if (soll <= 0) continue;
-      const im = dienstzeit(datum, dienstId);
-      if (im === null || im === undefined) { zeilen.push({ dienst: dienstId, posten: p.id, name: p.name, soll, ist: null, fehlt: null, status: "ungeklärt" }); continue; }
-      const ist = im.filter((pid) => plan[`${pid}|${datum}`] === p.id).length;
-      zeilen.push({ dienst: dienstId, posten: p.id, name: p.name, soll, ist, fehlt: Math.max(0, soll - ist), status: "ok" });
+    for (const dienstId of dienste) {
+      /* Postenwechsel (WP-19.1, W5/W6): zeitanteilig zum knappsten Zeitpunkt; ein nicht bewertbarer Wechsel macht die Zeile „ungeklärt“. */
+      let bes = null;
+      for (const p of posten) {
+        const soll = p.soll && Number.isInteger(p.soll[dienstId]) ? p.soll[dienstId] : 0;
+        if (soll <= 0) continue;
+        const im = dienstzeit(datum, dienstId);
+        if (im === null || im === undefined) { zeilen.push({ dienst: dienstId, posten: p.id, name: p.name, soll, ist: null, fehlt: null, status: "ungeklärt" }); continue; }
+        if (!bes) bes = postenBesetzung(m, datum, dienstId, im.map((id) => ({ id })));
+        if (bes.nichtBewertbar.some((x) => x.posten.includes(p.id))) { zeilen.push({ dienst: dienstId, posten: p.id, name: p.name, soll, ist: null, fehlt: null, status: "ungeklärt" }); continue; }
+        const b = bes.nachPosten.get(p.id);
+        const ist = b ? b.min : 0;
+        zeilen.push({ dienst: dienstId, posten: p.id, name: p.name, soll, ist, fehlt: Math.max(0, soll - ist), status: "ok" });
+      }
     }
     return { datum, zeilen };
   });

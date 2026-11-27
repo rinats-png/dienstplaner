@@ -444,7 +444,7 @@ flowchart LR
 | WP-07b | folge | P1 | 2–4 | 0,4–0,8 | WP-07, WP-16 | daten.mjs, stempelintegritaet.mjs | opus | REVIEW |
 | WP-S1 | folge | P1 | 1–2 | 0 | WP-12 | – | sonnet | INTEGRATED |
 | WP-19.0 | wp19 | P1 | 4–6 | 0 | WP-11, WP-22 | App.jsx, rechte.mjs, sicht.mjs | opus | INTEGRATED |
-| WP-19.1 | wp19 | P1 | 4–6 | 2–3 | WP-19.0 | – | sonnet + opus-review | IN_PROGRESS |
+| WP-19.1 | wp19 | P1 | 4–6 | 2–3 | WP-19.0 | rechte.mjs, sicht.mjs | sonnet + opus-review | IN_PROGRESS |
 | WP-19.2 | wp19 | P1 | 8–12 | 8–12 | WP-19.0, WP-19.1, WP-26 | rechte.mjs | opus | BLOCKED |
 | WP-19.3 | wp19 | P1 | 5–8 | 5–8 | WP-19.1, WP-19.2, WP-16 | – | opus | BLOCKED |
 | WP-19.4 | wp19 | P1 | 4–6 | 4–6 | WP-19.0 | – | sonnet + opus-review | BLOCKED |

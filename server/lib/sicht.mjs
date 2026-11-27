@@ -30,6 +30,7 @@ import { vorgabenBetriebsratSicht, VORGABEN_BETRIEBSRAT_LESEN } from "./vorgaben
 import { kiSteuerungSicht, kiSteuerungSichtVoll } from "./ki-steuerung.mjs";
 import { abschlussStatus } from "./monatsabschluss.mjs";
 import { istBetriebsSchluessel, istMonatsSchluessel } from "./isteinfrieren.mjs";
+import { postenIdsVon } from "./modul-posten.mjs";
 
 /* Die vier Entscheidungen. Reduziert heißt: Die Regel ist eine Funktion. */
 export const VOLL = "voll";
@@ -640,7 +641,7 @@ function objekteEigene(w, ctx) {
   const roh = ctx.betrieb && typeof ctx.betrieb.postenPlan === "object" && ctx.betrieb.postenPlan ? ctx.betrieb.postenPlan : {};
   /* Die Objekte leiten sich aus dem Posten-Plan ab: Ohne denselben Filter verriete ein Objekt die Entwurfsplanung. */
   const plan = planOhneEntwurf(roh, ctx);
-  const ids = new Set(Object.entries(plan).filter(([k]) => eigenerSchluessel(k, ctx.ich)).map(([, v]) => v));
+  const ids = new Set(Object.entries(plan).filter(([k]) => eigenerSchluessel(k, ctx.ich)).flatMap(([, v]) => postenIdsVon(v)));
   return objekteMitPosten(w, ids);
 }
 
@@ -1100,7 +1101,7 @@ Object.assign(SCHICHT, {
   objekte: R((w, ctx) => {
     const plan = ctx.betrieb && typeof ctx.betrieb.postenPlan === "object" && ctx.betrieb.postenPlan ? ctx.betrieb.postenPlan : {};
     const ids = new Set(Object.entries(plan)
-      .filter(([k]) => imScopeAm(ctx, schluesselPerson(k), schluesselTag(k), schluesselTag(k), ["eigen", "bereich"])).map(([, v]) => v));
+      .filter(([k]) => imScopeAm(ctx, schluesselPerson(k), schluesselTag(k), schluesselTag(k), ["eigen", "bereich"])).flatMap(([, v]) => postenIdsVon(v)));
     return objekteMitPosten(w, ids);
   }),
   bereichsPlan: R(schichtSchluessel(["eigen", "bereich"])),
