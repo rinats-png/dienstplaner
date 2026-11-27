@@ -994,7 +994,9 @@ export function migrationsnachweisPruefen(mp, digest, konfig = KONFIG_STANDARD) 
   if (mp.art === c.artLokal) {
     return [`${c.feld} ist ein lokaler Nachweis (${c.artLokal}, ohne Digest) — ersetzt den Runner-Lauf am Kandidaten-Digest nie`];
   }
-  const t = (x) => String(x ?? "<fehlt>").replace(/[\u0000-\u001f\u007f]/g, "?").slice(0, 80); // eslint-disable-line no-control-regex
+  // Review #598 C-3: String() wirft bei Objekten ohne toString/Symbol.toPrimitive ⇒ sauberer Grund statt Ausnahme
+  const s = (x) => { try { return String(x ?? "<fehlt>"); } catch { return "<unlesbar>"; } };
+  const t = (x) => s(x).replace(/[\u0000-\u001f\u007f]/g, "?").slice(0, 80); // eslint-disable-line no-control-regex
   const fe = [];
   const soll = (ok, text) => { if (!ok) fe.push(text); };
   const istDigest = (x) => typeof x === "string" && DIGEST.test(x);
@@ -1032,7 +1034,10 @@ export function g5Migration(bericht, freigabe, liste = null, konfig = KONFIG_STA
   // Migrationsnachweis am exakten Kandidaten-Digest aus einem Runner-Lauf. Prüfbar ist er nur als Pflichtfeld des
   // Staging-Nachweises der Freigabedatei (G6 E6, Lauf und Artefakt E7); ohne diesen Weg: NO-GO (fail-closed).
   if ((konfig.ohneRevisionslabel || []).some((o) => o.commit === bericht.basis)) {
-    if (istObjekt(freigabe?.erstwechselAusnahme)) {
+    // Review #598 C-1: der Ausnahmeweg zählt nur, solange G6 die Ausnahme (und damit E6) wirklich prüft
+    if (istObjekt(freigabe?.erstwechselAusnahme) && konfig.sicherung?.widerrufbuchProbePflicht !== true) {
+      nogo(g, "Migrationsnachweis (RST-5): Erstwechsel-Ausnahme gesetzt, aber G6 prüft sie nicht (widerrufbuchProbePflicht ≠ true) — E6 läuft nicht (fail-closed)");
+    } else if (istObjekt(freigabe?.erstwechselAusnahme)) {
       g.belege.push(`Migrationsnachweis (RST-5): Pflichtfeld ${konfig.migrationsnachweis?.feld} des Staging-Nachweises, geprüft in G6 E6 (Runner-Lauf E7)`);
     } else {
       nogo(g, `Migrationsnachweis (RST-5) für den Erstwechsel von ${bericht.basis} fehlt: nur als Feld migrationsprobe eines Staging-Nachweises `

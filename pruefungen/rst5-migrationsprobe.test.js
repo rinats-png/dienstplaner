@@ -404,6 +404,7 @@ describe("(E) Release-Gate: Migrationsnachweis ist notwendig und an den exakten 
       repoFristStunden: 48, gueltigBis: E.gueltigBis, abbruchBedingungen: [...E.abbruchBedingungen], nachholAblage: "docs/acc45/releases/v4-r1/nachhol/",
       staging: { lauf: "4242-1", nachweis: "docs/acc45/releases/v4-r1/nachweise/staging-nachweis.json", sha256: createHash("sha256").update(roh).digest("hex") },
       quittung: "-" };
+    // zeit-ok: erstellt stammt aus dem echt ausgeführten Nachweisschritt (new Date() im Runner-Skript); E6 vergleicht damit
     const k = { releaseId: "v4-r1", kandidat: M, digest: D, basis: E.basisCommit, jetztMs: Date.now(), releaseDateien: [],
       freigabe: { releaseId: "v4-r1", basisCommit: E.basisCommit, kandidatCommit: M, digest: D, schnittCommit: S, erstwechselAusnahme: { widerrufbuchProbe: a } },
       erstwechsel: { stagingRoh: roh, skriptRoh: Buffer.from("#!/bin/sh\n"), baeume: { kandidat: BAUM, schnitt: BAUM }, kandidatEltern: ["2".repeat(40), S],

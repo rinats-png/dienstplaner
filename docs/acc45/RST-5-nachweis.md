@@ -165,4 +165,8 @@ NO-GO-Ergebnisse (G1–G10) bleiben, G5 trägt bei Basis 274bfa0 ohne Freigabeda
 2. Ein regulärer Weg ohne Erstwechsel-Ausnahme (Basis 274bfa0, z. B. nach einem Abbruch A-VOR ohne neue Ausnahme) hat
    heute keinen an einen Runner-Lauf gebundenen Staging-Verweis in der Freigabedatei ⇒ G5 bleibt dort NO-GO (fail-closed).
    Soll dieser Weg möglich werden, braucht es ein Feld mit Lauf/Nachweis/SHA-256 wie `staging` und E7-Prüfung (eigene
-   Entscheidung).
+   Entscheidung). Gleiches gilt nach einem **Abbruch nach T0 mit Rücksprung auf 274bfa0**: Die Ausnahme ist dann nach
+   E15/F10 verbraucht, und der reguläre Weg bleibt durch G5 dauerhaft NO-GO, bis das Werkzeug geändert ist. **Als
+   ausdrückliche Betreiberentscheidung vorgemerkt** (Review #598 C-2).
+3. Kopplung (Review #598 C-1): G5 nimmt den Ausnahmeweg nur an, solange `sicherung.widerrufbuchProbePflicht` true ist
+   (nur dann prüft G6 die Ausnahme und damit E6); sonst G5 NO-GO. Per Test abgesichert.

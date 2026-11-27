@@ -2849,6 +2849,10 @@ describe("GATE-EW1/EW2: Erstwechsel-Ausnahme der Widerrufbuch-Probe (G6) und Nac
       // Kandidaten-Digest selbst ungültig (direkt): nie gültig, auch wenn beide gleich sind
       expect(migrationsnachweisPruefen(MP_GUT({ digest: "sha256:0861adee" }), "sha256:0861adee").join(" ")).toMatch(/Kandidaten-Digest ist nicht sha256/);
       expect(migrationsnachweisPruefen(MP_GUT(), undefined).length).toBeGreaterThan(0);
+      // Review #598 C-3: Werte ohne toString werfen nicht, sondern ergeben einen Grund
+      const ohneText = Object.create(null);
+      expect(() => migrationsnachweisPruefen(MP_GUT({ art: ohneText, digest: ohneText, bindung: ohneText, ergebnis: ohneText }), D)).not.toThrow();
+      expect(migrationsnachweisPruefen(MP_GUT({ art: ohneText }), D).join(" ")).toMatch(/art '<unlesbar>'/);
       expect(migrationsnachweisPruefen(MP_GUT(), D, { ...KONFIG_STANDARD, migrationsnachweis: undefined })).toEqual(["Konfiguration migrationsnachweis fehlt (fail-closed)"]);
     });
 
@@ -2863,6 +2867,11 @@ describe("GATE-EW1/EW2: Erstwechsel-Ausnahme der Widerrufbuch-Probe (G6) und Nac
       const mitAusnahme = g5Migration(bericht(C274, ["src/App.jsx"]), { erstwechselAusnahme: { widerrufbuchProbe: {} } });
       expect([mitAusnahme.ergebnis, mitAusnahme.gruende]).toEqual(["GO", []]);
       expect(g5Migration(bericht(C274), { erstwechselAusnahme: "ja" }).ergebnis).toBe("NO-GO");
+      // Review #598 C-1: Ausnahmeweg nur, solange G6 die Ausnahme (E6) wirklich prüft
+      const ohnePflicht = { ...KONFIG_STANDARD, sicherung: { ...KONFIG_STANDARD.sicherung, widerrufbuchProbePflicht: false } };
+      const g1 = g5Migration(bericht(C274, ["src/App.jsx"]), { erstwechselAusnahme: { widerrufbuchProbe: {} } }, null, ohnePflicht);
+      expect([g1.ergebnis, g1.gruende]).toEqual(["NO-GO", [expect.stringMatching(/widerrufbuchProbePflicht ≠ true\) — E6 läuft nicht/)]]);
+      expect(g6Sicherung(NACHWEISE, JETZT_MS, ohnePflicht, { freigabeRoh: { erstwechselAusnahme: {} } }).gruende.join(" ")).not.toMatch(/E6/);
       // andere Basis (mit Revisionslabel): Verhalten wie vor RST-5
       for (const f of [null, { erstwechselAusnahme: { widerrufbuchProbe: {} } }]) {
         const g = g5Migration(bericht(B, ["src/App.jsx"]), f);
