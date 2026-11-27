@@ -98,7 +98,11 @@ function groessenFehler(v) {
   const zahl = (name, x, von, bis) => (x === undefined || ganzIn(x, von, bis) ? null : `${name} ist eine ganze Zahl von ${von} bis ${bis} (höchstens ${bis}).`);
   switch (v && v.regelart) {
     case "zaehlregel": return fensterFehler(p.fenster) || zahl("Grenze", p.grenze, 0, G.zaehlGrenze) || zahl("Länge des Fensters", p.fenster && p.fenster.laenge, 1, G.fensterLaenge);
-    case "musterregel": return zahl("Höchstens in Folge", p.max, 1, G.folgeMax) || zahl("Danach frei", p.danachFrei, 0, G.danachFrei);
+    case "musterregel":
+      /* „Montag frei“: der Auslöser sind Dienste, nie die Freiklasse (sonst löste jedes freie Wochenende aus; Review #595 C2). */
+      if (p.art === "montagFrei" && Array.isArray(p.klassen) && p.klassen.some((k) => String(k).trim().toLowerCase() === String(p.frei || "frei").toLowerCase()))
+        return "„Montag frei“: Die Dienstarten am Wochenende dürfen nicht „frei“ sein.";
+      return zahl("Höchstens in Folge", p.max, 1, G.folgeMax) || zahl("Danach frei", p.danachFrei, 0, G.danachFrei);
     case "besetzungsregel":
       for (const a of Array.isArray(p.anforderungen) ? p.anforderungen : []) {
         if (a && (a.art === "anzahl" || a.art === "anzahlMit")) { const f = zahl("Mindestens", a.min, 0, G.personen); if (f) return f; }

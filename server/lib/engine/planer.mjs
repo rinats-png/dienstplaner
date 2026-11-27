@@ -76,7 +76,7 @@
    ========================================================================== */
 import { dim_, pad, addDays, dow } from "../regelwerk.mjs";
 import { nachtAnteil, nachtschwelle } from "../fachpruefung.mjs";
-import { kiPauseAktiv, kiSteuerungLesen } from "../ki-steuerung.mjs";
+import { kiPauseAktiv, kiSteuerungLesen, kiSteuerungUnlesbar } from "../ki-steuerung.mjs";
 import { planungsreife, vorschlagErlaubt } from "./planungsreife.mjs";
 import { lueckenUrsache, budgetNeu } from "./luckenursache.mjs";
 import { neuesVorgabenBudget, vorgabenPlanFortschreiben } from "../vorgabenwirkung.mjs";
@@ -480,7 +480,8 @@ export function planeVorschlag(m, ym, opt = {}) {
 export function planerModusWirksam(einstellungen, freigegeben = PLANER_AN) {
   if (freigegeben !== true) return "aus";
   let s;
-  try { s = kiSteuerungLesen(einstellungen); } catch { return "aus"; }
+  /* Unlesbarer Stand der ganzen Steuerung (kein einfaches Objekt, Review #595 B-1): AUS, nicht „nicht vorhanden“. */
+  try { if (kiSteuerungUnlesbar(einstellungen)) return "aus"; s = kiSteuerungLesen(einstellungen); } catch { return "aus"; }
   if (s && s.planerModusUngueltig) return "aus";
   if (!s || !s.planerModus) return "knopfdruck";
   const w = s.planerModus.modus;

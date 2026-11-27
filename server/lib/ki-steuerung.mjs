@@ -414,8 +414,20 @@ export function kiBrPauseAktiv(einstellungen) {
   return !!s && (s.pauseUngueltig || (!!s.pause && s.pause.aktiv === true));
 }
 
-/** Ist Intelligence pausiert (EINE der beiden Pausen aktiv oder unlesbar)? */
+/**
+ * Ist der Stand der Steuerung vorhanden, aber unlesbar (Review #595 B-1)? Das Feld `kiSteuerung` ist da, aber kein einfaches Objekt
+ * (Text, Liste, Zahl, Wahrheitswert, null), oder die Einstellungen selbst sind kein Objekt. Ein fehlendes Feld (undefined) ist
+ * „nicht vorhanden“, nicht unlesbar. Unlesbar heißt fail closed: Pause, Planer AUS.
+ */
+export function kiSteuerungUnlesbar(einstellungen) {
+  if (einstellungen === undefined || einstellungen === null) return false;
+  if (!istObjekt(einstellungen)) return true;
+  return hat(einstellungen, KI_FELD) && einstellungen[KI_FELD] !== undefined && !istObjekt(einstellungen[KI_FELD]);
+}
+
+/** Ist Intelligence pausiert (EINE der beiden Pausen aktiv oder unlesbar, auch ein unlesbarer Stand der ganzen Steuerung)? */
 export function kiPauseAktiv(einstellungen) {
+  if (kiSteuerungUnlesbar(einstellungen)) return true;
   const s = kiSteuerungLesen(einstellungen);
   return !!s && (s.pauseUngueltig || s.leitungPauseUngueltig || (!!s.pause && s.pause.aktiv === true) || (!!s.leitungPause && s.leitungPause.aktiv === true));
 }

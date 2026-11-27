@@ -507,6 +507,8 @@ export function vorgabenBefunde(m, p, d, da, k) {
       budget.rest -= kosten;
       const basis = vb.regelFuer(v);
       const grenze0 = Number(par.grenze);
+      /* Zählregel ohne Zahl als Grenze: nicht auswertbar, nie still „kein Befund“ (Review #595 C1). */
+      if (zaehl && (par.grenze === null || par.grenze === "" || typeof par.grenze === "boolean" || !Number.isFinite(grenze0))) { ungeprueft([v], "Vorgabe nicht auswertbar beschrieben"); continue; }
       const regelMit = (eff) => (zaehl && eff !== grenze0 ? { ...basis, parameter: { ...basis.parameter, grenze: eff } } : basis);
       const hinweisZu = (r, ohneTage) => `${r.eff !== grenze0 ? ` — anteilig: Grenze ${r.eff}${r.ganz ? "" : ", nicht ganzzahlig"}` : ""}${ohneTage ? " — ohne Urlaub und Krankheit" : ""}`;
       let treffer = null, hinweis = "", unklar = false;

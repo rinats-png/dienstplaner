@@ -818,6 +818,12 @@ describe("9. Zählregeln rechnen mit Präfixsummen: gleiches Ergebnis wie der Re
       expect(pruefe([{ ...v, staerke: "soll" }], {}, { da }).map((x) => x.regel)).toEqual(["vorgabeOffen"]);
       expect(pruefe([{ ...v, geltung: { art: "personen", personen: ["andere"] } }], {}, { da }), "gilt nicht für die Person: nichts").toEqual([]);
     }
+    /* Review #595 C1: Zählregel mit nicht numerischer Grenze im Wirkpfad (Altbestand ohne Verwaltungsprüfung): nicht still. */
+    for (const grenze of ["zwei", undefined, null]) {
+      const z = V("z", { regelart: "zaehlregel", parameter: { ereignis: "N", fenster: { art: "kalendermonat" }, richtung: "hoechstens", grenze } });
+      const auto = vorgabenBefunde({ dienstarten: DA, vorgaben: [z] }, P, TAG, dienst("N"), { dienstAm: () => null, automatisch: true });
+      expect(auto.map((x) => [x.regel, x.stufe]), String(grenze)).toEqual([["vorgabeOffen", "achtung"]]);
+    }
   });
 });
 
@@ -831,6 +837,8 @@ describe("10. „Montag frei“ nach einem Wochenende mit gewählten Diensten (W
     expect(t.ok, JSON.stringify(t).slice(0, 300)).toBe(true);
     expect(t.ergebnisse.length).toBe(2);
     expect(pruefeVorgabe(MF({ parameter: { art: "montagFrei", klassen: [] } }))).not.toBeNull();
+    /* Review #595 C2: „frei“ als Auslöser abgewiesen. */
+    for (const k of [["frei"], ["N", "frei"], [" Frei "]]) expect(pruefeVorgabe(MF({ parameter: { art: "montagFrei", klassen: k } })), JSON.stringify(k)).toContain("nicht „frei“");
   });
   it("Muss: Dienst am Montag nach Samstag- und Sonntagsnacht = Achtung; Montag frei, nur eine Nacht am Wochenende oder andere Dienste = nichts", () => {
     const b = nurVorgabe(pruefe([MF()], { [SA]: "N", [SO]: "N" }, { d: MO, da: "F" }));
