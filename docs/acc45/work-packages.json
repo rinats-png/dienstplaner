@@ -4,9 +4,9 @@
   "anzahl": 295,
   "statusZaehlung": {
     "BLOCKED": 112,
-    "READY": 24,
+    "READY": 23,
     "IN_PROGRESS": 23,
-    "REVIEW": 13,
+    "REVIEW": 14,
     "INTEGRATED": 120,
     "DONE": 3
   },
@@ -39,8 +39,8 @@
       "pakete": 62,
       "offen": 41,
       "restPT": {
-        "min": 40.099999999999994,
-        "max": 70.5
+        "min": 39.7,
+        "max": 69.7
       }
     },
     "extern": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 342.3,
-    "max": 586.25
+    "min": 341.90000000000003,
+    "max": 585.45
   },
   "kritischerPfad": {
     "summe": 54,
@@ -7127,25 +7127,25 @@
       "prio": "P2",
       "aufwandPT": {"min":0.5,"max":1},
       "abhaengigkeiten": [],
-      "status": "READY",
+      "status": "REVIEW",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"Branch acc45/release/rst-1-kadenz (e4b55ac5): docs/acc45/RELEASE-PROZESS.md berichtigt (§2 Teil-Umfang und Kadenz, Kandidat-Lebensdauer 7 Tage, Wechselregel neue ID; §3 Merge nur nach Freigabe; §4 Pflichtnachweis Migration #598; §9 tägliche Routine als Beschreibung); Z. 44 war schon durch #529 berichtigt; keine Gate-Regel, kein Workflow geändert"},
+        "lokalGetestet": {"wert":true,"beleg":"lokal 2026-11-27 (Windows, TZ=UTC, --maxWorkers=1): pruefungen/release-prozess-kadenz.test.js 19/19 (17 Mutationen rot bei Rückfall), in pruefung:acc45-werkzeuge; release-pruefung.test.js gefiltert (RELEASE-PROZESS.md-Struktur, OF-13) 17/17"},
         "reviewt": {"wert":false,"beleg":null},
         "integriert": {"wert":false,"beleg":null},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
       },
-      "branch": null,
-      "agent": null,
+      "branch": "acc45/release/rst-1-kadenz",
+      "agent": "sonnet",
       "modell": "sonnet (Text) + opus (Gegenlesen)",
       "konfliktzonen": [],
-      "pr": [],
-      "nachweis": "Release-Stillstand-Analyse 2026-11-24, Abschnitt 7; docs/acc45/RELEASE-PROZESS.md",
+      "pr": ["#603"],
+      "nachweis": "Release-Stillstand-Analyse 2026-11-24, Abschnitt 7; docs/acc45/RELEASE-PROZESS.md (Berichtigungsvermerk 2026-11-27); pruefungen/release-prozess-kadenz.test.js. Offen: Gegenlesen Opus; Routine-Aktivierung und Hotfix-Pfad sind Betreiberentscheidungen",
       "akzeptanz": "Verbleibende Widersprüche in RELEASE-PROZESS.md (Z. 34/36 kein Teil-Release/Kadenz; Z. 44 Rolle Claude baut Bild ist durch #529 bereits behoben) entfernt und an die geltende Regel angeglichen (Betreiber löst Bildbau aus); Kadenz Staging 12–24 h, Produktion 3–7 Tage, Kandidat-Lebensdauer höchstens 7 Tage, Wechselregel nur mit neuer ID; tägliche Release-Manager-Routine beschrieben; keine Gate-Regel geändert",
       "tests": "doku-Test, Gegenlesen Opus",
-      "dateien": "docs/acc45/RELEASE-PROZESS.md",
+      "dateien": "docs/acc45/RELEASE-PROZESS.md, pruefungen/release-prozess-kadenz.test.js, package.json (Skript pruefung:acc45-werkzeuge)",
       "notiz": "Umfangsklasse: OPTIONAL-WERKZEUG. Prioritätsbegründung: P2: Prozess-/Doku-Optimierung, der Release ist ohne sie zulässig. Prioritätsumkehr behoben (Review #531 A-3): Die Abhängigkeit RST-1 → RST-9 (P2 an P3, optionales Werkzeug) ist entfernt, eine Doku-Berichtigung braucht kein Werkzeug; Status READY. Stand nach #529: Z. 44 (Rolle Claude baut Bild) ist bereits behoben (Claude bereitet den Bildbau vor, der Betreiber löst aus); offen sind nur Z. 34/36 (kein Teil-Release; Kadenz). Konflikte mit anderen Doku-PRs an RELEASE-PROZESS.md vor dem Start prüfen. Abweichung von der Analyse-Arbeitspriorität: Die Release-Stillstand-Analyse empfahl „SSOT-Prio P2 wegen G9“; das wäre eine G9-Umgehung und ist laut Betreiber verboten. Die Priorität hier ist fachlich begründet. Quelle: Release-Stillstand-Analyse 2026-11-24 (Abschnitt 7) und Koordinator-Vorgabe 2026-11-24. Aufwand SCHÄTZUNG, nicht gemessen. Konfliktzone (Dateien, nicht im SSOT-Zonenvokabular): docs/acc45/RELEASE-PROZESS.md."
     },
     {
