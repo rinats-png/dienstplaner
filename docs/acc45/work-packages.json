@@ -7157,8 +7157,8 @@
       "abhaengigkeiten": [],
       "status": "REVIEW",
       "stufen": {
-        "implementiert": {"wert":true,"beleg":"Branch acc45/release/rst-2-kandidaten-werkzeug: werkzeug/release-kandidat.mjs (Trockenlauf Standard, --ausgabe außerhalb des Repos, --anlegen nur lokaler Zweig release/rc-<id>), Test pruefungen/release-kandidat.test.js (in pruefung:acc45-werkzeuge); Push und Entwurfs-PR bewusst nicht im Werkzeug (RST-2-nachweis.md Abschnitt 4); release-pruefung.mjs und Workflows unverändert"},
-        "lokalGetestet": {"wert":true,"beleg":"lokal 2026-11-27 (Windows, TZ=UTC, --maxWorkers=1): release-kandidat 17/17; 15 Mutationen je Schutz rot (M6 erst nach ergänztem Test)"},
+        "implementiert": {"wert":true,"beleg":"Branch acc45/release/rst-2-kandidaten-werkzeug: werkzeug/release-kandidat.mjs (Trockenlauf Standard, --ausgabe außerhalb des Repos, --anlegen nur lokaler Zweig release/rc-<id>), Test pruefungen/release-kandidat.test.js (in pruefung:acc45-werkzeuge); Push und Entwurfs-PR zuerst bewusst nicht im Werkzeug (PR #597), danach als ausdrücklich aktivierter Ausführungsmodus --ausfuehren nach Betreiberentscheidung 2026-11-27 (PR #601; feste Allowlist, nur Zielzweig release/rc-<id>, force nur als --force-with-lease=<ref>:, Entwurfs-PR gegen main, nie Merge; RST-2-nachweis.md Abschnitte 4 und 6); release-pruefung.mjs und Workflows unverändert"},
+        "lokalGetestet": {"wert":true,"beleg":"lokal 2026-11-27 (Windows, TZ=UTC, --maxWorkers=1): release-kandidat 17/17; 15 Mutationen je Schutz rot (M6 erst nach ergänztem Test). Folge-PR Ausführungsmodus (--ausfuehren, Betreiberentscheidung 2026-11-27) 2026-11-27: release-kandidat 41/41 und prozess-wachen grün; 32 Mutationen je Schutz rot (N2, N24, N27 erst nach ergänzten Testfällen); CI-Aussagen und Härtungen (force-with-lease, Push-Ziel, gh-Umgebung, Lesebefehl-Optionen) gebunden"},
         "reviewt": {"wert":false,"beleg":null},
         "integriert": {"wert":false,"beleg":null},
         "stagingGeprueft": {"wert":false,"beleg":null},
@@ -7169,9 +7169,9 @@
       "agent": "sonnet",
       "modell": "opus",
       "konfliktzonen": [],
-      "pr": ["#597"],
+      "pr": ["#597","#601"],
       "nachweis": "Release-Stillstand-Analyse 2026-11-24, Abschnitt 7; docs/acc45/RELEASE-PROZESS.md; docs/acc45/RST-2-nachweis.md",
-      "akzeptanz": "Trockenlauf ist Standard; erzeugt außerhalb des Kandidaten Vorlage der Freigabedatei, vorlagenHashes, G2-Belegliste, G8/G9-Listen und Übergabe; rc-Zweig und Entwurfs-PR nur mit ausdrücklichem Flag (--anlegen); ändert nie einen bestehenden Kandidaten (Test); zweiter Lauf auf denselben Kandidaten byte-gleich (Test); kein Netzaufruf außer GET; kein Bildbau, kein Deploy",
+      "akzeptanz": "Trockenlauf ist Standard; erzeugt außerhalb des Kandidaten Vorlage der Freigabedatei, vorlagenHashes, G2-Belegliste, G8/G9-Listen und Übergabe; rc-Zweig und Entwurfs-PR nur mit ausdrücklichem Flag (--anlegen); ändert nie einen bestehenden Kandidaten (Test); zweiter Lauf auf denselben Kandidaten byte-gleich (Test); kein Netzaufruf außer GET im Standard und bei --anlegen (nur git ls-remote); Betreiberentscheidung 2026-11-27: ein ausdrücklich aktivierter Ausführungsmodus --ausfuehren darf zusätzlich den rc-Zweig pushen und einen Entwurfs-PR erstellen (nie Merge, nie geschützte Zweige, kein ausdrücklicher Workflow-Start, kein Deploy, keine Veröffentlichung eines Release-Images); kein Bildbau, kein Deploy",
       "tests": "Unit (Trockenlauf, Idempotenz, Schutz bestehender rc-Zweig)",
       "dateien": "werkzeug/release-kandidat.mjs, pruefungen/",
       "notiz": "Umfangsklasse: OPTIONAL-WERKZEUG. Prioritätsbegründung: P2: Handarbeit funktioniert; Nutzen entsteht erst bei vielen Kandidaten. Reviewbedarf: Opus unabhängig. Keine Änderung an werkzeug/release-pruefung.mjs und keine Gate-Konfiguration. Abweichung von der Analyse-Arbeitspriorität: Die Release-Stillstand-Analyse empfahl „SSOT-Prio P2 wegen G9“; das wäre eine G9-Umgehung und ist laut Betreiber verboten. Die Priorität hier ist fachlich begründet. Quelle: Release-Stillstand-Analyse 2026-11-24 (Abschnitt 7) und Koordinator-Vorgabe 2026-11-24. Aufwand SCHÄTZUNG, nicht gemessen. Konfliktzone (Dateien, nicht im SSOT-Zonenvokabular): werkzeug/, pruefungen/."
