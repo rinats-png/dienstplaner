@@ -19,6 +19,7 @@ import { ersatzVorschlaege } from "../server/lib/engine/einsatz.mjs";
 import { neuesVorgabenBudget } from "../server/lib/vorgabenwirkung.mjs";
 import { zusammenfuehren, bestandFuerRolle } from "../server/lib/rechte.mjs";
 import { modulProtokollZeilen, moduleinstellungenSicht, MODULPROTOKOLL_GRENZE } from "../server/lib/branchenmodule.mjs";
+import { raeumen } from "../server/lib/aufbewahrung.mjs";
 import { baueLeerenBetrieb } from "../server/lib/leerbetrieb.mjs";
 import { anheftungenImMonat } from "../src/ansichten/anheftungen.jsx";
 import { FEST, zufall, betriebe } from "./engine-golden.fixture.mjs";
@@ -294,7 +295,67 @@ describe("3. Schreibweg und Sicht", () => {
     const b0 = bestand();
     const nb = structuredClone(b0); nb.mandanten.push({ ...betrieb(), id: "m9", angeheftet: { "a1|2026-12-01": ST } });
     const e = zusammenfuehren(b0, nb, { rolle: "betreiber", person: null });
-    const m9 = e && !e.verweigert ? e.mandanten.find((x) => x.id === "m9") : null;
-    if (m9) expect(m9).not.toHaveProperty("angeheftet");
+    expect(e && !e.verweigert, "Betreiber legt den Betrieb an").toBe(true);
+    const m9 = e.mandanten.find((x) => x.id === "m9");
+    expect(m9, "neuer Betrieb vorhanden").toBeTruthy();
+    expect(m9).not.toHaveProperty("angeheftet");
+    /* Review #602 C2: Lösen und Aufheben an der Kartengrenze gehen immer. */
+    const loesen = anheftenZusammen(voll, { ...structuredClone(voll), angeheftet: Object.fromEntries(Object.entries(voll.angeheftet).slice(1)) }, SITZ.leitung, { jetzt: T0 });
+    expect(loesen.grund).toBeUndefined();
+    expect(Object.keys(loesen.mandant.angeheftet).length).toBe(ANGEHEFTET_GRENZE.eintraege - 1);
+    const k0 = Object.keys(voll.angeheftet)[0];
+    const aufheben = anheftenZusammen(voll, { ...structuredClone(voll), abweichungen: { ...voll.abweichungen, [k0]: "-" } }, SITZ.planer, { jetzt: T0 });
+    expect(aufheben.grund).toBeUndefined();
+    expect(aufheben.mandant.angeheftet[k0]).toHaveProperty("aufgehobenAm", T0);
+  });
+
+  it("Review #602 B-1: verwaiste Anheftung (Einteilung fehlt) sperrt nie das Speichern — wird als aufgehoben vermerkt; Datenschutzlauf kürzt die Karte", () => {
+    /* Gegenbeispiel des Reviewers 1:1: Karte mit aktiver Anheftung ohne Abweichung, Leitung ändert nur den Namen. */
+    const b = bestand(); b.mandanten[0].angeheftet = { "a1|2020-01-01": ST, "a1|2026-12-01": ST };
+    for (const k of ["leitung", "planer", "kunde"]) {
+      const r = schreibe(k, (m) => { m.name = "Haus neu"; }, b);
+      expect(r.abgewiesen, `${k}: ${r.grund}`).toBe(false);
+      expect(r.m.name).toBe("Haus neu");
+      expect(r.m.angeheftet["a1|2020-01-01"]).toMatchObject({ aufgehobenAm: expect.any(String), aufgehobenVonRolle: "system" });
+      expect(r.m.angeheftet["a1|2026-12-01"], "die andere bleibt").toEqual(ST);
+      expect(prot(r.m).at(-1)).toMatchObject({ art: ANHEFTEN_PROTOKOLL.aufgehoben, anzahl: 1 });
+    }
+    /* Neu Anheften ohne Einteilung bleibt abgewiesen. */
+    expect(schreibe("leitung", anheften("a1|2026-12-09"), b).grund).toContain("eingetragene Einteilung");
+    /* Datenschutzlauf: raeumen entfernt Abweichung UND Anheftung jenseits der Plandatenfrist; danach speichert die Leitung. */
+    const alt = betrieb(); alt.abweichungen["a1|2020-01-01"] = "F"; alt.angeheftet = { "a1|2020-01-01": ST, "a1|2026-12-01": ST };
+    const { mandant } = raeumen(alt, "2026-11-27");
+    expect(mandant.abweichungen).not.toHaveProperty("a1|2020-01-01");
+    expect(mandant.angeheftet).toEqual({ "a1|2026-12-01": ST });
+    expect(raeumen({ ...alt, angeheftet: "x" }, "2026-11-27").mandant.angeheftet, "unlesbar bleibt liegen").toBe("x");
+    const nachLauf = schreibe("leitung", (m) => { m.name = "X"; }, bestand(mandant));
+    expect(nachLauf.abgewiesen, nachLauf.grund).toBe(false);
+  });
+
+  it("Review #602 B-2: unlesbare Karte, unverändert zurückgeschickt, sperrt das Speichern nicht; Reparatur mit gültiger Zuordnung; unlesbarer Eintrag nie still neu angeheftet", () => {
+    for (const kaputt of ["x", [], 3, { "a1|2026-12-01": {} }]) {
+      const b = bestand(); b.mandanten[0].angeheftet = kaputt;
+      for (const k of ["leitung", "planer"]) {
+        const r = schreibe(k, (m) => { m.name = "Haus neu"; }, b);
+        expect(r.abgewiesen, `${JSON.stringify(kaputt)} ${k}: ${r.grund}`).toBe(false);
+        expect(r.m.angeheftet, "bleibt unlesbar").toEqual(kaputt);
+        expect(anheftungenLesen(r.m).ok).toBe(false);
+      }
+      /* SV bleibt gesperrt, der Planer rechnet nicht (fail closed). */
+      expect(schreibe("subplaner", (m) => { m.abweichungen["a1|2026-12-05"] = "F"; }, b).grund).toContain("nicht lesbar");
+      /* Reparatur: gültige Zuordnung ersetzt die Karte. */
+      const rep = schreibe("leitung", (m) => { m.angeheftet = { "a1|2026-12-01": {} }; }, b);
+      if (JSON.stringify(kaputt) === JSON.stringify({ "a1|2026-12-01": {} })) {
+        /* derselbe unlesbare Eintrag unverändert = kein Schreiben (Karte bleibt) — nie still neu angeheftet */
+        expect(rep.abgewiesen).toBe(false);
+        expect(rep.m.angeheftet).toEqual(kaputt);
+        const mitNeu = schreibe("leitung", (m) => { m.angeheftet = { "a1|2026-12-01": {}, "p1|2026-12-01": {} }; }, b);
+        expect(mitNeu.grund).toContain("nicht lesbar");
+      } else {
+        expect(rep.abgewiesen, rep.grund).toBe(false);
+        expect(rep.m.angeheftet).toEqual({ "a1|2026-12-01": { am: expect.any(String), vonRolle: "leitung" } });
+        expect(anheftungenLesen(rep.m).ok).toBe(true);
+      }
+    }
   });
 });
