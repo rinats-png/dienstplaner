@@ -2015,7 +2015,8 @@ describe("RELEASE-PROZESS.md: Struktur (Ersetzungsfehler 8ac80cfa, REL-1 Nachzug
     const ueberschriften = zeilen.filter((z) => /^#{1,6} /.test(z));
     const doppelt = ueberschriften.filter((z, i) => ueberschriften.indexOf(z) !== i);
     expect(doppelt).toEqual([]);
-    for (const u of ["# Release-Prozess (REL-1, Stand 2026-11-20)", "## 1. Begriffe", "## 2. Gruppierung: was in ein Release-Paket darf",
+    expect(zeilen.filter((z) => /^# Release-Prozess \(REL-1, Stand \d{4}-\d{2}-\d{2}\)$/.test(z)), "Titel").toHaveLength(1);
+    for (const u of ["## 1. Begriffe", "## 2. Gruppierung: was in ein Release-Paket darf",
       "## 3. Rollen", "## 4. Ablauf", "## 5. Freigabedatei", "## 6. Gates (Kurzfassung)"]) {
       expect(zeilen.filter((z) => z === u), u).toHaveLength(1);
     }
