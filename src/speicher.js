@@ -465,6 +465,21 @@ export async function loeschlaufServer(rumpf) {
   return { status, daten: daten || {} };
 }
 
+/**
+ * WP-19.4 (E7 b): Änderungsprotokoll der Zuordnungen archivieren — POST /api/bereichsprotokoll-archivieren (nur Leitung, nur mit
+ * bestätigtem Export: Anzahl, Bytes, Prüfsumme, exportGespeichert, optional Aktenzeichen). Der Server entfernt die Einträge und
+ * schreibt den Vermerk in einem Schreiben. Fail-closed: alles außer einer ausdrücklichen Erfolgsantwort (200, ok, Anzahl) wirft;
+ * ein Fehlschlag ist nie „archiviert“. Die Oberfläche (bereichsplan-archiv.js) ruft das erst, wenn der Betreiber den Schritt freigibt.
+ * @param {{ anzahl: number, bytes: number, pruefsumme: string, exportGespeichert: boolean, aktenzeichen?: string }} angabe
+ * @returns {Promise<{ ok: true, archiviert: number, vermerk: any }>}
+ */
+export async function bereichsprotokollArchivierenSenden(angabe) {
+  const { status, daten } = await ruf("bereichsprotokoll-archivieren", { method: "POST", body: JSON.stringify(angabe) });
+  if (status !== 200 || !daten || daten.ok !== true || !Number.isInteger(daten.archiviert))
+    throw new Error((daten && (daten.text || daten.fehler)) || "Das Änderungsprotokoll wurde nicht archiviert.");
+  return daten;
+}
+
 /** WP-48.5 (3): Der nächste Schreibvorgang geht als Voll-PUT (Löschlauf per Speichern bei aktivem Teilweg, Kundenrolle):
     Stempel stehen nie im Delta, ihr Löschen braucht den ganzen Bestand. Ohne Teilweg wirkungslos. Die Vorgabe geht
     beim nächsten schreib() an DIESEN Auftrag über (Review #350 M2: nicht global — ein älterer Auftrag, der noch auf sein
