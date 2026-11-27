@@ -32,6 +32,8 @@ import { bestandFuerRolle, zusammenfuehren } from "../server/lib/rechte.mjs";
 import { branchenbestand, schreibeAls as schreibeAlsEcht, SITZUNGEN } from "./hilfen/branchenbetrieb.mjs";
 import { PostenWechsel, wechselZeilen } from "../src/module/posten-wechsel.js";
 import { PostenErgaenzung } from "../src/module/posten-pflege.js";
+import { modulKontext } from "../src/module/zugriff.js";
+import { sperrtBefund } from "../server/lib/bestaetigungen.mjs";
 
 const AKTIV = BRANCHENMODULE.map((x) => (x.id === "posten" ? { ...x, status: "vorlaeufig" } : x));
 const schreibeAls = (g, r, aendern) => schreibeAlsEcht(g, r, aendern, { liste: AKTIV });
@@ -147,6 +149,17 @@ describe("Teil A — Zählung zeitanteilig ohne Doppelzählung (W6)", () => {
     expect(postenLage(m, T, "F", [p("a"), p("b")]).find((x) => x.posten === "pf").alleinarbeitHinweis).toMatch(/Alleinarbeit/);
     const zwei = betrieb({ [`a|${T}`]: "pf", [`b|${T}`]: "pf" });
     expect(postenLage(zwei, T, "F", [p("a"), p("b")]).find((x) => x.posten === "pf").alleinarbeitHinweis).toBeNull();
+  });
+  it("Alleinarbeit (Review #604): knappster Zeitpunkt 0 Personen, zu anderem Zeitpunkt genau 1 → Hinweis; durchgehend 2 → keiner", () => {
+    const null1 = betrieb({ [`a|${T}`]: W("pf", ["10:00", "st"]) });
+    const l = postenLage(null1, T, "F", [p("a")]).find((x) => x.posten === "pf");
+    expect(l.ist).toEqual([]);
+    expect(l.alleinarbeitHinweis).toMatch(/Alleinarbeit/);
+    /* knappster Zeitpunkt 2, nie genau 1 (zwei durchgehend, eine dritte nur bis 10 Uhr) → kein Hinweis */
+    const drei = betrieb({ [`a|${T}`]: "pf", [`b|${T}`]: "pf", [`c|${T}`]: W("pf", ["10:00", "st"]) });
+    const l2 = postenLage(drei, T, "F", [p("a"), p("b"), p("c")]).find((x) => x.posten === "pf");
+    expect(l2.ist).toEqual(["a", "b"]);
+    expect(l2.alleinarbeitHinweis).toBeNull();
   });
 
   it("Zufallsvergleich gegen eine naive Minutenreferenz (fester Startwert, begrenzte Durchläufe)", () => {
@@ -317,6 +330,19 @@ describe("Teil B — Server (W2, W3, W7–W9)", () => {
     expect(demo && demo.verweigert).toMatch(/nur Leitung und Planung/);
     expect(postenWechselZusammen({ postenPlan: { k: WECHSEL } }, {}, null).grund).toBeTruthy();
     expect(postenWechselZusammen({ postenPlan: { k: WECHSEL } }, {}, { rolle: "unbekannt" }).grund).toBeTruthy();
+    expect(postenWechselZusammen({ postenPlan: { k: WECHSEL } }, {}, { rolle: "subplaner", person: "s1" }).grund).toMatch(/nur Leitung und Planung/);
+    expect(postenWechselZusammen({ postenPlan: { k: WECHSEL } }, { postenPlan: { k: kopie(WECHSEL) } }, { rolle: "subplaner" }).grund).toBeUndefined();
+  });
+  it("Review #604: Kundenrolle und Demo ändern eine BESTEHENDE Liste (gleicher Schlüssel, andere Zeit) nicht", () => {
+    const g = gesamt({ [`a1|${T}`]: WECHSEL });
+    const kd = schreibeAls(g, "KD", (m) => { m.postenPlan = { [`a1|${T}`]: W("pf", ["11:00", "st"]) }; });
+    expect(kd.verweigert).toMatch(/nur Leitung und Planung/);
+    const s = kopie(bestandFuerRolle(g, SITZUNGEN.LT));
+    s.mandanten[0].postenPlan = { [`a1|${T}`]: W("pf", ["11:00", "st"]) };
+    const demo = zusammenfuehren(g, s, { ...SITZUNGEN.LT, demo: true }, { liste: AKTIV });
+    expect(demo && demo.verweigert).toMatch(/nur Leitung und Planung/);
+    expect(g.mandanten[0].postenPlan[`a1|${T}`]).toEqual(WECHSEL);
+    expect(postenWechselZusammen({ postenPlan: { k: W("pf", ["11:00", "st"]) } }, { postenPlan: { k: WECHSEL } }, { rolle: "kunde" }).grund).toBeTruthy();
   });
   it("SV-Schreibweg bleibt geschlossen; Beschäftigte und Betriebsrat schreiben nichts", () => {
     for (const r of ["SV", "MA", "BR"]) {
@@ -346,11 +372,24 @@ describe("Teil B — Server (W2, W3, W7–W9)", () => {
     expect(schema("pf", { objekte: OBJEKTE })).toBe(true);
     expect(schema(WECHSEL, { objekte: OBJEKTE })).toBe(false);
   });
-  it("Planer, Fachprüfung und Arbeitszeit lesen den Postenplan nicht (W2, W7, W8: Wechsel ändert keine Zeiten, Planer ändert keine Posten)", async () => {
+  it("Planer schreibt den Postenplan nie; Fachprüfung/Einsatz lesen ihn nur indirekt (branchenBefunde → postenBefunde) als Hinweis, der nie sperrt (W2, W7, W8)", async () => {
     const wurzel = fileURLToPath(new URL("../server/lib", import.meta.url));
     const dateien = [...(await readdir(path.join(wurzel, "engine"))).filter((x) => x.endsWith(".mjs")).map((x) => path.join(wurzel, "engine", x)),
       path.join(wurzel, "fachpruefung.mjs"), path.join(wurzel, "zeiterfassung.mjs")];
+    /* kein direkter Zugriff, also auch kein Schreiben: das Feld kommt in Planer, Fachprüfung und Zeiterfassung nicht vor */
     for (const d of dateien) expect(await readFile(d, "utf8"), d).not.toMatch(/postenPlan/);
+    /* der einzige Leseweg: Fachprüfung → branchenBefunde → postenBefunde (Befundart „branche“) */
+    expect(await readFile(path.join(wurzel, "fachpruefung.mjs"), "utf8")).toMatch(/branchenBefunde\(/);
+    /* … und dessen Befunde sperren nie, auch nicht bei nicht bewertbarem Wechsel, Unterbesetzung oder fehlender Qualifikation */
+    const opts = { auswerten: pruefeRegel, module: AKTIV, qualGueltig: () => false, heute: T };
+    const faelle = [W("st", ["10:00", "pf"]), W("st", ["16:00", "pf"]), "pf", { kaputt: 1 }];
+    let befunde = 0;
+    for (const w of faelle) for (const b of postenBefunde(betrieb({ [`a|${T}`]: w }), { id: "F" }, T, p("a"), [p("a")], opts)) {
+      befunde += 1;
+      expect(b.regel, JSON.stringify(w)).toBe("branche");
+      expect(sperrtBefund(b.regel), JSON.stringify(w)).toBe(false);
+    }
+    expect(befunde).toBeGreaterThan(3);
   });
 });
 
@@ -466,11 +505,25 @@ describe("Teil D — Oberfläche (posten-wechsel.js)", () => {
   });
   it("eingehängt in PostenErgaenzung: Schreibweg nur mit Recht (Leitung/Planung), sonst nur Lesen", () => {
     const m = betrieb({ [`a|${T}`]: W("pf", ["10:00", "st"]) });
-    const k = (postenSchreiben) => ({ m, datum: T, dienstId: "F", personenImDienst: PERS, postenSchreiben, akt: { setzeFeld: () => {} } });
+    const k = (postenSchreiben, postenWechsel = postenSchreiben) => ({ m, datum: T, dienstId: "F", personenImDienst: PERS, postenSchreiben, postenWechsel, akt: { setzeFeld: () => {} } });
     expect(renderToStaticMarkup(h(PostenErgaenzung, { k: k(true) }))).toContain("Wechsel hinzufügen");
     const lesen = renderToStaticMarkup(h(PostenErgaenzung, { k: k(false) }));
     expect(lesen).toContain("Postenwechsel am");
     expect(lesen).not.toContain("Wechsel hinzufügen");
+    /* Review #604 C6: Demo-Sitzung — Einteilung wie bisher, Postenwechsel nur lesen (Server 403 bleibt) */
+    const demo = renderToStaticMarkup(h(PostenErgaenzung, { k: k(true, false) }));
+    expect(demo).toContain("Postenwechsel am");
+    expect(demo).not.toContain("Wechsel hinzufügen");
+    expect(demo).not.toContain("entfernen (Vera Muster)");
+  });
+  it("Kontext (Review #604 C6): Postenwechsel nur Leitung/Planung und nie in einer Demo-Sitzung", () => {
+    const kx = (rolle, demo) => modulKontext({ sitz: { rolle, demo, person: { id: "p1" }, mandant: {} } });
+    expect(kx("leitung", false).postenWechsel).toBe(true);
+    expect(kx("planer", undefined).postenWechsel).toBe(true);
+    expect(kx("leitung", true).postenWechsel).toBe(false);
+    expect(kx("planer", true).postenWechsel).toBe(false);
+    for (const r of ["kunde", "subplaner", "mitarbeiter", "betriebsrat", "betreiber", ""]) expect(kx(r, false).postenWechsel, r).toBe(false);
+    expect(modulKontext({}).postenWechsel).toBe(false);
   });
   it("wechselZeilen: unlesbar → null", () => {
     expect(wechselZeilen({ x: 1 }, F, new Map())).toBeNull();

@@ -154,6 +154,6 @@ export function PostenErgaenzung({ k }) {
   return h(Fragment, null,
     h(PostenHinweise, { m: k.m, datum: k.datum, dienstId: k.dienstId, personenImDienst: k.personenImDienst }),
     h(PostenEinteilung, { m: k.m, datum: k.datum, personenImDienst: k.personenImDienst, schreibe }),
-    h(PostenWechsel, { m: k.m, datum: k.datum, dienstId: k.dienstId, personenImDienst: k.personenImDienst, schreibe }),
+    h(PostenWechsel, { m: k.m, datum: k.datum, dienstId: k.dienstId, personenImDienst: k.personenImDienst, schreibe: k.postenWechsel === true ? schreibe : null }),
     h(PostenPflege, { m: k.m, schreibe }));
 }

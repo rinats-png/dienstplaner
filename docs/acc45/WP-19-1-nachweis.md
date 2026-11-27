@@ -98,3 +98,17 @@ Doppelzählung (5), Alleinarbeit (1), Kundenrolle darf (1), Demo darf (1), Serve
 Objektbericht (1), Befund still (1), Auswahl verwirft Wechsel (1), Oberfläche ohne Meldung (1), verwaiste Einteilung (1) – 18 von 18 erkannt.
 
 **Nicht belegt / offen.** Unabhängiges Review (Opus: Datenmodell, Rechte), E2E (WP-19.13), Fachfragen PW-1…PW-5.
+
+### Nachtrag Review #604 (Opus: Freigabe; Kopf vorher 2f0040d6)
+
+- **(a)** Neuer Fall: Kundenrolle und Demo ändern eine **bestehende** Liste (gleicher Schlüssel, andere Uhrzeit) → abgewiesen, gespeicherter Wechsel unverändert. Mutation M11 (`!hat(alt, k)` statt Wertvergleich) ist jetzt rot.
+- **(b)** Neuer Fall Alleinarbeit: Zum knappsten Zeitpunkt ist niemand auf dem Posten, zu einem anderen genau eine Person → Hinweis. Gegenprobe: knappster Zeitpunkt zwei Personen, nie genau eine → kein Hinweis. Mutation M9 (Hinweis nur nach `ist.length`) ist jetzt rot.
+- **(c)** `postenWechselZusammen` weist die Rolle `subplaner` ab; Unverändertes lässt es durch.
+- **(C2)** Formulierung präzisiert (W2, W7, Testname): Der Planer **schreibt** `postenPlan` nie. Fachprüfung (`fachpruefung.mjs`, Andockpunkt A2) und Einsatzprüfung (`engine/einsatz.mjs`) lesen ihn **indirekt** über `branchenBefunde` → `postenBefunde`, nur als Befundart „branche“ (Hinweis, `sperrtBefund` = false). Der Test belegt genau das: kein Vorkommen des Feldes in Planer, Fachprüfung und Zeiterfassung (also kein Schreiben); der Leseweg über `branchenBefunde`; für alle Fallarten (Wechsel, nicht bewertbar, Einzelkennung, unlesbar) nur Befunde der Art „branche“, die nie sperren.
+- **(C6)** Oberfläche: Kontextfeld `postenWechsel` (`src/module/zugriff.js`): Leitung/Planung und nie in einer Demo-Sitzung. In der Demo sind die Felder „Wechsel hinzufügen“/„entfernen“ ausgeblendet, die Abschnitte bleiben lesbar. Die Einteilung des Anfangspostens bleibt wie bisher. Der Server bleibt maßgeblich (Demo → abgewiesen). Tests „Kontext“ und „eingehängt … Demo“.
+- **(C4) Bekannte Grenzen, dokumentiert, nicht geändert:**
+  - *Zeitumstellung:* Wechselzeitpunkte und Dienstfenster rechnen mit der Uhrzeit (nominale Minuten), wie die Dienstarten selbst. In der Nacht der Umstellung ist eine Uhrzeit in der doppelten Stunde (Ende Oktober, 02:00–03:00) nicht eindeutig: Sie gilt nominal, und welche der beiden realen Stunden gemeint ist, bildet das Modell nicht ab. In der fehlenden Stunde (Ende März) entsteht ein nominaler Abschnitt ohne reale Dauer. Die Zählung bleibt nominal und konsistent, die reale Dauer weicht dort um eine Stunde ab.
+  - *Pause als Postenzeit:* Die Abschnitte decken den ganzen Dienst einschließlich Pause (es gibt kein Pausenmodell je Posten). Die Besetzung während der Pause wird nicht abgezogen.
+- **C3, C5, C7, D:** laut Koordinator nicht merge-blockierend, hier nur benannt. Der Wortlaut lag diesem Schreiber nicht vor (kein Review-Kommentar im PR), daher keine Änderung.
+
+**Belege (lokal, TZ=UTC, ein vitest-Prozess).** `modul-posten-wechsel` 39 Fälle (vorher 36). Regression: dieselbe Gruppe wie oben plus `intelligence-anheften`, `acc45-status`, `doku` (94 Dateien, 3048 Tests) grün. Mutationen `p191-mutiere.mjs` jetzt 23 (neu: M9, M11, C6 Kontext, C6 Einhängung, C2 Posten-Befund sperrt): 23 von 23 erkannt, Quelle danach byte-gleich, `git diff` unverändert. eslint, tsc sauber.
