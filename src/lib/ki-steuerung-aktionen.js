@@ -47,13 +47,15 @@ export function kiSteuerungAktionen(k) {
       const neu = (d) => ({ ...d, mandanten: d.mandanten.map((m) => (m.id === id ? mitSteuerung(m, (st) => kiAbsichtAnwenden(st, absicht)) : m)) });
       upd((d) => neu(d));
       const pruefen = async () => {
-        let stand = null;
+        let stand = null, gelesen = false;
         try {
-          const g = await SP.lies();
-          const m = g && g.bestand && Array.isArray(g.bestand.mandanten) ? g.bestand.mandanten.find((x) => x.id === id) : null;
+          const bestand = await SP.liesZumVergleich();
+          const m = Array.isArray(bestand.mandanten) ? bestand.mandanten.find((x) => x.id === id) : null;
           stand = m && m.einstellungen ? m.einstellungen.kiSteuerung || null : null;
-        } catch { stand = null; }
-        if (kiSteuerungBestaetigt(absicht, stand)) { melde("Intelligence-Steuerung geändert."); return; }
+          gelesen = true;
+        } catch { gelesen = false; }
+        if (gelesen && kiSteuerungBestaetigt(absicht, stand)) { melde("Intelligence-Steuerung geändert."); return; }
+        if (!gelesen) { melde("Ob der Server die Änderung übernommen hat, ließ sich nicht bestätigen. Bitte neu laden und prüfen."); return; }
         if (stand) upd((d) => mitServerstand(d, id, stand));
         melde("Der Server hat die Änderung nicht übernommen. Es gilt der gespeicherte Stand; bitte neu laden und prüfen.");
       };

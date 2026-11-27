@@ -14,8 +14,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-const SPM = vi.hoisted(() => ({ schreib: null, lies: null }));
-vi.mock("../src/speicher.js", () => ({ schreib: (...a) => SPM.schreib(...a), lies: (...a) => SPM.lies(...a) }));
+const SPM = vi.hoisted(() => ({ schreib: null, liesZumVergleich: null }));
+vi.mock("../src/speicher.js", () => ({ schreib: (...a) => SPM.schreib(...a), liesZumVergleich: (...a) => SPM.liesZumVergleich(...a) }));
 
 import { KiSteuerung, KI_STEUERUNG_TEXTE } from "../src/ansichten/ki-steuerung.jsx";
 import { kiSteuerungAktionen, kiSteuerungBestaetigt } from "../src/lib/ki-steuerung-aktionen.js";
@@ -61,7 +61,13 @@ SPM.schreib = (bestand, opt) => (async () => {
   const e = await anfrage("/api/bestand", { methode: "PUT", token: aktuell.token, rumpf: { bestand: rest, etag: aktuell.etag, durch: opt.durch } });
   if (e.status === 200) opt.onGespeichert(bestand); else if (e.status === 409) opt.onKonflikt(e); else opt.onFehler({ status: e.status });
 })();
-SPM.lies = async () => anfrage("/api/bestand", { methode: "GET", token: aktuell.token });
+let leseFehler = false;
+SPM.liesZumVergleich = async () => {
+  if (leseFehler) throw new Error("Lesen fehlgeschlagen.");
+  const r = await anfrage("/api/bestand", { methode: "GET", token: aktuell.token });
+  if (r.status !== 200) throw new Error("Lesen fehlgeschlagen.");
+  return r.bestand;
+};
 /** Absicht auslösen und warten, bis die Aktion eine Meldung ausgibt. */
 async function ausloesen(o, absicht) {
   aktuell = o;
@@ -88,7 +94,7 @@ function knopfAbsicht(o) {
   return aufrufe[0];
 }
 const GEAENDERT = "Intelligence-Steuerung geändert.";
-const NICHT = /nicht übernommen|nicht gespeichert/;
+const NICHT = /nicht übernommen|nicht gespeichert|nicht bestätigen/;
 
 beforeAll(async () => {
   wurzel = await mkdtemp(path.join(tmpdir(), "centric-wpi16auf-"));
@@ -210,5 +216,17 @@ describe("Ende zu Ende: Oberfläche → Aktion → PUT /api/bestand", () => {
     const k = ki(await gespeichert());
     expect(k.pause.aktiv).toBe(false);
     expect(k.leitungPause.aktiv).toBe(false);
+  });
+});
+
+describe("Lesefehler bei der Bestätigung", () => {
+  it("kann der Serverstand nicht gelesen werden, steht „nicht bestätigen“ da, nie „geändert“", async () => {
+    const o = await oberflaeche("l1");
+    leseFehler = true;
+    try {
+      const m = await ausloesen(o, { funktionen: { F3: { an: true } } });
+      expect(m).toMatch(/nicht bestätigen/);
+      expect(m).not.toBe(GEAENDERT);
+    } finally { leseFehler = false; }
   });
 });
