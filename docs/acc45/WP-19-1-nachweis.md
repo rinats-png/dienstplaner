@@ -19,7 +19,7 @@ Pflege, Einteilungsoberfläche, Alleinarbeit, Übernahme Bestand). Ein Teil blei
 | unbekannter Posten (Negativtest Plan) | Server prüfte nur Kennungsform | neue/geänderte Einträge müssen auf einen Posten der Objekte zeigen; Altbestand blockiert nicht; nicht auf dem Ausnahmeweg Art. 16/17 (dort prüft das Wertschema, F6) |
 | verwaiste Einteilung | Entfernen eines Posten über `objekte` ließ Einteilungen zurück | Server: ein Posten, der in diesem Schreibvorgang entfällt, darf keine Einteilung behalten (Review-Hinweis, billig) |
 | Aufwandsbudget (#561/#563/#566) | `postenLage` je Posten ein Durchlauf über alle Personen | ein Durchlauf über die Personen |
-| Postenwechsel im Dienst | fehlte | **nicht gebaut** (Rückfrage 1) |
+| Postenwechsel im Dienst | fehlte | **gebaut 2026-11-27** (Betreiberentscheidung 26.11., WP19-MODULPLAN.md § 18) |
 | SV schreibt Einteilung im Bereich | Server: Leitung vorbehalten | **unverändert geschlossen** (Rückfrage 2) |
 | E2E | – | gehört zu WP-19.13 (SSOT-Feld `tests`), hier nicht |
 
@@ -32,7 +32,7 @@ Pflege, Einteilungsoberfläche, Alleinarbeit, Übernahme Bestand). Ein Teil blei
 
 ## Rückfragen an den Betreiber
 
-1. **Postenwechsel innerhalb eines Dienstes (06–14 erst Pforte, ab 10 Uhr Streife)?** Heute ein Posten je Person und Tag (`Person|Tag`). Zeitabschnitte brauchen ein neues Datenmodell mit Folgen für Sicht, Auskunft, Wachbuch, Objektbericht (Opus-Review). Empfehlung: erst nach Pilot-Bedarf; bis dahin zwei Tagesposten nicht abbildbar. Alternative: Abschnitte als zweite Einteilungsebene `Person|Tag|Abschnitt` (abwärtskompatibel). Ersparnis ohne: ca. 1 PT.
+1. **(Entschieden 2026-11-26: Marktumfang; gebaut, siehe unten.)** **Postenwechsel innerhalb eines Dienstes (06–14 erst Pforte, ab 10 Uhr Streife)?** Heute ein Posten je Person und Tag (`Person|Tag`). Zeitabschnitte brauchen ein neues Datenmodell mit Folgen für Sicht, Auskunft, Wachbuch, Objektbericht (Opus-Review). Empfehlung: erst nach Pilot-Bedarf; bis dahin zwei Tagesposten nicht abbildbar. Alternative: Abschnitte als zweite Einteilungsebene `Person|Tag|Abschnitt` (abwärtskompatibel). Ersparnis ohne: ca. 1 PT.
 2. **Darf die Schichtverantwortung im eigenen Bereich am Tag einteilen?** Plan-Lesart ja, Rechtematrix und Test: nein. Empfehlung: geschlossen lassen (Aufenthaltsort-Schutz). Alternative: wie `bereichsPlanSchicht` (nur eigener Bereich am Tag).
 3. P3-Aufwertung der Qualifikationshinweise und § 34a-Zuordnung bleiben bei Rechts-/Fachprüfung (unverändert).
 
@@ -68,3 +68,47 @@ Angepasste bestehende Tests (Begründung):
 Ausnahmeweg-Umgehung der Bekannt-Prüfung: durch den unveränderten F6-Test und den neuen Fall `bekannt: false` belegt.
 
 Nicht blockierende Hinweise des Reviews: E2E und Postenwechsel/SV-Schreibweg bleiben offen (Rückfragen unverändert).
+
+## Postenwechsel innerhalb eines Dienstes (2026-11-27)
+
+Betreiberentscheidung 26.11.: Postenwechsel gehört zum Marktumfang; SV-Schreibweg für Posten bleibt geschlossen. Branch `acc45/wp19-1-postenwechsel`,
+Basis `origin/integration/release-v4` @ `3dc9da2d`. Invarianten W1–W13 vor der Umsetzung in `docs/acc45/WP19-MODULPLAN.md` § 18; dort auch Annahmen
+und Fachfragen PW-1…PW-5.
+
+**Gebaut.** Datenmodell ohne neues Feld: Wert im `postenPlan` ist Kennung (Bestand) oder Liste zeitlich abgegrenzter Abschnitte
+(`server/lib/modul-posten.mjs`: `postenAbschnitte`, `postenIdsVon`, `dienstFenster`, `postenZeitraeume`, `postenBesetzung`, `wechselSetzen`,
+`wechselEntfernen`, `postenWechselZusammen`; `pruefePostenPlan`, `postenLage`, `postenBefunde`, `postenZusammen`, `einteilungSetzen` angepasst).
+Server-Rechte in `rechte.mjs` (eine Prüfung im Voll-Weg). Sicht der Objekte über alle Abschnitte (`sicht.mjs`), Wachbuch-Berechtigung
+(`modul-wege.mjs`, `darfEintragen` exportiert für den Test), Objektbericht zeitanteilig/„ungeklärt“ (`modul-objektbericht.mjs`). Oberfläche
+`src/module/posten-wechsel.js` (neu), eine Einhängezeile in `posten-pflege.js`; `posten.jsx`/`kern.jsx` (V4-Pins) unverändert. `RECHTEMATRIX.md`:
+ein Absatz zu den Schreibrechten. Keine Workflow-Änderung, Modul bleibt `geplant`.
+
+**Tests (TZ=UTC, ein vitest-Prozess, `--maxWorkers=1`).** Neu `pruefungen/modul-posten-wechsel.test.js` (36 Fälle: Form, Zeiträume, Zählung mit
+Zufallsvergleich gegen naive Minutenreferenz – 250 Läufe, fester Startwert, begrenzte Schleifen –, Befunde, Objektbericht, Wachbuch,
+Pflegefunktionen, Server-Rechte/Sicht/Ausnahmeweg/Quelltextwache Planer, echte Handler PUT und Teilweg mit 409 und SV 403, Oberfläche).
+Regression in einem Lauf: alle `modul-*`, `objektbericht-*`, `v4-3b-*`, `v4-3c-branchenmodule`, `v4-ist-stand`, `v4-inventar`, `rechtematrix*`,
+`sicht*`, `prozess-wachen`, `ci-abdeckung`, `routen-inventar`, `wp48-rundweg`, `vollausgabe`, `entwuerfe`, `aufbewahrung`, `selbstauskunft`,
+`art9-katalog`, `pilot-seeds`, `abnahme-c-module`, `branchenmodule`, `branchen-*`, `rollen-failclosed`, `speicher-403/409`, `sv-orakel-schreibweg`,
+`schichtverantwortung`, `leserechte`, `intelligence-planer-kern`, `kunde-abloesung`, `datenschutz-schutz`, `schutzmerkmale-sicht`
+(91 Dateien, 2995 Tests) grün. Bestehende Tests unverändert. eslint auf die geänderten Dateien, `tsc -p jsconfig.json` sauber.
+
+**Mutationen** (`p191-mutiere.mjs`, je einzeln, Quelle danach byte-gleich, `git diff` unverändert): gleicher Folgeposten (3 rot), Reihenfolge (1),
+Altbestand nur referenzgleich (2), bekannt nur Anfangsposten (3), Wechsel am Dienstbeginn (1), nicht bewertbar still in der Lage (1),
+Doppelzählung (5), Alleinarbeit (1), Kundenrolle darf (1), Demo darf (1), Serverprüfung fehlt (1), Sicht Objekte (1), Wachbuch (1),
+Objektbericht (1), Befund still (1), Auswahl verwirft Wechsel (1), Oberfläche ohne Meldung (1), verwaiste Einteilung (1) – 18 von 18 erkannt.
+
+**Nicht belegt / offen.** Unabhängiges Review (Opus: Datenmodell, Rechte), E2E (WP-19.13), Fachfragen PW-1…PW-5.
+
+### Nachtrag Review #604 (Opus: Freigabe; Kopf vorher 2f0040d6)
+
+- **(a)** Neuer Fall: Kundenrolle und Demo ändern eine **bestehende** Liste (gleicher Schlüssel, andere Uhrzeit) → abgewiesen, gespeicherter Wechsel unverändert. Mutation M11 (`!hat(alt, k)` statt Wertvergleich) ist jetzt rot.
+- **(b)** Neuer Fall Alleinarbeit: Zum knappsten Zeitpunkt ist niemand auf dem Posten, zu einem anderen genau eine Person → Hinweis. Gegenprobe: knappster Zeitpunkt zwei Personen, nie genau eine → kein Hinweis. Mutation M9 (Hinweis nur nach `ist.length`) ist jetzt rot.
+- **(c)** `postenWechselZusammen` weist die Rolle `subplaner` ab; Unverändertes lässt es durch.
+- **(C2)** Formulierung präzisiert (W2, W7, Testname): Der Planer **schreibt** `postenPlan` nie. Fachprüfung (`fachpruefung.mjs`, Andockpunkt A2) und Einsatzprüfung (`engine/einsatz.mjs`) lesen ihn **indirekt** über `branchenBefunde` → `postenBefunde`, nur als Befundart „branche“ (Hinweis, `sperrtBefund` = false). Der Test belegt genau das: kein Vorkommen des Feldes in Planer, Fachprüfung und Zeiterfassung (also kein Schreiben); der Leseweg über `branchenBefunde`; für alle Fallarten (Wechsel, nicht bewertbar, Einzelkennung, unlesbar) nur Befunde der Art „branche“, die nie sperren.
+- **(C6)** Oberfläche: Kontextfeld `postenWechsel` (`src/module/zugriff.js`): Leitung/Planung und nie in einer Demo-Sitzung. In der Demo sind die Felder „Wechsel hinzufügen“/„entfernen“ ausgeblendet, die Abschnitte bleiben lesbar. Die Einteilung des Anfangspostens bleibt wie bisher. Der Server bleibt maßgeblich (Demo → abgewiesen). Tests „Kontext“ und „eingehängt … Demo“.
+- **(C4) Bekannte Grenzen, dokumentiert, nicht geändert:**
+  - *Zeitumstellung:* Wechselzeitpunkte und Dienstfenster rechnen mit der Uhrzeit (nominale Minuten), wie die Dienstarten selbst. In der Nacht der Umstellung ist eine Uhrzeit in der doppelten Stunde (Ende Oktober, 02:00–03:00) nicht eindeutig: Sie gilt nominal, und welche der beiden realen Stunden gemeint ist, bildet das Modell nicht ab. In der fehlenden Stunde (Ende März) entsteht ein nominaler Abschnitt ohne reale Dauer. Die Zählung bleibt nominal und konsistent, die reale Dauer weicht dort um eine Stunde ab.
+  - *Pause als Postenzeit:* Die Abschnitte decken den ganzen Dienst einschließlich Pause (es gibt kein Pausenmodell je Posten). Die Besetzung während der Pause wird nicht abgezogen.
+- **C3, C5, C7, D:** laut Koordinator nicht merge-blockierend, hier nur benannt. Der Wortlaut lag diesem Schreiber nicht vor (kein Review-Kommentar im PR), daher keine Änderung.
+
+**Belege (lokal, TZ=UTC, ein vitest-Prozess).** `modul-posten-wechsel` 39 Fälle (vorher 36). Regression: dieselbe Gruppe wie oben plus `intelligence-anheften`, `acc45-status`, `doku` (94 Dateien, 3048 Tests) grün. Mutationen `p191-mutiere.mjs` jetzt 23 (neu: M9, M11, C6 Kontext, C6 Einhängung, C2 Posten-Befund sperrt): 23 von 23 erkannt, Quelle danach byte-gleich, `git diff` unverändert. eslint, tsc sauber.

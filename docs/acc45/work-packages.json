@@ -1857,24 +1857,24 @@
       "abhaengigkeiten": ["WP-19.0"],
       "status": "IN_PROGRESS",
       "stufen": {
-        "implementiert": {"wert":"teilweise","beleg":"Server-Teilumfang #49 (ee38af2); Rest lokal: Pflege, Einteilung, Alleinarbeit, Übernahme Bestand, unbekannter Posten (docs/acc45/WP-19-1-nachweis.md); offen: Postenwechsel im Dienst, SV-Schreibweg (Betreiberrückfragen)"},
-        "lokalGetestet": {"wert":"teilweise","beleg":"pruefungen/modul-posten-pflege.test.js und Regression, siehe docs/acc45/WP-19-1-nachweis.md"},
+        "implementiert": {"wert":"teilweise","beleg":"Server-Teilumfang #49 (ee38af2); Pflege, Einteilung, Alleinarbeit, Übernahme Bestand, unbekannter Posten (#569); Postenwechsel innerhalb eines Dienstes (Server, Bewertung, Sicht, Wachbuch, Objektbericht, kleine Oberfläche; WP19-MODULPLAN.md § 18, W1–W13); SV-Schreibweg bleibt geschlossen (Betreiberentscheidung 2026-11-26); offen: E2E (WP-19.13), Fachfragen PW-1…PW-5"},
+        "lokalGetestet": {"wert":"teilweise","beleg":"pruefungen/modul-posten-pflege.test.js, pruefungen/modul-posten-wechsel.test.js und Regression, siehe docs/acc45/WP-19-1-nachweis.md"},
         "reviewt": {"wert":"teilweise","beleg":"Server-Teilumfang #49 (ee38af2)"},
         "integriert": {"wert":"teilweise","beleg":"Server-Teilumfang #49 (ee38af2)"},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
       },
-      "branch": "acc45/frontend/wp19-1-posten",
+      "branch": "acc45/wp19-1-postenwechsel",
       "agent": "Agent E – Business Modules & Frontend",
       "modell": "sonnet + opus-review",
-      "konfliktzonen": [],
-      "pr": ["#569"],
+      "konfliktzonen": ["rechte.mjs","sicht.mjs"],
+      "pr": ["#569","#604"],
       "nachweis": "docs/acc45/WP-19-1-nachweis.md",
       "akzeptanz": "laut WP19-MODULPLAN.md (Abschnitt des Moduls) und Produktentscheidungen 2026-11-03",
       "tests": "pruefungen/modul-<id>*.test.js, E2E in 19.13",
       "dateien": "siehe WP19-MODULPLAN.md Abschnitt 14",
-      "notiz": "PR #569 (WP-19.1 Rest: Pflege, Einteilung, Alleinarbeit, Übernahme Bestand; Postenwechsel und SV-Schreibweg offen, Betreiberrückfragen). PR #244 (WP-19 B1): Schreibwege bei Status geplant geschlossen (server/lib/modul-altwege.mjs); Status unverändert."
+      "notiz": "Postenwechsel (Betreiberentscheidung 2026-11-26: Marktumfang; SV-Schreibweg bleibt geschlossen): Invarianten W1–W13 in WP19-MODULPLAN.md § 18, gebaut auf Branch acc45/wp19-1-postenwechsel (PR #604); Annahmen konservativ (Kundenrolle/Demo kein Wechsel, Anheften unberührt, kein Postenplan-Protokoll), Fachfragen PW-1…PW-5. PR #569 (WP-19.1 Rest: Pflege, Einteilung, Alleinarbeit, Übernahme Bestand; Postenwechsel und SV-Schreibweg offen, Betreiberrückfragen). PR #244 (WP-19 B1): Schreibwege bei Status geplant geschlossen (server/lib/modul-altwege.mjs); Status unverändert."
     },
     {
       "id": "WP-19.2",
