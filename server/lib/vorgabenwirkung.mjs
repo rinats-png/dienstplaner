@@ -98,6 +98,10 @@ function langFenster(fenster) {
  */
 export function vorgabePlanwirkung(v, opt = {}) {
   if (!v || typeof v !== "object") return { wirkt: false, grund: NUR_TEST };
+  /* Verteilung (WP-I7 Teil 7): keine Prüfung je Einteilung; der Planer bewertet sie nachgelagert (Rang „Verteilung“, engine/verteilung.mjs). */
+  if (v.regelart === "verteilungsregel") return { wirkt: false, grund: verteilungGroesse(v)
+    ? `Keine Prüfung je Einteilung (Testlauf); der Planer bewertet sie nachrangig als Rang „Verteilung“ (${VERTEILUNG_GROESSEN.nachtdienste}).`
+    : `Diese Größe rechnet nur im Testlauf; im Plan bewertet der Planer bisher nur die Größe „nachtdienste“ (${VERTEILUNG_GROESSEN.nachtdienste}).` };
   if (!VORGABEN_PLANARTEN.includes(v.regelart)) return { wirkt: false, grund: NUR_TEST };
   const p = v.parameter || {};
   const G = VORGABEN_WIRKUNG_GRENZE;
@@ -120,6 +124,15 @@ export function vorgabePlanwirkung(v, opt = {}) {
     }
   }
   return { wirkt: true, grund: null };
+}
+
+/** Verteilungsgrößen, die der Planer bewertet (WP-I7 Teil 7, Betreiberentscheidung 27.11.: erste Stufe Nachtdienste je Person im
+    Kalendermonat). Weitere Größen (Wochenend-, Feiertagsdienste, Arbeitsstunden) kommen als weiterer Schlüssel hinzu. */
+export const VERTEILUNG_GROESSEN = Object.freeze({ nachtdienste: "Nachtdienste je Person im Kalendermonat" });
+/** Schlüssel der Verteilungsgröße einer Vorgabe (Schreibweise ohne Groß/Klein und Leerraum am Rand) oder null (nicht bewertet). */
+export function verteilungGroesse(v) {
+  const g = kleinText(v && v.parameter && typeof v.parameter === "object" ? v.parameter.groesse : "");
+  return Object.prototype.hasOwnProperty.call(VERTEILUNG_GROESSEN, g) ? g : null;
 }
 
 /** Halbe Fensterbreite einer Musterregel (Fenster d ± halb): Folge = max + danachFrei + 1, verbotene Folge = Abstand (NaN, wenn unbrauchbar). */
@@ -244,6 +257,24 @@ function parameterKanonisch(v, kl) {
   if (v.regelart === "musterregel") { p.von = liste(p.von); p.dann = liste(p.dann); p.klassen = liste(p.klassen); }
   if (v.regelart === "blockregel" && p.gruppen && typeof p.gruppen === "object") p.gruppen = Object.fromEntries(Object.entries(p.gruppen).map(([k, g]) => [kl(k), g]));
   return p;
+}
+
+/** Qualifikationsgruppe: Kennung, Kürzel oder Name einer Qualifikation des Betriebs → Kennung. */
+function qualAbbildung(m) {
+  const qual = new Map();
+  for (const q of Array.isArray(m.qualifikationen) ? m.qualifikationen : []) {
+    if (!q || typeof q !== "object" || q.id === undefined || q.id === null) continue;
+    for (const x of [q.name, q.kurz, q.id]) if (x !== undefined && x !== null && x !== "" && !qual.has(kleinText(x))) qual.set(kleinText(x), String(q.id));
+    qual.set(kleinText(q.id), String(q.id));
+  }
+  return qual;
+}
+
+/** Geltung einer Vorgabe je Person und Tag (dieselbe Stelle wie die Wirkung je Einteilung): (v, p, d, einheitAm) → „ja“ | „nein“ | „offen“. */
+export function vorgabeGeltung(m) {
+  const qual = qualAbbildung(m && typeof m === "object" ? m : {});
+  const vb = { qualFuer: (n) => qual.get(kleinText(n)) };
+  return (v, p, d, einheitAm) => giltFuer(v, p, d, einheitAm, vb);
 }
 
 /**
@@ -384,13 +415,7 @@ function vorbereiten(m, budget) {
      sie rechnen nirgends, dürfen aber nicht still wegfallen — wie über der Grenze: nicht vollständig geprüft. */
   const ungueltig = sortiert(aktiv.filter((v) => VORGABEN_PLANARTEN.includes(v.regelart) && !vorgabePlanwirkung(v, wo).wirkt && !ueberlangGueltig(v)));
   const kl = klassenAbbildung(m);
-  /* Qualifikationsgruppe: Kennung, Kürzel oder Name einer Qualifikation des Betriebs → Kennung. */
-  const qual = new Map();
-  for (const q of Array.isArray(m.qualifikationen) ? m.qualifikationen : []) {
-    if (!q || typeof q !== "object" || q.id === undefined || q.id === null) continue;
-    for (const x of [q.name, q.kurz, q.id]) if (x !== undefined && x !== null && x !== "" && !qual.has(kleinText(x))) qual.set(kleinText(x), String(q.id));
-    qual.set(kleinText(q.id), String(q.id));
-  }
+  const qual = qualAbbildung(m);
   const regeln = new Map();
   const vb = { dienstarten: m.dienstarten, qualifikationen: m.qualifikationen, einstellungen: m.einstellungen, wirkend, ueberlang, ungueltig, kl, aggregate: wo.aggregate, pause,
     qualFuer: (n) => qual.get(kleinText(n)),
