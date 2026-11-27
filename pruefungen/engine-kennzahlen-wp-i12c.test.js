@@ -125,7 +125,7 @@ describe("Eine Berechnung: Rechenkern, fachlogik und Selbsttest der Oberfläche"
   it("src/pruefung.jsx hat keine eigene planKennzahlen mehr und importiert sie aus fachlogik", () => {
     const q = lies("src/pruefung.jsx");
     expect(q).not.toMatch(/function\s+planKennzahlen\s*\(/);
-    expect(q).toMatch(/import\s*\{\s*planKennzahlen\s*\}\s*from\s*"\.\/lib\/fachlogik\.js"/);
+    expect(q).toMatch(/import\s*\{[^}]*\bplanKennzahlen\b[^}]*\}\s*from\s*"\.\/lib\/fachlogik\.js"/);
     expect(q).not.toMatch(/von\.slice\(0,\s*7\)\)/);
   });
 
