@@ -76,7 +76,7 @@
    ========================================================================== */
 import { dim_, pad, addDays, dow } from "../regelwerk.mjs";
 import { nachtAnteil, nachtschwelle } from "../fachpruefung.mjs";
-import { kiPauseAktiv, kiSteuerungLesen, kiSteuerungUnlesbar } from "../ki-steuerung.mjs";
+import { kiPauseAktiv, kiSteuerungLesen, kiSteuerungUnlesbar, kiBetriebsEntscheidung } from "../ki-steuerung.mjs";
 import { planungsreife, vorschlagErlaubt } from "./planungsreife.mjs";
 import { lueckenUrsache, budgetNeu } from "./luckenursache.mjs";
 import { neuesVorgabenBudget, vorgabenPlanFortschreiben } from "../vorgabenwirkung.mjs";
@@ -463,14 +463,22 @@ export function planeVorschlag(m, ym, opt = {}) {
     if (!r || r.ok === false) return { ...x, ursache: "unvollstaendig", regeln: [] };
     return { ...x, ursache: r.ursache, regeln: r.kleinste ? [...r.kleinste.regeln] : [], ...(r.vorgabenUnvollstaendig ? { vorgabenUnvollstaendig: true } : {}) };
   });
-  return { status: "ok", grund: null, ym, startwert, gesetzt, offen: offenMitUrsache, abweichungen: ergebnis.stand.abweichungen,
+  /* Unvollständige Ursachen (Budget, Vorgaben nicht vollständig geprüft) bleiben sichtbar: Zahl im Ergebnis, nie still. */
+  const ursachenUnvollstaendig = offenMitUrsache.filter((x) => x.ursache === "unvollstaendig" || x.vorgabenUnvollstaendig).length;
+  return { status: "ok", grund: null, ym, startwert, gesetzt, offen: offenMitUrsache, ursachenUnvollstaendig, abweichungen: ergebnis.stand.abweichungen,
     rang: bewertung.rang, nichtBewertet: [...NICHT_BEWERTET], aufwand: { grenze, verbraucht: grenze - A.rest, ausgeschoepft: A.ausgeschoepft || PB.ausgeschoepft, planbefund: { grenze: pbGrenze, verbraucht: pbGrenze - PB.rest, ausgeschoepft: PB.ausgeschoepft } }, verbessert };
 }
 
 /* ---------- Betriebsmodus (WP-I7 Teil 5, Betreiberentscheidung 26.11.) ----------
    AUS / Knopfdruck / automatisch je Betrieb. Vorgabe AUS, solange der Planer nicht freigegeben ist (PLANER_AN, bleibt AUS); nach der
    Freigabe ist Knopfdruck der Standard, automatisch nur, wenn die Leitung es ausdrücklich eingestellt hat (kiSteuerung.planerModus,
-   Schreibweg und Rechte in ki-steuerung.mjs). Unlesbarer oder unbekannter Wert = AUS (fail closed). */
+   Schreibweg und Rechte in ki-steuerung.mjs). Unlesbarer oder unbekannter Wert = AUS (fail closed).
+   Betreiberentscheidung 27.11.: zusätzlich der Funktionsschalter des Betriebs (bestehende Struktur kiSteuerung.funktionen, Funktion
+   PLANER_FUNKTION = F13 „Planvorschlag“, nur die Leitung schaltet) — und vorrangig die globalen Schutzschalter: PLANER_AN, Pause,
+   Hauptschalter, Frage nach der Mitbestimmungsvertretung (kiBetriebsEntscheidung, dieselbe Stelle wie intelligenceEntscheidung). */
+
+/** Funktion der Intelligence-Steuerung, deren Schalter den Planer im Betrieb freigibt (Positivliste F13 „Planvorschlag“). */
+export const PLANER_FUNKTION = "F13";
 
 /**
  * Der im Betrieb wirksame Modus.
@@ -482,6 +490,8 @@ export function planerModusWirksam(einstellungen, freigegeben = PLANER_AN) {
   let s;
   /* Unlesbarer Stand der ganzen Steuerung (kein einfaches Objekt, Review #595 B-1): AUS, nicht „nicht vorhanden“. */
   try { if (kiSteuerungUnlesbar(einstellungen)) return "aus"; s = kiSteuerungLesen(einstellungen); } catch { return "aus"; }
+  /* Pause, Hauptschalter, Mitbestimmungsfrage, Funktionsschalter des Betriebs: fehlt eines oder ist es unlesbar, AUS. */
+  if (kiBetriebsEntscheidung(einstellungen, PLANER_FUNKTION) !== "OK") return "aus";
   if (s && s.planerModusUngueltig) return "aus";
   if (!s || !s.planerModus) return "knopfdruck";
   const w = s.planerModus.modus;
@@ -501,11 +511,16 @@ export function planerEinstieg(m, ym, opt = {}) {
   const startwert = o.startwert === undefined ? PLANER_STANDARD.startwert : o.startwert;
   const fehler = eingabeFehler(m, ym, o);
   if (fehler) return { ...leer(m, ym, "ungueltig", fehler, startwert), modus: "aus" };
-  const modus = planerModusWirksam(m.einstellungen, PLANER_AN || o.freigabe === true);
-  if (modus === "aus") return { ...leer(m, ym, "aus", "Planer im Betrieb aus", startwert), modus };
+  const freigegeben = PLANER_AN || o.freigabe === true;
+  if (!freigegeben) return { ...leer(m, ym, "aus", "Planer nicht freigeschaltet", startwert), modus: "aus" };
+  /* Vorrangig die globalen Schutzschalter des Betriebs (Pause, auch unlesbar; Hauptschalter; Mitbestimmungsfrage; Funktionsschalter). */
   let pause = true;
   try { pause = kiPauseAktiv(m.einstellungen); } catch { pause = true; }
-  if (pause) return { ...leer(m, ym, "pausiert", "Intelligence pausiert", startwert), modus };
+  const code = pause ? "KI_PAUSIERT" : kiBetriebsEntscheidung(m.einstellungen, PLANER_FUNKTION);
+  if (code === "KI_PAUSIERT") return { ...leer(m, ym, "pausiert", "Intelligence pausiert", startwert), modus: "aus" };
+  if (code !== "OK") return { ...leer(m, ym, "aus", "Planer im Betrieb nicht freigeschaltet (Hauptschalter, Frage nach der Vertretung oder Funktion Planvorschlag)", startwert), modus: "aus" };
+  const modus = planerModusWirksam(m.einstellungen, true);
+  if (modus === "aus") return { ...leer(m, ym, "aus", "Planer im Betrieb aus", startwert), modus };
   const [y, mo] = ym.split("-").map(Number);
   const zeitraum = { von: `${ym}-01`, bis: `${ym}-${pad(dim_(y, mo - 1))}` };
   let reife = null;

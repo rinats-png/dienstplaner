@@ -133,19 +133,37 @@ export function intelligenceEntscheidung(betrieb, funktion, rolle, o = {}) {
     if (!o || o.prozess !== "an") return nein("KI_AUS");
     if (!KI_FUNKTIONEN.includes(funktion) || hat(KI_GESPERRT, funktion)) return nein("KI_FUNKTION");
     if (!KI_ROLLEN_AUSLOESEN.includes(rolle)) return nein("KI_ROLLE");
-    const s = kiSteuerungLesen(betrieb.einstellungen);
-    if (!s) return nein("KI_AUS");
-    /* Die Pause geht vor jedem Schalter. Ein unlesbarer Pausenstand (vorhanden, aber ungültig) zählt als aktiv. */
-    if (s.pauseUngueltig || (s.pause && s.pause.aktiv === true) || s.leitungPauseUngueltig || (s.leitungPause && s.leitungPause.aktiv === true)) return nein("KI_PAUSIERT");
-    if (!s.betrieb || s.betrieb.an !== true) return nein("KI_AUS");
-    if (!s.betriebsratFrage) return nein("KI_AUS");
-    /* „Ja“: erst nach der ausdrücklichen Aufhebung einer Pause durch die Leitung (vorhanden und aufgehoben) — die „ja“-Pause liegt
-       heute in `leitungPause`, im Altbestand in `pause`; ohne jede aufgehobene Pause bleibt es gesperrt (fail closed). */
-    if (s.betriebsratFrage.antwort === "ja" && !((s.leitungPause && s.leitungPause.aktiv === false) || (s.pause && s.pause.aktiv === false))) return nein("KI_PAUSIERT");
-    if (!hat(s.funktionen, funktion) || s.funktionen[funktion].an !== true) return nein("KI_AUS");
-    return { erlaubt: true, code: "OK" };
+    const code = kiBetriebsEntscheidung(betrieb.einstellungen, funktion);
+    return code === "OK" ? { erlaubt: true, code } : nein(code);
   } catch {
     return { erlaubt: false, code: "KI_EINGABE" };
+  }
+}
+
+/**
+ * Der betriebliche Teil der Entscheidung (Schritte 4–7 oben, eine Stelle; auch für den Planer, WP-I7 Teil 5): Pause (auch ein
+ * unlesbarer Stand) vor jedem Schalter, Hauptschalter an, Frage nach der Mitbestimmungsvertretung beantwortet („ja“ erst nach
+ * aufgehobener Pause), Schalter der Funktion an. Ohne Rolle und Prozessschalter (die prüft der Aufrufer). Rein; wirft nie.
+ * @param {any} einstellungen @param {string} funktion
+ * @returns {"OK" | "KI_AUS" | "KI_PAUSIERT" | "KI_FUNKTION" | "KI_EINGABE"}
+ */
+export function kiBetriebsEntscheidung(einstellungen, funktion) {
+  try {
+    if (typeof funktion !== "string" || !KI_FUNKTIONEN.includes(funktion) || hat(KI_GESPERRT, funktion)) return "KI_FUNKTION";
+    if (kiSteuerungUnlesbar(einstellungen)) return "KI_PAUSIERT";
+    const s = kiSteuerungLesen(einstellungen);
+    if (!s) return "KI_AUS";
+    /* Die Pause geht vor jedem Schalter. Ein unlesbarer Pausenstand (vorhanden, aber ungültig) zählt als aktiv. */
+    if (s.pauseUngueltig || (s.pause && s.pause.aktiv === true) || s.leitungPauseUngueltig || (s.leitungPause && s.leitungPause.aktiv === true)) return "KI_PAUSIERT";
+    if (!s.betrieb || s.betrieb.an !== true) return "KI_AUS";
+    if (!s.betriebsratFrage) return "KI_AUS";
+    /* „Ja“: erst nach der ausdrücklichen Aufhebung einer Pause durch die Leitung (vorhanden und aufgehoben) — die „ja“-Pause liegt
+       heute in `leitungPause`, im Altbestand in `pause`; ohne jede aufgehobene Pause bleibt es gesperrt (fail closed). */
+    if (s.betriebsratFrage.antwort === "ja" && !((s.leitungPause && s.leitungPause.aktiv === false) || (s.pause && s.pause.aktiv === false))) return "KI_PAUSIERT";
+    if (!hat(s.funktionen, funktion) || s.funktionen[funktion].an !== true) return "KI_AUS";
+    return "OK";
+  } catch {
+    return "KI_EINGABE";
   }
 }
 
