@@ -884,7 +884,8 @@ export function festEingeplantEigene(roh, sichtBetrieb, ich) {
   const l = anheftungenLesen(roh);
   if (!l.ok) return aus;
   const abw = sichtBetrieb && sichtBetrieb.abweichungen && typeof sichtBetrieb.abweichungen === "object" ? sichtBetrieb.abweichungen : {};
-  for (const k of l.aktiv) if (eigenerSchluessel(k, ich) && Object.prototype.hasOwnProperty.call(abw, k)) aus[k] = true;
+  /* Eigene Eigenschaften (Review #605 C-2: kein Schlüssel wie „__proto__“ geht still verloren). */
+  for (const k of l.aktiv) if (eigenerSchluessel(k, ich) && Object.prototype.hasOwnProperty.call(abw, k)) Object.defineProperty(aus, k, { value: true, enumerable: true, writable: true, configurable: true });
   return aus;
 }
 

@@ -190,6 +190,13 @@ describe("2. Vergleichsgruppe: Teilzeit, Abwesenheit, Eintritt, Einsatzmöglichk
     expect(r3.personen).toEqual([]);
     expect(r3.nichtBewertbar.every((x) => [VERTEILUNG_GRUENDE.geltungTeilweise, VERTEILUNG_GRUENDE.abwesenheit, VERTEILUNG_GRUENDE.eintrittAustritt].includes(x.grund))).toBe(true);
     expect(r3.status).toBe("offen");
+    /* Review #605 C-3: sichtbarer Grund statt stillem „nicht bewertet“ */
+    expect(r3).toMatchObject({ grund: "geltung_teilweise" });
+    expect(r3.hinweis).toContain("Geltung nur teilweise im Monat");
+    expect(r1).toMatchObject({ grund: "personen_nicht_bewertbar" });
+    expect(vorgabePlanwirkung(VT({ ausnahmen: { zeitraeume: [{ von: "2026-12-20", bis: "2026-12-31" }] } })).grund).toContain("Geltung nur teilweise im Monat");
+    expect(vorgabePlanwirkung(VT({ gueltigAb: "2026-12-10" })).grund).toContain("Geltung nur teilweise im Monat");
+    expect(vorgabePlanwirkung(VT()).grund).not.toContain("teilweise");
     expect(e.bewertet).toBe(false);
     expect(e.summe).toBe(null);
     /* Ergebnis ohne Namen und ohne Schutzmerkmal im Grund */
@@ -241,8 +248,50 @@ describe("3. Nachgelagert: Ausgleichen", () => {
     const r0 = lauf(m, { zuege: 0 }), r = lauf(m, { zuege: 100 });
     expect(r.rang.soll).toBe(r0.rang.soll);
     expect(r.gesetzt.filter((g) => g.personId === "p3" && g.dienstId === "N" && g.art === "ausgleich")).toEqual([]);
+    /* Der Soll-Schutz in der Zugwahl wirkt für sich: der Ausgleich findet die andere Person (sonst verwürfe der Rangvergleich alles). */
+    expect(r.verteilung.ausgeglichen, "Ausgleich zwischen p1 und p2").toBeGreaterThan(0);
     expect(besteht(m, r)).toBe(true);
   }, 300000);
+});
+
+describe("3b. Schutzschichten des Ausgleichens einzeln (Review #605 C-1)", () => {
+  it("angeheftetes „frei“ der Zielperson bleibt: die Zugwahl schließt angeheftete Tage aus, der Ausgleich weicht auf freie Tage aus", () => {
+    const m = klein(3, 1);
+    /* p3 hat an 20 Tagen angeheftetes „frei“; ohne Anheften-Ausschluss in der Zugwahl würden diese Tage überschrieben. */
+    m.angeheftet = {};
+    for (const d of TAGE.slice(0, 20)) { m.abweichungen[`p3|${d}`] = "-"; m.angeheftet[`p3|${d}`] = ST; }
+    const r0 = lauf(m, { zuege: 0 }), r = lauf(m, { zuege: 100 });
+    expect([r0.status, r.status]).toEqual(["ok", "ok"]);
+    expect(r0.rang.verteilung).toBeGreaterThan(0);
+    expect(r.verteilung.ausgeglichen, "Ausgleich auf die übrigen Tage").toBeGreaterThan(0);
+    for (const d of TAGE.slice(0, 20)) expect(r.abweichungen[`p3|${d}`], d).toBe("-");
+    expect(r.gesetzt.filter((g) => g.personId === "p3" && TAGE.slice(0, 20).includes(g.datum))).toEqual([]);
+    expect(bestandFehler(m, r)).toEqual([]);
+    expect(besteht(m, r)).toBe(true);
+  }, 300000);
+
+  it("Besetzung (Qualifikation) bleibt: ohne Qualifikation wird keine Nacht übergeben, der Ausgleich nimmt die qualifizierte Person", () => {
+    const m = klein(3, 1);
+    m.qualifikationen = [...(m.qualifikationen || []), { id: "pfk", name: "PFK" }];
+    m.dienstarten = m.dienstarten.map((d) => (d.id === "N" ? { ...d, mindestQual: { pfk: 1 } } : d));
+    m.personen[0] = { ...m.personen[0], qualifikationen: ["pfk"] };
+    m.personen[1] = { ...m.personen[1], qualifikationen: ["pfk"] };
+    const r0 = lauf(m, { zuege: 0 }), r = lauf(m, { zuege: 100 });
+    expect([r0.status, r.status]).toEqual(["ok", "ok"]);
+    expect(r.rang.besetzung).toBeLessThanOrEqual(r0.rang.besetzung);
+    expect(r.gesetzt.filter((g) => g.art === "ausgleich" && g.personId === "p3")).toEqual([]);
+    if (r0.rang.verteilung > 0 && regel(r0).personen.find((x) => x.personId === "p2").wert < regel(r0).personen.find((x) => x.personId === "p1").wert - 1)
+      expect(r.verteilung.ausgeglichen, "Ausgleich zwischen p1 und p2").toBeGreaterThan(0);
+    expect(besteht(m, r)).toBe(true);
+  }, 300000);
+
+  it("Personenkennung „__proto__“ geht in der Bewertung nicht verloren (Review #605 C-2)", () => {
+    const m = klein(3, 1);
+    m.personen[0] = { ...m.personen[0], id: "__proto__" };
+    const e = verteilungBewerten(verteilungVorbereiten(m, TAGE), new Map([["__proto__", 5], ["p2", 2], ["p3", 2]]));
+    expect(Object.keys(werte(e.regeln[0])).sort()).toEqual(["__proto__", "p2", "p3"]);
+    expect(e.regeln[0]).toMatchObject({ status: "verletzt", spannweite: 3, ueberschreitung: 2 });
+  });
 });
 
 describe("4. Zufallsvergleich gegen naive Referenz und Demobetrieb", () => {

@@ -100,7 +100,7 @@ export function vorgabePlanwirkung(v, opt = {}) {
   if (!v || typeof v !== "object") return { wirkt: false, grund: NUR_TEST };
   /* Verteilung (WP-I7 Teil 7): keine Prüfung je Einteilung; der Planer bewertet sie nachgelagert (Rang „Verteilung“, engine/verteilung.mjs). */
   if (v.regelart === "verteilungsregel") return { wirkt: false, grund: verteilungGroesse(v)
-    ? `Keine Prüfung je Einteilung (Testlauf); der Planer bewertet sie nachrangig als Rang „Verteilung“ (${VERTEILUNG_GROESSEN.nachtdienste}).`
+    ? `Keine Prüfung je Einteilung (Testlauf); der Planer bewertet sie nachrangig als Rang „Verteilung“ (${VERTEILUNG_GROESSEN.nachtdienste}).${teilMonat(v) ? " In Monaten, in denen sie nur an einem Teil der Tage gilt (Ausnahmezeitraum oder Gültigkeit), ist die Verteilung nicht bewertbar (Geltung nur teilweise im Monat)." : ""}`
     : `Diese Größe rechnet nur im Testlauf; im Plan bewertet der Planer bisher nur die Größe „nachtdienste“ (${VERTEILUNG_GROESSEN.nachtdienste}).` };
   if (!VORGABEN_PLANARTEN.includes(v.regelart)) return { wirkt: false, grund: NUR_TEST };
   const p = v.parameter || {};
@@ -125,6 +125,9 @@ export function vorgabePlanwirkung(v, opt = {}) {
   }
   return { wirkt: true, grund: null };
 }
+
+/** Gilt die Vorgabe womöglich nur an einem Teil eines Monats (Gültigkeit oder Ausnahmezeitraum gesetzt)? Nur für den Text der Verwaltung. */
+const teilMonat = (v) => !!(v.gueltigAb || v.gueltigBis || (v.ausnahmen && Array.isArray(v.ausnahmen.zeitraeume) && v.ausnahmen.zeitraeume.length));
 
 /** Verteilungsgrößen, die der Planer bewertet (WP-I7 Teil 7, Betreiberentscheidung 27.11.: erste Stufe Nachtdienste je Person im
     Kalendermonat). Weitere Größen (Wochenend-, Feiertagsdienste, Arbeitsstunden) kommen als weiterer Schlüssel hinzu. */

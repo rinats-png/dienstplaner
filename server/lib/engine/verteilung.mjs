@@ -50,6 +50,11 @@ export const VERTEILUNG_GRUENDE = Object.freeze({
   keineNacht: "kein_nachtdienst_moeglich", schichtdienst: "nicht_im_schichtdienst", ganzAbwesend: "ganzer_monat_abwesend",
 });
 const G = VERTEILUNG_GRUENDE;
+/** Sichtbare Texte, wenn eine Vorgabe nicht in den Rang eingeht (Review #605 C-3). */
+export const VERTEILUNG_HINWEIS = Object.freeze({
+  geltung_teilweise: "Verteilung nicht bewertbar: Geltung nur teilweise im Monat (Ausnahmezeitraum oder Gültigkeit im Monat).",
+  personen_nicht_bewertbar: "Verteilung nicht bewertbar: Werte einzelner Personen unbekannt (siehe nichtBewertbar).",
+});
 
 const sauber = (x) => Math.round(x * 1e6) / 1e6;
 const istNacht = (da, einst) => !!da && nachtAnteil(da, einst) >= nachtschwelle(einst);
@@ -181,9 +186,11 @@ export function verteilungBewerten(vt, z) {
       if (r.status === "nicht_bewertet" && r.grund !== "wunsch") offen = true;
       return { ...aus, status: r.status, grund: r.grund, personen: [], nichtBewertbar, ausserhalb };
     }
+    /* Eigene Eigenschaften: eine Personenkennung wie „__proto__“ ginge mit einer Zuweisung still verloren (Review #605 C-2). */
     const werte = {};
-    for (const [pid, faktor] of r.mitglieder) werte[pid] = sauber((z.get(pid) || 0) * faktor);
-    for (const pid of r.unbekannt.keys()) werte[pid] = undefined;
+    const setzeWert = (pid, w) => Object.defineProperty(werte, pid, { value: w, enumerable: true, writable: true, configurable: true });
+    for (const [pid, faktor] of r.mitglieder) setzeWert(pid, sauber((z.get(pid) || 0) * faktor));
+    for (const pid of r.unbekannt.keys()) setzeWert(pid, undefined);
     const e = pruefeRegel(r.regel, { werte });
     const bekannt = [...r.mitglieder.keys()].sort();
     const min = bekannt.length ? Math.min(...bekannt.map((pid) => werte[pid])) : null;
@@ -193,7 +200,12 @@ export function verteilungBewerten(vt, z) {
     /* Nur vollständig Bekanntes geht in den Rang: offen (auch „verletzt“ mit unbekannten Personen) ⇒ nicht bewertet. */
     if (e.status === "offen" || (e.status === "verletzt" && r.unbekannt.size)) offen = true;
     else if (e.status === "erfuellt" || e.status === "verletzt") { bewertet = true; summe += ueber; }
-    return { ...aus, status: e.status, ...(e.status === "nicht_anwendbar" ? { grund: "weniger_als_zwei" } : {}), spannweite, ueberschreitung: ueber, personen, nichtBewertbar, ausserhalb };
+    /* Sichtbarer Grund, wenn die Vorgabe nicht als Rang zählt (Review #605 C-3): z. B. Ausnahmezeitraum oder Gültigkeit im Monat macht
+       jede Person „teilweise“ — dann nie still, sondern „Geltung nur teilweise im Monat“. */
+    const teilweise = r.unbekannt.size > 0 && !r.mitglieder.size && [...r.unbekannt.values()].every((g) => g === G.geltungTeilweise);
+    const ohneRang = e.status === "offen" || (e.status === "verletzt" && r.unbekannt.size);
+    const grund = e.status === "nicht_anwendbar" ? "weniger_als_zwei" : ohneRang ? (teilweise ? "geltung_teilweise" : "personen_nicht_bewertbar") : null;
+    return { ...aus, status: e.status, ...(grund ? { grund, ...(ohneRang ? { hinweis: VERTEILUNG_HINWEIS[grund] } : {}) } : {}), spannweite, ueberschreitung: ueber, personen, nichtBewertbar, ausserhalb };
   });
   const ok = bewertet && !offen;
   return { bewertet: ok, summe: ok ? sauber(summe) : null, regeln };

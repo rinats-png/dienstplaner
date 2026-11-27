@@ -385,6 +385,33 @@ describe("3. Schreibweg und Sicht", () => {
     expect(prot(n.m)).toEqual([]);
   });
 
+  it("Review #605 C-2: beschädigte Ablage mit Schlüssel „__proto__“ — der kaputte Eintrag bleibt, die Karte bleibt unlesbar (Leitung, Planung); SV gesperrt", () => {
+    /* JSON.parse legt „__proto__“ als eigene Eigenschaft an (so kommt es aus einer beschädigten Ablage). */
+    const roh = () => JSON.parse(JSON.stringify(bestand()).replace('"abweichungen":', `"angeheftet":{"__proto__":{"x":1},"a1|2026-12-01":${JSON.stringify(ST)}},"abweichungen":`));
+    const b = roh();
+    expect(Object.keys(b.mandanten[0].angeheftet)).toEqual(["__proto__", "a1|2026-12-01"]);
+    expect(anheftungenLesen(b.mandanten[0]).ok).toBe(false);
+    for (const k of ["leitung", "planer"]) {
+      const neu = roh(); neu.mandanten[0].abweichungen["a1|2026-12-01"] = "-";
+      const e = zusammenfuehren(roh(), neu, SITZ[k]);
+      expect(e && !e.verweigert, `${k}: ${e && e.verweigert}`).toBe(true);
+      const karte = e.mandanten[0].angeheftet;
+      expect(Object.prototype.hasOwnProperty.call(karte, "__proto__"), `${k}: kaputter Eintrag bleibt`).toBe(true);
+      expect(Object.getOwnPropertyDescriptor(karte, "__proto__").value).toEqual({ x: 1 });
+      expect(karte["a1|2026-12-01"]).toMatchObject({ aufgehobenVonRolle: k });
+      expect(anheftungenLesen(e.mandanten[0]).ok, `${k}: bleibt unlesbar`).toBe(false);
+      /* auch nach dem Weg durch JSON (Ablage) */
+      expect(Object.keys(JSON.parse(JSON.stringify(e.mandanten[0])).angeheftet)).toContain("__proto__");
+    }
+    /* Schichtverantwortung: bei unlesbarer Karte keine Planänderung (fail closed), Karte unverändert */
+    const sv = roh(); sv.mandanten[0].abweichungen["a1|2026-12-05"] = "F";
+    const e = zusammenfuehren(roh(), sv, SITZ.subplaner);
+    expect(e && e.verweigert).toContain("nicht lesbar");
+    expect(Object.keys(roh().mandanten[0].angeheftet)).toEqual(["__proto__", "a1|2026-12-01"]);
+    /* Sicht der Beschäftigten: unlesbare Karte, kein Kennzeichen */
+    expect(bestandFuerRolle(roh(), SITZ.mitarbeiter).mandanten[0]).not.toHaveProperty("festEingeplant");
+  });
+
   it("Teil 7: Beschäftigte sehen nur „Fest eingeplant“ an eigenen Einteilungen (Kennzeichen ohne Wer/Wann), nie die Karte; schreiben nichts; andere Rollen unverändert", () => {
     const a = schreibe("leitung", anheften("a1|2026-12-01", "a1|2026-12-02", "p1|2026-12-01"));
     expect(a.abgewiesen, a.grund).toBe(false);
