@@ -12,18 +12,21 @@
    4. Lesend: Betrieb unverändert; kein Schreibweg, keine Inline-Stile, keine rohen Bedienelemente; Planer-Schalter bleiben AUS.
    Aufruf: TZ=UTC npx vitest run pruefungen/intelligence-planer-verteilung-anzeige.test.js
    ========================================================================== */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createElement as h } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { PlanerVerteilung, PlanerVerteilungAnsicht, VERTEILUNG_TEXTE } from "../src/ansichten/planer-steuerung.jsx";
-import { verteilungErgebnis, verteilungAnzeige, hatVerteilungsvorgabe, VERTEILUNG_VORGABE_GRUND, VERTEILUNG_PERSON_GRUND, planerRechte } from "../src/lib/planer-oberflaeche.js";
+import { verteilungErgebnis, verteilungAnzeige, hatVerteilungsvorgabe, zahlDe, VERTEILUNG_VORGABE_GRUND, VERTEILUNG_PERSON_GRUND, planerRechte } from "../src/lib/planer-oberflaeche.js";
 import { verteilungVorbereiten, verteilungBewerten, nachtZaehlen, VERTEILUNG_GRUENDE } from "../server/lib/engine/verteilung.mjs";
 import { PLANER_AN } from "../server/lib/engine/planer.mjs";
 import { PLANER_AGGREGATE_AN } from "../server/lib/engine/planeraggregate.mjs";
 import { baueLeerenBetrieb } from "../server/lib/leerbetrieb.mjs";
+
+/* Durchreichender Zähler: dieselbe Rechnung, aber die Aufrufe sind sichtbar (C-1: gerechnet wird erst nach dem Öffnen). */
+vi.mock("../src/lib/planer-oberflaeche.js", async (original) => { const o = await original(); return { ...o, verteilungErgebnis: vi.fn(o.verteilungErgebnis) }; });
 
 const wurzel = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (r) => readFileSync(path.join(wurzel, r), "utf8");
@@ -265,5 +268,86 @@ describe("5. Lesend und barrierefrei: Quelltext", () => {
   it("der Monatsplan bindet die Fläche mit Rolle und Betrieb ein; die Planer-Schalter bleiben AUS", () => {
     expect(lies("src/ansichten/monatsplan.jsx")).toContain("<PlanerVerteilung m={m} ym={ym} sitz={sitz} />");
     expect([PLANER_AN, PLANER_AGGREGATE_AN]).toEqual([false, false]);
+  });
+});
+
+/* ------------------------------------------------------------------ Stufe 2b (Nachträge aus dem Review von #610) */
+describe("6. Stufe 2b: gerechnet wird erst nach dem Öffnen (C-1)", () => {
+  const m = betrieb([6, 2, 0, 0]);
+  it("geschlossen keine Rechnung; geöffnet genau eine; ohne Recht oder ohne Vorgabe auch geöffnet keine", () => {
+    verteilungErgebnis.mockClear();
+    const zu = html(h(PlanerVerteilung, { m, ym: YM, sitz: sitz(m, "leitung") }));
+    expect(zu).toContain(VERTEILUNG_TEXTE.oeffnen);
+    expect(verteilungErgebnis, "bloßes Rendern rechnet nicht").not.toHaveBeenCalled();
+
+    const auf = html(h(PlanerVerteilung, { m, ym: YM, sitz: sitz(m, "leitung"), startOffen: true }));
+    expect(verteilungErgebnis).toHaveBeenCalledTimes(1);
+    expect(auf).toContain("Vor1 Nach1: 6 Nachtdienste");
+
+    verteilungErgebnis.mockClear();
+    html(h(PlanerVerteilung, { m, ym: YM, sitz: sitz(m, "mitarbeiter"), startOffen: true }));
+    const ohne = betrieb([6, 2, 0, 0], []);
+    html(h(PlanerVerteilung, { m: ohne, ym: YM, sitz: sitz(ohne, "leitung"), startOffen: true }));
+    expect(verteilungErgebnis, "ohne Recht oder Vorgabe wird nie gerechnet").not.toHaveBeenCalled();
+  });
+  it("Quelltext: die Rechnung hängt an der Nutzeraktion (offen), die Vorgabe von startOffen ist zu", () => {
+    const q = lies("src/ansichten/planer-steuerung.jsx");
+    expect(q).toContain("zeigen && offen ? verteilungErgebnis(m, ym) : null");
+    expect(q).toMatch(/startOffen = false/);
+    expect(q).toContain("useState(startOffen === true)");
+  });
+});
+
+describe("7. Stufe 2b: Zahlen deutsch, Dezimalkomma (C-2)", () => {
+  it("zahlDe: Komma, höchstens zwei Stellen, keine überflüssigen Nullen, nie ein Wert auf 0 gerundet, kein Zahlenwert „–“", () => {
+    expect([1.5, 6, 0, 2.25, 10, 100, 1234.5, 0.1 + 0.2, 4.5, 1 / 3].map(zahlDe)).toEqual(["1,5", "6", "0", "2,25", "10", "100", "1234,5", "0,3", "4,5", "0,33"]);
+    expect(zahlDe("2.5")).toBe("2,5");
+    expect(zahlDe(0.001)).toBe("unter 0,01");
+    expect(zahlDe(-0.001)).toBe("über −0,01");
+    expect(zahlDe(-1.5)).toBe("−1,5");
+    for (const v of [null, undefined, "", NaN, Infinity, "abc", {}]) expect(zahlDe(v), String(v)).toBe("–");
+    expect(zahlDe(1.5)).not.toContain(".");
+  });
+  it("die Ansicht zeigt Vorgabe, Spannweite, Überschreitung und Werte je Person mit Dezimalkomma (nie „1.5“)", () => {
+    const m = betrieb([3, 2]);
+    const bewertung = { bewertet: true, summe: 1, regeln: [{ vorgabeId: "vt-1", regelId: "r", staerke: "soll", groesse: "nachtdienste", maxAbweichung: 1.5, status: "verletzt",
+      spannweite: 2.5, ueberschreitung: 1, nichtBewertbar: [], ausserhalb: [],
+      personen: [{ personId: "p1", nachtdienste: 3, wert: 4.5, abweichung: 2.5 }, { personId: "p2", nachtdienste: 2, wert: 2, abweichung: 0 }] }] };
+    const t = html(h(PlanerVerteilungAnsicht, { m, ym: YM, offen: true, ergebnis: { ok: true, keine: false, bewertung } }));
+    expect(t).toContain("erlaubter Unterschied höchstens 1,5");
+    expect(t).toContain("Größter Unterschied im Monat: 2,5, davon 1 über der Grenze.");
+    expect(t).toContain("Vor1 Nach1: 3 Nachtdienste, Vergleichswert 4,5, 2,5 über dem niedrigsten");
+    expect(t).toContain("Vor2 Nach2: 2 Nachtdienste, Vergleichswert 2, 0 über dem niedrigsten");
+    expect(t).not.toMatch(/\d\.\d/);
+  });
+  it("Quelltext: die Ansicht formatiert über zahlDe (keine Rohzahl aus der Engine im Text)", () => {
+    const q = lies("src/ansichten/planer-steuerung.jsx");
+    for (const f of ["maxAbweichung", "spannweite", "ueberschreitung", "p.nachtdienste", "p.wert", "p.abweichung"]) expect(q, f).toContain(`zahlDe(${f.startsWith("p.") ? f : "r." + f})`);
+    expect(lies("src/lib/planer-oberflaeche.js")).not.toMatch(/function zahlDe[\s\S]{0,600}toLocaleString|Intl\./);
+  });
+});
+
+describe("8. Stufe 2b: Überschrift und Namen (D-1)", () => {
+  const m = betrieb([6, 2, 0, 0]);
+  it("der Titel ist eine Überschrift der Ebene 2 (unter der Monatsüberschrift), der Bereich behält einen eindeutigen Namen", () => {
+    const t = html(h(PlanerVerteilungAnsicht, { m, ym: YM, offen: false, ergebnis: null }));
+    expect(t).toMatch(/<h2 class="abschnitt-titel" id="planer-verteilung-titel">Verteilung der Nachtdienste \(nur lesen\)<\/h2>/);
+    expect(t).toContain('role="region"');
+    expect(t).toContain('aria-label="Verteilung der Nachtdienste (nur lesen), Dezember 2026"');
+    expect((t.match(/<h[1-6]\b/g) || []).length, "genau eine Überschrift in der Fläche").toBe(1);
+  });
+  it("mehrere Vorgaben: jede Personenliste trägt den Namen der Vorgabe (sonst wären die Listen nicht unterscheidbar)", () => {
+    const zwei = betrieb([3, 3, 3], [VT(), VT({ id: "vt-2", name: "Zweite Vorgabe", prioritaet: 2 })]);
+    const t = html(h(PlanerVerteilungAnsicht, { m: zwei, ym: YM, offen: true, ergebnis: verteilungErgebnis(zwei, YM) }));
+    expect(t).toContain('aria-label="Personen im Vergleich: Nächte gleichmäßig"');
+    expect(t).toContain('aria-label="Personen im Vergleich: Zweite Vorgabe"');
+  });
+  it("nicht bewertbar und außerhalb der Gruppe: die Listen tragen ebenfalls den Namen der Vorgabe", () => {
+    const u = betrieb([3, 3, 3, 3]);
+    u.personen[3] = { ...u.personen[3], eintritt: "2026-12-15" };
+    const t = html(h(PlanerVerteilungAnsicht, { m: u, ym: YM, offen: true, ergebnis: verteilungErgebnis(u, YM) }));
+    expect(t).toContain('aria-label="Nicht bewertbar: Nächte gleichmäßig"');
+    expect(t).toContain(VERTEILUNG_PERSON_GRUND.eintritt_austritt);
+    expect(t).not.toMatch(/>erfüllt</);
   });
 });

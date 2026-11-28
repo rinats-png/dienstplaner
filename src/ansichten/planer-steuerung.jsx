@@ -15,10 +15,10 @@
    (engine/verteilung.mjs) auf dem Plan, wie er jetzt ist; nichts wird geschrieben, kein Planervorschlag, kein Schalter berührt.
    ========================================================================== */
 import { useState, useMemo } from "react";
-import { Card, CardHead, Pill, Btn, Schalter, Feldfehler, Lab } from "../ui/bausteine.jsx";
+import { Card, CardHead, Pill, Btn, Schalter, Feldfehler } from "../ui/bausteine.jsx";
 import { MON, heute } from "../lib/datum.js";
 import { reifeFuerMonat } from "./planungsreife.jsx";
-import { PLANER_TEXTE, MODUS_TEXT, planerRechte, planerZustand, hatVerteilungsvorgabe, verteilungErgebnis, verteilungAnzeige } from "../lib/planer-oberflaeche.js";
+import { PLANER_TEXTE, MODUS_TEXT, planerRechte, planerZustand, hatVerteilungsvorgabe, verteilungErgebnis, verteilungAnzeige, zahlDe } from "../lib/planer-oberflaeche.js";
 import { KI_PLANER_MODI } from "../../server/lib/ki-steuerung.mjs";
 import * as SP from "../speicher.js";
 
@@ -119,7 +119,7 @@ export function PlanerVerteilungAnsicht({ m, ym, offen = false, onOffen = () => 
   const a = offen && ergebnis && ergebnis.ok && !ergebnis.keine ? verteilungAnzeige(ergebnis.bewertung, m) : null;
   return (
     <Card still data-testid="planer-verteilung" role="region" aria-label={`${T.titel}, ${monat}`}>
-      <Lab>{T.titel}</Lab>
+      <h2 className="abschnitt-titel" id="planer-verteilung-titel">{T.titel}</h2>
       <p>{T.hinweis}</p>
       <Btn size="sm" kind="quiet" aria-expanded={offen} aria-controls="planer-verteilung-inhalt" onClick={onOffen}>{offen ? T.schliessen : T.oeffnen}</Btn>
       {offen && <div id="planer-verteilung-inhalt">
@@ -128,16 +128,16 @@ export function PlanerVerteilungAnsicht({ m, ym, offen = false, onOffen = () => 
           <p role="status">{monat}: {a.erfuellt} erfüllt · {a.nichtErfuellt} nicht erfüllt · {a.nichtBewertbar} nicht bewertbar{a.gesamtBewertet ? "" : " (insgesamt nicht bewertet)"}</p>
           <ul>
             {a.regeln.map((r) => <li key={r.vorgabeId}>
-              <strong>{r.name}</strong>{r.staerke ? ` (${r.staerke})` : ""}: erlaubter Unterschied höchstens {r.maxAbweichung}{" "}
+              <strong>{r.name}</strong>{r.staerke ? ` (${r.staerke})` : ""}: erlaubter Unterschied höchstens {zahlDe(r.maxAbweichung)}{" "}
               <Pill tone={ZUSTAND_TON[r.zustand]}>{r.zustandText}</Pill>
               {r.grund && <p>{r.grund}</p>}
-              {r.spannweite !== null && r.zustand !== "nicht_bewertbar" && <p>Größter Unterschied im Monat: {r.spannweite}{r.ueberschreitung ? `, davon ${r.ueberschreitung} über der Grenze` : ""}.</p>}
+              {r.spannweite !== null && r.zustand !== "nicht_bewertbar" && <p>Größter Unterschied im Monat: {zahlDe(r.spannweite)}{r.ueberschreitung ? `, davon ${zahlDe(r.ueberschreitung)} über der Grenze` : ""}.</p>}
               <p>{T.wertHinweis} {r.teilzeitAnteilig ? T.teilzeitAn : T.teilzeitAus}</p>
-              {r.personen.length > 0 && <><p><strong>{T.personen}</strong></p><ul>
-                {r.personen.map((p) => <li key={p.personId}>{p.name}: {p.nachtdienste} Nachtdienste, Vergleichswert {p.wert}, {p.abweichung} über dem niedrigsten</li>)}</ul></>}
-              {r.nichtBewertbar.length > 0 && <><p><strong>{T.nichtBewertbar}</strong></p><ul>
-                {r.nichtBewertbar.map((p) => <li key={p.personId}>{p.name}: {p.nachtdienste} Nachtdienste, nicht bewertbar. {p.grundText}</li>)}</ul></>}
-              {r.ausserhalb.length > 0 && <><p><strong>{T.ausserhalb}</strong></p><ul>
+              {r.personen.length > 0 && <><p><strong>{T.personen}</strong></p><ul aria-label={`${T.personen}: ${r.name}`}>
+                {r.personen.map((p) => <li key={p.personId}>{p.name}: {zahlDe(p.nachtdienste)} Nachtdienste, Vergleichswert {zahlDe(p.wert)}, {zahlDe(p.abweichung)} über dem niedrigsten</li>)}</ul></>}
+              {r.nichtBewertbar.length > 0 && <><p><strong>{T.nichtBewertbar}</strong></p><ul aria-label={`${T.nichtBewertbar}: ${r.name}`}>
+                {r.nichtBewertbar.map((p) => <li key={p.personId}>{p.name}: {zahlDe(p.nachtdienste)} Nachtdienste, nicht bewertbar. {p.grundText}</li>)}</ul></>}
+              {r.ausserhalb.length > 0 && <><p><strong>{T.ausserhalb}</strong></p><ul aria-label={`${T.ausserhalb}: ${r.name}`}>
                 {r.ausserhalb.map((p) => <li key={p.personId}>{p.name}: {p.grundText}</li>)}</ul></>}
             </li>)}
           </ul></>}
@@ -147,8 +147,8 @@ export function PlanerVerteilungAnsicht({ m, ym, offen = false, onOffen = () => 
 }
 
 /** Die Fläche im Monatsplan: nur Leitung und Planung, nur mit aktiver Verteilungsvorgabe; gerechnet wird erst nach dem Öffnen. */
-export function PlanerVerteilung({ m, ym, sitz }) {
-  const [offen, setOffen] = useState(false);
+export function PlanerVerteilung({ m, ym, sitz, startOffen = false }) {   // startOffen: nur für Prüfungen (Vorgabe: zu)
+  const [offen, setOffen] = useState(startOffen === true);
   const zeigen = !!m && !!sitz && planerRechte(sitz).sehen && hatVerteilungsvorgabe(m);
   const ergebnis = useMemo(() => (zeigen && offen ? verteilungErgebnis(m, ym) : null), [zeigen, offen, m, ym]);
   if (!zeigen) return null;
