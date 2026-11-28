@@ -227,6 +227,20 @@ export function tageImMonat(ym) {
 
 /* ------------------------------------------------------------------ Verteilung (Stufe 2, nur lesen) */
 
+/**
+ * Zahl als deutscher Text für die Verteilungsanzeige: Dezimalkomma, höchstens zwei Nachkommastellen, ohne überflüssige Nullen
+ * („1,5“, „6“). Rein rechnerisch (kein Intl, keine ICU-Daten), daher in jeder Umgebung gleich. Kein Wert wird auf „0“ gerundet,
+ * der es nicht ist; kein Zahlenwert: „–“. Wirft nie.
+ * @param {unknown} v
+ */
+export function zahlDe(v) {
+  const x = typeof v === "number" ? v : (v === null || v === undefined || v === "" ? NaN : Number(v));
+  if (!Number.isFinite(x)) return "–";
+  const a = Math.abs(x), r = Math.round(a * 100) / 100;
+  if (r === 0) return a === 0 ? "0" : (x < 0 ? "über −0,01" : "unter 0,01");
+  return `${x < 0 ? "−" : ""}${r.toFixed(2).replace(/0+$/, "").replace(/\.$/, "").replace(".", ",")}`;
+}
+
 /** Texte zu den Gründen je Vorgabe (Wert `grund` des Servers; keine Zahl und keine Person im Text). Eine Quelle für die Ansicht und die Prüfung. */
 export const VERTEILUNG_VORGABE_GRUND = Object.freeze({
   wunsch: "Eine Vorgabe mit der Stärke Wunsch wird nicht bewertet.",
