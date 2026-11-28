@@ -796,6 +796,12 @@ Gehört zu WP-I7 Teil 6 (offene Frage 4 oben), kein neues Paket. **Nur Oberfläc
 
 **CI #606, axe `target-size` (Flächen `plan-planer`, `plan-leitung`, alle Viewports):** Ursache war das Aufklappelement „Einteilung anheften“ (`details`/`summary`, Zeilenhöhe unter 24 px) — auf diesen Flächen das einzige sichtbare Bedienelement der neuen Leiste; Schalter und Knöpfe der Einstellungen waren nicht betroffen (`einstellungen-leitung` grün). Behoben: Knopf `Btn` (`btn-sm`, Mindesthöhe 34 px, `aria-expanded`/`aria-controls`) „Neue Einteilung anheften“ öffnet das Formular; alle Bedienelemente beider Ansichten sind Bausteine (`Btn`, `Sel` mit 40 px). Test: Quelltext ohne rohe kleine Bedienelemente, Mindesthöhen `.btn-sm`/`.sel`/`.btn` in App.jsx/app-stil.js, leere Leiste hat genau einen `btn`-Knopf. Pin Querschnitt-Zeilen 6778 → 6783 (+5 `anheftungen.jsx`); Inline-Stile unverändert 452. Playwright lokal nicht gelaufen, CI entscheidet.
 
+## Nachtrag 2026-11-28 (#609) — „Fest eingeplant“ in der Telefonansicht
+
+- `src/ansichten/mobil.jsx` nutzt die vorhandene Ableitung aus #605 (Server `festEingeplantEigene`, Objektform; Oberfläche `festEingeplant`/`FEST_EINGEPLANT_TEXT` aus `anheftungen.jsx`): Hinweis als sichtbare Pille an „Dein Dienst heute“, in Mein Plan (Liste, Tagblatt) und im zugänglichen Namen des Monatsfelds — nur an eigenen Tagen mit Dienst, keine Aktion. Keine Serveränderung.
+- `pruefungen/fest-eingeplant.test.js` (11; Review B-1: eigener Abwesenheitstag mit Kennzeichen ohne Hinweis, Fremdkennzeichen am eigenen Diensttag in „Heute“ ohne Hinweis, Monatsfeld-Name und Tagblatt tatsächlich gerendert — die Mutationen „`da &&` entfernt“, „Personenprüfung entfernt“, „Zusatz im Namen entfernt“ je rot): Objektform ohne Metadaten, Entwurf, Mandantentrennung, BR/SV mit Karte = ohne Karte, **Wache C-2** (mitgeschicktes oder gespeichertes `festEingeplant` wird über Leitung/Kunde/Beschäftigte nie gespeichert; Mutation „Feld aus `abgeleiteteEntfernen` entfernt“ macht nur diesen Test rot), Telefonansicht (nur eigene Diensttage, sichtbarer Text).
+- V4-3b-Telefonschale: Rückrechnung nimmt den Nachtrag wörtlich zurück (`NACHTRAG_FEST`), danach byte-gleich zur Basis.
+
 ## Planer-Oberfläche, Stufe 2 (nur lesen; Branch `intelligence/planer-oberflaeche-2`)
 
 Bestehende Betreiberpriorität „Nutzerabläufe/Bedienbarkeit nach den Planer-Arbeiten“; kein neues Paket.
@@ -814,3 +820,5 @@ Bestehende Betreiberpriorität „Nutzerabläufe/Bedienbarkeit nach den Planer-A
 **Pins (V4-3b):** `monatsplan.jsx` 218 → 220 (Import + Einhängezeile; nicht als Zeilenzahl gepinnt), `planer-steuerung.jsx` +64 Zeilen ⇒ Querschnitt-Zeilen 6783 → 6847 (`v4-3b-querschnitt-1/-2`); Inline-Stile 452 unverändert; `einstellungen.jsx` 379, `src/pruefung.jsx` 7755 unberührt.
 **Browser/E2E (nicht lokal gestartet):** Monatsplan als Leitung/Planung mit aktiver Verteilungsvorgabe: Knopf, Öffnen, Zustandstexte, Dunkelmodus/Kontrast der Pillen, Tastatur, Telefon; CI-axe `plan-planer`/`plan-leitung` (die Demo-Betriebe haben keine Verteilungsvorgabe, die Fläche erscheint dort nicht).
 **Offen / bewusst nicht gebaut:** Planvorschlag-Zusammenfassung und offene Stellen mit Ursache (kein Server-Weg); Verteilung des **Vorschlags** (das Feld `verteilung` des Planers hat dieselbe Form, `verteilungAnzeige` nimmt es unverändert); Wochenend-/Feiertags-/Stundenverteilung (Engine kennt nur Nachtdienste); Wahl eines anderen Monats außer dem im Monatsplan gezeigten.
+
+**Hinweis zur Nacht der abgebenden Person:** Beim Entfernen der Nacht der abgebenden Person prüft der Code nur die eigenen Einteilungen nach; neu bewerten, sobald eine Planart „mindestens“ im Plan wirkt.

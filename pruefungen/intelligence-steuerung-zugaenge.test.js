@@ -392,15 +392,30 @@ describe("„ja“ der Leitung ist eine Leitung-Pause (Betreiberentscheidung 202
 describe("Nachtrag Nr. 1: Protokoll der Sicherheitssperre — begonnen vorher, Ergebnis danach, nie Erfolg ohne Sperre", () => {
   const VORGANG = /Vorgang ([0-9a-f]{8})/;
   const zeilen = async () => { const { spurLesen } = await import("../server/lib/schutz.mjs"); return spurLesen(80); };
+  /** Älteste zuerst; bei gleicher Millisekunde steht „begonnen“ vor dem Ergebnis (die Blob-Reihenfolge bei Gleichstand ist Zufall). */
+  const nachZeit = (a, b) => a.zeit.localeCompare(b.zeit) || Number(b.ausgang === "begonnen") - Number(a.ausgang === "begonnen");
   /** Alle Zeilen eines Vorgangs (nur Art `zugaenge`), älteste zuerst. */
   const vorgangZeilen = async (v) => (await zeilen()).filter((z) => z.art === "zugaenge" && typeof z.zusatz === "string"
-    && (z.zusatz.match(VORGANG) || [])[1] === v).sort((a, b) => a.zeit.localeCompare(b.zeit));
+    && (z.zusatz.match(VORGANG) || [])[1] === v).sort(nachZeit);
   const begonnenSeit = async (vorher) => (await zeilen()).filter((z) => z.ausgang === "begonnen" && !vorher.has(z.zeit + z.zusatz));
   const schnappschuss = async () => new Set((await zeilen()).filter((z) => z.ausgang === "begonnen").map((z) => z.zeit + z.zusatz));
   const ohne = () => { delete (/** @type {any} */ (globalThis)).__ablageBeobachter; };
   const beobachte = (f) => { /** @type {any} */ (globalThis).__ablageBeobachter = f; };
   const brKonto = (code, extra = {}) => kontoSchreiben(laden(), ablageSchluessel(code), { name: "s", bestand: RAUM, rolle: "betriebsrat",
     person: "r1", betrieb: 0, mandantId: "m-a", angelegt: "2026-01-01T00:00:00.000Z", ...extra });
+
+  it("Sortierung bei gleicher Millisekunde: „begonnen“ steht vor dem Ergebnis, unabhängig von der Eingabereihenfolge", () => {
+    const zeit = "2026-11-28T10:00:00.000Z";
+    const b = { zeit, ausgang: "begonnen" };
+    for (const ergebnis of ["fehler", "erfolg"]) {
+      const e = { zeit, ausgang: ergebnis };
+      expect([b, e].sort(nachZeit).map((z) => z.ausgang)).toEqual(["begonnen", ergebnis]);
+      expect([e, b].sort(nachZeit).map((z) => z.ausgang)).toEqual(["begonnen", ergebnis]);
+    }
+    /* die Zeit bleibt das erste Kriterium */
+    const frueh = { zeit: "2026-11-28T09:59:59.999Z", ausgang: "fehler" };
+    expect([b, frueh].sort(nachZeit).map((z) => z.ausgang)).toEqual(["fehler", "begonnen"]);
+  });
 
   it("Erfolg: begonnen → Sperre in der Ablage → erfolg, in dieser Reihenfolge; Ergebnis nennt „1 von 1“; keine Person, kein Code", async () => {
     await brKonto("WZ21-AAAA-0021");
