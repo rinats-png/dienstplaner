@@ -95,9 +95,9 @@ const STIL_BASIS_SHA256 = "5fce0b5f584eaeeafced50967ee22c0f0f6374c8d9ced8419c9da
  *  Text und Prüfung kommen aus src/ansichten/anheftungen.jsx (eine Quelle, #605). */
 const NACHTRAG_FEST = [
   ['import { festEingeplant, FEST_EINGEPLANT_TEXT } from "./anheftungen.jsx";\n', ""],
-  ["/* „Fest eingeplant“ (WP-I7 Teil 6): sichtbarer Text, keine Aktion; nur an eigenen Einteilungen (Kennzeichen des Servers, anheftungen.jsx). */\n"
-    + "export const MFest = () => (\n"
-    + '  <div className="ssub" data-fest-eingeplant=""><Pill size="sm" tone="accent">{FEST_EINGEPLANT_TEXT}</Pill></div>);\n', ""],
+  ["/* „Fest eingeplant“ (WP-I7 Teil 7): sichtbarer Text, keine Aktion; nur an eigenen Einteilungen (Kennzeichen des Servers, anheftungen.jsx). */\n"
+    + "const MFest = () => (\n"
+    + '  <div className="ssub" data-fest-eingeplant=""><Pill size="sm">{FEST_EINGEPLANT_TEXT}</Pill></div>);\n', ""],
   ["          {festEingeplant(m, p.id, d0) && <MFest />}\n", ""],
   ["                  {da && festEingeplant(m, ich.id, d) && <MFest />}\n", ""],
   ['${da && festEingeplant(m, ich.id, d) ? `, ${FEST_EINGEPLANT_TEXT}` : ""}`)}', "`)}"],

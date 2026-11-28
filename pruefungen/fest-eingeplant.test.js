@@ -19,6 +19,21 @@ import { festEingeplant, FEST_EINGEPLANT_TEXT } from "../src/ansichten/anheftung
 import { MPlan, MHeute } from "../src/ansichten/mobil.jsx";
 import { demobestand, personTag } from "../src/lib/fachlogik.js";
 
+/* Statisches Rendern kennt keine Bedienung: Für Monatsansicht und Tagblatt setzt die Prüfung den Anfangszustand von MPlan
+   (Hooks der Reihe nach: ansicht „liste“, schnell, ym, gewaehlt). Ohne Vorgabe reicht der Ersatz alles unverändert durch. */
+const STEUER = vi.hoisted(() => ({ ansicht: null, gewaehlt: null, n: -1 }));
+vi.mock("react", async (original) => {
+  const R = await original();
+  const useState = (init) => {
+    const r = R.useState(init);
+    if (init === "liste") STEUER.n = 0; else if (STEUER.n >= 0) STEUER.n++;
+    if (STEUER.n === 0 && STEUER.ansicht) return [STEUER.ansicht, r[1]];
+    if (STEUER.n === 3) { STEUER.n = -1; if (STEUER.gewaehlt) return [STEUER.gewaehlt, r[1]]; }
+    return r;
+  };
+  return { ...R, useState, default: { ...(R.default || R), useState } };
+});
+
 const ST = { am: "2026-11-27T10:00:00.000Z", vonRolle: "leitung" };
 const AUF = { ...ST, aufgehobenAm: "2026-11-27T11:00:00.000Z", aufgehobenVonRolle: "planer" };
 
@@ -121,7 +136,7 @@ describe("2. Telefonansicht: Hinweis nur an eigener angehefteter Einteilung mit 
     const html = renderToStaticMarkup(h(MPlan, { sitz, akt, oeffnen() {} }));
     expect(anzahl(html)).toBe(1);
     /* Barrierefrei: sichtbarer Text (Pille, nicht aria-hidden), nicht nur Farbe oder Symbol. */
-    expect(html).toContain(`<div class="ssub" data-fest-eingeplant=""><span class="pille pille-accent pille-sm">${FEST_EINGEPLANT_TEXT}</span></div>`);
+    expect(html).toContain(`<div class="ssub" data-fest-eingeplant=""><span class="pille pille-neutral pille-sm">${FEST_EINGEPLANT_TEXT}</span></div>`);
     expect(html).not.toContain(`aria-hidden="true">${FEST_EINGEPLANT_TEXT}`);
   });
 
@@ -133,12 +148,60 @@ describe("2. Telefonansicht: Hinweis nur an eigener angehefteter Einteilung mit 
   });
 
   it("Heute: Hinweis an „Dein Dienst heute“, wenn heute angeheftet; sonst nicht", () => {
-    const { m, dienst, ich, sitz } = aufbau();
+    const { m, dienst, ich, andere, sitz } = aufbau();
     vi.setSystemTime(new Date(`${dienst[0]}T09:00:00.000Z`));   // zeit-ok: Prüfuhr auf den ersten Diensttag
     const ohne = renderToStaticMarkup(h(MHeute, { sitz, akt, setTab() {}, oeffnen() {} }));
     expect(ohne).toContain("Dein Dienst heute");
     expect(anzahl(ohne)).toBe(0);
+    /* B-1 (b): ein Kennzeichen einer anderen Person am eigenen Diensttag zeigt nichts. */
+    m.festEingeplant = fest(andere.id, [dienst[0]]);
+    expect(anzahl(renderToStaticMarkup(h(MHeute, { sitz, akt, setTab() {}, oeffnen() {} }))), "fremdes Kennzeichen").toBe(0);
     m.festEingeplant = fest(ich.id, [dienst[0]]);
     expect(anzahl(renderToStaticMarkup(h(MHeute, { sitz, akt, setTab() {}, oeffnen() {} })))).toBe(1);
+  });
+
+  it("B-1 (a) Mein Plan: eigener Abwesenheitstag mit Kennzeichen — Zeile erscheint, Hinweis nicht", () => {
+    const { m, frei, ich, db } = aufbau();
+    const tag = frei[0];
+    /* Neuer Betrieb (eigener Zwischenspeicher) mit Urlaub an einem freien Tag. */
+    const m2 = { ...m, abwesenheiten: [...(m.abwesenheiten || []), { id: "abw-fest", personId: ich.id, art: "urlaub", von: tag, bis: tag, status: "genehmigt" }],
+      festEingeplant: fest(ich.id, [tag]) };
+    const sitz = { rolle: "mitarbeiter", db, mandant: m2, person: ich };
+    expect(personTag(m2, ich, tag).abwesenheit, "Urlaub wirkt").toBeTruthy();
+    expect(personTag(m2, ich, tag).dienstId).toBeFalsy();
+    const html = renderToStaticMarkup(h(MPlan, { sitz, akt, oeffnen() {} }));
+    expect(html, "Zeile des Urlaubstags").toContain(`>${Number(tag.slice(8))}</div>`);
+    expect(anzahl(html)).toBe(0);
+  });
+
+  describe("B-1 (c) Monatsansicht und Tagblatt (Anfangszustand gesetzt)", () => {
+    afterEach(() => { STEUER.ansicht = null; STEUER.gewaehlt = null; STEUER.n = -1; });
+
+    it("Monatsfeld: Zusatz im zugänglichen Namen genau am eigenen angehefteten Diensttag; ohne Kennzeichen nicht", () => {
+      const { m, dienst, ich, andere, sitz } = aufbau();
+      STEUER.ansicht = "monat";
+      const ohne = renderToStaticMarkup(h(MPlan, { sitz, akt, oeffnen() {} }));
+      expect(ohne).toContain('role="button"');
+      expect(anzahl(ohne)).toBe(0);
+      const tag = dienst.find((d) => d.slice(0, 7) === "2026-12");
+      m.festEingeplant = { ...fest(ich.id, [tag]), ...fest(andere.id, dienst) };
+      const html = renderToStaticMarkup(h(MPlan, { sitz, akt, oeffnen() {} }));
+      expect(anzahl(html)).toBe(1);
+      const namen = [...html.matchAll(/aria-label="([^"]*)"/g)].map((x) => x[1]).filter((n) => n.includes(FEST_EINGEPLANT_TEXT));
+      expect(namen).toHaveLength(1);
+      expect(namen[0].endsWith(`, ${FEST_EINGEPLANT_TEXT}`)).toBe(true);
+    });
+
+    it("Tagblatt: sichtbarer Hinweis am gewählten eigenen angehefteten Diensttag; anderer Tag nicht", () => {
+      const { m, dienst, ich, sitz } = aufbau();
+      m.festEingeplant = fest(ich.id, [dienst[1]]);
+      STEUER.ansicht = "monat";
+      STEUER.gewaehlt = { datum: dienst[1], t: personTag(m, ich, dienst[1]) };
+      const html = renderToStaticMarkup(h(MPlan, { sitz, akt, oeffnen() {} }));
+      expect(html).toContain('role="dialog"');
+      expect(html).toContain(`<div class="ssub" data-fest-eingeplant=""><span class="pille pille-neutral pille-sm">${FEST_EINGEPLANT_TEXT}</span></div>`);
+      STEUER.gewaehlt = { datum: dienst[0], t: personTag(m, ich, dienst[0]) };
+      expect(renderToStaticMarkup(h(MPlan, { sitz, akt, oeffnen() {} }))).not.toContain("data-fest-eingeplant");
+    });
   });
 });

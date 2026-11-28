@@ -36,9 +36,9 @@ import { Fehlerband } from "../gestalt/ansichten.jsx";
 import { KrankmeldungenOffen } from "./krankmeldungen-offen.jsx";
 import { festEingeplant, FEST_EINGEPLANT_TEXT } from "./anheftungen.jsx";
 
-/* „Fest eingeplant“ (WP-I7 Teil 6): sichtbarer Text, keine Aktion; nur an eigenen Einteilungen (Kennzeichen des Servers, anheftungen.jsx). */
-export const MFest = () => (
-  <div className="ssub" data-fest-eingeplant=""><Pill size="sm" tone="accent">{FEST_EINGEPLANT_TEXT}</Pill></div>);
+/* „Fest eingeplant“ (WP-I7 Teil 7): sichtbarer Text, keine Aktion; nur an eigenen Einteilungen (Kennzeichen des Servers, anheftungen.jsx). */
+const MFest = () => (
+  <div className="ssub" data-fest-eingeplant=""><Pill size="sm">{FEST_EINGEPLANT_TEXT}</Pill></div>);
 
 export const M_TABS = [
   { id: "heute", label: "Heute", icon: "heute" },
