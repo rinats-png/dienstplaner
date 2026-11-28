@@ -34,7 +34,11 @@ import { Wortmarke } from "../marke.jsx";
 import { urlaubAntragFehler } from "../lib/antragpruefung.js";
 import { Fehlerband } from "../gestalt/ansichten.jsx";
 import { KrankmeldungenOffen } from "./krankmeldungen-offen.jsx";
+import { festEingeplant, FEST_EINGEPLANT_TEXT } from "../lib/festeingeplant.js";
 
+/* „Fest eingeplant“ (WP-I7 Teil 6): sichtbarer Text, keine Aktion; nur an eigenen Einteilungen (lib/festeingeplant.js). */
+export const MFest = () => (
+  <div className="ssub" data-fest-eingeplant=""><Pill size="sm" tone="accent">{FEST_EINGEPLANT_TEXT}</Pill></div>);
 
 export const M_TABS = [
   { id: "heute", label: "Heute", icon: "heute" },
@@ -133,6 +137,7 @@ export function MHeute({ sitz, akt, setTab, oeffnen }) {
           <div style={{ fontSize: 17, color: C.dim, ...NUM }}>
             {da.start} – {da.ende} · {n1(dauer(da))} h</div>
           {da.ort && <div style={{ fontSize: 14, color: C.dimmer, marginTop: 5 }}>{da.ort}</div>}
+          {festEingeplant(m, p, p, d0, true) && <MFest />}
           <div style={{ marginTop: 18 }}><MStempel sitz={sitz} akt={akt} vorgang={vorgang} /><StempelPuffer akt={akt} /></div>
         </MKarte>
       ) : vorgang.offen ? (
@@ -342,6 +347,7 @@ export function MPlan({ sitz, akt, oeffnen }) {
                     {da ? `${da.start} – ${da.ende} · ${n1(dauer(da))} h` : `bis ${fDatum(t.abwesenheit.bis)}`}
                   </div>
                   {da && da.ort && <div style={{ fontSize: 12.5, color: C.dimmer, marginTop: 2 }}>{da.ort}</div>}
+                  {festEingeplant(m, ich, sitz.person, d, !!da) && <MFest />}
                 </div>
                 <span aria-hidden="true" style={{ color: C.dimmer, display: "flex", flexShrink: 0 }}><Icon n="chevron-rechts" size={20} /></span>
               </MKarte>);
@@ -364,7 +370,7 @@ export function MPlan({ sitz, akt, oeffnen }) {
               const da = t.dienstId && map[t.dienstId];
               return (
                 <div key={d} {...klickbar(() => setGewaehlt({ datum: d, t }),
-                  `${fKurz(d)}: ${da ? da.name : t.abwesenheit ? abwArt(t.abwesenheit.art).label : "frei"}`)}
+                  `${fKurz(d)}: ${da ? da.name : t.abwesenheit ? abwArt(t.abwesenheit.art).label : "frei"}${festEingeplant(m, ich, sitz.person, d, !!da) ? `, ${FEST_EINGEPLANT_TEXT}` : ""}`)}
                   style={{ aspectRatio: "1", borderRadius: "var(--v4-r-mittel)", display: "flex", flexDirection: "column",
                     alignItems: "center", justifyContent: "center", cursor: "pointer", gap: 2,
                     background: da ? `${da.farbe}1C` : t.abwesenheit ? `${abwArt(t.abwesenheit.art).farbe}1C` : C.bg,
@@ -390,6 +396,7 @@ export function MPlan({ sitz, akt, oeffnen }) {
                 <div style={{ fontSize: 15.5, color: C.dim, marginTop: 4, ...NUM }}>
                   {da.start} – {da.ende} · {n1(dauer(da))} h</div>
                 {da.ort && <div style={{ fontSize: 13.5, color: C.dimmer, marginTop: 4 }}>{da.ort}</div>}
+                {festEingeplant(m, ich, sitz.person, gewaehlt.datum, true) && <MFest />}
                 {nachtAnteil(da, m.einstellungen) > 0 && <div style={{ fontSize: 13, color: C.violet, marginTop: 8, ...NUM }}>
                   davon {n1(nachtAnteil(da, m.einstellungen))} h Nachtarbeit</div>}
               </MKarte>)}

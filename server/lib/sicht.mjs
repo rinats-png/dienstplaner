@@ -31,6 +31,7 @@ import { kiSteuerungSicht, kiSteuerungSichtVoll } from "./ki-steuerung.mjs";
 import { abschlussStatus } from "./monatsabschluss.mjs";
 import { istBetriebsSchluessel, istMonatsSchluessel } from "./isteinfrieren.mjs";
 import { postenIdsVon } from "./modul-posten.mjs";
+import { anheftungenLesen } from "./engine/anheften.mjs";
 
 /* Die vier Entscheidungen. Reduziert heißt: Die Regel ist eine Funktion. */
 export const VOLL = "voll";
@@ -759,7 +760,8 @@ export const BETRIEB = {
      VORGABEN_BETRIEBSRAT_LESEN (AUS, 1.2), das Protokoll der Vorgaben ebenso (moduleinstellungenSicht). */
   vorgaben: [WEG, R((w, ctx) => vorgabenBetriebsratSicht(w, ctx.vorgabenBetriebsrat))],
   /* Anheften (WP-I7 Teil 6, anheften.mjs): Karte „Person|Tag“ → Stempel. Planung und Leitung (Vollsicht) lesen sie; Beschäftigte,
-     Schichtverantwortung und Betriebsrat nichts (Vorlage #595: „fest“ für Beschäftigte ist eine offene Entscheidung, bis dahin nichts). */
+     Schichtverantwortung und Betriebsrat nichts. Beschäftigte bekommen statt der Karte nur die eigenen angehefteten Tage als
+     „Fest eingeplant“ (festEingeplant in bestandSicht; Betreiberentscheidung zur Vorlage #595). */
   angeheftet: [WEG, WEG],
   /* Mehrere Schichtmodelle je Betrieb (IMP-6 Teil 2, schichtzuordnung.mjs): vollständig nur Planung, Leitung und
      Kundenrolle; sie wirken noch nicht auf die Planrechnung. Beschäftigte und Schichtverantwortung (SCHICHT übernimmt die
@@ -859,8 +861,37 @@ export function bestandSicht(bestand, sitzung, eigener) {
        nur in der Antwort (wie sichtIstDaten), ein gespeichertes zählt nie. */
     if (sitzung && sitzung.rolle === "mitarbeiter" && planFreigabeAktiv(eigener))
       aus.mandanten[0].sichtEntwuerfe = { heute: laufenderTag() };
+    /* „Fest eingeplant“ (WP-I7 Teil 6, Betreiberentscheidung): nur Beschäftigte, nur die eigenen Tage — abgeleitet, nie
+       die Karte (festEingeplantEigene). Entsteht nur in der Antwort; ein gespeichertes zählt nie. */
+    if (sitzung && sitzung.rolle === "mitarbeiter" && ich !== null && ich !== undefined)
+      aus.mandanten[0].festEingeplant = festEingeplantEigene(eigener, ich, aus.mandanten[0].abweichungen);
   }
   return aus;
+}
+
+/** „Fest eingeplant“ für Beschäftigte (WP-I7 Teil 6, Anheften; Betreiberentscheidung: Hinweis an eigenen Einteilungen).
+    Aus der Karte `angeheftet` (bleibt für diese Rolle WEG) nur die Tage (JJJJ-MM-TT, sortiert) der eigenen Person, deren
+    Anheftung aktiv ist (nicht aufgehoben) und deren Einteilung die Person in ihrer Sicht sieht (`abweichungen` nach dem
+    Entwurfsfilter — sonst verriete der Hinweis einen Entwurf). Kein Wer, kein Wann, kein Grund, keine fremden Schlüssel.
+    Unlesbare oder fehlende Karte: leer (kein Hinweis, kein Fehler). Rein; wirft nie.
+    @param {any} m gespeicherter Betrieb @param {any} ich Person der Sitzung @param {any} sichtbareAbweichungen
+    @returns {string[]} */
+export function festEingeplantEigene(m, ich, sichtbareAbweichungen) {
+  try {
+    if (ich === null || ich === undefined || String(ich) === "") return [];
+    const l = anheftungenLesen(m);
+    if (!l.ok) return [];
+    const abw = istObj(sichtbareAbweichungen) ? sichtbareAbweichungen : {};
+    const tage = new Set();
+    for (const k of l.aktiv) {
+      const i = k.lastIndexOf("|");
+      if (k.slice(0, i) !== String(ich) || !Object.prototype.hasOwnProperty.call(abw, k)) continue;
+      tage.add(k.slice(i + 1));
+    }
+    return [...tage].sort();
+  } catch {
+    return [];
+  }
 }
 
 /* ------------------------------------------------------------------------

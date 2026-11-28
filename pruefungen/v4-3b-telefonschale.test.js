@@ -87,16 +87,34 @@ const STIL_ZUORDNUNG = [
 /** SHA-256 von src/gestalt/stil.js (LF) auf der Basis 55db4363 (git show 55db4363:src/gestalt/stil.js). */
 const STIL_BASIS_SHA256 = "5fce0b5f584eaeeafced50967ee22c0f0f6374c8d9ced8419c9da6cd897a546f";
 
-/** Heutiger mobil.jsx-Quelltext mit den alten Werten der Tabelle zurückgesetzt. */
+/** Bewusste Abweichung von der Basis, nicht Teil des Radiusschnitts: „Fest eingeplant“ (WP-I7 Teil 6, Anheften;
+ *  Betreiberentscheidung, Hinweis an eigenen angehefteten Einteilungen) — ein Import, der Baustein MFest (ohne Inline-Stil,
+ *  ohne Radius), vier Einhängestellen und ein Zusatz im zugänglichen Namen des Monatsfelds. Die Rückrechnung nimmt genau
+ *  diese Stellen wörtlich zurück (jede genau einmal); danach muss der Text byte-gleich die Basis ergeben. Jede weitere
+ *  Änderung an mobil.jsx macht die Prüfung rot, wie zuvor. Prüfung des Hinweises: pruefungen/fest-eingeplant.test.js. */
+const NACHTRAG_FEST = [
+  ['import { festEingeplant, FEST_EINGEPLANT_TEXT } from "../lib/festeingeplant.js";\n', ""],
+  ["/* „Fest eingeplant“ (WP-I7 Teil 6): sichtbarer Text, keine Aktion; nur an eigenen Einteilungen (lib/festeingeplant.js). */\n"
+    + "export const MFest = () => (\n"
+    + '  <div className="ssub" data-fest-eingeplant=""><Pill size="sm" tone="accent">{FEST_EINGEPLANT_TEXT}</Pill></div>);\n', ""],
+  ["          {festEingeplant(m, p, p, d0, true) && <MFest />}\n", ""],
+  ["                  {festEingeplant(m, ich, sitz.person, d, !!da) && <MFest />}\n", ""],
+  ['${festEingeplant(m, ich, sitz.person, d, !!da) ? `, ${FEST_EINGEPLANT_TEXT}` : ""}`)}', "`)}"],
+  ["                {festEingeplant(m, ich, sitz.person, gewaehlt.datum, true) && <MFest />}\n", ""],
+];
+
+/** Heutiger mobil.jsx-Quelltext mit den alten Werten der Tabelle zurückgesetzt (und dem Nachtrag zurückgenommen). */
 function rueckgerechnetMobil() {
   const stellen = TELEFON_ZUORDNUNG[MOBIL];
   let i = 0;
-  const text = lies(MOBIL).replace(/borderRadius: "var\(--v4-r-([a-z]+)\)"/g, (m, stufe) => {
+  let text = lies(MOBIL).replace(/borderRadius: "var\(--v4-r-([a-z]+)\)"/g, (m, stufe) => {
     const s = stellen[i++];
     if (!s || s.stufe !== stufe) return m;          // fällt unten über die Prüfsumme auf
     return `borderRadius: ${s.alt}`;
   });
-  return { text, ersetzt: i };
+  let nachtrag = 0;
+  for (const [neu, alt] of NACHTRAG_FEST) if (text.split(neu).length === 2) { text = text.replace(neu, () => alt); nachtrag++; }
+  return { text, ersetzt: i, nachtrag };
 }
 
 /** Heutiger stil.js-Quelltext mit den alten Werten zurückgesetzt. */
@@ -178,6 +196,7 @@ describe("V4-3b Telefonschale: Messung", () => {
     const fx = ladeBasisFixture(WURZEL).schnitte[SCHNITT];
     const r = rueckgerechnetMobil();
     expect(r.ersetzt, "Anzahl Stufen in mobil.jsx").toBe(TELEFON_ZUORDNUNG[MOBIL].length);
+    expect(r.nachtrag, "Nachtrag „Fest eingeplant“: jede Stelle genau einmal").toBe(NACHTRAG_FEST.length);
     expect(sha256(r.text), "mobil.jsx zurückgerechnet = Basis").toBe(fx.dateien[MOBIL].sha256);
     for (const s of STIL_ZUORDNUNG) expect(lies(STIL).split(s.nachher), s.regel).toHaveLength(2);
     expect(sha256(rueckgerechnetStil()), "stil.js zurückgerechnet = Basis").toBe(STIL_BASIS_SHA256);
