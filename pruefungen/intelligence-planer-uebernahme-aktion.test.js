@@ -14,6 +14,8 @@
    5. Rückgängig: Prüfung mit Unterbesetzungshinweis, einmalig (Replay 404), nach zwischenzeitlicher Änderung abgelehnt.
    6. Ablauf von Vorschlag und Rückgängig-Datensatz; Aufbewahrungslauf; Mandantentrennung; Größenlimit; Vergangenheit/Abschluss;
       Pause; Modus automatisch übernimmt nie selbst; PUT /api/bestand lässt die Rückgängig-Daten unberührt.
+   9. Vor Freigabe von PLANER_AN: Grenze der gehaltenen Vorschläge je Besitzer (Raum, Betrieb, Person) mit Verdrängung des ältesten eigenen
+      statt prozessweit 50/5 je Raum; nie ein laufender, nie ein fremder Vorschlag; Obergrenzen nach Zahl, Größe und Raum bleiben.
    Aufruf: TZ=UTC npx vitest run pruefungen/intelligence-planer-uebernahme-aktion.test.js
    ========================================================================== */
 import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from "vitest";
@@ -66,6 +68,7 @@ afterEach(() => {
   globalThis.__planerErsatz = undefined;
   S.A._pruefhaken.ablage = null;
   S.A._pruefhaken.vorSchreiben = null;
+  S.A._pruefhaken.hoechst = null;
   vi.setSystemTime(new Date(T0));
   frei(false);
 });
@@ -699,5 +702,181 @@ describe("8. Nachträge Review #614 (C-2, C-3, C-7)", { timeout: 300000 }, () =>
     expect([dritte.status, dritte.code]).toEqual([409, "uebernahme-laeuft"]);
     freiHaken();
     expect((await echt).status).toBe(200);
+  });
+});
+
+describe("9. Vor Freigabe von PLANER_AN: Grenze der Vorschläge je Besitzer statt prozessweit (Review #614 C-1)", { timeout: 300000 }, () => {
+  const MONATE = ["2026-12", "2027-01", "2027-02", "2027-03", "2027-04", "2027-05"];
+  const roh = (id) => S.A._vorschlaege.roh(id);
+  let uhr = Date.parse(T0);
+  const tick = () => { uhr += 60000; vi.setSystemTime(new Date(uhr)); };   // jeder Vorschlag hat eine eigene Entstehungszeit
+  const frischeGrenzen = (extra = {}) => { S.A._pruefhaken.hoechst = { ...S.A.VORSCHLAG_HOECHST, ...extra }; };
+  /** Vorschläge für n Monate ab Index `ab`; jeder muss entstehen (201). */
+  async function mehrere(r, token, n, ab = 0) {
+    const ids = [];
+    for (const ym of MONATE.slice(ab, ab + n)) {
+      tick();
+      const v = await vorschlag(r, token, ym);
+      expect(v.status, `${ym}: ${JSON.stringify(v).slice(0, 200)}`).toBe(201);
+      ids.push(v.vorschlag);
+    }
+    return ids;
+  }
+  const vorbereiten = async () => { uhr = Date.parse(T0); S.A._vorschlaege.leeren(); S.A._pruefhaken.hoechst = null; frei(true); return raum(); };
+  afterEach(() => { S.A._pruefhaken.hoechst = null; });
+
+  it("Grenzen: je Besitzer 5, je Raum 30, gesamt 2000 Vorschläge und 100000 Einteilungen — nicht mehr 5 je Raum und 50 gesamt", () => {
+    expect(S.A.VORSCHLAG_HOECHST).toEqual({ jeBesitzer: 5, jeRaum: 30, jeRaumEintraege: 10000, gesamt: 2000, gesamtEintraege: 100000 });
+    expect(S.A.VORSCHLAG_HOECHST.jeRaumEintraege * 10).toBeLessThanOrEqual(S.A.VORSCHLAG_HOECHST.gesamtEintraege);   // Raum höchstens ein Zehntel der Gesamtgröße
+    expect(Object.isFrozen(S.A.VORSCHLAG_HOECHST)).toBe(true);
+  });
+  it("zwei Besitzer (Leitung, Planung) im selben Raum und ein zweiter Raum blockieren sich nicht", async () => {
+    const r = await vorbereiten();
+    const r2 = await raum();
+    const a = await mehrere(r, r.t.LT, 5);
+    const b = await mehrere(r, r.t.LT2, 3);          // früher 429: je Raum höchstens 5
+    const c = await mehrere(r, r.t.PL, 2);
+    const d = await mehrere(r2, r2.t.LT, 5);         // früher bei 50 gesamt von wenigen Räumen blockierbar
+    for (const id of [...a, ...b, ...c, ...d]) expect(roh(id), id).not.toBeNull();
+    expect(S.A._vorschlaege.anzahl()).toBe(15);
+  });
+  it("der sechste Vorschlag desselben Besitzers verdrängt den ÄLTESTEN eigenen (statt 429); die übrigen vier und der neue bleiben benutzbar", async () => {
+    const r = await vorbereiten();
+    const ids = await mehrere(r, r.t.LT, 5);
+    tick();                                                // der neue ist jünger
+    const sechs = await vorschlag(r, r.t.LT, MONATE[5]);
+    expect(sechs.status, JSON.stringify(sechs).slice(0, 200)).toBe(201);
+    expect(roh(ids[0])).toBeNull();
+    for (const id of [...ids.slice(1), sechs.vorschlag]) expect(roh(id), id).not.toBeNull();
+    expect(S.A._vorschlaege.anzahl()).toBe(5);
+    const weg = await uebernehmen(ids[0], [0], r.t.LT, false);
+    expect([weg.status, weg.code]).toEqual([404, "vorschlag-unbekannt"]);
+    const bleibt = await uebernehmen(ids[1], [0], r.t.LT, false);
+    expect(bleibt.status, JSON.stringify(bleibt).slice(0, 200)).toBe(200);
+    /* Derselbe Monat ersetzt den eigenen alten wie bisher (kein zusätzlicher Platz). */
+    const nochmal = await vorschlag(r, r.t.LT, MONATE[5]);
+    expect(nochmal.status).toBe(201);
+    expect(roh(sechs.vorschlag)).toBeNull();
+    expect(S.A._vorschlaege.anzahl()).toBe(5);
+  });
+  it("Verdrängung nie über Besitzer hinweg: der sechste Vorschlag der Planung lässt die fünf der Leitung unberührt", async () => {
+    const r = await vorbereiten();
+    const leitung = await mehrere(r, r.t.LT, 5);
+    const planung = await mehrere(r, r.t.PL, 5);
+    const sechs = await vorschlag(r, r.t.PL, MONATE[5]);
+    expect(sechs.status).toBe(201);
+    expect(roh(planung[0])).toBeNull();
+    for (const id of leitung) expect(roh(id), id).not.toBeNull();
+    for (const id of [...planung.slice(1), sechs.vorschlag]) expect(roh(id), id).not.toBeNull();
+    expect(S.A._vorschlaege.anzahl()).toBe(10);
+  });
+  it("ein laufender Vorschlag (läuft) wird nie verdrängt; sind alle fünf laufend, gibt es 429 und nichts geht verloren", async () => {
+    const r = await vorbereiten();
+    const ids = await mehrere(r, r.t.LT, 5);
+    roh(ids[0]).laeuft = true;                              // der älteste läuft gerade
+    const x = await vorschlag(r, r.t.LT, MONATE[5]);
+    expect(x.status).toBe(201);
+    expect(roh(ids[0])).not.toBeNull();                     // geblieben
+    expect(roh(ids[1])).toBeNull();                         // der älteste NICHT laufende ist weg
+    const rest = [ids[0], ...ids.slice(2), x.vorschlag];
+    for (const id of rest) expect(roh(id), id).not.toBeNull();
+    for (const id of rest) roh(id).laeuft = true;           // alle laufend: nichts zu verdrängen
+    const vorher = S.A._vorschlaege.anzahl();
+    const y = await vorschlag(r, r.t.LT, MONATE[1]);
+    expect([y.status, y.code]).toEqual([429, "zu-viele-vorschlaege"]);
+    expect(S.A._vorschlaege.anzahl()).toBe(vorher);
+    for (const id of rest) { expect(roh(id), id).not.toBeNull(); roh(id).laeuft = false; }
+  });
+  it("Verdrängt wird erst, wenn der neue Vorschlag wirklich entsteht: schlägt der Planlauf fehl, bleiben alle fünf", async () => {
+    const r = await vorbereiten();
+    const ids = await mehrere(r, r.t.LT, 5);
+    globalThis.__planerErsatz = () => { throw new Error("Planlauf gestört (Prüfung)"); };
+    const x = await vorschlag(r, r.t.LT, MONATE[5]);
+    expect([x.status, x.code]).toEqual([500, "pruefung-fehlgeschlagen"]);
+    globalThis.__planerErsatz = undefined;
+    for (const id of ids) expect(roh(id), id).not.toBeNull();
+    expect(S.A._vorschlaege.anzahl()).toBe(5);
+  });
+  it("die globale Obergrenze (Zahl) greift weiter: 429, ohne dass ein fremder Vorschlag verdrängt wird", async () => {
+    const r = await vorbereiten();
+    frischeGrenzen({ gesamt: 3 });
+    const a = await mehrere(r, r.t.LT, 1), b = await mehrere(r, r.t.LT2, 1), c = await mehrere(r, r.t.PL, 1);
+    const r2 = await raum();
+    const x = await vorschlag(r2, r2.t.LT, MONATE[0]);
+    expect([x.status, x.code]).toEqual([429, "zu-viele-vorschlaege"]);
+    for (const id of [...a, ...b, ...c]) expect(roh(id), id).not.toBeNull();
+    expect(S.A._vorschlaege.anzahl()).toBe(3);
+    /* Wer schon einen Vorschlag für den Monat hält, ersetzt ihn auch an der Grenze. */
+    const ersetzt = await vorschlag(r, r.t.LT, MONATE[0]);
+    expect(ersetzt.status).toBe(201);
+    expect(S.A._vorschlaege.anzahl()).toBe(3);
+  });
+  it("die globale Obergrenze nach Größe (Summe der Einteilungen) greift weiter; ein Ersatz im selben Monat passt trotzdem hinein", async () => {
+    const r = await vorbereiten();
+    const r2 = await raum();
+    const erst = await vorschlag(r, r.t.LT, MONATE[0]);
+    expect(erst.status).toBe(201);
+    frischeGrenzen({ gesamtEintraege: erst.eintraege.length });
+    const x = await vorschlag(r2, r2.t.LT, MONATE[0]);
+    expect([x.status, x.code]).toEqual([429, "zu-viele-vorschlaege"]);
+    expect(roh(erst.vorschlag)).not.toBeNull();
+    const ersatz = await vorschlag(r, r.t.LT, MONATE[0]);
+    expect(ersatz.status).toBe(201);
+    expect(roh(erst.vorschlag)).toBeNull();
+  });
+  it("die Grenze je Raum greift weiter (mehrere Planende); ein anderer Raum bleibt frei", async () => {
+    const r = await vorbereiten();
+    frischeGrenzen({ jeRaum: 2 });
+    await mehrere(r, r.t.LT, 1);
+    await mehrere(r, r.t.LT2, 1);
+    const x = await vorschlag(r, r.t.PL, MONATE[0]);
+    expect([x.status, x.code]).toEqual([429, "zu-viele-vorschlaege"]);
+    const r2 = await raum();
+    expect((await vorschlag(r2, r2.t.LT, MONATE[0])).status).toBe(201);
+  });
+  it("Größe je Raum (Review #616 B-1): ein Raum an der Grenze sperrt nur sich selbst, ein anderer Raum bleibt frei; kein fremder Vorschlag wird verdrängt", async () => {
+    const r = await vorbereiten();
+    const r2 = await raum();
+    const erst = await vorschlag(r, r.t.LT, MONATE[0]);
+    expect(erst.status).toBe(201);
+    frischeGrenzen({ jeRaumEintraege: erst.eintraege.length });   // der Raum ist damit voll
+    const voll = await vorschlag(r, r.t.LT2, MONATE[1]);          // anderer Besitzer im selben Raum: nur abweisen, nie den fremden verdrängen
+    expect([voll.status, voll.code]).toEqual([429, "zu-viele-vorschlaege"]);
+    expect(roh(erst.vorschlag)).not.toBeNull();
+    const frei2 = await vorschlag(r2, r2.t.LT, MONATE[0]);        // der andere Raum ist nicht betroffen
+    expect(frei2.status).toBe(201);
+    expect(S.A._vorschlaege.anzahl()).toBe(2);
+    const ersatz = await vorschlag(r, r.t.LT, MONATE[0]);         // der eigene Ersatz im selben Monat passt in den Platz des alten
+    expect(ersatz.status).toBe(201);
+    expect(roh(erst.vorschlag)).toBeNull();
+    expect(roh(frei2.vorschlag)).not.toBeNull();
+  });
+  it("Raumgrenze gilt je Raum UND Betrieb (Review #616 C-1): ein zweiter Betrieb desselben Raums wird vom ersten nicht gesperrt", async () => {
+    S.A._vorschlaege.leeren();
+    frei(true);
+    const g = bestandFuer("m-a");
+    g.mandanten.push(bestandFuer("m-b").mandanten[0]);
+    const r = await raum({ bestand: g });
+    const tB = (await S.sitzungAnlegen({ bestand: r.name, name: "Stab l1", rolle: "leitung", person: "l1", betrieb: 1, mandantId: "m-b", einheit: null }, 30 * 24 * 3600 * 1000)).token;
+    frischeGrenzen({ jeRaum: 1 });
+    expect((await vorschlag(r, r.t.LT, MONATE[0])).status).toBe(201);
+    const zwei = await vorschlag(r, r.t.LT2, MONATE[0]);          // gleicher Betrieb: voll
+    expect([zwei.status, zwei.code]).toEqual([429, "zu-viele-vorschlaege"]);
+    const b = await vorschlag(r, tB, MONATE[0]);                  // anderer Betrieb im selben Raum: frei
+    expect(b.status, JSON.stringify(b).slice(0, 200)).toBe(201);
+  });
+  it("Gleichstand der Entstehungszeit (Review #616 D-2): bei gleicher Zeit fällt der zuerst angelegte eigene Vorschlag weg", async () => {
+    const r = await vorbereiten();
+    const ids = [];
+    for (const ym of MONATE.slice(0, 5)) {                         // ohne tick(): alle fünf mit derselben Serveruhr
+      const v = await vorschlag(r, r.t.LT, ym);
+      expect(v.status).toBe(201);
+      ids.push(v.vorschlag);
+    }
+    expect(new Set(ids.map((id) => roh(id).angelegt)).size).toBe(1);
+    const sechs = await vorschlag(r, r.t.LT, MONATE[5]);
+    expect(sechs.status).toBe(201);
+    expect(roh(ids[0])).toBeNull();
+    for (const id of [...ids.slice(1), sechs.vorschlag]) expect(roh(id), id).not.toBeNull();
   });
 });
