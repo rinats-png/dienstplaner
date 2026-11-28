@@ -898,7 +898,7 @@ Erfüllte Verdrahtungsliste aus Stufe 1:
 - **Rechte:** `planerAktionErlaubt` = `darfUebernehmen` (Leitung/Planung mit `plan.edit.all`, echtes `demo === false`), nie Sicherungsschlüssel; in daten.mjs VOR der Bremse und vor jeder Spur geprüft. Mehrfachklick: Marke „läuft“ vor dem ersten `await`, dazu Zustandsprüfung unter der Sperre — von zwei gleichzeitigen Übernahmen derselben Kennung gewinnt genau eine.
 - **Mandanten/Nutzer:** Vorschlag gebunden an Raum, Betrieb, Person (bzw. Rolle ohne Person) und Monat; nach dem Lesen wird der Betrieb erneut verglichen (gleiche Person-Kennung in Betrieb B desselben Raums: 404). Rückgängig-Datensätze liegen im eigenen Betrieb (fremde Kennung: 404).
 - **Protokoll:** `{ modul: "planer", art: "planer-uebernommen" | "planer-rueckgaengig", am, von: Rolle, anzahl, zeitraum }` (aus dem Kern), Grenze `modulprotokollUeberGrenze` (Übernahme an der Grenze 409 `protokoll-voll`, Rücknahme geht immer — wie Lösen beim Anheften). Spur des Servers nur mit Zahl und Kennung. Änderungseinträge wie im Kern (`quelle: "planer"`).
-- **Sicht:** `planerRueckgaengig` steht in keinem Katalog (sicht.mjs, Schicht, Betreiber, Export, Vollausgabe) — „unbekannte neue Felder“ gehen an keine Rolle (RECHTEMATRIX §1); PUT `/api/bestand` füllt es aus dem gespeicherten Stand zurück (`vollRueckfuellen`), mitgeschickt wirkungslos (Test: Rundweg Leitung/Planung mit gefälschtem Datensatz); Teilweg: `NUR_SERVER`; Betreiber-Neuanlage und `/api/bestand-anlegen` verwerfen das Feld. Vorschlag- und Übernahmekennungen erscheinen in keiner `GET /api/bestand`-Antwort.
+- **Sicht:** `planerRueckgaengig` steht in keinem Katalog (sicht.mjs, Schicht, Betreiber, Export, Vollausgabe) — „unbekannte neue Felder“ gehen an keine Rolle (RECHTEMATRIX §1); PUT `/api/bestand` füllt es aus dem gespeicherten Stand zurück (`vollRueckfuellen`), mitgeschickt wirkungslos (Test: Rundweg Leitung/Planung mit gefälschtem Datensatz); Teilweg: `NUR_SERVER`; Betreiber-Neuanlage und `/api/bestand-anlegen` verwerfen das Feld (Regressionstest). Vorschlag- und Übernahmekennungen erscheinen in keiner `GET /api/bestand`-Antwort. **Sicherungen:** automatische und manuelle In-App-Sicherungen (`sicherung:<raum>:…`; ebenso die Sicherung der Ablage außer Haus) sind Kopien des gespeicherten Bestands und enthalten `planerRueckgaengig` roh — auch über die Frist (Monatsende + 7 Tage) hinaus, bis die Sicherung nach ihrem eigenen Plan entfällt.
 
 Entscheidungen und Annahmen dieser Stufe (zur Bestätigung):
 - **Ablaufzeit Vorschlag 24 h (Arbeitsspeicher):** ein Planungstag; jede relevante Änderung am Betrieb macht den Vorschlag ohnehin über `basis` ungültig, ein Neustart verwirft ihn (übernommen ist dann nichts). Arbeitsspeicher wie die Importvorgänge (`import/vorgaenge.mjs`): keine Personendaten-Kopie auf der Platte; genau ein Prozess je Ablage. Höchstens 5 je Raum / 50 gesamt; je Person und Monat ersetzt ein neuer den alten.
@@ -935,8 +935,34 @@ Mutationen (von Hand gegen die Prüfdatei, je Lauf die ganze Datei; Skript nur l
 
 Ergebnis: 18/20 erkannt, M14 und M15 gleichwertig (drei Sicherungen gegen Doppelklick: Marke, Zustand unter der Sperre, Kern). Lauf mit 25 Tests der Prüfdatei.
 
+Nach Review #614 (30 Tests): M21 C-2 Marke immer zurückgesetzt 1 · M22 C-7 Prüf-Haken ohne vitest-Schranke 1 · M23 C-5 Verdrängung nicht gezählt 1 · M24 Grenze `vorschlag-zu-gross` entfernt 1 — alle rot.
+
+### Nachträge Review #614
+- **B-1 (Typen):** `planer-aktion.mjs` zieht erstmals `engine/planer.mjs`, `planer-uebernahme.mjs`, `planungsreife.mjs`, `luckenursache.mjs`, `verteilung.mjs` (und `vorgabenwirkung.mjs`) in `tsc -p jsconfig.json`. Behoben nur mit JSDoc (fehlende Optionsfelder `vorgabenBudget`/`planbefundAufwand`, `@param` von `neuesVorgabenBudget` statt Literaltyp, Optionen von `planungsreife` optional, `@type {any}` an Union-Ergebnissen) — keine Laufzeitänderung; Basis 0 Fehler, PR-Kopf vorher 44, jetzt 0.
+- **C-2:** Die Marke „läuft“ nimmt nur die Anfrage weg, die sie gesetzt hat (eine Prüfung ohne Bestätigung nie). **C-3:** Regressionstests für `bestand-anlegen`, Betreiber-Neuanlage, `vorschlag-zu-gross`, `schreiben-unklar`. **C-5:** Antwort der Übernahme trägt `rueckgaengigVerdraengt` (Zahl der verdrängten ältesten Datensätze, sonst 0). **C-7:** `_pruefhaken` (versiegelt, ohne `freigabe`) wirkt nur unter `process.env.VITEST`; Test: im Produktivpfad wirkungslos.
+- **C-4 Statuscodes** (`STATUS` in `planer-aktion.mjs`, ausdrücklich): 400 `anfrage-ungueltig`, `monat-ungueltig`, `auswahl-ungueltig`, `auswahl-leer`, `auswahl-doppelt`, `auswahl-nicht-im-vorschlag` · 403 `keine-berechtigung` · 404 `vorschlag-unbekannt`, `rueckgaengig-unbekannt`, `betrieb-unbekannt` · 409 `planer-nicht-freigegeben`, `planer-pausiert`, `planer-im-betrieb-aus`, `vergangen`, `monat-abgeschlossen`, `bereits-uebernommen`, `uebernahme-laeuft`, `seit-vorschlag-geaendert`, `konflikt`, `protokoll-voll`, `bereits-rueckgaengig`, `seit-uebernahme-geaendert`, `bestaetigung-fehlt`, `anheftungen-unlesbar`, `zeit-ungueltig` · 410 `vorschlag-abgelaufen`, `rueckgaengig-abgelaufen` · 413 `auswahl-zu-gross`, `vorschlag-zu-gross` · 422 `eintrag-abgelehnt`, `nachpruefung-nicht-bestanden`, `nicht-planungsreif`, `vorschlag-ungueltig`, `rueckgaengig-ungueltig`, `betrieb-ungueltig`, `bestand-grenze` · 429 `zu-viele-vorschlaege` · 500 `pruefung-fehlgeschlagen`, `anwendung-fehlgeschlagen`, `schreiben-unklar` · 503 `schreiben-fehlgeschlagen`; jede andere Kennung 409 (nie Erfolg).
+
+**Vor der Freigabe von `PLANER_AN` zu beheben (nicht gebaut):**
+- C-1: Die globale Grenze `VORSCHLAG_HOECHST.gesamt` (50) ist prozessweit von wenigen Räumen blockierbar (429) → je Besitzer begrenzen, der älteste Vorschlag desselben Besitzers fällt weg statt 429; globale Grenze höher bzw. nach Größe.
+- C-6: Personenlose Sitzungen teilen den Besitz `r:<rolle>` (alle personenlosen Leitungs-Sitzungen eines Betriebs sehen denselben Vorschlag).
+- D-1: Kerngröße des Betriebs wächst um bis zu 10 × 2000 Rückgängig-Einträge — beobachten.
+- D-2: Art. 17 (Pseudonymisierung ausgeschiedener Personen) und Art. 15 (Auskunft) für `planerRueckgaengig` deckungsgleich mit `abweichungen` herstellen (Schlüssel `Person|Tag`).
+- D-3: `planerEinstieg` läuft synchron in der Anfrage (blockiert den Prozess für die Dauer eines Planlaufs) — vor breiter Nutzung in Häppchen/Hintergrund.
+
+**Anforderungen an die spätere Oberfläche:**
+- Die Rückgängig-Kennung `pu-…` geht nach dem Neuladen verloren — Listenweg der offenen Datensätze ODER kurzlebiger Knopf nur direkt nach der Übernahme: **Entscheidung offen**.
+- Rücknahme-Knopf auch bei ausgeschaltetem Planer anbieten (C-4).
+- `unterbesetzt: null` heißt „nicht bewertbar“, nie „keine Lücke“.
+- Nach Übernahme/Rücknahme Bestand und ETag neu laden.
+- Texte je Fehlerkennung (oben), keine Servertexte.
+- Mehrfachklick sperren (Knopf während der Anfrage aus).
+- Namen nur clientseitig aus der eigenen Sicht auflösen (Antworten tragen nur Kennungen).
+- `versandt: false` deutlich sagen (Beschäftigte werden nicht benachrichtigt).
+- Sichtbar nur für Leitung und Planung.
+
 Offene Anschlüsse (nicht in dieser Stufe):
 - Oberfläche/Dialog (Häkchen je Einteilung, Prüfen, Bestätigen, Rückgängig-Knopf mit Unterbesetzungshinweis, Texte zu den Kennungen) — Folgearbeit, nach #613.
 - Fixture für die Browser-Abnahme (Planer nur über den Prüf-Zugang frei; ohne Freigabe zeigt die Oberfläche nur `planer-nicht-freigegeben`).
 - Betreiberentscheidungen: Aufbewahrung der Rückgängig-Daten (Ort, Frist, Zahl), Mitteilungen an Beschäftigte, Betriebsrat-Sicht des Planer-Protokolls.
-- Hinweis: Das Zurückspielen einer Sicherung bringt deren Rückgängig-Datensätze mit (konsistent mit den zurückgespielten Einteilungen); `planerEinstieg` rechnet synchron in der Anfrage (Aufwandsgrenze des Planers, Bremse „schreiben“).
+- **Zurückspielen einer Sicherung** (`betriebWiederherstellen`, `server/lib/sicherungen.mjs`): `planerRueckgaengig` kommt NICHT aus der Sicherung — Felder außerhalb von `VOLL_BETRIEB` behält der aktuelle Stand. Folgen: (a) Sicherung von vor der Übernahme zurückgespielt → die Einteilungen sind wieder frei, der aktuelle Datensatz bleibt, eine Rücknahme lehnt ab (`seit-uebernahme-geaendert`), harmlos; (b) nach einer Rücknahme eine Sicherung mit den übernommenen Einteilungen zurückgespielt → die Einteilungen sind wieder da, der Datensatz ist verbraucht: **kein Rückweg mehr** über Rückgängig (nur von Hand).
+- `planerEinstieg` rechnet synchron in der Anfrage (Aufwandsgrenze des Planers, Bremse „schreiben“) — siehe D-3 unten.

@@ -214,7 +214,7 @@ const tagesLuecke = (bes) => Object.values(bes).reduce((s, b) => s + Math.max(0,
  * Eigener Planer für einen Monat (erste Scheibe). Rein; wirft nur bei Programmfehlern der Prüfwege.
  * @param {any} m Betriebsstand
  * @param {string} ym Monat JJJJ-MM
- * @param {{ freigabe?: boolean, aggregate?: boolean, bloecke?: boolean, zuege?: number, startwert?: number, aufwand?: number, maxProPerson?: number, vorgabenAufwand?: number }} [opt]
+ * @param {{ freigabe?: boolean, aggregate?: boolean, bloecke?: boolean, zuege?: number, startwert?: number, aufwand?: number, maxProPerson?: number, vorgabenAufwand?: number, planbefundAufwand?: number }} [opt]
  */
 export function planeVorschlag(m, ym, opt = {}) {
   const o = opt && typeof opt === "object" ? opt : {};
@@ -227,6 +227,7 @@ export function planeVorschlag(m, ym, opt = {}) {
   try { pause = kiPauseAktiv(m.einstellungen); } catch { pause = true; }
   if (pause) return leer(m, ym, "pausiert", "Intelligence pausiert", startwert);
   /* Anheften: unlesbare Karte ⇒ nichts rechnen (nie stilles Weglassen). */
+  /** @type {any} */
   const anh = anheftungenLesen(m);
   if (!anh.ok) return leer(m, ym, "ungueltig", anh.grund, startwert);
 
@@ -328,6 +329,7 @@ export function planeVorschlag(m, ym, opt = {}) {
         let p = null, versuche = 0, grundV = "folgeVorwaerts";
         for (const x of kand) {
           /* Vorwärts und Planbefunde (wie planeMonat): scheitert der Kandidat, der nächste — zählt nicht als Versuch. */
+          /** @type {any} */
           const f = vorwaerts(stand, x.person, d, da, (k) => leisten(k, eigene.size + 1), undefined, pbLeisten(eigene.size + 1));
           if (f === "aufwand") { gekappt.set(`${d}|${da.id}`, "aufwand"); return; }
           if (f) { grundV = f; continue; }
@@ -559,8 +561,9 @@ export function planeVorschlag(m, ym, opt = {}) {
      Vorgaben; reicht es nicht oder sind Vorgaben nicht vollständig geprüft (auch ungültig beschriebene Muss-Vorgaben), heißt die Ursache
      „unvollstaendig“ — nie eine erfundene. */
   const ursBudget = budgetNeu(), ursVorgaben = neuesVorgabenBudget(vorgabenAufwand, { aggregate: o.aggregate === true });
-  const offenMitUrsache = bewertung.offen.map((x) => {
+  const offenMitUrsache = bewertung.offen.map((/** @type {any} */ x) => {
     if (x.grund) return x;
+    /** @type {any} */
     const r = lueckenUrsache(ergebnis.stand, x.datum, x.dienstId, { budget: ursBudget, vorgabenBudget: ursVorgaben });
     if (!r || r.ok === false) return { ...x, ursache: "unvollstaendig", regeln: [] };
     return { ...x, ursache: r.ursache, regeln: r.kleinste ? [...r.kleinste.regeln] : [], ...(r.vorgabenUnvollstaendig ? { vorgabenUnvollstaendig: true } : {}) };

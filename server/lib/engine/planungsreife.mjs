@@ -89,7 +89,7 @@ function einheitDerPerson(p, tag) {
 /**
  * Prüft, ob ein Plan für den Zeitraum aufgestellt werden kann.
  * @param {any} daten Betriebsbestand (wird nicht verändert)
- * @param {{von:string, bis:string, heute?:string, schichtsystemGenutzt?:boolean, einheitId?:string}} optionen
+ * @param {{von?:string, bis?:string, heute?:string, schichtsystemGenutzt?:boolean, einheitId?:string}} [optionen] von und bis werden gebraucht (sonst Fehlerbefund)
  */
 export function planungsreife(daten, optionen = {}) {
   const o = optionen || {};

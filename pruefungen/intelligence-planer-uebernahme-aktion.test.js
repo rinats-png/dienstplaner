@@ -27,7 +27,8 @@ import { baueLeerenBetrieb } from "../server/lib/leerbetrieb.mjs";
 vi.mock("../server/lib/engine/planer.mjs", async (original) => {
   const o = /** @type {any} */ (await original());
   return { ...o, get PLANER_AN() { return globalThis.__planerFreiPruefung === true; },
-    planerEinstieg: (...a) => { globalThis.__planerLaeufe = (globalThis.__planerLaeufe || 0) + 1; return o.planerEinstieg(...a); } };
+    planerEinstieg: (...a) => { globalThis.__planerLaeufe = (globalThis.__planerLaeufe || 0) + 1;
+      return typeof globalThis.__planerErsatz === "function" ? globalThis.__planerErsatz(...a) : o.planerEinstieg(...a); } };
 });
 
 const WURZEL = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -61,6 +62,8 @@ afterAll(async () => {
   if (wurzel) await rm(wurzel, { recursive: true, force: true });
 });
 afterEach(() => {
+  S.A._pruefhaken.nachlesen = null;
+  globalThis.__planerErsatz = undefined;
   S.A._pruefhaken.ablage = null;
   S.A._pruefhaken.vorSchreiben = null;
   vi.setSystemTime(new Date(T0));
@@ -579,6 +582,7 @@ describe("6. Fristen, Abschluss, Vergangenheit, Pause, Mandanten, Grenzen", { ti
       const w = await vorschlag(r);
       const u = await uebernehmen(w.vorschlag, [0], r.t.LT);
       expect(u.status, JSON.stringify(u).slice(0, 200)).toBe(200);
+      expect(u.rueckgaengigVerdraengt, `Übernahme ${i}`).toBe(i < S.R.RUECKGAENGIG_GRENZE.saetze ? 0 : 1);
       ids.push(u.uebernahme);
     }
     const m = await gespeichert(r.name);
@@ -619,5 +623,81 @@ describe("7. Verdrahtung und Quelltext-Leitplanken", () => {
     expect(block.indexOf("planerAktionErlaubt(s)")).toBeLessThan(block.indexOf('bremse("schreiben"'));
     expect(block.indexOf('bremse("schreiben"')).toBeLessThan(block.indexOf("planerAktion(pfad"));
     expect(block.includes("bestandSchreiben")).toBe(false);
+  });
+});
+
+describe("8. Nachträge Review #614 (C-2, C-3, C-7)", { timeout: 300000 }, () => {
+  it("C-3: Vorschlag mit mehr als 2000 Einträgen → 413 vorschlag-zu-gross, nichts gehalten", async () => {
+    const r = await raum();
+    frei(true);
+    globalThis.__planerErsatz = (m, ym) => ({ status: "ok", modus: "knopfdruck", offen: [],
+      gesetzt: Array.from({ length: 2001 }, (_, i) => ({ personId: `p${(i % 4) + 1}`, datum: `${ym}-${String((i % 28) + 1).padStart(2, "0")}`, dienstId: "F", art: "luecke" })) });
+    const n0 = S.A._vorschlaege.anzahl();
+    const x = await vorschlag(r);
+    expect([x.status, x.code]).toEqual([413, "vorschlag-zu-gross"]);
+    expect(S.A._vorschlaege.anzahl()).toBe(n0);
+  });
+  it("C-3: Schreiben scheitert und das Nachlesen auch → 500 schreiben-unklar; nichts geschrieben", async () => {
+    const r = await raum();
+    frei(true);
+    const v = await vorschlag(r);
+    const vorher = await abdruck(r.name);
+    S.A._pruefhaken.ablage = kaputtAb(1);
+    S.A._pruefhaken.nachlesen = (store) => new Proxy(store, { get(t, k) { const f = t[k]; return typeof f === "function" ? async () => { throw new Error("Lesen gestört (Pruefung)"); } : f; } });
+    const x = await uebernehmen(v.vorschlag, [0], r.t.LT);
+    expect([x.status, x.code]).toEqual([500, "schreiben-unklar"]);
+    S.A._pruefhaken.ablage = null;
+    S.A._pruefhaken.nachlesen = null;
+    expect(await abdruck(r.name)).toBe(vorher);
+  });
+  it("C-3: bestand-anlegen und die Neuanlage eines Betriebs durch den Betreiber verwerfen mitgebrachte Rückgängig-Daten", async () => {
+    const name = `wpi7pua-anlegen-${++raumNr}`;
+    const tB = (await S.sitzungAnlegen({ bestand: name, name: "Betreiber", rolle: "betreiber", person: null, betrieb: 0, mandantId: null, einheit: null }, 3600e3)).token;
+    const g = bestandFuer("m-x");
+    g.mandanten[0].planerRueckgaengig = [{ id: `pu-${"b".repeat(32)}`, ym: YM, art: "planer-uebernahme", eintraege: [] }];
+    const a = await anfrage("/api/bestand-anlegen", { methode: "POST", token: tB, rumpf: { bestand: name, inhalt: S.G.personenAngleichen(g) } });
+    expect(a.status, JSON.stringify(a).slice(0, 300)).toBe(200);
+    expect(Object.prototype.hasOwnProperty.call(await gespeichert(name), "planerRueckgaengig")).toBe(false);
+    const RE = await import("../server/lib/rechte.mjs");
+    const alt = bestandFuer("m-alt");
+    const neuM = { ...bestandFuer("m-neu").mandanten[0], planerRueckgaengig: [{ id: `pu-${"c".repeat(32)}`, ym: YM, art: "planer-uebernahme", eintraege: [] }] };
+    const z = RE.zusammenfuehren(alt, { ...alt, mandanten: [...alt.mandanten, neuM] }, { rolle: "betreiber", person: null, betrieb: 0 });
+    const angelegt = z.mandanten.find((x) => x && x.id === "m-neu");
+    expect(angelegt, JSON.stringify(z).slice(0, 200)).toBeTruthy();
+    expect(Object.prototype.hasOwnProperty.call(angelegt, "planerRueckgaengig")).toBe(false);
+  });
+  it("C-7: ohne vitest-Umgebung sind die Prüf-Haken wirkungslos (Produktivpfad schreibt trotz gesetztem Fehlerhaken)", async () => {
+    const r = await raum();
+    frei(true);
+    const v = await vorschlag(r);
+    const alt = process.env.VITEST;
+    S.A._pruefhaken.ablage = kaputtAb(1);
+    delete process.env.VITEST;
+    let x;
+    try { x = await uebernehmen(v.vorschlag, [0], r.t.LT); } finally { process.env.VITEST = alt; S.A._pruefhaken.ablage = null; }
+    expect(x.status, JSON.stringify(x)).toBe(200);
+    expect(() => { /** @type {any} */ (S.A._pruefhaken).freigabe = true; }).toThrow();
+  });
+  it("C-2: eine Prüfung (ohne Bestätigung) löscht nie die Marke einer laufenden Übernahme", async () => {
+    const r = await raum();
+    frei(true);
+    const v = await vorschlag(r);
+    let freiSperre, freiHaken;
+    const sperre = new Promise((ok) => { freiSperre = ok; });
+    const halt = new Promise((ok) => { freiHaken = ok; });
+    const gehalten = S.B.unterRaumsperre(r.name, () => sperre);
+    const pruefung = uebernehmen(v.vorschlag, [0], r.t.LT, false);
+    await new Promise((ok) => setTimeout(ok, 50));
+    S.A._pruefhaken.vorSchreiben = () => halt;
+    const echt = uebernehmen(v.vorschlag, [0], r.t.LT);
+    await new Promise((ok) => setTimeout(ok, 50));
+    freiSperre();
+    await gehalten;
+    const p = await pruefung;
+    expect(p.status).toBe(200);
+    const dritte = await uebernehmen(v.vorschlag, [0], r.t.LT);
+    expect([dritte.status, dritte.code]).toEqual([409, "uebernahme-laeuft"]);
+    freiHaken();
+    expect((await echt).status).toBe(200);
   });
 });

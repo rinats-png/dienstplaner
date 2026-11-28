@@ -178,7 +178,7 @@ export function nachtAm(stand, vt, d, z, vz) {
  */
 export function verteilungBewerten(vt, z) {
   let summe = 0, bewertet = false, offen = false;
-  const regeln = vt.regeln.map((r) => {
+  const regeln = vt.regeln.map((/** @type {any} */ r) => {
     const aus = { vorgabeId: r.vorgabeId, regelId: r.regelId, staerke: r.staerke, groesse: r.groesse, maxAbweichung: r.maxAbweichung };
     const ausserhalb = r.ausserhalb.map((x) => ({ ...x }));
     const nichtBewertbar = [...r.unbekannt].map(([personId, grund]) => ({ personId, grund, nachtdienste: z.get(personId) || 0 })).sort((a, b) => (a.personId < b.personId ? -1 : 1));

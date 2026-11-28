@@ -48,8 +48,11 @@ export const VORSCHLAG_FRIST = Object.freeze({ hoechstMs: 24 * 60 * 60 * 1000 })
 /** Höchstzahl gehaltener Vorschläge: gesamt und je Raum (je Person/Rolle und Monat ersetzt ein neuer den alten). */
 export const VORSCHLAG_HOECHST = Object.freeze({ gesamt: 50, jeRaum: 5 });
 
-/** Nur für Prüfungen (Fehler- und Konfliktinjektion); im Betrieb immer null. `freigabe` gibt es bewusst nicht. */
-export const _pruefhaken = { ablage: null, vorSchreiben: null };
+/** Nur für Prüfungen (Fehler- und Konfliktinjektion). Wirkt ausschließlich unter vitest (process.env.VITEST); im Betrieb wird es nie
+    gelesen, auch wenn jemand es setzt. `freigabe` gibt es bewusst nicht. */
+export const _pruefhaken = Object.seal({ ablage: null, vorSchreiben: null, nachlesen: null });
+const KEINE_HAKEN = Object.freeze({ ablage: null, vorSchreiben: null, nachlesen: null });
+const haken = () => (typeof process !== "undefined" && process.env && process.env.VITEST ? _pruefhaken : KEINE_HAKEN);
 
 const istObjekt = (x) => !!x && typeof x === "object" && !Array.isArray(x);
 const hat = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
@@ -70,7 +73,12 @@ const STATUS = Object.freeze({
   "zu-viele-vorschlaege": 429,
   "pruefung-fehlgeschlagen": 500, "anwendung-fehlgeschlagen": 500, "schreiben-unklar": 500,
   "schreiben-fehlgeschlagen": 503,
+  /* Zustand (409): Planer-Freigabe und -Schalter, Zeit/Abschluss, Mehrfachklick, Konflikt, Grenze des Protokolls. */
+  "planer-nicht-freigegeben": 409, "planer-pausiert": 409, "planer-im-betrieb-aus": 409, "vergangen": 409, "monat-abgeschlossen": 409,
+  "bereits-uebernommen": 409, "uebernahme-laeuft": 409, "seit-vorschlag-geaendert": 409, "konflikt": 409, "protokoll-voll": 409,
+  "bereits-rueckgaengig": 409, "seit-uebernahme-geaendert": 409, "bestaetigung-fehlt": 409, "anheftungen-unlesbar": 409, "zeit-ungueltig": 409,
 });
+/** Unbekannte Kennung (aus dem Kern neu hinzugekommen): 409 — nie Erfolg. */
 const statusVon = (code) => STATUS[code] || 409;
 /** Absage: nur Kennung (und bei Einträgen Index + Kennung, nie Person|Tag oder Namen). */
 const nein = (code, mehr = {}) => ({ status: statusVon(code), ausgang: "abgewiesen", spur: `Planvorschlag: ${code}`,
@@ -167,17 +175,18 @@ function unterbesetztNach(m, eintraege, heute) {
  * `merkmal(m)` festgeschrieben ist (Journal) — dann gilt es als geschrieben.
  */
 async function schreiben(storeRoh, raum, mit, mandantAlt, mandantNeu, durch, merkmal, sitzung) {
-  const store = _pruefhaken.ablage ? _pruefhaken.ablage(storeRoh) : storeRoh;
+  const h = haken();
+  const store = h.ablage ? h.ablage(storeRoh) : storeRoh;
   const neu = { ...mit.bestand, mandanten: mit.bestand.mandanten.map((x) => (x === mandantAlt ? mandantNeu : x)) };
   const form = pruefeGestalt(neu, { vorher: mit.bestand });
   if (!form.ok) return { code: "bestand-grenze" };
-  if (_pruefhaken.vorSchreiben) await _pruefhaken.vorSchreiben({ store: storeRoh, raum });
+  if (h.vorSchreiben) await h.vorSchreiben({ store: storeRoh, raum });
   try {
     const erg = await bestandSchreiben(store, raum, neu, { erwarteterStand: mit.stand, durch });
     return erg.ok ? { ok: true, stand: erg.stand || null } : { code: "konflikt" };
   } catch {
     try {
-      const nach = await bestandLesenStreng(storeRoh, raum);
+      const nach = await bestandLesenStreng(h.nachlesen ? h.nachlesen(storeRoh) : storeRoh, raum);
       const m = eigener(nach, sitzung);
       if (m && String(m.id) === String(mandantAlt.id) && merkmal(m)) return { ok: true, stand: nach.stand || null };
       return { code: "schreiben-fehlgeschlagen" };
@@ -282,7 +291,9 @@ export async function uebernahmeAusfuehren({ store, sitzung, rumpf, jetzt }) {
   const a = auswahlAus(rumpf.auswahl, v.vorschlag.gesetzt);
   if (a.code) return nein(a.code);
   /* Mehrfachklick: die Marke steht VOR dem ersten await; eine zweite Anfrage mit derselben Kennung bekommt 409. */
-  if (bestaetigt) v.laeuft = true;
+  /* Nur wer die Marke gesetzt hat, nimmt sie wieder weg (eine Prüfung ohne Bestätigung löscht nie die Marke einer laufenden Übernahme). */
+  const markeGesetzt = bestaetigt;
+  if (markeGesetzt) v.laeuft = true;
   try {
     return await unterRaumsperre(String(sitzung.bestand), async () => {
       const mit = await bestandLesenStreng(store, sitzung.bestand);
@@ -314,7 +325,8 @@ export async function uebernahmeAusfuehren({ store, sitzung, rumpf, jetzt }) {
       if (!neuM) return nein("protokoll-voll");
       const rest = rueckgaengigFaellig(neuM, heute, { abgeschlossen: (ym) => monatAbgeschlossen(neuM, ym) }).rest;
       const saetze = [...rest, satz].sort((x, y) => String(x.am).localeCompare(String(y.am)));
-      while (saetze.length > RUECKGAENGIG_GRENZE.saetze) saetze.shift();
+      let verdraengt = 0;
+      while (saetze.length > RUECKGAENGIG_GRENZE.saetze) { saetze.shift(); verdraengt += 1; }
       neuM = { ...neuM, [RUECKGAENGIG_FELD]: saetze };
       const w = await schreiben(store, String(sitzung.bestand), mit, m, neuM, "Planvorschlag",
         (x) => rueckgaengigListe(x).some((s) => s.id === id), sitzung);
@@ -323,11 +335,11 @@ export async function uebernahmeAusfuehren({ store, sitzung, rumpf, jetzt }) {
       v.vorschlag = null;
       return { status: 200, ausgang: "erfolg", spur: `Planvorschlag übernommen: ${r.protokoll.anzahl} Einteilungen`,
         daten: { ok: true, geschrieben: true, uebernahme: id, anzahl: r.protokoll.anzahl, zeitraum: r.protokoll.zeitraum,
-          rueckgaengigBis: satz.aufbewahrenBis, mitteilungen: { versandt: false, planFreigegeben: r.mitteilungen.planFreigegeben, betroffenePersonen: r.mitteilungen.betroffenePersonen },
+          rueckgaengigBis: satz.aufbewahrenBis, rueckgaengigVerdraengt: verdraengt, mitteilungen: { versandt: false, planFreigegeben: r.mitteilungen.planFreigegeben, betroffenePersonen: r.mitteilungen.betroffenePersonen },
           etag: w.stand } };
     });
   } finally {
-    v.laeuft = false;
+    if (markeGesetzt) v.laeuft = false;
   }
 }
 

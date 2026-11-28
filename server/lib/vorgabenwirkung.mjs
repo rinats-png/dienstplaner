@@ -219,6 +219,7 @@ export const MUSTER_LANG_GRUNDKOSTEN = 2;
  * ersatzKandidaten → ersatzVorschlaege → hindernisBefunde → vorgabenBefunde weitergereicht; wer eines bekommt, legt kein zweites an.
  * `cache` (Plan je Betriebsstand) und `vorbereitet` (Dienstart-Abbildung, Regeln, Reihenfolge je Vorgabenliste) gehören dazu:
  * einmal je Einstieg gerechnet, nicht je Aufruf und Person.
+ * @param {number} [aufwand] @param {any} [opt]
  */
 export function neuesVorgabenBudget(aufwand = VORGABEN_WIRKUNG_GRENZE.aufwand, opt = {}) {
   /* Aggregate des Planer-Kerns (WP-I7): nur mit dem Schalter oder ausdrücklich je Einstieg (Prüfungen, Planer-Einstieg); sonst null. */
