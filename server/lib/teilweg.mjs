@@ -59,7 +59,7 @@ export const NUR_SERVER = Object.freeze([
   /* Ist und Abschluss: nur über die eigenen Endpunkte (Stempeln, Korrektur, Abschluss) */
   "einstempeln", "istEingefroren", "monatsabschluss", "protokoll",
   /* entstehen nur in der Antwort (rechte.mjs abgeleiteteEntfernen) */
-  "sichtIstDaten", "auswertungBetriebsrat", "klaerung",
+  "sichtIstDaten", "auswertungBetriebsrat", "klaerung", "festEingeplant",
   /* Kaufmännisches und Vertragliches (sicht.mjs BETRIEB) und der Vertragsstatus */
   "tarif", "seit", "bis", "testTage", "selbstAngelegt", "preisgestaltung", "rabattGrund",
   "kontakt", "kontaktName", "anschrift", "ustId", "notiz", "raum",

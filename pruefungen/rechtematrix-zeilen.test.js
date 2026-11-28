@@ -173,7 +173,9 @@ const bestand = () => ({
       person("p1", "planer", "ALLE"), person("l1", "leitung", "ALLE"), person("ku1", "kunde", "ALLE"),
       person("sp1", "mitarbeiter", "pool", { springer: true, telefon: M("TELEFON-SP1"),
         stundenuebertrag: M("STUNDEN-SP1"), verfuegbarkeit: { aktiv: M("VERFUEGBARKEIT-SP1") }, kompetenzNachweise: [{ id: M("KOMPETENZ-SP1") }] }), A1(), B1()],
-    abweichungen: { [`b1|${tag(1)}`]: "F" },
+    abweichungen: { [`b1|${tag(1)}`]: "F", [`m0|${tag(1)}`]: "F" },
+    /* Anheftungen (WP-I7 Teil 6/7): Karte nur Planung/Leitung; Beschäftigte nur das Kennzeichen „Fest eingeplant“ an eigenen Einteilungen. */
+    angeheftet: { [`m0|${tag(1)}`]: { am: M("ANH-AM-M0"), vonRolle: M("ANH-ROLLE-M0") }, [`b1|${tag(1)}`]: { am: M("ANH-AM-B1"), vonRolle: M("ANH-ROLLE-B1") } },
     /* Einsatzorte (WP-20): Koordinate und Umkreis gehen nur an Planung und Leitung. */
     einsatzorte: [{ id: "es1", name: M("EINSATZORT-NAME"), lat: M("EINSATZORT-LAT"), lon: M("EINSATZORT-LON"), radius: M("EINSATZORT-UMKREIS") }],
     einsatzorteGeaendertAm: M("EINSATZORTE-AM"), einsatzorteGeaendertVon: M("EINSATZORTE-VON"),
@@ -489,6 +491,16 @@ const ZEILEN = {
     } },
   "Interne Vorgaben (`vorgaben`: Name, Beschreibung, Regelart und Parameter, Geltung, Zeitraum, Stärke, Priorität, Grundlage, Ausnahmen, Status, Wann/Wer/Version; WP-I4)": {
     sonden: [mk("VORGABE-NAME"), mk("VORGABE-PERSON"), mk("VORGABE-PARAMETER"), mk("VORGABE-AUSNAHME"), mk("VORGABE-VON")] },
+  "Anheftungen (`angeheftet`: Einteilung je Person und Tag, Wann, Rolle, Aufhebe-Vermerk; WP-I7)": {
+    sonden: [mk("ANH-AM-M0"), mk("ANH-ROLLE-M0"), mk("ANH-AM-B1"), mk("ANH-ROLLE-B1")],
+    bedingt: {
+      /* WP-I7 Teil 7: nur das Kennzeichen an der eigenen Einteilung, ohne Wann/Rolle, ohne fremde, nie die Karte. */
+      "nur Hinweis „Fest eingeplant“ an eigenen Einteilungen": (s, def) => {
+        for (const [name, ist] of alle(def.sonden, s)) expect(ist, name).toBe(false);
+        expect(hat(s.betrieb, "angeheftet"), "keine Karte").toBe(false);
+        expect(s.betrieb.festEingeplant).toEqual({ [`m0|${tag(1)}`]: true });
+      },
+    } },
   "Pflegeniveaus (`pflegeNiveaus`: Niveaus je Betrieb; Branchenmodul Pflegequalifikation) — vorläufig": { sonden: [mk("PFLEGENIVEAU-NAME")] },
   "Schichtmodelle und Zuordnungen je Person (`schichtmodelle`: Name, Zyklustage, Wann/Wer/Version; `schichtmodellZuordnungen` an der Person: Modell, Gültigkeit, Versatz, Wann/Wer/Version; IMP-6 Teil 2)": {
     /* IMP-6 Q4 (Betreiberentscheidung 2026-11-14): Die eigene Person (Beschäftigte, Schichtverantwortung) sieht ihre
