@@ -18,6 +18,8 @@
    - Unlesbare gespeicherte Karte: Der unverändert zurückgeschickte Wert zählt nicht als Schreiben (Review #602 B-2: Speichern geht weiter,
      die Karte bleibt unlesbar, Planer `ungueltig`, SV gesperrt). Reparatur: Leitung/Planung schicken eine gültige Zuordnung; gültige alte
      Einträge behalten ihren Stempel, ein unverändert mitgeschickter unlesbarer Eintrag wird abgewiesen (nie still neu angeheftet).
+     Ändert eine Anfrage bei unlesbarer Karte eine Einteilung mit gültigem aktivem Eintrag, wird dieser trotzdem als aufgehoben vermerkt
+     (Review #602 C, WP-I7 Teil 7); die Reparatur heftet den geänderten Wert so nie still an.
    - Verwaiste Anheftung (Einteilung fehlt, z. B. nach dem Datenschutzlauf): wird beim nächsten Speichern als aufgehoben vermerkt
      (Stempel „system“, Protokoll) und sperrt nie das Speichern (Review #602 B-1). „Nur eingetragene Einteilung“ gilt für neu Angeheftetes.
    - Der Datenschutzlauf (aufbewahrung.mjs raeumen) kürzt die Karte mit der Plandatenfrist wie abweichungen.
@@ -28,6 +30,8 @@ import { modulprotokollFaellig, modulprotokollUeberGrenze } from "./branchenmodu
 const istObjekt = (x) => !!x && typeof x === "object" && !Array.isArray(x);
 const hat = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
 const gleich = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+/** Eintrag als eigene Eigenschaft setzen (Review #605 C-2): eine Zuweisung auf ein Objektliteral verlöre Schlüssel wie „__proto__“ still. */
+const eintrag = (o, k, v) => Object.defineProperty(o, k, { value: v, enumerable: true, writable: true, configurable: true });
 /** Rollen, die anheften und lösen (wie die Planungsrechte: Leitung, Planung). */
 export const ANHEFTEN_ROLLEN = Object.freeze(["leitung", "planer"]);
 /** Arten im Modulprotokoll (Modul „anheften“). */
@@ -63,8 +67,10 @@ export function anheftenZusammen(altM, neuM, sitzung, o) {
     /* Review #602 B-2: Der unverändert zurückgeschickte gespeicherte Wert ist keine Absicht (Voll-PUT, Teilweg) — auch ein unlesbarer
        Wert sperrt so nie das normale Speichern. */
     const schreibt = darfAnheften(sitzung) && hat(neuM, ANGEHEFTET_FELD) && !(hatAlt && gleich(neuM[ANGEHEFTET_FELD], altRoh));
-    /* Unlesbarer gespeicherter Stand ohne Reparatur: bleibt, wie er ist (kein Aufheben möglich, der Planer rechnet nicht, SV bleibt gesperrt). */
-    if (!alt.ok && !schreibt) return { mandant: mitKarte(altRoh) };
+    /* Unlesbarer gespeicherter Stand ohne Reparatur: bleibt, wie er ist (der Planer rechnet nicht, SV bleibt gesperrt). Ist die Karte ein
+       Objekt, werden ihre der Form nach gültigen aktiven Einträge trotzdem als aufgehoben vermerkt, wenn diese Anfrage ihre Einteilung
+       ändert (Review #602 C: sonst heftete die spätere Reparatur den geänderten Wert still an); die übrigen Einträge bleiben unverändert. */
+    if (!alt.ok && !schreibt && !istObjekt(altRoh)) return { mandant: mitKarte(altRoh) };
 
     /** Ergebnis: Schlüssel → Eintrag; Zähler für das Protokoll. */
     const aus = {};
@@ -85,21 +91,22 @@ export function anheftenZusammen(altM, neuM, sitzung, o) {
            gespeicherten Eintrags ändert nichts. */
         const willAktiv = !hat(x, "aufgehobenAm") && x.aktiv !== false;
         if (willAktiv) {
-          if (aktivAlt(s)) { aus[s] = altK[s]; continue; }
+          if (aktivAlt(s)) { eintrag(aus, s, altK[s]); continue; }
           /* Veraltete Kopie: der frühere (inzwischen aufgehobene) Eintrag kommt mit seinem Stempel zurück — das heftet nicht neu an. Neu
              angeheftet wird ein aufgehobener Tag nur mit einem Eintrag ohne den alten Stempel. */
-          if (hat(altK, s) && !altAktiv.has(s) && x.am === altK[s].am) { aus[s] = altK[s]; continue; }
+          if (hat(altK, s) && !altAktiv.has(s) && x.am === altK[s].am) { eintrag(aus, s, altK[s]); continue; }
           if (!personen.has(s.slice(0, s.lastIndexOf("|")))) return { grund: "Anheften: Die Person gehört nicht zum Betrieb." };
-          aus[s] = { am: jetzt, vonRolle: rolle };
+          eintrag(aus, s, { am: jetzt, vonRolle: rolle });
           neuGesetzt.add(s);
           gesetzt++;
         } else if (aktivAlt(s)) geloest++;                         // ausdrücklich gelöst: Eintrag entfällt
-        else if (hat(altK, s)) aus[s] = altK[s];                    // Vermerk (aufgehoben) bleibt, wie gespeichert
+        else if (hat(altK, s)) eintrag(aus, s, altK[s]);                    // Vermerk (aufgehoben) bleibt, wie gespeichert
       }
       /* Nicht mehr mitgeschickt: gelöst (angeheftet) bzw. Vermerk entfernt (aufgehoben). */
       for (const s of altAktiv) if (!hat(w, s)) geloest++;
     } else {
-      for (const [s, x] of Object.entries(altK)) aus[s] = x;
+      /* Unlesbar (ohne Reparatur): alle gespeicherten Einträge, auch die unlesbaren, bleiben; nur gültige können unten aufgehoben werden. */
+      for (const [s, x] of Object.entries(alt.ok ? altK : altRoh)) eintrag(aus, s, x);
     }
     /* Manuelle Änderung der Einteilung hebt genau deren Anheftung auf (nur, was vorher schon angeheftet war; was diese Anfrage neu anheftet,
        heftet den neuen Wert an). */
@@ -110,7 +117,7 @@ export function anheftenZusammen(altM, neuM, sitzung, o) {
          „system“, im Protokoll gezählt) — sie sperrt nie das Speichern. */
       const verwaist = nachher === undefined;
       if (gleich(vorher, nachher) && !verwaist) continue;
-      aus[s] = { ...aus[s], aufgehobenAm: jetzt, aufgehobenVonRolle: verwaist && vorher === undefined ? "system" : rolle };
+      eintrag(aus, s, { ...aus[s], aufgehobenAm: jetzt, aufgehobenVonRolle: verwaist && vorher === undefined ? "system" : rolle });
       aufgehoben++;
     }
     /* Anheften nur mit eingetragener Einteilung (Dienst oder frei) — geprüft nur für das in dieser Anfrage neu Angeheftete. */
