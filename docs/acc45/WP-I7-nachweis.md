@@ -822,3 +822,61 @@ Bestehende Betreiberpriorität „Nutzerabläufe/Bedienbarkeit nach den Planer-A
 **Offen / bewusst nicht gebaut:** Planvorschlag-Zusammenfassung und offene Stellen mit Ursache (kein Server-Weg); Verteilung des **Vorschlags** (das Feld `verteilung` des Planers hat dieselbe Form, `verteilungAnzeige` nimmt es unverändert); Wochenend-/Feiertags-/Stundenverteilung (Engine kennt nur Nachtdienste); Wahl eines anderen Monats außer dem im Monatsplan gezeigten.
 
 **Hinweis zur Nacht der abgebenden Person:** Beim Entfernen der Nacht der abgebenden Person prüft der Code nur die eigenen Einteilungen nach; neu bewerten, sobald eine Planart „mindestens“ im Plan wirkt.
+
+## Planvorschlag-Übernahme, Kern (Stufe 1) — Branch `intelligence/planer-uebernahme`
+
+Reine Übernahme-Logik `server/lib/engine/planer-uebernahme.mjs` (Prüfung `pruefungen/intelligence-planer-uebernahme.test.js`, über `pruefung:intelligence` verdrahtet). Keine Route, keine Oberfläche, kein Schreiben; `PLANER_AN` und `PLANER_AGGREGATE_AN` bleiben AUS; Budgets unverändert.
+
+Funktionen: `vorschlagBasis(m, ym)` (Fingerprint), `uebernahmePruefen` / `uebernahmeAnwenden` (Vorschlag + Auswahl je Einteilung), `rueckgaengigPruefen` / `rueckgaengigAnwenden`, `patchAnwenden` (Hilfe für Prüfung und späteren Schreibweg). Rein, deterministisch (Zeit nur aus `kontext.jetzt`, Regeln mit `mitTagesdatum`), Eingaben unverändert, wirft nie (`{ ok: false, grund }`).
+
+Entscheidungen dieser Stufe:
+- **Rechte:** nur Leitung und Planung mit `plan.edit.all` (`darf` aus rechte.mjs), nie Demo; Schichtverantwortung, Betriebsrat, Beschäftigte, Altrolle „kunde“, Betreiber nie (Muster `darfAnheften`). Gleiche Prüfung für Rückgängig.
+- **Keine Auto-Übernahme:** Anwenden verlangt `kontext.bestaetigt === true`, auch im Modus „automatisch“ (`bestaetigung-fehlt`). Prüfen (Vorschau) braucht die Bestätigung nicht.
+- **Planer-Freigabe:** dieselben Funktionen wie `planerEinstieg` (`planerModusWirksam`, `kiPauseAktiv`, `kiSteuerungUnlesbar`, `kiPlanerEntscheidung`), aber ohne erneuten Planlauf (`planerEinstieg` selbst würde den ganzen Planer rechnen). Kennungen `planer-nicht-freigegeben`, `planer-pausiert`, `planer-im-betrieb-aus`. `kontext.freigabe: true` nur in Prüfungen.
+- **Basis-Fingerprint:** SHA-256 über Monat ± 31 Tage (Abweichungen, Anheftungen, Abwesenheiten) und die Regelfelder (Personen, Dienste, Einheiten, Folge, Vorgaben, Qualifikationen, Einstellungen ohne Modulprotokoll inkl. Schalterstand). Wird beim Erzeugen als `vorschlag.basis` gespeichert; weicht er ab: `seit-vorschlag-geaendert`. Nach außen nur der Hash. Planfreigabe des Monats gehört nicht dazu (ändert nur den Mitteilungshinweis). Gerechnet mit der vorhandenen reinen SHA-256-Funktion `sha256Hex` (server/lib/monatsabschluss.mjs, relativ importiert; Engine-Regel: kein `node:crypto`) — der Fingerprint ist kein Geheimnis, nur Änderungserkennung.
+- **Je Eintrag auf dem echten Stand, atomar:** Dienst/Person vorhanden, Person im Betrieb, nicht abwesend, nicht angeheftet (unlesbare Karte: nichts), Zielschlüssel ohne Dienst („-“ gilt als frei, Vorwert bleibt „-“), Lücke besteht noch, keine Befunde ab Achtung und kein sperrender Befund (`hindernisBefunde`, Automatik: Muss ungeprüft = Achtung), danach `nachpruefen` über die ganze Auswahl (Posten/Bestandspersonen, Vorwärts, Planbefunde). Ein Fehler lehnt alles ab (`eintrag-abgelehnt`, Liste nur mit Index der Auswahl und Kennung, ohne Person|Tag).
+- **Anwenden:** Patch nur der gewählten Schlüssel von `abweichungen` (nie Komplettüberschreiben, `angeheftet` unberührt — kein Weg über `anheftenZusammen`), `rueckgaengig` mit Vorwerten genau dieser Schlüssel, Protokoll `{ modul: "planer", art: "planer-uebernommen", am, von: Rolle, anzahl, zeitraum }` ohne Person|Tag/Namen, Änderungseinträge wie `uebernehmeVorschlag` (von „-“, nach, Vorlauf, Zeit de-DE, deterministische Kennung `c-pu-…`), Mitteilungen nur als Hinweis (`versandt: false`). Idempotenz: zweites Anwenden `bereits-uebernommen` bzw. `seit-vorschlag-geaendert`.
+- **Rückgängig:** stellt nur die gespeicherten Vorwerte her (null = Schlüssel entfernen), nur wenn jeder Schlüssel noch den übernommenen Wert hat (`seit-uebernahme-geaendert`) und keiner inzwischen angeheftet ist (`angeheftet`); zweimal = `bereits-rueckgaengig`. Rückgängig ist nicht an Planer-Schalter/Pause gebunden (stellt nur Menschenstand her; Test C-4) — zur Review. Replay-Hinweis: die Rückgängig-Daten selbst sind nicht einmalig; erst ein zweites Anwenden nach erfolgreicher Rücknahme scheitert an `bereits-rueckgaengig` bzw. `seit-uebernahme-geaendert`. Einmalige Verwendung muss der Schreibweg sicherstellen (Datensatz nach Gebrauch entwerten).
+- **Review #612 (B-1, B-2, C-1…C-4, C-7) behoben:** Rückwirkend nichts — Tage vor dem heutigen Betriebstag (`betriebstag(jetzt)`, Europe/Berlin; heute selbst nicht vergangen wie in planungsreife „vor heute“) → `vergangen`, abgeschlossener Monat (`monatAbgeschlossen`, monatsabschluss.mjs) → `monat-abgeschlossen`, beides auch beim Rückgängigmachen. Rohstand: vorhandener Wert außer „-“ (auch "" / null) → `schluessel-belegt`; Bestand mit `sichtEntwuerfe`/`sichtIstDaten` → `betrieb-ungueltig`. Rückgängig-Daten: Vorwert nur null oder „-“, Schlüssel `Person|JJJJ-MM-TT` mit Kennungsprüfung und Längengrenze. `demo` muss ein echtes Boolean `false` sein. `patchAnwenden` liefert `{ ok, mandant }`, prüft Schlüsselform und Werte, lehnt `__proto__`/`constructor`/`prototype` ab, wirft nie.
+- Hinweis (Review C-5/C-6/D, nicht gebaut): die übrigen Anmerkungen der Review sind als Hinweis für den Verdrahtungsschritt vermerkt, kein eigenes Paket.
+
+Offene Anschlüsse (brauchen Review, nicht erfunden):
+- Verdrahtung = **eigene Server-Aktion** (nicht der allgemeine PUT `/api/bestand`-Weg über `zusammenfuehren`/`anheftenZusammen`): unter der Prozesssperre und mit ETag/Version (409 bei Abweichung) den gespeicherten Betrieb laden, `uebernahmeAnwenden` bzw. `rueckgaengigAnwenden` rechnen, nur `patchAnwenden` auf `abweichungen` legen und in EINEM Schreibvorgang atomar speichern: Patch + `aenderungen` + Protokolleintrag (Modulprotokoll, Grenze `modulprotokollUeberGrenze`) + Rückgängig-Datensatz. Vorschlag, `basis` und Rückgängig-Daten nur serverseitig erzeugen und aufbewahren (nie vom Client übernehmen); Rückgängig-Daten einmalig verwendbar. `kontext` serverseitig bauen: rohe `sitzung.rolle`, echtes Boolean `demo` aus der Sitzung, Serveruhr als `jetzt`, `freigabe` nie aus der Anfrage (nur `PLANER_AN`). Mitteilungen bleiben `versandt: false`, bis die Betreiberentscheidung vorliegt.
+- Oberfläche (Häkchen je Einteilung, Bestätigung, Rückgängig-Knopf).
+- **Betreiberentscheidung offen:** Aufbewahrung der Vorwerte für Rückgängig (wo, wie lange, Löschung im Datenschutzlauf).
+- **Betreiberentscheidung offen:** Mitteilungen an Beschäftigte nach einer Übernahme in einem freigegebenen Monat (bisher `uebernehmeVorschlag`: Mitteilung „Zusätzlicher Dienst“).
+
+Mutationen (von Hand, je Lauf der Prüfdatei; Ergebnis siehe Tabelle):
+
+| Nr | Mutation | rote Tests |
+|---|---|---|
+| M1 | Rollenprüfung entfernt (`darfUebernehmen` immer wahr) | 1 |
+| M2 | Demo-Ausschluss entfernt | 1 |
+| M3 | Fingerprint-Vergleich entfernt | 2 |
+| M4 | Anheft-Prüfung je Eintrag entfernt | 1 |
+| M5 | Atomarität aufgeweicht (nur gültige Einträge übernehmen) | 1 |
+| M6 | Patch = alle Abweichungen (Komplettüberschreiben) | 2 |
+| M7 | Rückgängig ohne Änderungsprüfung | 1 |
+| M8 | Bestätigungspflicht entfernt | 1 |
+| M9 | Planer-Freigabe/Schalter/Pause entfernt | 2 |
+| M10 | harte Regeln je Eintrag entfernt | 1 |
+| M11 | Lückenprüfung entfernt | 1 |
+| M12 | Nachprüfung (`nachpruefen`) ignoriert | 1 |
+| M13 | Abwesenheitsprüfung entfernt | 1 |
+| M14 | Person\|Tag-Schlüssel ins Protokoll | 1 |
+| M15 | Freigabe nicht mehr „genau true“ | 1 |
+| M16 | Abweichungen nicht im Fingerprint | 3 |
+| M17 | B-1: `vergangen` je Eintrag entfernt | ≥ 1 |
+| M18 | B-1: abgeschlossener Monat nicht gesperrt | 1 |
+| M19 | B-1: `vergangen` beim Rückgängigmachen entfernt | 1 |
+| M20 | B-2: Rohstand ("" / null) nicht als belegt | 1 |
+| M21 | B-2: Sichten (`sichtEntwuerfe`/`sichtIstDaten`) zugelassen | 1 |
+| M22 | C-1: beliebiger Vorwert in den Rückgängig-Daten | 1 |
+| M23 | C-1: Schlüsselform der Rückgängig-Daten nicht geprüft | ≥ 1 |
+| M24 | C-2: `demo` nur `=== true` statt echtes Boolean | 1 |
+| M25 | C-3: Schlüsselform im Patch nicht geprüft | 1 |
+| M26 | C-3: Prototyp-Namen zugelassen | ≥ 1 |
+| M27 | C-3: `defineProperty` durch Zuweisung ersetzt | **überlebt, gleichwertig**: Prototyp-Namen sind vorher abgewiesen und jeder Schlüssel enthält „\|“, eine Zuweisung kann damit keinen Prototyp treffen; zweite Sicherung |
+| M28 | C-3: try/catch in `patchAnwenden` entfernt | 1 |
+
+Nach Review #612 (Kopf vor dem Fix b79fe1e5): 31 Tests; Lauf der Mutationen M1–M28 erneut gegen die geänderte Datei: 27/28 erkannt, M27 gleichwertig (oben).
