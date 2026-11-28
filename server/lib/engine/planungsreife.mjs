@@ -12,7 +12,8 @@
    Eingabe  daten    ein Betriebsbestand mit den Feldern des Mandanten
                      (src/App.jsx, Kopfkommentar „Datenbestand"): personen,
                      qualifikationen, dienstarten, abwesenheiten, freigaben,
-                     optional vorgaben (Regelobjekte), wuensche, zyklus.
+                     optional vorgaben (Bestandsvorgaben mit `regelart` und
+                     `status`; Altform Regelobjekt mit `typ`), wuensche, zyklus.
             optionen { von, bis }            Planungszeitraum (JJJJ-MM-TT)
                      { heute? }              Tagesdatum; ohne dieses wird
                                              „liegt in der Vergangenheit" nicht geprüft
@@ -238,7 +239,7 @@ export function planungsreife(daten, optionen = {}) {
     const ruhend = (v) => v.status === "entwurf" || v.status === "inaktiv";
     const schlecht = vorRoh.map((v, i) => [v, i])
       .filter(([v]) => !v || typeof v !== "object"
-        || (!ruhend(v) && (!REGELARTEN_ALLE.includes(regelartVon(v)) || !v.parameter || typeof v.parameter !== "object" || !Object.keys(v.parameter).length)))
+        || (!ruhend(v) && (!REGELARTEN_ALLE.includes(regelartVon(v)) || !v.parameter || typeof v.parameter !== "object" || Array.isArray(v.parameter) || !Object.keys(v.parameter).length)))
       .map(([v, i]) => String(v && v.id !== undefined ? v.id : `#${i}`));
     if (schlecht.length) luecke(p.vorgaben, `${n(schlecht.length, "Vorgabe ist", "Vorgaben sind")} unvollständig.`, schlecht);
   }
