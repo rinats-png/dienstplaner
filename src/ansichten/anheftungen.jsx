@@ -19,6 +19,7 @@ export const ANHEFTEN_TEXTE = Object.freeze({
   unlesbar: "Die Anheftungen des Betriebs sind nicht lesbar. Der Planer rechnet nicht, bis die Leitung sie neu setzt. Anheften und Lösen sind hier solange nicht möglich.",
   leer: "Im Moment ist keine Einteilung dieses Monats angeheftet.",
   anheften: "Einteilung anheften",
+  anheftenOeffnen: "Neue Einteilung anheften",
   hinweis: "Die gewählte Einteilung (Dienst oder frei) wird festgehalten; eine Einteilung aus der Schichtfolge wird dabei als eigene Einteilung eingetragen. Ändert jemand sie manuell, löst sich nur diese Anheftung.",
   person: "Person",
   tag: "Tag",
@@ -55,7 +56,7 @@ export const festEingeplant = (m, ich, tag) => !!(m && m.festEingeplant && typeo
 
 /** Nur die Darstellung (Eigenschaften statt Zustand, damit sie ohne Browser prüfbar ist). */
 export function AnheftungenAnsicht({ m, ym, darfBedienen = false, status = null, beschaeftigt = false,
-  personId = "", tag = "", onPerson = () => {}, onTag = () => {}, onAnheften = () => {}, onLoesen = () => {} }) {
+  offen = false, onOffen = () => {}, personId = "", tag = "", onPerson = () => {}, onTag = () => {}, onAnheften = () => {}, onLoesen = () => {} }) {
   const T = ANHEFTEN_TEXTE;
   const a = anheftungenImMonat(m, ym);
   if (!a.unlesbar && !a.aktiv.length && !a.aufgehoben.length && !darfBedienen && !status) return null;
@@ -82,8 +83,10 @@ export function AnheftungenAnsicht({ m, ym, darfBedienen = false, status = null,
       </ul>}
       {!a.unlesbar && !a.aktiv.length && !a.aufgehoben.length && <p>{T.leer}</p>}
       {bedienbar && (
-        <details>
-          <summary>{T.anheften}</summary>
+        <div>
+          {/* Ein Knopf statt eines Aufklappelements: Zielgröße mindestens 24 px (WCAG 2.2, SC 2.5.8) wie jeder Btn. */}
+          <Btn size="sm" kind="quiet" aria-expanded={offen} aria-controls="anheften-formular" onClick={onOffen}>{T.anheftenOeffnen}</Btn>
+          {offen && <div id="anheften-formular">
           <p>{T.hinweis}</p>
           <Field label={T.person}>
             <Sel value={personId} onChange={(ev) => onPerson(ev.target.value)}>
@@ -98,7 +101,8 @@ export function AnheftungenAnsicht({ m, ym, darfBedienen = false, status = null,
             </Sel>
           </Field>
           <Btn kind="primary" disabled={beschaeftigt || !personId || !tag} onClick={() => onAnheften(personId, tag)}>{T.anheften}</Btn>
-        </details>)}
+          </div>}
+        </div>)}
       {beschaeftigt && <p role="status">{T.speichern}</p>}
       {status && (status.ok ? <p role="status">{status.text}</p> : <Feldfehler text={status.text} />)}
     </Card>
@@ -107,6 +111,7 @@ export function AnheftungenAnsicht({ m, ym, darfBedienen = false, status = null,
 
 /** Die Leiste im Monatsplan: Zustand für Auswahl, Rückmeldung und laufendes Speichern. */
 export function Anheftungen({ m, ym, sitz, akt }) {
+  const [offen, setOffen] = useState(false);
   const [personId, setPersonId] = useState("");
   const [tag, setTag] = useState("");
   const [status, setStatus] = useState(null);
@@ -119,6 +124,6 @@ export function Anheftungen({ m, ym, sitz, akt }) {
     try { setStatus(await fn()); } catch { setStatus({ ok: false, text: "Die Änderung konnte nicht gespeichert werden." }); } finally { setBeschaeftigt(false); }
   };
   return <AnheftungenAnsicht m={m} ym={ym} darfBedienen={darfBedienen} status={status} beschaeftigt={beschaeftigt}
-    personId={personId} tag={tag} onPerson={setPersonId} onTag={setTag}
+    offen={offen} onOffen={() => setOffen((v) => !v)} personId={personId} tag={tag} onPerson={setPersonId} onTag={setTag}
     onAnheften={(p, t) => ausfuehren(() => akt.anheftenEinteilung(p, t))} onLoesen={(s) => ausfuehren(() => akt.loeseAnheftung(s))} />;
 }

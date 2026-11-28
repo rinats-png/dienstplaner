@@ -275,6 +275,23 @@ describe("Wirksamer Zustand: ehrlich, mit Gründen", () => {
     SPM.zugangsdaten = () => ({ demo: true });
     try { expect(html(h(PlanerSteuerung, { sitz: sitz("leitung"), akt }))).not.toContain('role="switch"'); } finally { SPM.zugangsdaten = () => ({}); }
   });
+  it("Zielgröße (WCAG 2.2, SC 2.5.8): nur Bausteine mit Mindesthöhe, keine rohen kleinen Bedienelemente (axe target-size, Review CI #606)", async () => {
+    const { readFileSync } = await import("node:fs");
+    for (const d of ["src/ansichten/planer-steuerung.jsx", "src/ansichten/anheftungen.jsx"]) {
+      const q = readFileSync(new URL(`../${d}`, import.meta.url), "utf8");
+      expect(q, d).not.toMatch(/<summary|<details|<button|<a [^>]*href|<input|<select|<textarea/);
+    }
+    const app = readFileSync(new URL("../src/App.jsx", import.meta.url), "utf8");
+    const hoehe = (re) => Number((app.match(re) || [])[1]);
+    expect(hoehe(/\.btn-sm\{min-height:(\d+)px/)).toBeGreaterThanOrEqual(24);
+    expect(hoehe(/\.inp,\.sel,textarea\.inp\{[^}]*?min-height:(\d+)px/)).toBeGreaterThanOrEqual(24);
+    const stil = readFileSync(new URL("../src/v4/app-stil.js", import.meta.url), "utf8");
+    expect(stil).toMatch(/\.btn\{min-height:var\(--v4-ziel\)/);
+    /* Der Öffnen-Knopf ist ein Btn (Klasse btn) und im Monatsplan der einzige Bedienpunkt der leeren Leiste. */
+    const leer = html(h(AnheftungenAnsicht, { m: { personen: [], abweichungen: {} }, ym: YM, darfBedienen: true }));
+    expect([...leer.matchAll(/<button[^>]*class="btn /g)]).toHaveLength(1);
+    expect([...leer.matchAll(/<button/g)]).toHaveLength(1);
+  });
   it("Quelltext der Ansicht: keine Garantiesprache, keine Rohrollen, keine Inline-Stile", async () => {
     const { readFileSync } = await import("node:fs");
     for (const d of ["src/ansichten/planer-steuerung.jsx", "src/lib/planer-oberflaeche.js"]) {
@@ -460,7 +477,7 @@ describe("Anheften und Lösen: Oberfläche → Aktion → PUT /api/bestand", () 
   it("Planung heftet an (Knopf der Ansicht → Aktion): Server setzt Stempel, Meldung erst nach Bestätigung, Einteilung steht in den Abweichungen", async () => {
     const o = await lesen("p1");
     const aufrufe = [];
-    const baum = AnheftungenAnsicht({ m: o.lokal(), ym: YM, darfBedienen: true, personId: "x1", tag: "2026-12-07", onAnheften: (p, t) => aufrufe.push([p, t]) });
+    const baum = AnheftungenAnsicht({ m: o.lokal(), ym: YM, darfBedienen: true, offen: true, personId: "x1", tag: "2026-12-07", onAnheften: (p, t) => aufrufe.push([p, t]) });
     const k = knopf(baum, ANHEFTEN_TEXTE.anheften);
     expect(k, "Knopf Einteilung anheften").not.toBeNull();
     expect(k.props.disabled).toBe(false);
@@ -590,7 +607,7 @@ describe("Anheften und Lösen: Oberfläche → Aktion → PUT /api/bestand", () 
     const m = { ...o.lokal(), angeheftet: "kaputt" };
     const s = html(h(AnheftungenAnsicht, { m, ym: YM, darfBedienen: true }));
     expect(s).toMatch(/role="alert"[^>]*>Die Anheftungen des Betriebs sind nicht lesbar/);
-    expect(s).not.toMatch(/<button|<details/);
+    expect(s).not.toMatch(/<button/);
     // die Aktion schreibt bei unlesbarer Karte nichts
     o.ref.current.mandanten[0].angeheftet = "kaputt";
     const vorher = (await gespeichert()).angeheftet;
@@ -606,22 +623,26 @@ describe("Anheften und Lösen: Oberfläche → Aktion → PUT /api/bestand", () 
     const m = o.lokal();
     const ohne = html(h(AnheftungenAnsicht, { m, ym: YM, darfBedienen: false }));
     expect(ohne).toContain("angeheftet");
-    expect(ohne).not.toMatch(/<button|<details/);
+    expect(ohne).not.toMatch(/<button/);
     expect(html(h(AnheftungenAnsicht, { m: { personen: [], abweichungen: {} }, ym: YM, darfBedienen: false }))).toBe("");
     const mit_ = html(h(AnheftungenAnsicht, { m, ym: YM, darfBedienen: true }));
-    expect(mit_).toContain("<details");
-    expect(mit_).toContain(ANHEFTEN_TEXTE.hinweis);
+    expect(mit_).toContain(ANHEFTEN_TEXTE.anheftenOeffnen);
+    expect(mit_).toContain('aria-expanded="false"');
+    expect(mit_).not.toContain(ANHEFTEN_TEXTE.hinweis);                       // Formular erst nach dem Öffnen
+    const offen = html(h(AnheftungenAnsicht, { m, ym: YM, darfBedienen: true, offen: true }));
+    expect(offen).toContain('aria-expanded="true"');
+    expect(offen).toContain(ANHEFTEN_TEXTE.hinweis);
     expect(html(h(AnheftungenAnsicht, { m: { personen: [], abweichungen: {} }, ym: YM, darfBedienen: true }))).toContain(ANHEFTEN_TEXTE.leer);
   });
   it("die Komponente im Monatsplan: Leitung und Planung mit Aktionen bekommen das Formular, Demo und fehlende Aktionen nicht", async () => {
     const o = await lesen("l1");
     const sitz = o.sitz();
     const akt = o.akt;
-    expect(html(h(Anheftungen, { m: o.lokal(), ym: YM, sitz, akt }))).toContain("<details");
-    expect(html(h(Anheftungen, { m: o.lokal(), ym: YM, sitz, akt: undefined }))).not.toContain("<details");
+    expect(html(h(Anheftungen, { m: o.lokal(), ym: YM, sitz, akt }))).toContain(ANHEFTEN_TEXTE.anheftenOeffnen);
+    expect(html(h(Anheftungen, { m: o.lokal(), ym: YM, sitz, akt: undefined }))).not.toContain(ANHEFTEN_TEXTE.anheftenOeffnen);
     SPM.zugangsdaten = () => ({ demo: true });
-    try { expect(html(h(Anheftungen, { m: o.lokal(), ym: YM, sitz, akt }))).not.toContain("<details"); } finally { SPM.zugangsdaten = () => ({}); }
+    try { expect(html(h(Anheftungen, { m: o.lokal(), ym: YM, sitz, akt }))).not.toContain(ANHEFTEN_TEXTE.anheftenOeffnen); } finally { SPM.zugangsdaten = () => ({}); }
     const p = await lesen("p1");
-    expect(html(h(Anheftungen, { m: p.lokal(), ym: YM, sitz: p.sitz(), akt: p.akt }))).toContain("<details");
+    expect(html(h(Anheftungen, { m: p.lokal(), ym: YM, sitz: p.sitz(), akt: p.akt }))).toContain(ANHEFTEN_TEXTE.anheftenOeffnen);
   });
 });
