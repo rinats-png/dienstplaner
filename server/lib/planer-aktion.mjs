@@ -9,6 +9,9 @@
      /api/planer-rueckgaengig { uebernahme, bestaetigt }            → ohne `bestaetigt: true` nur Prüfung; mit: Vorwerte zurück,
                                                                        Rückgängig-Datensatz entwertet (einmalig)
 
+     /api/planer-rueckgaengig-liste { ym }                          → (Stufe 3, nur lesen) offene Rückgängig-Datensätze des Monats: Kennung, Zahl, Zeitraum, Frist;
+                                                                       nur die Rechte, nie die Planer-Freigabe (C-4)
+
    Verbindlich (Review #612, Verdrahtungsliste in docs/acc45/WP-I7-nachweis.md):
    - Der Client schickt nur Kennungen und Indizes — nie `gesetzt`, `basis`, Patch, `freigabe`, `rolle`, `demo`. Unbekannte Felder im
      Rumpf: 400 `anfrage-ungueltig` (keine Übernahme von Feldern aus dem Rumpf).
@@ -42,7 +45,7 @@ import { pruefeGestalt } from "./gestalt.mjs";
 import { RUECKGAENGIG_FELD, RUECKGAENGIG_GRENZE, RUECKGAENGIG_ID, aufbewahrenBis, rueckgaengigFaellig, rueckgaengigListe } from "./planer-rueckgaengig.mjs";
 
 /** Die Wege dieser Aktion (Pfad nach „/api/“). */
-export const PLANER_WEGE = Object.freeze(["planer-vorschlag", "planer-uebernahme", "planer-rueckgaengig"]);
+export const PLANER_WEGE = Object.freeze(["planer-vorschlag", "planer-uebernahme", "planer-rueckgaengig", "planer-rueckgaengig-liste"]);
 /** Höchstdauer eines Vorschlags (Arbeitsspeicher): 24 h — ein Planungstag; jede Änderung am Betrieb macht ihn ohnehin ungültig (basis). */
 export const VORSCHLAG_FRIST = Object.freeze({ hoechstMs: 24 * 60 * 60 * 1000 });
 /** Höchstzahl gehaltener Vorschläge: gesamt und je Raum (je Person/Rolle und Monat ersetzt ein neuer den alten). */
@@ -390,6 +393,41 @@ export async function rueckgaengigAusfuehren({ store, sitzung, rumpf, jetzt }) {
 }
 
 /**
+ * POST /api/planer-rueckgaengig-liste — die offenen Rückgängig-Datensätze des eigenen Betriebs für einen Monat (Stufe 3: damit die
+ * Oberfläche nach dem Neuladen noch zurücknehmen kann; die Kennung `pu-…` wäre sonst verloren). NUR LESEN, nur die Rechte (C-4:
+ * wie die Rücknahme selbst unabhängig von der Planer-Freigabe). Je Eintrag allein Kennung, Monat, Zahl, Zeitraum (Tage, ohne Personen)
+ * und letzter Tag der Rücknahme — nie Person|Tag, Namen oder Vorwerte. Abgelaufene und abgeschlossene Datensätze zählen nicht.
+ * @param {{ store: any, sitzung: any, rumpf: any, jetzt: Date }} e
+ */
+export async function rueckgaengigListeAusgeben({ store, sitzung, rumpf, jetzt }) {
+  if (!planerAktionErlaubt(sitzung)) return nein("keine-berechtigung");
+  if (!rumpfNur(rumpf, ["ym"])) return nein("anfrage-ungueltig");
+  if (typeof rumpf.ym !== "string" || !MONAT.test(rumpf.ym)) return nein("monat-ungueltig");
+  const ym = rumpf.ym;
+  let m;
+  try {
+    m = eigener(await bestandLesenStreng(store, sitzung.bestand), sitzung);
+  } catch {
+    return nein("pruefung-fehlgeschlagen");
+  }
+  if (!m) return nein("betrieb-unbekannt");
+  const heute = betriebstag(jetzt);
+  const TAG = /^\d{4}-\d{2}-\d{2}$/;
+  const gilt = rueckgaengigFaellig(m, heute, { abgeschlossen: (x) => monatAbgeschlossen(m, x) }).rest;
+  const eintraege = [];
+  for (const s of gilt) {
+    if (s.ym !== ym) continue;
+    const tage = (Array.isArray(s.eintraege) ? s.eintraege : []).map((x) => (istObjekt(x) && typeof x.schluessel === "string" ? x.schluessel.slice(-10) : "")).filter((d) => TAG.test(d)).sort();
+    if (!tage.length) continue;   // unbrauchbarer Datensatz: nicht anbieten (die Rücknahme würde ihn ohnehin ablehnen)
+    eintraege.push({ am: String(s.am || ""), uebernahme: s.id, ym: s.ym, anzahl: tage.length, von: tage[0], bis: tage[tage.length - 1], rueckgaengigBis: aufbewahrenBis(s.ym) });
+  }
+  /* Neueste zuerst (die Zeit der Übernahme dient nur der Reihenfolge und geht nicht hinaus). */
+  eintraege.sort((x, y) => y.am.localeCompare(x.am) || x.uebernahme.localeCompare(y.uebernahme));
+  return { status: 200, ausgang: "erfolg", spur: `Planvorschlag Rückgängig-Liste: ${eintraege.length} Einträge`,
+    daten: { ok: true, ym, eintraege: eintraege.map((e) => ({ uebernahme: e.uebernahme, ym: e.ym, anzahl: e.anzahl, von: e.von, bis: e.bis, rueckgaengigBis: e.rueckgaengigBis })) } };
+}
+
+/**
  * Verteiler für daten.mjs.
  * @param {string} weg @param {{ store: any, sitzung: any, rumpf: any, jetzt: Date }} e
  */
@@ -397,5 +435,6 @@ export function planerAktion(weg, e) {
   if (weg === "planer-vorschlag") return vorschlagErzeugen(e);
   if (weg === "planer-uebernahme") return uebernahmeAusfuehren(e);
   if (weg === "planer-rueckgaengig") return rueckgaengigAusfuehren(e);
+  if (weg === "planer-rueckgaengig-liste") return rueckgaengigListeAusgeben(e);
   return Promise.resolve(nein("anfrage-ungueltig"));
 }

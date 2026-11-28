@@ -69,6 +69,7 @@ export const INVENTAR = {
   "/api/planer-vorschlag": ["intelligence-planer-uebernahme-aktion.test.js"],     // WP-I7 Stufe 2: nur Leitung/Planung; PLANER_AN aus → planer-nicht-freigegeben
   "/api/planer-uebernahme": ["intelligence-planer-uebernahme-aktion.test.js"],    // WP-I7 Stufe 2: Patch nur abweichungen, ein Schreiben, 409 bei Konflikt
   "/api/planer-rueckgaengig": ["intelligence-planer-uebernahme-aktion.test.js"],  // WP-I7 Stufe 2: einmalig, nur Rechte (C-4)
+  "/api/planer-rueckgaengig-liste": ["intelligence-planer-rueckgaengig-liste.test.js"],  // WP-I7 Stufe 3: nur lesen, nur Leitung/Planung, ohne Planer-Freigabe (C-4)
   "/api/monatsabschluss": ["rollen-failclosed.test.js"],   // WP-16: abschliessen staff.edit, wiederoeffnen/lohnexport org.edit; Matrixzeile §2
   "/api/zeit-bestaetigen": ["rollen-failclosed.test.js", "zeiterfassung.test.js"],   // stempel-datenschutz: nur Kommentar (S4)
   "/api/auskunft": ["dsgvo-server.test.js"],

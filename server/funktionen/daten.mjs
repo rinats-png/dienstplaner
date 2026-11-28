@@ -63,7 +63,7 @@ import { zustellen, pushSchluessel, geraetAbmelden, geraetAusRumpf, personBerein
 import { auskunftBauen, protokollZurPerson, kontoFuerAuskunft, AUSKUNFT_FUER_ANDERE } from "../lib/auskunft.mjs";
 import { modulProtokollZeilen, bestandOhneModuleinstellungen } from "../lib/branchenmodule.mjs";
 import { bereichsprotokollArchivieren, bereichsprotokollArchivierbar } from "../lib/modul-bereichsplan.mjs";
-import { planerAktion, planerAktionErlaubt } from "../lib/planer-aktion.mjs";
+import { planerAktion, planerAktionErlaubt, rueckgaengigListeAusgeben } from "../lib/planer-aktion.mjs";
 import { schichtzuordnungProtokollZeilen, modellKuerzungFehlerBestand } from "../lib/schichtzuordnung.mjs";
 import { kiSteuerungProtokollZeilen, kiSteuerungVerwerfen, betriebsratKontenZeilen, kiBrPauseAktiv } from "../lib/ki-steuerung.mjs";
 import { VORLAGEN, vorlageBestand, demoGestaltPruefen, demoOhneVertrag, codeBindung, betriebFuerNeuenCode }
@@ -3162,6 +3162,23 @@ async function behandeln(req, context, ctx) {
       const eP = await planerAktion(pfad, { store, sitzung: s, rumpf, jetzt: new Date() });
       await protokoll("schreiben", kP, eP.ausgang, eP.spur, wer);
       return antwort(eP.daten, eP.status);
+    }
+
+    /* ------ Rückgängig-Liste der Planvorschlag-Übernahme (WP-I7 Stufe 3, nur lesen) ------
+       Die offenen Datensätze des EIGENEN Betriebs für einen Monat (Kennung, Zahl, Zeitraum, Frist — nie Person|Tag, Namen oder
+       Vorwerte), damit die Oberfläche nach dem Neuladen noch zurücknehmen kann. Gleiche Reihenfolge wie die Wege oben: erst die Rolle
+       (Leitung/Planung, nie Demo), dann die Bremse (Lesen), dann die Spur ohne Person. Unabhängig von der Planer-Freigabe (C-4). */
+    if (pfad === "planer-rueckgaengig-liste" && req.method === "POST") {
+      const kL = kennung(req, s);
+      if (!planerAktionErlaubt(s)) {
+        await protokoll("lesen", kL, "abgewiesen", `Planvorschlag Liste · Rolle ${s.rolle}`, wer);
+        return antwort({ ok: false, code: "keine-berechtigung", fehler: "keine-berechtigung" }, 403);
+      }
+      const bL = await bremse("lesen", kL);
+      if (!bL.frei) return zuVielAntwort(bL.wartet);
+      const eL = await rueckgaengigListeAusgeben({ store, sitzung: s, rumpf, jetzt: new Date() });
+      await protokoll("lesen", kL, eL.ausgang, eL.spur, wer);
+      return antwort(eL.daten, eL.status);
     }
 
     /* ------------------------------ Abmelden ------------------------- */

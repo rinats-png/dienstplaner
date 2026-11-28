@@ -17,6 +17,7 @@ import { TeamAuslastungLeiste } from "./teamauslastungleiste.jsx";
 import { Tagesfazit } from "./tagesfazit.jsx";
 import { Anheftungen } from "./anheftungen.jsx";
 import { PlanerVerteilung } from "./planer-steuerung.jsx";
+import { PlanerVorschlag } from "./planer-vorschlag.jsx";
 import { Standortwahl, Standortleiste, Zelle } from "../ui/leisten.jsx";
 import { aktive, abwesenheitAm, besetzung, teamAuslastung, ALLE_STANDORTE, einheitenAmStandort, sollAnzeige, besetztText, BEDARF_OFFEN_TEXT } from "../lib/fachlogik.js";
 import { darf } from "../lib/berechtigung.js";
@@ -70,6 +71,7 @@ export function Monatsplan({ sitz, ym, setYm, oeffneTag, akt, schmal,
       <Freigabeleiste sitz={sitz} ym={ym} akt={akt} />
       <Anheftungen m={m} ym={ym} sitz={sitz} akt={akt} />
       <PlanerVerteilung m={m} ym={ym} sitz={sitz} />
+      <PlanerVorschlag m={m} ym={ym} sitz={sitz} akt={akt} />
 
       {standortId === ALLE_STANDORTE && (
         <Standortleiste m={m} wert={standortId} setWert={setStandortId} />)}

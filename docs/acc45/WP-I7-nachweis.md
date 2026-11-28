@@ -975,3 +975,67 @@ Offene Anschlüsse (nicht in dieser Stufe):
 - Betreiberentscheidungen: Aufbewahrung der Rückgängig-Daten (Ort, Frist, Zahl), Mitteilungen an Beschäftigte, Betriebsrat-Sicht des Planer-Protokolls.
 - **Zurückspielen einer Sicherung** (`betriebWiederherstellen`, `server/lib/sicherungen.mjs`): `planerRueckgaengig` kommt NICHT aus der Sicherung — Felder außerhalb von `VOLL_BETRIEB` behält der aktuelle Stand. Folgen: (a) Sicherung von vor der Übernahme zurückgespielt → die Einteilungen sind wieder frei, der aktuelle Datensatz bleibt, eine Rücknahme lehnt ab (`seit-uebernahme-geaendert`), harmlos; (b) nach einer Rücknahme eine Sicherung mit den übernommenen Einteilungen zurückgespielt → die Einteilungen sind wieder da, der Datensatz ist verbraucht: **kein Rückweg mehr** über Rückgängig (nur von Hand).
 - `planerEinstieg` rechnet synchron in der Anfrage (Aufwandsgrenze des Planers, Bremse „schreiben“) — siehe D-3 unten.
+
+## Planvorschlag-Übernahme, Oberfläche (Stufe 3) — Branch `intelligence/planer-uebernahme-ui`
+
+Nutzerablauf für Leitung und Planung im Monatsplan (`src/ansichten/planer-vorschlag.jsx`, eine Zeile in `monatsplan.jsx` nach der Verteilung) plus ein kleiner Lese-Weg am Server. `PLANER_AN` und `PLANER_AGGREGATE_AN` unverändert AUS; im Produktivzustand zeigt die Oberfläche „Der Planer ist nicht freigegeben“, der Knopf „Vorschlag erstellen“ ist aus (mit Begründung), die Rücknahme früherer Übernahmen bleibt erreichbar (C-4).
+
+Teile: Ansicht `planer-vorschlag.jsx` (Ansicht `PlanerVorschlagAnsicht` rein darstellend, Behälter `PlanerVorschlag`); Aktionen `planerVorschlagErzeugen`, `planerAuswahlPruefen`, `planerUebernehmen`, `planerRueckgaengigListe`, `planerRueckgaengigPruefen`, `planerRueckgaengigAusfuehren` in `src/lib/planer-aktionen.js` (am Dateiende `planerWeg`); Texte, Namen und Besetzungshinweis in `src/lib/planer-oberflaeche.js` (am Dateiende); der Weg des Browsers `planerWegSenden` in `src/speicher.js` (nur die vier Wege des Servers). Keine neue Persistenz.
+
+**Neuer Lese-Weg (Server)**
+
+| Weg (POST) | Rumpf (nur dieses Feld, sonst 400) | Antwort |
+|---|---|---|
+| `/api/planer-rueckgaengig-liste` | `{ ym }` | `{ ok, ym, eintraege: [{ uebernahme, ym, anzahl, von, bis, rueckgaengigBis }] }`, neueste zuerst — nie Person\|Tag, Namen, Vorwerte, Zeitpunkt, Vorschlagskennung |
+
+Reihenfolge wie die anderen Planer-Wege in `daten.mjs`: Sitzung (401), Rolle (403, Leitung/Planung, nie Demo, nie Sicherungsschlüssel), Bremse („lesen“, nicht „schreiben“: ein Lesen verbraucht keine Schreibgrenze), Spur ohne Person. Eigener Betrieb (Mandantentrennung wie die Rücknahme), abgelaufene (Frist Monatsende + 7 Tage) und abgeschlossene Datensätze erscheinen nicht, ein unbrauchbarer Datensatz (ohne gültige Tage) wird nicht angeboten. Unabhängig von der Planer-Freigabe: die Rücknahme muss bei ausgeschaltetem Planer erreichbar sein (Entscheidung C-4). Nur lesen: kein Schreiben, keine Raumsperre, kein Planerlauf (Test). RECHTEMATRIX §2 hat eine eigene Wegezeile, `routen-inventar.test.js` den Eintrag.
+
+**Entscheidungen dieser Stufe (zur Bestätigung)**
+- **Liste statt flüchtiger Kennung** (offene Frage aus Stufe 2): Die Kennung `pu-…` ginge nach dem Neuladen verloren; die Liste zeigt die offenen Rücknahmen des gewählten Monats auch nach Neustart des Browsers und bei ausgeschaltetem Planer. Gefragt wird erst nach dem Öffnen der Fläche und nach jeder Übernahme oder Rücknahme. Die Liste gilt je Monat (`ym` Pflicht): eine Übernahme vom Vormonat ist im Folgemonat nicht in der Liste (die Tage sind dann ohnehin zum Teil vergangen).
+- **Zwei Schritte, beide ausdrücklich:** „Auswahl prüfen“ (Server prüft, schreibt nichts, nennt Gründe je Einteilung) → erst danach „Übernahme bestätigen“. Ausgewählt ist anfangs nichts; jede Änderung der Auswahl nimmt die Prüfung zurück; bestätigt wird nur genau die geprüfte Auswahl. Auch im Modus „Automatisch“ geschieht nichts von selbst (Test: Rendern und Öffnen stoßen keine Anfrage an). Das Prüfen sendet nie `bestaetigt: true`.
+- **Platz im Monatsplan** (neben Anheften und Verteilung), nicht in den Einstellungen: dort stehen Monat und Plan. Sichtbar nur für Leitung und Planung und nie in der Demo; die Oberfläche nimmt dafür das Recht „anheften“ (`planerRechte`, gleiche Rollenliste wie `UEBERNAHME_ROLLEN`; ein Test hält beide Listen gleich). Entschieden wird allein am Server.
+- **Namen nur im Browser:** die Antworten tragen nur Kennungen und Indizes; Personen- und Dienstnamen entstehen in der Ansicht aus dem eigenen Bestand. Weder Person\|Tag noch Kennungen (`pv-…`, `pu-…`, Personen, Dienste) stehen im Markup oder in der Adresse; der Rumpf trägt nur Monat, Kennung, Indizes und die Bestätigung.
+- **Texte je Kennung** (`VORSCHLAG_FEHLER`, `VORSCHLAG_ABLEHNUNG`): jede Kennung der Statustabelle des Servers hat einen deutschen Text (Test liest die Tabelle aus dem Quelltext); nie Servertext, nie Rohkennung; jeder Text sagt, ob etwas verändert wurde. Bei „nicht planungsreif“ stehen die Texte der Voraussetzungen (Texte der Planungsreife, keine Kennungen) darunter. `409` wird nach der Kennung unterschieden; `503 schreiben-fehlgeschlagen` ist wiederholbar (die Prüfung bleibt stehen); `500 schreiben-unklar` und jede Bestätigung ohne Antwort oder mit 5xx ohne bekannte Kennung gelten als **unklar**: Stand und Liste werden neu gelesen, der Vorschlag gilt als verbraucht, nichts wird wiederholt.
+- **„Nicht bewertbar“ nie als erfüllt:** `unterbesetzt: null` (oder Unlesbares) heißt „Nicht bewertbar … nicht dasselbe wie keine Lücke“; nur eine gültige leere Liste heißt „keine Besetzungslücke“. Unbekannte offene Lücken: „nicht bewertbar“, nie eine Zahl.
+- **Mehrfachklick:** drei Sperren — jeder Knopf der Fläche ist während der Anfrage aus; die Ansicht setzt die Marke vor dem ersten `await`; die Aktionen senden nie zwei Anfragen zugleich (ausgenommen die Liste); der Server hat seine eigene (Stufe 2).
+- **Nach Erfolg** ruft die Aktion `serverstandNachladen` (App.jsx: Bestand und ETag zusammen, Muster der Stempel und des Monatsabschlusses). Erfolg heißt nur: eine ausdrückliche, zur Aktion passende Erfolgsantwort (`geschrieben: true` bzw. `geprueft: true`).
+- **Meldung nach der Übernahme:** „Es wurde keine Benachrichtigung an Beschäftigte versendet; die Planfreigabe bleibt ein eigener Schritt“ (nur bei `mitteilungen.versandt === false`, sonst „meldet der Server nicht eindeutig“); Hinweis, wenn der Monat schon freigegeben ist (die Beschäftigten sehen die Änderung ohne Benachrichtigung); Hinweis auf `rueckgaengigVerdraengt` (ältester Rücknahme-Datensatz verfallen).
+
+**Tests:** `pruefungen/intelligence-planer-uebernahme-ui.test.js` (Texte, Sichtbarkeit je Rolle, Produktivzustand, Ansicht, Rücknahme, Aktionen mit gespielten Antworten, Ende zu Ende gegen den echten Handler, Quelltext sparsam) und `pruefungen/intelligence-planer-rueckgaengig-liste.test.js` (Server: Rechte, Rumpf, Inhalt, Frist, nur lesen, Mandanten, Ende zu Ende).
+
+Mutationen (von Hand, je Lauf die ganze Prüfdatei; Skript nur lokal):
+
+| Nr | Mutation | rote Tests |
+|---|---|---|
+| U1 (Oberfläche) | Erstellen-Knopf auch ohne Freigabe wirksam (Grund immer null) | 3 |
+| U2 (Oberfläche) | Besetzung unbekannt gilt als „keine Lücke“ | 3 |
+| U3 (Oberfläche) | Mehrfachklick: Sperre der Aktionen entfernt | 1 |
+| U4 (Oberfläche) | Erfolg ohne passende Erfolgsantwort (gut) gilt als Erfolg | 1 |
+| U5 (Oberfläche) | Bestätigung ohne Antwort ist nicht „unklar“ | 3 |
+| U6 (Oberfläche) | nach Erfolg kein Neuladen | 2 |
+| U7 (Oberfläche) | Prüfen sendet die Bestätigung mit (Auto-Übernahme) | 3 |
+| U8 (Oberfläche) | Auswahlknopf bleibt während der Anfrage bedienbar | 1 |
+| U9 (Oberfläche) | Mitteilungstext immer „keine Benachrichtigung versendet“ | 1 |
+| U10 (Oberfläche) | Demo/Anheft-Recht nicht geprüft (Sichtbarkeit) | 1 |
+| U11 (Oberfläche) | Bestätigen ohne die geprüfte Auswahl zu vergleichen | 1 |
+| U12 (Oberfläche) | eine Kennung ohne Text (konflikt) | 3 |
+| U13 (Oberfläche) | Besetzungshinweis: nicht-bewertbar-Zweig entfernt | 2 |
+| U14 (Oberfläche) | Rohkennung der Person statt „Person (nicht im Bestand)“ | 1 |
+| U15 (Oberfläche) | Weg der Liste fehlt in der Browser-Positivliste | 1 |
+| U16 (Oberfläche) | Rücknahme nur bei freigegebenem Planer (C-4 verletzt) | 1 |
+| S1 (Server) | Liste gibt den ganzen Datensatz (inkl. Zeitpunkt) heraus | 2 |
+| S2 (Server) | Liste ohne Frist und Abschluss | 1 |
+| S3 (Server) | Liste ohne Monatsfilter | 4 |
+| S4 (Server) | Rollenprüfung im Weg der Liste entfernt | 1 |
+| S5 (Server) | Rumpf-Positivliste der Liste entfernt | 1 |
+| S6 (Server) | Liste verlangt die Planer-Freigabe | 8 |
+| S7 (Server) | Liste ohne Mandantentrennung (immer der erste Betrieb) | 1 |
+
+Ergebnis: 23/23 erkannt (jede Mutation macht mindestens einen Test rot); U = Prüfdatei `intelligence-planer-uebernahme-ui.test.js`, S = `intelligence-planer-rueckgaengig-liste.test.js`. Lauf der ganzen Prüfdatei je Mutation, danach Datei zurückgesetzt (Lauf des Grundstands danach wieder grün).
+
+**Offen / ehrlich:**
+- **Sichtprüfung im Browser steht aus** (Playwright läuft lokal nicht): Layout, Lesbarkeit der Liste, Tastaturbedienung, axe `target-size` der geöffneten Fläche. Alle Bedienelemente sind `Btn` (Mindesthöhe), keine rohen `button/input/select/details`, keine Inline-Stile (Tests).
+- **C-3 (Fixture für die Browser-axe-Abnahme) nicht gebaut:** Die vorhandenen axe-Läufe (`plan-leitung`, `plan-planer`) prüfen den Monatsplan mit der **geschlossenen** Fläche. Für die geöffnete Fläche mit Vorschlag ist im E2E-Seed keine kleine vorhandene Stelle: ein Vorschlag setzt `PLANER_AN` voraus (nur über die Prüf-Zugänge der Tests), und `planerRueckgaengig` ist ein reines Serverfeld (nur die Server-Aktion schreibt es). Bleibt offen.
+- **Betreiberentscheidungen (unverändert offen):** Aufbewahrung der Rückgängig-Daten (Ort, Frist, Zahl), Mitteilungen an Beschäftigte nach einer Übernahme in einem freigegebenen Monat, Sicht des Betriebsrats auf das Protokoll des Moduls „planer“.
+- **Neuladen ist „bestmöglich“:** `serverstandNachladen` liest nur nach, wenn lokal nichts Ungespeichertes steht (sonst wird nur gespiegelt, hier ohne Änderung); dann zeigt der lokale Plan die Übernahme erst nach dem nächsten Laden. Die Ansicht behauptet nie, der Plan sei schon aktualisiert.
+- **Vor der Freigabe von `PLANER_AN`** bleiben die Punkte aus Stufe 2 (C-1, C-6, D-1…D-3) offen; keiner wird durch diese Stufe berührt.

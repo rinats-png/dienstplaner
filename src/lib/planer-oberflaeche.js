@@ -325,3 +325,163 @@ export function verteilungAnzeige(bewertung, m) {
     /* Insgesamt nur dann „bewertet“, wenn der Server es so sieht (kein Rang ohne vollständig Bewertbares). */
     gesamtBewertet: !!bewertung && bewertung.bewertet === true };
 }
+
+/* ------------------------------------------------------------------ Planvorschlag übernehmen (WP-I7 Stufe 3) */
+
+/**
+ * Text je Kennung des Servers (server/lib/planer-aktion.mjs STATUS). Eine Quelle für die Aktionen, die Ansicht und die Prüfung:
+ * Servertexte und Rohkennungen erscheinen nie in der Oberfläche. Jeder Text sagt, ob etwas verändert wurde; „unklar“ nennt den
+ * Weg („erst neu laden, nie blind wiederholen“).
+ */
+export const VORSCHLAG_FEHLER = Object.freeze({
+  "anfrage-ungueltig": "Die Anfrage war nicht gültig. Es wurde nichts verändert. Bitte die Seite neu laden und noch einmal versuchen.",
+  "monat-ungueltig": "Der Monat ist ungültig. Es wurde nichts verändert.",
+  "auswahl-ungueltig": "Die Auswahl passt nicht zum Vorschlag. Es wurde nichts verändert. Bitte einen neuen Vorschlag erstellen.",
+  "auswahl-nicht-im-vorschlag": "Die Auswahl passt nicht zum Vorschlag. Es wurde nichts verändert. Bitte einen neuen Vorschlag erstellen.",
+  "auswahl-leer": "Bitte mindestens eine Einteilung auswählen.",
+  "auswahl-doppelt": "Die Auswahl enthält eine Einteilung mehrfach. Es wurde nichts verändert. Bitte einen neuen Vorschlag erstellen.",
+  "auswahl-zu-gross": "Die Auswahl ist zu groß. Es wurde nichts verändert. Bitte weniger Einteilungen auf einmal auswählen.",
+  "vorschlag-zu-gross": "Der Vorschlag ist zu groß, um ihn zu übernehmen. Es wurde nichts verändert. Bitte den Monat in kleineren Schritten planen.",
+  "keine-berechtigung": "Dafür fehlt die Berechtigung. Vorschläge übernehmen und zurücknehmen dürfen nur Leitung und Planung.",
+  "vorschlag-unbekannt": "Dieser Vorschlag ist nicht mehr vorhanden, zum Beispiel nach einem Neustart des Servers. Es wurde nichts übernommen. Bitte einen neuen Vorschlag erstellen.",
+  "rueckgaengig-unbekannt": "Zu dieser Übernahme gibt es nichts mehr zurückzunehmen: Sie ist schon zurückgenommen oder die Frist ist vorbei. Die Liste wird neu geladen.",
+  "betrieb-unbekannt": "Der Betrieb wurde nicht gefunden. Es wurde nichts verändert. Bitte neu anmelden.",
+  "vorschlag-abgelaufen": "Der Vorschlag ist abgelaufen (er gilt höchstens 24 Stunden). Es wurde nichts übernommen. Bitte einen neuen Vorschlag erstellen.",
+  "rueckgaengig-abgelaufen": "Die Frist zum Zurücknehmen ist abgelaufen. Die Einteilungen bleiben, wie sie sind; Änderungen bitte von Hand vornehmen.",
+  "eintrag-abgelehnt": "Mindestens eine ausgewählte Einteilung ist so nicht mehr möglich. Es wurde nichts übernommen. Die Gründe stehen bei den Einteilungen; bitte abwählen oder einen neuen Vorschlag erstellen.",
+  "nachpruefung-nicht-bestanden": "Die Prüfung der ganzen Auswahl hat einen Verstoß ergeben (Regeln, Besetzung oder Vorgaben). Es wurde nichts übernommen. Bitte die Auswahl verkleinern oder einen neuen Vorschlag erstellen.",
+  "nicht-planungsreif": "Dieser Monat ist noch nicht planungsreif; es entsteht kein Vorschlag. Was fehlt, steht unten.",
+  "vorschlag-ungueltig": "Der Planer konnte keinen gültigen Vorschlag erstellen. Es wurde nichts verändert.",
+  "vorschlag-ohne-basis": "Der Vorschlag ist unvollständig und kann nicht übernommen werden. Es wurde nichts verändert. Bitte einen neuen Vorschlag erstellen.",
+  "rueckgaengig-ungueltig": "Die gespeicherten Daten dieser Übernahme sind nicht lesbar; eine Rücknahme ist nicht möglich. Änderungen bitte von Hand vornehmen.",
+  "betrieb-ungueltig": "Der Stand des Betriebs ist für diese Aktion nicht lesbar oder nicht zulässig. Es wurde nichts verändert.",
+  "bestand-grenze": "Der Betrieb würde dadurch die zulässige Größe überschreiten. Es wurde nichts verändert.",
+  "zu-viele-vorschlaege": "Es liegen zu viele Vorschläge vor. Es wurde nichts verändert. Bitte später noch einmal versuchen.",
+  "pruefung-fehlgeschlagen": "Die Prüfung ist fehlgeschlagen. Es wurde nichts verändert. Bitte später noch einmal versuchen.",
+  "anwendung-fehlgeschlagen": "Die Übernahme ließ sich nicht berechnen. Es wurde nichts verändert.",
+  "schreiben-unklar": "Ob die Änderung gespeichert wurde, ist unklar. Bitte nicht erneut absenden: zuerst den Plan neu laden und prüfen, ob die Einteilungen schon eingetragen sind.",
+  "schreiben-fehlgeschlagen": "Das Speichern ist gerade nicht möglich. Es wurde nichts verändert. Bitte gleich noch einmal versuchen.",
+  "planer-nicht-freigegeben": "Der Planer ist nicht freigegeben. Es entsteht kein Vorschlag und nichts wird übernommen. Eine frühere Übernahme lässt sich weiter zurücknehmen.",
+  "planer-pausiert": "Die Intelligence-Funktionen sind pausiert (Betriebsrat oder Leitung). Es entsteht kein Vorschlag und nichts wird übernommen.",
+  "planer-im-betrieb-aus": "Der Planer ist in diesem Betrieb aus, oder eine Voraussetzung fehlt (siehe „Voraussetzungen im Betrieb“ in den Einstellungen). Es wurde nichts verändert.",
+  "vergangen": "Dieser Zeitraum liegt in der Vergangenheit. Rückwirkend wird nichts geändert.",
+  "monat-abgeschlossen": "Der Monat ist abgeschlossen. Darin wird nichts mehr geändert.",
+  "bereits-uebernommen": "Dieser Vorschlag ist schon übernommen. Bitte den Plan neu laden.",
+  "uebernahme-laeuft": "Dieser Vorschlag wird gerade übernommen. Bitte kurz warten und den Plan neu laden; nicht erneut absenden.",
+  "seit-vorschlag-geaendert": "Der Plan oder die Regeln haben sich seit dem Vorschlag geändert. Der Vorschlag ist verbraucht, es wurde nichts übernommen. Bitte einen neuen Vorschlag erstellen.",
+  "konflikt": "Der Betrieb wurde gleichzeitig geändert. Es wurde nichts übernommen. Der Plan wird neu geladen; bitte die Auswahl danach erneut prüfen.",
+  "protokoll-voll": "Das Protokoll des Moduls ist voll. Es wurde nichts übernommen. Bitte die Leitung informieren.",
+  "bereits-rueckgaengig": "Diese Übernahme ist schon zurückgenommen. Es gibt nichts mehr zu tun.",
+  "seit-uebernahme-geaendert": "Seit der Übernahme wurden die Einteilungen verändert. Eine Rücknahme würde diese Änderungen überschreiben; sie ist deshalb nicht möglich. Bitte von Hand ändern.",
+  "bestaetigung-fehlt": "Es fehlt die ausdrückliche Bestätigung. Es wurde nichts verändert.",
+  "anheftungen-unlesbar": "Die Anheftungen des Betriebs sind nicht lesbar. Aus Vorsicht wird nichts verändert, bis die Leitung sie neu gesetzt hat.",
+  "zeit-ungueltig": "Die Zeitangabe des Servers war nicht verwertbar. Es wurde nichts verändert.",
+});
+/** Texte nach Statuscode, wenn der Server keine bekannte Kennung nennt (nie ein Servertext). */
+const VORSCHLAG_STATUS_TEXT = Object.freeze({
+  401: "Die Anmeldung ist abgelaufen. Bitte neu anmelden. Es wurde nichts verändert.",
+  403: VORSCHLAG_FEHLER["keine-berechtigung"],
+  413: "Die Anfrage ist zu groß. Es wurde nichts verändert.",
+  429: "Zu viele Anfragen in kurzer Zeit. Es wurde nichts verändert. Bitte etwa eine Minute warten und dann noch einmal versuchen.",
+});
+const VORSCHLAG_STANDARD = "Der Server hat die Anfrage nicht ausgeführt. Es wurde nichts verändert. Bitte den Plan neu laden und noch einmal versuchen.";
+/** Nach diesen Kennungen ist der Stand neu zu lesen (der Server hat sich bewegt oder es ist unklar, ob). */
+export const VORSCHLAG_NEU_LADEN = Object.freeze(["schreiben-unklar", "konflikt", "seit-vorschlag-geaendert", "bereits-uebernommen", "uebernahme-laeuft",
+  "seit-uebernahme-geaendert", "bereits-rueckgaengig", "monat-abgeschlossen"]);
+/** Nach diesen Kennungen taugt der gehaltene Vorschlag nicht mehr (nie blind wiederholen; ein neuer muss gerechnet werden). */
+export const VORSCHLAG_VERBRAUCHT = Object.freeze(["vorschlag-unbekannt", "vorschlag-abgelaufen", "seit-vorschlag-geaendert", "bereits-uebernommen",
+  "uebernahme-laeuft", "schreiben-unklar", "vorschlag-ohne-basis", "auswahl-ungueltig", "auswahl-nicht-im-vorschlag", "auswahl-doppelt", "vergangen", "monat-abgeschlossen"]);
+
+/**
+ * Die Absage des Servers als Anzeige: Text aus der Kennungstabelle (nie der Servertext), ob neu zu laden ist, ob der Vorschlag verbraucht
+ * ist und ob unklar ist, ob gespeichert wurde. `schreibend`: die ausdrückliche Bestätigung — bei einer Antwort ohne bekannte Kennung
+ * (Gateway, Absturz, keine Antwort) ist dort unklar, ob geschrieben wurde: wie `schreiben-unklar` behandeln, nie blind wiederholen.
+ * @param {number} status HTTP-Status (0 = keine Antwort) @param {any} daten Antwort des Servers @param {{ schreibend?: boolean }} [o]
+ * @returns {{ code: string | null, text: string, unklar: boolean, neuLaden: boolean, verbraucht: boolean }}
+ */
+export function planerWegFehler(status, daten, o = {}) {
+  const roh = istObjekt(daten) && typeof daten.code === "string" ? daten.code : null;
+  const code = roh && Object.hasOwn(VORSCHLAG_FEHLER, roh) ? roh : null;
+  const ohneAntwort = !Number.isInteger(status) || status === 0 || status >= 500;
+  if (code === null && o && o.schreibend === true && ohneAntwort)
+    return { code: "schreiben-unklar", text: VORSCHLAG_FEHLER["schreiben-unklar"], unklar: true, neuLaden: true, verbraucht: true };
+  const text = code ? VORSCHLAG_FEHLER[code] : (Object.hasOwn(VORSCHLAG_STATUS_TEXT, status) ? VORSCHLAG_STATUS_TEXT[status] : VORSCHLAG_STANDARD);
+  return { code, text, unklar: code === "schreiben-unklar", neuLaden: !!code && VORSCHLAG_NEU_LADEN.includes(code), verbraucht: !!code && VORSCHLAG_VERBRAUCHT.includes(code) };
+}
+
+/** Grund, warum eine einzelne Einteilung nicht übernommen werden kann (Wert `grund` je Eintrag des Servers; ohne Person, ohne Tag). */
+export const VORSCHLAG_ABLEHNUNG = Object.freeze({
+  vergangen: "liegt in der Vergangenheit",
+  "dienst-unbekannt": "der Dienst gibt es nicht mehr",
+  "person-unbekannt": "die Person gehört nicht mehr zum Betrieb",
+  "nicht-im-dienst": "die Person ist an diesem Tag nicht im Dienst des Betriebs",
+  abwesend: "die Person ist an diesem Tag abwesend",
+  angeheftet: "die Einteilung ist angeheftet, der Planer ändert sie nicht",
+  "schluessel-belegt": "die Person ist an diesem Tag inzwischen anders eingeteilt",
+  "keine-luecke": "die Lücke besteht nicht mehr",
+  regel: "verstößt gegen mindestens eine harte Regel",
+});
+const ABLEHNUNG_UNBEKANNT = "nicht möglich (Grund nicht bewertbar)";
+
+const NAME_PERSON = (m, pid) => {
+  const p = (m && Array.isArray(m.personen) ? m.personen : []).find((x) => x && String(x.id) === String(pid));
+  return p ? (`${p.vorname || ""} ${p.nachname || ""}`.trim() || "Person") : "Person (nicht im Bestand)";
+};
+const NAME_DIENST = (m, did) => {
+  const d = (m && Array.isArray(m.dienstarten) ? m.dienstarten : []).find((x) => x && String(x.id) === String(did));
+  return d && typeof d.name === "string" && d.name ? d.name : "Dienst";
+};
+
+/**
+ * Die Einträge eines Vorschlags für die Anzeige: Namen NUR hier, aus dem eigenen Bestand (die Antwort des Servers trägt nur Kennungen).
+ * Sortiert nach Tag, dann Name. Rein; wirft nie; unbrauchbare Einträge fehlen.
+ * @param {any} m Betrieb @param {any} eintraege `eintraege` der Antwort
+ * @returns {{ index: number, personName: string, datum: string, dienstName: string }[]}
+ */
+export function vorschlagZeilen(m, eintraege) {
+  const TAG = /^\d{4}-\d{2}-\d{2}$/;
+  return (Array.isArray(eintraege) ? eintraege : [])
+    .filter((e) => istObjekt(e) && Number.isInteger(e.index) && e.index >= 0 && typeof e.datum === "string" && TAG.test(e.datum))
+    .map((e) => ({ index: e.index, personName: NAME_PERSON(m, e.personId), datum: e.datum, dienstName: NAME_DIENST(m, e.dienstId) }))
+    .sort((a, b) => a.datum.localeCompare(b.datum) || a.personName.localeCompare(b.personName, "de") || a.index - b.index);
+}
+
+/**
+ * Die abgelehnten Einteilungen einer Prüfung: der Server nennt den Index in der gesendeten Auswahl; `gesendet` ist die Liste der
+ * Vorschlags-Indizes in genau dieser Reihenfolge. Ergebnis: Vorschlags-Index und Text (nie die Rohkennung des Grundes).
+ * @param {any} abgelehnt @param {number[]} gesendet @returns {{ index: number, text: string }[]}
+ */
+export function ablehnungen(abgelehnt, gesendet) {
+  return (Array.isArray(abgelehnt) ? abgelehnt : []).filter((a) => istObjekt(a) && Number.isInteger(a.index) && a.index >= 0 && a.index < gesendet.length)
+    .map((a) => ({ index: gesendet[a.index], text: typeof a.grund === "string" && Object.hasOwn(VORSCHLAG_ABLEHNUNG, a.grund) ? VORSCHLAG_ABLEHNUNG[a.grund] : ABLEHNUNG_UNBEKANNT }));
+}
+
+/**
+ * Unterbesetzung nach einer Rücknahme (`unterbesetzt` des Servers). `null` oder Unlesbares heißt „nicht bewertbar“ — nie „keine Lücke“;
+ * nur eine gültige leere Liste heißt „keine“.
+ * @param {any} u @param {any} m Betrieb (Dienstnamen)
+ * @returns {{ zustand: "nicht_bewertbar" | "keine" | "luecken", zeilen: { datum: string, dienstName: string, fehlt: number, qualFehlt: boolean }[] }}
+ */
+export function unterbesetztAnzeige(u, m) {
+  const TAG = /^\d{4}-\d{2}-\d{2}$/;
+  if (!Array.isArray(u)) return { zustand: "nicht_bewertbar", zeilen: [] };
+  const zeilen = [];
+  for (const x of u) {
+    if (!istObjekt(x) || typeof x.datum !== "string" || !TAG.test(x.datum) || !Number.isInteger(x.fehlt) || x.fehlt < 0 || typeof x.qualFehlt !== "boolean")
+      return { zustand: "nicht_bewertbar", zeilen: [] };
+    zeilen.push({ datum: x.datum, dienstName: NAME_DIENST(m, x.dienstId), fehlt: x.fehlt, qualFehlt: x.qualFehlt });
+  }
+  return zeilen.length ? { zustand: "luecken", zeilen } : { zustand: "keine", zeilen: [] };
+}
+
+/**
+ * Darf der Knopf „Vorschlag erstellen“ wirken? Sonst der Grund als Text (null = ja). Dieselbe Entscheidung wie im Zustand des Planers
+ * (planerZustand: globale Freigabe, wirksamer Modus); entschieden wird am Server. Die Rücknahme hängt nicht daran (C-4).
+ * @param {{ freigegeben: boolean, wirksam: string }} z Ergebnis von planerZustand
+ * @returns {string | null}
+ */
+export function vorschlagErstellenGrund(z) {
+  if (!z || z.freigegeben !== true) return "Der Planer ist nicht freigegeben. Ein Vorschlag lässt sich erst erstellen, wenn der Betreiber den Planer freigegeben hat.";
+  if (z.wirksam === "aus") return "Der Planer ist in diesem Betrieb derzeit aus (siehe „Voraussetzungen im Betrieb“ in den Einstellungen).";
+  return null;
+}
