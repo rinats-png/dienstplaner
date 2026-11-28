@@ -7,9 +7,11 @@
    „Bericht nennt nur Zählwerte; je offenem Konflikt Wo/Warum/Wege; keine Scores je Person.“
 
    Eingabe: der Bestand `m` (vor dem Planer) und das Ergebnis von `planeVorschlag` (planer.mjs) mit
-   Status „ok“. Der Bericht rechnet die Besetzung des fertigen Stands (Bestand + Abweichungen des
-   Vorschlags) selbst nach und gleicht sie mit den offenen Stellen des Vorschlags ab; passt das Ergebnis
-   nicht zum Bestand, gibt es keinen Bericht (fail closed, nie ein geschönter).
+   Status „ok“. Der Bericht vertraut dem Ergebnis nicht: Er gleicht die Abweichungen mit dem Bestand ab
+   (jeder Unterschied ist genau eine eigene Einteilung), rechnet Besetzung, Nachprüfung der eigenen
+   Einteilungen (Gesetz, Muss, Soll; nachpruefen aus planer.mjs) und Verteilung auf dem fertigen Stand
+   mit dem HEUTIGEN Bestand selbst nach und vergleicht mit offenen Stellen, Rang und Verteilung des
+   Vorschlags. Passt etwas nicht, gibt es keinen Bericht (ergebnis_passt_nicht, fail closed).
 
    Kategorien streng in der Rangfolge (Plan 7.4; Qualifikation getrennt von der Personenzahl):
      gesetz > qualifikation > besetzung > muss > soll > verteilung > wunsch
@@ -24,8 +26,10 @@
    ranghöchste Kategorie, die nicht erfüllt ist — Gesetz, Qualifikation, Besetzung und Muss gehen Soll und
    Verteilung vor; die Verteilung ist nur nachgelagert maßgeblich.
 
-   Umfang: Gesetz, Muss und Soll stammen aus der Nachprüfung des Planers, sie betreffen die EIGENEN
-   Einteilungen des Vorschlags (`umfang: "vorschlag"`), nicht den Bestand (`bestandGeprueft: false`).
+   Umfang: Gesetz, Muss und Soll betreffen die EIGENEN Einteilungen des Vorschlags (`umfang: "vorschlag"`),
+   nicht den Bestand (`bestandGeprueft: false`); ein „erfuellt“ trägt dort `aussage: AUSSAGE_VORSCHLAG` und
+   zählt in der Zusammenfassung getrennt (`erfuelltImVorschlag`). `erstesProblem`: ranghöchste Kategorie mit
+   „verletzt“ oder „offen“ (`massgeblich` kann eine nicht bewertbare Kategorie davor zeigen).
 
    Wege je Konflikt: Für Stellen mit Ursache „hindernisse“ rechnet der Bericht `lueckenUrsache` auf dem
    fertigen Stand nach (EIN Budget je Bericht, eigenes Budget der Vorgaben). Weicht die Nachrechnung von der
@@ -42,6 +46,9 @@
    ========================================================================== */
 import { besetzung } from "./plan.mjs";
 import { lueckenUrsache, budgetNeu, LUECKEN_MAX } from "./luckenursache.mjs";
+import { nachpruefen, PLANER_GRENZE } from "./planer.mjs";
+import { planbefundAufwandHoechst, PLANBEFUND_GRENZE } from "./einsatz.mjs";
+import { verteilungAufwand, verteilungVorbereiten, verteilungBewerten, nachtZaehlen } from "./verteilung.mjs";
 import { neuesVorgabenBudget } from "../vorgabenwirkung.mjs";
 import { aktiveVorgaben } from "../vorgaben.mjs";
 
@@ -49,8 +56,23 @@ import { aktiveVorgaben } from "../vorgaben.mjs";
 export const BERICHT_RANGFOLGE = Object.freeze(["gesetz", "qualifikation", "besetzung", "muss", "soll", "verteilung", "wunsch"]);
 /** Status einer Kategorie bzw. einer Vorgabe. */
 export const BERICHT_STATUS = Object.freeze(["erfuellt", "verletzt", "offen", "nicht-bewertbar"]);
-/** Obergrenzen je Bericht: Personentage des Monats (Besetzung nachrechnen), Stellen (Tag × Dienst), gelistete Konflikte. */
-export const BERICHT_GRENZE = Object.freeze({ personenTage: 200000, stellen: 20000, konflikte: 500 });
+/** Aussage eines „erfüllt“ bei Gesetz, Muss und Soll: nur die eigenen Einteilungen des Vorschlags sind geprüft, nicht der Bestand. */
+export const AUSSAGE_VORSCHLAG = "keine_befunde_in_eigenen_einteilungen";
+/**
+ * Obergrenzen je Bericht: Personentage des Monats (Besetzung nachrechnen), Stellen (Tag × Dienst), gelistete Konflikte;
+ * Nachprüfung der eigenen Einteilungen in Personenprüfungen (dieselbe Rechnung wie die Reserve des Planers, Obergrenze des Planer-Aufwands)
+ * und in Personentagen der Planbefunde (dieselbe Obergrenze wie der Planer, 40 Mio, unverändert); Vorbereitung der Verteilung.
+ */
+export const BERICHT_GRENZE = Object.freeze({ personenTage: 200000, stellen: 20000, konflikte: 500,
+  nachpruefung: PLANER_GRENZE.aufwand, planbefund: PLANBEFUND_GRENZE, verteilung: PLANER_GRENZE.aufwand });
+/** Verteilung: Spannweite und Überschreitung erst ab dieser Gruppengröße (kleine Gruppen deuten sonst auf Personen). */
+export const VERTEILUNG_MINDESTGRUPPE = 3;
+/** Werteliste der Ursachen (luckenursache.mjs) und der Gründe offener Stellen (planer.mjs, Planbefunde einsatz.mjs). */
+export const BERICHT_URSACHEN = Object.freeze(["besetzt", "direktMoeglich", "hindernisse", "keinPersonal", "unvollstaendig", "qualifikationFehlt"]);
+export const BERICHT_GRUENDE = Object.freeze(["aufwand", "vorgabe", "verdraengung", "folgeVorwaerts", "nachtfolge", "ersatzruhe", "sonntagsfrei", "unbekannt"]);
+/** Kennungsmuster für Regeln und Vorgaben (kein Freitext, kein Name). */
+const KENNUNG = /^[A-Za-z0-9_.-]{1,64}$/;
+const istKennung = (x) => typeof x === "string" && KENNUNG.test(x);
 
 /** Schwere für „die schlechteste Lage zählt“. */
 const SCHWERE = Object.freeze({ erfuellt: 0, "nicht-bewertbar": 1, offen: 2, verletzt: 3 });
@@ -63,6 +85,10 @@ const schaltjahr = (j) => (j % 4 === 0 && j % 100 !== 0) || j % 400 === 0;
 const tageImMonat = (j, mo) => (mo === 2 ? (schaltjahr(j) ? 29 : 28) : [4, 6, 9, 11].includes(mo) ? 30 : 31);
 /** @param {string} grund @returns {{ ok: false, grund: string }} */
 const nein = (grund) => ({ ok: false, grund });
+/** Ergebnis passt nicht zum Bestand; `pruefung` nennt die Stelle des Abgleichs (Kennung, keine Daten). */
+const passtNicht = (pruefung) => ({ ok: false, grund: "ergebnis_passt_nicht", pruefung });
+/** Gleicher Wert einer Abweichung (Text wie im Planer; Objekte nach Inhalt). */
+const gleicherWert = (a, b) => a === b || (!!a && !!b && typeof a === "object" && typeof b === "object" && JSON.stringify(a) === JSON.stringify(b));
 
 /** Betrieb mit den Feldern, die Besetzung und Ursache lesen. */
 const betriebOk = (m) => istObjekt(m) && Array.isArray(m.personen) && Array.isArray(m.dienstarten) && Array.isArray(m.abwesenheiten)
@@ -74,12 +100,13 @@ const betriebOk = (m) => istObjekt(m) && Array.isArray(m.personen) && Array.isAr
 const rangOk = (r) => istObjekt(r) && ["gesetz", "besetzung", "muss", "soll", "verteilung", "stabilitaet"]
   .every((k) => r[k] === null || (typeof r[k] === "number" && Number.isFinite(r[k]) && r[k] >= 0));
 
-/** Anzahl aktiver Vorgaben einer Stärke (ohne Verteilungsvorgaben; die stehen unter „verteilung“). */
+/** Anzahl aktiver Vorgaben einer Stärke (ohne Verteilungsvorgaben; die stehen unter „verteilung“). Ohne Geltungsbereich gezählt. */
 const vorgabenZahl = (m, staerke) => aktiveVorgaben(m.vorgaben).filter((v) => v.staerke === staerke && v.regelart !== "verteilungsregel").length;
 
 /**
- * Kategorie aus einer Zählung der Nachprüfung (Gesetz, Muss, Soll): verletzt bei einem Befund; ohne eigene Einteilung oder
- * ohne Vorgabe nicht bewertbar (nie „erfüllt“ ohne Prüfung); ein nicht bewerteter Rang (null) ist nicht bewertbar.
+ * Kategorie aus der eigenen Nachprüfung (Gesetz, Muss, Soll): verletzt bei einem Befund (bei bestandener Nachprüfung nur Soll möglich;
+ * Gesetz und Muss hindern und führen vorher zu „ergebnis_passt_nicht“); ohne eigene Einteilung oder ohne Vorgabe nicht bewertbar (nie
+ * „erfüllt“ ohne Prüfung); ungeprüft (null) nicht bewertbar. „Erfüllt“ heißt hier nur: keine Befunde in den eigenen Einteilungen.
  */
 function ausNachpruefung(name, wert, eigene, vorgaben) {
   const k = { kategorie: name, rang: BERICHT_RANGFOLGE.indexOf(name), umfang: "vorschlag", bestandGeprueft: false, geprueft: eigene,
@@ -88,36 +115,49 @@ function ausNachpruefung(name, wert, eigene, vorgaben) {
   if (wert > 0) return { ...k, status: "verletzt" };
   if (vorgaben === 0) return { ...k, status: "nicht-bewertbar", grund: "keine_vorgabe" };
   if (eigene === 0) return { ...k, status: "nicht-bewertbar", grund: "keine_einteilung_im_vorschlag" };
-  return { ...k, status: "erfuellt" };
+  return { ...k, status: "erfuellt", aussage: AUSSAGE_VORSCHLAG };
 }
 
-/** Status einer Verteilungsvorgabe des Planers im Bericht (nicht Bewertetes nie „erfüllt“). */
+/** Status einer Verteilungsvorgabe im Bericht (nicht Bewertetes nie „erfüllt“). */
 function verteilungStatus(r) {
   if (r.status === "erfuellt") return "erfuellt";
   if (r.status === "verletzt") return "verletzt";        // Spannweite der bekannten Werte überschritten: mit weiteren Personen nur größer
   return "nicht-bewertbar";                                // offen, nicht_bewertet, nicht_anwendbar, Unbekanntes
 }
 
-/** Verteilungsvorgaben: nur Kennungen und Zählwerte der Gruppe, keine Werte je Person. */
+/** Vergleichsform einer Verteilung (Planer oder eigene Rechnung): bewertet, Summe, je Vorgabe Kennung, Status, Überschreitung. */
+const verteilungForm = (v) => JSON.stringify({ b: v.bewertet === true, s: v.summe === undefined ? null : v.summe,
+  r: (Array.isArray(v.regeln) ? v.regeln : []).map((r) => [String(r && r.vorgabeId), r && r.status, r && r.ueberschreitung === undefined ? null : r && r.ueberschreitung]) });
+/** Hat der Planer die Verteilung wegen seines Aufwands nicht vorbereitet (jede Vorgabe „nicht_bewertet“ mit Grund „aufwand“ oder „wunsch“)? */
+const planerOhneVerteilung = (v) => istObjekt(v) && Array.isArray(v.regeln) && v.regeln.some((r) => r && r.grund === "aufwand")
+  && v.regeln.every((r) => r && r.status === "nicht_bewertet" && (r.grund === "aufwand" || r.grund === "wunsch"));
+
+/** Verteilungsvorgaben aus der eigenen Rechnung: nur Kennungen und Gruppenzahlen; Spannweite erst ab VERTEILUNG_MINDESTGRUPPE Personen. */
 function verteilungKategorie(m, v) {
   const k = { kategorie: "verteilung", rang: BERICHT_RANGFOLGE.indexOf("verteilung"), nachgelagert: true };
-  const anzahl = aktiveVorgaben(m.vorgaben).filter((x) => x.regelart === "verteilungsregel").length;
-  if (!istObjekt(v) || !Array.isArray(v.regeln)) return { ...k, status: "nicht-bewertbar", grund: anzahl ? "nicht_bewertet" : "keine_vorgabe", vorgaben: [] };
+  if (!v) return { ...k, status: "nicht-bewertbar", grund: "keine_vorgabe", vorgaben: [] };
   const zahl = (x) => (typeof x === "number" && Number.isFinite(x) ? x : null);
   const laenge = (x) => (Array.isArray(x) ? x.length : 0);
-  const vorgaben = v.regeln.filter(istObjekt).map((r) => ({
-    vorgabeId: String(r.vorgabeId), staerke: typeof r.staerke === "string" ? r.staerke : null, groesse: typeof r.groesse === "string" ? r.groesse : null,
-    status: verteilungStatus(r), ...(typeof r.grund === "string" ? { grund: r.grund } : r.status !== "erfuellt" && r.status !== "verletzt" ? { grund: String(r.status) } : {}),
-    maxAbweichung: zahl(r.maxAbweichung), spannweite: zahl(r.spannweite), ueberschreitung: zahl(r.ueberschreitung),
-    personen: laenge(r.personen), nichtBewertbar: laenge(r.nichtBewertbar), ausserhalb: laenge(r.ausserhalb),
-  })).sort((a, b) => (a.vorgabeId < b.vorgabeId ? -1 : a.vorgabeId > b.vorgabeId ? 1 : 0));
+  const vorgaben = v.regeln.map((r) => {
+    const n = laenge(r.personen), klein = n > 0 && n < VERTEILUNG_MINDESTGRUPPE;
+    const grund = typeof r.grund === "string" ? r.grund : r.status !== "erfuellt" && r.status !== "verletzt" ? String(r.status) : null;
+    return {
+      vorgabeId: istKennung(String(r.vorgabeId)) ? String(r.vorgabeId) : null,
+      staerke: istKennung(r.staerke) ? r.staerke : null, groesse: istKennung(r.groesse) ? r.groesse : null,
+      status: verteilungStatus(r), ...(grund && istKennung(grund) ? { grund } : {}),
+      maxAbweichung: zahl(r.maxAbweichung), spannweite: klein ? null : zahl(r.spannweite), ueberschreitung: klein ? null : zahl(r.ueberschreitung),
+      ...(klein ? { kleineGruppe: true } : {}),
+      personen: n, nichtBewertbar: laenge(r.nichtBewertbar), ausserhalb: laenge(r.ausserhalb),
+    };
+  }).sort((a, b) => (String(a.vorgabeId) < String(b.vorgabeId) ? -1 : String(a.vorgabeId) > String(b.vorgabeId) ? 1 : 0));
   let status = vorgaben.length ? "erfuellt" : "nicht-bewertbar";
   for (const x of vorgaben) status = schlechter(status, x.status);
-  /* Der Planer bewertet die Verteilung nur vollständig (sonst Rang null): dann nie „erfüllt“. */
+  /* Nur vollständig Bewertetes ist „erfüllt“ (wie der Rang des Planers). */
   if (status === "erfuellt" && v.bewertet !== true) status = "nicht-bewertbar";
   const zaehl = (s) => vorgaben.filter((x) => x.status === s).length;
+  const klein = vorgaben.some((x) => x.kleineGruppe);
   return { ...k, status, ...(status === "nicht-bewertbar" && !vorgaben.length ? { grund: "keine_vorgabe" } : {}),
-    summeUeberschreitung: v.bewertet === true ? zahl(v.summe) : null,
+    summeUeberschreitung: v.bewertet === true && !klein ? zahl(v.summe) : null,
     erfuellt: zaehl("erfuellt"), verletzt: zaehl("verletzt"), nichtBewertbar: zaehl("nicht-bewertbar"), vorgaben };
 }
 
@@ -125,7 +165,8 @@ function verteilungKategorie(m, v) {
  * Erfüllungsbericht zu einem Planvorschlag. Rein, deterministisch, wirft nie.
  * @param {any} m Bestand vor dem Planer (derselbe, mit dem planeVorschlag gerechnet hat)
  * @param {any} ergebnis Ergebnis von planeVorschlag (Status „ok“)
- * @returns {{ ok: false, grund: string, status?: string } | { ok: true, ym: string, startwert: any, massgeblich: { kategorie: string, status: string } | null,
+ * @returns {{ ok: false, grund: string, status?: string, pruefung?: string } | { ok: true, ym: string, startwert: any,
+ *   massgeblich: { kategorie: string, status: string }, erstesProblem: { kategorie: string, status: string } | null,
  *   zusammenfassung: any, kategorien: any[], konflikte: any[] }}
  */
 export function erfuellungsbericht(m, ergebnis) {
@@ -146,21 +187,48 @@ function berichtRechnen(m, e) {
   if (mo < 1 || mo > 12 || j < 2000 || j > 2100) return nein("monat_ungueltig");
   if (!Array.isArray(e.gesetzt) || !Array.isArray(e.offen) || !istObjekt(e.abweichungen) || !rangOk(e.rang)) return nein("ergebnis_ungueltig");
   const nTage = tageImMonat(j, mo);
+  const P = Math.max(1, m.personen.length);
   /* Aufwand vorab: Besetzung je Tag liest jede Person einmal (Personentage), Stellen = Tage × Dienste. */
-  if (Math.max(1, m.personen.length) * nTage > BERICHT_GRENZE.personenTage || m.dienstarten.length * nTage > BERICHT_GRENZE.stellen) return nein("aufwand");
+  if (P * nTage > BERICHT_GRENZE.personenTage || m.dienstarten.length * nTage > BERICHT_GRENZE.stellen) return nein("aufwand");
+  /* … Nachprüfung der eigenen Einteilungen: je Einteilung eine Einsatzprüfung (P + 1) und die Vorwärtsprüfung (2 je Folgetag), je Tag
+     die Bestandspersonen (2 P) — dieselbe Rechnung wie die Reserve des Planers; Planbefunde je Einteilung höchstens planbefundAufwandHoechst. */
+  const n = e.gesetzt.length;
+  const mf = Number(m.einstellungen.maxFolge);
+  const W = mf > 0 ? Math.ceil(mf) : 0;
+  if (n * (P + 1 + 2 * W) + 2 * nTage * P > BERICHT_GRENZE.nachpruefung) return nein("aufwand");
+  if (n * planbefundAufwandHoechst(m, j) > BERICHT_GRENZE.planbefund) return nein("aufwand");
   const tage = [];
   for (let t = 1; t <= nTage; t++) tage.push(`${e.ym}-${pad2(t)}`);
 
-  /* Fertiger Stand: Bestand mit den Abweichungen des Vorschlags (eigenes Objekt; Bestand und Ergebnis bleiben unberührt). */
-  const stand = { ...m, abweichungen: { ...e.abweichungen } };
+  /* Abgleich Bestand ↔ Vorschlag (O(|Abweichungen|)): Jede eigene Einteilung einmal, bekannte Person und bekannter Dienst, im Monat,
+     im Stand gesetzt und dort anders als im Bestand; jeder Schlüssel, in dem sich Vorschlag und Bestand unterscheiden (Wert oder
+     Anwesenheit), ist genau eine eigene Einteilung. Sonst stünde im Stand etwas, das nie nachgeprüft wurde. */
   const hat = Object.prototype.hasOwnProperty;
-
-  /* Eigene Einteilungen müssen im Stand stehen und im Monat liegen (sonst gehört das Ergebnis nicht zu diesem Bestand). */
+  const basis = m.abweichungen, vor = e.abweichungen;
+  const personIds = new Set(m.personen.map((p) => p.id)), dienstIds = new Set(m.dienstarten.map((d) => d.id));
+  const eigeneSchl = new Set();
   for (const g of e.gesetzt) {
-    if (!istObjekt(g) || typeof g.datum !== "string" || g.datum.slice(0, 7) !== e.ym) return nein("ergebnis_passt_nicht");
+    if (!istObjekt(g) || typeof g.datum !== "string" || g.datum.slice(0, 7) !== e.ym || !tage.includes(g.datum)) return passtNicht("einteilung");
+    if (!personIds.has(g.personId) || !dienstIds.has(g.dienstId)) return passtNicht("einteilung");
     const k = `${g.personId}|${g.datum}`;
-    if (!hat.call(stand.abweichungen, k) || stand.abweichungen[k] !== g.dienstId) return nein("ergebnis_passt_nicht");
+    if (eigeneSchl.has(k)) return passtNicht("einteilung");
+    eigeneSchl.add(k);
+    if (!hat.call(vor, k) || vor[k] !== g.dienstId) return passtNicht("einteilung");
+    if (hat.call(basis, k) && gleicherWert(basis[k], vor[k])) return passtNicht("einteilung");
   }
+  for (const k of Object.keys(basis)) if ((!hat.call(vor, k) || !gleicherWert(basis[k], vor[k])) && !eigeneSchl.has(k)) return passtNicht("abweichungen");
+  for (const k of Object.keys(vor)) if (!hat.call(basis, k) && !eigeneSchl.has(k)) return passtNicht("abweichungen");
+
+  /* Kennungen der offenen Stellen des Planers: Werteliste für Ursache und Grund, Kennungsmuster für Regeln (kein Freitext, kein Name). */
+  for (const x of e.offen) {
+    if (!istObjekt(x)) return passtNicht("offen");
+    if (x.ursache !== undefined && !BERICHT_URSACHEN.includes(x.ursache)) return passtNicht("kennung");
+    if (x.grund !== undefined && !BERICHT_GRUENDE.includes(x.grund)) return passtNicht("kennung");
+    if (x.regeln !== undefined && (!Array.isArray(x.regeln) || x.regeln.length > 20 || !x.regeln.every(istKennung))) return passtNicht("kennung");
+  }
+
+  /* Fertiger Stand: Bestand mit den Abweichungen des Vorschlags (eigenes Objekt; Bestand und Ergebnis bleiben unberührt). */
+  const stand = { ...m, abweichungen: { ...vor } };
 
   /* Besetzung nachrechnen: Stellen, Bedarf, Qualifikation; offene Stellen wie der Planer (diff < 0 oder Qualifikation fehlt). */
   const dIndex = new Map(m.dienstarten.map((d, i) => [d.id, i]));
@@ -187,15 +255,34 @@ function berichtRechnen(m, e) {
   }
 
   /* Abgleich mit den offenen Stellen des Vorschlags (gleiche Menge, gleiche Zahlen); sonst kein Bericht. */
-  if (e.offen.length !== offenFrisch.size) return nein("ergebnis_passt_nicht");
+  if (e.offen.length !== offenFrisch.size) return passtNicht("offen");
   const vomPlaner = new Map();
   for (const x of e.offen) {
-    if (!istObjekt(x)) return nein("ergebnis_passt_nicht");
     const k = `${x.datum}#${x.dienstId}`;
     const f = offenFrisch.get(k);
-    if (!f || vomPlaner.has(k) || x.fehlt !== f.fehlt || !!x.qualFehlt !== f.qualFehlt) return nein("ergebnis_passt_nicht");
+    if (!f || vomPlaner.has(k) || x.fehlt !== f.fehlt || !!x.qualFehlt !== f.qualFehlt) return passtNicht("offen");
     vomPlaner.set(k, x);
   }
+
+  /* Nachprüfung neu gerechnet (nicht der Rang des Planers): jede eigene Einteilung auf dem fertigen Stand mit dem HEUTIGEN Bestand
+     (auch nach dem Planen ergänzte Vorgaben), eigenes Budget der Vorgaben, Automatik. Nicht bestanden oder andere Zahlen als der
+     Rang ⇒ kein Bericht. Soll: hat der Planer null (Budget der Vorgaben im Lauf geteilt), gilt die eigene Zahl; ist die eigene null,
+     ist Soll nicht bewertbar. */
+  const np = nachpruefen(m, stand, e.gesetzt, neuesVorgabenBudget());
+  if (!np.durch) return passtNicht("nachpruefung");
+  const sollNeu = np.offenV ? null : np.soll;
+  if (np.gesetz !== e.rang.gesetz || np.muss !== e.rang.muss || (sollNeu !== null && e.rang.soll !== null && sollNeu !== e.rang.soll)) return passtNicht("nachpruefung");
+
+  /* Verteilung neu gerechnet (dieselben Funktionen wie der Planer, auf dem fertigen Stand) und mit dem Ergebnis abgeglichen. */
+  const vAufwand = verteilungAufwand(m, tage);
+  let vt = null, verteilung = null;
+  if (vAufwand) {
+    vt = verteilungVorbereiten(m, tage, vAufwand <= BERICHT_GRENZE.verteilung);
+    verteilung = verteilungBewerten(vt, nachtZaehlen(stand, vt));
+  }
+  if (!verteilung) { if (e.verteilung !== null && e.verteilung !== undefined) return passtNicht("verteilung"); }
+  else if (!istObjekt(e.verteilung)) return passtNicht("verteilung");
+  else if (!planerOhneVerteilung(e.verteilung) && verteilungForm(e.verteilung) !== verteilungForm(verteilung)) return passtNicht("verteilung");
 
   /* Konflikte: Wo (Tag, Dienst, was fehlt), Warum (Ursache des Planers, kleinste Regelmenge, Grund), Wege (Nachrechnung). */
   const budget = budgetNeu(), vorgabenBudget = neuesVorgabenBudget();
@@ -209,7 +296,7 @@ function berichtRechnen(m, e) {
     if (konflikte.length >= BERICHT_GRENZE.konflikte) break;
     const p = vomPlaner.get(k);
     const ursache = typeof p.ursache === "string" ? p.ursache : p.grund ? "grund" : "unvollstaendig";
-    const regeln = Array.isArray(p.regeln) ? p.regeln.map(String) : [];
+    const regeln = Array.isArray(p.regeln) ? [...p.regeln] : [];
     let wege = [], wegeStatus = "keine";
     if (ursache === "hindernisse" && !p.vorgabenUnvollstaendig) {
       wegeStatus = "unvollstaendig";
@@ -234,9 +321,7 @@ function berichtRechnen(m, e) {
     });
   }
 
-  /* Kategorien in der Rangfolge. */
-  const eigene = e.gesetzt.length;
-  const rang = e.rang;
+  /* Kategorien in der Rangfolge (Gesetz, Muss, Soll aus der eigenen Nachprüfung). */
   const qualifikation = { kategorie: "qualifikation", rang: 1, stellen: qualStellen, offen: qualOffen,
     status: qualOffen ? "offen" : qualStellen ? "erfuellt" : "nicht-bewertbar", ...(qualStellen ? {} : { grund: "keine_anforderung" }) };
   let bStatus = offenB ? "offen" : stellen ? "erfuellt" : "nicht-bewertbar";
@@ -244,24 +329,29 @@ function berichtRechnen(m, e) {
   const besetzungK = { kategorie: "besetzung", rang: 2, stellen, voll, offen: offenB, bedarf, fehlt: fehltSumme, bedarfOffen, status: bStatus,
     ...(bStatus === "nicht-bewertbar" ? { grund: bedarfOffen ? "bedarf_nicht_festgelegt" : "keine_anforderung" } : {}) };
   const kategorien = [
-    ausNachpruefung("gesetz", rang.gesetz, eigene),
+    ausNachpruefung("gesetz", np.gesetz, n),
     qualifikation,
     besetzungK,
-    ausNachpruefung("muss", rang.muss, eigene, vorgabenZahl(m, "muss")),
-    ausNachpruefung("soll", rang.soll, eigene, vorgabenZahl(m, "soll")),
-    verteilungKategorie(m, e.verteilung),
+    ausNachpruefung("muss", np.muss, n, vorgabenZahl(m, "muss")),
+    ausNachpruefung("soll", sollNeu, n, vorgabenZahl(m, "soll")),
+    verteilungKategorie(m, verteilung),
     { kategorie: "wunsch", rang: 6, status: "nicht-bewertbar", grund: "nicht_bewertet", vorgaben: vorgabenZahl(m, "wunsch") },
   ];
-  const massgeblichK = kategorien.find((x) => x.status !== "erfuellt");
-  const zaehl = (s) => kategorien.filter((x) => x.status === s).length;
+  /* Maßgeblich: ranghöchste nicht erfüllte Kategorie. Wunsch ist nie bewertet, daher gibt es sie immer (letzte als Rückfall).
+     Erstes Problem: ranghöchste Kategorie mit „verletzt“ oder „offen“ (null: keine; nicht bewertbare zählen hier nicht). */
+  const massgeblichK = kategorien.find((x) => x.status !== "erfuellt") || kategorien[kategorien.length - 1];
+  const problemK = kategorien.find((x) => x.status === "verletzt" || x.status === "offen");
+  const zaehl = (f) => kategorien.filter(f).length;
   return {
     ok: true, ym: e.ym, startwert: zahlOk(e.startwert) ? e.startwert : null,
-    massgeblich: massgeblichK ? { kategorie: massgeblichK.kategorie, status: massgeblichK.status } : null,
+    massgeblich: { kategorie: massgeblichK.kategorie, status: massgeblichK.status },
+    erstesProblem: problemK ? { kategorie: problemK.kategorie, status: problemK.status } : null,
     zusammenfassung: {
-      kategorien: { erfuellt: zaehl("erfuellt"), verletzt: zaehl("verletzt"), offen: zaehl("offen"), nichtBewertbar: zaehl("nicht-bewertbar") },
+      kategorien: { erfuellt: zaehl((x) => x.status === "erfuellt" && !x.aussage), erfuelltImVorschlag: zaehl((x) => x.status === "erfuellt" && !!x.aussage),
+        verletzt: zaehl((x) => x.status === "verletzt"), offen: zaehl((x) => x.status === "offen"), nichtBewertbar: zaehl((x) => x.status === "nicht-bewertbar") },
       stellen: { gesamt: stellen, voll, offen: offenB, bedarfOffen },
       qualifikation: { stellen: qualStellen, offen: qualOffen },
-      eigeneEinteilungen: eigene,
+      eigeneEinteilungen: n,
       konflikte: { gesamt: offenFrisch.size, gelistet: konflikte.length, abgeschnitten: offenFrisch.size > konflikte.length,
         mitWegen, wegeUnvollstaendig, ursacheUnvollstaendig },
     },

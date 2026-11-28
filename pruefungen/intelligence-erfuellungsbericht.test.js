@@ -19,9 +19,10 @@
    ========================================================================== */
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { readFileSync } from "node:fs";
-import { erfuellungsbericht, BERICHT_RANGFOLGE, BERICHT_STATUS, BERICHT_GRENZE } from "../server/lib/engine/erfuellungsbericht.mjs";
-import { planeVorschlag, PLANER_AN } from "../server/lib/engine/planer.mjs";
-import { PLANER_AGGREGATE_AN } from "../server/lib/engine/planeraggregate.mjs";
+import { erfuellungsbericht, BERICHT_RANGFOLGE, BERICHT_STATUS, BERICHT_GRENZE, AUSSAGE_VORSCHLAG, VERTEILUNG_MINDESTGRUPPE } from "../server/lib/engine/erfuellungsbericht.mjs";
+import { planeVorschlag, PLANER_AN, PLANER_GRENZE } from "../server/lib/engine/planer.mjs";
+import { PLANBEFUND_GRENZE } from "../server/lib/engine/einsatz.mjs";
+import { PLANER_AGGREGATE_AN, AGGREGAT_GRENZE } from "../server/lib/engine/planeraggregate.mjs";
 import { LUECKEN_MAX } from "../server/lib/engine/luckenursache.mjs";
 import { baueLeerenBetrieb } from "../server/lib/leerbetrieb.mjs";
 
@@ -74,6 +75,16 @@ function stelleOeffnen(m, r, datum, dienstId, extra = {}) {
   e.offen.sort((a, b) => (a.datum < b.datum ? -1 : a.datum > b.datum ? 1 : 0));
   return e;
 }
+/** Zählregel „höchstens `grenze` Dienste `ereignis` im Fenster“ (Vorgabe des Betriebs, synthetisch). */
+const Z = (id, ereignis, staerke, fenster = { art: "rollierend", laenge: 7, einheit: "tage" }, grenze = 0) => ({ id, name: "Testregel", regelart: "zaehlregel",
+  parameter: { ereignis, fenster, richtung: "hoechstens", grenze }, geltung: { art: "betrieb" }, bezug: "monat", staerke, prioritaet: 1, grundlage: { art: "hausregel" }, status: "aktiv" });
+/** Verteilungsvorgabe Nachtdienste (Spannweite höchstens 1). */
+const VT = (extra = {}) => ({ id: "vt-1", name: "Nächte gleichmäßig", regelart: "verteilungsregel", parameter: { groesse: "nachtdienste", maxAbweichung: 1 },
+  geltung: { art: "betrieb" }, staerke: "soll", prioritaet: 1, status: "aktiv", grundlage: { art: "hausregel" }, bezug: "monat", ...extra });
+/** Grün mit Vorgaben, die im Planerlauf schon gelten: Muss/Soll ohne Nachtdienste (binden nicht), Verteilung Nächte. */
+const mitVorgaben = (vorgaben, bau = gruen) => () => { const x = bau(); x.vorgaben = vorgaben; return x; };
+/** Drei Nachtdienste einer Person im Bestand (Verteilung ungleich). */
+const ungleich = (bau) => () => { const x = bau(); for (const t of ["2026-11-03", "2026-11-10", "2026-11-17"]) x.abweichungen[`tp-1000|${t}`] = "N"; return x; };
 const kat = (b, name) => b.kategorien.find((k) => k.kategorie === name);
 const statusVon = (b) => Object.fromEntries(b.kategorien.map((k) => [k.kategorie, k.status]));
 
@@ -83,7 +94,8 @@ const ERLAUBT = new Set(["ok", "ym", "startwert", "massgeblich", "kategorie", "s
   "stellen", "gesamt", "voll", "bedarfOffen", "qualifikation", "eigeneEinteilungen", "konflikte", "gelistet", "abgeschnitten", "mitWegen", "wegeUnvollstaendig",
   "ursacheUnvollstaendig", "rang", "umfang", "bestandGeprueft", "geprueft", "vorgaben", "grund", "bedarf", "fehlt", "nachgelagert", "summeUeberschreitung",
   "vorgabeId", "staerke", "groesse", "maxAbweichung", "spannweite", "ueberschreitung", "personen", "ausserhalb", "datum", "dienstId", "art", "qualFehlt",
-  "fehlendeQualifikationen", "qid", "noetig", "ist", "ursache", "regeln", "vorgabenUnvollstaendig", "wegeStatus", "wege", "deckt"]);
+  "fehlendeQualifikationen", "qid", "noetig", "ist", "ursache", "regeln", "vorgabenUnvollstaendig", "wegeStatus", "wege", "deckt",
+  "erstesProblem", "aussage", "erfuelltImVorschlag", "kleineGruppe"]);
 /** Datenschutz-Prüfung eines Berichts gegen einen Bestand. */
 function ohnePersonenbezug(b, m) {
   const t = JSON.stringify(b);
@@ -97,9 +109,10 @@ function ohnePersonenbezug(b, m) {
 }
 
 /* Gemeinsame Läufe (einmal je Datei). */
-let G11, G12, G02, G03, G10;
+let G11, G12, G02, G03, G10, GV;
 beforeAll(() => {
   G11 = lauf(gruen, "2026-11");
+  GV = lauf(mitVorgaben([Z("v-muss", "N", "muss"), Z("v-soll", "N", "soll"), VT()]), "2026-11");
   G12 = lauf(gruen, "2026-12");
   G02 = lauf(gruen, "2028-02");
   G03 = lauf(gruen, "2026-03");
@@ -112,6 +125,12 @@ describe("Schalter und Grenzen unverändert", () => {
     expect(PLANER_AGGREGATE_AN).toBe(false);
     expect([...BERICHT_RANGFOLGE]).toEqual(["gesetz", "qualifikation", "besetzung", "muss", "soll", "verteilung", "wunsch"]);
     expect([...BERICHT_STATUS]).toEqual(["erfuellt", "verletzt", "offen", "nicht-bewertbar"]);
+    /* Grenzen der Neurechnung = Obergrenzen des Planers, nicht erhöht (Planbefunde 40 Mio, Aufwand 1 Mio Personenprüfungen). */
+    expect(BERICHT_GRENZE.planbefund).toBe(PLANBEFUND_GRENZE);
+    expect(PLANBEFUND_GRENZE).toBe(40000000);
+    expect(BERICHT_GRENZE.nachpruefung).toBe(PLANER_GRENZE.aufwand);
+    expect(BERICHT_GRENZE.verteilung).toBe(PLANER_GRENZE.aufwand);
+    expect(AGGREGAT_GRENZE.fensterTage).toBe(372);
   });
 });
 
@@ -125,7 +144,8 @@ describe("E1: Grün — voll besetzter Vorschlag", () => {
     expect(statusVon(b)).toMatchObject({ gesetz: "erfuellt", qualifikation: "erfuellt", besetzung: "erfuellt" });
     expect(kat(b, "besetzung")).toMatchObject({ stellen: 60, voll: 60, offen: 0, bedarf: 60, fehlt: 0, bedarfOffen: 0 });
     expect(kat(b, "qualifikation")).toMatchObject({ stellen: 30, offen: 0 });
-    expect(kat(b, "gesetz")).toMatchObject({ umfang: "vorschlag", bestandGeprueft: false, geprueft: r.gesetzt.length, verletzt: 0 });
+    expect(kat(b, "gesetz")).toMatchObject({ umfang: "vorschlag", bestandGeprueft: false, geprueft: r.gesetzt.length, verletzt: 0, aussage: AUSSAGE_VORSCHLAG });
+    expect(b.erstesProblem).toBe(null);
     expect(b.zusammenfassung.eigeneEinteilungen).toBe(r.gesetzt.length);
     expect(b.zusammenfassung.stellen).toEqual({ gesamt: 60, voll: 60, offen: 0, bedarfOffen: 0 });
     expect(b.konflikte).toEqual([]);
@@ -134,7 +154,7 @@ describe("E1: Grün — voll besetzter Vorschlag", () => {
 });
 
 describe("E2: je Status ein Fall", () => {
-  it("nicht bewertbar ≠ erfüllt: ohne Vorgaben sind Muss, Soll, Verteilung, Wunsch nicht bewertbar mit Grund", () => {
+  it("nicht bewertbar ≠ erfüllt: ohne Vorgaben sind Muss, Soll, Verteilung, Wunsch nicht bewertbar mit Grund; „erfüllt im Vorschlag“ getrennt gezählt", () => {
     const b = erfuellungsbericht(G11.m, G11.r);
     for (const k of ["muss", "soll", "verteilung", "wunsch"]) {
       expect(kat(b, k).status, k).toBe("nicht-bewertbar");
@@ -142,28 +162,43 @@ describe("E2: je Status ein Fall", () => {
     }
     expect(kat(b, "muss").grund).toBe("keine_vorgabe");
     expect(kat(b, "wunsch").grund).toBe("nicht_bewertet");
-    /* Zählung: nicht bewertbar wird nie als erfüllt gezählt. */
-    expect(b.zusammenfassung.kategorien).toEqual({ erfuellt: 3, verletzt: 0, offen: 0, nichtBewertbar: 4 });
+    /* Gesetz „erfüllt“ nur für die eigenen Einteilungen (Aussage), Qualifikation und Besetzung voll; nicht bewertbar nie erfüllt. */
+    expect(kat(b, "gesetz").aussage).toBe(AUSSAGE_VORSCHLAG);
+    expect(kat(b, "besetzung").aussage).toBe(undefined);
+    expect(b.zusammenfassung.kategorien).toEqual({ erfuellt: 2, erfuelltImVorschlag: 1, verletzt: 0, offen: 0, nichtBewertbar: 4 });
   });
 
-  it("erfüllt (Muss/Soll mit Vorgabe) gegen verletzt (Soll-Befund) und nicht bewertbar (Soll ungeprüft)", () => {
-    const m = { ...G11.m, vorgaben: [{ id: "v-muss", status: "aktiv", staerke: "muss", regelart: "mindestFrei" }, { id: "v-soll", status: "aktiv", staerke: "soll", regelart: "mindestFrei" }] };
-    const gr = erfuellungsbericht(m, G11.r);
-    expect(kat(gr, "muss")).toMatchObject({ status: "erfuellt", vorgaben: 1, verletzt: 0 });
-    expect(kat(gr, "soll")).toMatchObject({ status: "erfuellt", vorgaben: 1 });
-    const rot = erfuellungsbericht(m, { ...G11.r, rang: { ...G11.r.rang, soll: 2 } });
-    expect(kat(rot, "soll")).toMatchObject({ status: "verletzt", verletzt: 2 });
-    const nb = erfuellungsbericht(m, { ...G11.r, rang: { ...G11.r.rang, soll: null } });
-    expect(kat(nb, "soll")).toMatchObject({ status: "nicht-bewertbar", grund: "vorgaben_nicht_vollstaendig_geprueft" });
-    /* Eine inaktive Vorgabe zählt nicht. */
-    const inaktiv = erfuellungsbericht({ ...G11.m, vorgaben: [{ id: "v-x", status: "entwurf", staerke: "muss", regelart: "mindestFrei" }] }, G11.r);
+  it("Muss/Soll mit Vorgaben schon im Planerlauf: erfüllt (im Vorschlag), Soll verletzt, Soll ungeprüft nicht bewertbar, inaktiv zählt nicht", () => {
+    const gr = erfuellungsbericht(GV.m, GV.r);
+    expect(gr.ok).toBe(true);
+    expect(kat(gr, "muss")).toMatchObject({ status: "erfuellt", aussage: AUSSAGE_VORSCHLAG, vorgaben: 1, verletzt: 0 });
+    expect(kat(gr, "soll")).toMatchObject({ status: "erfuellt", aussage: AUSSAGE_VORSCHLAG, vorgaben: 1 });
+    expect(gr.zusammenfassung.kategorien).toMatchObject({ erfuellt: 3, erfuelltImVorschlag: 3 });
+    /* Soll „höchstens 0 Spätdienste in 7 Tagen“: der Planer teilt trotzdem ein (Soll hindert nicht), Befunde gezählt. */
+    const rot = lauf(mitVorgaben([Z("v-muss", "N", "muss"), Z("v-soll", "S", "soll")]), "2026-11");
+    const br = erfuellungsbericht(rot.m, rot.r);
+    expect(rot.r.rang.soll).toBeGreaterThan(0);
+    expect(kat(br, "soll")).toMatchObject({ status: "verletzt", verletzt: rot.r.rang.soll });
+    expect(br.erstesProblem).toEqual({ kategorie: "soll", status: "verletzt" });
+    /* Soll über ein Kalenderjahr ist ohne Aggregate nicht prüfbar: nicht bewertbar, nie erfüllt. */
+    const jahr = lauf(mitVorgaben([Z("v-muss", "N", "muss"), Z("v-soll", "N", "soll", { art: "kalenderjahr" }, 400)]), "2026-11");
+    expect(jahr.r.rang.soll).toBe(null);
+    expect(kat(erfuellungsbericht(jahr.m, jahr.r), "soll")).toMatchObject({ status: "nicht-bewertbar", grund: "vorgaben_nicht_vollstaendig_geprueft" });
+    /* Eine inaktive Vorgabe zählt nicht (und prüft nichts). */
+    const inaktiv = erfuellungsbericht({ ...G11.m, vorgaben: [{ ...Z("v-x", "F", "muss"), status: "entwurf" }] }, G11.r);
     expect(kat(inaktiv, "muss").status).toBe("nicht-bewertbar");
   });
 
-  it("verletzt: ein Gesetzesbefund in der Nachprüfung macht Gesetz rot", () => {
-    const b = erfuellungsbericht(G11.m, { ...G11.r, rang: { ...G11.r.rang, gesetz: 1 } });
-    expect(kat(b, "gesetz")).toMatchObject({ status: "verletzt", verletzt: 1 });
-    expect(b.massgeblich).toEqual({ kategorie: "gesetz", status: "verletzt" });
+  it("Rang neu gerechnet: manipulierter Rang oder eine nach dem Planen ergänzte, verletzte Vorgabe ⇒ kein Bericht; ergänzte, eingehaltene Vorgabe ist jetzt geprüft", () => {
+    const { m, r } = G11;
+    expect(erfuellungsbericht(m, { ...r, rang: { ...r.rang, gesetz: 1 } })).toEqual({ ok: false, grund: "ergebnis_passt_nicht", pruefung: "nachpruefung" });
+    expect(erfuellungsbericht(m, { ...r, rang: { ...r.rang, muss: 1 } }).pruefung).toBe("nachpruefung");
+    expect(erfuellungsbericht(m, { ...r, rang: { ...r.rang, soll: 2 } }).pruefung).toBe("nachpruefung");
+    /* Muss „höchstens 0 Frühdienste in 7 Tagen“ nach dem Planen: die eigenen Frühdienste verletzen sie ⇒ nicht „erfüllt“, sondern kein Bericht. */
+    expect(erfuellungsbericht({ ...m, vorgaben: [Z("v-neu", "F", "muss")] }, r)).toMatchObject({ ok: false, grund: "ergebnis_passt_nicht", pruefung: "nachpruefung" });
+    /* Muss ohne Nachtdienste nach dem Planen: im Bericht neu geprüft, eingehalten. */
+    const ok = erfuellungsbericht({ ...m, vorgaben: [Z("v-neu", "N", "muss")] }, r);
+    expect(kat(ok, "muss")).toMatchObject({ status: "erfuellt", vorgaben: 1 });
   });
 
   it("offen (Besetzung, echter Planer): mehr Bedarf als Personen ⇒ offene Stellen mit Ursache, Zählwerte von N", () => {
@@ -190,6 +225,7 @@ describe("E2: je Status ein Fall", () => {
     const b = erfuellungsbericht(m, r);
     expect(kat(b, "qualifikation")).toMatchObject({ status: "offen", stellen: 30, offen: 30 });
     expect(b.massgeblich.kategorie).toBe("qualifikation");
+    expect(b.erstesProblem).toEqual({ kategorie: "qualifikation", status: "offen" });
     const k = b.konflikte.find((x) => x.qualFehlt);
     expect(k.fehlendeQualifikationen).toEqual([{ qid: "qt", noetig: 1, ist: k.fehlendeQualifikationen[0].ist }]);
     expect(b.konflikte.every((x) => x.art === "qualifikation" || x.art === "besetzung_und_qualifikation")).toBe(true);
@@ -206,65 +242,78 @@ describe("E2: je Status ein Fall", () => {
     expect(bes).toMatchObject({ status: "nicht-bewertbar", grund: "bedarf_nicht_festgelegt" });
   });
 
-  it("Verteilung: verletzt, erfüllt, nicht bewertbar — die schlechteste Vorgabe zählt; ungeprüft nie erfüllt; keine Werte je Person", () => {
-    const regel = (id, status, extra = {}) => ({ vorgabeId: id, regelId: `r-${id}`, staerke: "soll", groesse: "nachtdienste", maxAbweichung: 1, status, spannweite: 0, ueberschreitung: 0,
-      personen: [{ personId: "tp-1000", nachtdienste: 2, wert: 2, abweichung: 0 }, { personId: "tp-1001", nachtdienste: 2, wert: 2, abweichung: 0 }], nichtBewertbar: [], ausserhalb: [], ...extra });
-    const mit = (v) => erfuellungsbericht(G11.m, { ...G11.r, verteilung: v });
-    const gr = mit({ bewertet: true, summe: 0, regeln: [regel("v1", "erfuellt")], ausgeglichen: 0 });
+  it("Verteilung (neu gerechnet): erfüllt, verletzt, nicht bewertbar (Wunsch), die schlechteste Vorgabe zählt; keine Werte je Person", () => {
+    const gr = erfuellungsbericht(GV.m, GV.r);
     expect(kat(gr, "verteilung")).toMatchObject({ status: "erfuellt", erfuellt: 1, summeUeberschreitung: 0 });
-    expect(kat(gr, "verteilung").vorgaben[0]).toMatchObject({ vorgabeId: "v1", personen: 2, nichtBewertbar: 0, ausserhalb: 0 });
-    const rot = mit({ bewertet: true, summe: 2, regeln: [regel("v1", "erfuellt"), regel("v2", "verletzt", { spannweite: 3, ueberschreitung: 2 })] });
-    expect(kat(rot, "verteilung")).toMatchObject({ status: "verletzt", verletzt: 1, erfuellt: 1, summeUeberschreitung: 2 });
-    const gemischt = mit({ bewertet: false, summe: null, regeln: [regel("v1", "erfuellt"), regel("v3", "nicht_bewertet", { grund: "aufwand", personen: [] })] });
-    expect(kat(gemischt, "verteilung")).toMatchObject({ status: "nicht-bewertbar", nichtBewertbar: 1, summeUeberschreitung: null });
-    expect(kat(gemischt, "verteilung").vorgaben.find((x) => x.vorgabeId === "v3")).toMatchObject({ status: "nicht-bewertbar", grund: "aufwand" });
-    /* Alle Vorgaben erfüllt, der Planer hat die Verteilung aber nicht vollständig bewertet: nicht bewertbar. */
-    const ungeprueft = mit({ bewertet: false, summe: null, regeln: [regel("v1", "erfuellt")] });
-    expect(kat(ungeprueft, "verteilung").status).toBe("nicht-bewertbar");
-    /* Baukasten „offen“ und „nicht anwendbar“ sind nicht bewertbar (nicht „offen“ im Sinn einer offenen Stelle). */
-    const offen = mit({ bewertet: false, summe: null, regeln: [regel("v4", "offen", { grund: "personen_nicht_bewertbar" }), regel("v5", "nicht_anwendbar", { grund: "weniger_als_zwei" })] });
-    expect(kat(offen, "verteilung").vorgaben.map((x) => x.status)).toEqual(["nicht-bewertbar", "nicht-bewertbar"]);
-    for (const b of [gr, rot, gemischt, offen]) ohnePersonenbezug(b, G11.m);
+    expect(kat(gr, "verteilung").vorgaben[0]).toMatchObject({ vorgabeId: "vt-1", status: "erfuellt", personen: 6, spannweite: 0, nichtBewertbar: 0, ausserhalb: 0 });
+    const rotL = lauf(mitVorgaben([VT()], ungleich(gruen)), "2026-11");
+    const rot = erfuellungsbericht(rotL.m, rotL.r);
+    expect(kat(rot, "verteilung")).toMatchObject({ status: "verletzt", verletzt: 1, summeUeberschreitung: 2 });
+    expect(kat(rot, "verteilung").vorgaben[0]).toMatchObject({ spannweite: 3, ueberschreitung: 2, personen: 6 });
+    const wunschL = lauf(mitVorgaben([VT({ staerke: "wunsch" })]), "2026-11");
+    expect(kat(erfuellungsbericht(wunschL.m, wunschL.r), "verteilung")).toMatchObject({ status: "nicht-bewertbar", nichtBewertbar: 1 });
+    /* Gemischt: eine erfüllte und eine nicht bewertbare Vorgabe ⇒ nicht bewertbar (die schlechteste zählt). */
+    const gemL = lauf(mitVorgaben([VT(), VT({ id: "vt-2", staerke: "wunsch" })]), "2026-11");
+    const gem = erfuellungsbericht(gemL.m, gemL.r);
+    expect(kat(gem, "verteilung")).toMatchObject({ status: "nicht-bewertbar", erfuellt: 1, nichtBewertbar: 1 });
+    for (const b of [gr, rot, gem]) ohnePersonenbezug(b, GV.m);
+  });
+
+  it("Verteilung: kleine Gruppe (unter VERTEILUNG_MINDESTGRUPPE) ohne Spannweite und Summe", () => {
+    expect(VERTEILUNG_MINDESTGRUPPE).toBe(3);
+    const { m, r } = lauf(mitVorgaben([VT()], () => { const x = gruen(); x.personen = x.personen.slice(0, 2); return x; }), "2026-11");
+    const v = kat(erfuellungsbericht(m, r), "verteilung");
+    expect(v.vorgaben[0]).toMatchObject({ personen: 2, spannweite: null, ueberschreitung: null, kleineGruppe: true });
+    expect(v.summeUeberschreitung).toBe(null);
+  });
+
+  it("Verteilung des Ergebnisses passt nicht zur Nachrechnung ⇒ kein Bericht", () => {
+    const { m, r } = GV;
+    expect(erfuellungsbericht(m, { ...r, verteilung: { ...r.verteilung, summe: 5 } })).toMatchObject({ grund: "ergebnis_passt_nicht", pruefung: "verteilung" });
+    expect(erfuellungsbericht(m, { ...r, verteilung: null }).pruefung).toBe("verteilung");
+    expect(erfuellungsbericht(G11.m, { ...G11.r, verteilung: r.verteilung }).pruefung).toBe("verteilung");
   });
 });
 
 describe("E3: Rangfolge Gesetz > Qualifikation > Besetzung > Muss > Soll > Verteilung > Wunsch", () => {
-  it("maßgeblich ist die ranghöchste nicht erfüllte Kategorie — gleich, was dahinter steht", () => {
-    const { m, r } = G11;
-    const mv = { ...m, vorgaben: [{ id: "v-muss", status: "aktiv", staerke: "muss", regelart: "mindestFrei" }, { id: "v-soll", status: "aktiv", staerke: "soll", regelart: "mindestFrei" }] };
-    const vt = (status) => ({ bewertet: status !== "nicht_bewertet", summe: status === "verletzt" ? 1 : 0, regeln: [{ vorgabeId: "v-vt", staerke: "soll", groesse: "nachtdienste", maxAbweichung: 1, status,
-      spannweite: 0, ueberschreitung: status === "verletzt" ? 1 : 0, personen: [], nichtBewertbar: [], ausserhalb: [] }] });
-    const tag = r.gesetzt.find((g) => g.dienstId === "F").datum;
+  it("maßgeblich ist die ranghöchste nicht erfüllte Kategorie; erstes Problem die ranghöchste verletzte oder offene", () => {
+    const { m, r } = GV;
+    const tagF = r.gesetzt.find((g) => g.dienstId === "F").datum;
     const tagS = r.gesetzt.find((g) => g.dienstId === "S").datum;
-    /* Stufen schrittweise verschlechtern: von hinten nach vorn; jedes Mal wird die neue Stufe maßgeblich. */
+    const ohneMuss = lauf(mitVorgaben([Z("v-soll", "N", "soll"), VT()], ungleich(gruen)), "2026-11");
+    const sollRot = lauf(mitVorgaben([Z("v-muss", "N", "muss"), Z("v-soll", "S", "soll"), VT()], ungleich(gruen)), "2026-11");
+    const vtRot = lauf(mitVorgaben([Z("v-muss", "N", "muss"), Z("v-soll", "N", "soll"), VT()], ungleich(gruen)), "2026-11");
+    const leer = lauf(() => betrieb(3), "2026-11");
     const faelle = [
-      { erwartet: "wunsch", e: { ...r, verteilung: vt("erfuellt") } },
-      { erwartet: "verteilung", e: { ...r, verteilung: vt("verletzt") } },
-      { erwartet: "soll", e: { ...r, verteilung: vt("verletzt"), rang: { ...r.rang, soll: 1 } } },
-      { erwartet: "muss", e: { ...r, verteilung: vt("verletzt"), rang: { ...r.rang, soll: 1, muss: 1 } } },
-      { erwartet: "besetzung", e: { ...stelleOeffnen(m, r, tagS, "S"), verteilung: vt("verletzt"), rang: { ...r.rang, soll: 1, muss: 1 } } },
-      { erwartet: "qualifikation", e: { ...stelleOeffnen(m, stelleOeffnen(m, r, tagS, "S"), tag, "F"), verteilung: vt("verletzt"), rang: { ...r.rang, soll: 1, muss: 1 } } },
-      { erwartet: "gesetz", e: { ...stelleOeffnen(m, stelleOeffnen(m, r, tagS, "S"), tag, "F"), verteilung: vt("verletzt"), rang: { ...r.rang, soll: 1, muss: 1, gesetz: 1 } } },
+      { erwartet: ["wunsch", "nicht-bewertbar"], problem: null, b: erfuellungsbericht(m, r) },
+      { erwartet: ["verteilung", "verletzt"], problem: "verteilung", b: erfuellungsbericht(vtRot.m, vtRot.r) },
+      { erwartet: ["soll", "verletzt"], problem: "soll", b: erfuellungsbericht(sollRot.m, sollRot.r) },
+      /* Muss nicht bewertbar (keine Vorgabe) ist maßgeblich; das erste Problem ist die verletzte Verteilung dahinter. */
+      { erwartet: ["muss", "nicht-bewertbar"], problem: "verteilung", b: erfuellungsbericht(ohneMuss.m, ohneMuss.r) },
+      { erwartet: ["besetzung", "offen"], problem: "besetzung", b: erfuellungsbericht(m, stelleOeffnen(m, r, tagS, "S")) },
+      { erwartet: ["qualifikation", "offen"], problem: "qualifikation", b: erfuellungsbericht(m, stelleOeffnen(m, stelleOeffnen(m, r, tagS, "S"), tagF, "F")) },
+      { erwartet: ["gesetz", "nicht-bewertbar"], problem: null, b: erfuellungsbericht(leer.m, leer.r) },
     ];
     for (const f of faelle) {
-      const b = erfuellungsbericht(mv, f.e);
-      expect(b.ok, f.erwartet).toBe(true);
-      expect(b.massgeblich.kategorie, f.erwartet).toBe(f.erwartet);
+      const b = f.b;
+      expect(b.ok, f.erwartet[0]).toBe(true);
+      expect(b.massgeblich, f.erwartet[0]).toEqual({ kategorie: f.erwartet[0], status: f.erwartet[1] });
+      expect(b.erstesProblem ? b.erstesProblem.kategorie : null, f.erwartet[0]).toBe(f.problem);
       /* Alles vor der maßgeblichen Kategorie ist erfüllt. */
-      const i = BERICHT_RANGFOLGE.indexOf(f.erwartet);
-      expect(b.kategorien.slice(0, i).every((k) => k.status === "erfuellt"), f.erwartet).toBe(true);
+      const i = BERICHT_RANGFOLGE.indexOf(f.erwartet[0]);
+      expect(b.kategorien.slice(0, i).every((k) => k.status === "erfuellt"), f.erwartet[0]).toBe(true);
       expect(b.kategorien.map((k) => k.kategorie)).toEqual([...BERICHT_RANGFOLGE]);
       expect(b.kategorien.map((k) => k.rang)).toEqual([0, 1, 2, 3, 4, 5, 6]);
     }
   });
 
   it("Verteilung nur nachgelagert: eine verletzte Verteilung überdeckt keine offene Besetzung", () => {
-    const { m, r } = G11;
+    const { m, r } = lauf(mitVorgaben([VT()], ungleich(gruen)), "2026-11");
     const tagS = r.gesetzt.find((g) => g.dienstId === "S").datum;
-    const e = { ...stelleOeffnen(m, r, tagS, "S"), verteilung: { bewertet: true, summe: 3, regeln: [{ vorgabeId: "v", status: "verletzt", ueberschreitung: 3, personen: [], nichtBewertbar: [], ausserhalb: [] }] } };
-    const b = erfuellungsbericht(m, e);
+    const b = erfuellungsbericht(m, stelleOeffnen(m, r, tagS, "S"));
     expect(kat(b, "verteilung")).toMatchObject({ status: "verletzt", nachgelagert: true });
     expect(b.massgeblich).toEqual({ kategorie: "besetzung", status: "offen" });
+    expect(b.erstesProblem).toEqual({ kategorie: "besetzung", status: "offen" });
   });
 });
 
@@ -360,10 +409,44 @@ describe("E5: fail closed", () => {
     expect(erfuellungsbericht(m, { ...r, gesetzt: [...r.gesetzt, { personId: "tp-1000", datum: "2026-12-01", dienstId: "F" }] }).grund).toBe("ergebnis_passt_nicht");
     /* Eigene Einteilung nennt einen anderen Dienst als der Stand (Besetzung unverändert): passt nicht. */
     const vertauscht = kopie(r); vertauscht.gesetzt[0].dienstId = vertauscht.gesetzt[0].dienstId === "F" ? "S" : "F";
-    expect(erfuellungsbericht(m, vertauscht).grund).toBe("ergebnis_passt_nicht");
+    expect(erfuellungsbericht(m, vertauscht)).toEqual({ ok: false, grund: "ergebnis_passt_nicht", pruefung: "einteilung" });
     /* Bericht zu einem anderen Bestand (Bedarf geändert): passt nicht. */
     const anders = kopie(m); anders.dienstarten[1].mindest = TAEGLICH(2);
     expect(erfuellungsbericht(anders, r).grund).toBe("ergebnis_passt_nicht");
+  });
+  it("Abgleich Bestand ↔ Vorschlag: zusätzliche Einteilung ohne gesetzt, gelöschter oder geänderter Bestandseintrag, Dublette, unbekannte Person/Dienst, unveränderter Eintrag ⇒ kein Bericht", () => {
+    const { m, r } = G11;
+    const frei = (e) => m.personen.map((p) => p.id).flatMap((pid) => ["2026-11-05", "2026-11-06", "2026-11-07"].map((d) => `${pid}|${d}`)).find((k) => !Object.prototype.hasOwnProperty.call(e.abweichungen, k));
+    /* Zusätzliche Einteilung im Stand, nicht in gesetzt (Besetzung nur überdeckt, offen bleibt passend). */
+    const extra = kopie(r); extra.abweichungen[frei(extra)] = "F";
+    expect(erfuellungsbericht(m, extra)).toEqual({ ok: false, grund: "ergebnis_passt_nicht", pruefung: "abweichungen" });
+    /* Gelöschter bzw. geänderter Bestandseintrag (im Bestand „frei“, im Vorschlag fehlt er oder steht anders). */
+    const kFrei = frei(r);
+    const mitFrei = { ...m, abweichungen: { ...m.abweichungen, [kFrei]: "-" } };
+    expect(erfuellungsbericht(mitFrei, r)).toEqual({ ok: false, grund: "ergebnis_passt_nicht", pruefung: "abweichungen" });
+    expect(erfuellungsbericht(mitFrei, { ...r, abweichungen: { ...r.abweichungen, [kFrei]: "S" } }).pruefung).toBe("abweichungen");
+    expect(erfuellungsbericht(mitFrei, { ...r, abweichungen: { ...r.abweichungen, [kFrei]: "-" } }).ok, "Bestand unverändert übernommen").toBe(true);
+    /* Doppelte Einteilung in gesetzt. */
+    expect(erfuellungsbericht(m, { ...r, gesetzt: [...r.gesetzt, r.gesetzt[0]] })).toEqual({ ok: false, grund: "ergebnis_passt_nicht", pruefung: "einteilung" });
+    /* Unbekannte Person bzw. unbekannter Dienst. */
+    const kX = "tp-fremd|2026-11-05";
+    expect(erfuellungsbericht(m, { ...r, gesetzt: [...r.gesetzt, { personId: "tp-fremd", datum: "2026-11-05", dienstId: "F" }], abweichungen: { ...r.abweichungen, [kX]: "F" } }).pruefung).toBe("einteilung");
+    const g0 = r.gesetzt[0], k0 = `${g0.personId}|${g0.datum}`;
+    expect(erfuellungsbericht(m, { ...r, gesetzt: [{ ...g0, dienstId: "XX" }, ...r.gesetzt.slice(1)], abweichungen: { ...r.abweichungen, [k0]: "XX" } }).pruefung).toBe("einteilung");
+    /* Eine „eigene“ Einteilung, die schon so im Bestand stand, ist keine. */
+    expect(erfuellungsbericht({ ...m, abweichungen: { ...m.abweichungen, [k0]: g0.dienstId } }, r).pruefung).toBe("einteilung");
+  });
+  it("Kennungen der offenen Stellen: Freitext oder Namen in Ursache, Grund oder Regeln ⇒ kein Bericht", () => {
+    const { m, r } = G11;
+    const tagS = r.gesetzt.find((g) => g.dienstId === "S").datum;
+    const e = stelleOeffnen(m, r, tagS, "S");
+    const mit = (x) => erfuellungsbericht(m, { ...e, offen: [{ ...e.offen[0], ...x }] });
+    expect(mit({}).ok).toBe(true);
+    expect(mit({ ursache: "Frau Zylinderkopf ist krank" })).toEqual({ ok: false, grund: "ergebnis_passt_nicht", pruefung: "kennung" });
+    expect(mit({ regeln: ["Herr Wasserwaage"] }).pruefung).toBe("kennung");
+    expect(mit({ regeln: ["abwesend", 7] }).pruefung).toBe("kennung");
+    expect(mit({ grund: "weil Zylinderkopf fehlt" }).pruefung).toBe("kennung");
+    expect(mit({ ursache: undefined, grund: "aufwand" }).ok).toBe(true);
   });
   it("ungültige Eingaben und Fehler: Fehlerobjekt, nie eine Ausnahme", () => {
     const { m, r } = G11;
@@ -462,6 +545,9 @@ describe("E7: rein, Kalender, Grenzen", () => {
     const m3 = betrieb(1);
     m3.personen = Array.from({ length: Math.floor(BERICHT_GRENZE.personenTage / 30) }, (_, i) => ({ ...p0, id: `tp-h${i}` }));
     expect(erfuellungsbericht(m3, e).ok).toBe(true);
+    /* Nachprüfung der eigenen Einteilungen über der Grenze (Reserve-Rechnung des Planers): vorab kein Bericht, nichts gerechnet. */
+    const viele = Array.from({ length: 100 }, (_, i) => ({ personId: `tp-h${i}`, datum: "2026-11-02", dienstId: "F" }));
+    expect(erfuellungsbericht(m3, { ...e, gesetzt: viele })).toEqual({ ok: false, grund: "aufwand" });
   });
 
   it("Quelltext: nur relative Importe, kein node:, kein src/, keine Uhr, kein Zufall, keine Ablage", () => {

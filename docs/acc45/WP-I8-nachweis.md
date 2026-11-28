@@ -91,8 +91,8 @@ Akzeptanz (INTELLIGENCE-ENTWICKLUNGSPLAN.md, Block K, I8): „Bericht nennt nur 
 
 1. **„Nicht bewertbar“ ist nie „erfüllt“, auch nicht im leeren Fall.** Erfüllt heißt: mindestens ein Punkt geprüft, keiner verletzt oder offen. Ohne eigene Einteilung (`keine_einteilung_im_vorschlag`), ohne aktive Vorgabe (`keine_vorgabe`), ohne Bedarf (`keine_anforderung`) oder mit nicht festgelegtem Bedarf (`bedarf_nicht_festgelegt`) steht „nicht-bewertbar“ mit Grund. Ein leerer Plan hat damit keine erfüllte Kategorie. Soll ungeprüft (`rang.soll === null`) ist nicht bewertbar; die Verteilung ebenso, solange der Planer sie nicht vollständig bewertet hat (`bewertet !== true`).
 2. **Schwere je Kategorie:** verletzt > offen > nicht-bewertbar > erfüllt (die schlechteste Vorgabe zählt). Eine verletzte Verteilungsvorgabe bleibt verletzt, auch wenn einzelne Personen nicht bewertbar sind (die Spannweite der bekannten Werte kann mit weiteren Personen nur wachsen); der Rang des Planers bleibt davon unberührt. Baukasten „offen“ und „nicht anwendbar“ heißen im Bericht „nicht-bewertbar“ („offen“ ist hier die offene Stelle).
-3. **Umfang Gesetz/Muss/Soll = Vorschlag.** Die Zählung kommt aus der Nachprüfung des Planers und betrifft seine eigenen Einteilungen; der Bestand wird nicht neu begutachtet (`bestandGeprueft: false`). Das Gutachten über den eigenen Plan (Verbessern-Modus, WP-I9 / F18) ist nicht Teil dieser Stufe.
-4. **Fail closed gegen ein fremdes Ergebnis.** Der Bericht rechnet die Besetzung des fertigen Stands (Bestand + Abweichungen des Vorschlags) selbst nach: Jede eigene Einteilung muss im Stand stehen und im Monat liegen, die offenen Stellen müssen genau der Nachrechnung entsprechen (Menge, `fehlt`, `qualFehlt`, keine Doppelten). Sonst `ergebnis_passt_nicht`, kein geschönter Bericht. Der Rangvektor wird auf Form geprüft (Zahl ≥ 0 oder null), nicht neu gerechnet (siehe Risiken).
+3. **Umfang Gesetz/Muss/Soll = Vorschlag.** Die Zählung kommt aus der Nachprüfung der eigenen Einteilungen (seit der Nachbesserung #617 im Bericht neu gerechnet, siehe unten); der Bestand wird nicht neu begutachtet (`bestandGeprueft: false`). Das Gutachten über den eigenen Plan (Verbessern-Modus, WP-I9 / F18) ist nicht Teil dieser Stufe.
+4. **Fail closed gegen ein fremdes Ergebnis.** Der Bericht rechnet die Besetzung des fertigen Stands (Bestand + Abweichungen des Vorschlags) selbst nach: Jede eigene Einteilung muss im Stand stehen und im Monat liegen, die offenen Stellen müssen genau der Nachrechnung entsprechen (Menge, `fehlt`, `qualFehlt`, keine Doppelten). Sonst `ergebnis_passt_nicht`, kein geschönter Bericht. Seit der Nachbesserung #617 zusätzlich: Abgleich aller Abweichungen mit dem Bestand, Nachprüfung und Verteilung neu gerechnet (siehe unten).
 5. **Wege aus einer Nachrechnung, nie erfunden.** Der Planer gibt je Stelle nur Ursache und kleinste Regelmenge zurück. Für Ursache „hindernisse“ rechnet der Bericht `lueckenUrsache` auf dem fertigen Stand nach (EIN Budget je Bericht, `budgetNeu()`, und ein eigenes Budget der Vorgaben; höchstens `LUECKEN_MAX` = 50 Nachrechnungen). Stimmen Ursache und kleinste Regelmenge mit dem Planer überein, stehen die Wege da; sonst (Budget, Grenze, Abweichung, Planer mit Aggregaten) `wegeStatus: "unvollstaendig"`, gezählt. Andere Ursachen (direktMoeglich, keinPersonal, qualifikationFehlt, unvollstaendig, Grund) haben keine Wege (`keine`).
 6. **Datenschutz.** Nur Kennungen von Tag, Dienst, Qualifikation, Regel und Vorgabe sowie Zahlen; keine Personenkennung, kein Name, kein „Person|Tag“, kein Befundtext, kein Abwesenheitsgrund, keine Werte je Person, keine Prozent oder Punkte (Schlüssel-Positivliste im Test). Die Verteilung nennt nur Gruppenzahlen.
 7. **Aufwand vorab.** Höchstens 200 000 Personentage des Monats (Besetzung nachrechnen), 20 000 Stellen (Tag × Dienst), 500 gelistete Konflikte (weitere gezählt, `abgeschnitten`); darüber `aufwand`, nie ein halber Bericht. Die Wege-Nachrechnung ist durch das Budget von `luckenursache.mjs` (400 Personenprüfungen) begrenzt.
@@ -100,7 +100,7 @@ Akzeptanz (INTELLIGENCE-ENTWICKLUNGSPLAN.md, Block K, I8): „Bericht nennt nur 
 
 ### Tests
 
-`pruefungen/intelligence-erfuellungsbericht.test.js` (27 Tests, Präfix `intelligence-` ⇒ in `pruefung:intelligence`):
+`pruefungen/intelligence-erfuellungsbericht.test.js` (27 Tests im ersten Stand, 31 nach der Nachbesserung #617; Präfix `intelligence-` ⇒ in `pruefung:intelligence`):
 
 - E1 Grün (echter Planer, sechs Personen, Früh- und Spätdienst täglich): Gesetz, Qualifikation, Besetzung erfüllt, 60 von 60 Stellen.
 - E2 je Status ein Rot-/Grün-Fall: verletzt (Gesetz, Soll, Verteilung), offen (Besetzung und Qualifikation mit Ursache, echter Planer), nicht bewertbar (keine Vorgabe, inaktive Vorgabe, Soll ungeprüft, Bedarf nicht festgelegt, Wunsch, Verteilung ungeprüft, Baukasten offen / nicht anwendbar).
@@ -146,7 +146,7 @@ Anschluss später (ohne Budget-Erhöhung): `planeVorschlag` je Variante mit `auf
 ### Verdrahtung (späterer Schritt) und offene Fragen
 
 - **Wo:** In `server/lib/planer-aktion.mjs` direkt nach `planeVorschlag` bzw. `planerEinstieg` mit demselben Bestand `m` (vor dem Planer) und dem Ergebnis im selben Aufruf: `erfuellungsbericht(m, ergebnis)` und das Ergebnis als Feld `bericht` der Antwort. Anzeige in `src/ansichten/planer-vorschlag.jsx` (Zählwerte je Kategorie in der Rangfolge, Konflikte mit Wo/Warum/Wege). Beides nicht in dieser Stufe (dort arbeitet parallel ein anderer Schreiber).
-- **Gespeicherte Vorschläge:** Wird ein Vorschlag abgelegt und später berichtet (Übernahme, WP-I9), muss der Rangvektor neu nachgeprüft werden (`nachpruefen` aus `planer.mjs`); der Bericht prüft heute nur Besetzung und eigene Einteilungen gegen den Bestand, den Rang übernimmt er.
+- **Gespeicherte Vorschläge:** Der Bericht rechnet Nachprüfung, Besetzung und Verteilung mit dem übergebenen (heutigen) Bestand neu; ein später berichteter Vorschlag (Übernahme, WP-I9) ergibt bei geändertem Bestand `ergebnis_passt_nicht` statt eines veralteten „erfüllt“. Die Ursachen (Warum) der offenen Stellen übernimmt er dagegen (siehe C7).
 - **Rechte:** Wer den Bericht sehen darf, folgt der Rechtematrix des Planers (Leitung/Planung). Offen: Sicht der Schichtverantwortung (nur eigener Bereich: Bericht je Einheit filtern?) und des Betriebsrats (nur Zahlen ohne Personen: der Bericht erfüllt das bereits; Freigabe der Sicht ist eine Rechteentscheidung, keine Code-Frage).
 - **Datenschutz:** Wege nennen Personenzahlen je Regelmenge. Bei kleinen Teams (eine Person, Regel „abwesend“ oder eine Schutzregel wie `nachtNichtZulaessig`) kann eine Zahl auf eine Person deuten. Für die Sicht des Betriebsrats und der Schichtverantwortung ist zu entscheiden, ob Zahlen unter einer Mindestgröße (z. B. < 3) zusammengefasst werden.
 - **Bestand:** Gesetz/Muss/Soll betreffen nur die eigenen Einteilungen. Ein Bericht über den ganzen Plan (Bestand eingeschlossen) gehört zum Plan-Gutachten (F18, WP-I9 / I34).
@@ -154,7 +154,54 @@ Anschluss später (ohne Budget-Erhöhung): `planeVorschlag` je Variante mit `auf
 
 ### Risiken für den Review
 
-1. Rangvektor wird nicht neu gerechnet (Entscheidung 4): ein manipuliertes `rang` mit passender Besetzung ergibt einen falschen Gesetz/Muss/Soll-Status. Heute nur im selben Aufruf nach `planeVorschlag` gedacht.
+1. (behoben in #617, B2) Rangvektor wird neu gerechnet; verbleibend: Soll — hat der Planer `null` (Budget der Vorgaben im Lauf mit der ersten Nachprüfung geteilt) und der Bericht eine Zahl, gilt die Zahl des Berichts.
 2. Wege-Nachrechnung nutzt ein frisches Vorgaben-Budget ohne Aggregate; lief der Planer mit `aggregate: true`, weichen Ursachen eher ab (dann „unvollstaendig“, nie falsch).
 3. Qualifikationsstellen ohne Personenbedarf (Bedarf 0, `mindestQual` gesetzt) zählen unter Qualifikation, nicht unter Besetzung (wie `besetzung().qualFehlt`).
-4. Laufzeit: die Besetzung des fertigen Stands wird kalt nachgerechnet (eigenes Objekt, kein geteilter Zwischenspeicher mit dem Planer); bei 6 666 Personen × 30 Tagen im Test unter der Grenze gemessen, nicht im Pilot.
+4. Laufzeit (C6 korrigiert): Der Bericht kostet zusätzlich zum Planerlauf etwa einen Besetzungsdurchlauf des Monats (kalt, eigenes Objekt), eine Nachprüfung aller eigenen Einteilungen (wie eine der Nachprüfungen des Planers), die Vorbereitung und Bewertung der Verteilung und bis zu 50 Ursachen-Nachrechnungen. Eine Zeitmessung gibt es nicht. Der Test mit 6 666 Personen × 30 Tagen prüft nur die Aufwandsgrenze auf dem billigen Pfad (kein Bedarf, keine Konflikte, keine Einteilung); im synthetischen Grünfall (6 Personen, 60 Einteilungen) lag der Bericht im Entwicklungslauf bei etwa 0,1–0,3 s neben 0,3–0,5 s für den Planer (Beobachtung, keine Messung).
+
+## Nachbesserung nach Opus-Review #617 (neuer Commit)
+
+Review auf c76def69: keine Freigabe, kein A-Befund, zwei B. Gleicher Branch, gleiche Regeln; `planer.mjs`, `luckenursache.mjs`, `planer-aktion.mjs` und die Oberfläche unverändert; `PLANER_AN`/`PLANER_AGGREGATE_AN` AUS; Budget 40 Mio und 372-Tage-Grenze unverändert (im Test geprüft).
+
+| Befund | Lösung | Test (rot → grün) | Mutation |
+|---|---|---|---|
+| **B1** Abgleich lückenhaft: zusätzliche, gelöschte oder geänderte Bestandseinträge in `e.abweichungen` blieben unbemerkt; Dubletten in `gesetzt`; unbekannte Person/Dienst | Abgleich über die Schlüssel von Bestand UND Vorschlag (O(\|Abweichungen\|)): Jeder Schlüssel mit anderem Wert oder anderer Anwesenheit ist genau eine eigene Einteilung; `gesetzt` ohne Dubletten; `personId` ∈ Personen, `dienstId` ∈ Dienstarten, Datum im Monat; eine „eigene“ Einteilung, die schon so im Bestand stand, ist keine. Sonst `ergebnis_passt_nicht` (`pruefung: "abweichungen"` bzw. `"einteilung"`) | E5 „Abgleich Bestand ↔ Vorschlag“: zusätzliche Einteilung ohne `gesetzt`, gelöschter und geänderter Bestandseintrag (Gegenprobe: unverändert übernommen ⇒ Bericht), Dublette, unbekannte Person, unbekannter Dienst, unveränderter Eintrag | M17, M18, M19, M20, M21, M15 |
+| **B2** Rang nicht an `m` gebunden (nach dem Planen ergänzte Vorgabe ⇒ „erfüllt“ ohne Prüfung) | Nachprüfung im Bericht neu gerechnet: `nachpruefen(m, stand, gesetzt, neuesVorgabenBudget())` aus `./planer.mjs` mit dem übergebenen Bestand. Nicht bestanden oder andere Zahlen als `rang` (Gesetz, Muss; Soll, wenn beide Zahlen) ⇒ `ergebnis_passt_nicht` (`pruefung: "nachpruefung"`). Der Bericht nutzt nur noch die eigenen Zahlen. Ebenso die Verteilung: `verteilungVorbereiten`/`verteilungBewerten` auf dem fertigen Stand, Vergleich mit `e.verteilung` (bewertet, Summe, je Vorgabe Status und Überschreitung; `pruefung: "verteilung"`) | E2 mit Vorgaben schon im Planerlauf (Muss/Soll ohne Nachtdienste, Soll „höchstens 0 Spätdienste in 7 Tagen“ verletzt, Soll über ein Kalenderjahr nicht bewertbar, Verteilung echt erfüllt/verletzt/Wunsch/gemischt); E2 „Rang neu gerechnet“: manipulierter Rang (Gesetz, Muss, Soll) und Muss „höchstens 0 Frühdienste“ nach dem Planen ⇒ kein Bericht, eingehaltene nachträgliche Muss-Vorgabe ⇒ jetzt geprüft; E2 Verteilung des Ergebnisses verändert ⇒ kein Bericht; E3 Rangfolge nur noch mit echten Planerläufen | M22, M23, M24, M32 |
+| **C1** „erfüllt“ bei Gesetz/Muss/Soll gilt nur für die eigenen Einteilungen | Feld `aussage: "keine_befunde_in_eigenen_einteilungen"` (`AUSSAGE_VORSCHLAG`); Zusammenfassung zählt `erfuellt` (voll geprüft) und `erfuelltImVorschlag` getrennt | E1, E2 | M30 |
+| **C2** `massgeblich` verdeckt offene Stellen; toter `null`-Zweig | Neues Feld `erstesProblem` (ranghöchste Kategorie mit „verletzt“ oder „offen“, sonst `null`). `massgeblich` ist nie `null` (Wunsch ist nie bewertet; die letzte Kategorie ist der Rückfall, im Code begründet) | E1, E2, E3 (Muss nicht bewertbar maßgeblich, erstes Problem Verteilung) | M29 |
+| **C4** Freitext in Ursache/Grund/Regeln | Wertelisten `BERICHT_URSACHEN`, `BERICHT_GRUENDE`, Kennungsmuster `/^[A-Za-z0-9_.-]{1,64}$/` für Regeln (höchstens 20); sonst `ergebnis_passt_nicht` (`pruefung: "kennung"`). Verteilungskennungen (Vorgabe, Stärke, Größe, Grund) nur nach Muster, sonst `null` | E5 „Kennungen der offenen Stellen“ (Namen und Freitext) | M25, M26, M27 |
+| **C5** kleine Gruppen | `VERTEILUNG_MINDESTGRUPPE = 3`: darunter `spannweite`/`ueberschreitung` `null`, `kleineGruppe: true`, `summeUeberschreitung` `null` | E2 „kleine Gruppe“ | M28 |
+
+**Aufwand der Neurechnung (belegt, keine Grenze erhöht).** Vorab geprüft wie die Reserve des Planers: `n · (P + 1 + 2·W) + 2 · Tage · P ≤ BERICHT_GRENZE.nachpruefung` (= `PLANER_GRENZE.aufwand`, 1 Mio Personenprüfungen; n eigene Einteilungen, P Personen, W = maxFolge) und `n · planbefundAufwandHoechst ≤ BERICHT_GRENZE.planbefund` (= `PLANBEFUND_GRENZE`, 40 Mio, unverändert); Vorbereitung der Verteilung höchstens `PLANER_GRENZE.aufwand` Personentage (darüber jede Verteilungsvorgabe „nicht bewertet, aufwand“). Ein Ergebnis, das der Planer innerhalb seines Budgets erzeugt hat, liegt damit unter diesen Grenzen; die 372-Tage-Grenze der Aggregate ist nicht berührt (keine Aggregate im Bericht). Test „riesige Eingabe“: 100 Einteilungen bei 6 666 Personen ⇒ `aufwand` ohne Rechnung.
+
+**Pflichttext für die spätere Oberfläche (C1):** Bei `aussage === "keine_befunde_in_eigenen_einteilungen"` nie „erfüllt“ allein anzeigen, sondern: „Keine Gesetzesbefunde in den N vorgeschlagenen Einteilungen – Bestand nicht geprüft“ (entsprechend „Muss-Vorgaben“ / „Soll-Vorgaben“; N = `geprueft`).
+
+**Offen benannt:**
+
+- **C3** Die Zahl `vorgaben` bei Muss/Soll/Wunsch zählt aktive Vorgaben ohne Geltungsbereich und ohne Gültigkeitszeitraum im Monat; sie ist eine Information, keine Erfüllungsaussage. Erfüllung je Vorgabe über den Monat bleibt offen (Aggregate AUS).
+- **C5 (Verdrahtung)** Entscheidung für die Sicht von Betriebsrat und Schichtverantwortung: Personenzahlen in Wegen (`personen`, `deckt`) und Gruppenzahlen der Verteilung unter 3 zusammenfassen oder nicht ausgeben. Im Code umgesetzt ist nur die Spannweite der Verteilung.
+- **C7** Das „Warum“ der offenen Stellen wird nur für `hindernisse` gegen eine Nachrechnung geprüft (Wege). Für `direktMoeglich`, `keinPersonal`, `qualifikationFehlt`, `unvollstaendig` und einen Grund des Planers (`aufwand`, `verdraengung`, …) übernimmt der Bericht die Angabe des Planers ungeprüft; geprüft sind nur Werteliste und Kennungsmuster.
+- Der Planer teilt das Budget der Vorgaben zwischen seinen zwei Nachprüfungen; hat er Soll als `null` (nicht vollständig geprüft) und der Bericht eine Zahl, gilt die Zahl des Berichts. Lief der Planer mit `aggregate: true`, rechnet der Bericht ohne Aggregate nach: dann eher `ergebnis_passt_nicht` (fail closed).
+
+**Mutationen der Nachbesserung** (je einzeln, danach zurückgesetzt; Testdatei jetzt 31 Tests):
+
+| Nr. | Mutation | rot (Test) |
+|---|---|---|
+| M17 | Abgleich der Bestandsschlüssel entfernt | Abgleich Bestand ↔ Vorschlag |
+| M18 | Abgleich der Vorschlagsschlüssel entfernt | Abgleich Bestand ↔ Vorschlag |
+| M19 | Dubletten in `gesetzt` erlaubt | Abgleich Bestand ↔ Vorschlag |
+| M20 | unbekannte Person/Dienst erlaubt | Abgleich Bestand ↔ Vorschlag |
+| M21 | unveränderter Bestandseintrag als eigene Einteilung erlaubt | Abgleich Bestand ↔ Vorschlag |
+| M22 | Neurechnung entfernt (Rang des Planers übernommen) | Rang neu gerechnet |
+| M23 | Vergleich mit dem Rang entfernt | Rang neu gerechnet |
+| M24 | Vergleich der Verteilung entfernt | Verteilung passt nicht |
+| M25 | Werteliste Ursache entfernt | Kennungen der offenen Stellen |
+| M26 | Kennungsmuster Regeln entfernt | Kennungen der offenen Stellen |
+| M27 | Werteliste Grund entfernt | Kennungen der offenen Stellen |
+| M28 | Mindestgruppe entfernt | kleine Gruppe |
+| M29 | `erstesProblem` = `massgeblich` | E1, Rangfolge |
+| M30 | `aussage` entfernt | E1, E2 |
+| M31 | Aufwandsgrenze der Nachprüfung entfernt | riesige Eingabe |
+| M32 | Verteilung aus dem Ergebnis statt neu gerechnet | Verteilung passt nicht |
+
+Die Mutationen M1–M16 der ersten Runde wurden auf dem neuen Stand wiederholt: alle rot außer **M4** („Verteilung erfüllt, obwohl nicht vollständig bewertet“), die jetzt überlebt. Begründung (gleichwertige Mutation): Seit die Verteilung neu gerechnet wird, ist „alle Vorgaben erfüllt“ bei `bewertet !== true` nicht mehr erreichbar (der Planer-Kern bewertet genau dann nicht, wenn eine Vorgabe offen oder nicht bewertet ist, und die ist im Bericht schon „nicht-bewertbar“). Die Zeile bleibt als Schutz für künftige Größen. M5 wurde an den geänderten Quelltext angepasst (rot), M15 ist mit dem genaueren Test (`pruefung: "einteilung"`) rot; ohne ihn fing die neu gerechnete Nachprüfung den Fall (Ergebnis gleich, Stelle anders). Insgesamt 31 von 32 rot, 1 gleichwertig.
