@@ -1067,6 +1067,8 @@ export function moduleinstellungenSicht(e, rolle, vorgabenBetriebsrat = false) {
       .filter((x) => !istObjekt(x) || x.modul !== "vorgaben" || vorgabenBetriebsrat === true)
       /* Anheften (WP-I7 Teil 6): Planungsvorgänge, nicht für den Betriebsrat (vorläufig, wie die Karte selbst). */
       .filter((x) => !istObjekt(x) || x.modul !== "anheften")
+      /* Planvorschlag-Übernahme (WP-I7 Stufe 2): ebenso Planungsvorgänge, vorläufig nicht für den Betriebsrat (Betreiberentscheidung offen). */
+      .filter((x) => !istObjekt(x) || x.modul !== "planer")
       .map((x) => (istObjekt(x) && x.modul === "vorgaben" ? ohne(x, ["von"]) : x)));
     return aus;
   }

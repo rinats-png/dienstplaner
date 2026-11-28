@@ -1882,6 +1882,8 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
           delete neuerBetrieb.vorgaben;
           /* Anheftungen (WP-I7 Teil 6) ebenso: nur über anheftenZusammen. */
           delete neuerBetrieb.angeheftet;
+          /* Rückgängig-Daten der Planvorschlag-Übernahme (WP-I7 Stufe 2) entstehen nur in der eigenen Server-Aktion (planer-aktion.mjs). */
+          delete neuerBetrieb.planerRueckgaengig;
           /* Schichtmodelle und Zuordnungen (IMP-6 Teil 2) ebenso: nur über schichtzuordnungZusammen (Planung, Leitung). */
           delete neuerBetrieb.schichtmodelle;
           if (Array.isArray(neuerBetrieb.personen))

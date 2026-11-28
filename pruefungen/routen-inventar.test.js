@@ -66,6 +66,9 @@ export const INVENTAR = {
   "/api/krankmeldung": ["rb2-krankmeldung.test.js"],                // RB-2: melden, vorläufig (SV), endgültig (Planung/Leitung)
   "/api/selbstauskunft-entscheiden": ["rollen-failclosed.test.js", "selbstauskunft.test.js"],   // WP-15
   "/api/bereichsprotokoll-archivieren": ["modul-bereichsplan-archiv.test.js"],   // WP-19.4 E7: nur Leitung, frisch, nach Export (Prüfsumme)
+  "/api/planer-vorschlag": ["intelligence-planer-uebernahme-aktion.test.js"],     // WP-I7 Stufe 2: nur Leitung/Planung; PLANER_AN aus → planer-nicht-freigegeben
+  "/api/planer-uebernahme": ["intelligence-planer-uebernahme-aktion.test.js"],    // WP-I7 Stufe 2: Patch nur abweichungen, ein Schreiben, 409 bei Konflikt
+  "/api/planer-rueckgaengig": ["intelligence-planer-uebernahme-aktion.test.js"],  // WP-I7 Stufe 2: einmalig, nur Rechte (C-4)
   "/api/monatsabschluss": ["rollen-failclosed.test.js"],   // WP-16: abschliessen staff.edit, wiederoeffnen/lohnexport org.edit; Matrixzeile §2
   "/api/zeit-bestaetigen": ["rollen-failclosed.test.js", "zeiterfassung.test.js"],   // stempel-datenschutz: nur Kommentar (S4)
   "/api/auskunft": ["dsgvo-server.test.js"],

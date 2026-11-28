@@ -98,7 +98,7 @@ const reihe = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
  * @param {any} m Betrieb (Sicht des Aufrufers; hier wird nichts gelesen, was die Sicht nicht enthält)
  * @param {string} d Tag JJJJ-MM-TT
  * @param {string} dienstId Dienstart
- * @param {{ budget?: { rest: number } }} [opt] budget: das eine Budget des äußeren Einstiegs
+ * @param {{ budget?: { rest: number }, vorgabenBudget?: any }} [opt] budget: das eine Budget des äußeren Einstiegs
  */
 export function lueckenUrsache(m, d, dienstId, { budget = budgetNeu(), vorgabenBudget: vorgabenBudgetRoh } = {}) {
   const vorgabenBudget = vorgabenBudgetPruefen(vorgabenBudgetRoh);
@@ -151,7 +151,7 @@ export function lueckenUrsache(m, d, dienstId, { budget = budgetNeu(), vorgabenB
  * @param {any} m
  * @param {string} von JJJJ-MM-TT
  * @param {string} bis JJJJ-MM-TT (einschließlich; höchstens TAGE_MAX Tage)
- * @param {{ budget?: { rest: number }, luckenMax?: number }} [opt]
+ * @param {{ budget?: { rest: number }, luckenMax?: number, vorgabenBudget?: any }} [opt]
  */
 export function konflikteMitUrsache(m, von, bis, { budget = budgetNeu(), vorgabenBudget: vorgabenBudgetRoh, luckenMax = LUECKEN_MAX } = {}) {
   const vorgabenBudget = vorgabenBudgetPruefen(vorgabenBudgetRoh);

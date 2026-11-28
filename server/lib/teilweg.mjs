@@ -66,6 +66,8 @@ export const NUR_SERVER = Object.freeze([
   "pakete", "status", "stichtag", "laeuftAb",
   /* gehört dem Betreiber */
   "adressAenderungen",
+  /* Rückgängig-Daten der Planvorschlag-Übernahme (WP-I7 Stufe 2): nur die eigene Server-Aktion (planer-aktion.mjs) */
+  "planerRueckgaengig",
 ]);
 
 /** Kernfelder, die der Teilweg annimmt: der Positivkatalog (sicht.mjs BETRIEB) ohne Monats- und Serverfelder. */

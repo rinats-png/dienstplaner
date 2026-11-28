@@ -263,6 +263,7 @@ export function uebernahmeAnwenden(m, ym, vorschlag, auswahl, kontext) {
   try {
     if (!darfUebernehmen(kontext)) return nein("keine-berechtigung");
     if (kontext.bestaetigt !== true) return nein("bestaetigung-fehlt");
+    /** @type {any} */
     const p = uebernahmePruefen(m, ym, vorschlag, auswahl, kontext);
     if (!p.ok) return p;
     const t = zeitAus(kontext);
