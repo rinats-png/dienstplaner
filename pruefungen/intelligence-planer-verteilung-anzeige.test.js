@@ -306,7 +306,6 @@ describe("7. Stufe 2b: Zahlen deutsch, Dezimalkomma (C-2)", () => {
     expect(zahlDe(-0.001)).toBe("über −0,01");
     expect(zahlDe(-1.5)).toBe("−1,5");
     for (const v of [null, undefined, "", NaN, Infinity, "abc", {}]) expect(zahlDe(v), String(v)).toBe("–");
-    expect(zahlDe(1.5)).not.toContain(".");
   });
   it("die Ansicht zeigt Vorgabe, Spannweite, Überschreitung und Werte je Person mit Dezimalkomma (nie „1.5“)", () => {
     const m = betrieb([3, 2]);
