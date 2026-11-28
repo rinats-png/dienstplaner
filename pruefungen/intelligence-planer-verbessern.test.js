@@ -106,8 +106,8 @@ describe("V1: Grün/Rot je Grund", () => {
     expect(a.nachPersonId).not.toBe("tp-1000");
     expect(a.nachPersonId).toMatch(/^tp-100[1-4]$/);
     expect(verbessernRangVergleich(a.wirkung.nachher, a.wirkung.vorher)).toBeLessThan(0);
-    expect(a.wirkung.vorher.muss).toBe(1);
-    expect(a.wirkung.nachher.muss).toBe(0);
+    expect(a.wirkung.vorher.gesetz).toBe(1);             // 8 h Ruhe: unter 11 h = Gesetz (A2), nicht aus der Schwere „warn“
+    expect(a.wirkung.nachher.gesetz).toBe(0);
     expect(r).toMatchObject({ konflikte: 1, unveraendert: 0, mitgeloest: 0, ungeprueft: 0, angeheftet: 0 });
     expect(verbesserungAbgleich(m, "2026-12", r, { heute: "2026-12-01" })).toEqual({ ok: true });
     /* Angewandt (nur hier im Test, als Kopie): Befund weg, kein neuer. */
@@ -189,11 +189,12 @@ describe("V3: unberührt", () => {
     m.angeheftet = { kaputt: true };
     expect(lauf(m, "2026-12", "2026-12-01")).toEqual({ ok: false, grund: "anheftungen_unlesbar" });
   });
-  it("Vergangenheit: Tage vor heute nie; heute selbst ja", () => {
+  it("Vergangenheit: Tage vor heute nie; heute nie (begonnen/gestempelt möglich); morgen ja", () => {
     const m = betrieb();
     ruhezeit(m, 0, "2026-12-10");
     expect(lauf(m, "2026-12", "2026-12-11")).toMatchObject({ ok: true, aenderungen: [], konflikte: 0 });
-    expect(lauf(m, "2026-12", "2026-12-10").aenderungen).toHaveLength(1);
+    expect(lauf(m, "2026-12", "2026-12-10")).toMatchObject({ ok: true, aenderungen: [], konflikte: 0 });
+    expect(lauf(m, "2026-12", "2026-12-09").aenderungen).toHaveLength(1);
     expect(lauf(m, "2026-12", "2027-01-05")).toMatchObject({ ok: true, aenderungen: [], konflikte: 0 });
   });
   it("abgeschlossener Monat: nichts; offener Abschluss-Eintrag: rechnet", () => {
@@ -323,11 +324,29 @@ describe("V6: fail closed", () => {
       ausloeser: (e) => { e.aenderungen[0].grund = "folge"; },
       nichtBewertet: (e) => { e.nichtBewertet = ["gesetz"]; },
       falscherMonat: (e) => { e.ym = "2026-11"; },
+      startwertNegativ: (e) => { e.startwert = -1; },
+      startwertBruch: (e) => { e.startwert = 1.5; },
+      startwertFehlt: (e) => { delete e.startwert; },
+      aufwandFremd: (e) => { e.aufwand.extra = 1; },
+      aufwandTyp: (e) => { e.aufwand.verbraucht = "viel"; },
+      planbefundFremd: (e) => { e.aufwand.planbefund.name = "x"; },
+      nichtBewertetDoppelt: (e) => { e.nichtBewertet = ["wunsch", "wunsch", "ausgleichszeitraum"]; },
+      ausgleichFehlt: (e) => { e.nichtBewertet = ["wunsch"]; },
+      zaehlerTyp: (e) => { e.unveraendert = "0"; },
+      heute: (e) => { e.aenderungen[0].datum = "2026-12-01"; },
+      wirkungSchlechter: (e) => { e.aenderungen[0].wirkung.nachher = { ...e.aenderungen[0].wirkung.vorher, gesetz: 0, besetzung: e.aenderungen[0].wirkung.vorher.besetzung + 1 }; },
     };
     for (const [n, f] of Object.entries(fall)) expect(mit(f).ok, n).toBe(false);
     expect(mit(fall.vorwert)).toMatchObject({ grund: "ergebnis_passt_nicht", pruefung: "vorwert" });
     expect(mit(fall.ausloeser)).toMatchObject({ grund: "ergebnis_passt_nicht", pruefung: "ausloeser" });
     expect(mit(fall.dublette)).toMatchObject({ grund: "ergebnis_passt_nicht", pruefung: "dublette" });
+    expect(mit(fall.vonUnbekannt)).toMatchObject({ pruefung: "bestand" });
+    expect(mit(fall.kennung)).toMatchObject({ pruefung: "kennung" });
+    expect(mit(fall.grund)).toMatchObject({ pruefung: "kennung" });
+    for (const n of ["wirkungOhneVorteil", "wirkungSchlechter"]) expect(mit(fall[n]), n).toMatchObject({ pruefung: "wirkung" });
+    for (const n of ["startwertNegativ", "startwertBruch", "startwertFehlt", "aufwandFremd", "aufwandTyp", "planbefundFremd", "nichtBewertetDoppelt", "ausgleichFehlt", "zaehlerTyp"])
+      expect(mit(fall[n]), n).toMatchObject({ pruefung: "form" });
+    expect(mit(fall.heute)).toMatchObject({ pruefung: "tag" });
     /* Nachperson inzwischen belegt bzw. angeheftet. */
     const belegt = kopie(M); belegt.abweichungen[`${R.aenderungen[0].nachPersonId}|2026-12-10`] = "S";
     expect(verbesserungAbgleich(belegt, "2026-12", R, { heute: "2026-12-01" })).toMatchObject({ ok: false, pruefung: "nachwert" });
@@ -337,7 +356,7 @@ describe("V6: fail closed", () => {
     expect(verbesserungAbgleich(M, "2026-12", R, { heute: "2026-12-11" })).toMatchObject({ ok: false, pruefung: "tag" });
     /* Ersatz mit eigenem Folgebefund (S am Vortag): nachpruefen bzw. neuer Befund. */
     const folge = kopie(M); folge.abweichungen[`${R.aenderungen[0].nachPersonId}|2026-12-09`] = "S";
-    expect(verbesserungAbgleich(folge, "2026-12", R, { heute: "2026-12-01" }).ok).toBe(false);
+    expect(verbesserungAbgleich(folge, "2026-12", R, { heute: "2026-12-01" })).toMatchObject({ ok: false, pruefung: "nachpruefung" });
   });
   it("ungültige Eingaben ⇒ ok:false, nie ein Wurf", () => {
     const m = basis();
@@ -437,7 +456,7 @@ describe("V8: rein und deterministisch, Kalender", () => {
     for (const [d, ym] of [["2027-01-01", "2027-01"], ["2026-12-01", "2026-12"]]) {
       const m = betrieb();
       ruhezeit(m, 0, d);
-      const r = lauf(m, ym, d);
+      const r = lauf(m, ym, addDays(d, -1));
       expect(r.aenderungen.map((a) => [a.datum, a.grund, a.vonPersonId]), d).toEqual([[d, "ruhezeit", "tp-1000"]]);
       /* Der Vortag im Vormonat bleibt unberührt (nur Tage des Monats ab heute). */
       expect(lauf(m, addDays(d, -1).slice(0, 7), addDays(d, -1)).aenderungen.filter((a) => a.datum === addDays(d, -1))).toEqual([]);
@@ -450,7 +469,7 @@ describe("V8: rein und deterministisch, Kalender", () => {
     expect(r.aenderungen.map((a) => a.datum)).toEqual(["2028-02-29"]);
     expect(verbesserungAbgleich(m, "2028-02", r, { heute: "2028-02-01" })).toEqual({ ok: true });
   });
-  it("Zeitumstellung: Ende März 7 h Ruhe (Gesetz), Ende Oktober 9 h (Achtung) — beide ersetzt, Stufe im Rangvektor", () => {
+  it("Zeitumstellung: Ende März 7 h Ruhe (Gesetz), Ende Oktober 9 h (ebenfalls Gesetz: unter 11 h) — beide ersetzt, Stufe im Rangvektor", () => {
     const mz = betrieb();
     ruhezeit(mz, 0, "2026-03-29");
     const rm = lauf(mz, "2026-03", "2026-03-01");
@@ -460,7 +479,7 @@ describe("V8: rein und deterministisch, Kalender", () => {
     ruhezeit(mo, 0, "2026-10-25");
     const ro = lauf(mo, "2026-10", "2026-10-01");
     expect(ro.aenderungen.map((a) => a.datum)).toEqual(["2026-10-25"]);
-    expect(ro.aenderungen[0].wirkung.vorher).toMatchObject({ gesetz: 0, muss: 1 });
+    expect(ro.aenderungen[0].wirkung.vorher).toMatchObject({ gesetz: 1, muss: 0 });
   });
   it("Quelltext: keine Uhr, kein Zufall, nur relative Importe, kein node:/src/; planer.mjs bleibt die Quelle der Nachprüfung", () => {
     const c = lies("server/lib/engine/planer-verbessern.mjs").replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
@@ -471,5 +490,176 @@ describe("V8: rein und deterministisch, Kalender", () => {
     expect(c).toMatch(/import \{[^}]*\bnachpruefen\b[^}]*\} from "\.\/planer\.mjs"/);
     expect(c).toMatch(/import \{[^}]*\bersatzVorschlaege\b[^}]*\} from "\.\/einsatz\.mjs"/);
     expect(c).not.toMatch(/abweichungen\[[^\]]+\]\s*=(?!=)/);              // kein Schreiben in fremde Objekte
+  });
+});
+
+/* ------------------------------------------------------------------------
+   Nachbesserung Review #621 (A1–A3, B3–B7)
+   ------------------------------------------------------------------------ */
+/** Zählregel (Vorgabe des Betriebs, synthetisch). */
+const Z = (id, ereignis, staerke, richtung, grenze, fenster = { art: "rollierend", laenge: 7, einheit: "tage" }) => ({ id, name: "Testregel", regelart: "zaehlregel",
+  parameter: { ereignis, fenster, richtung, grenze }, geltung: { art: "betrieb" }, bezug: "monat", staerke, prioritaet: 1, grundlage: { art: "hausregel" }, status: "aktiv" });
+const tageVon = (von, bis) => { const l = []; for (let d = von; d <= bis; d = addDays(d, 1)) l.push(d); return l; };
+const wochentag = (d) => new Date(`${d}T00:00:00Z`).getUTCDay();   // zeit-ok: fester Kalendertag, keine Uhr (0 = Sonntag)
+
+describe("A1: Vorgaben der entfernten Person", () => {
+  it("wirkende Muss-Vorgabe „mindestens“ ⇒ keine Änderung (fail closed); Soll ⇒ Soll nicht bewertet; Abgleich lehnt ab", () => {
+    const m = betrieb();
+    ruhezeit(m, 0, "2026-12-10");
+    const r0 = lauf(m, "2026-12", "2026-12-01");
+    expect(r0.aenderungen).toHaveLength(1);
+    const muss = { ...m, vorgaben: [Z("v-min", "F", "muss", "mindestens", 0)] };
+    expect(lauf(muss, "2026-12", "2026-12-01")).toMatchObject({ ok: true, aenderungen: [], konflikte: 1, unveraendert: 1 });
+    expect(verbesserungAbgleich(muss, "2026-12", r0, { heute: "2026-12-01" })).toMatchObject({ ok: false, pruefung: "vorgabe" });
+    /* Geltung nur für eine andere Person: wirkt nicht auf tp-1000. */
+    const andere = { ...m, vorgaben: [{ ...Z("v-min", "F", "muss", "mindestens", 0), geltung: { art: "personen", personen: ["tp-1003"] } }] };
+    expect(lauf(andere, "2026-12", "2026-12-01").aenderungen).toHaveLength(1);
+    const soll = { ...m, vorgaben: [Z("v-min", "F", "soll", "mindestens", 0)] };
+    const rs = lauf(soll, "2026-12", "2026-12-01");
+    expect(rs.aenderungen).toHaveLength(1);
+    expect(rs.aenderungen[0].wirkung.nachher.soll).toBeNull();
+    expect(rs.nichtBewertet).toContain("soll");
+    /* Blockregel (Muss): ebenfalls fail closed. */
+    const block = { ...m, vorgaben: [{ ...Z("v-blk", "F", "muss", "mindestens", 0), regelart: "blockregel", parameter: {} }] };
+    expect(lauf(block, "2026-12", "2026-12-01").aenderungen).toEqual([]);
+  });
+});
+
+describe("A2: Rechtsstufe statt Schwere; Ruhezeit mindestens 11 h", () => {
+  const mitM = (m, start, ende) => { m.dienstarten.push({ ...m.dienstarten[1], id: "M", kurz: "M", name: "Mitteldienst", start, ende, pause: 45 }); };
+  it("Betrieb stellt 10 h ein: Ersatz mit 10,5 h Ruhe wird nie vorgeschlagen, obwohl die Planprüfung des Betriebs schweigt", () => {
+    const m = betrieb(3);
+    m.einstellungen.ruhezeit = 10;
+    mitM(m, "09:30", "19:30");
+    setze(m, 0, "2026-12-10", "F"); urlaub(m, 0, "2026-12-10");
+    setze(m, 1, "2026-12-09", "M");                      // tp-1001: 10,5 h bis F am 10.
+    setze(m, 2, "2026-12-10", "N");                      // tp-1002 belegt
+    const probe = kopie(m); probe.abweichungen["tp-1001|2026-12-10"] = "F";
+    expect(befundeAm(probe, "2026-12-10", "2026-12-01").some((x) => x.startsWith("ruhezeit"))).toBe(false);
+    expect(lauf(m, "2026-12", "2026-12-01")).toMatchObject({ ok: true, aenderungen: [], unveraendert: 1 });
+    delete m.abweichungen["tp-1001|2026-12-09"];
+    expect(lauf(m, "2026-12", "2026-12-01").aenderungen.map((a) => a.nachPersonId)).toEqual(["tp-1001"]);
+  });
+  it("Einstellung 10 h: der Modus sieht eine Ruhe von 10,5 h als Konflikt (Gesetz), auch wenn die Planprüfung schweigt", () => {
+    const m = betrieb(3);
+    m.einstellungen.ruhezeit = 10;
+    mitM(m, "09:30", "19:30");
+    setze(m, 0, "2026-12-09", "M"); setze(m, 0, "2026-12-10", "F");
+    const r = lauf(m, "2026-12", "2026-12-01");
+    expect(r.aenderungen.map((a) => [a.grund, a.vonPersonId])).toEqual([["ruhezeit", "tp-1000"]]);
+    expect(r.aenderungen[0].wirkung.vorher.gesetz).toBe(1);
+  });
+  it("Einstellung 12 h: 11,5 h Ruhe ist betrieblich (muss), 8 h Gesetz", () => {
+    const m = betrieb();
+    m.einstellungen.ruhezeit = 12;
+    mitM(m, "08:30", "18:30");
+    setze(m, 0, "2026-12-09", "M"); setze(m, 0, "2026-12-10", "F");   // 11,5 h
+    ruhezeit(m, 1, "2026-12-17");                                    // 8 h
+    const r = lauf(m, "2026-12", "2026-12-01");
+    /* Differenz vorher − nachher je Stufe (der Rang zählt Umgebung und Prüfzeitraum, also auch den anderen Konflikt). */
+    const a = Object.fromEntries(r.aenderungen.map((x) => [x.vonPersonId, { gesetz: x.wirkung.vorher.gesetz - x.wirkung.nachher.gesetz, muss: x.wirkung.vorher.muss - x.wirkung.nachher.muss }]));
+    expect(a["tp-1000"]).toEqual({ gesetz: 0, muss: 1 });
+    expect(a["tp-1001"]).toEqual({ gesetz: 1, muss: 0 });
+  });
+  it("Ersatzruhe (§ 11 Abs. 3) zählt als Gesetz", () => {
+    const m = betrieb();
+    m.einstellungen.maxFolge = 40;
+    for (const d of tageVon("2026-11-30", "2026-12-26")) setze(m, 0, d, "F");
+    const r = lauf(m, "2026-12", "2026-12-01");
+    const er = r.aenderungen.filter((a) => a.grund === "ersatzruhe");
+    expect(er.length).toBeGreaterThan(0);
+    for (const a of er) { expect(wochentag(a.datum)).toBe(0); expect(a.wirkung.vorher.gesetz).toBeGreaterThan(a.wirkung.nachher.gesetz); }
+  });
+});
+
+describe("A3: nicht bewertbar wird ausgewiesen, nie ein Vorteil", () => {
+  it("Ausgleichszeitraum (§ 3 ArbZG) steht immer in nichtBewertet; Dienst über 10 h für die Ersatzperson ⇒ keine Änderung", () => {
+    const m = betrieb(3);
+    m.dienstarten.push({ ...m.dienstarten[0], id: "L", kurz: "L", name: "Langdienst", start: "06:00", ende: "18:30", pause: 45 });
+    setze(m, 0, "2026-12-10", "L"); urlaub(m, 0, "2026-12-10");
+    setze(m, 2, "2026-12-10", "N");
+    const r = lauf(m, "2026-12", "2026-12-01");
+    expect(r).toMatchObject({ ok: true, aenderungen: [], unveraendert: 1 });
+    expect(r.nichtBewertet).toEqual(expect.arrayContaining(["ausgleichszeitraum", "wunsch"]));
+    expect(lauf(betrieb(), "2026-12", "2026-12-01").nichtBewertet).toEqual(expect.arrayContaining(["ausgleichszeitraum", "wunsch"]));
+    /* Derselbe Fall mit einem Dienst bis 10 h: Ersatz zulässig. */
+    setze(m, 0, "2026-12-10", "F");
+    expect(lauf(m, "2026-12", "2026-12-01").aenderungen.map((a) => a.nachPersonId)).toEqual(["tp-1001"]);
+  });
+});
+
+describe("B3: Auslöser im selben Prüfzeitraum", () => {
+  it("Sonntagsfrei am letzten Sonntag des Jahres (Umgebung reicht ins neue Jahr): Änderung mit Grund sonntagsfrei, nicht „mitgelöst“", () => {
+    const m = betrieb();
+    const sonntage = tageVon("2026-01-04", "2026-12-27").filter((d) => wochentag(d) === 0);
+    expect(sonntage).toHaveLength(52);
+    for (const d of sonntage.slice(-38)) setze(m, 0, d, "F");              // 38 gearbeitet ⇒ 14 frei < 15
+    const r = lauf(m, "2026-12", "2026-12-01");
+    expect(r.aenderungen.map((a) => [a.datum, a.grund, a.vonPersonId])).toEqual([["2026-12-27", "sonntagsfrei", "tp-1000"]]);
+    expect(r.mitgeloest).toBe(0);
+    expect(r.aenderungen[0].wirkung.vorher.gesetz).toBeGreaterThan(r.aenderungen[0].wirkung.nachher.gesetz);
+    expect(verbesserungAbgleich(m, "2026-12", r, { heute: "2026-12-01" })).toEqual({ ok: true });
+  });
+});
+
+describe("B5: jede Schutzschicht mit eigenem Fall", () => {
+  it("(a) Posten, den der Pool auffüllt: Ersetzen wird abgelehnt (Nachprüfung: Bestandspersonen); handgebaute Änderung im Abgleich ebenso", () => {
+    const m = betrieb(6);
+    m.einstellungen.maxFolge = 40;
+    m.einheiten.push({ ...m.einheiten[0], id: "e2", name: "Wohnbereich 2" });
+    m.zyklus = { wochen: 3, tage: Array(21).fill("F"), vorlage: null };
+    m.dienstarten.push({ ...m.dienstarten[0], id: "P", kurz: "P", name: "Posten", start: "07:00", ende: "15:00", posten: true, quelle: "F", mindest: { mo_do: 2, fr: 2, sa: 2, so: 2 } });
+    for (const i of [4, 5]) { m.personen[i].zugehoerigkeit = [{ einheitId: "e2", ab: "2020-01-01" }]; for (const d of tageVon("2026-12-01", "2026-12-31")) setze(m, i, d, "-"); }
+    setze(m, 0, "2026-12-09", "S"); setze(m, 0, "2026-12-10", "P");
+    const r = lauf(m, "2026-12", "2026-12-01");
+    expect(r).toMatchObject({ ok: true, aenderungen: [], konflikte: 1, unveraendert: 1 });
+    const hand = { ...r, aenderungen: [{ typ: "ersetzen", datum: "2026-12-10", dienstId: "P", vonPersonId: "tp-1000", nachPersonId: "tp-1004", grund: "ruhezeit",
+      wirkung: { vorher: { gesetz: 1, qualifikation: 0, besetzung: 0, muss: 0, soll: 0, verteilung: null }, nachher: { gesetz: 0, qualifikation: 0, besetzung: 0, muss: 0, soll: 0, verteilung: null } } }] };
+    expect(verbesserungAbgleich(m, "2026-12", hand, { heute: "2026-12-01" })).toMatchObject({ ok: false, pruefung: "nachpruefung" });
+  });
+  it("(b) nur die Umgebungsprüfung greift: Ersatz bringt die eine Qualifikation und nimmt die andere", () => {
+    const m = betrieb(3);
+    const qt = m.qualifikationen.find((q) => q.id === "qt");
+    m.qualifikationen.push({ ...qt, id: "qa", name: "Testqualifikation A", kurz: "TA" }, { ...qt, id: "qb", name: "Testqualifikation B", kurz: "TB" });
+    m.dienstarten[0].mindestQual = { qa: 1, qb: 1 };
+    m.personen[0].qualifikationen = ["qb"]; m.personen[1].qualifikationen = ["qa"];
+    ruhezeit(m, 0, "2026-12-10");
+    setze(m, 2, "2026-12-10", "N");
+    expect(lauf(m, "2026-12", "2026-12-01")).toMatchObject({ ok: true, aenderungen: [], unveraendert: 1 });
+    m.personen[1].qualifikationen = ["qa", "qb"];
+    expect(lauf(m, "2026-12", "2026-12-01").aenderungen.map((a) => a.nachPersonId)).toEqual(["tp-1001"]);
+  });
+  it("(c) nur „Auslöser weg“ greift: Qualifikation fehlt weiter, nur Soll würde besser ⇒ keine Änderung", () => {
+    const m = betrieb(3);
+    m.dienstarten[0].mindestQual = { qt: 1 };
+    m.vorgaben = [Z("v-soll", "F", "soll", "hoechstens", 1)];
+    setze(m, 0, "2026-12-08", "F"); setze(m, 0, "2026-12-10", "F");
+    setze(m, 2, "2026-12-08", "N"); setze(m, 2, "2026-12-10", "N");
+    expect(lauf(m, "2026-12", "2026-12-01")).toMatchObject({ ok: true, aenderungen: [] });
+  });
+  it("(d) nur die Nachprüfung greift: Ersatzperson braucht den Tag als einzigen Ersatzruhetag für den Feiertag 03.10. (außerhalb der Umgebung)", () => {
+    const m = betrieb(3);
+    const d = "2026-11-25";
+    for (const t of tageVon("2026-08-03", "2026-11-28")) if (wochentag(t) !== 0 && t !== d) setze(m, 1, t, "F");
+    ruhezeit(m, 0, d);
+    setze(m, 2, d, "N");
+    const r = lauf(m, "2026-11", "2026-11-01");
+    expect(r).toMatchObject({ ok: true, aenderungen: [], konflikte: 1, unveraendert: 1 });
+    /* Mit einem anderen freien Werktag für den Feiertag: Ersatz zulässig. */
+    delete m.abweichungen["tp-1001|2026-10-14"];
+    expect(lauf(m, "2026-11", "2026-11-01").aenderungen.map((a) => a.nachPersonId)).toEqual(["tp-1001"]);
+  });
+});
+
+describe("B7: neutrale Reihenfolge der Ersatzpersonen", () => {
+  it("Ergebnis unabhängig von Einsprüngen, Springerpool und Teilzeitkennzeichen", () => {
+    const m = betrieb(6);
+    ruhezeit(m, 0, "2026-12-10"); ruhezeit(m, 1, "2026-12-17");
+    const a = lauf(m, "2026-12", "2026-12-01");
+    const n = kopie(m);
+    n.einspruenge = Array.from({ length: 12 }, (_, i) => ({ id: `es-${i}`, personId: i % 2 ? "tp-1002" : "tp-1005", datum: "2026-11-02" }));
+    n.personen[3].springer = true;
+    n.personen[4].teilzeit = { aktiv: false };
+    expect(JSON.stringify(lauf(n, "2026-12", "2026-12-01"))).toBe(JSON.stringify(a));
   });
 });

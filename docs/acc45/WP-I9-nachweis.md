@@ -1,6 +1,6 @@
 # WP-I9 — Verbessern-Modus, Änderungsliste, Übernahme
 
-Basis: `integration/release-v4` (1174cae0, enthält #612–#619). Nicht produktiv: keine Route, keine Oberfläche, kein Schreibweg, kein Schalter berührt (`PLANER_AN` und `PLANER_AGGREGATE_AN` bleiben AUS; Grenzen 40 Mio Personentage / 1 Mio Personenprüfungen / 372 Tage unverändert). Nur synthetische Testdaten.
+Basis: `integration/release-v4` (1174cae0, enthält #612–#619; #620 berührt diese Dateien nicht). Nicht produktiv: keine Route, keine Oberfläche, kein Schreibweg, kein Schalter berührt (`PLANER_AN` und `PLANER_AGGREGATE_AN` bleiben AUS; Grenzen 40 Mio Personentage / 1 Mio Personenprüfungen / 372 Tage unverändert). Nur synthetische Testdaten.
 
 ## PR-A Verbessern-Engine
 
@@ -13,9 +13,9 @@ Der eigene Planer (`server/lib/engine/planer.mjs`, Kopf Z. 6–14) ändert oder 
 | Datei | Inhalt |
 |---|---|
 | `server/lib/engine/planer-verbessern.mjs` (neu) | `planVerbessern(m, ym, { heute, startwert?, aufwand?, planbefundAufwand?, vorgabenAufwand? })`, `verbesserungAbgleich(m, ym, ergebnis, { heute })`, `verbessernRangVergleich(a, b)`, Konstanten `VERBESSERN_TYPEN`, `VERBESSERN_RANGFOLGE`, `VERBESSERN_GRUENDE`, `VERBESSERN_GRENZE`, `VERBESSERN_SCHLUESSEL`, `VERBESSERN_NICHT_BEWERTET` |
-| `pruefungen/intelligence-planer-verbessern.test.js` (neu) | V1–V8, siehe unten; Präfix `intelligence-` ⇒ in `pruefung:intelligence` |
+| `pruefungen/intelligence-planer-verbessern.test.js` (neu, 42 Tests) | V1–V8 und Nachbesserung #621 (A1–A3, B3–B7), siehe unten; Präfix `intelligence-` ⇒ in `pruefung:intelligence` |
 
-Keine andere Engine-Datei geändert. Wiederverwendet (nur importiert, kein zusätzlicher Export nötig): `pruefen` (befunde.mjs), `ersatzVorschlaege`, `hindernisBefunde`, `verdraengt`, `planbefundAufwandHoechst`, `PLANBEFUND_GRENZE`, `nachtJahr` (einsatz.mjs), `nachpruefen`, `zufallAus`, `PLANER_GRENZE`, `PLANER_STANDARD` (planer.mjs; `nachpruefen` enthält Anheften, Vorwärtsprüfung `folgeVorwaerts` und Planbefunde `planbefundeNeu`), `anheftungenLesen`/`anheftungSperrt`, Verteilung (verteilung.mjs), `monatAbgeschlossen`, `freigegebeneMonate`, `mitTagesdatum`.
+`befunde.mjs`, `fachpruefung.mjs`, `einsatz.mjs`, `planer.mjs` und alle anderen Engine-Dateien sind **unverändert**; es war kein zusätzlicher Export nötig. Wiederverwendet (nur Importe): `pruefen`, `ersatzruheBefunde`, `sonntagsArbeit` (befunde.mjs), `ersatzVorschlaege` (nur `moeglich`), `hindernisBefunde`, `verdraengt`, `planbefundAufwandHoechst`, `PLANBEFUND_GRENZE` (einsatz.mjs), `nachpruefen`, `PLANER_GRENZE`, `PLANER_STANDARD` (planer.mjs; `nachpruefen` enthält Anheften, `folgeVorwaerts`, `planbefundeNeu`, Bestandspersonen), `RUHEZEIT_GESETZ`, `einheitAm`, `imDienst` (fachpruefung.mjs), `aktiveVorgaben`, Anheften, Verteilung, `monatAbgeschlossen`, `freigegebeneMonate`, `mitTagesdatum`.
 
 ### Format
 
@@ -24,104 +24,118 @@ Keine andere Engine-Datei geändert. Wiederverwendet (nur importiert, kein zusä
   aenderungen: [{ typ: "ersetzen", datum, dienstId, vonPersonId, nachPersonId, grund,
                   wirkung: { vorher: {gesetz, qualifikation, besetzung, muss, soll, verteilung},
                              nachher: {…} } }],
-  konflikte, unveraendert, mitgeloest, ungeprueft, angeheftet,
-  nichtBewertet: ["soll"?, "verteilung"?, "wunsch"],
+  konflikte, konflikteAbgeschnitten, unveraendert, mitgeloest, ungeprueft, angeheftet,
+  nichtBewertet: ["soll"?, "verteilung"?, "ausgleichszeitraum", "wunsch"],
   aufwand: { grenze, verbraucht, ausgeschoepft, planbefund: { grenze, verbraucht, ausgeschoepft } } }
 | { ok: false, grund, pruefung? }
 ```
 
-- Semantik einer Ersetzung: Schlüssel `vonPersonId|datum` hat im Bestand genau `dienstId` und wird „-“ (frei, nicht gelöscht: sonst griffe ggf. die Schichtfolge); Schlüssel `nachPersonId|datum` ist leer oder „-“, die Person an dem Tag dienstfrei, und bekommt `dienstId`. Sonst wird nichts berührt (keine Abwesenheiten, keine Folge, keine Anheftungen, keine Profile).
-- `grund`: Werteliste `VERBESSERN_GRUENDE` = Befundarten der Planprüfung, die an einer Einteilung hängen (abwesend, sperre, schutz, nachweis, einschraenkung, ruhezeit, sonntagsfrei, ersatzruhe, nachtfolge, folge; am Dienst: qualifikation, fachkraft, aufgabe). Bei mehreren Befunden an derselben Einteilung: schwerster, dann Reihenfolge der Liste.
-- `konflikte` = `aenderungen.length + unveraendert + mitgeloest + ungeprueft`; `angeheftet` ist Teil von `unveraendert`. `mitgeloest`: Auslöser war durch eine frühere Änderung schon weg. `ungeprueft`: wegen des Aufwands nicht mehr geprüft (dann `aufwand.ausgeschoepft: true`).
-- `monatFreigegeben`: nur ein Wahrheitswert für die spätere Übernahme (siehe offene Entscheidungen); die Engine schlägt unabhängig davon vor.
+- Ersetzung: `vonPersonId|datum` hat im Bestand genau `dienstId` und wird „-“ (frei, nicht gelöscht: sonst griffe ggf. die Schichtfolge); `nachPersonId|datum` ist leer oder „-“, die Person dienstfrei, und bekommt `dienstId`. Sonst wird nichts berührt (keine Abwesenheiten, keine Folge, keine Anheftungen, keine Profile).
+- `grund`: Werteliste `VERBESSERN_GRUENDE` (abwesend, sperre, schutz, nachweis, einschraenkung, ruhezeit, sonntagsfrei, ersatzruhe, nachtfolge, folge; am Dienst: qualifikation, fachkraft, aufgabe). Mehrere Befunde an derselben Einteilung: Gesetz/Qualifikation vor Muss, dann Reihenfolge der Liste.
+- Zähler: `konflikte = aenderungen.length + unveraendert + mitgeloest + ungeprueft + konflikteAbgeschnitten`; `angeheftet` ist Teil von `unveraendert`. `mitgeloest`: Befund war im selben Prüfzeitraum durch eine frühere Änderung schon weg (ohne frühere Änderung nie „mitgelöst“, sondern `unveraendert`). `ungeprueft`: Aufwand oder Vorgaben-Budget erschöpft (dann `aufwand.ausgeschoepft: true`). `konflikteAbgeschnitten`: über der Grenze von 500 Konflikten, nicht untersucht.
+- `monatFreigegeben`: nur Information für die spätere Übernahme; die Engine schlägt unabhängig davon vor.
 
 ### Entscheidungen
 
 1. **Nur Ersetzen** im ersten Wurf (kein Tauschen, Verschieben, Entfernen, Hinzufügen).
-2. **Preis einer Änderung = strikter Rangvorteil** im Rangvektor der Umgebung (Tag ± R, R = max(7, maxFolge+1, maxNachtFolge+1) ≤ 31, dazu die ganze Kalenderwoche; alle Personen), Rangfolge gesetz > qualifikation > besetzung > muss > soll > verteilung. „Deutlich besser“ und ein Stabilitätsgewicht (Plan 7.4 „Jede Änderung hat einen Preis“) bleiben **offen**; heute genügt jede strikte Verbesserung, die einen Konflikt löst.
-3. **Rangvektor aus der Planprüfung:** gesetz = Befunde „danger“ an Personen, muss = Befunde „warn“ an Personen + Muss- und ungeprüfte Vorgaben der betroffenen Einteilung, qualifikation = Befunde zu Qualifikation/Fachkraftquote/vorbehaltenen Aufgaben, besetzung = fehlende Personen, soll = Soll-Vorgaben der Einteilung (null bei ungeprüften Vorgaben), verteilung = Summe der Überschreitungen im Monat (null, wenn nicht vollständig bewertbar). Zuordnung über die Schwere der Planprüfung (befunde.mjs: danger ≙ recht, warn ≙ achtung). Folge: eine Ruhezeit zwischen 8 und 11 h ist in `pruefen` „warn“ und zählt hier unter muss, unter 8 h (oder über die Zeitumstellung im März) unter gesetz — **zur fachlichen Prüfung**.
-4. **„Nicht bewertbar“ ist nie besser:** null auf einer Seite beendet den Vergleich ohne Vorteil (auch was dahinter läge, zählt nicht).
-5. **Kein neuer Befund, mindestens einer gelöst:** Behalten nur, wenn in der Umgebung kein Befund ab Achtung neu entsteht oder schwerer wird (auch bei Dritten) und mindestens ein Befund des Grunds an dieser Einteilung danach weg ist. Neutral (weder Auslöser noch „neu“): istdaten, regelsatz, entgelt, vorsorge, urlaub, besetzung (Besetzung zählt über den Rang).
-6. **Ersatzperson** aus `ersatzVorschlaege` (Reihenfolge der Ersatzsuche, Automatik: Muss ungeprüft = Achtung), höchstens 3 voll geprüft je Konflikt, dann `nachpruefen` (Stand ohne die alte Einteilung), `verdraengt` (Bestandspersonen/Posten), Umgebung. Gleichstand mehrerer Kandidaten: fester Startwert (`zufallAus`, kein `Math.random`).
-7. **Wechselwirkung:** feste Reihenfolge (Tag, Dienst, Person); jede Änderung wird auf dem Stand mit allen früheren geprüft; dieselben Schlüssel/Person am Tag nie zweimal; Konflikt mit einer früheren ⇒ die spätere wird verworfen. Zum Schluss `verbesserungAbgleich` über die ganze Liste (fail closed, wie `ergebnis_passt_nicht` im Erfüllungsbericht).
-8. **Zeitraum:** nur Tage ab `opt.heute` (heute selbst zählt, wie planungsreife/Übernahme), abgeschlossener Monat ⇒ `monat_abgeschlossen`. Keine Uhr: `heute` ist Pflicht.
-9. **Unabhängig vom Planer-Schalter:** reine Funktion; Schalter, Pause, Rechte, Freigabe prüft die spätere Verdrahtung (PR-B/PR-C).
-10. **Aufwand:** Obergrenzen = Planer (`PLANER_GRENZE.aufwand` 1 Mio, `PLANBEFUND_GRENZE` 40 Mio; Vorgaben `VORGABEN_WIRKUNG_GRENZE`); Personentage ≤ 200 000, Stellen ≤ 20 000, Konflikte ≤ 500. Anmeldung vor der Arbeit, Schlussprüfung reserviert; reicht es nicht, Rest `ungeprueft` (nie eine halbe Änderung).
+2. **Zeitraum:** nur Tage NACH `opt.heute` (heute nie: der Dienst kann begonnen oder gestempelt sein; aus `m` ist das nicht sicher erkennbar), abgeschlossener Monat ⇒ `monat_abgeschlossen`. Keine Uhr: `heute` ist Pflicht.
+3. **Prüfstand Ruhezeit 11 h (Betreiberentscheidung zu #621):** Alle Prüfungen laufen auf einem Stand mit `ruhezeit = max(11, Einstellung)`. Eine Einstellung unter 11 h ist **keine belegte Ausnahme** (es gibt kein Datenmodell für § 5 Abs. 2 / § 7 ArbZG mit Grundlage, Voraussetzungen und Ausgleich). Folgen: Keine Ersatzperson und kein Dritter bekommt eine Ruhe unter 11 h, auch wenn die Planprüfung des Betriebs (Einstellung 10) schweigt; und der Modus sieht eine Ruhe unter 11 h als Konflikt, den die Planprüfung des Betriebs nicht meldet (Test A2).
+4. **Rechtsstufe statt Schwere (A2):** Quelle ist die Befundart, nicht die Darstellungsschwere. Abbildung in `planer-verbessern.mjs` (`stufeVon`), keine Änderung an `befunde.mjs`:
+   - **gesetz:** Ruhezeit unter 11 h (Rechnung wie `ruhezeitStufe`, fachpruefung.mjs: Planprüfung desselben Stands mit `ruhezeit = 11`; was dort als Ruhezeit-Befund erscheint, ist unter dem Gesetz), Ersatzruhe (§ 11 Abs. 3, in `pruefen` immer „warn“), Sonntagsfrei verletzt (§ 11 Abs. 1; „danger“ ist dort genau `verletzt`), Abwesenheit, Sperre gesetzlich („danger“ ist dort genau `verbindlichkeit().gesetzlich`), Schutz, Nachweis, Einschränkung, Pause, jede unbekannte Art (im Zweifel strenger).
+   - **muss:** Ruhezeit ab 11 h bis zur Einstellung (betrieblich/tariflich), Folge, Nachtfolge, Sperre betrieblich, Sonntagsfrei knapp, Überlappung, dazu Muss- und ungeprüfte Vorgaben der Einteilung.
+   - **qualifikation:** Qualifikation, Fachkraftquote, vorbehaltene Aufgabe (am Dienst).
+5. **Behalten** nur, wenn alles gilt: Ersatzperson `moeglich`; `nachpruefen` bestanden; Bestandspersonen unverändert; entfernte Person ohne wirkende Vorgabe, die Entfernen verletzt (A1), und ohne neue Ersatzruhe-Lücke in einer Monatsansicht (B6); in Umgebung (Tag ± R, ganze Woche) UND Prüfzeitraum (Monat ab morgen) kein Befund neu oder in höherer Stufe (auch Dritte); Ist-Daten bewertbar; mindestens ein Befund des Grunds im Prüfzeitraum weg; **keine der Stufen gesetz, qualifikation, besetzung, muss schlechter** und Rangvektor strikt besser.
+6. **Der strikte Rangvorteil entscheidet nur die Wahl zwischen Kandidaten** (C8); er ist keine eigene Schutzschicht. Mit „kein neuer Befund“ und „Befund weg“ ist er in allen bisher gebauten Fällen schon erfüllt (Mutation B5-M1 überlebt, siehe unten). **„Deutlich besser“ und ein Stabilitätsgewicht** (Plan 7.4 „Jede Änderung hat einen Preis“) bleiben **offen** (C10).
+7. **Nicht bewertet (A3):** `ausgleichszeitraum` (§ 3 ArbZG, Durchschnitt über 6 Monate/24 Wochen) und `wunsch` stehen immer in `nichtBewertet`; `soll`/`verteilung`, wenn unvollständig. Nicht bewertet zählt nie als Vorteil (`null` beendet den Rangvergleich). Ein Dienst über 10 h für die Ersatzperson (ohne belegte § 7-Regelung nicht bewertbar) ist nie „neu“ erlaubt ⇒ keine Änderung. Ist-Daten nicht bewertbar (Befund `istdaten`) ⇒ keine Änderung.
+8. **Vorgaben der entfernten Person (A1):** `vorgabenwirkung` meldet nur, was eine Einteilung herbeiführt. Übergangsweise fail closed: Zählregel „mindestens“, Block- und Musterregel, deren Geltung die Person nicht sicher ausschließt (gültig ab/bis, Ausnahmen, Geltung Personen/Einheit), gelten als wirkend: Muss ⇒ keine Änderung (`unveraendert`, im Abgleich `pruefung: "vorgabe"`), Soll ⇒ Soll nicht bewertet. Das Fenster wird nicht ausgewertet (immer als d enthaltend angenommen).
+9. **Ersatzruhe der entfernten Person (B6):** je Monatsansicht um d (± 111 Tage, wie `planbefundeNeu`), Ersatzruhe-Befunde nachher ⊆ vorher; sonst keine Änderung. Kein Fall gefunden, in dem Entfernen die gierige Zuordnung verschlechtert (Mutation B6 überlebt); die Prüfung bleibt als fail-closed-Schicht.
+10. **Neutrale Reihenfolge (B7):** Von `ersatzVorschlaege` wird nur `moeglich` benutzt, mit einem Kontext ohne Stundenkonten, Einsprünge und Nächte. Reihenfolge: mehr Qualifikationen des Dienstes zuerst, dann Kennung, innerhalb gleicher Zahl um den Startwert rotiert. Höchstens 3 Kandidaten je Konflikt voll geprüft.
+11. **Wechselwirkung:** feste Reihenfolge (Tag, Dienst, Person); jede Änderung auf dem Stand mit allen früheren; zum Schluss `verbesserungAbgleich` über die ganze Liste. Die Reihenfolge der Ergebnisse hängt davon ab (C3: umsortierte Eingabe kann eine andere, ebenfalls gültige Liste ergeben).
+12. **Aufwand:** Grenzen des Planers, vorab angemeldet, Schlussprüfung reserviert. Laufzeit nur formelmäßig begrenzt, nicht an großen Betrieben gemessen (C4).
+13. **Posten (C9):** Ersetzen auf einem Posten, den der Pool auffüllt, wird immer abgelehnt: `nachpruefen` vergleicht die Bestandspersonen gegen den Zwischenstand ohne die alte Einteilung, in dem der Pool die Lücke auffüllt. Konservativ, dokumentierte Einschränkung.
+14. **Abgleich** rechnet den Rang nicht nach (C6); er prüft Form, Bestand, gemeinsame Nachprüfung, Neubefund, Auslöser und die Regel „nie schlechter, strikt besser“ der behaupteten Wirkung.
 
-### Datenschutz und Rechte (offen)
+### Datenschutz und Rechte
 
-- Ergebnis nur mit Positivliste der Schlüssel; Werte Zahlen, Wahrheitswerte, null, Kennungen (`/^[A-Za-z0-9_.-]{1,64}$/`) und Wertelisten. Keine Namen, Texte, Punkte/Scores je Person (D-16), Prozent, Schlüssel „Person|Tag“. Personen mit Kennung außerhalb des Musters werden nie vorgeschlagen.
-- **Personenkennungen sind enthalten**, aber nur in `vonPersonId`/`nachPersonId`: Die Übernahme (PR-B) braucht sie; Leitung und Planung sehen die Namen im Plan ohnehin. **Offen:** Sicht von Schichtverantwortung und Betriebsrat (zeigen? nur Zahlen? Muster Erfüllungsbericht: keine Personenkennung). Bis zur Entscheidung darf die Verdrahtung das Ergebnis nur an Leitung/Planung geben.
-- `grund` nennt die Befundart, nie den Abwesenheitsgrund oder eine Diagnose; „schutz“/„einschraenkung“ verraten aber, dass eine Schutzvorschrift/Einschränkung besteht — für SV/BR-Sicht mitzuentscheiden.
-- Keine Wunsch- oder Personenprofile, kein Lernen; die Reihenfolge der Ersatzsuche ist die bestehende des Planungsassistenten (Stundenkonto, Einsprünge, Springer, Qualifikation).
+- Positivliste der Schlüssel, Werte Zahlen, Wahrheitswerte, null, Kennungen (`/^[A-Za-z0-9_.-]{1,64}$/`) und Wertelisten. Keine Namen, Texte, Punkte/Scores, Prozent, Schlüssel „Person|Tag“. Personen mit Kennung außerhalb des Musters werden nie vorgeschlagen.
+- **Personenkennungen sind enthalten**, nur in `vonPersonId`/`nachPersonId` (die Übernahme braucht sie).
+- **Nur für Leitung/Planung (B8, C7):** `grund` „schutz“, „einschraenkung“, „sperre“, „nachweis“, „abwesend“ zusammen mit einer Personenkennung deuten auf Daten besonderer Kategorien (Art. 9 DSGVO); die Zählwerte in `wirkung` sind in kleinen Einheiten personenbeziehbar (z. B. „gesetz 2 → 1“ in einer Woche mit drei Personen). Eine Mindestgruppengröße beweist hier keine Anonymität. Andere Sichten (Schichtverantwortung, Betriebsrat, Beschäftigte) bekommen `wirkung` und `grund` nicht oder nur grob; die BR-/SV-Personensicht bleibt deaktiviert. Pflicht für PR-B/PR-C.
+- Die frühere Reihenfolge der Ersatzsuche (Stundenkonto, Einsprünge) wäre eine personenbezogene Bewertung (§ 87 Abs. 1 Nr. 6 BetrVG mitbestimmungspflichtig) — deshalb im Verbessern neutral (Entscheidung 10). KI-VO-Einordnung: deterministische Regelprüfung ohne Lernen, Profile oder Wünsche; die Einordnung steht weiter unter dem externen Vorbehalt aus dem Entwicklungsplan (I34).
 
-### Tests (`pruefungen/intelligence-planer-verbessern.test.js`, 30 Tests)
+### Tests (`pruefungen/intelligence-planer-verbessern.test.js`, 42 Tests)
 
 | Gruppe | Inhalt |
 |---|---|
 | Schalter/Grenzen | PLANER_AN/AGGREGATE AUS, 40 Mio, 1 Mio, 372 Tage, nur „ersetzen“, Rangfolge |
-| V1 | Ruhezeit grün (Befund danach weg, Abgleich ok), rot ohne Konflikt; Abwesenheit (Besetzung besser); Qualifikation am Dienst |
-| V2 | kein Rangvorteil (niemand bringt die Qualifikation) ⇒ keine Änderung; Rangvergleich mit null |
-| V3 | angeheftete Einteilung und angeheftete Ersatzpersonen; unlesbare Karte; Vergangenheit/heute; abgeschlossener Monat; Bestand wörtlich unverändert |
-| V4 | Folgebefund Ruhezeit (Vortag) und Nachtfolge (5. Nacht) verworfen; Qualifikation bleibt erfüllt (Abgleich: unqualifizierter Ersatz ⇒ `neuer_befund`); Alleindienst |
-| V5 | zwei Änderungen, eine Ersatzperson (spätere verworfen; beide zusammen im Abgleich abgelehnt); gleicher Tag/Dienst; mitgelöst |
-| V6 | Abgleich mit 16 Verfälschungen + belegt/angeheftet/Folgebefund/Tag vor heute; ungültige Eingaben (null, Strings, Sichten, NaN, Infinity, Bruch, Getter wirft); Aufwand (riesig ⇒ `aufwand`, knapp ⇒ `ungeprueft`, Planbefund-Budget) |
-| V7 | Positivliste, Kennungen, Personenkennung nur in von/nach, keine Namen/Prozent; Kennung außerhalb des Musters |
-| V8 | Determinismus, Startwert nur bei Gleichstand, tief eingefrorene Eingabe, Monats-/Jahreswechsel, 29.02.2028, Zeitumstellung März (7 h, gesetz) / Oktober (9 h, muss), Quelltext ohne Uhr/Zufall/node:/src |
+| V1 | Ruhezeit (8 h ⇒ gesetz), rot ohne Konflikt; Abwesenheit (Besetzung besser); Qualifikation am Dienst |
+| V2 | kein Rangvorteil ⇒ keine Änderung; Rangvergleich mit null |
+| V3 | angeheftet; unlesbare Karte; Vergangenheit, **heute nie**, morgen ja; abgeschlossener Monat; Bestand wörtlich unverändert |
+| V4 | Folgebefund Ruhezeit und Nachtfolge verworfen; Qualifikation bleibt erfüllt (Abgleich `neuer_befund`); Alleindienst |
+| V5 | zwei Änderungen, eine Ersatzperson; gleicher Tag/Dienst; mitgelöst |
+| V6 | Abgleich mit 27 Verfälschungen (u. a. `vorwert`, `dublette`, `bestand`, `kennung`, `wirkung`, `form` für startwert/aufwand/nichtBewertet/Zähler, `tag`), belegt/angeheftet/`nachpruefung`; ungültige Eingaben; Aufwand |
+| V7 | Positivliste, Kennungen, Personenkennung nur in von/nach |
+| V8 | Determinismus, Startwert, eingefrorene Eingabe, Monats-/Jahreswechsel, 29.02.2028, Zeitumstellung März 7 h und Oktober 9 h (beide gesetz) |
+| A1 | Muss „mindestens“ ⇒ keine Änderung, Abgleich `vorgabe`; Geltung für andere Person wirkt nicht; Soll ⇒ Soll null; Blockregel |
+| A2 | Einstellung 10: Ersatz mit 10,5 h nie vorgeschlagen, 10,5 h als Konflikt (gesetz); Einstellung 12: 11,5 h muss, 8 h gesetz; Ersatzruhe gesetz |
+| A3 | `ausgleichszeitraum` immer ausgewiesen; Dienst über 10 h für Ersatz ⇒ keine Änderung |
+| B3 | Sonntagsfrei am letzten Sonntag des Jahres (Umgebung bis 03.01.2027): Änderung mit Grund sonntagsfrei, nicht mitgelöst |
+| B5 | (a) Posten mit Pool ⇒ keine Änderung, Abgleich `nachpruefung`; (b) nur Umgebungsprüfung; (c) nur „Befund weg“; (d) nur Nachprüfung (Feiertag 03.10., Ersatzruhetag außerhalb der Umgebung) |
+| B7 | Ergebnis unabhängig von Einsprüngen, Springerpool, Teilzeitkennzeichen |
 
 ### Mutationen (je einzeln, danach zurückgesetzt; Werkzeug im Scratchpad)
 
-Einzeln **getötet** (je ≥ 1 Test rot): 15 von 22.
+Erster Stand (9fbc660e): 22 Mutationen, 15 getötet. Nach der Nachbesserung #621 (neuer Satz auf dem korrigierten Stand, 25 Mutationen): **22 getötet, 3 überlebend.**
 
-| Nr. | Mutation | Ergebnis (roter Test) |
+| Nr. | Mutation | Ergebnis |
 |---|---|---|
-| M6 | Anheftung der Einteilung ignoriert | rot: V3 angeheftet |
-| M7 | Vergangenheit nicht ausgeschlossen | rot: V3 Vergangenheit |
-| M8 | abgeschlossener Monat nicht geprüft | rot: V3 abgeschlossen |
-| M9 | null im Rangvergleich übersprungen statt Abbruch | rot: V2 Rangvergleich |
-| M10 | Abgleich: Vorwert nicht geprüft | rot: V6 Abgleich |
-| M11 | Abgleich: Dubletten nicht geprüft | rot: V6 Abgleich |
-| M12 | Stand nach Änderung nicht fortgeschrieben (Wechselwirkung) | rot: V5 zwei Änderungen |
-| M13 | Abgleich: neuer Befund nicht geprüft | rot: V4 Qualifikation bleibt erfüllt |
-| M16 | Kennungsmuster der Person nicht geprüft | rot: V7 Kennung außerhalb |
-| M18 | Gleichstand immer erster (ohne Startwert) | rot: V8 Determinismus/Startwert |
-| M19 | Abgleich: Auslöser nicht geprüft | rot: V6 Abgleich |
-| M20 | Abgleich: Wirkung ohne Vorteil zugelassen | rot: V6 Abgleich |
-| M21 | Planbefund-Budget nicht angemeldet | rot: V6 Aufwand |
-| M22 | Abgleich: Tag vor heute zugelassen | rot: V6 Abgleich |
+| A1a | Muss-Vorgabe beim Entfernen ignoriert (Schleife) | rot: A1 |
+| A1b | Abgleich: Vorgabe beim Entfernen ignoriert | rot: A1 |
+| A1c | Soll beim Entfernen als bewertet gezählt | rot: A1 |
+| A2a | Prüfstand ohne 11-h-Untergrenze | rot: A2 (2 Tests) |
+| A2b | Ruhezeit immer muss | rot: 4 Tests (V1, V8, A2) |
+| A2c | Ruhezeit immer gesetz | rot: A2 Einstellung 12 |
+| A2d | Ersatzruhe als muss | rot: A2 Ersatzruhe |
+| A2e | Sonntagsfrei immer muss | rot: B3 |
+| A3a | Tagesgrenze über 10 h neutral | rot: A3 |
+| A3b | Ausgleichszeitraum nicht ausgewiesen | rot: A3, V6 |
+| B3a | Auslöser in der Umgebung statt im Prüfzeitraum gesucht | rot: B3 |
+| B3b | Rang/Neubefund nur über die Umgebung | rot: B3 |
+| B4a–c | Abgleich: startwert / aufwand / Dubletten in nichtBewertet ungeprüft | rot: V6 (je) |
+| B5-M2 | neuer Befund (Schleife) ignoriert | rot: B5(b), A3 |
+| B5-M3 | „Befund weg“ (Schleife) ignoriert | rot: B5(c) |
+| B5-M4 | Nachprüfung (Schleife) ignoriert | rot: B5(a), B5(d) |
+| B5-M5+ | `verdraengt` in Schleife und Abgleich **und** Verdrängung in `nachpruefen` (planer.mjs, nur für den Lauf) entfernt | rot: B5(a) |
+| B7 | bewertete statt neutrale Reihenfolge | rot: B7 |
+| NIE | nur strikter Rang ohne „nie schlechter“ | rot: V6 (`wirkung`) |
+| C5 | heute zugelassen | rot: V3 |
 
-Einzeln **überlebend**, mit Begründung:
+Überlebend, begründet:
 
-| Nr. | Mutation | Begründung | Kombination |
-|---|---|---|---|
-| M1 | strikter Rangvorteil entfernt (Schleife) | durch „kein neuer Befund + mindestens ein Befund gelöst“ in den Testfällen impliziert (Schutz in der Tiefe) | M1+M2 rot (Abwesenheit, Qualifikation), M1+M3 rot (kein Rangvorteil) |
-| M2 | neuer Befund in der Umgebung ignoriert (Schleife) | Rang (Qualifikation schlechter) bzw. Nachprüfung (Nachtfolge) greifen | M1+M2 rot, M2+M4 rot (Nachtfolge) |
-| M3 | Auslöser-weg-Prüfung entfernt (Schleife) | Rang greift (keine Verbesserung) | M1+M3 rot |
-| M4 | Nachprüfung des Planers ignoriert | Nachtfolge erscheint auch als neuer Befund der Planprüfung; Ruhezeit filtert schon die Ersatzsuche | M2+M4 rot |
-| M5 | Bestandspersonen (`verdraengt`) ignoriert | **kein Test mit Posten** (Postenbesetzung) in dieser Datei; die Schlussprüfung prüft `verdraengt` erneut, ist aber ebenfalls nicht mit Posten belegt — **Risiko, Nachtest im Review empfohlen** | M2+M5 grün (nicht belegt) |
-| M14 | angeheftete Ersatzperson nicht gefiltert | `ersatzVorschlaege` schließt angeheftete Personen schon aus (doppelte Absicherung) | — |
-| M15 | Quelle „abweichung“ nicht geprüft | ohne Eintrag in `abweichungen` greift schon die Wertprüfung; Posten-Ersatzdienst nicht getestet | — |
-| M17 | schwerer gewordener Befund nicht als neu gezählt | in den Testfällen ändert kein Befund mit gleicher Kennung seine Schwere (Kennungen sind personen-/dienstgenau) | — |
-
-Alle fünf Schleifenprüfungen zusammen entfernt (M1–M5): 4 Tests rot.
+| Nr. | Mutation | Begründung |
+|---|---|---|
+| B5-M1 | strikter Rang / „nie schlechter“ in der Schleife entfernt | Mit „kein neuer oder höher eingestufter Befund“ und „Befund des Grunds weg“ ist der Rang in jedem gebauten Fall schon strikt besser; er entscheidet nur die Wahl zwischen Kandidaten (Entscheidung 6). Die Regel ist im Abgleich getötet (NIE). |
+| B5-M5 | `verdraengt` (Schleife) allein entfernt | Nicht erreichbar: Ein Ersetzen tauscht eine manuelle Einteilung gegen eine manuelle; die Postenbesetzung zählt beide gleich. Die strengere Prüfung liegt in `nachpruefen` (Zwischenstand ohne die alte Einteilung, C9); entfernt man beide, wird B5(a) rot (B5-M5+). |
+| B6 | Ersatzruhe der entfernten Person nicht geprüft | Kein Fall gefunden, in dem Entfernen eine Lücke erzeugt (mehr freie Tage verschlechtern die Zuordnung in den gebauten Fällen nicht); kein Zufallsvergleich nach #588-Muster gebaut. Bleibt als fail-closed-Schicht; **Restrisiko**. |
 
 ### Offen / folgt
 
-- **PR-B Übernahme mit Überschreiben:** Verallgemeinerung von Vorwert/Rückgängig in `planer-uebernahme.mjs` (heute nur Vorwert null/„-“), Basis-Fingerprint, `verbesserungAbgleich` vor dem Schreiben auf dem echten Stand, einzelne Änderungen (Häkchen), freigegebener Monat, Provenienz „vorgeschlagen von CENTRIC, übernommen von …“, Protokoll (abgelehnt/angenommen/Variante, wer bestätigt).
+- **PR-B Übernahme mit Überschreiben:** Verallgemeinerung von Vorwert/Rückgängig in `planer-uebernahme.mjs` (heute nur Vorwert null/„-“), Basis-Fingerprint, `verbesserungAbgleich` vor dem Schreiben auf dem echten Stand, einzelne Änderungen, freigegebener Monat, Provenienz „vorgeschlagen von CENTRIC, übernommen von …“, Protokoll (abgelehnt/angenommen/Variante, wer bestätigt). **Pflichten für PR-B:** Rangabbildung (Entscheidung 4) und Ausweisung des nicht Bewerteten (Entscheidung 7) aus dieser Datei übernehmen, keine eigene Logik; Übernahme nur, wenn alle verbindlichen Stufen bewertet oder ausdrücklich als „nicht bewertet“ bestätigt sind (`ausgleichszeitraum` ist es immer), sonst fail closed; Ruhezeit-Ausnahme nur mit belegter Grundlage samt Voraussetzungen/Ausgleich; Ergebnis nur an Leitung/Planung.
 - **PR-C Oberfläche** und der Weg „eigenen Plan trotzdem“ über `bestaetigungen.mjs` (Sammelbestätigung 4.3).
-- Weitere Änderungstypen (Tauschen, Verschieben), „deutlich besser“/Stabilitätsgewicht, Teilverbesserung am Dienst (heute muss ein Befund ganz weg sein).
+- Weitere Änderungstypen (Tauschen, Verschieben), Teilverbesserung am Dienst, Fensterauswertung der Vorgaben beim Entfernen statt pauschal fail closed (A1), Ersetzen auf Posten mit Pool (C9).
+- **Vorbestehend, außerhalb dieses PR (OFFEN):** `einstellungen.ruhezeit` unter 11 h ist keine belegte Ausnahme; die Planprüfung (`pruefen`, `ruhezeitStufe`) behandelt sie heute als Grenze. Braucht ein eigenes Datenmodell (Grundlage Gesetz/Tarif/BV, Voraussetzungen, Ausgleich). Ausgleichszeitraum § 3 ArbZG wird nirgends im Verbessern bewertet.
 
 ### Betreiberentscheidungen offen
 
-1. Dürfen bereits **veröffentlichte** (freigegebene) Einteilungen geändert werden, und wenn ja, mit welcher Benachrichtigung?
-2. **Provenienz:** Rolle oder Person („übernommen von …“), Sichtbarkeit (Beschäftigte, BR), Aufbewahrung.
-3. **Varianten:** mehrere Änderungslisten (Startwerte) zur Auswahl oder eine.
-4. Sicht von SV/BR auf die Änderungsliste und Personenkennungen (siehe Datenschutz).
-5. Zuordnung der Ruhezeit 8–11 h (heute „muss“, siehe Entscheidung 3).
+1. Dürfen bereits **veröffentlichte** Einteilungen geändert werden, und mit welcher Benachrichtigung?
+2. **Provenienz:** Rolle oder Person, Sichtbarkeit (Beschäftigte, BR), Aufbewahrung.
+3. **Varianten:** mehrere Änderungslisten zur Auswahl oder eine.
+4. Sicht von SV/BR auf die Änderungsliste (heute: nur Leitung/Planung).
+5. „Deutlich besser“ / Stabilitätsgewicht (Preis einer Änderung über den strikten Vorteil hinaus).
+6. Datenmodell für Ruhezeit-Ausnahmen (§ 5 Abs. 2, § 7 ArbZG) und für den Ausgleichszeitraum.
 
 ### Risiken für den Review
 
-- Algorithmik: mehrere sich überlappende Schutzschichten (Ersatzsuche, `nachpruefen`, `verdraengt`, Umgebung, Rang, Schlussabgleich); einzelne Schichten überleben ihre Mutation, weil eine andere greift (siehe Tabelle). Fenstergröße der Umgebung (Befunde jenseits von ± R, z. B. Ersatzruhe ± 55 Tage, deckt nur `planbefundeNeu` für die neue Person ab). Gleichheit von Befunden über ihre Kennung `art|datum|ref`.
-- Schwere statt Stufe als Rangquelle (Entscheidung 3).
-- Datenschutz: Personenkennungen im Ergebnis; `grund` „schutz“/„einschraenkung“.
-- Laufzeit: je Konflikt bis zu 4 Planprüfungen der Umgebung über alle Personen; synchron, durch das Budget begrenzt; nicht an großen Betrieben gemessen.
+- Algorithmik: überlappende Schutzschichten (Tabelle oben); Befundgleichheit über `art|datum|ref` (Kennungen hängen am Zeitraum, daher Umgebung UND Prüfzeitraum); Ersatzruhe ± 55 Tage für die Ersatzperson nur über `planbefundeNeu`, für die entfernte Person über B6 (nicht durch einen roten Fall belegt); A1 pauschal fail closed (kann sinnvolle Änderungen verhindern).
+- Rechtsstufe: Abbildung je Art in `stufeVon`; Sonntagsfrei und Sperre lesen dafür das Feld `schwere`, das dort genau `verletzt` bzw. `gesetzlich` trägt.
+- Datenschutz: Personenkennungen, Gründe besonderer Kategorien, personenbeziehbare Zählwerte — nur Leitung/Planung.
+- Laufzeit: je Konflikt bis zu vier Planprüfungen von Umgebung und Monat mit Gesetzesstand; durch das Budget begrenzt, nicht gemessen.
