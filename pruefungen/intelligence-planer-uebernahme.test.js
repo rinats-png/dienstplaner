@@ -24,13 +24,19 @@ import { mitTagesdatum } from "../server/lib/engine/zeit.mjs";
 import { vorschlagBasis, uebernahmePruefen, uebernahmeAnwenden, rueckgaengigPruefen, rueckgaengigAnwenden, patchAnwenden, darfUebernehmen,
   UEBERNAHME_PROTOKOLL } from "../server/lib/engine/planer-uebernahme.mjs";
 
+/* Nur für den Zweig KI_PAUSIERT der Planer-Entscheidung (sonst immer die echte Funktion): globalThis.__kiCode setzt den Code. */
+vi.mock("../server/lib/ki-steuerung.mjs", async (original) => {
+  const o = await original();
+  return { ...o, kiPlanerEntscheidung: (e) => (globalThis.__kiCode !== undefined ? globalThis.__kiCode : o.kiPlanerEntscheidung(e)) };
+});
+
 const T0 = "2026-11-27T10:00:00.000Z";
 const HEUTE = "2026-11-27";
 const YM = "2026-12";
 const st = { am: T0, vonRolle: "leitung" };
 const FREI = Object.freeze({ betrieb: { an: true, ...st }, betriebsratFrage: { antwort: "nein", ...st }, planerSchalter: { an: true, ...st } });
-const LEIT = Object.freeze({ rolle: "leitung", jetzt: T0, freigabe: true, bestaetigt: true });
-const PLAN = Object.freeze({ rolle: "planer", jetzt: T0, freigabe: true, bestaetigt: true });
+const LEIT = Object.freeze({ rolle: "leitung", demo: false, jetzt: T0, freigabe: true, bestaetigt: true });
+const PLAN = Object.freeze({ rolle: "planer", demo: false, jetzt: T0, freigabe: true, bestaetigt: true });
 
 beforeAll(() => { vi.useFakeTimers({ now: new Date("2031-05-05T12:00:00Z"), toFake: ["Date"] }); });   // Uhr bewusst weit weg: Zeit nur aus dem Kontext
 afterAll(() => { vi.useRealTimers(); });
@@ -52,6 +58,8 @@ const vorschlagFuer = (m, ym = YM) => {
 };
 /** Vorschlag mit eigener Auswahl (Gegenprobe der Prüfung je Eintrag: die Basis passt, der Eintrag nicht). */
 const fremd = (m, gesetzt, ym = YM) => ({ status: "ok", ym, gesetzt, offen: [], basis: vorschlagBasis(m, ym) });
+/** patchAnwenden mit Erfolgspflicht: der neue Stand. */
+const anw = (m, p) => { const r = patchAnwenden(m, p); expect(r.ok, r.grund).toBe(true); return r.mandant; };
 const tief = (o) => { if (o && typeof o === "object" && !Object.isFrozen(o)) { Object.freeze(o); for (const v of Object.values(o)) tief(v); } return o; };
 
 describe("1. Basis-Fingerprint", () => {
@@ -105,9 +113,9 @@ describe("2. Rolle und Recht", () => {
     const ok = uebernahmeAnwenden(m, YM, v, v.gesetzt.slice(0, 2), LEIT);
     expect(ok.ok).toBe(true);
     expect(uebernahmePruefen(m, YM, v, v.gesetzt.slice(0, 2), PLAN).ok).toBe(true);
-    const m2 = patchAnwenden(m, ok.patch);
+    const m2 = anw(m, ok.patch);
     for (const [n, k] of Object.entries(ROT)) {
-      const kontext = { ...k, jetzt: T0, freigabe: true, bestaetigt: true };
+      const kontext = { demo: false, ...k, jetzt: T0, freigabe: true, bestaetigt: true };
       expect(darfUebernehmen(kontext), n).toBe(false);
       expect(uebernahmePruefen(m, YM, v, v.gesetzt, kontext), n).toEqual({ ok: false, grund: "keine-berechtigung" });
       expect(uebernahmeAnwenden(m, YM, v, v.gesetzt, kontext), n).toEqual({ ok: false, grund: "keine-berechtigung" });
@@ -258,7 +266,7 @@ describe("6. Anwenden: Patch, Teil-Auswahl, Idempotenz, Protokoll, Änderungen",
     expect(r.ok).toBe(true);
     expect(r.patch).toEqual({ abweichungen: Object.fromEntries(auswahl.map((g) => [`${g.personId}|${g.datum}`, g.dienstId])) });
     expect(Object.keys(r)).toEqual(["ok", "patch", "rueckgaengig", "protokoll", "aenderungen", "mitteilungen"]);
-    const m2 = patchAnwenden(m, r.patch);
+    const m2 = anw(m, r.patch);
     const erwartet = { ...m.abweichungen }; for (const g of auswahl) erwartet[`${g.personId}|${g.datum}`] = g.dienstId;
     expect(m2.abweichungen).toEqual(erwartet);
     expect(m2.abweichungen["p1|2027-02-01"]).toBe("S");
@@ -270,7 +278,7 @@ describe("6. Anwenden: Patch, Teil-Auswahl, Idempotenz, Protokoll, Änderungen",
     const m = klein();
     const v = vorschlagFuer(m);
     const r = uebernahmeAnwenden(m, YM, v, v.gesetzt.slice(0, 3), LEIT);
-    const m2 = patchAnwenden(m, r.patch);
+    const m2 = anw(m, r.patch);
     expect(uebernahmeAnwenden(m2, YM, v, v.gesetzt.slice(0, 3), LEIT)).toEqual({ ok: false, grund: "bereits-uebernommen" });
     expect(uebernahmeAnwenden(m2, YM, v, v.gesetzt.slice(0, 1), LEIT)).toEqual({ ok: false, grund: "bereits-uebernommen" });
     expect(uebernahmeAnwenden(m2, YM, v, v.gesetzt.slice(2, 5), LEIT)).toEqual({ ok: false, grund: "seit-vorschlag-geaendert" });
@@ -338,7 +346,7 @@ describe("7. Rückgängig", () => {
     const v = vorschlagFuer(m);
     const r = uebernahmeAnwenden(m, YM, v, v.gesetzt.slice(0, 4), LEIT);
     expect(r.ok).toBe(true);
-    return { m, v, r, m2: patchAnwenden(m, r.patch) };
+    return { m, v, r, m2: anw(m, r.patch) };
   };
   it("stellt genau die Vorwerte wieder her (auch „-“ und fehlende Schlüssel); zweites Mal = bereits", () => {
     const { m, r, m2 } = ausgangslage();
@@ -347,7 +355,7 @@ describe("7. Rückgängig", () => {
     const u = rueckgaengigAnwenden(m2, YM, r.rueckgaengig, PLAN);
     expect(u.ok).toBe(true);
     expect(Object.keys(u.patch.abweichungen).sort()).toEqual(Object.keys(r.patch.abweichungen).sort());
-    const m3 = patchAnwenden(m2, u.patch);
+    const m3 = anw(m2, u.patch);
     expect(m3.abweichungen).toEqual(m.abweichungen);
     expect(u.protokoll).toMatchObject({ modul: "planer", art: "planer-rueckgaengig", anzahl: 4, von: "planer", am: T0 });
     expect(JSON.stringify(u.protokoll)).not.toMatch(/\||Zuname/);
@@ -387,7 +395,7 @@ describe("8. Eingefroren, wirft nie, Leitplanken im Quelltext", () => {
     const r = uebernahmeAnwenden(m, YM, v, auswahl, k);
     expect(r.ok).toBe(true);
     tief(r);
-    const m2 = tief(patchAnwenden(m, r.patch));
+    const m2 = tief(anw(m, r.patch));
     expect(rueckgaengigAnwenden(m2, YM, r.rueckgaengig, k).ok).toBe(true);
     expect(m).toEqual(vorher);
   });
@@ -413,5 +421,125 @@ describe("8. Eingefroren, wirft nie, Leitplanken im Quelltext", () => {
       try { t = readFileSync(new URL(`../${f}`, import.meta.url), "utf8"); } catch { t = ""; }
       expect(t, f).not.toContain("planer-uebernahme");
     }
+  });
+});
+
+describe("9. Review #612: rückwirkend, abgeschlossen, Rohstand, Sichten, Rückgängig-Daten, Demo, Patch", () => {
+  const um = (jetzt, k = LEIT) => ({ ...k, jetzt });
+  const addTag = (t, n) => { const x = new Date(`${t}T00:00:00Z`); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
+  it("B-1 vergangen: Tage vor dem heutigen Betriebstag (Europe/Berlin) abgelehnt, heute nicht; Monatswechsel über Mitternacht Berlin", () => {
+    const m = klein();
+    const v = vorschlagFuer(m);
+    const tag = (d) => v.gesetzt.filter((g) => g.datum === d);
+    const r = uebernahmeAnwenden(m, YM, v, [...tag("2026-12-09"), ...tag("2026-12-10")], um("2026-12-10T10:00:00.000Z"));
+    expect(r).toEqual({ ok: false, grund: "eintrag-abgelehnt", abgelehnt: [{ index: 0, grund: "vergangen" }] });
+    expect(uebernahmeAnwenden(m, YM, v, tag("2026-12-10"), um("2026-12-10T10:00:00.000Z")).ok, "heute ist nicht vergangen").toBe(true);
+    /* 31.12. 23:30 UTC ist in Berlin schon der 1.1.: Silvester vergangen. 22:59 UTC: noch Silvester. */
+    expect(uebernahmeAnwenden(m, YM, v, tag("2026-12-31"), um("2026-12-31T23:30:00.000Z")).abgelehnt).toEqual([{ index: 0, grund: "vergangen" }]);
+    expect(uebernahmeAnwenden(m, YM, v, tag("2026-12-31"), um("2026-12-31T22:59:00.000Z")).ok).toBe(true);
+  });
+  it("B-1 Schaltjahr: 29.2.2028 bis 23:59 Berlin übernehmbar, danach vergangen", () => {
+    const s = klein();
+    const v = vorschlagFuer(s, "2028-02");
+    const schalt = v.gesetzt.filter((g) => g.datum === "2028-02-29");
+    expect(uebernahmeAnwenden(s, "2028-02", v, schalt, um("2028-02-29T22:59:00.000Z")).ok).toBe(true);
+    expect(uebernahmeAnwenden(s, "2028-02", v, schalt, um("2028-02-29T23:00:00.000Z")).abgelehnt).toEqual([{ index: 0, grund: "vergangen" }]);
+  });
+  it("B-1 abgeschlossener Monat und Rückgängig: nichts übernommen, nichts zurückgenommen", () => {
+    const m = klein();
+    const v = vorschlagFuer(m);
+    const zu = { ...m, monatsabschluss: { [YM]: { abgeschlossen: true, am: T0 } } };
+    expect(uebernahmeAnwenden(zu, YM, v, v.gesetzt.slice(0, 1), LEIT)).toEqual({ ok: false, grund: "monat-abgeschlossen" });
+    expect(uebernahmeAnwenden({ ...m, monatsabschluss: { [YM]: { abgeschlossen: false } } }, YM, v, v.gesetzt.slice(0, 1), LEIT).ok, "offen").toBe(true);
+    const r = uebernahmeAnwenden(m, YM, v, v.gesetzt.slice(0, 3), LEIT);
+    const m2 = anw(m, r.patch);
+    expect(rueckgaengigAnwenden({ ...m2, monatsabschluss: { [YM]: { abgeschlossen: true } } }, YM, r.rueckgaengig, LEIT)).toEqual({ ok: false, grund: "monat-abgeschlossen" });
+    const erster = r.rueckgaengig.eintraege[0].schluessel.slice(-10);
+    const u = rueckgaengigAnwenden(m2, YM, r.rueckgaengig, um(`${addTag(erster, 1)}T10:00:00.000Z`));
+    expect(u.ok).toBe(false);
+    expect(u.abgelehnt).toContainEqual({ index: 0, grund: "vergangen" });
+  });
+  it("B-2 Rohstand: \"\" / null / sonstiger Wert gelten als belegt, „-“ als frei; Sichten (sichtEntwuerfe, sichtIstDaten) sind kein Betriebsstand", () => {
+    const m = klein();
+    const e = { personId: "p1", datum: "2026-12-10", dienstId: "F" };
+    for (const w of ["", null, "S", "X", 0]) {
+      const x = structuredClone(m); x.abweichungen["p1|2026-12-10"] = w;
+      expect(uebernahmePruefen(x, YM, fremd(x, [e]), [e], LEIT).abgelehnt, JSON.stringify(w)).toEqual([{ index: 0, grund: "schluessel-belegt" }]);
+    }
+    const frei = structuredClone(m); frei.abweichungen["p1|2026-12-10"] = "-";
+    const ok = uebernahmeAnwenden(frei, YM, fremd(frei, [e]), [e], LEIT);
+    expect(ok.ok).toBe(true);
+    expect(ok.rueckgaengig.eintraege[0].vorher).toBe("-");
+    const probe = structuredClone(m); probe.abweichungen["p1|2026-12-10"] = "S";
+    for (const feld of ["sichtEntwuerfe", "sichtIstDaten"]) {
+      const sicht = { ...probe, [feld]: { heute: HEUTE } };
+      expect(uebernahmeAnwenden(sicht, YM, fremd(sicht, [e]), [e], LEIT), feld).toEqual({ ok: false, grund: "betrieb-ungueltig" });
+      expect(rueckgaengigPruefen(sicht, YM, ok.rueckgaengig, LEIT), feld).toEqual({ ok: false, grund: "betrieb-ungueltig" });
+    }
+  });
+  it("C-1 Rückgängig-Daten: Vorwert nur null oder „-“, Schlüsselform Person|JJJJ-MM-TT, Längengrenze", () => {
+    const m = klein();
+    const v = vorschlagFuer(m);
+    const r = uebernahmeAnwenden(m, YM, v, v.gesetzt.slice(0, 1), LEIT);
+    const m2 = anw(m, r.patch);
+    const e0 = r.rueckgaengig.eintraege[0];
+    const d0 = e0.schluessel.slice(-10);
+    const mit = (x) => ({ ...r.rueckgaengig, eintraege: [{ ...e0, ...x }] });
+    for (const x of [{ vorher: "S" }, { vorher: "" }, { vorher: 5 }, { schluessel: `a|b|${d0}` }, { schluessel: `__proto__|${d0}` },
+      { schluessel: `${"x".repeat(95)}|${d0}` }, { schluessel: `|${d0}` }, { nachher: "-" }])
+      expect(rueckgaengigPruefen(m2, YM, mit(x), LEIT).grund, JSON.stringify(x)).toBe("rueckgaengig-ungueltig");
+    expect(rueckgaengigPruefen(m2, YM, r.rueckgaengig, LEIT).ok).toBe(true);
+  });
+  it("C-2 Demo muss ein echtes false sein; C-7 Vorprüfung auch beim Rückgängigmachen", () => {
+    const m = klein();
+    const v = vorschlagFuer(m);
+    const r = uebernahmeAnwenden(m, YM, v, v.gesetzt.slice(0, 1), LEIT);
+    const m2 = anw(m, r.patch);
+    for (const demo of [undefined, null, "false", 0, 1, "ja", true]) {
+      const k = { ...LEIT, demo };
+      if (demo === undefined) delete k.demo;
+      expect(darfUebernehmen(k), String(demo)).toBe(false);
+      expect(uebernahmeAnwenden(m, YM, v, v.gesetzt.slice(1, 2), k).grund, String(demo)).toBe("keine-berechtigung");
+      expect(rueckgaengigAnwenden(m2, YM, r.rueckgaengig, k).grund, String(demo)).toBe("keine-berechtigung");
+    }
+    expect(rueckgaengigAnwenden(m2, YM, r.rueckgaengig, { ...LEIT, jetzt: "nie" }).grund).toBe("zeit-ungueltig");
+    expect(rueckgaengigAnwenden({ ...m2, abweichungen: null }, YM, r.rueckgaengig, LEIT).grund).toBe("betrieb-ungueltig");
+    expect(rueckgaengigAnwenden(m2, "2026-13", r.rueckgaengig, LEIT).grund).toBe("monat-ungueltig");
+  });
+  it("C-4 Rückgängig hängt nur an den Rechten, nicht an Planer-Freigabe oder Pause (Entscheidung zur Review)", () => {
+    const m = klein();
+    const v = vorschlagFuer(m);
+    const r = uebernahmeAnwenden(m, YM, v, v.gesetzt.slice(0, 2), LEIT);
+    const m2 = anw(m, r.patch);
+    const pausiert = { ...m2, einstellungen: { ...m2.einstellungen, kiSteuerung: { ...structuredClone(FREI), pause: { aktiv: true, ...st } } } };
+    expect(rueckgaengigAnwenden(pausiert, YM, r.rueckgaengig, { ...LEIT, freigabe: false }).ok).toBe(true);
+    expect(rueckgaengigAnwenden(m2, YM, r.rueckgaengig, { rolle: "leitung", demo: false, jetzt: T0, bestaetigt: true }).ok).toBe(true);
+  });
+  it("C-3 patchAnwenden: nur gültige Schlüssel und Werte, kein Prototyp-Schlüssel, wirft nie", () => {
+    const m = klein();
+    const gut = patchAnwenden(m, { abweichungen: { "p1|2026-12-05": "F", "p2|2026-12-06": null } });
+    expect(gut.ok).toBe(true);
+    expect(gut.mandant.abweichungen["p1|2026-12-05"]).toBe("F");
+    const boese = new Proxy({}, { ownKeys() { throw new Error("boese"); } });
+    for (const p of [null, undefined, "x", {}, { abweichungen: null }, { abweichungen: {} }, { abweichungen: { "p1|2026-12-05": "F" }, angeheftet: {} },
+      { abweichungen: JSON.parse("{\"__proto__\":\"F\"}") }, { abweichungen: { "constructor|2026-12-05": "F" } },
+      { abweichungen: { "prototype|2026-12-05": "F" } }, { abweichungen: { "__proto__|2026-12-05": "F" } }, { abweichungen: { "p1|2026-13-05": "F" } },
+      { abweichungen: { "p1|2026-12-05": { x: 1 } } }, { abweichungen: { "p1|2026-12-05": "a|b" } }, { abweichungen: boese }]) {
+      expect(() => patchAnwenden(m, p)).not.toThrow();
+      expect(patchAnwenden(m, p).ok).toBe(false);
+    }
+    expect(patchAnwenden(null, { abweichungen: { "p1|2026-12-05": "F" } }).ok).toBe(false);
+    expect(Object.getPrototypeOf(gut.mandant.abweichungen)).toBe(Object.prototype);
+  });
+  it("C-7 auswahl-zu-gross und KI_PAUSIERT", () => {
+    const m = klein();
+    const v = vorschlagFuer(m);
+    const viele = Array.from({ length: 2001 }, (_, i) => ({ personId: `x${i}`, datum: "2026-12-05", dienstId: "F" }));
+    expect(uebernahmeAnwenden(m, YM, v, viele, LEIT).grund).toBe("auswahl-zu-gross");
+    expect(uebernahmeAnwenden(m, YM, { ...v, gesetzt: viele }, v.gesetzt.slice(0, 1), LEIT).grund).toBe("auswahl-zu-gross");
+    globalThis.__kiCode = "KI_PAUSIERT";
+    try { expect(uebernahmeAnwenden(m, YM, v, v.gesetzt.slice(0, 1), LEIT)).toEqual({ ok: false, grund: "planer-pausiert" }); }
+    finally { delete globalThis.__kiCode; }
+    expect(uebernahmeAnwenden(m, YM, v, v.gesetzt.slice(0, 1), LEIT).ok).toBe(true);
   });
 });

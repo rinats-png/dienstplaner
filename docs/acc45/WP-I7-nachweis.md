@@ -815,15 +815,17 @@ Entscheidungen dieser Stufe:
 - **Basis-Fingerprint:** SHA-256 über Monat ± 31 Tage (Abweichungen, Anheftungen, Abwesenheiten) und die Regelfelder (Personen, Dienste, Einheiten, Folge, Vorgaben, Qualifikationen, Einstellungen ohne Modulprotokoll inkl. Schalterstand). Wird beim Erzeugen als `vorschlag.basis` gespeichert; weicht er ab: `seit-vorschlag-geaendert`. Nach außen nur der Hash. Planfreigabe des Monats gehört nicht dazu (ändert nur den Mitteilungshinweis).
 - **Je Eintrag auf dem echten Stand, atomar:** Dienst/Person vorhanden, Person im Betrieb, nicht abwesend, nicht angeheftet (unlesbare Karte: nichts), Zielschlüssel ohne Dienst („-“ gilt als frei, Vorwert bleibt „-“), Lücke besteht noch, keine Befunde ab Achtung und kein sperrender Befund (`hindernisBefunde`, Automatik: Muss ungeprüft = Achtung), danach `nachpruefen` über die ganze Auswahl (Posten/Bestandspersonen, Vorwärts, Planbefunde). Ein Fehler lehnt alles ab (`eintrag-abgelehnt`, Liste nur mit Index der Auswahl und Kennung, ohne Person|Tag).
 - **Anwenden:** Patch nur der gewählten Schlüssel von `abweichungen` (nie Komplettüberschreiben, `angeheftet` unberührt — kein Weg über `anheftenZusammen`), `rueckgaengig` mit Vorwerten genau dieser Schlüssel, Protokoll `{ modul: "planer", art: "planer-uebernommen", am, von: Rolle, anzahl, zeitraum }` ohne Person|Tag/Namen, Änderungseinträge wie `uebernehmeVorschlag` (von „-“, nach, Vorlauf, Zeit de-DE, deterministische Kennung `c-pu-…`), Mitteilungen nur als Hinweis (`versandt: false`). Idempotenz: zweites Anwenden `bereits-uebernommen` bzw. `seit-vorschlag-geaendert`.
-- **Rückgängig:** stellt nur die gespeicherten Vorwerte her (null = Schlüssel entfernen), nur wenn jeder Schlüssel noch den übernommenen Wert hat (`seit-uebernahme-geaendert`) und keiner inzwischen angeheftet ist (`angeheftet`); zweimal = `bereits-rueckgaengig`. Rückgängig ist nicht an Planer-Schalter/Pause gebunden (stellt nur Menschenstand her) — zur Review.
+- **Rückgängig:** stellt nur die gespeicherten Vorwerte her (null = Schlüssel entfernen), nur wenn jeder Schlüssel noch den übernommenen Wert hat (`seit-uebernahme-geaendert`) und keiner inzwischen angeheftet ist (`angeheftet`); zweimal = `bereits-rueckgaengig`. Rückgängig ist nicht an Planer-Schalter/Pause gebunden (stellt nur Menschenstand her; Test C-4) — zur Review. Replay-Hinweis: die Rückgängig-Daten selbst sind nicht einmalig; erst ein zweites Anwenden nach erfolgreicher Rücknahme scheitert an `bereits-rueckgaengig` bzw. `seit-uebernahme-geaendert`. Einmalige Verwendung muss der Schreibweg sicherstellen (Datensatz nach Gebrauch entwerten).
+- **Review #612 (B-1, B-2, C-1…C-4, C-7) behoben:** Rückwirkend nichts — Tage vor dem heutigen Betriebstag (`betriebstag(jetzt)`, Europe/Berlin; heute selbst nicht vergangen wie in planungsreife „vor heute“) → `vergangen`, abgeschlossener Monat (`monatAbgeschlossen`, monatsabschluss.mjs) → `monat-abgeschlossen`, beides auch beim Rückgängigmachen. Rohstand: vorhandener Wert außer „-“ (auch "" / null) → `schluessel-belegt`; Bestand mit `sichtEntwuerfe`/`sichtIstDaten` → `betrieb-ungueltig`. Rückgängig-Daten: Vorwert nur null oder „-“, Schlüssel `Person|JJJJ-MM-TT` mit Kennungsprüfung und Längengrenze. `demo` muss ein echtes Boolean `false` sein. `patchAnwenden` liefert `{ ok, mandant }`, prüft Schlüsselform und Werte, lehnt `__proto__`/`constructor`/`prototype` ab, wirft nie.
+- Hinweis (Review C-5/C-6/D, nicht gebaut): die übrigen Anmerkungen der Review sind als Hinweis für den Verdrahtungsschritt vermerkt, kein eigenes Paket.
 
 Offene Anschlüsse (brauchen Review, nicht erfunden):
-- Verdrahtung: Server-Aktion, die über PUT `/api/bestand` den Patch auf den gespeicherten Stand legt — `zusammenfuehren` (rechte.mjs) mit ETag/409, danach `fachpruefungUebermittlung`; Protokoll ins Modulprotokoll (Grenze `modulprotokollUeberGrenze`), Änderungseinträge in `aenderungen`. Der Vorschlag mit `basis` muss serverseitig erzeugt/aufbewahrt werden, sonst ist die Basis vom Client vorgebbar (Prüfung je Eintrag bleibt trotzdem auf dem echten Stand).
+- Verdrahtung = **eigene Server-Aktion** (nicht der allgemeine PUT `/api/bestand`-Weg über `zusammenfuehren`/`anheftenZusammen`): unter der Prozesssperre und mit ETag/Version (409 bei Abweichung) den gespeicherten Betrieb laden, `uebernahmeAnwenden` bzw. `rueckgaengigAnwenden` rechnen, nur `patchAnwenden` auf `abweichungen` legen und in EINEM Schreibvorgang atomar speichern: Patch + `aenderungen` + Protokolleintrag (Modulprotokoll, Grenze `modulprotokollUeberGrenze`) + Rückgängig-Datensatz. Vorschlag, `basis` und Rückgängig-Daten nur serverseitig erzeugen und aufbewahren (nie vom Client übernehmen); Rückgängig-Daten einmalig verwendbar. `kontext` serverseitig bauen: rohe `sitzung.rolle`, echtes Boolean `demo` aus der Sitzung, Serveruhr als `jetzt`, `freigabe` nie aus der Anfrage (nur `PLANER_AN`). Mitteilungen bleiben `versandt: false`, bis die Betreiberentscheidung vorliegt.
 - Oberfläche (Häkchen je Einteilung, Bestätigung, Rückgängig-Knopf).
 - **Betreiberentscheidung offen:** Aufbewahrung der Vorwerte für Rückgängig (wo, wie lange, Löschung im Datenschutzlauf).
 - **Betreiberentscheidung offen:** Mitteilungen an Beschäftigte nach einer Übernahme in einem freigegebenen Monat (bisher `uebernehmeVorschlag`: Mitteilung „Zusätzlicher Dienst“).
 
-Mutationen (von Hand, je Lauf der Prüfdatei; alle erkannt):
+Mutationen (von Hand, je Lauf der Prüfdatei; Ergebnis siehe Tabelle):
 
 | Nr | Mutation | rote Tests |
 |---|---|---|
@@ -843,3 +845,17 @@ Mutationen (von Hand, je Lauf der Prüfdatei; alle erkannt):
 | M14 | Person\|Tag-Schlüssel ins Protokoll | 1 |
 | M15 | Freigabe nicht mehr „genau true“ | 1 |
 | M16 | Abweichungen nicht im Fingerprint | 3 |
+| M17 | B-1: `vergangen` je Eintrag entfernt | ≥ 1 |
+| M18 | B-1: abgeschlossener Monat nicht gesperrt | 1 |
+| M19 | B-1: `vergangen` beim Rückgängigmachen entfernt | 1 |
+| M20 | B-2: Rohstand ("" / null) nicht als belegt | 1 |
+| M21 | B-2: Sichten (`sichtEntwuerfe`/`sichtIstDaten`) zugelassen | 1 |
+| M22 | C-1: beliebiger Vorwert in den Rückgängig-Daten | 1 |
+| M23 | C-1: Schlüsselform der Rückgängig-Daten nicht geprüft | ≥ 1 |
+| M24 | C-2: `demo` nur `=== true` statt echtes Boolean | 1 |
+| M25 | C-3: Schlüsselform im Patch nicht geprüft | 1 |
+| M26 | C-3: Prototyp-Namen zugelassen | ≥ 1 |
+| M27 | C-3: `defineProperty` durch Zuweisung ersetzt | **überlebt, gleichwertig**: Prototyp-Namen sind vorher abgewiesen und jeder Schlüssel enthält „\|“, eine Zuweisung kann damit keinen Prototyp treffen; zweite Sicherung |
+| M28 | C-3: try/catch in `patchAnwenden` entfernt | 1 |
+
+Nach Review #612 (Kopf vor dem Fix b79fe1e5): 31 Tests; Lauf der Mutationen M1–M28 erneut gegen die geänderte Datei: 27/28 erkannt, M27 gleichwertig (oben).

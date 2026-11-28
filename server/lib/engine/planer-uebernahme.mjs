@@ -22,8 +22,13 @@
      sperrender Befund (hindernisBefunde wie schutzSperre/befundeFuerEinteilung, Automatik: Muss ungeprüft = Achtung, „nicht bewertbar“
      nie erfüllt), danach die Nachprüfung des Planers (nachpruefen: Bestandspersonen, Vorwärts, Planbefunde) über die ganze Auswahl.
    - Atomar: ein fehlgeschlagener Eintrag lehnt die ganze Übernahme ab; die Liste nennt nur Indizes der Auswahl und Kennungen.
-   - Anheftungen werden nie gelöst oder verändert: der Patch berührt `angeheftet` nicht und nie einen angehefteten Schlüssel
-     (die Übernahme läuft damit nie in das Aufheben von anheftenZusammen).
+   - Anheftungen werden nie gelöst oder verändert: der Patch nennt nie `angeheftet` und nie einen angehefteten Schlüssel. Das gilt
+     nur, wenn der spätere Schreibweg den Patch mit `patchAnwenden` allein auf `abweichungen` legt (eigene Server-Aktion) — läuft er
+     über zusammenfuehren/anheftenZusammen, entscheiden dort andere Regeln (Aufheben bei Änderung); das ist nicht vorgesehen.
+   - Rückwirkend nichts: Tage vor dem heutigen Betriebstag (betriebstag(jetzt), wie planungsreife „vergangen = vor heute“) und
+     abgeschlossene Monate (monatAbgeschlossen, monatsabschluss.mjs) werden weder übernommen noch zurückgenommen.
+   - Rohstand: ein vorhandener Wert in `abweichungen` außer „-“ (auch "" oder null) gilt als belegt; gefilterte Sichten
+     (sichtEntwuerfe, sichtIstDaten) sind kein Betriebsstand.
    - Rückgängig stellt nur die gespeicherten Vorwerte genau dieser Schlüssel her und nur, solange sie seitdem unverändert sind.
 
    Rein und deterministisch: keine Uhr (Zeit aus `kontext.jetzt`, Tagesdatum der Regeln über mitTagesdatum), kein Zufall, keine Ablage;
@@ -35,6 +40,7 @@ import { betriebstag } from "../betriebszeit.mjs";
 import { darf } from "../rechte.mjs";
 import { kiPauseAktiv, kiSteuerungUnlesbar, kiPlanerEntscheidung } from "../ki-steuerung.mjs";
 import { freigegebeneMonate } from "../planfreigabe.mjs";
+import { monatAbgeschlossen } from "../monatsabschluss.mjs";
 import { neuesVorgabenBudget } from "../vorgabenwirkung.mjs";
 import { PLANER_AN, planerModusWirksam, nachpruefen } from "./planer.mjs";
 import { anheftungenLesen, anheftungSperrt, ANGEHEFTET_FELD } from "./anheften.mjs";
@@ -110,9 +116,10 @@ export function vorschlagBasis(m, ym) {
   }
 }
 
-/** Darf die Rolle übernehmen bzw. rückgängig machen? Leitung/Planung mit plan.edit.all, nie Demo. */
+/** Darf die Rolle übernehmen bzw. rückgängig machen? Leitung/Planung mit plan.edit.all, nie Demo. `demo` muss ein echtes Boolean
+    `false` sein (serverseitig aus der Sitzung gesetzt); fehlt es oder ist es kein Boolean: verweigert (fail closed). */
 export function darfUebernehmen(kontext) {
-  if (!istObjekt(kontext) || kontext.demo === true || typeof kontext.rolle !== "string") return false;
+  if (!istObjekt(kontext) || typeof kontext.demo !== "boolean" || kontext.demo || typeof kontext.rolle !== "string") return false;
   return UEBERNAHME_ROLLEN.includes(kontext.rolle) && darf(kontext.rolle, "plan.edit.all");
 }
 
@@ -144,9 +151,15 @@ function vorpruefung(m, ym, kontext) {
   if (!darfUebernehmen(kontext)) return "keine-berechtigung";
   if (!zeitAus(kontext)) return "zeit-ungueltig";
   if (!istObjekt(m) || !Array.isArray(m.personen) || !Array.isArray(m.dienstarten) || !istObjekt(m.abweichungen)) return "betrieb-ungueltig";
+  /* Eine gefilterte Sicht (Entwürfe ausgeblendet, Ist-Daten gekürzt) ist kein Betriebsstand: darauf wird nichts geprüft. */
+  if (hat(m, "sichtEntwuerfe") || hat(m, "sichtIstDaten")) return "betrieb-ungueltig";
   if (!monatOk(ym)) return "monat-ungueltig";
+  if (monatAbgeschlossen(m, ym)) return "monat-abgeschlossen";
   return null;
 }
+
+/** Liegt der Tag vor dem heutigen Betriebstag (Europe/Berlin aus kontext.jetzt)? Heute selbst ist nicht vergangen (planungsreife). */
+const vergangen = (d, kontext) => d < betriebstag(/** @type {Date} */ (zeitAus(kontext)));
 
 /** Auswahl lesen: jede Einteilung genau einmal, aus dem Vorschlag, im Monat. */
 function auswahlLesen(ym, vorschlag, auswahl) {
@@ -206,13 +219,15 @@ export function uebernahmePruefen(m, ym, vorschlag, auswahl, kontext) {
         const p = m.personen.find((x) => x && x.id === e.personId);
         const da = m.dienstarten.find((x) => x && x.id === e.dienstId);
         const weg = (grund, regeln) => abgelehnt.push({ index, grund, ...(regeln ? { regeln } : {}) });
+        if (vergangen(e.datum, kontext)) return weg("vergangen");
         if (!da) return weg("dienst-unbekannt");
         if (!p) return weg("person-unbekannt");
         const jetztTag = personTag(m, p, e.datum);
         if (jetztTag.quelle === "extern") return weg("nicht-im-dienst");
         if (abwesenheitAm(m, p.id, e.datum)) return weg("abwesend");
         if (anheftungSperrt(anh, p.id, e.datum)) return weg("angeheftet");
-        if (jetztTag.dienstId) return weg("schluessel-belegt");
+        /* Rohstand: nur „kein Eintrag“ oder ausdrücklich „-“ ist frei; "" / null / sonstige Werte gelten als belegt. */
+        if (jetztTag.dienstId || (hat(ab, e.schluessel) && ab[e.schluessel] !== "-")) return weg("schluessel-belegt");
         vorwerte[e.schluessel] = hat(ab, e.schluessel) ? ab[e.schluessel] : null;
         /* Stand ohne diesen Eintrag (übrige Auswahl bleibt): Lücke muss noch bestehen, keine harte Regel. */
         const ohneAb = { ...neuAb };
@@ -279,16 +294,26 @@ export function uebernahmeAnwenden(m, ym, vorschlag, auswahl, kontext) {
   }
 }
 
-/** Rückgängig-Daten lesen. */
+/** Namen, die als Schlüssel eines einfachen Objekts nie geschrieben werden (Prototyp). */
+const VERBOTEN = new Set(["__proto__", "constructor", "prototype"]);
+/** Schlüsselform „Person|JJJJ-MM-TT“ (Person: Kennung ohne „|“, kein Prototyp-Name; Tag gültig; ym wahlweise). */
+function schluesselOk(k, ym) {
+  if (typeof k !== "string" || k.length > 100) return false;
+  const i = k.indexOf("|");
+  if (i < 1 || k.lastIndexOf("|") !== i) return false;
+  const person = k.slice(0, i), d = k.slice(i + 1);
+  if (!kennungOk(person) || VERBOTEN.has(person) || !TAG.test(d) || !monatOk(d.slice(0, 7))) return false;
+  return tagImMonat(d, ym === undefined ? d.slice(0, 7) : ym);
+}
+
+/** Rückgängig-Daten lesen: Vorwert nur „kein Eintrag“ (null) oder „-“ — mehr kann eine Übernahme nie überschrieben haben. */
 function rueckLesen(ym, r) {
   if (!istObjekt(r) || r.art !== "planer-uebernahme" || r.ym !== ym || !Array.isArray(r.eintraege) || !r.eintraege.length || r.eintraege.length > UEBERNAHME_GRENZE.eintraege) return null;
   const schl = new Set();
   for (const e of r.eintraege) {
-    if (!istObjekt(e) || typeof e.schluessel !== "string" || schl.has(e.schluessel)) return null;
-    const i = e.schluessel.lastIndexOf("|");
-    if (i < 1 || !tagImMonat(e.schluessel.slice(i + 1), ym)) return null;
-    if (!(e.vorher === null || typeof e.vorher === "string" || typeof e.vorher === "number")) return null;
-    if (!kennungOk(e.nachher)) return null;
+    if (!istObjekt(e) || !schluesselOk(e.schluessel, ym) || schl.has(e.schluessel)) return null;
+    if (!(e.vorher === null || e.vorher === "-")) return null;
+    if (!kennungOk(e.nachher) || e.nachher === "-") return null;
     schl.add(e.schluessel);
   }
   return r.eintraege;
@@ -312,7 +337,8 @@ export function rueckgaengigPruefen(m, ym, rueckgaengig, kontext) {
     if (eintraege.every((e) => jetzt(e.schluessel) === e.vorher)) return nein("bereits-rueckgaengig");
     const abgelehnt = [];
     eintraege.forEach((e, index) => {
-      if (jetzt(e.schluessel) !== e.nachher) abgelehnt.push({ index, grund: "seit-uebernahme-geaendert" });
+      if (vergangen(e.schluessel.slice(-10), kontext)) abgelehnt.push({ index, grund: "vergangen" });
+      else if (jetzt(e.schluessel) !== e.nachher) abgelehnt.push({ index, grund: "seit-uebernahme-geaendert" });
       else if (anh.aktiv.has(e.schluessel)) abgelehnt.push({ index, grund: "angeheftet" });
     });
     if (abgelehnt.length) return nein("eintrag-abgelehnt", { abgelehnt });
@@ -356,11 +382,25 @@ export function rueckgaengigAnwenden(m, ym, rueckgaengig, kontext) {
 
 /**
  * Wendet einen Patch auf eine KOPIE an: nur die genannten Schlüssel von `abweichungen` (null = entfernen), alles andere unverändert
- * (nie Komplettüberschreiben). Für Prüfungen und den späteren Schreibweg. Rein.
+ * (nie Komplettüberschreiben). Für Prüfungen und den späteren Schreibweg (eigene Server-Aktion). Rein; wirft nie. Schlüssel nur in der
+ * Form „Person|JJJJ-MM-TT“ (keine Prototyp-Namen), Werte nur Kennung, „-“ oder null; sonst wird nichts angewendet.
  * @param {any} m @param {{ abweichungen: Record<string, any> }} patch
+ * @returns {{ ok: true, mandant: any } | { ok: false, grund: string }}
  */
 export function patchAnwenden(m, patch) {
-  const ab = { ...m.abweichungen };
-  for (const [k, w] of Object.entries(patch.abweichungen)) { if (w === null) delete ab[k]; else ab[k] = w; }
-  return { ...m, abweichungen: ab };
+  try {
+    if (!istObjekt(m) || !istObjekt(m.abweichungen)) return nein("betrieb-ungueltig");
+    if (!istObjekt(patch) || !istObjekt(patch.abweichungen) || Object.keys(patch).some((k) => k !== "abweichungen")) return nein("patch-ungueltig");
+    const e = Object.entries(patch.abweichungen);
+    if (!e.length || e.length > UEBERNAHME_GRENZE.eintraege) return nein("patch-ungueltig");
+    for (const [k, w] of e) if (!schluesselOk(k) || !(w === null || kennungOk(w))) return nein("patch-ungueltig");
+    const ab = { ...m.abweichungen };
+    for (const [k, w] of e) {
+      if (w === null) delete ab[k];
+      else Object.defineProperty(ab, k, { value: w, enumerable: true, writable: true, configurable: true });
+    }
+    return { ok: true, mandant: { ...m, abweichungen: ab } };
+  } catch {
+    return nein("patch-ungueltig");
+  }
 }
