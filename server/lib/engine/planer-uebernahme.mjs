@@ -34,13 +34,12 @@
    Rein und deterministisch: keine Uhr (Zeit aus `kontext.jetzt`, Tagesdatum der Regeln über mitTagesdatum), kein Zufall, keine Ablage;
    die Eingaben werden nie verändert; wirft nie (`{ ok: false, grund }`).
    ========================================================================== */
-import { createHash } from "node:crypto";
 import { dim_, pad, addDays, between } from "../regelwerk.mjs";
 import { betriebstag } from "../betriebszeit.mjs";
 import { darf } from "../rechte.mjs";
 import { kiPauseAktiv, kiSteuerungUnlesbar, kiPlanerEntscheidung } from "../ki-steuerung.mjs";
 import { freigegebeneMonate } from "../planfreigabe.mjs";
-import { monatAbgeschlossen } from "../monatsabschluss.mjs";
+import { monatAbgeschlossen, sha256Hex } from "../monatsabschluss.mjs";
 import { neuesVorgabenBudget } from "../vorgabenwirkung.mjs";
 import { PLANER_AN, planerModusWirksam, nachpruefen } from "./planer.mjs";
 import { anheftungenLesen, anheftungSperrt, ANGEHEFTET_FELD } from "./anheften.mjs";
@@ -110,7 +109,7 @@ export function vorschlagBasis(m, ym) {
     for (const f of REGELFELDER) if (hat(m, f)) regeln[f] = m[f];
     for (const f of Object.keys(m).filter((k) => /schichtmodell/i.test(k))) regeln[f] = m[f];
     const text = stabil({ v: 1, ym, abweichungen: ab, angeheftet: anh, abwesenheiten: abw, einstellungen: einst, regeln });
-    return `sha256:${createHash("sha256").update(text).digest("hex")}`;
+    return `sha256:${sha256Hex(text)}`;
   } catch {
     return null;
   }
@@ -250,7 +249,7 @@ export function uebernahmePruefen(m, ym, vorschlag, auswahl, kontext) {
 }
 
 /** Kurze, deterministische Kennung eines Änderungseintrags (kein Zufall, keine Uhr). */
-const kennung = (praefix, ...teile) => `${praefix}${createHash("sha256").update(teile.join("\u0000")).digest("hex").slice(0, 16)}`;
+const kennung = (praefix, ...teile) => `${praefix}${sha256Hex(teile.join("\u0000")).slice(0, 16)}`;
 /** Zeit wie in den bestehenden Änderungseinträgen (de-DE, Europe/Berlin). */
 const zeitText = (t) => t.toLocaleString("de-DE", { timeZone: "Europe/Berlin" });
 
