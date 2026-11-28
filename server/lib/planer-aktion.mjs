@@ -24,6 +24,8 @@
      genau diesem Stand, patchAnwenden allein auf `abweichungen`, dann EIN bestandSchreiben mit erwartetem Stand (Journal: alles oder
      nichts) — Patch, Änderungseinträge, Modulprotokoll und Rückgängig-Datensatz zusammen. 409 bei Konflikt; der nächste Versuch rechnet
      aus dem frisch gelesenen Stand neu (nie ein alter Patch auf neuem Stand).
+   - Erfüllungsbericht (WP-I8): Die Antwort von /api/planer-vorschlag trägt zusätzlich `bericht` (erfuellungsbericht zum selben Ergebnis, nur Kennungen und Zahlen,
+     Positivliste) oder `bericht: null` mit `berichtGrund`; er wird nur in der Antwort geliefert (nicht am Server gehalten), kommt nie vom Client und ändert nichts an der Übernahme.
    - Mitteilungen an Beschäftigte: keine (`versandt: false`; Betreiberentscheidung offen).
    - Antworten ohne Personennamen; Fehler als feste Kennungen (`code`).
    Vorschläge liegen nur im Arbeitsspeicher (wie die Importvorgänge, import/vorgaenge.mjs; genau ein Prozess je Ablage,
@@ -32,6 +34,9 @@
    ========================================================================== */
 import { randomBytes } from "node:crypto";
 import { PLANER_AN, planerEinstieg } from "./engine/planer.mjs";
+import { erfuellungsbericht, BERICHT_RANGFOLGE, BERICHT_GRENZE } from "./engine/erfuellungsbericht.mjs";
+import { WEGE_MAX } from "./engine/luckenursache.mjs";
+import { VORGABEN_WIRKUNG_GRENZE } from "./vorgaben.mjs";
 import { vorschlagBasis, uebernahmePruefen, uebernahmeAnwenden, rueckgaengigPruefen, rueckgaengigAnwenden, patchAnwenden, darfUebernehmen,
   UEBERNAHME_GRENZE } from "./engine/planer-uebernahme.mjs";
 import { mitTagesdatum } from "./engine/zeit.mjs";
@@ -61,8 +66,8 @@ export const VORSCHLAG_HOECHST = Object.freeze({ jeBesitzer: 5, jeRaum: 30, jeRa
 
 /** Nur für Prüfungen (Fehler- und Konfliktinjektion). Wirkt ausschließlich unter vitest (process.env.VITEST); im Betrieb wird es nie
     gelesen, auch wenn jemand es setzt. `freigabe` gibt es bewusst nicht. */
-export const _pruefhaken = Object.seal({ ablage: null, vorSchreiben: null, nachlesen: null, hoechst: null });
-const KEINE_HAKEN = Object.freeze({ ablage: null, vorSchreiben: null, nachlesen: null, hoechst: null });
+export const _pruefhaken = Object.seal({ ablage: null, vorSchreiben: null, nachlesen: null, hoechst: null, bericht: null });
+const KEINE_HAKEN = Object.freeze({ ablage: null, vorSchreiben: null, nachlesen: null, hoechst: null, bericht: null });
 const haken = () => (typeof process !== "undefined" && process.env && process.env.VITEST ? _pruefhaken : KEINE_HAKEN);
 
 const istObjekt = (x) => !!x && typeof x === "object" && !Array.isArray(x);
@@ -212,6 +217,106 @@ async function schreiben(storeRoh, raum, mit, mandantAlt, mandantNeu, durch, mer
   }
 }
 
+/* ------------------------------ Erfüllungsbericht (WP-I8) ------------------------------ */
+/** Die festen Kennungen, wenn es keinen Bericht gibt (die Oberfläche setzt den Text; nie ein Fehlertext des Kerns). */
+export const BERICHT_FEHLER = Object.freeze(["aufwand", "ergebnis_passt_nicht", "fehler", "bericht_ungueltig"]);
+
+/* Schema der Antwort: Typ JE SCHLÜSSEL (nicht nur Schlüsselliste). Zählwerte sind ganze Zahlen ≥ 0, nie Listen (der Kern hält Personen-Kennungen als Listen
+   vor und macht daraus Zahlen); Listen stehen nur unter den dafür vorgesehenen Schlüsseln mit fester Höchstlänge; Zeichenketten sind Kennungen nach Muster,
+   Dienst- und Qualifikationskennungen müssen im Bestand des Betriebs stehen. Abgeglichen mit der Berichtsform von erfuellungsbericht.mjs. */
+const KENNUNG = /^[A-Za-z0-9_.-]{1,64}$/;
+const TAGMUSTER = /^\d{4}-\d{2}-\d{2}$/;
+const TYP = Object.freeze({ zahl: "zahl", zahlNull: "zahlNull", mass: "mass", massNull: "massNull", wahr: "wahr", kennung: "kennung", kennungNull: "kennungNull",
+  tag: "tag", dienst: "dienst", qual: "qual", leer: "leer" });
+const O = (felder) => ({ felder });
+const L = (el, max) => ({ el, max });
+const J = (je) => ({ je });
+const SCH_PROBLEM = O({ kategorie: TYP.kennung, status: TYP.kennung });
+const SCH_VORGABE = O({ vorgabeId: TYP.kennungNull, staerke: TYP.kennungNull, groesse: TYP.kennungNull, status: TYP.kennung, grund: TYP.kennung, maxAbweichung: TYP.massNull,
+  spannweite: TYP.massNull, ueberschreitung: TYP.massNull, kleineGruppe: TYP.wahr, personen: TYP.zahl, nichtBewertbar: TYP.zahl, ausserhalb: TYP.zahl });
+const SCH_KATEGORIE = O({ kategorie: TYP.kennung, rang: TYP.zahl, umfang: TYP.kennung, bestandGeprueft: TYP.wahr, geprueft: TYP.zahl, verletzt: TYP.zahl,
+  vorgaben: J((x) => (Array.isArray(x) ? L(SCH_VORGABE, VORGABEN_WIRKUNG_GRENZE.aktive) : TYP.zahl)), status: TYP.kennung, grund: TYP.kennung, aussage: TYP.kennung,
+  stellen: TYP.zahl, offen: TYP.zahl, voll: TYP.zahl, bedarf: TYP.zahl, fehlt: TYP.zahl, bedarfOffen: TYP.zahl, nachgelagert: TYP.wahr, summeUeberschreitung: TYP.massNull,
+  erfuellt: TYP.zahl, nichtBewertbar: TYP.zahl });
+const SCH_WEG = O({ regeln: L(TYP.kennung, 20), personen: TYP.zahl, deckt: TYP.zahl });
+const FEHLENDE_QUAL_MAX = 50;
+const SCH_KONFLIKT = O({ datum: TYP.tag, dienstId: TYP.dienst, art: TYP.kennung, fehlt: TYP.zahl, qualFehlt: TYP.wahr, bedarfOffen: TYP.wahr, ursache: TYP.kennung, regeln: L(TYP.kennung, 20),
+  grund: TYP.kennung, vorgabenUnvollstaendig: TYP.wahr, wegeStatus: TYP.kennung, wege: L(SCH_WEG, WEGE_MAX),
+  fehlendeQualifikationen: L(O({ qid: TYP.qual, noetig: TYP.zahl, ist: TYP.zahl }), FEHLENDE_QUAL_MAX) });
+const SCH_BERICHT = O({ ok: TYP.wahr, ym: TYP.kennung, startwert: TYP.zahlNull, massgeblich: SCH_PROBLEM, erstesProblem: J((x) => (x === null ? TYP.leer : SCH_PROBLEM)),
+  zusammenfassung: O({
+    kategorien: O({ erfuellt: TYP.zahl, erfuelltImVorschlag: TYP.zahl, verletzt: TYP.zahl, offen: TYP.zahl, nichtBewertbar: TYP.zahl }),
+    stellen: O({ gesamt: TYP.zahl, voll: TYP.zahl, offen: TYP.zahl, bedarfOffen: TYP.zahl }), qualifikation: O({ stellen: TYP.zahl, offen: TYP.zahl }),
+    eigeneEinteilungen: TYP.zahl,
+    konflikte: O({ gesamt: TYP.zahl, gelistet: TYP.zahl, abgeschnitten: TYP.wahr, mitWegen: TYP.zahl, wegeUnvollstaendig: TYP.zahl, ursacheUnvollstaendig: TYP.zahl }) }),
+  kategorien: L(SCH_KATEGORIE, BERICHT_RANGFOLGE.length), konflikte: L(SCH_KONFLIKT, BERICHT_GRENZE.konflikte) });
+/** Obergrenze der Knoten (Werte, Listen, Objekte) eines Berichts, aus den Obergrenzen des Kerns abgeleitet: je Konflikt 10 Werte, 20 Regeln, 50 fehlende Qualifikationen
+    mit je 4 Knoten, höchstens WEGE_MAX Wege mit je 24 Knoten; dazu Kategorien (7 × 25 Knoten, höchstens 50 Verteilungsvorgaben mit je 14) und die Zusammenfassung. */
+const KNOTEN_JE_KONFLIKT = 10 + (1 + 20) + (1 + FEHLENDE_QUAL_MAX * 4) + (1 + WEGE_MAX * 24) + 1;
+export const BERICHT_KNOTEN_MAX = BERICHT_GRENZE.konflikte * KNOTEN_JE_KONFLIKT + BERICHT_RANGFOLGE.length * 25 + VORGABEN_WIRKUNG_GRENZE.aktive * 14 + 100;
+
+/** Kopie von `x` nach Schema `s`, oder undefined (ungültig). Zählt die Knoten; über der Grenze ctx.zuGross. @param {any} s @param {any} x @param {any} ctx */
+function berichtKopie(s, x, ctx) {
+  if (++ctx.n > ctx.max) { ctx.zuGross = true; return undefined; }
+  if (typeof s === "string") {
+    switch (s) {
+      case TYP.zahl: return Number.isInteger(x) && x >= 0 ? x : undefined;
+      case TYP.zahlNull: return x === null ? null : Number.isInteger(x) && x >= 0 ? x : undefined;
+      case TYP.mass: return typeof x === "number" && Number.isFinite(x) && x >= 0 ? x : undefined;
+      case TYP.massNull: return x === null ? null : typeof x === "number" && Number.isFinite(x) && x >= 0 ? x : undefined;
+      case TYP.wahr: return typeof x === "boolean" ? x : undefined;
+      case TYP.kennung: return typeof x === "string" && KENNUNG.test(x) ? x : undefined;
+      case TYP.kennungNull: return x === null ? null : typeof x === "string" && KENNUNG.test(x) ? x : undefined;
+      case TYP.tag: return typeof x === "string" && TAGMUSTER.test(x) ? x : undefined;
+      case TYP.dienst: return (typeof x === "string" || typeof x === "number") && ctx.dienste.has(String(x)) ? x : undefined;
+      case TYP.qual: return (typeof x === "string" || typeof x === "number") && ctx.quals.has(String(x)) ? x : undefined;
+      case TYP.leer: return x === null ? null : undefined;
+      default: return undefined;
+    }
+  }
+  if (s.je) { ctx.n--; return berichtKopie(s.je(x), x, ctx); }
+  if (s.el !== undefined) {
+    if (!Array.isArray(x) || x.length > s.max) return undefined;
+    const aus = [];
+    for (const y of x) { const k = berichtKopie(s.el, y, ctx); if (k === undefined) return undefined; aus.push(k); }
+    return aus;
+  }
+  if (!istObjekt(x)) return undefined;
+  const aus = {};
+  for (const [k, y] of Object.entries(x)) {
+    if (!hat(s.felder, k)) return undefined;
+    const w = berichtKopie(s.felder[k], y, ctx);
+    if (w === undefined) return undefined;
+    aus[k] = w;
+  }
+  return aus;
+}
+
+/**
+ * Der Erfüllungsbericht (server/lib/engine/erfuellungsbericht.mjs) zum soeben berechneten Vorschlag, für die Antwort: Kennungen und Zahlen,
+ * geprüft gegen das Schema oben (Typ je Schlüssel). Wirft nie. Kein Bericht ist nie ein Grund, den Vorschlag zu verwerfen:
+ * `{ bericht: null, berichtGrund }` mit einer Kennung aus BERICHT_FEHLER (zu groß: `aufwand`).
+ * @param {any} m Bestand vor dem Planer @param {any} ergebnis Ergebnis des Planers (Status ok) @param {(m: any, e: any) => any} [rechnen] nur für Prüfungen
+ * @param {{ knoten?: number }} [grenze] nur für Prüfungen
+ * @returns {{ bericht: any, berichtGrund: string | null }}
+ */
+export function berichtFuerAntwort(m, ergebnis, rechnen = erfuellungsbericht, grenze = {}) {
+  try {
+    const b = rechnen(m, ergebnis);
+    if (!istObjekt(b)) return { bericht: null, berichtGrund: "fehler" };
+    if (b.ok !== true) return { bericht: null, berichtGrund: typeof b.grund === "string" && BERICHT_FEHLER.includes(b.grund) ? b.grund : "fehler" };
+    const dienste = new Set((istObjekt(m) && Array.isArray(m.dienstarten) ? m.dienstarten : []).filter(istObjekt).map((d) => String(d.id)));
+    const quals = new Set();
+    for (const d of istObjekt(m) && Array.isArray(m.dienstarten) ? m.dienstarten : []) if (istObjekt(d) && istObjekt(d.mindestQual)) for (const q of Object.keys(d.mindestQual)) quals.add(q);
+    const ctx = { n: 0, max: Number.isInteger(grenze.knoten) ? grenze.knoten : BERICHT_KNOTEN_MAX, zuGross: false, dienste, quals };
+    const kopie = berichtKopie(SCH_BERICHT, b, ctx);
+    if (ctx.zuGross) return { bericht: null, berichtGrund: "aufwand" };
+    return istObjekt(kopie) ? { bericht: kopie, berichtGrund: null } : { bericht: null, berichtGrund: "bericht_ungueltig" };
+  } catch {
+    return { bericht: null, berichtGrund: "fehler" };
+  }
+}
+
 /* ------------------------------------- Wege ------------------------------------- */
 
 /**
@@ -269,17 +374,20 @@ export async function vorschlagErzeugen({ store, sitzung, rumpf, jetzt }) {
   if (imRaum.reduce((s, v) => s + groesse(v), 0) + gesetzt.length > G.jeRaumEintraege) return nein("zu-viele-vorschlaege");   // Größe je Raum
   if (bleibt.reduce((s, v) => s + groesse(v), 0) + gesetzt.length > G.gesamtEintraege) return nein("zu-viele-vorschlaege");
   const offenAnzahl = Array.isArray(r.offen) ? r.offen.length : 0;
+  /* Erfüllungsbericht (WP-I8) zum selben Ergebnis, kein zweiter Planlauf; unter derselben Tagesuhr wie der Planer. Er steht nur in der Antwort (am Server wird
+     er nicht gehalten) und kommt nie vom Client. Kein Bericht verwirft den Vorschlag nicht. */
+  const { bericht, berichtGrund } = mitTagesdatum(heute, () => berichtFuerAntwort(m, r, haken().bericht || undefined));
   if (ersetzt) VORSCHLAEGE.delete(ersetzt.id);
   if (gesetzt.length) for (const v of weg) VORSCHLAEGE.delete(v.id);   // nur wenn wirklich ein neuer Vorschlag eingetragen wird
   if (!gesetzt.length) return { status: 200, ausgang: "erfolg", spur: "Planvorschlag erzeugt: 0 Einteilungen",
-    daten: { ok: true, vorschlag: null, ym, modus: r.modus, eintraege: [], offen: offenAnzahl } };
+    daten: { ok: true, vorschlag: null, ym, modus: r.modus, eintraege: [], offen: offenAnzahl, bericht, berichtGrund } };
   const id = `pv-${randomBytes(16).toString("hex")}`;
   const gueltigBisMs = jetztMs + VORSCHLAG_FRIST.hoechstMs;
   VORSCHLAEGE.set(id, { id, besitz, ym, angelegt: jetztMs, gueltigBisMs, zustand: "offen", laeuft: false,
     vorschlag: Object.freeze({ status: "ok", ym, gesetzt: Object.freeze(gesetzt), basis }) });
   return { status: 201, ausgang: "erfolg", spur: `Planvorschlag erzeugt: ${gesetzt.length} Einteilungen`,
     daten: { ok: true, vorschlag: id, ym, modus: r.modus, gueltigBis: new Date(gueltigBisMs).toISOString(),
-      eintraege: gesetzt.map((g, index) => ({ index, personId: g.personId, datum: g.datum, dienstId: g.dienstId, art: g.art })), offen: offenAnzahl } };
+      eintraege: gesetzt.map((g, index) => ({ index, personId: g.personId, datum: g.datum, dienstId: g.dienstId, art: g.art })), offen: offenAnzahl, bericht, berichtGrund } };
 }
 
 /** Auswahl aus dem Rumpf: Indizes in den gehaltenen Vorschlag (ganze Zahlen, eindeutig). { auswahl } oder { code }. */
