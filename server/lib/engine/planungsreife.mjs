@@ -231,8 +231,15 @@ export function planungsreife(daten, optionen = {}) {
   else if (vorRoh === null) luecke(p.vorgaben, "Die internen Vorgaben sind nicht lesbar.");
   else {
     zaehler.vorgaben = vorRoh.length;
-    const schlecht = vorRoh.filter((v) => !v || typeof v !== "object" || !REGELARTEN_ALLE.includes(v.typ) || !v.parameter || typeof v.parameter !== "object" || !Object.keys(v.parameter).length)
-      .map((v, i) => String(v && v.id !== undefined ? v.id : `#${i}`));
+    /* Bestandsvorgaben (server/lib/vorgaben.mjs) führen die Regelart im Feld „regelart“; „typ“ ist die Form des Regelobjekts
+       (vorgabeAlsRegel) und bleibt als Altform lesbar. Nur Entwurf und inaktiv bleiben ungeprüft: sie wirken nicht und sind
+       keine Blockade; ohne Status (Regelobjekt) und mit jedem anderen Status wird geprüft (fail-closed). */
+    const regelartVon = (v) => (v.regelart !== undefined && v.regelart !== null ? v.regelart : v.typ);
+    const ruhend = (v) => v.status === "entwurf" || v.status === "inaktiv";
+    const schlecht = vorRoh.map((v, i) => [v, i])
+      .filter(([v]) => !v || typeof v !== "object"
+        || (!ruhend(v) && (!REGELARTEN_ALLE.includes(regelartVon(v)) || !v.parameter || typeof v.parameter !== "object" || !Object.keys(v.parameter).length)))
+      .map(([v, i]) => String(v && v.id !== undefined ? v.id : `#${i}`));
     if (schlecht.length) luecke(p.vorgaben, `${n(schlecht.length, "Vorgabe ist", "Vorgaben sind")} unvollständig.`, schlecht);
   }
   if (daten.wuensche !== undefined && !liste(daten.wuensche)) luecke(p.vorgaben, "Die Wünsche sind nicht lesbar.");
