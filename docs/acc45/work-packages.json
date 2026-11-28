@@ -6248,9 +6248,9 @@
       "pr": ["#305"],
       "nachweis": "docs/acc45/QS-ZEITABHAENGIGKEIT.md",
       "akzeptanz": "Nachgewiesene zeitabhängige Ausfälle behoben, Ruhezeitregel (11 h) nicht abgeschwächt, Gegenprobe vorhanden",
-      "tests": "pruefungen/geo.test.js, pruefungen/qs-b8-zeitbasis.test.js, pruefung:geo-uhren, e2e/abnahme-b-ablaeufe.spec.mjs",
+      "tests": "pruefungen/geo.test.js, pruefungen/qs-b8-zeitbasis.test.js, pruefung:geo-uhren, e2e/abnahme-b-ablaeufe.spec.mjs, pruefungen/selbsttest-datumsstabil.test.js",
       "dateien": "pruefungen/, e2e/",
-      "notiz": "Von Hand angelegt, PR #305 war keinem Paket zugeordnet (Abgleich 2026-11-15). Reviewstufe über den PR-Beleg. Bekannte Restpunkte stehen als Liste in docs/acc45/QS-ZEITABHAENGIGKEIT.md (P2, nicht nachgewiesene Ausfälle); Browserjobs laufen nur in der CI (browser-abnahme)."
+      "notiz": "Von Hand angelegt, PR #305 war keinem Paket zugeordnet (Abgleich 2026-11-15). Reviewstufe über den PR-Beleg. Bekannte Restpunkte stehen als Liste in docs/acc45/QS-ZEITABHAENGIGKEIT.md (P2, nicht nachgewiesene Ausfälle); Browserjobs laufen nur in der CI (browser-abnahme). Nachtrag 2026-11-28: Selbsttest (src/pruefung.jsx) vom Kalendertag unabhängig gemacht (Abschnitt 1.4: 28.11. Freischicht, 01.12. Quartal, 01.01.2027 Voller Monat, 06.2027 Aufbau-Zähler), Regression pruefungen/selbsttest-datumsstabil.test.js, Pin V4-3b nachgezogen."
     },
     {
       "id": "WP-ZEIT",
