@@ -22,23 +22,24 @@ import * as SP from "../speicher.js";
 export function PlanerSteuerungAnsicht({ z, steuern = false, demo = false, status = null, beschaeftigt = false, onSchalter = () => {}, onModus = () => {} }) {
   const T = PLANER_TEXTE;
   const wirksam = MODUS_TEXT[z.wirksam] || MODUS_TEXT.aus;
+  const wirksamer = z.wirksam !== "aus";   // nur dann gilt der Schalter nicht bloß als „vorgemerkt“
   return (
     <Card role="region" aria-label={T.titel} data-testid="planer-steuerung">
-      <CardHead right={<Pill tone={z.wirksam === "aus" ? "warn" : "ok"}>{wirksam.name}</Pill>}>{T.titel}</CardHead>
+      <CardHead right={<Pill tone={z.wirksam === "aus" || z.reifeFehlt ? "warn" : "ok"}>{z.reifeFehlt ? T.eingeschraenkt : wirksam.name}</Pill>}>{T.titel}</CardHead>
       <section aria-label={T.wirksam}>
-        <p role="status"><strong>{T.wirksam}: {wirksam.name}</strong></p>
-        <p>{!z.freigegeben ? T.globalAus : z.wirksam === "aus" ? T.wirksamAusGrund : wirksam.hinweis}</p>
+        <p role="status"><strong>{T.wirksam}: {wirksam.name}{z.reifeFehlt ? ` (${T.eingeschraenkt})` : ""}</strong></p>
+        <p>{!z.freigegeben ? T.globalAus : z.wirksam === "aus" ? T.wirksamAusGrund : z.reifeFehlt ? T.eingeschraenktHinweis : wirksam.hinweis}</p>
         {z.steuerungUnlesbar && <p role="alert">{T.steuerungUnlesbar}</p>}
       </section>
 
       <section aria-label={T.schalter}>
-        <p><strong>{T.schalter}: {z.schalterAn ? T.schalterAn : T.schalterAus}</strong>
+        <p><strong>{T.schalter}: {wirksamer ? (z.schalterAn ? "an" : "aus") : (z.schalterAn ? T.schalterAn : T.schalterAus)}</strong>
           {steuern && <>{" "}<Schalter an={z.schalterAn} label={T.schalter} onChange={(v) => onSchalter(v)} /></>}</p>
         {z.schalterUnlesbar && <p role="alert">{T.schalterUnlesbar}</p>}
       </section>
 
       <section aria-label={T.modus}>
-        <p><strong>{T.modus}: {z.modusGespeichert ? MODUS_TEXT[z.modusGespeichert].name : T.modusNichtGewaehlt}</strong></p>
+        <p><strong>{T.modus}: {z.modusGespeichert ? MODUS_TEXT[z.modusGespeichert].name : T.modusNichtGewaehlt}{z.modusGespeichert && !wirksamer ? ` (${T.vorgemerkt})` : ""}</strong></p>
         {z.modusUnlesbar && <p role="alert">{T.modusUnlesbar}</p>}
         {steuern && (
           <ul>

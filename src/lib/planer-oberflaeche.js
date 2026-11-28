@@ -36,6 +36,9 @@ export const PLANER_TEXTE = Object.freeze({
   demoLesen: "In der Demo lässt sich der Planer nicht ändern.",
   voraussetzungen: "Voraussetzungen im Betrieb",
   voraussetzungenHinweis: "Der Planer läuft nur, wenn alles erfüllt ist. Die Planungsreife gilt für den genannten Monat.",
+  eingeschraenkt: "eingeschränkt: Planungsreife fehlt",
+  eingeschraenktHinweis: "Der Planer ist im Betrieb wirksam, aber für diesen Monat entsteht kein Vorschlag, solange die Planungsreife fehlt.",
+  vorgemerkt: "vorgemerkt",
   ok: "erfüllt",
   fehlt: "fehlt",
   speichern: "Wird gespeichert …",
@@ -133,6 +136,8 @@ export function planerZustand(einstellungen, o = {}) {
     schalterAn: schalterOk, modusGespeichert: gespeichert,
     voraussetzungen: zeilen,
     /* Nur wenn der Server den Planer wirksam sieht UND jede Zeile erfüllt ist (Planungsreife gilt für den Monat). */
+    /* Der Server sieht den Planer wirksam, aber die Planungsreife des Monats fehlt: eingeschränkt (kein Vorschlag für diesen Monat). */
+    reifeFehlt: wirksamNach !== "aus" && !zeilen.find((z) => z.id === "reife").ok,
     alleErfuellt: zeilen.every((z) => z.ok) && entscheidung === "OK" && wirksamNach !== "aus",
     fehlendeGruende: zeilen.filter((z) => !z.ok).map((z) => z.text),
   };

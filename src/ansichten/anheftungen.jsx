@@ -9,7 +9,7 @@ import { useState } from "react";
 import { anheftungenLesen, ANGEHEFTET_FELD } from "../../server/lib/engine/anheften.mjs";
 import { Card, Lab, Btn, Sel, Field, Feldfehler } from "../ui/bausteine.jsx";
 import { fKurz } from "../lib/datum.js";
-import { planerRechte, tageImMonat } from "../lib/planer-oberflaeche.js";
+import { planerRechte, tageImMonat, einteilungZumAnheften } from "../lib/planer-oberflaeche.js";
 import * as SP from "../speicher.js";
 
 const ROLLE = { leitung: "Leitung", planer: "Planung", kunde: "Kundenrolle" };
@@ -58,6 +58,9 @@ export function AnheftungenAnsicht({ m, ym, darfBedienen = false, status = null,
     .sort((x, y) => x.name.localeCompare(y.name, "de"));
   const name = (pid) => { const p = personen.find((x) => x.id === pid); return p ? p.name : "Person"; };
   const bedienbar = darfBedienen && !a.unlesbar;
+  /* Welche Einteilung würde erneut angeheftet? Der Wert steht auf dem Knopf (Dienstname oder „frei“). */
+  const wertText = (pid, t) => { const e = einteilungZumAnheften(m, pid, t); if (!e.ok) return null;
+    if (e.wert === "-") return "frei"; const d = (m.dienstarten || []).find((x) => String(x.id) === e.wert); return d && d.name ? d.name : e.wert; };
   return (
     <Card still data-testid="anheftungen">
       <Lab>{T.titel}</Lab>
@@ -69,8 +72,8 @@ export function AnheftungenAnsicht({ m, ym, darfBedienen = false, status = null,
       </ul>}
       {a.aufgehoben.length > 0 && <ul>
         {a.aufgehoben.map((x) => <li key={x.schluessel}>{fKurz(x.tag)} · {name(x.personId)}: nicht mehr angeheftet — manuell geändert am {fKurz(x.am)} ({x.rolle})
-          {bedienbar && <>{" "}<Btn size="sm" kind="quiet" disabled={beschaeftigt} onClick={() => onAnheften(x.personId, x.tag)}
-            aria-label={`${T.erneut}: ${name(x.personId)}, ${fKurz(x.tag)}`}>{T.erneut}</Btn></>}</li>)}
+          {bedienbar && wertText(x.personId, x.tag) !== null && <>{" "}<Btn size="sm" kind="quiet" disabled={beschaeftigt} onClick={() => onAnheften(x.personId, x.tag)}
+            aria-label={`${T.erneut}: ${wertText(x.personId, x.tag)} — ${name(x.personId)}, ${fKurz(x.tag)}`}>{T.erneut}: {wertText(x.personId, x.tag)}</Btn></>}</li>)}
       </ul>}
       {!a.unlesbar && !a.aktiv.length && !a.aufgehoben.length && <p>{T.leer}</p>}
       {bedienbar && (

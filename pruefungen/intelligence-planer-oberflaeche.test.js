@@ -230,6 +230,25 @@ describe("Wirksamer Zustand: ehrlich, mit Gründen", () => {
     expect(planerZustand(VOLL(), { freigegeben: true, reife: null }).fehlendeGruende.join(" ")).toContain("nicht prüfbar");
     expect(planerZustand(VOLL(), { freigegeben: true, reife: REIFE_OK }).alleErfuellt).toBe(true);
   });
+  it("C-1: wirksam, aber Planungsreife fehlt: Pill und Zeile sagen „eingeschränkt: Planungsreife fehlt“; global AUS und volle Reife nicht", () => {
+    const nein = { bereit: false, luecken: [{ punkt: "personal", text: "Bei 3 Personen fehlt die Einheit." }] };
+    const z = planerZustand(VOLL(), { freigegeben: true, reife: nein });
+    expect(z.wirksam).toBe("knopfdruck");
+    expect(z.reifeFehlt).toBe(true);
+    const s = html(h(PlanerSteuerungAnsicht, { z }));
+    expect(s).toMatch(/pille[^>]*>eingeschränkt: Planungsreife fehlt</);
+    expect(s).toContain("Wirksam jetzt: Auf Knopfdruck (eingeschränkt: Planungsreife fehlt)");
+    expect(s).toContain("Planer für diesen Betrieb: an");
+    expect(planerZustand(VOLL(), { freigegeben: true, reife: REIFE_OK }).reifeFehlt).toBe(false);
+    expect(html(h(PlanerSteuerungAnsicht, { z: planerZustand(VOLL(), { reife: nein }) }))).not.toContain("eingeschränkt");
+  });
+  it("C-4: „vorgemerkt“ nur, solange der Planer nicht wirksam ist", () => {
+    const aus = html(h(PlanerSteuerungAnsicht, { z: planerZustand(VOLL(), { reife: REIFE_OK }) }));
+    expect(aus).toContain("vorgemerkt: an");
+    expect(aus).toContain("Betriebsmodus: Auf Knopfdruck (vorgemerkt)");
+    const an = html(h(PlanerSteuerungAnsicht, { z: planerZustand(VOLL(), { freigegeben: true, reife: REIFE_OK }) }));
+    expect(an).not.toContain("vorgemerkt");
+  });
   it("Zustände stehen als Text (nicht nur Farbe): jede Voraussetzung nennt „erfüllt“ oder „fehlt“", () => {
     const s = html(h(PlanerSteuerungAnsicht, { z: planerZustand(VOLL(), { reife: REIFE_OK }) }));
     const punkte = [...s.matchAll(/<li>([^<]*)<\/li>/g)].map((m) => m[1]).filter((t) => t.includes("—"));
@@ -517,8 +536,9 @@ describe("Anheften und Lösen: Oberfläche → Aktion → PUT /api/bestand", () 
     // erneut anheften (Knopf der Ansicht): neuer Stempel, Vermerk weg
     const aufrufe = [];
     const baum = AnheftungenAnsicht({ m, ym: YM, darfBedienen: true, onAnheften: (a, b) => aufrufe.push([a, b]) });
-    const erneut = finde(baum, (n) => typeof n.props.onClick === "function" && textVon(n.props.children).trim() === ANHEFTEN_TEXTE.erneut);
-    expect(erneut).toHaveLength(1);
+    const erneut = finde(baum, (n) => typeof n.props.onClick === "function" && textVon(n.props.children).trim() === `${ANHEFTEN_TEXTE.erneut}: frei`);
+    expect(erneut, "Knopf nennt den Wert, der angeheftet wird").toHaveLength(1);
+    expect(erneut[0].props["aria-label"]).toMatch(/^Erneut anheften: frei — Vx1 Nx1/);
     erneut[0].props.onClick();
     expect(aufrufe).toEqual([["x1", "2026-12-07"]]);
     const r = await mit(o, () => o.akt.anheftenEinteilung(...aufrufe[0]));
