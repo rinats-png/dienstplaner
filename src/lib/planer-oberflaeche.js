@@ -13,6 +13,8 @@
    - Fail closed: unlesbarer Stand = AUS und Warnung; was nicht geprüft werden kann, gilt als nicht erfüllt.
    ========================================================================== */
 import { PLANER_AN, planerModusWirksam } from "../../server/lib/engine/planer.mjs";
+import { verteilungAufwand, verteilungVorbereiten, verteilungBewerten, nachtZaehlen, VERTEILUNG_HINWEIS } from "../../server/lib/engine/verteilung.mjs";
+import { aktiveVorgaben, VORGABEN_WIRKUNG_GRENZE } from "../../server/lib/vorgaben.mjs";
 import { kiSteuerungLesen, kiSteuerungUnlesbar, kiPauseAktiv, kiPlanerEntscheidung, KI_RECHTE, KI_PLANER_MODI } from "../../server/lib/ki-steuerung.mjs";
 import { darfAnheften } from "../../server/lib/anheften.mjs";
 import { ANGEHEFTET_FELD, anheftungenLesen, anheftungSchluesselOk } from "../../server/lib/engine/anheften.mjs";
@@ -221,4 +223,91 @@ export function tageImMonat(ym) {
   const [y, mo] = String(ym).split("-").map(Number);
   if (!Number.isInteger(y) || !Number.isInteger(mo) || mo < 1 || mo > 12) return [];
   return Array.from({ length: dim_(y, mo - 1) }, (_, i) => `${ym}-${pad(i + 1)}`);
+}
+
+/* ------------------------------------------------------------------ Verteilung (Stufe 2, nur lesen) */
+
+/** Texte zu den Gründen je Vorgabe (Wert `grund` des Servers; keine Zahl und keine Person im Text). Eine Quelle für die Ansicht und die Prüfung. */
+export const VERTEILUNG_VORGABE_GRUND = Object.freeze({
+  wunsch: "Eine Vorgabe mit der Stärke Wunsch wird nicht bewertet.",
+  aufwand: "Der Rechenaufwand für diesen Monat war zu groß; die Vorgabe wurde nicht bewertet.",
+  zu_viele_vorgaben: "Es gibt mehr aktive Vorgaben, als zugleich bewertet werden; diese wurde nicht bewertet.",
+  groesse_nicht_bewertet: "Diese Größe wird noch nicht bewertet (bewertet werden nur Nachtdienste je Person und Kalendermonat).",
+  nicht_auswertbar: "Die Parameter der Vorgabe sind nicht auswertbar.",
+  keine_nachtdienstart: "Der Betrieb hat keine Nachtdienstart; es gibt nichts zu vergleichen.",
+  weniger_als_zwei: "Weniger als zwei vergleichbare Personen; es gibt nichts zu vergleichen.",
+  geltung_teilweise: VERTEILUNG_HINWEIS.geltung_teilweise,
+  personen_nicht_bewertbar: "Verteilung nicht bewertbar: Der Wert einzelner Personen ist unbekannt (siehe „Nicht bewertbar“ bei den Personen).",
+});
+/** Texte zu den Gründen je Person (Kennungen aus VERTEILUNG_GRUENDE; ohne Merkmal der Person, nur was für den Plan zählt). */
+export const VERTEILUNG_PERSON_GRUND = Object.freeze({
+  geltung_teilweise: "Die Vorgabe gilt nur an einem Teil des Monats.",
+  geltung_offen: "An einzelnen Tagen ist nicht entscheidbar, ob die Vorgabe gilt.",
+  eintritt_austritt: "Eintritt oder Austritt im Monat; der Wert ist nicht vergleichbar.",
+  nacht_teilweise_moeglich: "Nachtdienst ist nur an einem Teil des Monats möglich.",
+  abwesenheit: "Abwesenheit anderer Art als Urlaub oder Krankheit im Monat.",
+  teilzeitquote_offen: "Die Teilzeitquote lässt sich nicht bestimmen (Teilzeit wird bei dieser Vorgabe anteilig umgerechnet).",
+  kein_nachtdienst_moeglich: "Nachtdienst ist im ganzen Monat nicht möglich; nicht in der Vergleichsgruppe.",
+  nicht_im_schichtdienst: "Nicht im Schichtdienst; nicht in der Vergleichsgruppe.",
+  ganzer_monat_abwesend: "Ganzer Monat Urlaub oder Krankheit; nicht in der Vergleichsgruppe.",
+});
+const GRUND_UNBEKANNT = "Grund nicht bewertbar";
+const grundVorgabeText = (g) => (typeof g === "string" && Object.hasOwn(VERTEILUNG_VORGABE_GRUND, g) ? VERTEILUNG_VORGABE_GRUND[g] : GRUND_UNBEKANNT);
+const grundPersonText = (g) => (typeof g === "string" && Object.hasOwn(VERTEILUNG_PERSON_GRUND, g) ? VERTEILUNG_PERSON_GRUND[g] : GRUND_UNBEKANNT);
+
+export const VERTEILUNG_ZUSTAND = Object.freeze({ erfuellt: "erfüllt", nicht_erfuellt: "nicht erfüllt", nicht_bewertbar: "nicht bewertbar" });
+const STAERKE_TEXT = Object.freeze({ muss: "Muss", soll: "Soll", wunsch: "Wunsch" });
+
+/** Gibt es im Betrieb eine aktive Verteilungsvorgabe? (billig; ohne sie zeigt die Ansicht nichts) @param {any} m */
+export function hatVerteilungsvorgabe(m) {
+  try { return aktiveVorgaben(m && m.vorgaben).some((v) => v.regelart === "verteilungsregel"); } catch { return false; }
+}
+
+/**
+ * Verteilungsergebnis des Plans eines Monats, wie er jetzt ist (Bestand, Schichtfolge, Angeheftetes; kein Planervorschlag). Dieselbe
+ * Rechnung wie der Planer (server/lib/engine/verteilung.mjs), nur gelesen: nichts wird geschrieben oder eingeteilt. Wirft nie; was nicht
+ * gerechnet werden kann, ist „nicht bewertbar“ (nie „erfüllt“).
+ * @param {any} m Betrieb @param {string} ym JJJJ-MM
+ * @returns {{ ok: true, keine: boolean, bewertung: any } | { ok: false }}
+ */
+export function verteilungErgebnis(m, ym) {
+  try {
+    const tage = tageImMonat(ym);
+    if (!tage.length || !m || typeof m !== "object") return { ok: false };
+    const vt = verteilungVorbereiten(m, tage, verteilungAufwand(m, tage) <= VORGABEN_WIRKUNG_GRENZE.aufwand);
+    if (!vt) return { ok: true, keine: true, bewertung: null };
+    return { ok: true, keine: false, bewertung: verteilungBewerten(vt, nachtZaehlen(m, vt)) };
+  } catch { return { ok: false }; }
+}
+
+/**
+ * Anzeigeform eines Verteilungsergebnisses (aus verteilungErgebnis oder dem Feld `verteilung` eines Planvorschlags): je Vorgabe genau
+ * einer der Zustände erfüllt / nicht erfüllt / nicht bewertbar. „Erfüllt“ nur bei Status erfuellt des Regelbaukastens; „nicht erfüllt“ nur,
+ * wenn alle Werte bekannt sind; alles andere (offen, nicht bewertet, nicht anwendbar, unbekannter Status) ist nicht bewertbar.
+ * @param {any} bewertung @param {any} m Betrieb (Namen, Vorgabenamen, Teilzeitregel)
+ */
+export function verteilungAnzeige(bewertung, m) {
+  const regeln = bewertung && Array.isArray(bewertung.regeln) ? bewertung.regeln : [];
+  const personen = m && Array.isArray(m.personen) ? m.personen : [];
+  const vorgaben = m && Array.isArray(m.vorgaben) ? m.vorgaben : [];
+  const name = (pid) => { const p = personen.find((x) => x && String(x.id) === String(pid)); return p ? (`${p.vorname || ""} ${p.nachname || ""}`.trim() || "Person") : "Person"; };
+  const sortiert = (l) => l.map((x) => ({ ...x, name: name(x.personId) })).sort((a, b) => a.name.localeCompare(b.name, "de") || (a.personId < b.personId ? -1 : 1));
+  const liste = regeln.filter(istObjekt).map((r) => {
+    const v = vorgaben.find((x) => x && String(x.id) === String(r.vorgabeId));
+    const zustand = r.status === "erfuellt" ? "erfuellt" : r.status === "verletzt" && !r.grund ? "nicht_erfuellt" : "nicht_bewertbar";
+    return {
+      vorgabeId: String(r.vorgabeId), name: v && typeof v.name === "string" && v.name ? v.name : "Verteilungsvorgabe",
+      staerke: STAERKE_TEXT[r.staerke] || "", maxAbweichung: r.maxAbweichung, zustand, zustandText: VERTEILUNG_ZUSTAND[zustand],
+      grund: zustand === "nicht_bewertbar" ? grundVorgabeText(r.grund) : null,
+      teilzeitAnteilig: !!v && istObjekt(v.ausnahmen) && v.ausnahmen.teilzeitAnteilig === true,
+      spannweite: typeof r.spannweite === "number" ? r.spannweite : null, ueberschreitung: typeof r.ueberschreitung === "number" ? r.ueberschreitung : null,
+      personen: sortiert(Array.isArray(r.personen) ? r.personen : []),
+      nichtBewertbar: sortiert(Array.isArray(r.nichtBewertbar) ? r.nichtBewertbar : []).map((x) => ({ ...x, grundText: grundPersonText(x.grund) })),
+      ausserhalb: sortiert(Array.isArray(r.ausserhalb) ? r.ausserhalb : []).map((x) => ({ ...x, grundText: grundPersonText(x.grund) })),
+    };
+  });
+  const zaehl = (z) => liste.filter((x) => x.zustand === z).length;
+  return { regeln: liste, erfuellt: zaehl("erfuellt"), nichtErfuellt: zaehl("nicht_erfuellt"), nichtBewertbar: zaehl("nicht_bewertbar"),
+    /* Insgesamt nur dann „bewertet“, wenn der Server es so sieht (kein Rang ohne vollständig Bewertbares). */
+    gesamtBewertet: !!bewertung && bewertung.bewertet === true };
 }
