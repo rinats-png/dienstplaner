@@ -2458,11 +2458,11 @@
       "modell": "sonnet + opus-review",
       "konfliktzonen": ["App.jsx"],
       "pr": [],
-      "nachweis": "docs/acc45/INTELLIGENCE-ENTWICKLUNGSPLAN.md",
+      "nachweis": "docs/acc45/WP-I9-nachweis.md",
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block K)",
-      "tests": "pruefungen/ki-*.test.js",
-      "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
+      "tests": "pruefungen/intelligence-planer-verbessern.test.js",
+      "dateien": "server/lib/engine/planer-verbessern.mjs, docs/acc45/WP-I9-nachweis.md",
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). PR-A Verbessern-Engine (Änderungsliste mit Grund, nur Ersetzen, reine Rechnung ohne Route/Schreiben/UI): server/lib/engine/planer-verbessern.mjs (planVerbessern, verbesserungAbgleich), Test pruefungen/intelligence-planer-verbessern.test.js, Nachweis docs/acc45/WP-I9-nachweis.md; Review ausstehend. Offen: PR-B Übernahme mit Überschreiben (Vorwert/Rückgängig, freigegebener Monat, Provenienz, Protokoll), PR-C Oberfläche und „trotzdem“-Weg; Betreiberentscheidungen siehe Nachweis. Statuswechsel durch die Koordination, nicht in diesem Schritt."
     },
     {
       "id": "WP-I10",
