@@ -16,13 +16,17 @@
    Rechte: nur Leitung und Planung, nie Demo (planerRechte); entschieden wird am Server. Texte je Kennung: src/lib/planer-oberflaeche.js
    (VORSCHLAG_FEHLER), nie Servertexte oder Rohkennungen. Mehrfachklick: ein Knopf ist während der Anfrage aus, und die Aktionen
    (src/lib/planer-aktionen.js) senden nie zwei Anfragen zugleich.
-   Barrierefrei: nur Bausteine mit Mindestgröße (Btn, Card), Zustände als Text, keine Farbe als einziger Träger, keine Inline-Stile.
+   Barrierefrei: nur Bausteine mit Mindestgröße (Btn, Card), Zustände als Text, keine Farbe als einziger Träger, keine Inline-Stile. EINE ständig
+   vorhandene Ansage-Region (role="status", zuerst leer) pro Fläche statt vieler Regionen, die samt Inhalt erst eingehängt werden; nach der
+   Bestätigung (Übernahme, Rücknahme) bekommt die Ergebnisüberschrift den Fokus, weil der Knopf mit der Bestätigung verschwindet.
+   Monatswechsel: ein Ergebnis gilt nur für den Monat, in dem die Anfrage gestartet wurde (ymRef); es wird nie in einen anderen Monat
+   geschrieben. Eine bestätigte Übernahme oder Rücknahme, die erst nach dem Wechsel antwortet, wird ehrlich als solche gemeldet.
    ========================================================================== */
 import { useState, useMemo, useEffect, useRef } from "react";
 import { Card, Btn, Feldfehler } from "../ui/bausteine.jsx";
 import { fKurz, DOW } from "../lib/datum.js";
 import { dow } from "../regelwerk.js";
-import { planerRechte, planerZustand, vorschlagErstellenGrund, vorschlagZeilen, ablehnungen, unterbesetztAnzeige } from "../lib/planer-oberflaeche.js";
+import { planerRechte, planerZustand, vorschlagErstellenGrund, vorschlagZeilen, ablehnungen, unterbesetztAnzeige, andererMonatHinweis } from "../lib/planer-oberflaeche.js";
 import * as SP from "../speicher.js";
 
 export const VORSCHLAG_TEXTE = Object.freeze({
@@ -82,13 +86,21 @@ const datumLang = (d) => `${fKurz(d)}${String(d).slice(0, 4)}`;
 const zeitraumText = (z) => (z && z.von && z.bis ? (z.von === z.bis ? tagText(z.von) : `${tagText(z.von)} bis ${tagText(z.bis)}`) : "");
 const einteilungen = (n) => `${n} ${n === 1 ? "Einteilung" : "Einteilungen"}`;
 
-/** Besetzungshinweis nach einer Rücknahme: Lücken, keine Lücke oder nicht bewertbar (nie „keine“ bei unbekannt). */
+/** Besetzungshinweis nach einer Rücknahme als ein Satz (für die Ansage): Lücken, keine Lücke oder nicht bewertbar (nie „keine“ bei unbekannt). */
+function besetzungSatz(u, m) {
+  const T = VORSCHLAG_TEXTE;
+  const a = unterbesetztAnzeige(u, m);
+  if (a.zustand === "nicht_bewertbar") return T.nichtBewertbar;
+  if (a.zustand === "keine") return T.keineLuecke;
+  return `${T.luecken}: ${a.zeilen.map((z) => `${tagText(z.datum)} ${z.dienstName}`).join("; ")}.`;
+}
+/** Dasselbe sichtbar (bei Lücken als Liste). */
 function Besetzung({ u, m }) {
   const T = VORSCHLAG_TEXTE;
   const a = unterbesetztAnzeige(u, m);
-  if (a.zustand === "nicht_bewertbar") return <p role="status">{T.nichtBewertbar}</p>;
-  if (a.zustand === "keine") return <p role="status">{T.keineLuecke}</p>;
-  return <><p role="status"><strong>{T.luecken}:</strong></p>
+  if (a.zustand === "nicht_bewertbar") return <p>{T.nichtBewertbar}</p>;
+  if (a.zustand === "keine") return <p>{T.keineLuecke}</p>;
+  return <><p><strong>{T.luecken}:</strong></p>
     <ul aria-label={T.luecken}>
       {a.zeilen.map((z) => <li key={`${z.datum}|${z.dienstName}`}>{tagText(z.datum)} · {z.dienstName}: {z.fehlt > 0 ? `${z.fehlt} ${T.fehlt}` : ""}{z.fehlt > 0 && z.qualFehlt ? ", " : ""}{z.qualFehlt ? T.qualFehlt : ""}</li>)}
     </ul></>;
@@ -99,10 +111,12 @@ function Besetzung({ u, m }) {
  * `vorschlag`: null oder { zeilen: vorschlagZeilen(...), offen: Zahl | null }; `auswahl`: Vorschlags-Indizes; `geprueft`: null oder { anzahl };
  * `abgelehnt`: [{ index, text }]; `ergebnis` / `rueckErgebnis`: Rückmeldung nach dem Speichern; `liste`: { zustand: "laden" | "fertig" | "fehler",
  * eintraege, text }; `rueck`: null oder { uebernahme, anzahl, unterbesetzt }; `status`: null oder { ok, text, punkte? }.
+ * `ansageArt`: was die Ansage-Region gerade sagt ("vorschlag" | "geprueft" | "ergebnis" | "rueckPruefung" | "rueckErgebnis" | "status" | null);
+ * `ergebnisRef` / `rueckRef`: Referenzen auf die Ergebnisüberschriften (Fokus nach der Bestätigung).
  */
 export function PlanerVorschlagAnsicht({ m, ym, offen = false, onOffen = () => {}, erstellenGrund = null, beschaeftigt = false,
   vorschlag = null, auswahl = [], geprueft = null, abgelehnt = [], ergebnis = null, rueckErgebnis = null,
-  liste = { zustand: "laden", eintraege: [], text: "" }, rueck = null, status = null,
+  liste = { zustand: "laden", eintraege: [], text: "" }, rueck = null, status = null, ansageArt = null, ergebnisRef = null, rueckRef = null,
   onErstellen = () => {}, onToggle = () => {}, onAlle = () => {}, onKeine = () => {}, onPruefen = () => {}, onBestaetigen = () => {}, onVerwerfen = () => {},
   onListeNeu = () => {}, onRueckPruefen = () => {}, onRueckBestaetigen = () => {}, onRueckAbbrechen = () => {} }) {
   const T = VORSCHLAG_TEXTE;
@@ -110,20 +124,31 @@ export function PlanerVorschlagAnsicht({ m, ym, offen = false, onOffen = () => {
   const gewaehlt = new Set(auswahl);
   const grund = (i) => { const a = abgelehnt.find((x) => x.index === i); return a ? a.text : null; };
   const mitteilung = ergebnis && (ergebnis.versandt === false ? T.keineMitteilung : T.mitteilungUnklar);
+  /* Die Sätze stehen sichtbar und (je nach Schritt) einmal in der Ansage-Region. */
+  const vorSatz = vorschlag ? `${einteilungen(vorschlag.zeilen.length)} vorgeschlagen.` : "";
+  const offenSatz = vorschlag ? (vorschlag.offen === null ? T.offeneLueckenUnbekannt : `${T.offeneLuecken}: ${vorschlag.offen}`) : "";
+  const gepSatz = geprueft ? `Geprüft: ${einteilungen(geprueft.anzahl)} können übernommen werden. Bisher wurde nichts geändert.` : "";
+  const ergSatz = ergebnis ? `${T.ergebnisTitel}: ${einteilungen(ergebnis.anzahl)}${zeitraumText(ergebnis.zeitraum) ? ` (${zeitraumText(ergebnis.zeitraum)})` : ""}.` : "";
+  const fristSatz = ergebnis && ergebnis.rueckgaengigBis ? `Zurücknehmen ist möglich bis ${datumLang(ergebnis.rueckgaengigBis)}.` : "";
+  const rueckPSatz = rueck ? `${T.rueckPruefung}: ${einteilungen(rueck.anzahl)} werden auf den Stand vor der Übernahme zurückgesetzt. Bisher wurde nichts geändert.` : "";
+  const rueckESatz = rueckErgebnis ? `${T.rueckErgebnisTitel}: ${einteilungen(rueckErgebnis.anzahl)}${zeitraumText(rueckErgebnis.zeitraum) ? ` (${zeitraumText(rueckErgebnis.zeitraum)})` : ""}.` : "";
+  const ansage = ({ vorschlag: `${vorSatz} ${offenSatz}`, geprueft: gepSatz, ergebnis: `${fristSatz} ${mitteilung}`, status: status && status.ok ? status.text : "",
+    rueckPruefung: `${rueckPSatz} ${rueck ? besetzungSatz(rueck.unterbesetzt, m) : ""}`,
+    rueckErgebnis: `Beschäftigte wurden dabei nicht benachrichtigt. ${rueckErgebnis ? besetzungSatz(rueckErgebnis.unterbesetzt, m) : ""}` })[ansageArt] || "";
   return (
     <Card still data-testid="planer-vorschlag" role="region" aria-label={`${T.titel}, ${monat}`}>
       <h2 className="abschnitt-titel" id="planer-vorschlag-titel">{T.titel}</h2>
+      <div className="nurLeser" role="status" aria-live="polite" aria-atomic="true" data-testid="planer-vorschlag-ansage">{ansage.replace(/\s+/g, " ").trim()}</div>
       <p>{T.hinweis}</p>
       <Btn size="sm" kind="quiet" aria-expanded={offen} aria-controls="planer-vorschlag-inhalt" onClick={onOffen}>{offen ? T.schliessen : T.oeffnen}</Btn>
       {offen && <div id="planer-vorschlag-inhalt">
         <section aria-label={T.erstellen}>
           <Btn kind="primary" disabled={!!erstellenGrund || beschaeftigt} onClick={onErstellen}>{beschaeftigt ? T.laeuft : T.erstellen}</Btn>
-          {erstellenGrund && <p role="status">{erstellenGrund}</p>}
+          {erstellenGrund && <p>{erstellenGrund}</p>}
         </section>
 
         {vorschlag && <section aria-label={T.liste}>
-          <p role="status"><strong>{einteilungen(vorschlag.zeilen.length)} vorgeschlagen.</strong>{" "}
-            {vorschlag.offen === null ? T.offeneLueckenUnbekannt : `${T.offeneLuecken}: ${vorschlag.offen}`}</p>
+          <p><strong>{vorSatz}</strong>{" "}{offenSatz}</p>
           <p>{T.verfall}</p>
           <p><Btn size="sm" kind="quiet" disabled={beschaeftigt} onClick={onAlle}>{T.alle}</Btn>{" "}
             <Btn size="sm" kind="quiet" disabled={beschaeftigt} onClick={onKeine}>{T.keine}</Btn>{" "}
@@ -141,21 +166,21 @@ export function PlanerVorschlagAnsicht({ m, ym, offen = false, onOffen = () => {
             <Btn size="sm" kind="quiet" disabled={beschaeftigt} onClick={onVerwerfen}>{T.verwerfen}</Btn></p>
           {auswahl.length === 0 && <p>{T.pruefenKeine}</p>}
           {geprueft && <>
-            <p role="status"><strong>Geprüft: {einteilungen(geprueft.anzahl)} können übernommen werden. Bisher wurde nichts geändert.</strong></p>
+            <p><strong>{gepSatz}</strong></p>
             <p>{T.bestaetigenHinweis}</p>
             <Btn kind="primary" disabled={beschaeftigt} onClick={onBestaetigen}>{T.bestaetigen}</Btn>
           </>}
         </section>}
 
         {ergebnis && <section aria-label={T.ergebnisTitel}>
-          <p role="status"><strong>{T.ergebnisTitel}: {einteilungen(ergebnis.anzahl)}{zeitraumText(ergebnis.zeitraum) ? ` (${zeitraumText(ergebnis.zeitraum)})` : ""}.</strong>{" "}
-            {ergebnis.rueckgaengigBis ? `Zurücknehmen ist möglich bis ${datumLang(ergebnis.rueckgaengigBis)}.` : ""}</p>
-          <p role="status">{mitteilung}</p>
-          {ergebnis.planFreigegeben === true && <p role="status">{T.monatFreigegeben}</p>}
-          {ergebnis.verdraengt > 0 && <p role="status">{T.verdraengt}</p>}
+          <h3 tabIndex={-1} ref={ergebnisRef}>{ergSatz}</h3>
+          <p>{fristSatz}</p>
+          <p>{mitteilung}</p>
+          {ergebnis.planFreigegeben === true && <p>{T.monatFreigegeben}</p>}
+          {ergebnis.verdraengt > 0 && <p>{T.verdraengt}</p>}
         </section>}
 
-        {status && (status.ok ? <p role="status">{status.text}</p> : <Feldfehler text={status.text} />)}
+        {status && (status.ok ? <p>{status.text}</p> : <Feldfehler text={status.text} />)}
         {status && Array.isArray(status.punkte) && status.punkte.length > 0 && <>
           <p><strong>{T.voraussetzungen}</strong></p>
           <ul aria-label={T.voraussetzungen}>{status.punkte.map((p) => <li key={p}>{p}</li>)}</ul></>}
@@ -163,7 +188,7 @@ export function PlanerVorschlagAnsicht({ m, ym, offen = false, onOffen = () => {
         <section aria-label={T.rueckTitel}>
           <h3>{T.rueckTitel}</h3>
           <p>{T.rueckHinweis}</p>
-          {liste.zustand === "laden" && <p role="status">{T.rueckLaden}</p>}
+          {liste.zustand === "laden" && <p>{T.rueckLaden}</p>}
           {liste.zustand === "fehler" && <><Feldfehler text={liste.text} /><Btn size="sm" kind="quiet" disabled={beschaeftigt} onClick={onListeNeu}>{T.rueckNeu}</Btn></>}
           {liste.zustand === "fertig" && liste.eintraege.length === 0 && <p>{T.rueckLeer}</p>}
           {liste.zustand === "fertig" && liste.eintraege.length > 0 && <ul aria-label={T.rueckTitel}>
@@ -172,7 +197,7 @@ export function PlanerVorschlagAnsicht({ m, ym, offen = false, onOffen = () => {
               <Btn size="sm" kind="quiet" disabled={beschaeftigt} aria-label={`${T.rueckgaengig}: ${einteilungen(e.anzahl)}, ${zeitraumText({ von: e.von, bis: e.bis })}`}
                 onClick={() => onRueckPruefen(e.uebernahme)}>{T.rueckgaengig}</Btn>
               {rueck && rueck.uebernahme === e.uebernahme && <div>
-                <p role="status"><strong>{T.rueckPruefung}: {einteilungen(rueck.anzahl)} werden auf den Stand vor der Übernahme zurückgesetzt. Bisher wurde nichts geändert.</strong></p>
+                <p><strong>{rueckPSatz}</strong></p>
                 <Besetzung u={rueck.unterbesetzt} m={m} />
                 <p>{T.rueckBestaetigenHinweis}</p>
                 <Btn kind="primary" disabled={beschaeftigt} onClick={onRueckBestaetigen}>{T.rueckBestaetigen}</Btn>{" "}
@@ -181,8 +206,8 @@ export function PlanerVorschlagAnsicht({ m, ym, offen = false, onOffen = () => {
             </li>)}
           </ul>}
           {rueckErgebnis && <div>
-            <p role="status"><strong>{T.rueckErgebnisTitel}: {einteilungen(rueckErgebnis.anzahl)}{zeitraumText(rueckErgebnis.zeitraum) ? ` (${zeitraumText(rueckErgebnis.zeitraum)})` : ""}.</strong>{" "}
-              Beschäftigte wurden dabei nicht benachrichtigt.</p>
+            <h4 tabIndex={-1} ref={rueckRef}>{rueckESatz}</h4>
+            <p>Beschäftigte wurden dabei nicht benachrichtigt.</p>
             <Besetzung u={rueckErgebnis.unterbesetzt} m={m} />
           </div>}
         </section>
@@ -213,105 +238,132 @@ export function PlanerVorschlag({ m, ym, sitz, akt, startOffen = false, freigege
   const [rueck, setRueck] = useState(null);
   const [status, setStatus] = useState(null);
   const [beschaeftigt, setBeschaeftigt] = useState(false);
+  const [ansageArt, setAnsageArt] = useState(null);   // was die eine Ansage-Region gerade sagt
   const sperre = useRef(false);        // Mehrfachklick: steht vor dem ersten await, anders als der Zustand
   const zaehler = useRef(0);           // veraltete Antworten der Liste verwerfen
   const aktRef = useRef(akt);
   aktRef.current = akt;
+  const ymRef = useRef(ym);            // der Monat, der jetzt angezeigt wird: nach jedem await prüfen, ob die Anfrage noch zu ihm gehört
+  ymRef.current = ym;
+  const epoche = useRef(0);            // zählt jeden Monatswechsel: Dez → Jan → Dez während einer Anfrage ist nicht derselbe Stand wie davor
+  const ergebnisKopf = useRef(null);   // Fokus nach der Bestätigung: der Bestätigungsknopf verschwindet
+  const rueckKopf = useRef(null);
   const demo = !!sitz && (sitz.demo === true || (SP.zugangsdaten() || {}).demo === true);
   const rechte = planerRechte(sitz, { demo });
   /* Übernehmen und Zurücknehmen dürfen dieselben Rollen wie Anheften (Leitung, Planung, nie Demo; die Prüfung vergleicht beide Listen). */
   const zeigen = !!m && rechte.sehen && rechte.anheften && !!akt && typeof akt.planerVorschlagErzeugen === "function";
 
-  const alleZurueck = () => { setVorschlag(null); setAuswahl([]); setGeprueft(null); setAbgelehnt([]); setErgebnis(null); setRueckErgebnis(null); setRueck(null); setStatus(null); };
-  useEffect(() => { alleZurueck(); }, [ym]);   // ein Vorschlag gilt für genau einen Monat
+  const alleZurueck = () => { setVorschlag(null); setAuswahl([]); setGeprueft(null); setAbgelehnt([]); setErgebnis(null); setRueckErgebnis(null); setRueck(null); setStatus(null); setAnsageArt(null);
+    setListe({ zustand: "laden", eintraege: [], text: "" }); };
+  useEffect(() => { epoche.current += 1; alleZurueck(); }, [ym]);   // ein Vorschlag gilt für genau einen Monat
+  useEffect(() => { if (ergebnis && ergebnisKopf.current) ergebnisKopf.current.focus(); }, [ergebnis]);
+  useEffect(() => { if (rueckErgebnis && rueckKopf.current) rueckKopf.current.focus(); }, [rueckErgebnis]);
 
-  const ladeListe = async () => {
+  /** Die Liste der offenen Rücknahmen für `monat`; gilt nur, solange dieser Monat noch angezeigt wird (nie die Liste eines anderen Monats). */
+  const ladeListe = async (monat) => {
+    if (ymRef.current !== monat) return;
     const mein = ++zaehler.current;
     setListe((l) => ({ ...l, zustand: "laden" }));
     let r;
-    try { r = await aktRef.current.planerRueckgaengigListe(ym); } catch { r = { ok: false, text: VORSCHLAG_TEXTE.fehlerAllgemein }; }
-    if (mein !== zaehler.current) return;
+    try { r = await aktRef.current.planerRueckgaengigListe(monat); } catch { r = { ok: false, text: VORSCHLAG_TEXTE.fehlerAllgemein }; }
+    if (mein !== zaehler.current || ymRef.current !== monat) return;
     setListe(r.ok ? { zustand: "fertig", eintraege: r.daten.eintraege.filter((e) => e && typeof e.uebernahme === "string" && Number.isInteger(e.anzahl)), text: "" }
       : { zustand: "fehler", eintraege: [], text: r.text });
   };
-  useEffect(() => { if (zeigen && offen) ladeListe(); }, [zeigen, offen, ym]);   // eslint-disable-line react-hooks/exhaustive-deps -- laden beim Öffnen und beim Monatswechsel
+  useEffect(() => { if (zeigen && offen) ladeListe(ym); }, [zeigen, offen, ym]); // laden beim Öffnen und beim Monatswechsel
 
   const zeilen = useMemo(() => (vorschlag ? vorschlagZeilen(m, vorschlag.eintraege) : []), [vorschlag, m]);
   if (!zeigen) return null;
   const sortiert = [...auswahl].sort((a, b) => a - b);
   const schluessel = sortiert.join(",");
 
+  /** `fn(monat, gilt)`: `monat` ist der Monat beim Klick, `gilt()` sagt, ob er noch angezeigt wird und seitdem nicht gewechselt wurde (sonst das Ergebnis nicht in diese Fläche schreiben). */
   const ausfuehren = async (fn) => {
     if (sperre.current) return;
-    sperre.current = true; setBeschaeftigt(true); setStatus(null);
-    try { await fn(); } catch { setStatus({ ok: false, text: VORSCHLAG_TEXTE.fehlerAllgemein }); } finally { sperre.current = false; setBeschaeftigt(false); }
+    sperre.current = true; setBeschaeftigt(true); setStatus(null); setAnsageArt(null);
+    const monat = ym, ep = epoche.current, gilt = () => ymRef.current === monat && epoche.current === ep;
+    try { await fn(monat, gilt); } catch { if (gilt()) setStatus({ ok: false, text: VORSCHLAG_TEXTE.fehlerAllgemein }); } finally { sperre.current = false; setBeschaeftigt(false); }
+  };
+  /** Eine bestätigte Übernahme oder Rücknahme antwortet erst nach dem Monatswechsel: ehrlich melden, nichts in die neue Fläche eintragen. */
+  const fremderMonat = (art, monat, r) => {
+    const hier = ymRef.current === monat;   // Rückkehr in denselben Monat: der Stand und die Liste sind inzwischen neu, die Liste wurde vor dem Ergebnis gelesen
+    const h = andererMonatHinweis(art, monat, r, hier); setStatus(h); setAnsageArt(h.ok ? "status" : null);
+    if (hier) ladeListe(monat);
   };
   const planerAktion = () => aktRef.current;
 
-  const erstellen = () => ausfuehren(async () => {
+  const erstellen = () => ausfuehren(async (monat, gilt) => {
     setErgebnis(null); setRueckErgebnis(null); setGeprueft(null); setAbgelehnt([]); setRueck(null);
-    const r = await planerAktion().planerVorschlagErzeugen(ym);
+    const r = await planerAktion().planerVorschlagErzeugen(monat);
+    if (!gilt()) return;   // anderer Monat: am Plan hat sich nichts geändert, der Vorschlag verfällt am Server
     if (!r.ok) { setVorschlag(null); setAuswahl([]); setStatus(statusAus(r)); return; }
     const d = r.daten;
     const n = Array.isArray(d.eintraege) ? d.eintraege.length : 0;
     if (!d.vorschlag || n === 0) {
       setVorschlag(null); setAuswahl([]);
+      setAnsageArt("status");
       setStatus({ ok: true, text: `${VORSCHLAG_TEXTE.keiner} ${Number.isInteger(d.offen) ? `${VORSCHLAG_TEXTE.offeneLuecken}: ${d.offen}.` : VORSCHLAG_TEXTE.offeneLueckenUnbekannt + "."}` });
       return;
     }
     setVorschlag({ id: d.vorschlag, eintraege: d.eintraege, offen: Number.isInteger(d.offen) ? d.offen : null });
-    setAuswahl([]);
+    setAuswahl([]); setAnsageArt("vorschlag");
   });
-  const waehle = (neu) => { setAuswahl(neu); setGeprueft(null); setAbgelehnt([]); setStatus(null); };
+  const waehle = (neu) => { setAuswahl(neu); setGeprueft(null); setAbgelehnt([]); setStatus(null); setAnsageArt(null); };
   const umschalten = (i) => waehle(auswahl.includes(i) ? auswahl.filter((x) => x !== i) : [...auswahl, i]);
-  const pruefen = () => ausfuehren(async () => {
+  const pruefen = () => ausfuehren(async (monat, gilt) => {
     if (!vorschlag || !sortiert.length) return;
     const r = await planerAktion().planerAuswahlPruefen(vorschlag.id, sortiert);
-    if (r.ok) { setGeprueft({ schluessel, anzahl: Number.isInteger(r.daten.anzahl) ? r.daten.anzahl : sortiert.length }); setAbgelehnt([]); return; }
+    if (!gilt()) return;   // die Prüfung schreibt nichts und gehört zum anderen Monat
+    if (r.ok) { setGeprueft({ schluessel, anzahl: Number.isInteger(r.daten.anzahl) ? r.daten.anzahl : sortiert.length }); setAbgelehnt([]); setAnsageArt("geprueft"); return; }
     setGeprueft(null);
     setAbgelehnt(ablehnungen(r.daten && r.daten.abgelehnt, sortiert));
     setStatus(statusAus(r));
     if (r.verbraucht) { setVorschlag(null); setAuswahl([]); }
   });
-  const bestaetigen = () => ausfuehren(async () => {
+  const bestaetigen = () => ausfuehren(async (monat, gilt) => {
     if (!vorschlag || !geprueft || geprueft.schluessel !== schluessel) return;   // nur genau die geprüfte Auswahl
-    const r = await planerAktion().planerUebernehmen(vorschlag.id, sortiert);
+    const r = await planerAktion().planerUebernehmen(vorschlag.id, sortiert);   // die Aktion lädt den Stand bei Erfolg und bei unklarem Ausgang selbst neu
+    if (!gilt()) { fremderMonat("uebernahme", monat, r); return; }   // geschrieben sein kann es trotzdem: nie still verwerfen
     if (r.ok) {
       const d = r.daten, mt = d.mitteilungen && typeof d.mitteilungen === "object" ? d.mitteilungen : {};
       setErgebnis({ anzahl: Number.isInteger(d.anzahl) ? d.anzahl : sortiert.length, zeitraum: d.zeitraum, rueckgaengigBis: typeof d.rueckgaengigBis === "string" ? d.rueckgaengigBis : null,
         verdraengt: Number.isInteger(d.rueckgaengigVerdraengt) ? d.rueckgaengigVerdraengt : 0, versandt: mt.versandt, planFreigegeben: mt.planFreigegeben === true });
-      setVorschlag(null); setAuswahl([]); setGeprueft(null); setAbgelehnt([]);
+      setVorschlag(null); setAuswahl([]); setGeprueft(null); setAbgelehnt([]); setRueckErgebnis(null); setAnsageArt("ergebnis");
     } else {
       if (r.code !== "schreiben-fehlgeschlagen") setGeprueft(null);   // nur nach „nichts geschrieben, später noch einmal“ bleibt die Prüfung stehen
       setAbgelehnt(ablehnungen(r.daten && r.daten.abgelehnt, sortiert));
       setStatus(statusAus(r));
       if (r.verbraucht) { setVorschlag(null); setAuswahl([]); }
     }
-    await ladeListe();   // auch bei unklarem Ausgang: die Liste zeigt, ob der Datensatz entstanden ist
+    await ladeListe(monat);   // auch bei unklarem Ausgang: die Liste zeigt, ob der Datensatz entstanden ist
   });
-  const rueckPruefen = (id) => ausfuehren(async () => {
+  const rueckPruefen = (id) => ausfuehren(async (monat, gilt) => {
     setRueck(null); setRueckErgebnis(null);
     const r = await planerAktion().planerRueckgaengigPruefen(id);
-    if (r.ok) { setRueck({ uebernahme: id, anzahl: Number.isInteger(r.daten.anzahl) ? r.daten.anzahl : 0, unterbesetzt: Object.hasOwn(r.daten, "unterbesetzt") ? r.daten.unterbesetzt : null }); return; }
+    if (!gilt()) return;   // nur geprüft, nichts geschrieben
+    if (r.ok) { setRueck({ uebernahme: id, anzahl: Number.isInteger(r.daten.anzahl) ? r.daten.anzahl : 0, unterbesetzt: Object.hasOwn(r.daten, "unterbesetzt") ? r.daten.unterbesetzt : null }); setAnsageArt("rueckPruefung"); return; }
     setStatus(statusAus(r));
-    await ladeListe();
+    await ladeListe(monat);
   });
-  const rueckBestaetigen = () => ausfuehren(async () => {
+  const rueckBestaetigen = () => ausfuehren(async (monat, gilt) => {
     if (!rueck) return;
     const r = await planerAktion().planerRueckgaengigAusfuehren(rueck.uebernahme);
+    if (!gilt()) { fremderMonat("rueckgaengig", monat, r); return; }
     if (r.ok) {
       const d = r.daten;
       setRueckErgebnis({ anzahl: Number.isInteger(d.anzahl) ? d.anzahl : rueck.anzahl, zeitraum: d.zeitraum, unterbesetzt: Object.hasOwn(d, "unterbesetzt") ? d.unterbesetzt : null });
+      setErgebnis(null); setAnsageArt("rueckErgebnis");
     } else setStatus(statusAus(r));
     setRueck(null);
-    await ladeListe();
+    await ladeListe(monat);
   });
 
   const z = planerZustand(m.einstellungen, { freigegeben });
   return <PlanerVorschlagAnsicht m={m} ym={ym} offen={offen} onOffen={() => setOffen((o) => !o)} erstellenGrund={vorschlagErstellenGrund(z)} beschaeftigt={beschaeftigt}
     vorschlag={vorschlag ? { zeilen, offen: vorschlag.offen } : null} auswahl={auswahl} geprueft={geprueft && geprueft.schluessel === schluessel ? geprueft : null}
     abgelehnt={abgelehnt} ergebnis={ergebnis} rueckErgebnis={rueckErgebnis} liste={liste} rueck={rueck} status={status}
+    ansageArt={ansageArt} ergebnisRef={ergebnisKopf} rueckRef={rueckKopf}
     onErstellen={erstellen} onToggle={umschalten} onAlle={() => waehle(zeilen.map((x) => x.index))} onKeine={() => waehle([])} onPruefen={pruefen}
-    onBestaetigen={bestaetigen} onVerwerfen={() => { setVorschlag(null); setAuswahl([]); setGeprueft(null); setAbgelehnt([]); setStatus(null); }}
-    onListeNeu={ladeListe} onRueckPruefen={rueckPruefen} onRueckBestaetigen={rueckBestaetigen} onRueckAbbrechen={() => setRueck(null)} />;
+    onBestaetigen={bestaetigen} onVerwerfen={() => { setVorschlag(null); setAuswahl([]); setGeprueft(null); setAbgelehnt([]); setStatus(null); setAnsageArt(null); }}
+    onListeNeu={() => ladeListe(ym)} onRueckPruefen={rueckPruefen} onRueckBestaetigen={rueckBestaetigen} onRueckAbbrechen={() => setRueck(null)} />;
 }

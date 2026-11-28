@@ -1039,3 +1039,74 @@ Ergebnis: 23/23 erkannt (jede Mutation macht mindestens einen Test rot); U = Pr�
 - **Betreiberentscheidungen (unverändert offen):** Aufbewahrung der Rückgängig-Daten (Ort, Frist, Zahl), Mitteilungen an Beschäftigte nach einer Übernahme in einem freigegebenen Monat, Sicht des Betriebsrats auf das Protokoll des Moduls „planer“.
 - **Neuladen ist „bestmöglich“:** `serverstandNachladen` liest nur nach, wenn lokal nichts Ungespeichertes steht (sonst wird nur gespiegelt, hier ohne Änderung); dann zeigt der lokale Plan die Übernahme erst nach dem nächsten Laden. Die Ansicht behauptet nie, der Plan sei schon aktualisiert.
 - **Vor der Freigabe von `PLANER_AN`** bleiben die Punkte aus Stufe 2 (C-1, C-6, D-1…D-3) offen; keiner wird durch diese Stufe berührt.
+
+## Vor-Freigabe-Härtung (Korrekturen im Ursprungspaket, kein neues Paket) — Branch `intelligence/planer-vorfreigabe-haertung`
+
+Drei Punkte aus den Reviews #614 (Server) und #615 (Oberfläche), die vor der Freigabe von `PLANER_AN` verbindlich waren. `PLANER_AN` und `PLANER_AGGREGATE_AN` bleiben AUS (Test „PLANER_AN bleibt im Code AUS“ unverändert grün).
+
+**1. Monatswechsel während einer laufenden Anfrage (Review #615 C-1) — behoben**
+- `planer-vorschlag.jsx` führt den angezeigten Monat in `ymRef` mit. `ausfuehren` hält den Monat beim Klick fest und gibt jedem Handler `(monat, gilt)`; nach jedem `await` gilt das Ergebnis nur, wenn `gilt()` noch wahr ist. Die Anfrage selbst läuft immer mit dem Monat beim Klick (nie mit dem der späteren Anzeige).
+- Vorschlag erstellen, Auswahl prüfen, Rücknahme prüfen (kein Schreibvorgang): Ergebnis verworfen. Eine **bestätigte** Übernahme oder Rücknahme: nicht in die neue Fläche eingetragen, aber nicht still verworfen — Hinweis „Die Übernahme für 12/2026 wurde ausgeführt, während der Monat gewechselt wurde. Bitte wieder zu 12/2026 wechseln …“ (bei Fehlern „Zur Übernahme für 12/2026: <Text der Kennung>“; reine Funktion `andererMonatHinweis` in `planer-oberflaeche.js`, Erfolg nur bei ausdrücklichem `ok === true`). Der Stand wird nachgeladen (die Aktion in `planer-aktionen.js` lädt bei Erfolg und bei unklarem Ausgang selbst neu — unverändert). Beim Zurückwechseln liest der Effekt auf `ym` die Liste des Ursprungsmonats neu, die Liste geht nicht verloren.
+- `ladeListe(monat)` bekommt den Monat als Argument und verwirft Antworten, wenn der Monat nicht mehr angezeigt wird; `alleZurueck` setzt auch die Liste zurück (die Liste eines anderen Monats steht nie in der Fläche).
+- Verhaltenstest `pruefungen/intelligence-planer-monatswechsel.test.js` (16 Tests): Im Repository gibt es kein jsdom/Test-Renderer, daher betreibt die Prüfung die **echte** Behälter-Komponente mit einem kleinen Ersatz der Hooks (Zustand je Platz, Effekte nach dem Rendern, Neurendern) und ruft die Handler des jeweils letzten Renderns auf; die Aktionen sind gespielte, verzögerte Antworten, der Monatswechsel geschieht während die Anfrage läuft.
+
+**2. Zugänglichkeit (Review #615 D-5) — behoben**
+- (a) Nach „Übernahme bestätigen“ und „Rücknahme bestätigen“ verschwindet der Knopf; das Ergebnis hat jetzt eine Überschrift (`<h3 tabIndex={-1}>` bzw. `<h4 tabIndex={-1}>`, Muster der Dialoge im Repo: `ref` + `tabIndex={-1}`), die per Effekt den Fokus bekommt (nur bei Erfolg, einmal je Ergebnis).
+- (b) Alle `role="status"`-Absätze entfallen; je Fläche gibt es **eine** ständig vorhandene, zuerst leere Region (`role="status" aria-live="polite" aria-atomic="true"`, vorhandene Klasse `nurLeser`, kein Inline-Stil), auch bei geschlossener Fläche. Ihr Text kommt aus dem jeweiligen Schritt (`ansageArt`: Vorschlag, Prüfung, Übernahme mit Frist und Hinweis „keine Benachrichtigung“, Prüfung der Rücknahme mit Besetzungssatz, Rücknahme, Hinweis ohne Vorschlag); jede Aktion leert sie zuerst, damit auch ein gleicher Text neu angesagt wird. Fehler bleiben Warnungen (`Feldfehler`, `role="alert"`), nicht in der Region. Sichtbarer Text unverändert (dieselben Sätze, `ergebnis`/`rueckErgebnis` jetzt als Überschrift).
+- Nur bestehende Bausteine (`Btn`, `Card`, `Feldfehler`), keine rohen Bedienelemente, keine Inline-Stile (Zähler 452 unverändert), Zielgrößen unverändert. **V4-3b-Pin:** `planer-vorschlag.jsx` 317 → 364 Zeilen (+47) ⇒ Querschnitt-Zeilenzähler 7164 → 7211 in `v4-3b-querschnitt-1.test.js` und `-2` (gemessen, danach von Hand nachgerechnet: 7164 − 317 + 364); alle übrigen Pins (Dateien, sichtbar, Form-/Farbliterale, Inline-Stile, voll V4) unverändert, `v4-3b-selbsttest` unverändert grün.
+
+**3. Vorschlagsgrenze je Besitzer statt prozessweit (Review #614 C-1) — behoben**
+- `VORSCHLAG_HOECHST` = `{ jeBesitzer: 5, jeRaum: 30, jeRaumEintraege: 10000, gesamt: 2000, gesamtEintraege: 100000 }` (vorher 5 je Raum / 50 gesamt; `jeRaumEintraege` nach Review #616 B-1). Besitzer = Raum + Betrieb + Person (bzw. `r:<rolle>` ohne Person), wie bisher aus der Sitzung. Ein sechster Vorschlag desselben Besitzers verdrängt den ÄLTESTEN eigenen (Entstehungszeit, bei Gleichstand Reihenfolge des Anlegens); nie einen laufenden („läuft“), nie einen fremden. Sind alle eigenen laufend: 429 `zu-viele-vorschlaege`, nichts geht verloren. Verdrängt wird erst, wenn der neue Vorschlag wirklich eingetragen wird (misslingt der Planlauf, bleibt alles). Je Person und Monat ersetzt ein neuer den alten wie bisher und braucht keinen zusätzlichen Platz.
+- Alle übrigen Grenzen **weisen nur ab (429, Kennung `zu-viele-vorschlaege`), sie verdrängen nie über Besitzer hinweg**. ANNAHME (zur Bestätigung) und ehrliche Rechnung: Je Einteilung eines Vorschlags rund 250 Byte (vier kurze Zeichenketten, eingefroren). Ein Vorschlag darf bis `UEBERNAHME_GRENZE.eintraege` = 2000 Einteilungen haben, ein Besitzer hält bis zu 5 Vorschläge, also bis zu 10000 Einteilungen (≈ 2,5 MB).
+  - **Die engere globale Grenze ist `gesamtEintraege` = 100000 Einteilungen (≈ 25 MB), nicht `gesamt` = 2000 Vorschläge.** Die Zahl greift erst bei sehr kleinen Vorschlägen (im Mittel höchstens 50 Einteilungen) und nützt dann als Schutz gegen sehr viele winzige Einträge.
+  - **Größe je Raum (Review #616 B-1):** Ohne eigene Raumgrenze könnten bei 30 Vorschlägen je Raum und 2000 Einteilungen je Vorschlag zwei Räume (60000 + 60000) die globale Größe füllen und alle anderen Betriebe 24 h sperren. Deshalb gilt `jeRaumEintraege` = 10000 (ein Zehntel der globalen Größe): Summe der gehaltenen Einteilungen im eigenen Raum und Betrieb (nach der Verdrängung des ältesten eigenen Vorschlags desselben Besitzers) plus die neuen; darüber 429. Ein Raum kann damit höchstens ein Zehntel der Gesamtgröße halten; der Rest bleibt für andere frei.
+  - **Verbleibendes Restrisiko (bewusst nicht gebaut):** Zehn Räume mit Höchstlast (je 10000 Einteilungen, das heißt je Besitzer fünf Vorschläge mit je 2000 Einteilungen) füllen die globale Größe weiterhin; danach gibt es 429 für alle weiteren, bis Vorschläge nach 24 h verfallen oder verdrängt werden. Das setzt zehn Betriebe voraus, die gleichzeitig Höchstlast halten; eine Verdrängung über Besitzer hinweg wäre die einzige Abhilfe und ist ausgeschlossen (Mandantentrennung). Beobachten.
+  - `jeRaum` = 30 Vorschläge gilt je (Raum, Betrieb) (Review #616 C-1: zwei Betriebe im selben Raum sperren sich nicht; ein Test mit zwei Betrieben); für mehrere Planende desselben Betriebs (5 Personen × 5 + Reserve).
+- `_pruefhaken.hoechst` (nur unter vitest wirksam, wie die übrigen Haken; im Produktivpfad wirkungslos) erlaubt den Prüfungen kleine Grenzen, ohne tausende Vorschläge zu erzeugen. Tests (neuer Abschnitt 9 in `intelligence-planer-uebernahme-aktion.test.js`, 12 Tests, Datei jetzt 42): zwei Besitzer im selben Raum und zwei Räume blockieren sich nicht; der älteste eigene Vorschlag fällt weg (404 beim Ansprechen, die übrigen vier benutzbar); nie über Besitzer hinweg; laufender Vorschlag bleibt, alle laufend ⇒ 429 ohne Verlust; Planlauf scheitert ⇒ nichts verdrängt; globale Grenze (Zahl und Größe) und Raumgrenze greifen weiter; ein Raum an der Größengrenze sperrt nur sich selbst; zwei Betriebe im selben Raum; Gleichstand der Entstehungszeit (stabile Reihenfolge, der zuerst angelegte fällt weg).
+
+Mutationen (von Hand, je Lauf die ganze Prüfdatei, danach zurückgesetzt; Skript nur lokal):
+
+| Nr | Mutation | rote Tests |
+|---|---|---|
+| S1 | Grenze je Besitzer entfernt | 3 |
+| S2 | verdrängt den neuesten statt den ältesten eigenen | 3 |
+| S3 | laufender Vorschlag wird mitverdrängt | 1 |
+| S4 | Verdrängung über Besitzer hinweg (ältester aller) | 1 |
+| S5 | globale Obergrenze (Zahl) entfernt | 1 |
+| S6 | globale Obergrenze nach Größe entfernt | 1 |
+| S7 | Grenze je Raum entfernt | 1 |
+| S8 | Verdrängung schon vor dem Planlauf | 1 |
+| S9 | Besitzer nur nach Raum (nicht Person/Betrieb) | 2 |
+| UM1 | Oberfläche: Monatsprüfung der bestätigten Übernahme entfernt | 2 |
+| UM4 | Oberfläche: Monatsprüfung beim Erstellen entfernt | 1 |
+| UM5 | Oberfläche: Hinweis nach dem Wechsel still verworfen | 3 |
+| UM6 | Oberfläche: Monatsprüfung der Rücknahme entfernt | 1 |
+| UM7 | Oberfläche: Monatsprüfung beim Prüfen entfernt | 1 |
+| UA1 | Fokus nach der Übernahme entfernt | 1 |
+| UA2 | zweite `role="status"`-Region | 1 |
+| UA3 | Ansage-Region nur bei geöffneter Fläche | 1 |
+| UA4 | Ergebnisüberschrift ohne `tabIndex` | 1 |
+| UM2/UM3 | `ladeListe`: Monatsprüfung nach dem `await` bzw. am Anfang entfernt | **überleben, gleichwertig** |
+| R1 (Review #616) | Größengrenze je Raum entfernt | 1 |
+| R2 | Raumgrenze nur je Raum (ohne Betrieb) | 1 |
+| R3 | Größe je Raum summiert alle Räume statt den eigenen | 1 |
+| R4 | Gleichstand der Entstehungszeit: umgekehrte Anlegereihenfolge (die erste Fassung `|| 1` im Vergleich überlebte, weil V8 sie stabil ausführt; ersetzt durch `.reverse().sort(…)`) | 1 |
+| R5 | Generationszähler aus `gilt()` entfernt (Dez → Jan → Dez) | 2 |
+| R6 | Ansage nennt zusätzlich die Ergebnisüberschrift | 1 |
+| R7 | Rückkehr in denselben Monat lädt die Liste nicht neu | 1 |
+| R8 | falscher Kasus „für dem vorigen Monat“ | 1 |
+
+UM2/UM3: Die Monatsprüfung in `ladeListe` ist eine zweite Sicherung. Wechselt der Monat, startet der Effekt auf `ym` eine neue Ladung, die ältere Antworten über den Zähler `zaehler` verwirft; die Handler der bestätigten Übernahme und Rücknahme kehren bei geändertem Monat vor dem Aufruf von `ladeListe` zurück (`fremderMonat`). Eine Ladung für einen nicht mehr angezeigten Monat ist damit auf diesen Wegen nicht erreichbar; die Prüfung bleibt als Rückfall (Monat als Argument ist der Kern des Befundes). Ergebnis: 26 von 28 erkannt (18 aus der ersten Fassung, 8 neue R1–R8), 2 gleichwertig.
+
+**Nachzug Review #616 (Kopf a7e588e1, keine Freigabe, ein B-Befund):** B-1 Größengrenze je Raum `jeRaumEintraege` = 10000 (siehe oben, Rechnung und Restrisiko); C-1 `jeRaum` je (Raum, Betrieb); C-2 Folge für `r:<rolle>` unter „weiter offen“; C-3 Generationszähler (`epoche`, je Monatswechsel hochgezählt, in `gilt()` verglichen; nach Dez → Jan → Dez gilt ein altes Ergebnis nicht; die bestätigte Übernahme meldet ehrlich und liest die Liste neu); C-4 Ansage nach der Bestätigung nur Frist und Mitteilung (die Überschrift mit dem Fokus nennt den Satz); C-5 siehe Zeile Prüfungen; D-1 „für den vorigen Monat“ / „zu dem vorigen Monat“ (der Test erwartete den falschen Text und wurde berichtigt); D-2 Test für den Gleichstand. Pin: `planer-vorschlag.jsx` 364 → 369 Zeilen ⇒ Querschnitt-Zeilenzähler 7211 → 7216.
+
+Tests und Prüfungen (lokal, TZ=UTC, `--maxWorkers=1`, ein Prozess; Stand nach Review #616): Teil A (`intelligence-planer-uebernahme-ui`, `-oberflaeche`, `-verteilung-anzeige`, `-monatswechsel`) 4 Dateien / 138 Tests; Teil B (`v4-3b-querschnitt-1`, `-2`, `-selbsttest`, `-telefonschale`, `fest-eingeplant`) 5 / 66; Teil C (`…-uebernahme-aktion`, `…-rueckgaengig-liste`, `routen-inventar`, `rechtematrix`, `prozess-wachen`) 5 / 141; `npm run pruefung:typen` 0 Fehler; ESLint der geänderten Dateien 0 Fehler und 0 Warnungen (die Direktive `eslint-disable-line react-hooks/exhaustive-deps` an der Ladung der Liste ist entfallen, weil sie nach `ladeListe(ym)` nichts mehr unterdrückte; `ladeListe` steht bewusst nicht in den Abhängigkeiten des Effekts, die Ladung hängt an `zeigen`, `offen`, `ym`); `werkzeug/verdrahtung-pruefen`, `ci-abdeckung`, `acc45-backlog status-schreiben` und `pruefen` ok.
+
+**Weiter offen vor der Freigabe von `PLANER_AN` (nicht gebaut):**
+- C-6 geteilter Besitz personenloser Sitzungen (`r:<rolle>`: alle personenlosen Sitzungen derselben Rolle eines Betriebs teilen Vorschläge und die Grenze je Besitzer). **Folge der neuen Grenze:** Mehrere personenlose Sitzungen derselben Rolle im selben Betrieb können jetzt auch den ÄLTESTEN Vorschlag der jeweils anderen **verdrängen** (bisher bei Überschreitung nur 429); innerhalb von `r:<rolle>` ist das kein Besitzerwechsel im Sinne der Mandantentrennung, aber für die betroffene Sitzung überraschend. Bleibt mit C-6 zusammen offen.
+- Zeitlimit/`AbortController` für die Anfragen der Oberfläche (ohne Limit bleibt die Fläche bis zur Antwort gesperrt).
+- D-1 (Kerngröße), D-2 (Art. 17/15 für `planerRueckgaengig`), D-3 (`planerEinstieg` synchron in der Anfrage).
+- Fixture für die Browser-Abnahme (axe der geöffneten Fläche) und die Sichtprüfung im Browser (Playwright lokal nicht lauffähig).
+- Weitere Fokus-Fälle ohne Entscheidung: nach „Vorschlag verwerfen“, „Abbrechen“ und einer Absage der Bestätigung verschwindet ebenfalls der fokussierte Knopf; nicht Teil dieses Auftrags (nur „Bestätigen“ war verlangt).
+- Betreiberentscheidungen unverändert offen (Aufbewahrung, Mitteilungen, Betriebsrat-Sicht).
+- Die Sätze in Stufe 2 („Höchstens 5 je Raum / 50 gesamt“, Liste „Vor der Freigabe … C-1“) gelten für C-1 nicht mehr; maßgeblich ist dieser Abschnitt.

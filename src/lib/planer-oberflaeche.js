@@ -485,3 +485,23 @@ export function vorschlagErstellenGrund(z) {
   if (z.wirksam === "aus") return "Der Planer ist in diesem Betrieb derzeit aus (siehe „Voraussetzungen im Betrieb“ in den Einstellungen).";
   return null;
 }
+
+/**
+ * Meldung zu einer bestätigten Übernahme oder Rücknahme, deren Antwort erst eintraf, nachdem der Monat gewechselt wurde: das Ergebnis darf
+ * nicht dem jetzt angezeigten Monat zugeschrieben werden, soll aber auch nicht still verschwinden (geschrieben sein kann es trotzdem).
+ * Erfolg heißt nur eine ausdrückliche Erfolgsantwort (`r.ok`); sonst gilt der Text der Kennung, den die Aktion schon liefert.
+ * `imMonat`: nach einem Hin- und Zurückwechseln ist wieder derselbe Monat angezeigt (kein „bitte wechseln“).
+ * @param {"uebernahme" | "rueckgaengig"} art @param {string} ym Monat, für den bestätigt wurde @param {any} r Ergebnis der Aktion @param {boolean} [imMonat]
+ * @returns {{ ok: boolean, text: string }}
+ */
+export function andererMonatHinweis(art, ym, r, imMonat = false) {
+  const was = art === "rueckgaengig" ? "Rücknahme" : "Übernahme";
+  const gueltig = typeof ym === "string" && /^\d{4}-\d{2}$/.test(ym);
+  const monat = gueltig ? `${ym.slice(5, 7)}/${ym.slice(0, 4)}` : "den vorigen Monat";   // „für den vorigen Monat“ (Akkusativ)
+  const monatZu = gueltig ? monat : "dem vorigen Monat";                                  // „zu dem vorigen Monat“ (Dativ)
+  if (r && r.ok === true) {
+    const ohneMitteilung = art === "rueckgaengig" || (r.daten && r.daten.mitteilungen && r.daten.mitteilungen.versandt === false);
+    return { ok: true, text: `Die ${was} für ${monat} wurde ausgeführt, während der Monat gewechselt wurde. ${imMonat ? "Die Liste der Rücknahmen ist aktualisiert." : `Bitte wieder zu ${monatZu} wechseln, um das Ergebnis zu sehen.`}${ohneMitteilung ? " Beschäftigte wurden nicht benachrichtigt." : ""}` };
+  }
+  return { ok: false, text: `Zur ${was} für ${monat}: ${r && typeof r.text === "string" && r.text ? r.text : "Die Antwort war nicht eindeutig. Bitte den Plan neu laden und prüfen."}` };
+}
