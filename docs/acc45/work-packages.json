@@ -2376,9 +2376,9 @@
       "pr": ["#138"],
       "nachweis": "docs/acc45/INTELLIGENCE-ENTWICKLUNGSPLAN.md",
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block K)",
-      "tests": "pruefungen/ki-*.test.js",
+      "tests": "pruefungen/ki-*.test.js, pruefungen/intelligence-planungsreife.test.js, pruefungen/intelligence-planungsreife-regelart.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). Stand 2026-11-09: INTEGRATED nach #138."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). Stand 2026-11-09: INTEGRATED nach #138. Nachtrag 2026-11-28 (Fehlerbehebung aus Review #618, Branch intelligence/planungsreife-regelart, Beleg Abschnitt \"Nachtrag Planungsreife Regelart\" in docs/acc45/WP-I7-nachweis.md): Der Punkt Vorgaben las die Regelart aus typ statt aus regelart (Feld der Bestandsvorgaben) und prüfte auch Entwürfe und inaktive Vorgaben; jeder Betrieb mit einer Vorgabe wäre nicht planungsreif gewesen (fail-closed, Hindernis vor PLANER_AN). Behoben: regelart (typ als Altform), nur Entwurf und inaktiv bleiben ungeprüft; Status unverändert."
     },
     {
       "id": "WP-I7",
