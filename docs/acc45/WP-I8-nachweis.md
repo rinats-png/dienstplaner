@@ -208,7 +208,7 @@ Die Mutationen M1–M16 der ersten Runde wurden auf dem neuen Stand wiederholt: 
 
 ## Verdrahtung (Server-Antwort + Oberfläche)
 
-Basis: Branch von #617 (e36baf61, Engine-Bericht) plus Merge von `integration/release-v4` (754127f1, enthält #616 mit `ymRef`/`epoche`/`gilt()`); solange #617 offen ist, enthält dieser PR dessen Commits (Merge erst nach #617). Nicht geändert: `planer.mjs`, `luckenursache.mjs`, `erfuellungsbericht.mjs`, Workflows. `PLANER_AN` und `PLANER_AGGREGATE_AN` bleiben AUS, Rechenbudget 40 Mio und 372-Tage-Grenze unverändert. Nur synthetische Daten.
+Basis: `integration/release-v4` mit #617 (Engine-Bericht, Merge 10564a57) und #616 (`ymRef`/`epoche`/`gilt()`); der PR enthält nur die Verdrahtung. Nicht geändert: `planer.mjs`, `luckenursache.mjs`, `erfuellungsbericht.mjs`, Workflows. `PLANER_AN` und `PLANER_AGGREGATE_AN` bleiben AUS, Rechenbudget 40 Mio und 372-Tage-Grenze unverändert. Nur synthetische Daten.
 
 ### Entscheidungen
 
