@@ -18,6 +18,7 @@ import { useTour } from "./tourleiste.jsx";
 import { InterneVorgaben } from "./vorgaben.jsx";
 import { MailBestaetigung } from "./mailbestaetigung.jsx";
 import { KiSteuerung } from "./ki-steuerung.jsx";
+import { PlanerSteuerung } from "./planer-steuerung.jsx";
 
 
 /* ==========================================================================
@@ -365,6 +366,7 @@ export function Einstellungen({ sitz, akt, gehZu }) {
       {sitz.mandant && <InterneVorgaben sitz={sitz} akt={akt} />}
       {/* WP-I16 Teil 1: Steuerung und Transparenz; ohne Prozessschalter nur „nicht verfügbar“, für Beschäftigte nichts. */}
       {sitz.mandant && sitz.rolle !== "betreiber" && <KiSteuerung sitz={sitz} akt={akt} />}
+      {sitz.mandant && sitz.rolle !== "betreiber" && <PlanerSteuerung sitz={sitz} akt={akt} />}
 
       {/* ------------- Sicherungen: Liste und Zurückspielen (WP-25) ------------- */}
       {sitz.mandant && SP.angemeldet() && darfSicherungenSehen(serverRolle) && (
