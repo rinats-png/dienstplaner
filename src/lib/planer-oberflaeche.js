@@ -266,7 +266,7 @@ export const VERTEILUNG_PERSON_GRUND = Object.freeze({
   ganzer_monat_abwesend: "Ganzer Monat Urlaub oder Krankheit; nicht in der Vergleichsgruppe.",
 });
 const GRUND_UNBEKANNT = "Grund nicht bewertbar";
-const grundVorgabeText = (g) => (typeof g === "string" && Object.hasOwn(VERTEILUNG_VORGABE_GRUND, g) ? VERTEILUNG_VORGABE_GRUND[g] : GRUND_UNBEKANNT);
+export const grundVorgabeText = (g) => (typeof g === "string" && Object.hasOwn(VERTEILUNG_VORGABE_GRUND, g) ? VERTEILUNG_VORGABE_GRUND[g] : GRUND_UNBEKANNT);
 const grundPersonText = (g) => (typeof g === "string" && Object.hasOwn(VERTEILUNG_PERSON_GRUND, g) ? VERTEILUNG_PERSON_GRUND[g] : GRUND_UNBEKANNT);
 
 export const VERTEILUNG_ZUSTAND = Object.freeze({ erfuellt: "erfüllt", nicht_erfuellt: "nicht erfüllt", nicht_bewertbar: "nicht bewertbar" });

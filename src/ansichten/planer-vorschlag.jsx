@@ -21,12 +21,16 @@
    Bestätigung (Übernahme, Rücknahme) bekommt die Ergebnisüberschrift den Fokus, weil der Knopf mit der Bestätigung verschwindet.
    Monatswechsel: ein Ergebnis gilt nur für den Monat, in dem die Anfrage gestartet wurde (ymRef); es wird nie in einen anderen Monat
    geschrieben. Eine bestätigte Übernahme oder Rücknahme, die erst nach dem Wechsel antwortet, wird ehrlich als solche gemeldet.
+   Erfüllungsbericht (WP-I8): Die Antwort des Servers trägt zum Vorschlag einen Bericht (Zählwerte je Kategorie, offene Stellen mit Wo, Warum,
+   Wegen; src/lib/planer-bericht.js). Er steht über der Liste, gehört zum Vorschlag und wird mit ihm verworfen (auch beim Monatswechsel); ohne
+   Bericht steht der Grund da. „Erfüllt“ bei Gesetz, Muss und Soll heißt nur: keine Befunde in den vorgeschlagenen Einteilungen.
    ========================================================================== */
 import { useState, useMemo, useEffect, useRef } from "react";
 import { Card, Btn, Feldfehler } from "../ui/bausteine.jsx";
 import { fKurz, DOW } from "../lib/datum.js";
 import { dow } from "../regelwerk.js";
 import { planerRechte, planerZustand, vorschlagErstellenGrund, vorschlagZeilen, ablehnungen, unterbesetztAnzeige, andererMonatHinweis } from "../lib/planer-oberflaeche.js";
+import { berichtAnzeige, BERICHT_TEXTE } from "../lib/planer-bericht.js";
 import * as SP from "../speicher.js";
 
 export const VORSCHLAG_TEXTE = Object.freeze({
@@ -106,16 +110,49 @@ function Besetzung({ u, m }) {
     </ul></>;
 }
 
+/** Der Erfüllungsbericht (Anzeigeform aus berichtAnzeige): Rangfolge als nummerierte Liste, Status als Text, offene Stellen als Liste mit Wo, Warum, Wegen. */
+function Erfuellungsbericht({ b }) {
+  const T = BERICHT_TEXTE;
+  return <section aria-label={T.titel} data-testid="planer-bericht">
+    <h3>{T.titel}</h3>
+    {!b.verfuegbar ? <p>{b.text}</p> : <>
+      <p>{T.hinweis}</p>
+      {b.massgeblich && <p><strong>{T.massgeblich}: {b.massgeblich.name} ({b.massgeblich.statusText})</strong></p>}
+      <p><strong>{b.erstesProblem ? `${T.erstesProblem}: ${b.erstesProblem.name} (${b.erstesProblem.statusText})` : T.keinProblem}</strong></p>
+      <h4>{T.kategorienTitel}</h4>
+      <ol aria-label={T.kategorienTitel}>
+        {b.kategorien.map((k) => <li key={k.kategorie}>
+          <strong>{k.name}: {k.statusText}</strong>{k.massgeblich ? ` – ${T.massgeblich}` : ""}{k.erstesProblem ? ` – ${T.erstesProblem}` : ""}
+          {k.hinweis && <p>{k.hinweis}</p>}
+          {k.zeilen.map((z, i) => <p key={i}>{z}</p>)}
+        </li>)}
+      </ol>
+      <h4>{T.konflikteTitel}</h4>
+      {b.notizen.map((n, i) => <p key={i}>{n}</p>)}
+      {b.konflikte.length === 0 ? <p>{T.keineKonflikte}</p> : <>
+        <p>{T.wegeHinweis}</p>
+        <ul aria-label={T.konflikteTitel}>
+          {b.konflikte.map((x) => <li key={x.key}>
+            <strong>{x.wo}</strong>{x.was ? `: ${x.was}` : ""}
+            <p>{T.warum}: {x.warum.join(" ")}</p>
+            {x.wege.length > 0 ? <><p>{T.wege}:</p><ul aria-label={`${T.wege}: ${x.wo}`}>{x.wege.map((w, i) => <li key={i}>{w}</li>)}</ul></> : <p>{T.wege}: {x.wegeText}</p>}
+          </li>)}
+        </ul></>}
+    </>}
+  </section>;
+}
+
 /**
  * Nur die Darstellung (Eigenschaften statt Zustand, damit sie ohne Browser prüfbar ist).
  * `vorschlag`: null oder { zeilen: vorschlagZeilen(...), offen: Zahl | null }; `auswahl`: Vorschlags-Indizes; `geprueft`: null oder { anzahl };
  * `abgelehnt`: [{ index, text }]; `ergebnis` / `rueckErgebnis`: Rückmeldung nach dem Speichern; `liste`: { zustand: "laden" | "fertig" | "fehler",
  * eintraege, text }; `rueck`: null oder { uebernahme, anzahl, unterbesetzt }; `status`: null oder { ok, text, punkte? }.
+ * `bericht`: null oder die Anzeigeform des Erfüllungsberichts (berichtAnzeige; gehört zum Vorschlag).
  * `ansageArt`: was die Ansage-Region gerade sagt ("vorschlag" | "geprueft" | "ergebnis" | "rueckPruefung" | "rueckErgebnis" | "status" | null);
  * `ergebnisRef` / `rueckRef`: Referenzen auf die Ergebnisüberschriften (Fokus nach der Bestätigung).
  */
 export function PlanerVorschlagAnsicht({ m, ym, offen = false, onOffen = () => {}, erstellenGrund = null, beschaeftigt = false,
-  vorschlag = null, auswahl = [], geprueft = null, abgelehnt = [], ergebnis = null, rueckErgebnis = null,
+  vorschlag = null, bericht = null, auswahl = [], geprueft = null, abgelehnt = [], ergebnis = null, rueckErgebnis = null,
   liste = { zustand: "laden", eintraege: [], text: "" }, rueck = null, status = null, ansageArt = null, ergebnisRef = null, rueckRef = null,
   onErstellen = () => {}, onToggle = () => {}, onAlle = () => {}, onKeine = () => {}, onPruefen = () => {}, onBestaetigen = () => {}, onVerwerfen = () => {},
   onListeNeu = () => {}, onRueckPruefen = () => {}, onRueckBestaetigen = () => {}, onRueckAbbrechen = () => {} }) {
@@ -146,6 +183,8 @@ export function PlanerVorschlagAnsicht({ m, ym, offen = false, onOffen = () => {
           <Btn kind="primary" disabled={!!erstellenGrund || beschaeftigt} onClick={onErstellen}>{beschaeftigt ? T.laeuft : T.erstellen}</Btn>
           {erstellenGrund && <p>{erstellenGrund}</p>}
         </section>
+
+        {bericht && <Erfuellungsbericht b={bericht} />}
 
         {vorschlag && <section aria-label={T.liste}>
           <p><strong>{vorSatz}</strong>{" "}{offenSatz}</p>
@@ -273,6 +312,8 @@ export function PlanerVorschlag({ m, ym, sitz, akt, startOffen = false, freigege
   useEffect(() => { if (zeigen && offen) ladeListe(ym); }, [zeigen, offen, ym]); // laden beim Öffnen und beim Monatswechsel
 
   const zeilen = useMemo(() => (vorschlag ? vorschlagZeilen(m, vorschlag.eintraege) : []), [vorschlag, m]);
+  const berichtRoh = vorschlag ? vorschlag.bericht : (status && status.bericht) || null;   // Bericht und Vorschlag haben dieselbe Lebensdauer
+  const berichtModell = useMemo(() => (berichtRoh ? berichtAnzeige(berichtRoh.bericht, berichtRoh.grund, m, ym) : null), [berichtRoh, m, ym]);
   if (!zeigen) return null;
   const sortiert = [...auswahl].sort((a, b) => a - b);
   const schluessel = sortiert.join(",");
@@ -299,13 +340,14 @@ export function PlanerVorschlag({ m, ym, sitz, akt, startOffen = false, freigege
     if (!r.ok) { setVorschlag(null); setAuswahl([]); setStatus(statusAus(r)); return; }
     const d = r.daten;
     const n = Array.isArray(d.eintraege) ? d.eintraege.length : 0;
+    const bericht = { bericht: d.bericht, grund: d.berichtGrund };   // gehört zu diesem Vorschlag und fällt mit ihm weg
     if (!d.vorschlag || n === 0) {
       setVorschlag(null); setAuswahl([]);
       setAnsageArt("status");
-      setStatus({ ok: true, text: `${VORSCHLAG_TEXTE.keiner} ${Number.isInteger(d.offen) ? `${VORSCHLAG_TEXTE.offeneLuecken}: ${d.offen}.` : VORSCHLAG_TEXTE.offeneLueckenUnbekannt + "."}` });
+      setStatus({ ok: true, text: `${VORSCHLAG_TEXTE.keiner} ${Number.isInteger(d.offen) ? `${VORSCHLAG_TEXTE.offeneLuecken}: ${d.offen}.` : VORSCHLAG_TEXTE.offeneLueckenUnbekannt + "."}`, bericht });
       return;
     }
-    setVorschlag({ id: d.vorschlag, eintraege: d.eintraege, offen: Number.isInteger(d.offen) ? d.offen : null });
+    setVorschlag({ id: d.vorschlag, eintraege: d.eintraege, offen: Number.isInteger(d.offen) ? d.offen : null, bericht });
     setAuswahl([]); setAnsageArt("vorschlag");
   });
   const waehle = (neu) => { setAuswahl(neu); setGeprueft(null); setAbgelehnt([]); setStatus(null); setAnsageArt(null); };
@@ -360,7 +402,7 @@ export function PlanerVorschlag({ m, ym, sitz, akt, startOffen = false, freigege
 
   const z = planerZustand(m.einstellungen, { freigegeben });
   return <PlanerVorschlagAnsicht m={m} ym={ym} offen={offen} onOffen={() => setOffen((o) => !o)} erstellenGrund={vorschlagErstellenGrund(z)} beschaeftigt={beschaeftigt}
-    vorschlag={vorschlag ? { zeilen, offen: vorschlag.offen } : null} auswahl={auswahl} geprueft={geprueft && geprueft.schluessel === schluessel ? geprueft : null}
+    vorschlag={vorschlag ? { zeilen, offen: vorschlag.offen } : null} bericht={berichtModell} auswahl={auswahl} geprueft={geprueft && geprueft.schluessel === schluessel ? geprueft : null}
     abgelehnt={abgelehnt} ergebnis={ergebnis} rueckErgebnis={rueckErgebnis} liste={liste} rueck={rueck} status={status}
     ansageArt={ansageArt} ergebnisRef={ergebnisKopf} rueckRef={rueckKopf}
     onErstellen={erstellen} onToggle={umschalten} onAlle={() => waehle(zeilen.map((x) => x.index))} onKeine={() => waehle([])} onPruefen={pruefen}

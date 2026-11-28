@@ -205,3 +205,62 @@ Review auf c76def69: keine Freigabe, kein A-Befund, zwei B. Gleicher Branch, gle
 | M32 | Verteilung aus dem Ergebnis statt neu gerechnet | Verteilung passt nicht |
 
 Die Mutationen M1–M16 der ersten Runde wurden auf dem neuen Stand wiederholt: alle rot außer **M4** („Verteilung erfüllt, obwohl nicht vollständig bewertet“), die jetzt überlebt. Begründung (gleichwertige Mutation): Seit die Verteilung neu gerechnet wird, ist „alle Vorgaben erfüllt“ bei `bewertet !== true` nicht mehr erreichbar (der Planer-Kern bewertet genau dann nicht, wenn eine Vorgabe offen oder nicht bewertet ist, und die ist im Bericht schon „nicht-bewertbar“). Die Zeile bleibt als Schutz für künftige Größen. M5 wurde an den geänderten Quelltext angepasst (rot), M15 ist mit dem genaueren Test (`pruefung: "einteilung"`) rot; ohne ihn fing die neu gerechnete Nachprüfung den Fall (Ergebnis gleich, Stelle anders). Insgesamt 31 von 32 rot, 1 gleichwertig.
+
+## Verdrahtung (Server-Antwort + Oberfläche)
+
+Basis: Branch von #617 (e36baf61, Engine-Bericht) plus Merge von `integration/release-v4` (754127f1, enthält #616 mit `ymRef`/`epoche`/`gilt()`); solange #617 offen ist, enthält dieser PR dessen Commits (Merge erst nach #617). Nicht geändert: `planer.mjs`, `luckenursache.mjs`, `erfuellungsbericht.mjs`, Workflows. `PLANER_AN` und `PLANER_AGGREGATE_AN` bleiben AUS, Rechenbudget 40 Mio und 372-Tage-Grenze unverändert. Nur synthetische Daten.
+
+### Entscheidungen
+
+1. **Server (`server/lib/planer-aktion.mjs`).** `POST /api/planer-vorschlag` liefert zusätzlich `bericht` und `berichtGrund` (neue optionale Felder; alle bisherigen Felder und `eintraege` unverändert). Der Bericht ist `erfuellungsbericht(m, ergebnis)` zum selben Ergebnis des selben Planlaufs (kein zweiter Planlauf), unter derselben Tagesuhr (`mitTagesdatum`) wie der Planer. Er wird nur nach den bestehenden Prüfungen gerechnet (Rechte Leitung/Planung, nie Demo, Planer freigegeben, Rumpf nur `ym`, Monat, Betrieb, Grenzen): SV, BR, Beschäftigte, Kunde und Demo bekommen weiter 403, Planer aus gibt `planer-nicht-freigegeben` ohne Rechnung.
+2. **Kein Bericht, nie ein verworfener Vorschlag.** Fehler, `aufwand`, `ergebnis_passt_nicht`, Ausnahme oder eine Form außerhalb der Positivliste ergeben `bericht: null` mit fester Kennung `berichtGrund` (`aufwand`, `ergebnis_passt_nicht`, `fehler`, `bericht_ungueltig`; jede andere Kennung des Kerns wird `fehler`, nie ein Freitext). Der Vorschlag bleibt gültig und prüfbar.
+3. **Positivliste in der Antwort.** `berichtFuerAntwort` kopiert den Bericht tief und lässt nur Schlüssel der Positivliste zu; Werte sind Zahlen, Wahrheitswerte, `null` oder Kennungen (Muster `[A-Za-z0-9_.-]{1,64}`; Dienst- und Qualifikationskennung höchstens 64 Zeichen). Jede Abweichung (fremder Schlüssel, Freitext, `NaN`, zu tief, mehr als 600 Listeneinträge) ergibt `bericht_ungueltig`, nie einen halben Bericht. Damit kann eine spätere Änderung im Rechenkern keine Personenkennung, keinen Namen und kein Person|Tag in die Antwort tragen. Keine Prozente (Test auf Schlüssel und Werte). Bei `kleineGruppe` werden die nullbaren Felder (`spannweite`, `ueberschreitung`, `summeUeberschreitung`) unverändert als `null` durchgereicht.
+4. **Gehalten mit dem Vorschlag.** Der Bericht liegt am gehaltenen Vorschlag (gleiche Bindung an Raum, Betrieb, Person/Rolle und Monat, gleiche Frist, gleiches Ersetzen) und wird mit der Übernahme verworfen. Der Client reicht ihn nie ein: der Rumpf bleibt `{ ym }` (alle Wege, Test). Speicher: höchstens 500 gelistete Konflikte je Bericht (rund 150 KB im ungünstigsten Fall, in der Praxis wenige KB); die bestehenden Grenzen je Besitzer, Raum und gesamt zählen Einteilungen und bleiben unverändert. Ohne Einteilungen (`vorschlag: null`) trägt die Antwort den Bericht trotzdem (er erklärt dann die offenen Stellen), gehalten wird nichts.
+5. **Oberfläche.** `src/lib/planer-bericht.js` (neu, reine Texte; Wertlisten und Tabellen gegen die Listen des Rechenkerns geprüft) und ein Abschnitt „Erfüllungsbericht“ in `src/ansichten/planer-vorschlag.jsx` über der Einteilungsliste: Kategorien als nummerierte Liste in der Rangfolge (Status als Text, nie nur Farbe; keine Inline-Stile), „Maßgeblich“ und „Erstes Problem“ fett und im Eintrag vermerkt, offene Stellen als Liste mit Wo (Tag, Dienst), Warum (Ursachentext, kleinste Regelmenge), Wegen (Zählungen mit Regeltexten aus dem Befundkatalog; bindende Regeln gekennzeichnet). Überschriften h3 (Bericht) und h4 wie die Nachbarn; keine Bedienelemente im Abschnitt. Die Texte stehen nicht in `planer-oberflaeche.js`, sondern in der neuen Schwesterdatei, damit jene Datei nicht weiter wächst (dort wird nur `grundVorgabeText` exportiert).
+6. **Ehrlichkeit.** „Nicht bewertbar“ wird nie als erfüllt dargestellt (unlesbare Zahlen und unbekannter Status machen aus „erfüllt“ „nicht bewertbar“). Bei Gesetz, Muss und Soll heißt „erfüllt“ in der Oberfläche immer „Im Vorschlag ohne Befund“ mit dem Pflichttext „Keine Gesetzesbefunde in den N vorgeschlagenen Einteilungen – Bestand nicht geprüft“ (entsprechend Muss und Soll). „Wege unvollständig“ und „keine Wege“ stehen als Satz da. Eine unbekannte Kennung (Ursache, Grund, Regel, Dienst, Qualifikation) ergibt „… nicht bezeichnet“, nie den Rohtext. `bericht: null` zeigt „Erfüllungsbericht nicht verfügbar (Grund)“; ein Bericht, dessen Monat nicht zum angezeigten passt, ebenso.
+7. **Monatswechsel.** Der Bericht steckt im Zustand des Vorschlags (bzw. beim Hinweis ohne Einteilungen im Status); `ymRef`/`epoche`/`gilt()` aus #616 schützen das Setzen, der Wechsel des Monats, „Vorschlag verwerfen“ und die Übernahme räumen ihn mit weg (Test mit gespielter Verzögerung).
+
+### Antwortzeit
+
+Messung auf dem Entwicklungsrechner (Celeron N4120, ein Prozess, nach einer Aufwärmrunde, synthetisch, Dezember): Gesamtantwort von `POST /api/planer-vorschlag` ohne Bericht / mit Bericht: 11 Personen 0,60 s / 0,60 s; 47 Personen 1,8 s / 2,4–2,6 s; 107 Personen 6,4 s / 6,4–7,2 s. Der Bericht kostet damit höchstens etwa 0,8 s zusätzlich (Rauschen eingerechnet); der Planlauf dominiert. Keine Aufwandsgrenze des Berichts wurde angefasst (`BERICHT_GRENZE`: darüber Kennung `aufwand`, Vorschlag bleibt). Keine Zeitzusicherung im Test (Uhr); die Zahlen sind Beobachtung, keine Garantie.
+
+### Offen
+
+- **Rechtefrage Sicht SV/BR:** bleibt AUS. Der Bericht gehört nur zu Leitung/Planung (wie der Vorschlag); Schichtverantwortung (Filter je Bereich) und Betriebsrat (nur Zahlen) sind eine Rechteentscheidung des Betreibers, kein Teil dieses Schritts.
+- **Datenschutz kleine Zahlen:** Verteilung unter drei Personen wird vom Kern unterdrückt (die Oberfläche nennt dann nur den Hinweis). Die Wege nennen Personenzahlen je Regelmenge unverändert (Sicht der Leitung); eine Mindestgröße für spätere Sichten (< 3) ist noch zu entscheiden (C5 aus #617).
+- **Varianten** (ausgewogen, wunschnah, stabil): weiter nicht gebaut (Begründung oben).
+- **Browser-Sichtprüfung und Fixture:** Playwright ist lokal nicht lauffähig; die Oberfläche ist mit Hook-Ersatz und `renderToStaticMarkup` geprüft. Eine Sichtprüfung im Browser (Lesbarkeit langer Konfliktlisten, Hell/Dunkel, Handy) und eine Browser-Fixture stehen aus. Lange Listen (bis 500 Stellen) werden vollständig gezeigt, ohne Einklappen.
+- Wertlisten und Kennungsmuster sind im Server (Positivliste) und im Client (Texttabellen) getrennt geführt; die Tests prüfen die Wertlisten gegen den Rechenkern.
+
+### Tests und Mutationen
+
+`pruefungen/intelligence-planer-bericht-aktion.test.js` (20 Tests: Antwort und Abwärtskompatibilität, Positivliste, Rechte, Planer aus, `bericht: null`-Fälle, Rumpf, Halten und Verwerfen, Mandantentrennung) und `pruefungen/intelligence-planer-bericht-ui.test.js` (26 Tests: Texte je Status und Kategorie, Pflichttext, Wege, Platzhalter, nicht verfügbar, Markup, Lebensdauer). Pin: `planer-vorschlag.jsx` 369 → 411 Zeilen, Querschnitt-Zeilenzähler 7216 → 7258 (`v4-3b-querschnitt-1`/`-2`); sonst keine Pin-Änderung (keine neue Datei unter `src/ansichten`).
+
+22 Handmutationen, je einzeln (lokales Hilfsskript, Datei danach zurückgesetzt und byteweise verglichen): 22 von 22 rot.
+
+| Nr. | Mutation | rot (Test) |
+|---|---|---|
+| M1 | Positivliste der Schlüssel entfernt | Berichtsform mit Personenkennung; berichtFuerAntwort |
+| M2 | Ausnahme des Kerns wird weitergeworfen | Kern wirft; berichtFuerAntwort |
+| M3 | Grund des Kerns ohne Werteliste durchgereicht | Freitext-Grund; anderer Grund |
+| M4 | Bericht bei der Übernahme nicht entfernt | Halten und Verwerfen |
+| M5 | Bericht nicht am Vorschlag gehalten | Halten; Mandantentrennung |
+| M6 | kein Bericht verwirft den Vorschlag | alle acht Fälle „Kein Bericht“ |
+| M7 | Antwort ohne Einteilungen ohne Bericht | 0 Einteilungen |
+| M8 | Objekt des Kerns statt Kopie | Kopie; Berichtsform |
+| M9 | Kennungsprüfung der Zeichenketten entfernt | berichtFuerAntwort |
+| M10 | Bericht auch bei Planer aus gerechnet | Planer aus |
+| M11 | Rumpf erlaubt `bericht` | Berichtsfelder im Rumpf |
+| M12 | Pflichttext entfernt | Pflichttext; Markup; Lebensdauer |
+| M13 | unlesbare Zahlen lassen „erfüllt“ stehen | nicht bewertbar ≠ erfüllt |
+| M14 | unbekannte Ursache zeigt Rohtext | Platzhalter |
+| M15 | Monatsprüfung des Berichts entfernt | falscher Monat |
+| M16 | Rangfolge = Reihenfolge der Antwort | Rangfolge |
+| M17 | unbekannter Status gilt als erfüllt | nicht bewertbar ≠ erfüllt |
+| M18 | Bericht ohne Einteilungen nicht im Zustand | keine Einteilung vorgeschlagen |
+| M19 | Abschnitt nicht gerendert | sieben Tests |
+| M20 | Bericht bleibt beim Verwerfen stehen | Verwerfen; Monatswechsel; Übernahme |
+| M21 | Statustext „nicht bewertbar“ = „Erfüllt“ | zwei Tests |
+| M22 | Hinweis zu unvollständigen Wegen entfernt | Wege ehrlich |
+
+Nicht als Mutation geführt: die Tagesuhr (`mitTagesdatum`) um den Bericht. Im Test (Planung im Dezember, Uhr im November) ändert sie die Besetzungsrechnung nicht; sie steht aus Konsistenz mit dem Planlauf und der Rücknahme-Prüfung da. Ihre Wirkung wäre nur bei Eintritts- oder Austrittsdaten rund um „heute“ prüfbar (nicht abgedeckt).
