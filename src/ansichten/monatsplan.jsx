@@ -67,7 +67,7 @@ export function Monatsplan({ sitz, ym, setYm, oeffneTag, akt, schmal,
           <Zeitwahl onZurueck={() => shift(-1)} onHeute={() => setYm(d0.slice(0, 7))} onWeiter={() => shift(1)} /></div>}>{MON[mo - 1]} {y}</H1>
 
       <Freigabeleiste sitz={sitz} ym={ym} akt={akt} />
-      <Anheftungen m={m} ym={ym} />
+      <Anheftungen m={m} ym={ym} sitz={sitz} akt={akt} />
 
       {standortId === ALLE_STANDORTE && (
         <Standortleiste m={m} wert={standortId} setWert={setStandortId} />)}

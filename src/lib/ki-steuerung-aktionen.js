@@ -8,7 +8,7 @@ import * as SP from "../speicher.js";
 
 const mitSteuerung = (m, fn) => ({ ...m, einstellungen: { ...(m.einstellungen || {}), kiSteuerung: fn((m.einstellungen || {}).kiSteuerung || {}) } });
 
-/** Die Absicht auf den Stand der Steuerung legen (genau die Teile, die der Server annimmt: betrieb, funktionen, betriebsratFrage, pause, leitungPause). */
+/** Die Absicht auf den Stand der Steuerung legen (genau die Teile, die der Server annimmt: betrieb, funktionen, betriebsratFrage, pause, leitungPause, planerModus, planerSchalter). */
 export function kiAbsichtAnwenden(s, absicht) {
   const aus = { ...s };
   if (absicht.betrieb) aus.betrieb = { ...(s.betrieb || {}), ...absicht.betrieb };
@@ -17,6 +17,8 @@ export function kiAbsichtAnwenden(s, absicht) {
   if (absicht.betriebsratFrage) aus.betriebsratFrage = { ...(s.betriebsratFrage || {}), ...absicht.betriebsratFrage };
   if (absicht.pause) aus.pause = { ...(s.pause || {}), ...absicht.pause };
   if (absicht.leitungPause) aus.leitungPause = { ...(s.leitungPause || {}), ...absicht.leitungPause };
+  if (absicht.planerModus) aus.planerModus = { ...(s.planerModus || {}), ...absicht.planerModus };      // Planer-Oberfläche (WP-I7 Teil 6, Stufe 1)
+  if (absicht.planerSchalter) aus.planerSchalter = { ...(s.planerSchalter || {}), ...absicht.planerSchalter };
   return aus;
 }
 
@@ -28,6 +30,8 @@ export function kiSteuerungBestaetigt(absicht, stand) {
   if (absicht.betriebsratFrage && !gleich(absicht.betriebsratFrage, stand.betriebsratFrage, "antwort")) return false;
   if (absicht.pause && !gleich(absicht.pause, stand.pause, "aktiv")) return false;
   if (absicht.leitungPause && !gleich(absicht.leitungPause, stand.leitungPause, "aktiv")) return false;
+  if (absicht.planerModus && !gleich(absicht.planerModus, stand.planerModus, "modus")) return false;      // Planer-Oberfläche: Modus und Schalter wie der Server sie hält
+  if (absicht.planerSchalter && !gleich(absicht.planerSchalter, stand.planerSchalter, "an")) return false;
   if (absicht.funktionen) {
     for (const [id, w] of Object.entries(absicht.funktionen)) if (!gleich(w, (stand.funktionen || {})[id], "an")) return false;
   }
