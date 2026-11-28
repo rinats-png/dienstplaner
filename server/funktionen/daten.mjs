@@ -63,6 +63,7 @@ import { zustellen, pushSchluessel, geraetAbmelden, geraetAusRumpf, personBerein
 import { auskunftBauen, protokollZurPerson, kontoFuerAuskunft, AUSKUNFT_FUER_ANDERE } from "../lib/auskunft.mjs";
 import { modulProtokollZeilen, bestandOhneModuleinstellungen } from "../lib/branchenmodule.mjs";
 import { bereichsprotokollArchivieren, bereichsprotokollArchivierbar } from "../lib/modul-bereichsplan.mjs";
+import { planerAktion, planerAktionErlaubt } from "../lib/planer-aktion.mjs";
 import { schichtzuordnungProtokollZeilen, modellKuerzungFehlerBestand } from "../lib/schichtzuordnung.mjs";
 import { kiSteuerungProtokollZeilen, kiSteuerungVerwerfen, betriebsratKontenZeilen, kiBrPauseAktiv } from "../lib/ki-steuerung.mjs";
 import { VORLAGEN, vorlageBestand, demoGestaltPruefen, demoOhneVertrag, codeBindung, betriebFuerNeuenCode }
@@ -894,8 +895,9 @@ async function behandeln(req, context, ctx) {
       let neuerBestand = angeglichen && Array.isArray(angeglichen.mandanten)
         ? { ...angeglichen, mandanten: angeglichen.mandanten.map((x) => {
           if (!x || typeof x !== "object") return x;
-          const { monatsabschluss: _ma, istEingefroren: _ie, ...rest } = x;
-          void _ma; void _ie;
+          /* Ebenso die Rückgängig-Daten der Planvorschlag-Übernahme (WP-I7 Stufe 2, nur die Server-Aktion planer-aktion.mjs). */
+          const { monatsabschluss: _ma, istEingefroren: _ie, planerRueckgaengig: _pr, ...rest } = x;
+          void _ma; void _ie; void _pr;
           return rest;
         }) }
         : angeglichen;
@@ -3141,6 +3143,25 @@ async function behandeln(req, context, ctx) {
         await protokoll("schreiben", kA, "erfolg", `Branchenmodul bereichsplan: ${rA.vermerk.anzahl} Einträge des Änderungsprotokolls nach Export archiviert`, wer);
         return antwort({ ok: true, archiviert: rA.vermerk.anzahl, vermerk: rA.vermerk, etag: ergA.stand || null });
       });
+    }
+
+    /* ------ Planvorschlag erzeugen, Übernahme bestätigen, rückgängig (WP-I7 Stufe 2) ------
+       Eigene Server-Aktion (server/lib/planer-aktion.mjs), NICHT über PUT /api/bestand, zusammenfuehren oder anheftenZusammen:
+       Vorschlag, basis und Rückgängig-Daten nur am Server; der Rumpf trägt nur Monat, Kennungen, Indizes und die Bestätigung.
+       Nur Leitung und Planung (plan.edit.all), nie Demo. Planer nicht freigegeben (PLANER_AN AUS): Vorschlag und Übernahme
+       `planer-nicht-freigegeben` ohne zu rechnen oder zu schreiben; Rückgängig braucht nur die Rechte. Erst die Rolle, dann die
+       Bremse, dann die Spur (ohne Person, Tag oder Namen). */
+    if ((pfad === "planer-vorschlag" || pfad === "planer-uebernahme" || pfad === "planer-rueckgaengig") && req.method === "POST") {
+      const kP = kennung(req, s);
+      if (!planerAktionErlaubt(s)) {
+        await protokoll("schreiben", kP, "abgewiesen", `Planvorschlag · Rolle ${s.rolle}`, wer);
+        return antwort({ ok: false, code: "keine-berechtigung", fehler: "keine-berechtigung" }, 403);
+      }
+      const bP = await bremse("schreiben", kP);
+      if (!bP.frei) return zuVielAntwort(bP.wartet);
+      const eP = await planerAktion(pfad, { store, sitzung: s, rumpf, jetzt: new Date() });
+      await protokoll("schreiben", kP, eP.ausgang, eP.spur, wer);
+      return antwort(eP.daten, eP.status);
     }
 
     /* ------------------------------ Abmelden ------------------------- */

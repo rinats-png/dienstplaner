@@ -65,6 +65,9 @@ import { BRANCHENMODULE, modulprotokollFaellig, MODULPROTOKOLL_FRIST, MODULDATEN
   BEWACHV_FRISTTYPEN_BERECHENBAR } from "./branchenmodule.mjs";
 import { regelGeprueft } from "./regelstatus.mjs";
 import { faelleFaellig, faelleRaeumen } from "./krankmeldung.mjs";
+/* Rückgängig-Daten der Planvorschlag-Übernahme (WP-I7 Stufe 2): nach Datum (Monatsende + Nachfrist), unabhängig von den Fristen
+   des Betriebs — eine Annahme, Betreiberentscheidung offen (planer-rueckgaengig.mjs). Im Bericht nur als Zahl. */
+import { rueckgaengigRaeumen, rueckgaengigFaellig } from "./planer-rueckgaengig.mjs";
 
 /** Voreinstellungen, falls ein Betrieb sie noch nicht hat. */
 export const VORGABE = {
@@ -351,7 +354,7 @@ export function abschlussPersonenRaeumen(w, { personen, grundStichtag = null, pl
  * @param {string} heuteIso
  * @param {{ module?: readonly any[], regeln?: { moduldaten?: any, modulprotokoll?: any } }} [o]
  * @returns {{stichtage: object, personen: Array<object>, plandaten: object,
- *   planSumme: number, aenderungen: number, gruende: number, standort: number, abgewiesen: number, krankmeldungen: number,
+ *   planSumme: number, aenderungen: number, gruende: number, standort: number, abgewiesen: number, krankmeldungen: number, planerRueckgaengig: number,
  *   moduldaten: number, modulprotokoll: number, moduldatenZurueckgehalten: number,
  *   modulprotokollZurueckgehalten: number, bewachvZurueckgehalten: number, pruefhinweis: (string|null), gesamt: number,
  *   warnung: (string|null)}}
@@ -410,6 +413,8 @@ export function vorschau(m, heuteIso, { module = BRANCHENMODULE, regeln = {} } =
 
   /* Abgewiesene Stempel am Monatsabschluss (WP-16, Review M2): Person, Tag, Uhrzeit — mit der Frist der Gründe. */
   const abgewiesen = abschlussPersonenRaeumen(m.monatsabschluss, { grundStichtag: st.grund, planStichtag: st.plan }).entfernt;
+  /* Rückgängig-Daten der Planvorschlag-Übernahme (WP-I7 Stufe 2): fällig nach Datum (Monatsende + Nachfrist, planer-rueckgaengig.mjs). */
+  const planerRueckgaengig = rueckgaengigFaellig(m, heuteIso).faellig;
 
   const warnung = st.fristen.plandatenMonate < PLANDATEN_MINDEST
     ? `Die Frist für Plandaten steht auf ${st.fristen.plandatenMonate} Monaten. `
@@ -434,6 +439,7 @@ export function vorschau(m, heuteIso, { module = BRANCHENMODULE, regeln = {} } =
     standort,
     abgewiesen,
     krankmeldungen,
+    planerRueckgaengig,
     moduldaten: md.anzahl,
     modulprotokoll,
     moduldatenZurueckgehalten: md.zurueckgehalten,
@@ -441,7 +447,7 @@ export function vorschau(m, heuteIso, { module = BRANCHENMODULE, regeln = {} } =
     bewachvZurueckgehalten: md.bewachvZurueckgehalten,
     pruefhinweis: [(md.zurueckgehalten > md.bewachvZurueckgehalten) || mp.zurueckgehalten ? PRUEFHINWEIS : null,
       md.bewachvZurueckgehalten ? BEWACHV_HINWEIS : null].filter(Boolean).join(" ") || null,
-    gesamt: personen.length + planSumme + aenderungen + gruende + standort + abgewiesen + krankmeldungen + md.anzahl + modulprotokoll,
+    gesamt: personen.length + planSumme + aenderungen + gruende + standort + abgewiesen + krankmeldungen + md.anzahl + modulprotokoll + planerRueckgaengig,
     warnung,
   };
 }
@@ -489,7 +495,7 @@ export function raeumen(m, heuteIso, { module = BRANCHENMODULE, regeln = {} } = 
   /* Eine Frist des Modulprotokolls je Betrieb (modulprotokollMonate) gibt es nicht mehr (M1): Sie fällt hier weg. */
   if (plan.gesamt === 0) {
     return {
-      mandant: { ...m, aufbewahrung: { ...fristen(m), zuletztGeraeumt: heuteIso } },
+      mandant: { ...rueckgaengigRaeumen(m, heuteIso), aufbewahrung: { ...fristen(m), zuletztGeraeumt: heuteIso } },
       bericht: { ...plan, ausgefuehrt: true },
     };
   }
@@ -545,7 +551,7 @@ export function raeumen(m, heuteIso, { module = BRANCHENMODULE, regeln = {} } = 
 
   return {
     mandant: {
-      ...m,
+      ...rueckgaengigRaeumen(m, heuteIso),
       ...gekuerzt,
       personen: personenNeu,
       aenderungen: (m.aenderungen || [])
@@ -595,6 +601,8 @@ export function berichtstext(b) {
     teile.push(`${zahlwort(b.abgewiesen, "abgewiesener Stempel", "abgewiesene Stempel")} am Monatsabschluss entfernt`);
   if (b.moduldaten)
     teile.push(`${zahlwort(b.moduldaten, "Modulzuordnung", "Modulzuordnungen")} entfernt`);
+  if (b.planerRueckgaengig)
+    teile.push(`${zahlwort(b.planerRueckgaengig, "Rückgängig-Datensatz", "Rückgängig-Datensätze")} der Planvorschlag-Übernahme entfernt`);
   if (b.modulprotokoll)
     teile.push(`${zahlwort(b.modulprotokoll, "Eintrag", "Einträge")} im Modulprotokoll entfernt`);
   if (!teile.length) return b.pruefhinweis || "Nichts fällig — alle Fristen eingehalten.";

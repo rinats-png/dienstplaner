@@ -880,3 +880,63 @@ Mutationen (von Hand, je Lauf der Prüfdatei; Ergebnis siehe Tabelle):
 | M28 | C-3: try/catch in `patchAnwenden` entfernt | 1 |
 
 Nach Review #612 (Kopf vor dem Fix b79fe1e5): 31 Tests; Lauf der Mutationen M1–M28 erneut gegen die geänderte Datei: 27/28 erkannt, M27 gleichwertig (oben).
+
+## Planvorschlag-Übernahme, Server-Aktion (Stufe 2) — Branch `intelligence/planer-uebernahme-aktion`
+
+Drei Wege in `server/funktionen/daten.mjs` (Sitzung, Herkunft, 2FA, Sicherungsschlüssel-Positivliste wie jeder Weg dort), Logik in `server/lib/planer-aktion.mjs`, Rückgängig-Daten in `server/lib/planer-rueckgaengig.mjs`; Prüfung `pruefungen/intelligence-planer-uebernahme-aktion.test.js` (Präfix `intelligence-`, über `pruefung:intelligence` verdrahtet). Keine Oberfläche; `PLANER_AN`/`PLANER_AGGREGATE_AN` unverändert AUS.
+
+| Weg (POST) | Rumpf (nur diese Felder, sonst 400) | Wirkung |
+|---|---|---|
+| `/api/planer-vorschlag` | `{ ym }` | `planerEinstieg` (Knopfdruck) auf dem Rohstand; Vorschlag + `vorschlagBasis` nur am Server; Antwort: Kennung `pv-…`, `gueltigBis`, Einträge `{ index, personId, datum, dienstId, art }`, Zahl offener Lücken — keine Namen |
+| `/api/planer-uebernahme` | `{ vorschlag, auswahl: [Index], bestaetigt? }` | ohne `bestaetigt: true` nur `uebernahmePruefen` (nichts geschrieben); mit: `uebernahmeAnwenden` + `patchAnwenden` unter der Raumsperre, EIN `bestandSchreiben` mit erwartetem Stand; Antwort: Kennung `pu-…`, Anzahl, Zeitraum, `rueckgaengigBis`, `mitteilungen.versandt: false` |
+| `/api/planer-rueckgaengig` | `{ uebernahme, bestaetigt? }` | ohne `bestaetigt: true` nur `rueckgaengigPruefen` + Unterbesetzungshinweis; mit: `rueckgaengigAnwenden`, Datensatz im selben Schreiben entfernt |
+
+Erfüllte Verdrahtungsliste aus Stufe 1:
+- **Nur serverseitig:** Der Client schickt nie `gesetzt`, `basis`, Patch, `freigabe`, `rolle`, `demo` (400 `anfrage-ungueltig`; Auswahl nur ganze Indizes, eindeutig, < Länge, ≤ 2000, sonst 400/413). `kontext` nur in `kontextAus`: Rolle der Sitzung (wirksame Rolle aus daten.mjs, „kunde“ bleibt „kunde“ — die Abbildung auf Leitung in `rollenwechselErlaubt` wird nicht benutzt), `demo` = `sitzung.demo === true`, `jetzt` = Serveruhr, `freigabe` = `PLANER_AN === true`, `bestaetigt` nur aus dem ausdrücklichen Feld (nie beim Erzeugen).
+- **Eigene Aktion:** kein `zusammenfuehren`, kein PUT `/api/bestand`, kein `anheftenZusammen` (Quelltext-Leitplanke im Test). Rohstand frisch unter der Raumsperre gelesen, `uebernahmeAnwenden` genau darauf, Patch nur auf `abweichungen`; Patch + `aenderungen` + Modulprotokoll + Rückgängig-Datensatz in einem Schreiben (Journal von `bestandSchreiben`: alles oder nichts; nach einer Ausnahme wird frisch nachgelesen, ob der Datensatz festgeschrieben ist). Konflikt → 409 `konflikt`, der nächste Versuch rechnet auf dem neuen Stand; Basis abweichend → 409 `seit-vorschlag-geaendert` und der Vorschlag ist verworfen (nie ein alter Patch auf neuem Stand). `pruefeGestalt` vor dem Schreiben.
+- **Planer aus:** Vorschlag und Übernahme `planer-nicht-freigegeben` vor jedem Lesen, Rechnen, Schreiben (Zähler der Planerläufe im Test). Pause/Schalter/unlesbar fail-closed über `planerEinstieg` bzw. den Kern (`planer-pausiert`, `planer-im-betrieb-aus`). Freigabe in Prüfungen nur über `vi.mock` von `engine/planer.mjs` — der Code hat keinen Prüf-Schalter für die Freigabe (`_pruefhaken` kennt nur Ablage- und Konfliktinjektion).
+- **Rechte:** `planerAktionErlaubt` = `darfUebernehmen` (Leitung/Planung mit `plan.edit.all`, echtes `demo === false`), nie Sicherungsschlüssel; in daten.mjs VOR der Bremse und vor jeder Spur geprüft. Mehrfachklick: Marke „läuft“ vor dem ersten `await`, dazu Zustandsprüfung unter der Sperre — von zwei gleichzeitigen Übernahmen derselben Kennung gewinnt genau eine.
+- **Mandanten/Nutzer:** Vorschlag gebunden an Raum, Betrieb, Person (bzw. Rolle ohne Person) und Monat; nach dem Lesen wird der Betrieb erneut verglichen (gleiche Person-Kennung in Betrieb B desselben Raums: 404). Rückgängig-Datensätze liegen im eigenen Betrieb (fremde Kennung: 404).
+- **Protokoll:** `{ modul: "planer", art: "planer-uebernommen" | "planer-rueckgaengig", am, von: Rolle, anzahl, zeitraum }` (aus dem Kern), Grenze `modulprotokollUeberGrenze` (Übernahme an der Grenze 409 `protokoll-voll`, Rücknahme geht immer — wie Lösen beim Anheften). Spur des Servers nur mit Zahl und Kennung. Änderungseinträge wie im Kern (`quelle: "planer"`).
+- **Sicht:** `planerRueckgaengig` steht in keinem Katalog (sicht.mjs, Schicht, Betreiber, Export, Vollausgabe) — „unbekannte neue Felder“ gehen an keine Rolle (RECHTEMATRIX §1); PUT `/api/bestand` füllt es aus dem gespeicherten Stand zurück (`vollRueckfuellen`), mitgeschickt wirkungslos (Test: Rundweg Leitung/Planung mit gefälschtem Datensatz); Teilweg: `NUR_SERVER`; Betreiber-Neuanlage und `/api/bestand-anlegen` verwerfen das Feld. Vorschlag- und Übernahmekennungen erscheinen in keiner `GET /api/bestand`-Antwort.
+
+Entscheidungen und Annahmen dieser Stufe (zur Bestätigung):
+- **Ablaufzeit Vorschlag 24 h (Arbeitsspeicher):** ein Planungstag; jede relevante Änderung am Betrieb macht den Vorschlag ohnehin über `basis` ungültig, ein Neustart verwirft ihn (übernommen ist dann nichts). Arbeitsspeicher wie die Importvorgänge (`import/vorgaenge.mjs`): keine Personendaten-Kopie auf der Platte; genau ein Prozess je Ablage. Höchstens 5 je Raum / 50 gesamt; je Person und Monat ersetzt ein neuer den alten.
+- **Aufbewahrung der Rückgängig-Daten — ANNAHME, Betreiberentscheidung offen:** am Betrieb (`planerRueckgaengig`), einmalig (nach Gebrauch im selben Schreiben entfernt), längstens Monatsende + 7 Tage (`aufbewahrenBis`), bei Monatsabschluss sofort unbrauchbar und beim nächsten Schreiben der Aktion entfernt; der Datenschutzlauf zählt und räumt fällige Datensätze nach Datum (`aufbewahrung.mjs` `vorschau`/`raeumen`, Bericht „Rückgängig-Datensätze … entfernt“). Höchstens 10 Datensätze je Betrieb, der älteste fällt weg.
+- **Rückgängig ohne Planer-Freigabe (C-4):** stellt nur den Menschenstand her; nur Rechte, Frist und die Prüfungen des Kerns (unverändert, nicht angeheftet, nicht vergangen, Monat offen). Jede berechtigte Rolle des Betriebs darf zurücknehmen (Betriebsbindung, nicht Personenbindung).
+- **Unterbesetzungshinweis:** Prüfung und Rücknahme melden je betroffenem Tag/Dienst die Lücke aus der vorhandenen `besetzung` (engine/plan.mjs) als Daten (`unterbesetzt: [{ datum, dienstId, fehlt, qualFehlt }]`, ohne Personen; nicht bewertbar → `null`). Keine neue Befundlogik.
+- **Mitteilungen an Beschäftigte:** keine (`versandt: false`), Betreiberentscheidung offen.
+- **Betriebsrat:** Einträge des Moduls „planer“ im Modulprotokoll vorläufig nicht in seiner Sicht (wie „anheften“, Planungsvorgang) — Betreiberentscheidung offen (§ 87 Abs. 1 Nr. 6 BetrVG: Zählwerte ohne Person wären möglich).
+
+Mutationen (von Hand gegen die Prüfdatei, je Lauf die ganze Datei; Skript nur lokal):
+
+| Nr | Mutation | rote Tests |
+|---|---|---|
+| M1 | Rechte: planerAktionErlaubt immer wahr | 2 |
+| M2 | Demo nicht aus der Sitzung (immer false) | 2 |
+| M3 | Freigabe-Prüfung beim Erzeugen entfernt | 1 |
+| M4 | Freigabe-Prüfung bei der Übernahme entfernt | 1 |
+| M5 | Rumpf-Positivliste der Übernahme entfernt | 1 |
+| M6 | bestaetigt immer true (Auto-Übernahme) | 2 |
+| M7 | ohne erwarteten Stand schreiben | 1 |
+| M8 | Komplett-Überschreiben statt patchAnwenden | 2 |
+| M9 | Rückgängig-Datensatz nach Gebrauch nicht entwertet | 1 |
+| M10 | Ablauf des Vorschlags nicht geprüft | 1 |
+| M11 | Frist des Rückgängig-Datensatzes nicht geprüft | 1 |
+| M12 | Mandantenprüfung nach dem Lesen entfernt | 1 |
+| M13 | Rückgängig verlangt Planer-Freigabe | 1 |
+| M14 | Markierung „läuft“ fehlt (Doppelklick) | **überlebt, gleichwertig**: die Raumsperre ordnet beide Anfragen nacheinander, die zweite scheitert an der Zustandsprüfung unter der Sperre (409 `bereits-uebernommen`) |
+| M15 | Zustand im Lock nicht geprüft + läuft fehlt | **überlebt, gleichwertig**: ohne Zustandsprüfung rechnet die zweite Anfrage auf dem neuen Stand, der Kern lehnt mit `bereits-uebernommen` ab (alle Schlüssel tragen schon den Wert) — dritte Sicherung |
+| M16 | Aufbewahrungslauf zählt die Datensätze nicht | 1 |
+| M17 | Betriebsrat sieht Planer-Protokoll | 1 |
+| M18 | Teilweg nimmt planerRueckgaengig an (NUR_SERVER) | 1 |
+| M19 | Grenze der Datensätze nicht angewendet | 1 |
+| M20 | Vergangener Monat beim Erzeugen nicht gesperrt | 1 |
+
+Ergebnis: 18/20 erkannt, M14 und M15 gleichwertig (drei Sicherungen gegen Doppelklick: Marke, Zustand unter der Sperre, Kern). Lauf mit 25 Tests der Prüfdatei.
+
+Offene Anschlüsse (nicht in dieser Stufe):
+- Oberfläche/Dialog (Häkchen je Einteilung, Prüfen, Bestätigen, Rückgängig-Knopf mit Unterbesetzungshinweis, Texte zu den Kennungen) — Folgearbeit, nach #613.
+- Fixture für die Browser-Abnahme (Planer nur über den Prüf-Zugang frei; ohne Freigabe zeigt die Oberfläche nur `planer-nicht-freigegeben`).
+- Betreiberentscheidungen: Aufbewahrung der Rückgängig-Daten (Ort, Frist, Zahl), Mitteilungen an Beschäftigte, Betriebsrat-Sicht des Planer-Protokolls.
+- Hinweis: Das Zurückspielen einer Sicherung bringt deren Rückgängig-Datensätze mit (konsistent mit den zurückgespielten Einteilungen); `planerEinstieg` rechnet synchron in der Anfrage (Aufwandsgrenze des Planers, Bremse „schreiben“).
