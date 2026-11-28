@@ -87,6 +87,7 @@ nicht abgeschwächt; nur nachgewiesene Ausfälle werden behoben, alles Übrige b
 - **Regression:** `pruefungen/selbsttest-datumsstabil.test.js` lässt den ganzen Selbsttest unter festen Uhren laufen
   (2026-11-28, 2026-11-30, 2026-12-01, 2026-12-31; nur `Date`, lokale Zeit). Gegen die Basis 24205864 alle vier Tage rot (11-28, 11-30 Freischicht;
   12-01, 12-31 Quartal), mit der Behebung alle grün; Mutation (Zeile (1) zurück auf `heute()`) macht 11-28 und 11-30 rot.
+- **Verdrahtung:** `npm run pruefung:selbst` (vom Workflow `pruefung.yml` aufgerufen, Workflow unverändert) führt `selbsttest.test.js` und `selbsttest-datumsstabil.test.js` mit `--testTimeout=300000` aus; `verdrahtung-pruefen`, `ci-abdeckung` und `prozess-wachen` ok. Laufzeit lokal (Celeron): 137 s für beide Dateien.
 - **Messreihe nach der Behebung (TZ=UTC, 549 Zusicherungen, alle ok):** 2026-10-31, 11-28, 11-30, 12-01, 12-31; 2027-01-01, 01-31,
   02-28, 03-31, 04-30, 05-31, 06-30, 09-30, 11-30, 12-31; 2028-02-29. Zonenprobe: `selbsttest-datumsstabil` und `selbsttest` unter
   TZ=America/Los_Angeles und TZ=Pacific/Kiritimati je 6/6 grün.
