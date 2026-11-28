@@ -10,7 +10,7 @@
    ========================================================================== */
 import * as SP from "../speicher.js";
 import { kiAbsichtAnwenden, kiSteuerungBestaetigt } from "./ki-steuerung-aktionen.js";
-import { sitzRolle, sitzRolleText, einteilungZumAnheften, mitAnheftung, ohneAnheftung, anheftungBestaetigt } from "./planer-oberflaeche.js";
+import { sitzRolle, sitzRolleText, einteilungZumAnheften, mitAnheftung, ohneAnheftung, anheftungBestaetigt, planerWegFehler } from "./planer-oberflaeche.js";
 import { ANGEHEFTET_FELD } from "../../server/lib/engine/anheften.mjs";
 
 /** Obergrenze für das Warten auf eine Rückmeldung des Speicherwegs (ms). */
@@ -126,6 +126,15 @@ export function planerAktionen(k) {
         "Einteilung angeheftet: Der Planer ändert sie nicht.");
     },
 
+    /* Planvorschlag erzeugen, prüfen, übernehmen, zurücknehmen (WP-I7 Stufe 3): eigene Server-Wege, nie PUT /api/bestand. Jede Aktion liefert
+       { ok, text, daten, code?, unklar?, verbraucht? }; die Texte stammen aus der Kennungstabelle (planerWegFehler), nie vom Server. */
+    planerVorschlagErzeugen: (ym) => planerWeg(k, "planer-vorschlag", { ym }, { gut: (d) => Array.isArray(d.eintraege) }),
+    planerAuswahlPruefen: (vorschlag, auswahl) => planerWeg(k, "planer-uebernahme", { vorschlag, auswahl }, { gut: (d) => d.geprueft === true && d.geschrieben === false }),
+    planerUebernehmen: (vorschlag, auswahl) => planerWeg(k, "planer-uebernahme", { vorschlag, auswahl, bestaetigt: true }, { schreibend: true, gut: (d) => d.geschrieben === true }),
+    planerRueckgaengigListe: (ym) => planerWeg(k, "planer-rueckgaengig-liste", { ym }, { lesen: true, gut: (d) => Array.isArray(d.eintraege) }),
+    planerRueckgaengigPruefen: (uebernahme) => planerWeg(k, "planer-rueckgaengig", { uebernahme }, { gut: (d) => d.geprueft === true && d.geschrieben === false }),
+    planerRueckgaengigAusfuehren: (uebernahme) => planerWeg(k, "planer-rueckgaengig", { uebernahme, bestaetigt: true }, { schreibend: true, gut: (d) => d.geschrieben === true }),
+
     /** Die Anheftung einer Einteilung lösen; die Einteilung selbst bleibt. */
     loeseAnheftung: (schluessel) => {
       const s = jetzt();
@@ -174,4 +183,60 @@ function anhefteSchreiben(k, s, id, m0, schluessel, neuM, art, wert, textOk) {
       zurueck: () => upd(zurueckSetzen),
     },
   });
+}
+
+/* ------------------------------------------------------------------ Planvorschlag: Server-Wege (WP-I7 Stufe 3) */
+
+const PLANER_LAEUFT = "Es läuft gerade schon eine Anfrage an den Planer. Bitte kurz warten.";
+const UNEINDEUTIG = "Die Antwort des Servers war nicht eindeutig.";
+/** Eine Anfrage an den Planer zugleich (Vorschlag, Prüfen, Übernehmen, Rücknahme): ein Mehrfachklick sendet nie zweimal. Die Liste ist ausgenommen. */
+const planerLauf = { aktiv: false };
+
+/** Nach einer Übernahme oder Rücknahme (und wo unklar ist, ob): den gespeicherten Stand samt ETag nachladen (App.jsx serverstandNachladen). */
+async function neuLaden(k) {
+  if (!k || typeof k.serverstandNachladen !== "function") return;
+  try { await k.serverstandNachladen((d) => d); } catch { /* der Hinweis auf „neu laden“ steht in der Meldung */ }
+}
+
+/**
+ * Ein Weg der Planvorschlag-Übernahme. Erfolg heißt NUR: eine ausdrückliche, zur Aktion passende Erfolgsantwort (`gut`); alles andere ist
+ * ein sichtbarer Fehler mit dem Text der Kennung. Bei der Bestätigung (`schreibend`) ist ohne Antwort oder mit einer Antwort ohne bekannte
+ * Kennung unklar, ob gespeichert wurde: dann `unklar`, der Stand wird neu gelesen und nichts wird wiederholt.
+ * @param {any} k @param {string} weg @param {Record<string, any>} rumpf
+ * @param {{ lesen?: boolean, schreibend?: boolean, gut: (d: any) => boolean }} o
+ * @returns {Promise<{ ok: boolean, text: string, daten: any, status: number, code?: string | null, unklar?: boolean, verbraucht?: boolean }>}
+ */
+async function planerWeg(k, weg, rumpf, o) {
+  const melde = k && typeof k.melde === "function" ? k.melde : () => {};
+  const schreibend = o.schreibend === true;
+  if (o.lesen !== true) {
+    if (planerLauf.aktiv) return { ok: false, text: PLANER_LAEUFT, daten: null, status: 0, code: "laeuft" };
+    planerLauf.aktiv = true;
+  }
+  try {
+    let r;
+    try {
+      r = await SP.planerWegSenden(weg, rumpf);
+    } catch (e) {
+      const abgemeldet = !!e && e.message === "nicht-angemeldet";
+      const f = planerWegFehler(abgemeldet ? 401 : 0, null, { schreibend: schreibend && !abgemeldet });
+      if (f.neuLaden) await neuLaden(k);
+      if (schreibend) melde(f.text);
+      return { ok: false, text: f.text, daten: null, status: 0, code: f.code, unklar: f.unklar, verbraucht: f.verbraucht };
+    }
+    const d = r.daten && typeof r.daten === "object" && !Array.isArray(r.daten) ? r.daten : {};
+    if (r.status >= 200 && r.status < 300 && d.ok === true && o.gut(d)) {
+      if (schreibend) await neuLaden(k);
+      return { ok: true, text: "", daten: d, status: r.status };
+    }
+    /* Eine 2xx-Antwort ohne ausdrückliche Erfolgsmeldung ist kein Erfolg (bei der Bestätigung: unklar). */
+    const f = r.status >= 200 && r.status < 300
+      ? (schreibend ? planerWegFehler(0, null, { schreibend: true }) : { code: null, text: UNEINDEUTIG, unklar: false, neuLaden: false, verbraucht: false })
+      : planerWegFehler(r.status, d, { schreibend });
+    if (f.neuLaden) await neuLaden(k);
+    if (schreibend) melde(f.text);
+    return { ok: false, text: f.text, daten: d, status: r.status, code: f.code, unklar: f.unklar, verbraucht: f.verbraucht };
+  } finally {
+    if (o.lesen !== true) planerLauf.aktiv = false;
+  }
 }

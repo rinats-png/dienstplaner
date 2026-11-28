@@ -495,6 +495,21 @@ export async function bereichsprotokollArchivierenSenden(angabe) {
   return daten;
 }
 
+/** WP-I7 Stufe 3: die Wege der Planvorschlag-Übernahme (server/lib/planer-aktion.mjs PLANER_WEGE). Nur diese vier, nie ein freier Pfad. */
+const PLANER_WEGE_CLIENT = Object.freeze(["planer-vorschlag", "planer-uebernahme", "planer-rueckgaengig", "planer-rueckgaengig-liste"]);
+/**
+ * Ein Weg der Planvorschlag-Übernahme (POST, Rumpf nur Kennungen, Indizes, Monat und die ausdrückliche Bestätigung — nie Personen
+ * oder Namen in Adresse oder Rumpf). Gibt Status und Antwort unverändert zurück; die Deutung (Texte je Kennung) steht in
+ * src/lib/planer-aktionen.js. Ohne Anmeldung (401) wirft es wie jeder Weg hier.
+ * @param {string} weg @param {Record<string, any>} rumpf
+ * @returns {Promise<{ status: number, daten: any }>}
+ */
+export async function planerWegSenden(weg, rumpf) {
+  if (!PLANER_WEGE_CLIENT.includes(weg)) throw new Error("Unbekannter Weg.");
+  const { status, daten } = await ruf(weg, { method: "POST", body: JSON.stringify(rumpf || {}) });
+  return { status, daten: daten || {} };
+}
+
 /** WP-48.5 (3): Der nächste Schreibvorgang geht als Voll-PUT (Löschlauf per Speichern bei aktivem Teilweg, Kundenrolle):
     Stempel stehen nie im Delta, ihr Löschen braucht den ganzen Bestand. Ohne Teilweg wirkungslos. Die Vorgabe geht
     beim nächsten schreib() an DIESEN Auftrag über (Review #350 M2: nicht global — ein älterer Auftrag, der noch auf sein

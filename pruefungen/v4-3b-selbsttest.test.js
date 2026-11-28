@@ -172,7 +172,7 @@ describe("V4-3b Selbsttest: Messung", () => {
       .toEqual([[0, 0, 77, 0], [0, 0, 0, 5]]);
     /* Gesamt ohne src/v4: Form-Literale 19 → 18 (Dateien 14 → 13), Form erreicht 146, „voll“ 127 → 128 (von 159). */
     const z = zusammenfassung(inv).ohneV4;
-    expect([z.formLiterale, z.mitFormLiteralen, z.formErreicht, z.sichtbarVoll, z.sichtbar]).toEqual([18, 13, 149, 131, 162]); /* WP-I16: +ki-steuerung.jsx, Form erreicht (vorher 146/128/159); WP-I7 Teil 6: +anheftungen.jsx (vorher 147/129/160); Planer-Oberfläche Stufe 1: +planer-steuerung.jsx (vorher 148/130/161) */
+    expect([z.formLiterale, z.mitFormLiteralen, z.formErreicht, z.sichtbarVoll, z.sichtbar]).toEqual([18, 13, 150, 132, 163]); /* WP-I7 Stufe 3: +planer-vorschlag.jsx (vorher 149/131/162); WP-I16: +ki-steuerung.jsx, Form erreicht (vorher 146/128/159); WP-I7 Teil 6: +anheftungen.jsx (vorher 147/129/160); Planer-Oberfläche Stufe 1: +planer-steuerung.jsx (vorher 148/130/161) */
   }, 60000);
 
   it("Nicht alle Hauptansichten haben Form 100 %: offene Zeilen ausgewiesen (V4-3b bleibt offen)", async () => {
@@ -180,7 +180,7 @@ describe("V4-3b Selbsttest: Messung", () => {
     const offen = Object.entries(zeilen).filter(([, x]) => x.formErreicht < x.sichtbar)
       .map(([n, x]) => `${n} ${x.formErreicht}/${x.sichtbar}`);
     expect(offen).toEqual(["Einstieg 7/9", "Zeit/Abrechnung 22/23", "Einstellungen/Verwaltung 20/21", "Branchenmodule 8/13",
-      "Querschnitt/Bausteine 24/27", "Selbsttest 1/2"]); /* WP-I7 Teil 6: +anheftungen.jsx (vorher 22/25); Planer-Oberfläche Stufe 1: +planer-steuerung.jsx (vorher 23/26) */
+      "Querschnitt/Bausteine 25/28", "Selbsttest 1/2"]); /* WP-I7 Stufe 3: +planer-vorschlag.jsx (vorher 24/27); WP-I7 Teil 6: +anheftungen.jsx (vorher 22/25); Planer-Oberfläche Stufe 1: +planer-steuerung.jsx (vorher 23/26) */
   }, 60000);
 
   it("feste Tabelle: die Stelle trägt genau die Stufe der Zuordnungsregel; keine sichtbare Änderung (12 px → 12 px)", () => {
