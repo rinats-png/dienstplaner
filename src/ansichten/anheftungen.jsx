@@ -27,6 +27,11 @@ export function anheftungenImMonat(m, ym) {
   };
 }
 
+/** Hinweis an eigenen Einteilungen der Beschäftigten (WP-I7 Teil 7): keine Dienstzusage, keine Rechte, kein Wer/Wann. */
+export const FEST_EINGEPLANT_TEXT = "Fest eingeplant (Änderung nur durch Leitung/Planung)";
+/** Kennzeichen des Servers (`festEingeplant`, sicht.mjs) für die eigene Person an diesem Tag; fehlt es, kein Hinweis. */
+export const festEingeplant = (m, ich, tag) => !!(m && m.festEingeplant && typeof m.festEingeplant === "object" && m.festEingeplant[`${ich}|${tag}`] === true);
+
 export function Anheftungen({ m, ym }) {
   const a = anheftungenImMonat(m, ym);
   if (!a.unlesbar && !a.aktiv.length && !a.aufgehoben.length) return null;

@@ -21,7 +21,8 @@ import { zusammenfuehren, bestandFuerRolle } from "../server/lib/rechte.mjs";
 import { modulProtokollZeilen, moduleinstellungenSicht, MODULPROTOKOLL_GRENZE } from "../server/lib/branchenmodule.mjs";
 import { raeumen } from "../server/lib/aufbewahrung.mjs";
 import { baueLeerenBetrieb } from "../server/lib/leerbetrieb.mjs";
-import { anheftungenImMonat } from "../src/ansichten/anheftungen.jsx";
+import { anheftungenImMonat, festEingeplant, FEST_EINGEPLANT_TEXT } from "../src/ansichten/anheftungen.jsx";
+import { teileFormFehler } from "../server/lib/teilweg.mjs";
 import { FEST, zufall, betriebe } from "./engine-golden.fixture.mjs";
 
 const add = (t, n) => { const x = new Date(`${t}T00:00:00Z`); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };   // zeit-ok: reine Datumsrechnung
@@ -357,5 +358,105 @@ describe("3. Schreibweg und Sicht", () => {
         expect(anheftungenLesen(rep.m).ok).toBe(true);
       }
     }
+  });
+
+  it("Review #602 C (Teil 7): unlesbare Karte mit gültigem Eintrag — Änderung der Einteilung vermerkt das Aufheben trotzdem; Reparatur heftet den geänderten Wert nie still an", () => {
+    /* Gegenbeispiel des Reviewers: a1|12-01 gültig angeheftet, ein anderer Eintrag kaputt (Karte unlesbar). */
+    const b = bestand(); b.mandanten[0].angeheftet = { "a1|2026-12-01": ST, "a1|2026-12-02": {} };
+    for (const k of ["planer", "leitung", "kunde"]) {
+      const r = schreibe(k, (m) => { m.abweichungen["a1|2026-12-01"] = "-"; }, b);
+      expect(r.abgewiesen, `${k}: ${r.grund}`).toBe(false);
+      expect(r.m.abweichungen["a1|2026-12-01"]).toBe("-");
+      expect(r.m.angeheftet["a1|2026-12-01"], k).toMatchObject({ ...ST, aufgehobenAm: expect.any(String), aufgehobenVonRolle: k });
+      expect(r.m.angeheftet["a1|2026-12-02"], "kaputter Eintrag bleibt, wie er ist").toEqual({});
+      expect(anheftungenLesen(r.m).ok, "Karte bleibt unlesbar (Planer rechnet nicht)").toBe(false);
+      expect(prot(r.m).at(-1)).toMatchObject({ art: ANHEFTEN_PROTOKOLL.aufgehoben, anzahl: 1, von: k });
+      /* Reparatur mit dem alten Stempel: der Tag bleibt aufgehoben (nie still angeheftet); ein frischer Eintrag heftet bewusst neu an. */
+      const rep = schreibe("leitung", (m) => { m.angeheftet = { "a1|2026-12-01": ST }; }, r.bestand);
+      expect(rep.abgewiesen, rep.grund).toBe(false);
+      expect(anheftungenLesen(rep.m).ok).toBe(true);
+      expect(rep.m.angeheftet["a1|2026-12-01"]).toHaveProperty("aufgehobenAm");
+      expect([...anheftungenLesen(rep.m).aktiv]).toEqual([]);
+    }
+    /* Ohne Änderung der Einteilung bleibt die unlesbare Karte byte-gleich (kein Vermerk, kein Protokoll). */
+    const n = schreibe("planer", (m) => { m.name = "Haus neu"; m.abweichungen["a1|2026-12-09"] = "F"; }, b);
+    expect(n.abgewiesen, n.grund).toBe(false);
+    expect(n.m.angeheftet).toEqual(b.mandanten[0].angeheftet);
+    expect(prot(n.m)).toEqual([]);
+  });
+
+  it("Review #605 C-2: beschädigte Ablage mit Schlüssel „__proto__“ — der kaputte Eintrag bleibt, die Karte bleibt unlesbar (Leitung, Planung); SV gesperrt", () => {
+    /* JSON.parse legt „__proto__“ als eigene Eigenschaft an (so kommt es aus einer beschädigten Ablage). */
+    const roh = () => JSON.parse(JSON.stringify(bestand()).replace('"abweichungen":', `"angeheftet":{"__proto__":{"x":1},"a1|2026-12-01":${JSON.stringify(ST)}},"abweichungen":`));
+    const b = roh();
+    expect(Object.keys(b.mandanten[0].angeheftet)).toEqual(["__proto__", "a1|2026-12-01"]);
+    expect(anheftungenLesen(b.mandanten[0]).ok).toBe(false);
+    for (const k of ["leitung", "planer"]) {
+      const neu = roh(); neu.mandanten[0].abweichungen["a1|2026-12-01"] = "-";
+      const e = zusammenfuehren(roh(), neu, SITZ[k]);
+      expect(e && !e.verweigert, `${k}: ${e && e.verweigert}`).toBe(true);
+      const karte = e.mandanten[0].angeheftet;
+      expect(Object.prototype.hasOwnProperty.call(karte, "__proto__"), `${k}: kaputter Eintrag bleibt`).toBe(true);
+      expect(Object.getOwnPropertyDescriptor(karte, "__proto__").value).toEqual({ x: 1 });
+      expect(karte["a1|2026-12-01"]).toMatchObject({ aufgehobenVonRolle: k });
+      expect(anheftungenLesen(e.mandanten[0]).ok, `${k}: bleibt unlesbar`).toBe(false);
+      /* auch nach dem Weg durch JSON (Ablage) */
+      expect(Object.keys(JSON.parse(JSON.stringify(e.mandanten[0])).angeheftet)).toContain("__proto__");
+    }
+    /* Schichtverantwortung: bei unlesbarer Karte keine Planänderung (fail closed), Karte unverändert */
+    const sv = roh(); sv.mandanten[0].abweichungen["a1|2026-12-05"] = "F";
+    const e = zusammenfuehren(roh(), sv, SITZ.subplaner);
+    expect(e && e.verweigert).toContain("nicht lesbar");
+    expect(Object.keys(roh().mandanten[0].angeheftet)).toEqual(["__proto__", "a1|2026-12-01"]);
+    /* Sicht der Beschäftigten: unlesbare Karte, kein Kennzeichen */
+    expect(bestandFuerRolle(roh(), SITZ.mitarbeiter).mandanten[0]).not.toHaveProperty("festEingeplant");
+  });
+
+  it("Teil 7: Beschäftigte sehen nur „Fest eingeplant“ an eigenen Einteilungen (Kennzeichen ohne Wer/Wann), nie die Karte; schreiben nichts; andere Rollen unverändert", () => {
+    const a = schreibe("leitung", anheften("a1|2026-12-01", "a1|2026-12-02", "p1|2026-12-01"));
+    expect(a.abgewiesen, a.grund).toBe(false);
+    /* eine aufgehobene Anheftung zeigt keinen Hinweis */
+    const b = schreibe("planer", (m) => { m.abweichungen["a1|2026-12-02"] = "F"; }, a.bestand);
+    const ma = bestandFuerRolle(b.bestand, SITZ.mitarbeiter).mandanten[0];
+    expect(ma.festEingeplant).toEqual({ "a1|2026-12-01": true });
+    expect(ma).not.toHaveProperty("angeheftet");
+    const json = JSON.stringify(ma);
+    for (const x of [b.m.angeheftet["a1|2026-12-01"].am, "p1|2026-12-01\":true", "vonRolle", "aufgehoben"]) expect(json, x).not.toContain(x);
+    expect((ma.einstellungen.modulprotokoll || []).filter((x) => x.modul === "anheften")).toEqual([]);
+    /* andere Rollen: kein Kennzeichen; Planung/Leitung weiter die Karte, Betriebsrat/SV nichts */
+    for (const k of ["betriebsrat", "subplaner", "planer", "leitung", "kunde"]) expect(bestandFuerRolle(b.bestand, SITZ[k]).mandanten[0], k).not.toHaveProperty("festEingeplant");
+    expect(bestandFuerRolle(b.bestand, SITZ.leitung).mandanten[0].angeheftet).toEqual(b.m.angeheftet);
+    /* Entwurf verborgen (Planfreigabe aktiv, Dezember nicht freigegeben, Prüfuhr November): kein Hinweis, der die Entwurfseinteilung verriete */
+    const entwurf = structuredClone(b.bestand); entwurf.mandanten[0].einstellungen = { ...entwurf.mandanten[0].einstellungen, planFreigabePflicht: true };
+    const mae = bestandFuerRolle(entwurf, SITZ.mitarbeiter).mandanten[0];
+    expect(mae.abweichungen).not.toHaveProperty("a1|2026-12-01");
+    expect(mae).not.toHaveProperty("festEingeplant");
+    /* unlesbare Karte: kein Hinweis */
+    const kaputt = structuredClone(b.bestand); kaputt.mandanten[0].angeheftet = { ...kaputt.mandanten[0].angeheftet, "x|1": {} };
+    expect(bestandFuerRolle(kaputt, SITZ.mitarbeiter).mandanten[0]).not.toHaveProperty("festEingeplant");
+    /* Direkt-PUT: das Kennzeichen wird nie gespeichert (Beschäftigte, Leitung), die Karte ändert sich dadurch nicht */
+    for (const k of ["mitarbeiter", "leitung"]) {
+      const sicht = structuredClone(bestandFuerRolle(b.bestand, SITZ[k]));
+      sicht.mandanten[0].festEingeplant = { "a1|2026-12-05": true, "p1|2026-12-01": true };
+      const e = zusammenfuehren(b.bestand, sicht, SITZ[k]);
+      expect(e && !e.verweigert, `${k}: ${e && e.verweigert}`).toBe(true);
+      expect(e.mandanten[0], k).not.toHaveProperty("festEingeplant");
+      expect(e.mandanten[0].angeheftet, k).toEqual(b.m.angeheftet);
+    }
+    /* Beschäftigte, die die Karte mitschicken: abgewiesen oder wirkungslos — nie geschrieben */
+    const ma2 = structuredClone(bestandFuerRolle(b.bestand, SITZ.mitarbeiter));
+    ma2.mandanten[0].angeheftet = { "a1|2026-12-05": ST };
+    const e2 = zusammenfuehren(b.bestand, ma2, SITZ.mitarbeiter);
+    expect(e2 && !e2.verweigert ? e2.mandanten[0].angeheftet : b.m.angeheftet).toEqual(b.m.angeheftet);
+    /* Teilweg: das Feld ändert sich nie über die Teilspeicherung */
+    const t = teileFormFehler({ format: 1, epoche: "abcdef12", kern: { festEingeplant: { basis: "0".repeat(32), wert: { "a1|2026-12-05": true } } } }, SITZ.mitarbeiter);
+    expect(t && t.grund).toContain("ändert sich nicht über die Teilspeicherung");
+    /* Oberfläche: Text ohne Garantiesprache, nur am eigenen Tag */
+    expect(FEST_EINGEPLANT_TEXT).toBe("Fest eingeplant (Änderung nur durch Leitung/Planung)");
+    expect(FEST_EINGEPLANT_TEXT).not.toMatch(/garant|zugesagt|verbindlich|sicher/i);
+    expect(festEingeplant(ma, "a1", "2026-12-01")).toBe(true);
+    expect(festEingeplant(ma, "a1", "2026-12-02")).toBe(false);
+    expect(festEingeplant(ma, "p1", "2026-12-01")).toBe(false);
+    expect(festEingeplant({}, "a1", "2026-12-01")).toBe(false);
   });
 });

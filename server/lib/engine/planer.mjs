@@ -29,9 +29,12 @@
 
    Rangfolge (Plan 7.4): Gesetz > Besetzung > Tarif/BV/Muss > Soll >
    Verteilung > Wunsch > Stabilität. `rangVergleich` vergleicht streng in dieser
-   Reihenfolge. Verteilung und Wunsch sind in dieser Scheibe NICHT bewertet
-   (null, „nicht bewertet“ — nie „erfüllt“); die Verteilungs- und Wunschregel
-   im Plan folgen nach dem Planer.
+   Reihenfolge. Wunsch ist NICHT bewertet (null, „nicht bewertet“ — nie
+   „erfüllt“). Verteilung (WP-I7 Teil 7, engine/verteilung.mjs): erste Stufe
+   Nachtdienste je Person im Kalendermonat aus der Vorgabe `verteilungsregel`;
+   nur vollständig Bewertbares zählt, sonst null. Schritt 4 „Ausgleichen“ gibt
+   eigene Nachteinteilungen von der höchsten an eine niedrige Person, nur mit
+   derselben Einsatzprüfung und nur, wenn der Rang insgesamt besser wird.
 
    Bestandspersonen (Review #572 A1, Posten): Eine Einteilung kann die
    Postenbesetzung und damit den Dienst ANDERER Personen am selben Tag ändern
@@ -87,6 +90,7 @@ import { neuesVorgabenBudget, vorgabenPlanFortschreiben } from "../vorgabenwirku
 import { VORGABEN_WIRKUNG_GRENZE } from "../vorgaben.mjs";
 import { besetzung, personTag, stundenkonto } from "./plan.mjs";
 import { ersatzVorschlaege, hindernisBefunde, nachtJahr, stufeRang, verdraengt, folgeVorwaerts, planbefundeNeu, planbefundAufwandHoechst, PLANBEFUND_GRENZE } from "./einsatz.mjs";
+import { verteilungAufwand, verteilungVorbereiten, verteilungBewerten, nachtZaehlen, nachtAm } from "./verteilung.mjs";
 
 /** Schalter des eigenen Planers (Vorgabe AUS). Einschalten ist eine bewusste Codeänderung dieser Konstante; Prüfungen geben je Aufruf frei. */
 export const PLANER_AN = false;
@@ -99,8 +103,11 @@ export const PLANER_STANDARD = Object.freeze({ aufwand: 1000000, zuege: 100, sta
 
 /** Rangfolge (Plan 7.4), streng in dieser Reihenfolge; kleiner ist besser. */
 export const RANGFOLGE = Object.freeze(["gesetz", "besetzung", "muss", "soll", "verteilung", "wunsch", "stabilitaet"]);
-/** Stufen, die diese Scheibe nicht bewertet (null): nie „erfüllt“. */
-export const NICHT_BEWERTET = Object.freeze(["verteilung", "wunsch"]);
+/** Stufen, die der Planer nie bewertet (null): nie „erfüllt“. Verteilung (WP-I7 Teil 7) ist nur bewertet, wenn ihre Vorgaben vollständig
+    bewertbar sind (engine/verteilung.mjs); sonst steht sie zusätzlich in `nichtBewertet` des Ergebnisses. */
+export const NICHT_BEWERTET = Object.freeze(["wunsch"]);
+/** `nichtBewertet` eines Ergebnisses: Verteilung, wenn ihr Rang null ist, und die nie bewerteten Stufen. */
+const nichtBewertetAus = (rang) => [...(!rang || rang.verteilung === null ? ["verteilung"] : []), ...NICHT_BEWERTET];
 
 /**
  * Vergleicht zwei Rangvektoren streng in der Rangfolge: < 0, wenn a besser ist. Eine nicht bewertete Stufe (null) entscheidet nichts —
@@ -139,7 +146,7 @@ function eingabeFehler(m, ym, opt) {
 }
 
 const leer = (m, ym, status, grund, startwert) => ({ status, grund, ym, startwert, gesetzt: [], offen: [], abweichungen: m && m.abweichungen ? m.abweichungen : {},
-  rang: null, nichtBewertet: [...NICHT_BEWERTET], aufwand: null, verbessert: 0 });
+  rang: null, nichtBewertet: nichtBewertetAus(null), verteilung: null, aufwand: null, verbessert: 0 });
 
 /** Vorwärtsprüfung (folgeVorwaerts) und Planbefunde (planbefundeNeu) einer Einteilung: null = besteht, "aufwand" = Budget leer, sonst der
     Grund („folgeVorwaerts“ oder die Regel des Planbefunds). Dieselben Prüfungen wie planeMonat, in derselben Reihenfolge.
@@ -249,6 +256,10 @@ export function planeVorschlag(m, ym, opt = {}) {
   const pbHoechst = planbefundAufwandHoechst(m, y);
   const pbLeisten = (n) => (k) => { if (PB.rest - k < n * pbHoechst) { PB.ausgeschoepft = true; return false; } PB.rest -= k; return true; };
   if (A.rest < reserve(0)) return { ...leer(m, ym, "aufwand", "Aufwand reicht nicht für die Nachprüfung", startwert), aufwand: { grenze, verbraucht: 0, ausgeschoepft: true } };
+  /* Verteilung (WP-I7 Teil 7): Vergleichsgruppen einmal je Aufruf, Aufwand vorab angemeldet (reicht er nicht: „nicht bewertet“). Ohne
+     Verteilungsvorgabe: nichts (Aufwand und Ergebnis wie vorher). */
+  const vAufwand = verteilungAufwand(m, tage);
+  const vt = vAufwand ? verteilungVorbereiten(m, tage, leisten(vAufwand, 0)) : null;
 
   /* Ein Budget der Vorgaben für den ganzen Aufruf (wie planeMonat), Automatik. */
   const ctx = { konten: new Map(), einspruenge: {}, nachtAnzahl: new Map(), vorgabenBudget: neuesVorgabenBudget(vorgabenAufwand, { aggregate: o.aggregate === true }), vorgabenAutomatisch: true };
@@ -378,9 +389,12 @@ export function planeVorschlag(m, ym, opt = {}) {
         }
       }
     }
+    /* Verteilung (Teil 7): aus der Besetzung derselben Tage (schon gerechnet); nicht vollständig bewertbar = null, nie „erfüllt“. */
+    const verteilung = vt ? verteilungBewerten(vt, nachtZaehlen(r.stand, vt)) : null;
     /* Soll ungeprüft (Budget der Vorgaben) = nicht bewertet, nie „erfüllt“. */
-    const rang = { gesetz, besetzung: luecke, muss, soll: offenV ? null : soll, verteilung: null, wunsch: null, stabilitaet: r.eigene.size };
-    return { durch, rang, offen };
+    const rang = { gesetz, besetzung: luecke, muss, soll: offenV ? null : soll, verteilung: verteilung && verteilung.bewertet ? verteilung.summe : null,
+      wunsch: null, stabilitaet: r.eigene.size };
+    return { durch, rang, offen, verteilung };
   };
 
   /* ---------- 3. Verbessern (Umbesetzen) ---------- */
@@ -446,6 +460,76 @@ export function planeVorschlag(m, ym, opt = {}) {
     return { stand, eigene, jeP, gekappt: r0.gekappt, behalten };
   };
 
+  /* ---------- 4. Ausgleichen (Verteilung, WP-I7 Teil 7; nachgelagert) ----------
+     Nur wenn die Verteilung vollständig bewertet ist und eine Vorgabe überschritten wird. Ein Zug gibt eine EIGENE Nachteinteilung einer
+     Person mit dem höchsten Wert einer überschrittenen Vorgabe an eine Person mit niedrigem Wert (derselbe Tag, derselbe Dienst):
+     dieselbe Einsetzbarkeitsprüfung (Anheften, Abwesenheit, Befunde ab Achtung, Vorwärts/Planbefunde, Höchstzahl), dazu kein Soll- oder
+     offener Vorgabenbefund bei der neuen Person, keine Verdrängung, Besetzung des Tags nicht schlechter, Summe der Überschreitungen
+     strikt kleiner. Bestand und Angeheftetes werden nie verändert (nur eigene Einteilungen wechseln die Person). Höchstens `zuege`
+     Versuche (Terminierung), Kosten je Versuch vorab angemeldet. Übernommen wird das Ergebnis nur, wenn die Nachprüfung besteht und
+     der Rang nach der ganzen Rangfolge besser ist (Gesetz, Besetzung, Muss, Soll vor Verteilung). */
+  const ausgleichen = (r0, summe0) => {
+    let stand = r0.stand, summe = summe0;
+    const eigene = new Map(r0.eigene), jeP = { ...r0.jeP };
+    let behalten = 0, versuche = 0;
+    let zaehl = nachtZaehlen(stand, vt);
+    const lst = (k) => leisten(k, eigene.size + 1), lstP = pbLeisten(eigene.size + 1);
+    aussen: while (versuche < zuege && summe > 1e-9) {
+      const erg = verteilungBewerten(vt, zaehl);
+      if (!erg.bewertet) break;
+      const hoch = new Set(), tiefW = new Map();
+      for (const r of erg.regeln) {
+        if (r.status !== "verletzt" || !(r.ueberschreitung > 0)) continue;
+        const max = Math.max(...r.personen.map((x) => x.wert));
+        for (const x of r.personen) {
+          if (x.wert === max) hoch.add(x.personId);
+          else tiefW.set(x.personId, Math.min(tiefW.has(x.personId) ? tiefW.get(x.personId) : Infinity, x.wert));
+        }
+      }
+      const tief = [...tiefW].filter(([id]) => !hoch.has(id)).sort((a, b) => (a[1] - b[1]) || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0)).map(([id]) => id);
+      const kandE = [...eigene.values()].filter((e) => vt.nachtIds.has(e.dienstId) && hoch.has(String(e.personId)))
+        .sort((a, b) => (a.datum < b.datum ? -1 : a.datum > b.datum ? 1 : String(a.personId) < String(b.personId) ? -1 : 1));
+      let gefunden = false;
+      for (const E of kandE) {
+        for (const qid of tief) {
+          if (versuche++ >= zuege) break aussen;
+          if (!leisten(9 * P + 1, eigene.size + 1)) break aussen;
+          const p = m.personen.find((x) => String(x.id) === String(E.personId)), q = m.personen.find((x) => String(x.id) === qid);
+          const da = m.dienstarten.find((x) => x.id === E.dienstId), d = E.datum;
+          if (!p || !q || !da) continue;
+          const vorher = tagesLuecke(besetzung(stand, d));
+          const jeP2 = { ...jeP, [p.id]: jeP[p.id] - 1 };
+          let s1 = setze(stand, p.id, d, undefined);
+          const schritte = [{ pid: p.id, d }];
+          const zurueck = (x) => vorgabenPlanFortschreiben(ctx.vorgabenBudget, x, stand, schritte.map((c) => ({ personId: c.pid, tag: c.d })));
+          if (!einsetzbar(s1, q, d, da, jeP2, lst, lstP)
+            || hindernisBefunde(s1, q, d, da, pruefOpt).some((b) => b.regel === "vorgabeSoll" || b.regel === "vorgabeOffen")) { zurueck(s1); continue; }
+          s1 = setze(s1, q.id, d, da.id);
+          schritte.push({ pid: q.id, d });
+          jeP2[q.id] = (jeP2[q.id] || 0) + 1;
+          const schl = new Set([...eigene.keys()].filter((k) => k !== `${p.id}|${d}`));
+          schl.add(`${q.id}|${d}`);
+          const z2 = new Map(zaehl);
+          nachtAm(stand, vt, d, z2, -1);
+          nachtAm(s1, vt, d, z2, 1);
+          const e2 = verteilungBewerten(vt, z2);
+          if (!verdraengt(bestand, s1, d, schl) && tagesLuecke(besetzung(s1, d)) <= vorher && e2.bewertet && e2.summe < summe - 1e-9) {
+            stand = s1;
+            Object.assign(jeP, jeP2);
+            eigene.delete(`${p.id}|${d}`);
+            eigene.set(`${q.id}|${d}`, { personId: q.id, datum: d, dienstId: da.id, art: "ausgleich" });
+            zaehl = z2; summe = e2.summe; behalten++; gefunden = true;
+            break;
+          }
+          zurueck(s1);
+        }
+        if (gefunden) break;
+      }
+      if (!gefunden) break;
+    }
+    return { stand, eigene, jeP, gekappt: r0.gekappt, behalten };
+  };
+
   const aufgebaut = aufbauen();
   const bk = bewerten(aufgebaut);
   if (!bk.durch) return { ...leer(m, ym, "nachpruefung", "Nachprüfung des Aufbaus nicht bestanden", startwert), aufwand: { grenze, verbraucht: grenze - A.rest, ausgeschoepft: A.ausgeschoepft || PB.ausgeschoepft, planbefund: { grenze: pbGrenze, verbraucht: pbGrenze - PB.rest, ausgeschoepft: PB.ausgeschoepft } } };
@@ -455,6 +539,15 @@ export function planeVorschlag(m, ym, opt = {}) {
     if (v.behalten > 0) {
       const bv = bewerten(v);
       if (bv.durch && rangVergleich(bv.rang, bk.rang) < 0) { ergebnis = v; bewertung = bv; verbessert = v.behalten; }
+    }
+  }
+  /* Ausgleichen (Teil 7): nur übernommen, wenn die Nachprüfung besteht und der Rang in der ganzen Rangfolge besser ist. */
+  let ausgeglichen = 0;
+  if (vt && zuege > 0 && ergebnis.eigene.size && bewertung.rang.verteilung !== null && bewertung.rang.verteilung > 0) {
+    const a = ausgleichen(ergebnis, bewertung.rang.verteilung);
+    if (a.behalten > 0) {
+      const ba = bewerten(a);
+      if (ba.durch && rangVergleich(ba.rang, bewertung.rang) < 0) { ergebnis = a; bewertung = ba; ausgeglichen = a.behalten; }
     }
   }
   const gesetzt = [...ergebnis.eigene.values()].sort((a, b) => (a.datum < b.datum ? -1 : a.datum > b.datum ? 1 : 0)
@@ -475,7 +568,7 @@ export function planeVorschlag(m, ym, opt = {}) {
   /* Unvollständige Ursachen (Budget, Vorgaben nicht vollständig geprüft) bleiben sichtbar: Zahl im Ergebnis, nie still. */
   const ursachenUnvollstaendig = offenMitUrsache.filter((x) => x.ursache === "unvollstaendig" || x.vorgabenUnvollstaendig).length;
   return { status: "ok", grund: null, ym, startwert, gesetzt, offen: offenMitUrsache, ursachenUnvollstaendig, angeheftet: [...anh.aktiv].filter((k) => k.slice(-10, -3) === ym).length, abweichungen: ergebnis.stand.abweichungen,
-    rang: bewertung.rang, nichtBewertet: [...NICHT_BEWERTET], aufwand: { grenze, verbraucht: grenze - A.rest, ausgeschoepft: A.ausgeschoepft || PB.ausgeschoepft, planbefund: { grenze: pbGrenze, verbraucht: pbGrenze - PB.rest, ausgeschoepft: PB.ausgeschoepft } }, verbessert };
+    rang: bewertung.rang, nichtBewertet: nichtBewertetAus(bewertung.rang), verteilung: bewertung.verteilung ? { ...bewertung.verteilung, ausgeglichen } : null, aufwand: { grenze, verbraucht: grenze - A.rest, ausgeschoepft: A.ausgeschoepft || PB.ausgeschoepft, planbefund: { grenze: pbGrenze, verbraucht: pbGrenze - PB.rest, ausgeschoepft: PB.ausgeschoepft } }, verbessert };
 }
 
 /* ---------- Betriebsmodus (WP-I7 Teil 5, Betreiberentscheidung 26.11.) ----------

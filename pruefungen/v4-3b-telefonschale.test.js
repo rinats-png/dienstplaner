@@ -91,16 +91,17 @@ const STIL_BASIS_SHA256 = "5fce0b5f584eaeeafced50967ee22c0f0f6374c8d9ced8419c9da
  *  Betreiberentscheidung, Hinweis an eigenen angehefteten Einteilungen) — ein Import, der Baustein MFest (ohne Inline-Stil,
  *  ohne Radius), vier Einhängestellen und ein Zusatz im zugänglichen Namen des Monatsfelds. Die Rückrechnung nimmt genau
  *  diese Stellen wörtlich zurück (jede genau einmal); danach muss der Text byte-gleich die Basis ergeben. Jede weitere
- *  Änderung an mobil.jsx macht die Prüfung rot, wie zuvor. Prüfung des Hinweises: pruefungen/fest-eingeplant.test.js. */
+ *  Änderung an mobil.jsx macht die Prüfung rot, wie zuvor. Prüfung des Hinweises: pruefungen/fest-eingeplant.test.js.
+ *  Text und Prüfung kommen aus src/ansichten/anheftungen.jsx (eine Quelle, #605). */
 const NACHTRAG_FEST = [
-  ['import { festEingeplant, FEST_EINGEPLANT_TEXT } from "../lib/festeingeplant.js";\n', ""],
-  ["/* „Fest eingeplant“ (WP-I7 Teil 6): sichtbarer Text, keine Aktion; nur an eigenen Einteilungen (lib/festeingeplant.js). */\n"
+  ['import { festEingeplant, FEST_EINGEPLANT_TEXT } from "./anheftungen.jsx";\n', ""],
+  ["/* „Fest eingeplant“ (WP-I7 Teil 6): sichtbarer Text, keine Aktion; nur an eigenen Einteilungen (Kennzeichen des Servers, anheftungen.jsx). */\n"
     + "export const MFest = () => (\n"
     + '  <div className="ssub" data-fest-eingeplant=""><Pill size="sm" tone="accent">{FEST_EINGEPLANT_TEXT}</Pill></div>);\n', ""],
-  ["          {festEingeplant(m, p, p, d0, true) && <MFest />}\n", ""],
-  ["                  {festEingeplant(m, ich, sitz.person, d, !!da) && <MFest />}\n", ""],
-  ['${festEingeplant(m, ich, sitz.person, d, !!da) ? `, ${FEST_EINGEPLANT_TEXT}` : ""}`)}', "`)}"],
-  ["                {festEingeplant(m, ich, sitz.person, gewaehlt.datum, true) && <MFest />}\n", ""],
+  ["          {festEingeplant(m, p.id, d0) && <MFest />}\n", ""],
+  ["                  {da && festEingeplant(m, ich.id, d) && <MFest />}\n", ""],
+  ['${da && festEingeplant(m, ich.id, d) ? `, ${FEST_EINGEPLANT_TEXT}` : ""}`)}', "`)}"],
+  ["                {festEingeplant(m, ich.id, gewaehlt.datum) && <MFest />}\n", ""],
 ];
 
 /** Heutiger mobil.jsx-Quelltext mit den alten Werten der Tabelle zurückgesetzt (und dem Nachtrag zurückgenommen). */

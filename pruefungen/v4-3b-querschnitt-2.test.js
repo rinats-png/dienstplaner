@@ -201,7 +201,7 @@ describe("V4-3b Querschnitt Teil 2: Messung", () => {
   it("Zeile: Form-Literale 24 → 9, Farbliterale 10; Form 18/24 → 21/24, „voll V4“ 9/24 → 13/24; Inline-Stile 428, Dialog 12", async () => {
     const inv = await inventar();
     const e = jeHauptansicht(inv)[ZEILE];
-    expect([e.dateien, e.sichtbar, e.zeilen]).toEqual([35, 26, 6608]); /* WP-I16: +ki-steuerung.jsx (vorher 33/24/6408); WP-I7 Teil 6: +anheftungen.jsx (vorher 34/25/6562) */
+    expect([e.dateien, e.sichtbar, e.zeilen]).toEqual([35, 26, 6613]); /* WP-I16: +ki-steuerung.jsx (vorher 33/24/6408); WP-I7 Teil 6: +anheftungen.jsx (vorher 34/25/6562); WP-I7 Teil 7: +5 Zeilen anheftungen.jsx (vorher 35/26/6608) */
     expect(e.formLiterale).toBe(9);
     expect(e.farbLiterale).toBe(10);
     expect(e.farbrein).toBe(21); /* WP-I16: +ki-steuerung.jsx (vorher 19); WP-I7 Teil 6: +anheftungen.jsx (vorher 20) */

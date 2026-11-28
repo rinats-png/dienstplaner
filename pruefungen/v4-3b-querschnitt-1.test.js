@@ -184,7 +184,7 @@ describe("V4-3b Querschnitt Teil 1: Messung", () => {
        erzeugt mit werkzeug/v4-radiusstufen-basis.mjs). Vorher 33 / 24 / 6408. */
     expect(e.dateien).toBe(35); /* WP-I7 Teil 6: +anheftungen.jsx (vorher 34) */
     expect(e.sichtbar).toBe(26); /* vorher 25 */
-    expect(e.zeilen).toBe(6608); /* V4-3d-B1: +17 Zeilen in src/ui/bausteine.jsx (vorher 6391); WP-I7 Teil 6: +46 anheftungen.jsx (vorher 6562) */
+    expect(e.zeilen).toBe(6613); /* V4-3d-B1: +17 Zeilen in src/ui/bausteine.jsx (vorher 6391); WP-I7 Teil 6: +46 anheftungen.jsx (vorher 6562); WP-I7 Teil 7: +5 anheftungen.jsx („Fest eingeplant“, vorher 6608) */
     expect(e.farbLiterale).toBe(10);
     expect(e.farbrein).toBe(21); /* WP-I16: +ki-steuerung.jsx (vorher 19); WP-I7 Teil 6: +anheftungen.jsx (vorher 20) */
     expect(e.inlineStil).toBe(452); /* WP-I16: +24 Inline-Stile in ki-steuerung.jsx (vorher 428; vorgaben.jsx hat 30) */

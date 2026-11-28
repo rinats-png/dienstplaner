@@ -1494,7 +1494,7 @@ function abgeleiteteEntfernen(uebermittelt) {
   const ohneVermerk = (m) => {
     /* Ebenso die Markierung „Besetzung klärungsbedürftig“ (RB-5, klaerung.mjs): mitgeschickt, verändert oder
        gelöscht ohne Wirkung — sie entsteht beim Lesen allein aus den offenen Fällen. */
-    /* Ebenso „Fest eingeplant“ der Beschäftigten (festEingeplant, sicht.mjs): nur in der Antwort, nie gespeichert. */
+    /* Ebenso der Hinweis „Fest eingeplant“ der Beschäftigten (WP-I7 Teil 7, sicht.mjs festEingeplantEigene): nie gespeichert. */
     if (!m || typeof m !== "object" || (!("sichtIstDaten" in m) && !("auswertungBetriebsrat" in m) && !("klaerung" in m) && !("festEingeplant" in m))) return m;
     const { sichtIstDaten, auswertungBetriebsrat, klaerung, festEingeplant, ...rest } = m; // eslint-disable-line no-unused-vars
     return rest;
