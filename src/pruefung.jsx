@@ -6281,7 +6281,7 @@ function selbsttest() {
      3. Grobgrenze: das Minimum aus fünf frischen Aufbauten bleibt unter dem Vierzigfachen einer
         festen Vergleichsarbeit auf demselben Rechner (gemessen etwa 8-fach). Ein absolutes
         „unter 500 ms" entfällt: es maß den Runner statt den Code. */
-  const aufbau = (mm) => { for (const p of mm.personen) { stundenkonto(mm, p, ym); nachtJahr(mm, p, 2026); urlaubskonto(mm, p, ym.slice(0, 4)); } };
+  const aufbau = (mm) => { for (const p of mm.personen) { stundenkonto(mm, p, ym); nachtJahr(mm, p, Number(ym.slice(0, 4))); urlaubskonto(mm, p, ym.slice(0, 4)); } };
   const f0 = cache(m).fehl || 0;
   aufbau(m);
   const f1 = cache(m).fehl || 0;
@@ -6412,7 +6412,7 @@ function selbsttest() {
   ok("Anteilige Abrechnung liegt unter der vollen", true,
     preisAnteilig(db, mTeil, ym).gesamt < preis(db, mTeil).gesamt);
   ok("Voller Monat wird voll berechnet", n2(preis(db, m).gesamt),
-    n2(preisAnteilig(db, m, ym).gesamt));
+    n2(preisAnteilig(db, { ...m, seit: addDays(`${ym}-01`, -1) }, ym).gesamt));
   ok("Spaeter Beginn wird anteilig berechnet", true, pa.gesamt < pg.gesamt);
   const rgA = baueRechnung(db, spaetVertrag, ym);
   ok("Rechnung weist den Anteil aus", true,
@@ -6445,7 +6445,7 @@ function selbsttest() {
   const pA = m.personen.reduce((a, b2) => (stundenkonto(m, b2, ym) > stundenkonto(m, a, ym) ? b2 : a));
   const ab = ausgleichBedarf(m, pA, ym);
   ok("Ausgleichsbedarf wird erkannt", true, ab.schichten > 0);
-  const tagA = ausgleichTage(m, pA, heute(), 5)[0];
+  const tagA = ausgleichTage(m, pA, `${ym}-01`, 5)[0]; // zeitunabhängig: erster Diensttag des geprüften Monats, nie im Folgemonat
   const mFrei = { ...m, abwesenheiten: [...m.abwesenheiten,
     { id: "fz", personId: pA.id, art: "ausgleich", von: tagA.datum, bis: tagA.datum, notiz: "" }] };
   ok("Freischicht senkt das Stundenkonto", true, stundenkonto(mFrei, pA, ym) < stundenkonto(m, pA, ym));
@@ -6514,7 +6514,7 @@ function selbsttest() {
   // der Anteil gleicht sich erst über mehrere Zyklen aus.
   let tzI = 0, tzS = 0;
   for (let i = 0; i < 3; i++) {
-    const k = `${ym.slice(0, 4)}-${pad(((Number(ym.slice(5)) - 1 + i) % 12) + 1)}`;
+    const k = `${Number(ym.slice(0, 4)) + Math.floor((Number(ym.slice(5)) - 1 + i) / 12)}-${pad(((Number(ym.slice(5)) - 1 + i) % 12) + 1)}`;
     tzI += istStunden(m, pTZ, k).gesamt; tzS += sollStunden(m, pTZ, k);
   }
   ok("Teilzeit trifft das Sollkonto über ein Quartal", true, Math.abs(tzI - tzS) / Math.max(1, tzS) < 0.10);
