@@ -57,3 +57,104 @@ Hinweis für den späteren Aufrufer (WP-I7/I8): Der kalte Erstaufbau der Planrec
 - **Vorgaben nicht vollständig geprüft.** Taucht `vorgabeOffen` auf oder ist das Vorgaben-Budget ausgeschöpft: `vorgabenUnvollstaendig` und `unvollstaendig`, Ursache `unvollstaendig`, keine kleinste Ursache, keine Wege.
 - **Laufzeit.** Messtest (U10): 300 Personen, 62 Tage, 50 rollierende Muss-Vorgaben („mindestens frei“, 28 Tage). Gemessen auf dem Entwicklungsrechner (Celeron N4120): ohne Vorgaben 1609 ms (kalt), mit Vorgaben 1191 ms, je 400 Personenprüfungen (Budget). Der Test verlangt: mit Vorgaben unter dem Zehnfachen des Laufs ohne Vorgaben, mindestens aber unter 5 s.
 - Tests U10: gemeinsames Budget (Kosten mehrerer Lücken größer als einer Lücke), kleines Budget ⇒ unvollständig ohne Ursache, Standardbudget reicht für wenige Vorgaben, ungültiges Budget, Quelltext reicht `vorgabenAutomatisch: true` durch, Messung. Mutationen (je einzeln): Budget je Person neu, `automatisch` auf false, Offen zählt frei, `vorgabenUnvollstaendig` ohne Wirkung.
+
+## Erfüllungsbericht (Engine)
+
+Basis `origin/integration/release-v4` (c7c3ba11, enthält WP-I7 bis Stufe 3 #615 und WP-I8 Teil 1 `luckenursache.mjs`). Bestehendes Paket WP-I8, kein neues Paket. Reiner Rechenkern ohne Verdrahtung: keine Route, keine Oberfläche; `planer.mjs`, `luckenursache.mjs`, `planer-aktion.mjs`, `planer-vorschlag.jsx` und `src/lib/planer-*.js` unverändert. `PLANER_AN` und `PLANER_AGGREGATE_AN` bleiben AUS (Test), Rechenbudget 40 Mio und 372-Tage-Grenze unverändert. Nur synthetische Daten.
+
+### Was die Akzeptanz verlangt und was gebaut ist
+
+Akzeptanz (INTELLIGENCE-ENTWICKLUNGSPLAN.md, Block K, I8): „Bericht nennt nur Zählwerte; je offenem Konflikt Wo/Warum/Wege; keine Scores je Person (D-16).“ Ziel: „Bis zu drei Varianten (ausgewogen, wunschnah, stabil), Zählwert-Bericht ohne Prozent-Gesamtnote, kleinste Ursache mit Wegen.“ Plan 7.4: Erfüllungsbericht je Variante mit Zählwerten, keine Gesamtnote in Prozent, keine Punktzahl je Person.
+
+| Teil | Stand |
+|---|---|
+| Konflikte mit Ursache (kleinste Ursache, Wege) | Teil 1 integriert (`luckenursache.mjs`); vom Planer je offener Stelle genutzt (WP-I7 Teil 5) |
+| Erfüllungsbericht mit Zählwerten, je offenem Konflikt Wo/Warum/Wege, keine Werte je Person | **gebaut (diese Stufe)**: `server/lib/engine/erfuellungsbericht.mjs` |
+| Varianten (ausgewogen, wunschnah, stabil) | **offen**, Begründung unten |
+| Anzeige (Planer-Ansicht), Server-Antwort | offen (späterer Schritt, siehe „Verdrahtung“) |
+
+### Format
+
+`erfuellungsbericht(m, ergebnis)`: `m` ist der Bestand vor dem Planer, `ergebnis` das Ergebnis von `planeVorschlag` mit Status „ok“. Ergebnis `{ ok: true, ym, startwert, massgeblich, zusammenfassung, kategorien, konflikte }` oder `{ ok: false, grund }` (wirft nie).
+
+- `kategorien` streng in der Rangfolge `BERICHT_RANGFOLGE`: gesetz > qualifikation > besetzung > muss > soll > verteilung > wunsch (Plan 7.4; „Besetzung und Fachkraftquote“ als zwei Zeilen, Qualifikation vor der Personenzahl). Je Kategorie `status` aus `BERICHT_STATUS` (`erfuellt`, `verletzt`, `offen`, `nicht-bewertbar`), Zählwerte und bei „nicht-bewertbar“ ein `grund`.
+  - gesetz / muss / soll: aus der Nachprüfung des Planers (`rang.gesetz`, `rang.muss`, `rang.soll`), `umfang: "vorschlag"`, `bestandGeprueft: false`, `geprueft` = eigene Einteilungen, `verletzt` = Befunde; muss/soll zusätzlich `vorgaben` (aktive Vorgaben dieser Stärke ohne Verteilungsregeln).
+  - qualifikation: `stellen` (Tag × Dienst mit Qualifikationsbedarf), `offen` (Qualifikation fehlt).
+  - besetzung: `stellen` (Tag × Dienst mit Bedarf > 0), `voll`, `offen`, `bedarf` (Summe Personen), `fehlt`, `bedarfOffen` (Bedarf nicht festgelegt).
+  - verteilung (`nachgelagert: true`): je Verteilungsvorgabe `vorgabeId`, `staerke`, `groesse`, `status`, `grund`, `maxAbweichung`, `spannweite`, `ueberschreitung` und die Zahlen `personen`, `nichtBewertbar`, `ausserhalb`; keine Werte je Person. Dazu `summeUeberschreitung` (nur wenn der Planer die Verteilung vollständig bewertet hat).
+  - wunsch: immer `nicht-bewertbar` (`nicht_bewertet`, wie `NICHT_BEWERTET` des Planers).
+- `massgeblich`: die ranghöchste Kategorie, die nicht erfüllt ist (`{ kategorie, status }`).
+- `zusammenfassung`: Zähler der Kategorien je Status, Stellen (`gesamt`, `voll`, `offen`, `bedarfOffen`), Qualifikation, eigene Einteilungen, Konflikte (`gesamt`, `gelistet`, `abgeschnitten`, `mitWegen`, `wegeUnvollstaendig`, `ursacheUnvollstaendig`).
+- `konflikte` je offener Stelle, sortiert nach Tag und Dienstreihenfolge. **Wo:** `datum`, `dienstId`, `art` (`besetzung` / `qualifikation` / `besetzung_und_qualifikation`), `fehlt`, `qualFehlt`, `fehlendeQualifikationen` (`qid`, `noetig`, `ist`), ggf. `bedarfOffen`. **Warum:** `ursache` und `regeln` (kleinste Regelmenge) des Planers, ggf. `grund` des Planers (aufwand, verdraengung, vorgabe, folgeVorwaerts, Regel des Planbefunds; `ursache` heißt dann `grund`), ggf. `vorgabenUnvollstaendig`. **Wege:** `wegeStatus` (`berechnet` / `keine` / `unvollstaendig`) und `wege` (`regeln`, `personen`, `deckt`, wie `lueckenUrsache`).
+
+### Entscheidungen
+
+1. **„Nicht bewertbar“ ist nie „erfüllt“, auch nicht im leeren Fall.** Erfüllt heißt: mindestens ein Punkt geprüft, keiner verletzt oder offen. Ohne eigene Einteilung (`keine_einteilung_im_vorschlag`), ohne aktive Vorgabe (`keine_vorgabe`), ohne Bedarf (`keine_anforderung`) oder mit nicht festgelegtem Bedarf (`bedarf_nicht_festgelegt`) steht „nicht-bewertbar“ mit Grund. Ein leerer Plan hat damit keine erfüllte Kategorie. Soll ungeprüft (`rang.soll === null`) ist nicht bewertbar; die Verteilung ebenso, solange der Planer sie nicht vollständig bewertet hat (`bewertet !== true`).
+2. **Schwere je Kategorie:** verletzt > offen > nicht-bewertbar > erfüllt (die schlechteste Vorgabe zählt). Eine verletzte Verteilungsvorgabe bleibt verletzt, auch wenn einzelne Personen nicht bewertbar sind (die Spannweite der bekannten Werte kann mit weiteren Personen nur wachsen); der Rang des Planers bleibt davon unberührt. Baukasten „offen“ und „nicht anwendbar“ heißen im Bericht „nicht-bewertbar“ („offen“ ist hier die offene Stelle).
+3. **Umfang Gesetz/Muss/Soll = Vorschlag.** Die Zählung kommt aus der Nachprüfung des Planers und betrifft seine eigenen Einteilungen; der Bestand wird nicht neu begutachtet (`bestandGeprueft: false`). Das Gutachten über den eigenen Plan (Verbessern-Modus, WP-I9 / F18) ist nicht Teil dieser Stufe.
+4. **Fail closed gegen ein fremdes Ergebnis.** Der Bericht rechnet die Besetzung des fertigen Stands (Bestand + Abweichungen des Vorschlags) selbst nach: Jede eigene Einteilung muss im Stand stehen und im Monat liegen, die offenen Stellen müssen genau der Nachrechnung entsprechen (Menge, `fehlt`, `qualFehlt`, keine Doppelten). Sonst `ergebnis_passt_nicht`, kein geschönter Bericht. Der Rangvektor wird auf Form geprüft (Zahl ≥ 0 oder null), nicht neu gerechnet (siehe Risiken).
+5. **Wege aus einer Nachrechnung, nie erfunden.** Der Planer gibt je Stelle nur Ursache und kleinste Regelmenge zurück. Für Ursache „hindernisse“ rechnet der Bericht `lueckenUrsache` auf dem fertigen Stand nach (EIN Budget je Bericht, `budgetNeu()`, und ein eigenes Budget der Vorgaben; höchstens `LUECKEN_MAX` = 50 Nachrechnungen). Stimmen Ursache und kleinste Regelmenge mit dem Planer überein, stehen die Wege da; sonst (Budget, Grenze, Abweichung, Planer mit Aggregaten) `wegeStatus: "unvollstaendig"`, gezählt. Andere Ursachen (direktMoeglich, keinPersonal, qualifikationFehlt, unvollstaendig, Grund) haben keine Wege (`keine`).
+6. **Datenschutz.** Nur Kennungen von Tag, Dienst, Qualifikation, Regel und Vorgabe sowie Zahlen; keine Personenkennung, kein Name, kein „Person|Tag“, kein Befundtext, kein Abwesenheitsgrund, keine Werte je Person, keine Prozent oder Punkte (Schlüssel-Positivliste im Test). Die Verteilung nennt nur Gruppenzahlen.
+7. **Aufwand vorab.** Höchstens 200 000 Personentage des Monats (Besetzung nachrechnen), 20 000 Stellen (Tag × Dienst), 500 gelistete Konflikte (weitere gezählt, `abgeschnitten`); darüber `aufwand`, nie ein halber Bericht. Die Wege-Nachrechnung ist durch das Budget von `luckenursache.mjs` (400 Personenprüfungen) begrenzt.
+8. **Rein.** Keine Uhr, kein Zufall, keine Ablage, nur relative Importe (`./plan.mjs`, `./luckenursache.mjs`, `../vorgabenwirkung.mjs`, `../vorgaben.mjs`), kein `node:`, kein `src/` (Docker-Bild-Regel; `engine-rechenkern` lädt jede Engine-Datei ohne `src/`). Eingaben werden nie verändert (Test mit Deep-Freeze); der fertige Stand ist ein eigenes Objekt.
+
+### Tests
+
+`pruefungen/intelligence-erfuellungsbericht.test.js` (27 Tests, Präfix `intelligence-` ⇒ in `pruefung:intelligence`):
+
+- E1 Grün (echter Planer, sechs Personen, Früh- und Spätdienst täglich): Gesetz, Qualifikation, Besetzung erfüllt, 60 von 60 Stellen.
+- E2 je Status ein Rot-/Grün-Fall: verletzt (Gesetz, Soll, Verteilung), offen (Besetzung und Qualifikation mit Ursache, echter Planer), nicht bewertbar (keine Vorgabe, inaktive Vorgabe, Soll ungeprüft, Bedarf nicht festgelegt, Wunsch, Verteilung ungeprüft, Baukasten offen / nicht anwendbar).
+- E3 Rangfolge: jede Stufe einzeln maßgeblich, alles davor erfüllt; Verteilung nachgelagert.
+- E4 Wo/Warum/Wege: Nachrechnung gleich der Ursache des Planers; Abweichung ⇒ unvollständig; `LUECKEN_MAX` (50 von 90); Grund und unvollständige Ursache übernommen und gezählt; Konfliktgrenze (500 von 600).
+- E5 fail closed: kein Vorschlag (AUS, ungültig), fremdes oder verändertes Ergebnis, anderer Bestand, ungültige Eingaben, Ausnahme im Ergebnis ⇒ `fehler`.
+- E6 Datenschutz (Kennungen, Namen, Person|Tag, Abwesenheitsgrund, Prozent, Positivliste).
+- E7 Deep-Freeze und Wiederholung; Jahreswechsel (31.12.2026); Schaltjahr (2028-02-29; Februar 2027 mit 28 Tagen); Zeitumstellung (29.3.2026, 25.10.2026); leerer Plan; riesige Eingabe (knapp über und unter der Grenze); Quelltext-Wache.
+
+### Mutationen (je einzeln, danach zurückgesetzt)
+
+| Nr. | Mutation | rot (Test) |
+|---|---|---|
+| M1 | leerer Vorschlag (keine eigene Einteilung) gilt als erfüllt | leerer Plan |
+| M2 | keine aktive Vorgabe gilt als erfüllt | nicht bewertbar ≠ erfüllt; Muss/Soll mit Vorgabe |
+| M3 | schlechteste Lage zählt nicht (erste Vorgabe gewinnt) | Verteilung; Rangfolge; Verteilung nachgelagert |
+| M4 | Verteilung erfüllt, obwohl der Planer sie nicht vollständig bewertet hat | Verteilung |
+| M5 | maßgeblich = rangniedrigste statt ranghöchste Kategorie | Gesetz verletzt; Qualifikation offen; Rangfolge |
+| M6 | Abgleich der Zahl offener Stellen entfernt | fail closed: Ergebnis passt nicht |
+| M7 | Wege ohne Vergleich mit der Ursache des Planers | Abweichung ⇒ unvollständig |
+| M8 | Grenze LUECKEN_MAX der Nachrechnungen entfernt | LUECKEN_MAX (50 von 90) |
+| M9 | Personenkennung im Konflikt (Leck) | Wege; Datenschutz-Positivliste |
+| M10 | Aufwandsgrenze Personentage entfernt | riesige Eingabe |
+| M11 | Bedarf nicht festgelegt zählt als erfüllt | Bedarf nicht festgelegt |
+| M12 | try/catch entfernt (Ausnahme dringt durch) | Fehlerobjekt, nie eine Ausnahme |
+| M13 | Gesetzesbefund ignoriert | Gesetz rot; Soll verletzt; Rangfolge |
+| M14 | Soll ungeprüft (null) gilt als erfüllt | Soll ungeprüft |
+| M15 | Abgleich der eigenen Einteilungen mit dem Stand entfernt | vertauschter Dienst (Test nach der ersten Runde ergänzt: vorher überlebend, weil die Besetzung andere Fälle schon fing) |
+| M16 | verletzte Verteilungsvorgabe wird nicht bewertbar | Verteilung; Verteilung nachgelagert |
+
+16 von 16 rot; keine überlebende Mutation (M15 überlebte die erste Runde und ist mit einem zusätzlichen Testfall rot). Lauf: lokales Hilfsskript (nicht im Repo), je Mutation ein vitest-Lauf der neuen Prüfdatei, Datei danach zurückgesetzt (git status sauber).
+
+### Varianten: nicht gebaut (Begründung)
+
+Die Akzeptanz nennt drei Varianten mit **Schwerpunkt**: ausgewogen, wunschnah, möglichst stabil. Mit dem heutigen Planer-Kern ist nur „ausgewogen“ rechenbar:
+
+- **wunschnah** braucht eine Bewertung der Wünsche; der Planer bewertet Wunsch nicht (`NICHT_BEWERTET = ["wunsch"]`, Rang immer null). Eine „wunschnahe“ Variante wäre heute eine Behauptung ohne Rechnung.
+- **möglichst stabil** braucht eine Gewichtung der Stabilität (Wechsel gegenüber Vormonat oder eigenem Plan) in Aufbau und Verbessern; `rang.stabilitaet` zählt heute nur die eigenen Einteilungen. Das ist eine Änderung in `planer.mjs` (Rangvektor, Verbessern), an dem parallel die Vor-Freigabe-Härtung arbeitet; nicht in dieser Stufe.
+- Mehrere Läufe nur mit anderem Startwert wären keine der benannten Varianten (gleicher Schwerpunkt) und kosteten bei geteiltem Budget Qualität je Lauf. Deshalb nicht als „Varianten“ ausgegeben.
+
+Anschluss später (ohne Budget-Erhöhung): `planeVorschlag` je Variante mit `aufwand: PLANER_STANDARD.aufwand / 3` und festem Startwert, Bericht je Variante mit `erfuellungsbericht`, Vergleich über `rangVergleich` und die Zählwerte; vorher Wunschbewertung (WP-I3 Wunschregel) und Stabilitätsgewicht im Planer.
+
+### Verdrahtung (späterer Schritt) und offene Fragen
+
+- **Wo:** In `server/lib/planer-aktion.mjs` direkt nach `planeVorschlag` bzw. `planerEinstieg` mit demselben Bestand `m` (vor dem Planer) und dem Ergebnis im selben Aufruf: `erfuellungsbericht(m, ergebnis)` und das Ergebnis als Feld `bericht` der Antwort. Anzeige in `src/ansichten/planer-vorschlag.jsx` (Zählwerte je Kategorie in der Rangfolge, Konflikte mit Wo/Warum/Wege). Beides nicht in dieser Stufe (dort arbeitet parallel ein anderer Schreiber).
+- **Gespeicherte Vorschläge:** Wird ein Vorschlag abgelegt und später berichtet (Übernahme, WP-I9), muss der Rangvektor neu nachgeprüft werden (`nachpruefen` aus `planer.mjs`); der Bericht prüft heute nur Besetzung und eigene Einteilungen gegen den Bestand, den Rang übernimmt er.
+- **Rechte:** Wer den Bericht sehen darf, folgt der Rechtematrix des Planers (Leitung/Planung). Offen: Sicht der Schichtverantwortung (nur eigener Bereich: Bericht je Einheit filtern?) und des Betriebsrats (nur Zahlen ohne Personen: der Bericht erfüllt das bereits; Freigabe der Sicht ist eine Rechteentscheidung, keine Code-Frage).
+- **Datenschutz:** Wege nennen Personenzahlen je Regelmenge. Bei kleinen Teams (eine Person, Regel „abwesend“ oder eine Schutzregel wie `nachtNichtZulaessig`) kann eine Zahl auf eine Person deuten. Für die Sicht des Betriebsrats und der Schichtverantwortung ist zu entscheiden, ob Zahlen unter einer Mindestgröße (z. B. < 3) zusammengefasst werden.
+- **Bestand:** Gesetz/Muss/Soll betreffen nur die eigenen Einteilungen. Ein Bericht über den ganzen Plan (Bestand eingeschlossen) gehört zum Plan-Gutachten (F18, WP-I9 / I34).
+- **Vorgaben je Vorgabe:** „Wochenend-Rotation bei 22 von 24 Personen erfüllt“ (Plan 7.4) braucht die Auswertung je Vorgabe über den Monat (Aggregate, `PLANER_AGGREGATE_AN` AUS). Heute nennt der Bericht Muss/Soll als Zahl der Befunde der eigenen Einteilungen und die Zahl aktiver Vorgaben.
+
+### Risiken für den Review
+
+1. Rangvektor wird nicht neu gerechnet (Entscheidung 4): ein manipuliertes `rang` mit passender Besetzung ergibt einen falschen Gesetz/Muss/Soll-Status. Heute nur im selben Aufruf nach `planeVorschlag` gedacht.
+2. Wege-Nachrechnung nutzt ein frisches Vorgaben-Budget ohne Aggregate; lief der Planer mit `aggregate: true`, weichen Ursachen eher ab (dann „unvollstaendig“, nie falsch).
+3. Qualifikationsstellen ohne Personenbedarf (Bedarf 0, `mindestQual` gesetzt) zählen unter Qualifikation, nicht unter Besetzung (wie `besetzung().qualFehlt`).
+4. Laufzeit: die Besetzung des fertigen Stands wird kalt nachgerechnet (eigenes Objekt, kein geteilter Zwischenspeicher mit dem Planer); bei 6 666 Personen × 30 Tagen im Test unter der Grenze gemessen, nicht im Pilot.

@@ -2432,9 +2432,9 @@
       "pr": [],
       "nachweis": "docs/acc45/INTELLIGENCE-ENTWICKLUNGSPLAN.md",
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block K)",
-      "tests": "pruefungen/ki-*.test.js",
-      "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). Teil 1 (Konflikte mit Ursache, vom Planer-Kern WP-I7 unabhängig) lokal umgesetzt: server/lib/engine/luckenursache.mjs, Test pruefungen/engine-luckenursache.test.js, Nachweis docs/acc45/WP-I8-nachweis.md (noch nicht integriert, kein PR-Beleg). Offen: Varianten und Erfüllungsbericht (brauchen den Planer-Kern WP-I7), Anzeige in App.jsx, Wege-Folgen je Regel (Entscheidung der Planung). Status bleibt BLOCKED, solange WP-I7 nicht integriert ist."
+      "tests": "pruefungen/engine-luckenursache.test.js, pruefungen/intelligence-erfuellungsbericht.test.js",
+      "dateien": "server/lib/engine/luckenursache.mjs, server/lib/engine/erfuellungsbericht.mjs, docs/acc45/WP-I8-nachweis.md",
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i). Teil 1 (Konflikte mit Ursache, server/lib/engine/luckenursache.mjs) ist in integration/release-v4 integriert und wird vom Planer je offener Stelle genutzt. Der Planer-Kern WP-I7 ist bis Stufe 3 (#615) integriert; die frühere BLOCKED-Begründung (WP-I7 nicht integriert) ist damit überholt, der Statuswechsel erfolgt durch die Koordination, nicht in diesem Schritt. Teil 2 Erfüllungsbericht (Engine-Stufe, nicht verdrahtet): server/lib/engine/erfuellungsbericht.mjs, Test pruefungen/intelligence-erfuellungsbericht.test.js, Nachweis docs/acc45/WP-I8-nachweis.md Abschnitt „Erfüllungsbericht (Engine)“ (PR offen, nicht reviewt). Offen: Varianten (wunschnah braucht eine Wunschbewertung, stabil ein Stabilitätsgewicht im Planer-Kern), Verdrahtung in Server-Antwort und Planer-Ansicht, Rechte-/Datenschutzfragen der Sicht (kleine Zahlen in Wegen), Erfüllung je Vorgabe über den Monat (Aggregate AUS)."
     },
     {
       "id": "WP-I9",
