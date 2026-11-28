@@ -216,6 +216,17 @@ describe("2. Offene Stellen: Wo, Warum, Wege", () => {
     expect(mo.konflikte[3].wo).toMatch(/· Dienst$/);
     expect(mo.konflikte[3].was).toContain("Qualifikation fehlt: Qualifikation (nötig 1, vorhanden 0)");
   });
+  it("Regeln einer Vorgabe des Betriebs (VORGABE-<ID>) erscheinen mit dem Namen der Vorgabe; unbekannte Vorgabe: neutraler Platzhalter, nie die Rohkennung", () => {
+    const mo = modell(bericht({ konflikte: [
+      konflikt({ ursache: "hindernisse", regeln: ["VORGABE-ZQ-VORGABE-1"], wegeStatus: "berechnet", wege: [{ regeln: ["VORGABE-ZQ-VORGABE-1", "abwesend"], personen: 2, deckt: 1 }] }),
+      konflikt({ ursache: "hindernisse", regeln: ["VORGABE-GIBT-ES-NICHT"], wegeStatus: "berechnet", wege: [{ regeln: ["VORGABE-GIBT-ES-NICHT"], personen: 1, deckt: 1 }] })] }));
+    expect(mo.konflikte[0].warum[1]).toBe("Kleinste Ursache: die Regel „Vorgabe: Nachtdienste fair verteilen“.");
+    expect(mo.konflikte[0].wege[0]).toContain("die Regeln „Vorgabe: Nachtdienste fair verteilen“ und „abwesend“");
+    expect(mo.konflikte[1].warum[1]).toBe("Kleinste Ursache: die Regel „Vorgabe nicht bezeichnet“.");
+    expect(anzeigeTexte(mo)).not.toMatch(/VORGABE-|ZQ-VORGABE|GIBT-ES-NICHT/);
+    const ohne = berichtAnzeige(bericht({ konflikte: [konflikt({ ursache: "hindernisse", regeln: ["VORGABE-ZQ-VORGABE-1"] })] }), null, { ...m, vorgaben: [] }, DEZ);
+    expect(ohne.konflikte[0].warum[1]).toContain("Vorgabe nicht bezeichnet");
+  });
   it("Wege ehrlich: nicht berechnet, unvollständig, leer oder unbekannt — nie ein erfundener Weg; Notizen zu abgeschnittenen und unvollständigen Stellen", () => {
     const w = (extra) => modell(bericht({ konflikte: [konflikt({ ursache: "hindernisse", regeln: ["abwesend"], ...extra })] })).konflikte[0];
     expect(w({ wegeStatus: "unvollstaendig" })).toMatchObject({ wege: [], wegeText: BERICHT_TEXTE.wegeUnvollstaendig });
@@ -265,7 +276,10 @@ describe("4. Markup: semantisch, ohne rohe Bedienelemente, Inline-Stile und Rohk
   it("Überschriften h3 (Bericht) und h4 (Kategorien, Stellen); Kategorien als nummerierte Liste, Stellen als Liste; Status und Hervorhebung als Text", () => {
     const html = markup({ bericht: modell() });
     const b = bereich(html);
-    expect(b).toMatch(/<h3>Erfüllungsbericht<\/h3>/);
+    expect(b).toMatch(/<h3 id="planer-bericht-titel">Erfüllungsbericht<\/h3>/);
+    /* Der Abschnitt wird über seine Überschrift benannt (kein doppelter Name aus aria-label und Überschrift). */
+    expect(html).toMatch(/<section aria-labelledby="planer-bericht-titel" data-testid="planer-bericht">/);
+    expect(html).not.toMatch(/<section aria-label="Erfüllungsbericht"/);
     expect([...b.matchAll(/<(h[1-6])[ >]/g)].map((x) => x[1])).toEqual(["h3", "h4", "h4"]);
     expect(b.match(/<ol aria-label="Ergebnis je Kategorie">/)).not.toBeNull();
     expect(b.match(/<ol[^>]*>[\s\S]*?<\/ol>/)[0].match(/<li[ >]/g)).toHaveLength(7);

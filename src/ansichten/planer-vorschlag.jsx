@@ -113,8 +113,8 @@ function Besetzung({ u, m }) {
 /** Der Erfüllungsbericht (Anzeigeform aus berichtAnzeige): Rangfolge als nummerierte Liste, Status als Text, offene Stellen als Liste mit Wo, Warum, Wegen. */
 function Erfuellungsbericht({ b }) {
   const T = BERICHT_TEXTE;
-  return <section aria-label={T.titel} data-testid="planer-bericht">
-    <h3>{T.titel}</h3>
+  return <section aria-labelledby="planer-bericht-titel" data-testid="planer-bericht">
+    <h3 id="planer-bericht-titel">{T.titel}</h3>
     {!b.verfuegbar ? <p>{b.text}</p> : <>
       <p>{T.hinweis}</p>
       {b.massgeblich && <p><strong>{T.massgeblich}: {b.massgeblich.name} ({b.massgeblich.statusText})</strong></p>}

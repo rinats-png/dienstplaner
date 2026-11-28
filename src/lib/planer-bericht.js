@@ -13,6 +13,7 @@
    ========================================================================== */
 import { BERICHT_RANGFOLGE, AUSSAGE_VORSCHLAG, VERTEILUNG_MINDESTGRUPPE, BERICHT_URSACHEN, BERICHT_GRUENDE } from "../../server/lib/engine/erfuellungsbericht.mjs";
 import { BEFUND_KATALOG } from "../../server/lib/bestaetigungen.mjs";
+import { vorgabeRegelId } from "../../server/lib/vorgaben.mjs";
 import { fKurz, DOW } from "./datum.js";
 import { dow } from "../regelwerk.js";
 import { grundVorgabeText } from "./planer-oberflaeche.js";
@@ -105,13 +106,18 @@ const NAME = (liste, id, fallback) => {
   const x = (Array.isArray(liste) ? liste : []).find((e) => istObjekt(e) && String(e.id) === String(id));
   return x && typeof x.name === "string" && x.name.trim() ? x.name.trim() : fallback;
 };
-/** Anzeigetext einer Regelkennung aus dem Befundkatalog; unbekannt: neutral. Bindende (sperrende) Regeln sind gekennzeichnet. */
-function regelText(k) {
+/** Anzeigetext einer Regelkennung: Regel einer Vorgabe des Betriebs (VORGABE-<ID>) mit dem Namen der Vorgabe, sonst aus dem Befundkatalog; unbekannt: neutral.
+    Bindende (sperrende) Regeln sind gekennzeichnet. */
+function regelText(k, m) {
+  if (typeof k === "string" && k.startsWith("VORGABE-")) {
+    const v = (m && Array.isArray(m.vorgaben) ? m.vorgaben : []).find((x) => istObjekt(x) && vorgabeRegelId(x) === k);
+    return v && typeof v.name === "string" && v.name.trim() ? `„Vorgabe: ${v.name.trim()}“` : `„Vorgabe ${NEUTRAL}“`;
+  }
   if (!hat(BEFUND_KATALOG, k)) return `„Regel ${NEUTRAL}“`;
   const e = /** @type {any} */ (BEFUND_KATALOG)[k];
   return `„${e.text}“${e.sperrt ? ` (${BERICHT_TEXTE.bindend})` : ""}`;
 }
-const regelnText = (regeln) => (Array.isArray(regeln) && regeln.length ? `${regeln.length === 1 ? "die Regel" : "die Regeln"} ${regeln.map(regelText).join(" und ")}` : `eine Regel ${NEUTRAL}`);
+const regelnText = (regeln, m) => (Array.isArray(regeln) && regeln.length ? `${regeln.length === 1 ? "die Regel" : "die Regeln"} ${regeln.map((k) => regelText(k, m)).join(" und ")}` : `eine Regel ${NEUTRAL}`);
 
 /** Kein Bericht: ehrlicher Hinweis mit Grund (nie der Rohtext oder die Rohkennung des Servers). */
 export function berichtNichtVerfuegbar(grund) {
@@ -194,7 +200,7 @@ function konfliktAnzeige(x, m, i) {
   if (hat(BERICHT_STELLE_GRUND_TEXT, x.grund)) warum.push(BERICHT_STELLE_GRUND_TEXT[x.grund]);
   else if (x.ursache === "grund" || x.grund !== undefined) warum.push(`Grund ${NEUTRAL}.`);
   else warum.push(hat(BERICHT_URSACHE_TEXT, x.ursache) ? BERICHT_URSACHE_TEXT[x.ursache] : `Ursache ${NEUTRAL}.`);
-  if (x.ursache === "hindernisse" && Array.isArray(x.regeln) && x.regeln.length) warum.push(`Kleinste Ursache: ${regelnText(x.regeln)}.`);
+  if (x.ursache === "hindernisse" && Array.isArray(x.regeln) && x.regeln.length) warum.push(`Kleinste Ursache: ${regelnText(x.regeln, m)}.`);
   if (x.vorgabenUnvollstaendig === true) warum.push(BERICHT_GRUND_TEXT.vorgaben_nicht_vollstaendig_geprueft);
   const wege = [];
   let wegeText = null;
@@ -202,7 +208,7 @@ function konfliktAnzeige(x, m, i) {
     for (const w of (Array.isArray(x.wege) ? x.wege : []).filter(istObjekt)) {
       const p = zahl(w.personen), d = zahl(w.deckt);
       if (p === null) continue;
-      wege.push(`Wenn ${regelnText(w.regeln)} nicht gälte, kämen ${personen(p)} in Frage${d !== null && fehlt ? `; das deckt höchstens ${d} von ${fehlt} fehlenden` : ""}.`);
+      wege.push(`Wenn ${regelnText(w.regeln, m)} nicht gälte, kämen ${personen(p)} in Frage${d !== null && fehlt ? `; das deckt höchstens ${d} von ${fehlt} fehlenden` : ""}.`);
     }
     if (!wege.length) wegeText = BERICHT_TEXTE.wegeLeer;
   } else if (x.wegeStatus === "keine") wegeText = BERICHT_TEXTE.keineWege;

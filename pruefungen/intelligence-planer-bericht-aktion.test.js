@@ -9,7 +9,7 @@
       kein Person|Tag, keine Prozente; Antwort abwärtskompatibel (alle bisherigen Felder unverändert).
    2. Rechte: nur Leitung und Planung; Schichtverantwortung, Betriebsrat, Beschäftigte, Kundenrolle, Demo: 403 ohne Rechnung; Planer aus: nichts gerechnet.
    3. Kein Bericht (aufwand, ergebnis_passt_nicht, fehler, Ausnahme, ungültige Form): `bericht: null` mit fester Kennung, der Vorschlag bleibt gültig.
-   4. Der Client kann keinen Bericht einreichen; der Bericht wird mit dem Vorschlag gehalten und mit ihm verworfen; Mandantentrennung.
+   4. Der Client kann keinen Bericht einreichen; der Bericht wird am Server nicht gehalten; Mandantentrennung.
    Aufruf: TZ=UTC npx vitest run pruefungen/intelligence-planer-bericht-aktion.test.js
    ========================================================================== */
 import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from "vitest";
@@ -69,7 +69,7 @@ afterEach(() => {
 /* ---------------------------------- Betrieb ---------------------------------- */
 const STAB = [["l1", "leitung"], ["l2", "leitung"], ["pl1", "planer"], ["s1", "subplaner"], ["a1", "mitarbeiter"], ["b1", "betriebsrat"], ["k1", "kunde"]];
 /** Kleiner Betrieb: vier planbare Personen; `fruehBedarf` Personen je Tag im Frühdienst (mehr als vier ergibt offene Stellen). */
-function bestandFuer(id = "m1", { fruehBedarf = 1 } = {}) {
+function bestandFuer(id = "m1", { fruehBedarf = 1, verteilung = false, kleineGruppe = false } = {}) {
   const g = baueLeerenBetrieb({ name: "T", branche: "pflege", email: "x@example.org", land: "HE", raum: "r" });
   const m = g.mandanten[0];
   m.id = id;
@@ -81,6 +81,11 @@ function bestandFuer(id = "m1", { fruehBedarf = 1 } = {}) {
   ];
   m.dienstarten = m.dienstarten.map((d) => (d.id === "F" ? { ...d, mindest: { mo_do: fruehBedarf, fr: fruehBedarf, sa: fruehBedarf, so: fruehBedarf } } : d));
   m.einstellungen = { ...m.einstellungen, kiSteuerung: structuredClone(FREI) };
+  /* `typ` zusätzlich zu `regelart`: die Planungsreife (planungsreife.mjs) liest `typ`; ohne es gilt jede Vorgabe als unvollständig und der Planer rechnet nicht. */
+  if (verteilung) m.vorgaben = [{ id: "vt-1", name: "Nächte gleichmäßig", typ: "verteilungsregel", regelart: "verteilungsregel", parameter: { groesse: "nachtdienste", maxAbweichung: 1 }, geltung: { art: "betrieb" },
+    staerke: "soll", prioritaet: 1, status: "aktiv", grundlage: { art: "hausregel" }, bezug: "monat" }];
+  /* Kleine Gruppe: nur zwei Personen im Schichtdienst (die übrigen zählen nicht zur Vergleichsgruppe). */
+  if (kleineGruppe) m.personen = m.personen.map((p) => (p.id === "p1" || p.id === "p2" ? p : { ...p, imSchichtdienst: false }));
   m.abweichungen = { ...(m.abweichungen || {}), "p4|2026-12-20": "-" };
   m.angeheftet = { "p4|2026-12-20": { am: T0, vonRolle: "leitung" } };
   g.version = 9;
@@ -277,38 +282,141 @@ describe("3. Kein Bericht: feste Kennung, der Vorschlag bleibt", { timeout: 3000
       expect(await abdruck(r.name)).toBe(vorher);
     });
   }
-  it("berichtFuerAntwort: Positivliste der Schlüssel, Kennungen und Zahlen; jede Abweichung ⇒ bericht_ungueltig, nie ein halber Bericht", () => {
+  /* Bestand für die Einzelprüfungen von berichtFuerAntwort: Dienstkennungen und Qualifikationskennungen des Betriebs. */
+  const BM = { dienstarten: [{ id: "zq-dienst-F", mindestQual: { "zq-qual-1": 2 } }, { id: "zq-dienst-N" }] };
+  const GUT = () => ({ ok: true, ym: YM, startwert: 1, massgeblich: { kategorie: "besetzung", status: "offen" }, erstesProblem: null,
+    zusammenfassung: { kategorien: { erfuellt: 0, erfuelltImVorschlag: 1, verletzt: 0, offen: 1, nichtBewertbar: 5 }, stellen: { gesamt: 31, voll: 29, offen: 2, bedarfOffen: 0 },
+      qualifikation: { stellen: 1, offen: 1 }, eigeneEinteilungen: 3, konflikte: { gesamt: 1, gelistet: 1, abgeschnitten: false, mitWegen: 1, wegeUnvollstaendig: 0, ursacheUnvollstaendig: 0 } },
+    kategorien: [
+      { kategorie: "gesetz", rang: 0, umfang: "vorschlag", bestandGeprueft: false, geprueft: 3, verletzt: 0, status: "erfuellt", aussage: "keine_befunde_in_eigenen_einteilungen" },
+      { kategorie: "besetzung", rang: 2, stellen: 31, voll: 29, offen: 2, bedarf: 60, fehlt: 3, bedarfOffen: 0, status: "offen" },
+      { kategorie: "verteilung", rang: 5, nachgelagert: true, status: "verletzt", erfuellt: 0, verletzt: 1, nichtBewertbar: 0, summeUeberschreitung: null,
+        vorgaben: [{ vorgabeId: "vt-1", staerke: "soll", groesse: "nachtdienste", status: "verletzt", maxAbweichung: 1, spannweite: null, ueberschreitung: null, kleineGruppe: true,
+          personen: 2, nichtBewertbar: 0, ausserhalb: 1 }] }],
+    konflikte: [{ datum: "2026-12-01", dienstId: "zq-dienst-F", art: "besetzung_und_qualifikation", fehlt: 1, qualFehlt: true, fehlendeQualifikationen: [{ qid: "zq-qual-1", noetig: 2, ist: 1 }],
+      ursache: "hindernisse", regeln: ["abwesend"], wegeStatus: "berechnet", wege: [{ regeln: ["abwesend"], personen: 2, deckt: 1 }] }] });
+  /** Ändert eine Stelle des guten Berichts. */
+  const mit = (fn) => { const b = GUT(); fn(b); return b; };
+  const grundVon = (b) => S.A.berichtFuerAntwort(BM, {}, () => b).berichtGrund;
+  it("berichtFuerAntwort: Schema mit Typ je Schlüssel; jede Abweichung ⇒ bericht_ungueltig, nie ein halber Bericht", () => {
     const f = S.A.berichtFuerAntwort;
-    const gut = { ok: true, ym: YM, startwert: 1, massgeblich: { kategorie: "besetzung", status: "offen" }, erstesProblem: null,
-      kategorien: [{ kategorie: "gesetz", rang: 0, status: "erfuellt", geprueft: 3, verletzt: 0, aussage: "keine_befunde_in_eigenen_einteilungen", bestandGeprueft: false }],
-      konflikte: [{ datum: "2026-12-01", dienstId: "Früh 1", art: "besetzung", fehlt: 1, wege: [{ regeln: ["abwesend"], personen: 2, deckt: 1 }] }] };
-    const r0 = f({}, {}, () => gut);
-    expect(r0).toEqual({ bericht: gut, berichtGrund: null });
+    const gut = GUT();
+    const r0 = f(BM, {}, () => gut);
+    expect(r0).toEqual({ bericht: GUT(), berichtGrund: null });
     expect(r0.bericht).not.toBe(gut);   // eine Kopie, nie das Objekt des Kerns
-    expect(f({}, {}, () => ({ ...gut, bericht: 1 })).berichtGrund).toBe("bericht_ungueltig");                              // Schlüssel außerhalb der Liste
-    expect(f({}, {}, () => ({ ...gut, kategorien: [{ ...gut.kategorien[0], personId: "p1" }] })).berichtGrund).toBe("bericht_ungueltig");
-    expect(f({}, {}, () => ({ ...gut, konflikte: [{ datum: "2026-12-01", name: "Anna" }] })).berichtGrund).toBe("bericht_ungueltig");
-    expect(f({}, {}, () => ({ ...gut, ym: "Anna Alt" })).berichtGrund).toBe("bericht_ungueltig");                         // Freitext statt Kennung
-    expect(f({}, {}, () => ({ ...gut, ym: "p1|2026-12-01" })).berichtGrund).toBe("bericht_ungueltig");                     // Person|Tag
-    expect(f({}, {}, () => ({ ...gut, startwert: NaN })).berichtGrund).toBe("bericht_ungueltig");
-    expect(f({}, {}, () => ({ ...gut, startwert: Infinity })).berichtGrund).toBe("bericht_ungueltig");
-    expect(f({}, {}, () => ({ ...gut, konflikte: [{ dienstId: "x".repeat(65) }] })).berichtGrund).toBe("bericht_ungueltig");
-    expect(f({}, {}, () => ({ ...gut, konflikte: Array.from({ length: 601 }, () => ({ datum: "2026-12-01" })) })).berichtGrund).toBe("bericht_ungueltig");
-    expect(f({}, {}, () => ({ ...gut, konflikte: [{ wege: [[[[[[[[1]]]]]]]] }] })).berichtGrund).toBe("bericht_ungueltig");   // zu tief
-    expect(f({}, {}, () => ({ ...gut, startwert: () => 1 })).berichtGrund).toBe("bericht_ungueltig");
-    expect(f({}, {}, () => ({ ...gut, startwert: undefined })).berichtGrund).toBe("bericht_ungueltig");
-    expect(f({}, {}, () => ({ ...gut, ok: false, grund: "aufwand" }))).toEqual({ bericht: null, berichtGrund: "aufwand" });
-    expect(f({}, {}, () => ({ ok: false }))).toEqual({ bericht: null, berichtGrund: "fehler" });
-    expect(f({}, {}, () => { throw new Error("x"); })).toEqual({ bericht: null, berichtGrund: "fehler" });
+    expect(r0.bericht.konflikte[0]).not.toBe(gut.konflikte[0]);
+    /* Schlüssel außerhalb des Schemas. */
+    expect(grundVon({ ...GUT(), bericht: 1 })).toBe("bericht_ungueltig");
+    expect(grundVon(mit((b) => { b.kategorien[0].personId = "p1"; }))).toBe("bericht_ungueltig");
+    expect(grundVon(mit((b) => { b.konflikte[0].name = "Anna"; }))).toBe("bericht_ungueltig");
+    /* Zeichenketten: Freitext, Person|Tag. */
+    expect(grundVon({ ...GUT(), ym: "Anna Alt" })).toBe("bericht_ungueltig");
+    expect(grundVon({ ...GUT(), ym: "p1|2026-12-01" })).toBe("bericht_ungueltig");
+    expect(grundVon(mit((b) => { b.konflikte[0].datum = "p1|2026-12-01"; }))).toBe("bericht_ungueltig");
+    expect(grundVon(mit((b) => { b.konflikte[0].ursache = "Anna Alt"; }))).toBe("bericht_ungueltig");
+    /* Zahlen: NaN, Infinity, negativ, gebrochen, Text, undefined, Funktion. */
+    for (const w of [NaN, Infinity, -1, 1.5, "3", undefined, () => 1, null]) expect(grundVon(mit((b) => { b.kategorien[1].fehlt = w; })), String(w)).toBe("bericht_ungueltig");
+    /* Maßzahlen der Verteilung: endliche Zahl ≥ 0 oder null, nie Liste, Text oder NaN. */
+    for (const w of [["p1"], "p1", NaN, Infinity, -1, {}, true]) {
+      for (const k of ["spannweite", "ueberschreitung", "maxAbweichung"]) expect(grundVon(mit((b) => { b.kategorien[2].vorgaben[0][k] = w; })), `${k} ${JSON.stringify(w)}`).toBe("bericht_ungueltig");
+      expect(grundVon(mit((b) => { b.kategorien[2].summeUeberschreitung = w; })), `summe ${JSON.stringify(w)}`).toBe("bericht_ungueltig");
+    }
+    expect(grundVon(mit((b) => { b.kategorien[2].vorgaben[0].spannweite = 1.5; }))).toBeNull();                         // Maßzahlen dürfen gebrochen sein
+    expect(grundVon({ ...GUT(), startwert: NaN })).toBe("bericht_ungueltig");
+    expect(grundVon({ ...GUT(), startwert: 1.5 })).toBe("bericht_ungueltig");
+    /* Listen nur unter den vorgesehenen Schlüsseln und nur von Kennungen bzw. Objekten; Zählwerte sind nie Listen (Personen-Kennungen). */
+    for (const w of [["p1"], ["p1", "p2"], [], { 0: "p1" }, "p1"]) {
+      expect(grundVon(mit((b) => { b.kategorien[2].vorgaben[0].personen = w; })), `personen ${JSON.stringify(w)}`).toBe("bericht_ungueltig");
+      expect(grundVon(mit((b) => { b.kategorien[2].vorgaben[0].nichtBewertbar = w; })), `nichtBewertbar ${JSON.stringify(w)}`).toBe("bericht_ungueltig");
+      expect(grundVon(mit((b) => { b.kategorien[2].vorgaben[0].ausserhalb = w; })), `ausserhalb ${JSON.stringify(w)}`).toBe("bericht_ungueltig");
+      expect(grundVon(mit((b) => { b.konflikte[0].wege[0].personen = w; })), `wege personen ${JSON.stringify(w)}`).toBe("bericht_ungueltig");
+      expect(grundVon(mit((b) => { b.kategorien[2].nichtBewertbar = w; })), `verteilung nichtBewertbar ${JSON.stringify(w)}`).toBe("bericht_ungueltig");
+      expect(grundVon(mit((b) => { b.zusammenfassung.kategorien.nichtBewertbar = w; })), `zusammenfassung ${JSON.stringify(w)}`).toBe("bericht_ungueltig");
+    }
+    expect(grundVon(mit((b) => { b.kategorien[1].vorgaben = ["p1"]; }))).toBe("bericht_ungueltig");                  // Liste von Kennungen statt Objekten
+    expect(grundVon(mit((b) => { b.kategorien[2].vorgaben = [{ personen: ["p1"] }]; }))).toBe("bericht_ungueltig");
+    expect(grundVon(mit((b) => { b.konflikte[0].regeln = "abwesend"; }))).toBe("bericht_ungueltig");                  // Text statt Liste
+    expect(grundVon(mit((b) => { b.konflikte[0].regeln = [["abwesend"]]; }))).toBe("bericht_ungueltig");
+    expect(grundVon(mit((b) => { b.konflikte[0].wege[0].regeln = ["a b"]; }))).toBe("bericht_ungueltig");
+    expect(grundVon(mit((b) => { b.konflikte[0].fehlendeQualifikationen = { qid: "zq-qual-1" }; }))).toBe("bericht_ungueltig");
+    expect(grundVon(mit((b) => { b.kategorien[0].bestandGeprueft = "false"; }))).toBe("bericht_ungueltig");           // Wahrheitswert statt Text
+    expect(grundVon(mit((b) => { b.konflikte[0].qualFehlt = 1; }))).toBe("bericht_ungueltig");
+    expect(grundVon(mit((b) => { b.konflikte = {}; }))).toBe("bericht_ungueltig");
+    expect(grundVon(mit((b) => { b.ok = "true"; }))).toBe("fehler");                                                  // nur ok === true ist ein Bericht
+    /* Dienst- und Qualifikationskennung müssen im Bestand stehen: kein Person|Tag, kein Name, keine fremde Kennung. */
+    for (const w of ["p1|2026-12-01", "Anna Alt", "zq-dienst-X", "", "x".repeat(65), 7, null, ["zq-dienst-F"]]) expect(grundVon(mit((b) => { b.konflikte[0].dienstId = w; })), String(w)).toBe("bericht_ungueltig");
+    for (const w of ["p1|2026-12-01", "Anna Alt", "zq-qual-9", "", null]) expect(grundVon(mit((b) => { b.konflikte[0].fehlendeQualifikationen[0].qid = w; })), String(w)).toBe("bericht_ungueltig");
+    expect(f({}, {}, () => GUT()).berichtGrund).toBe("bericht_ungueltig");                                              // Bestand ohne Dienstarten: keine Kennung passt
+    expect(f(null, {}, () => GUT()).berichtGrund).toBe("bericht_ungueltig");
+    expect(grundVon(mit((b) => { b.konflikte[0].dienstId = "zq-dienst-N"; }))).toBeNull();                              // eine andere Kennung des Betriebs ist gültig
+    /* Listenlängen. */
+    expect(grundVon(mit((b) => { b.konflikte = Array.from({ length: 501 }, () => GUT().konflikte[0]); }))).toBe("bericht_ungueltig");
+    expect(grundVon(mit((b) => { b.konflikte[0].wege = Array.from({ length: 6 }, () => ({ regeln: [], personen: 1, deckt: 1 })); }))).toBe("bericht_ungueltig");
+    expect(grundVon(mit((b) => { b.konflikte[0].regeln = Array.from({ length: 21 }, () => "abwesend"); }))).toBe("bericht_ungueltig");
+    expect(grundVon(mit((b) => { b.kategorien = Array.from({ length: 8 }, () => GUT().kategorien[0]); }))).toBe("bericht_ungueltig");
+    /* Ausgänge des Kerns. */
+    expect(f(BM, {}, () => ({ ...GUT(), ok: false, grund: "aufwand" }))).toEqual({ bericht: null, berichtGrund: "aufwand" });
+    expect(f(BM, {}, () => ({ ok: false }))).toEqual({ bericht: null, berichtGrund: "fehler" });
+    expect(f(BM, {}, () => { throw new Error("x"); })).toEqual({ bericht: null, berichtGrund: "fehler" });
     expect(S.A.BERICHT_FEHLER).toEqual(["aufwand", "ergebnis_passt_nicht", "fehler", "bericht_ungueltig"]);
   });
-  it("die echte Berichtsform des Kerns besteht die Positivliste (kein bericht_ungueltig) — Grün-, Rot- und Verteilungsfall", async () => {
+  it("Größe: der Fall an den Obergrenzen des Kerns (500 Konflikte mit je 5 Wegen, 20 Regeln, 50 Qualifikationen, 50 Verteilungsvorgaben) besteht; darüber ⇒ aufwand, nicht „nicht lesbar“", () => {
+    const f = S.A.berichtFuerAntwort;
+    const quals = Array.from({ length: 50 }, (_, i) => `zq-qual-${i}`);
+    const bm = { dienstarten: [{ id: "zq-dienst-F", mindestQual: Object.fromEntries(quals.map((q) => [q, 1])) }] };
+    const regeln = Array.from({ length: 20 }, () => "abwesend");
+    const k = { datum: "2026-12-01", dienstId: "zq-dienst-F", art: "besetzung_und_qualifikation", fehlt: 3, qualFehlt: true, bedarfOffen: true, ursache: "hindernisse", grund: "aufwand", vorgabenUnvollstaendig: true,
+      wegeStatus: "berechnet", regeln, fehlendeQualifikationen: quals.map((q) => ({ qid: q, noetig: 2, ist: 1 })), wege: Array.from({ length: 5 }, () => ({ regeln, personen: 3, deckt: 2 })) };
+    const v = { vorgabeId: "vt-1", staerke: "soll", groesse: "nachtdienste", status: "verletzt", grund: "weniger_als_zwei", maxAbweichung: 1, spannweite: 2, ueberschreitung: 1, kleineGruppe: false, personen: 5, nichtBewertbar: 0, ausserhalb: 0 };
+    const gross = GUT();
+    gross.konflikte = Array.from({ length: 500 }, () => k);
+    gross.kategorien[2].vorgaben = Array.from({ length: 50 }, () => v);
+    const r = f(bm, {}, () => gross);
+    expect(r.berichtGrund).toBeNull();
+    expect(r.bericht.konflikte).toHaveLength(500);
+    expect(S.A.BERICHT_KNOTEN_MAX).toBeGreaterThan(500 * 300);
+    /* Die Grenze greift als Aufwand: sehr kleine Grenze ⇒ aufwand (der Vorschlag bleibt, siehe Abschnitt 3). */
+    expect(f(BM, {}, () => GUT(), { knoten: 10 })).toEqual({ bericht: null, berichtGrund: "aufwand" });
+    expect(f(BM, {}, () => GUT(), { knoten: 1000 }).berichtGrund).toBeNull();
+  });
+  it("die echte Berichtsform des Kerns besteht das Schema (kein bericht_ungueltig, kein aufwand) — Grün- und Rotfall", async () => {
     for (const o of [{}, { fruehBedarf: 6 }]) {
       const r = await raum(o);
       frei(true);
       const v = await vorschlag(r);
       expect(v.berichtGrund, JSON.stringify(o)).toBeNull();
     }
+  });
+  it("Verteilungsvorgabe mit dem echten Rechenkern, Gruppe von mindestens drei Personen: Bericht gültig, Zahlen statt Personenlisten, ohne Personenbezug", async () => {
+    const r = await raum({ verteilung: true });
+    frei(true);
+    const v = await vorschlag(r);
+    expect(v.status, JSON.stringify(v).slice(0, 300)).toBe(201);
+    expect(v.berichtGrund).toBeNull();
+    const vt = v.bericht.kategorien.find((k) => k.kategorie === "verteilung");
+    expect(vt.vorgaben).toHaveLength(1);
+    const x = vt.vorgaben[0];
+    expect(x.vorgabeId).toBe("vt-1");
+    expect(x.kleineGruppe).toBeUndefined();
+    expect(x.personen).toBeGreaterThanOrEqual(3);
+    for (const k of ["personen", "nichtBewertbar", "ausserhalb"]) expect(Number.isInteger(x[k]), k).toBe(true);
+    ohnePersonenbezug(v.bericht, (await lesen(r.name)).bestand.mandanten[0].personen);
+    expect(JSON.stringify(v)).not.toMatch(/Zuname|Stabname|Vorname|\|/);
+  });
+  it("Verteilungsvorgabe mit dem echten Rechenkern, kleine Gruppe (zwei Personen): kleineGruppe true, Spannweite und Überschreitung null, Summe null, ohne Personenbezug", async () => {
+    const r = await raum({ verteilung: true, kleineGruppe: true });
+    frei(true);
+    const v = await vorschlag(r);
+    expect(v.status, JSON.stringify(v).slice(0, 300)).toBe(201);
+    expect(v.berichtGrund).toBeNull();
+    const vt = v.bericht.kategorien.find((k) => k.kategorie === "verteilung");
+    expect(vt.vorgaben).toHaveLength(1);
+    const x = vt.vorgaben[0];
+    expect(x).toMatchObject({ vorgabeId: "vt-1", kleineGruppe: true, spannweite: null, ueberschreitung: null });
+    expect(x.personen).toBeLessThan(3);
+    expect(vt.summeUeberschreitung).toBeNull();
+    ohnePersonenbezug(v.bericht, (await lesen(r.name)).bestand.mandanten[0].personen);
+    expect(JSON.stringify(v)).not.toMatch(/Zuname|Stabname|Vorname|\|/);
   });
 });
 
@@ -337,24 +445,24 @@ describe("4. Der Client reicht keinen Bericht ein; der Bericht gehört zum Vorsc
     expect(laeufe()).toBe(n0);
     expect(await abdruck(r.name)).toBe(vorher);
   });
-  it("der Bericht wird mit dem Vorschlag gehalten (gleiche Bindung) und mit ihm verworfen: Übernahme, Ersetzen", async () => {
+  it("der Bericht steht nur in der Antwort: am gehaltenen Vorschlag liegt kein Bericht (Speicher), Übernahme und Ersetzen bleiben davon unberührt", async () => {
     const r = await raum();
     frei(true);
     const v = await vorschlag(r);
+    expect(v.bericht.ok).toBe(true);
     const roh = S.A._vorschlaege.roh(v.vorschlag);
-    expect(roh.bericht).toEqual(v.bericht);
+    expect(Object.keys(roh).filter((k) => /bericht/i.test(k))).toEqual([]);
+    expect(JSON.stringify(roh)).not.toMatch(/kategorien|konflikte|bericht/);
     expect(roh.besitz.mandantId).toBe("m1");
     expect(roh.ym).toBe(YM);
-    /* Der Bericht wirkt nie auf die Übernahme: ein anderer Bericht am gehaltenen Eintrag ändert Prüfung und Ergebnis nicht. */
     const u = await post("planer-uebernahme", { vorschlag: v.vorschlag, auswahl: [0, 1], bestaetigt: true }, r.t.LT);
     expect(u, JSON.stringify(u)).toMatchObject({ status: 200, geschrieben: true, anzahl: 2 });
-    expect(Object.keys(u).filter((s) => /bericht/i.test(s))).toEqual([]);
-    expect(S.A._vorschlaege.roh(v.vorschlag).bericht).toBeNull();
-    /* Ein neuer Vorschlag desselben Besitzers und Monats ersetzt den alten samt Bericht. */
+    expect(Object.keys(u).filter((k) => /bericht/i.test(k))).toEqual([]);
+    /* Ein neuer Vorschlag desselben Besitzers und Monats ersetzt den alten. */
     const a = await vorschlag(r);
     const b = await vorschlag(r);
     expect(S.A._vorschlaege.roh(a.vorschlag)).toBeNull();
-    expect(S.A._vorschlaege.roh(b.vorschlag).bericht).toEqual(b.bericht);
+    expect(Object.keys(S.A._vorschlaege.roh(b.vorschlag)).filter((k) => /bericht/i.test(k))).toEqual([]);
   });
   it("Mandantentrennung: der Bericht wird aus dem Bestand des eigenen Betriebs gerechnet; Betrieb B sieht nie den Bericht oder Vorschlag von Betrieb A", async () => {
     const a = await raum({ id: "m-a" });
@@ -368,7 +476,7 @@ describe("4. Der Client reicht keinen Bericht ein; der Bericht gehört zum Vorsc
     expect(vB.bericht.zusammenfassung.konflikte.gesamt).toBe(vB.offen);
     expect(vA.bericht.zusammenfassung.konflikte.gesamt).not.toBe(vB.bericht.zusammenfassung.konflikte.gesamt);
     expect(S.A._vorschlaege.roh(vA.vorschlag).besitz.mandantId).toBe("m-a");
-    expect(S.A._vorschlaege.roh(vB.vorschlag).bericht).toEqual(vB.bericht);
+    expect(S.A._vorschlaege.roh(vB.vorschlag).besitz.mandantId).toBe("m-b");
     /* Betrieb B kann den Vorschlag von A nicht benutzen. */
     const x = await post("planer-uebernahme", { vorschlag: vA.vorschlag, auswahl: [0], bestaetigt: false }, b.t.LT);
     expect([x.status, x.code]).toEqual([404, "vorschlag-unbekannt"]);
