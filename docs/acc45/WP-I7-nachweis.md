@@ -801,3 +801,45 @@ Gehört zu WP-I7 Teil 6 (offene Frage 4 oben), kein neues Paket. **Nur Oberfläc
 - `src/ansichten/mobil.jsx` nutzt die vorhandene Ableitung aus #605 (Server `festEingeplantEigene`, Objektform; Oberfläche `festEingeplant`/`FEST_EINGEPLANT_TEXT` aus `anheftungen.jsx`): Hinweis als sichtbare Pille an „Dein Dienst heute“, in Mein Plan (Liste, Tagblatt) und im zugänglichen Namen des Monatsfelds — nur an eigenen Tagen mit Dienst, keine Aktion. Keine Serveränderung.
 - `pruefungen/fest-eingeplant.test.js` (11; Review B-1: eigener Abwesenheitstag mit Kennzeichen ohne Hinweis, Fremdkennzeichen am eigenen Diensttag in „Heute“ ohne Hinweis, Monatsfeld-Name und Tagblatt tatsächlich gerendert — die Mutationen „`da &&` entfernt“, „Personenprüfung entfernt“, „Zusatz im Namen entfernt“ je rot): Objektform ohne Metadaten, Entwurf, Mandantentrennung, BR/SV mit Karte = ohne Karte, **Wache C-2** (mitgeschicktes oder gespeichertes `festEingeplant` wird über Leitung/Kunde/Beschäftigte nie gespeichert; Mutation „Feld aus `abgeleiteteEntfernen` entfernt“ macht nur diesen Test rot), Telefonansicht (nur eigene Diensttage, sichtbarer Text).
 - V4-3b-Telefonschale: Rückrechnung nimmt den Nachtrag wörtlich zurück (`NACHTRAG_FEST`), danach byte-gleich zur Basis.
+
+## Planvorschlag-Übernahme, Kern (Stufe 1) — Branch `intelligence/planer-uebernahme`
+
+Reine Übernahme-Logik `server/lib/engine/planer-uebernahme.mjs` (Prüfung `pruefungen/intelligence-planer-uebernahme.test.js`, über `pruefung:intelligence` verdrahtet). Keine Route, keine Oberfläche, kein Schreiben; `PLANER_AN` und `PLANER_AGGREGATE_AN` bleiben AUS; Budgets unverändert.
+
+Funktionen: `vorschlagBasis(m, ym)` (Fingerprint), `uebernahmePruefen` / `uebernahmeAnwenden` (Vorschlag + Auswahl je Einteilung), `rueckgaengigPruefen` / `rueckgaengigAnwenden`, `patchAnwenden` (Hilfe für Prüfung und späteren Schreibweg). Rein, deterministisch (Zeit nur aus `kontext.jetzt`, Regeln mit `mitTagesdatum`), Eingaben unverändert, wirft nie (`{ ok: false, grund }`).
+
+Entscheidungen dieser Stufe:
+- **Rechte:** nur Leitung und Planung mit `plan.edit.all` (`darf` aus rechte.mjs), nie Demo; Schichtverantwortung, Betriebsrat, Beschäftigte, Altrolle „kunde“, Betreiber nie (Muster `darfAnheften`). Gleiche Prüfung für Rückgängig.
+- **Keine Auto-Übernahme:** Anwenden verlangt `kontext.bestaetigt === true`, auch im Modus „automatisch“ (`bestaetigung-fehlt`). Prüfen (Vorschau) braucht die Bestätigung nicht.
+- **Planer-Freigabe:** dieselben Funktionen wie `planerEinstieg` (`planerModusWirksam`, `kiPauseAktiv`, `kiSteuerungUnlesbar`, `kiPlanerEntscheidung`), aber ohne erneuten Planlauf (`planerEinstieg` selbst würde den ganzen Planer rechnen). Kennungen `planer-nicht-freigegeben`, `planer-pausiert`, `planer-im-betrieb-aus`. `kontext.freigabe: true` nur in Prüfungen.
+- **Basis-Fingerprint:** SHA-256 über Monat ± 31 Tage (Abweichungen, Anheftungen, Abwesenheiten) und die Regelfelder (Personen, Dienste, Einheiten, Folge, Vorgaben, Qualifikationen, Einstellungen ohne Modulprotokoll inkl. Schalterstand). Wird beim Erzeugen als `vorschlag.basis` gespeichert; weicht er ab: `seit-vorschlag-geaendert`. Nach außen nur der Hash. Planfreigabe des Monats gehört nicht dazu (ändert nur den Mitteilungshinweis).
+- **Je Eintrag auf dem echten Stand, atomar:** Dienst/Person vorhanden, Person im Betrieb, nicht abwesend, nicht angeheftet (unlesbare Karte: nichts), Zielschlüssel ohne Dienst („-“ gilt als frei, Vorwert bleibt „-“), Lücke besteht noch, keine Befunde ab Achtung und kein sperrender Befund (`hindernisBefunde`, Automatik: Muss ungeprüft = Achtung), danach `nachpruefen` über die ganze Auswahl (Posten/Bestandspersonen, Vorwärts, Planbefunde). Ein Fehler lehnt alles ab (`eintrag-abgelehnt`, Liste nur mit Index der Auswahl und Kennung, ohne Person|Tag).
+- **Anwenden:** Patch nur der gewählten Schlüssel von `abweichungen` (nie Komplettüberschreiben, `angeheftet` unberührt — kein Weg über `anheftenZusammen`), `rueckgaengig` mit Vorwerten genau dieser Schlüssel, Protokoll `{ modul: "planer", art: "planer-uebernommen", am, von: Rolle, anzahl, zeitraum }` ohne Person|Tag/Namen, Änderungseinträge wie `uebernehmeVorschlag` (von „-“, nach, Vorlauf, Zeit de-DE, deterministische Kennung `c-pu-…`), Mitteilungen nur als Hinweis (`versandt: false`). Idempotenz: zweites Anwenden `bereits-uebernommen` bzw. `seit-vorschlag-geaendert`.
+- **Rückgängig:** stellt nur die gespeicherten Vorwerte her (null = Schlüssel entfernen), nur wenn jeder Schlüssel noch den übernommenen Wert hat (`seit-uebernahme-geaendert`) und keiner inzwischen angeheftet ist (`angeheftet`); zweimal = `bereits-rueckgaengig`. Rückgängig ist nicht an Planer-Schalter/Pause gebunden (stellt nur Menschenstand her) — zur Review.
+
+Offene Anschlüsse (brauchen Review, nicht erfunden):
+- Verdrahtung: Server-Aktion, die über PUT `/api/bestand` den Patch auf den gespeicherten Stand legt — `zusammenfuehren` (rechte.mjs) mit ETag/409, danach `fachpruefungUebermittlung`; Protokoll ins Modulprotokoll (Grenze `modulprotokollUeberGrenze`), Änderungseinträge in `aenderungen`. Der Vorschlag mit `basis` muss serverseitig erzeugt/aufbewahrt werden, sonst ist die Basis vom Client vorgebbar (Prüfung je Eintrag bleibt trotzdem auf dem echten Stand).
+- Oberfläche (Häkchen je Einteilung, Bestätigung, Rückgängig-Knopf).
+- **Betreiberentscheidung offen:** Aufbewahrung der Vorwerte für Rückgängig (wo, wie lange, Löschung im Datenschutzlauf).
+- **Betreiberentscheidung offen:** Mitteilungen an Beschäftigte nach einer Übernahme in einem freigegebenen Monat (bisher `uebernehmeVorschlag`: Mitteilung „Zusätzlicher Dienst“).
+
+Mutationen (von Hand, je Lauf der Prüfdatei; alle erkannt):
+
+| Nr | Mutation | rote Tests |
+|---|---|---|
+| M1 | Rollenprüfung entfernt (`darfUebernehmen` immer wahr) | 1 |
+| M2 | Demo-Ausschluss entfernt | 1 |
+| M3 | Fingerprint-Vergleich entfernt | 2 |
+| M4 | Anheft-Prüfung je Eintrag entfernt | 1 |
+| M5 | Atomarität aufgeweicht (nur gültige Einträge übernehmen) | 1 |
+| M6 | Patch = alle Abweichungen (Komplettüberschreiben) | 2 |
+| M7 | Rückgängig ohne Änderungsprüfung | 1 |
+| M8 | Bestätigungspflicht entfernt | 1 |
+| M9 | Planer-Freigabe/Schalter/Pause entfernt | 2 |
+| M10 | harte Regeln je Eintrag entfernt | 1 |
+| M11 | Lückenprüfung entfernt | 1 |
+| M12 | Nachprüfung (`nachpruefen`) ignoriert | 1 |
+| M13 | Abwesenheitsprüfung entfernt | 1 |
+| M14 | Person\|Tag-Schlüssel ins Protokoll | 1 |
+| M15 | Freigabe nicht mehr „genau true“ | 1 |
+| M16 | Abweichungen nicht im Fingerprint | 3 |
