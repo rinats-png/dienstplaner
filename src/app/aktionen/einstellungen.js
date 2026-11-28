@@ -4,6 +4,7 @@ import { sicherungenAktionen } from "../../sicherungen-ui.js";
 import * as SP from "../../speicher.js";
 import { heute } from "../../lib/datum.js";
 import { kiSteuerungAktionen } from "../../lib/ki-steuerung-aktionen.js";
+import { planerAktionen } from "../../lib/planer-aktionen.js";
 
 export function aktionenEinstellungen(k) {
   const { mUpd, melde, ref, sitz } = k;
@@ -18,6 +19,8 @@ export function aktionenEinstellungen(k) {
       vorgabeLoeschen: (id) => mUpd((m) => ({ ...m, vorgaben: (m.vorgaben || []).filter((x) => x.id !== id) }), "Vorgabe gelöscht"),
       /* WP-I16 Teil 1: Steuerung der Intelligence-Funktionen (Hauptschalter, Funktionen, Frage; Pause des Betriebsrats). */
       ...kiSteuerungAktionen(k),
+      /* WP-I7 Teil 6 Stufe 1: Planer-Schalter, Betriebsmodus, Anheften und Lösen (bestätigt erst nach dem Zurücklesen des Serverstands). */
+      ...planerAktionen(k),
       /* --- Tour und Einstellungen --- */
       /* Wer die Tour ausdrücklich startet, hebt damit auch das frühere
          Wegklicken und Einklappen auf — sonst öffnete sich eine Tour, die
