@@ -48,13 +48,17 @@ import { RUECKGAENGIG_FELD, RUECKGAENGIG_GRENZE, RUECKGAENGIG_ID, aufbewahrenBis
 export const PLANER_WEGE = Object.freeze(["planer-vorschlag", "planer-uebernahme", "planer-rueckgaengig", "planer-rueckgaengig-liste"]);
 /** Höchstdauer eines Vorschlags (Arbeitsspeicher): 24 h — ein Planungstag; jede Änderung am Betrieb macht ihn ohnehin ungültig (basis). */
 export const VORSCHLAG_FRIST = Object.freeze({ hoechstMs: 24 * 60 * 60 * 1000 });
-/** Höchstzahl gehaltener Vorschläge: gesamt und je Raum (je Person/Rolle und Monat ersetzt ein neuer den alten). */
-export const VORSCHLAG_HOECHST = Object.freeze({ gesamt: 50, jeRaum: 5 });
+/** Grenzen der gehaltenen Vorschläge (Arbeitsspeicher). Je Besitzer (Raum, Betrieb, Person bzw. Rolle ohne Person): höchstens jeBesitzer;
+    ein neuer Vorschlag verdrängt bei Überschreitung den ÄLTESTEN desselben Besitzers (nie einen laufenden, nie einen fremden). Je Person und Monat
+    ersetzt ein neuer ohnehin den alten. Die übrigen Grenzen schützen nur den Speicher und sind so hoch, dass kein Betrieb den anderen sperrt:
+    jeRaum (mehrere Planende desselben Raums), gesamt (Zahl) und gesamtEintraege (Summe der Einteilungen aller Vorschläge, rund 250 Byte je
+    Einteilung, also etwa 25 MB). Diese Grenzen weisen ab (429), sie verdrängen nie über Besitzer hinweg. */
+export const VORSCHLAG_HOECHST = Object.freeze({ jeBesitzer: 5, jeRaum: 30, gesamt: 2000, gesamtEintraege: 100000 });
 
 /** Nur für Prüfungen (Fehler- und Konfliktinjektion). Wirkt ausschließlich unter vitest (process.env.VITEST); im Betrieb wird es nie
     gelesen, auch wenn jemand es setzt. `freigabe` gibt es bewusst nicht. */
-export const _pruefhaken = Object.seal({ ablage: null, vorSchreiben: null, nachlesen: null });
-const KEINE_HAKEN = Object.freeze({ ablage: null, vorSchreiben: null, nachlesen: null });
+export const _pruefhaken = Object.seal({ ablage: null, vorSchreiben: null, nachlesen: null, hoechst: null });
+const KEINE_HAKEN = Object.freeze({ ablage: null, vorSchreiben: null, nachlesen: null, hoechst: null });
 const haken = () => (typeof process !== "undefined" && process.env && process.env.VITEST ? _pruefhaken : KEINE_HAKEN);
 
 const istObjekt = (x) => !!x && typeof x === "object" && !Array.isArray(x);
@@ -129,6 +133,11 @@ function vorschlagHolen(id, besitz, jetztMs) {
   if (jetztMs > v.gueltigBisMs) { VORSCHLAEGE.delete(id); return { code: "vorschlag-abgelaufen" }; }
   return { v };
 }
+
+/** Die Grenzen: im Betrieb immer VORSCHLAG_HOECHST (der Haken wirkt nur unter vitest). */
+const grenzen = () => haken().hoechst || VORSCHLAG_HOECHST;
+/** Zahl der Einteilungen eines gehaltenen Vorschlags (übernommene halten keine mehr). */
+const groesse = (v) => (v.vorschlag && Array.isArray(v.vorschlag.gesetzt) ? v.vorschlag.gesetzt.length : 0);
 
 /** Nur für Prüfungen. */
 export const _vorschlaege = { anzahl: () => VORSCHLAEGE.size, leeren: () => VORSCHLAEGE.clear(), roh: (id) => VORSCHLAEGE.get(id) || null };
@@ -222,9 +231,17 @@ export async function vorschlagErzeugen({ store, sitzung, rumpf, jetzt }) {
   const jetztMs = jetzt.getTime();
   vorschlaegeAufraeumen(jetztMs);
   const ersetzt = [...VORSCHLAEGE.values()].find((v) => gleicherBesitz(v.besitz, besitz) && v.ym === ym && !v.laeuft);
+  /* Grenzen (alles bis zum Eintragen unten läuft ohne await, also ohne Wettlauf): je Besitzer verdrängt der älteste eigene, nie ein laufender;
+     Raum, Zahl und Größe weisen nur ab. Verdrängt wird erst beim Eintragen (ein misslungener Planlauf verwirft nichts). */
+  const G = grenzen();
   const offen = [...VORSCHLAEGE.values()].filter((v) => v !== ersetzt);
-  if (offen.length >= VORSCHLAG_HOECHST.gesamt || offen.filter((v) => v.besitz.raum === besitz.raum).length >= VORSCHLAG_HOECHST.jeRaum)
-    return nein("zu-viele-vorschlaege");
+  const eigene = offen.filter((v) => gleicherBesitz(v.besitz, besitz));
+  const verdraengbar = eigene.filter((v) => !v.laeuft).sort((a, b) => a.angelegt - b.angelegt);   // sort ist stabil: bei gleicher Zeit zählt die Reihenfolge des Anlegens
+  const zuViele = Math.max(0, eigene.length + 1 - G.jeBesitzer);
+  if (zuViele > verdraengbar.length) return nein("zu-viele-vorschlaege");   // nur laufende übrig: nie einen laufenden verdrängen
+  const weg = verdraengbar.slice(0, zuViele);
+  const bleibt = offen.filter((v) => !weg.includes(v));
+  if (bleibt.length >= G.gesamt || bleibt.filter((v) => v.besitz.raum === besitz.raum).length >= G.jeRaum) return nein("zu-viele-vorschlaege");
   const basis = vorschlagBasis(m, ym);
   if (!basis) return nein("betrieb-ungueltig");
   /** @type {any} */
@@ -244,8 +261,10 @@ export async function vorschlagErzeugen({ store, sitzung, rumpf, jetzt }) {
   }
   const gesetzt = (Array.isArray(r.gesetzt) ? r.gesetzt : []).map((g) => Object.freeze({ personId: g.personId, datum: g.datum, dienstId: g.dienstId, art: g.art }));
   if (gesetzt.length > UEBERNAHME_GRENZE.eintraege) return nein("vorschlag-zu-gross");
+  if (bleibt.reduce((s, v) => s + groesse(v), 0) + gesetzt.length > G.gesamtEintraege) return nein("zu-viele-vorschlaege");
   const offenAnzahl = Array.isArray(r.offen) ? r.offen.length : 0;
   if (ersetzt) VORSCHLAEGE.delete(ersetzt.id);
+  if (gesetzt.length) for (const v of weg) VORSCHLAEGE.delete(v.id);   // nur wenn wirklich ein neuer Vorschlag eingetragen wird
   if (!gesetzt.length) return { status: 200, ausgang: "erfolg", spur: "Planvorschlag erzeugt: 0 Einteilungen",
     daten: { ok: true, vorschlag: null, ym, modus: r.modus, eintraege: [], offen: offenAnzahl } };
   const id = `pv-${randomBytes(16).toString("hex")}`;

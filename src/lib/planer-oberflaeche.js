@@ -485,3 +485,20 @@ export function vorschlagErstellenGrund(z) {
   if (z.wirksam === "aus") return "Der Planer ist in diesem Betrieb derzeit aus (siehe „Voraussetzungen im Betrieb“ in den Einstellungen).";
   return null;
 }
+
+/**
+ * Meldung zu einer bestätigten Übernahme oder Rücknahme, deren Antwort erst eintraf, nachdem der Monat gewechselt wurde: das Ergebnis darf
+ * nicht dem jetzt angezeigten Monat zugeschrieben werden, soll aber auch nicht still verschwinden (geschrieben sein kann es trotzdem).
+ * Erfolg heißt nur eine ausdrückliche Erfolgsantwort (`r.ok`); sonst gilt der Text der Kennung, den die Aktion schon liefert.
+ * @param {"uebernahme" | "rueckgaengig"} art @param {string} ym Monat, für den bestätigt wurde @param {any} r Ergebnis der Aktion
+ * @returns {{ ok: boolean, text: string }}
+ */
+export function andererMonatHinweis(art, ym, r) {
+  const was = art === "rueckgaengig" ? "Rücknahme" : "Übernahme";
+  const monat = typeof ym === "string" && /^\d{4}-\d{2}$/.test(ym) ? `${ym.slice(5, 7)}/${ym.slice(0, 4)}` : "dem vorigen Monat";
+  if (r && r.ok === true) {
+    const ohneMitteilung = art === "rueckgaengig" || (r.daten && r.daten.mitteilungen && r.daten.mitteilungen.versandt === false);
+    return { ok: true, text: `Die ${was} für ${monat} wurde ausgeführt, während der Monat gewechselt wurde. Bitte wieder zu ${monat} wechseln, um das Ergebnis zu sehen.${ohneMitteilung ? " Beschäftigte wurden nicht benachrichtigt." : ""}` };
+  }
+  return { ok: false, text: `Zur ${was} für ${monat}: ${r && typeof r.text === "string" && r.text ? r.text : "Die Antwort war nicht eindeutig. Bitte den Plan neu laden und prüfen."}` };
+}
