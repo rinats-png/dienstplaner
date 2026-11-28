@@ -81,8 +81,8 @@ function bestandFuer(id = "m1", { fruehBedarf = 1, verteilung = false, kleineGru
   ];
   m.dienstarten = m.dienstarten.map((d) => (d.id === "F" ? { ...d, mindest: { mo_do: fruehBedarf, fr: fruehBedarf, sa: fruehBedarf, so: fruehBedarf } } : d));
   m.einstellungen = { ...m.einstellungen, kiSteuerung: structuredClone(FREI) };
-  /* `typ` zusätzlich zu `regelart`: die Planungsreife (planungsreife.mjs) liest `typ`; ohne es gilt jede Vorgabe als unvollständig und der Planer rechnet nicht. */
-  if (verteilung) m.vorgaben = [{ id: "vt-1", name: "Nächte gleichmäßig", typ: "verteilungsregel", regelart: "verteilungsregel", parameter: { groesse: "nachtdienste", maxAbweichung: 1 }, geltung: { art: "betrieb" },
+  /* Bestandsvorgabe in der Form des Bestands: nur `regelart`, kein `typ` (die Planungsreife liest `regelart`; Fix #619). */
+  if (verteilung) m.vorgaben = [{ id: "vt-1", name: "Nächte gleichmäßig", regelart: "verteilungsregel", parameter: { groesse: "nachtdienste", maxAbweichung: 1 }, geltung: { art: "betrieb" },
     staerke: "soll", prioritaet: 1, status: "aktiv", grundlage: { art: "hausregel" }, bezug: "monat" }];
   /* Kleine Gruppe: nur zwei Personen im Schichtdienst (die übrigen zählen nicht zur Vergleichsgruppe). */
   if (kleineGruppe) m.personen = m.personen.map((p) => (p.id === "p1" || p.id === "p2" ? p : { ...p, imSchichtdienst: false }));

@@ -87,6 +87,7 @@ describe("Planungsreife: nur aktive Vorgaben können blockieren", () => {
     ["ohne Regelart", { regelart: undefined }],
     ["leere Parameter", { parameter: {} }],
     ["ohne Parameter", { parameter: undefined }],
+    ["Parameter als Liste", { parameter: [1] }],
   ];
   for (const status of ["entwurf", "inaktiv"]) {
     for (const [name, extra] of KAPUTT) {
@@ -106,6 +107,13 @@ describe("Planungsreife: nur aktive Vorgaben können blockieren", () => {
       expect(e.luecken[0]).toMatchObject({ punkt: "vorgaben", ids: ["wochenende"], hinweis: false });
     });
   }
+  it("Parameter als Liste: der Schreibweg lehnt sie ab, die Planungsreife gilt sie nie als vollständig (gleiche Linie)", () => {
+    expect(pruefeVorgabe(vorgabe({ parameter: [1] }))).not.toBe(null);
+    const e = planungsreife(betrieb([vorgabe({ parameter: [1] })]), OPT);
+    expect(e).toMatchObject({ urteil: "nicht_bereit", bereit: false });
+    expect(e.luecken[0]).toMatchObject({ punkt: "vorgaben", ids: ["wochenende"] });
+    expect(planungsreife(betrieb([vorgabe({ parameter: ["a", "b"], regelart: "zaehlregel" })]), OPT).urteil).toBe("nicht_bereit");
+  });
   it("ein unbekannter Status wird geprüft, nicht übersprungen (fail-closed)", () => {
     const e = planungsreife(betrieb([vorgabe({ status: "abgelaufen", regelart: "zauberregel" })]), OPT);
     expect(e.urteil).toBe("nicht_bereit");
