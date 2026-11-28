@@ -219,6 +219,41 @@ describe("1. Monatswechsel während einer laufenden Anfrage", () => {
     expect(p.status).toBeNull();
   });
 
+  it("Dezember → Januar → Dezember während einer laufenden Prüfung: das Ergebnis gilt nicht (anderer Stand), keine Ansage „Geprüft“", async () => {
+    const warten = aufschub();
+    const a = aufbau({ planerAuswahlPruefen: vi.fn(() => warten.p) });
+    await a.sicht();
+    let p = a.rendere(); await p.onErstellen(); p = await a.sicht(); p.onToggle(0); p = a.rendere();
+    const laeuft = p.onPruefen();
+    await a.sicht({ ym: JAN });
+    p = await a.sicht({ ym: DEZ });                 // wieder derselbe Monat, aber die Fläche wurde dazwischen zurückgesetzt
+    warten.los({ ok: true, text: "", daten: { ok: true, geprueft: true, geschrieben: false, anzahl: 1 } });
+    await laeuft; p = await a.sicht();
+    expect(p.ym).toBe(DEZ);
+    expect(p.geprueft).toBeNull();
+    expect(p.ansageArt).toBeNull();
+    expect(p.vorschlag).toBeNull();
+  });
+
+  it("Dezember → Januar → Dezember während der bestätigten Übernahme: Hinweis ohne „bitte wechseln“, die Liste wird neu gelesen", async () => {
+    const warten = aufschub();
+    const a = aufbau({ planerUebernehmen: vi.fn(() => warten.p) });
+    let p = await bisGeprueft(a);
+    const laeuft = p.onBestaetigen();
+    await a.sicht({ ym: JAN });
+    await a.sicht({ ym: DEZ });
+    a.akt.planerRueckgaengigListe.mockClear();
+    warten.los(uebernahmeAntwort);
+    await laeuft; p = await a.sicht();
+    expect(p.ergebnis).toBeNull();                   // der Dezember von vorher ist nicht dieser Stand
+    expect(p.status.ok).toBe(true);
+    expect(p.status.text).toContain("Die Übernahme für 12/2026 wurde ausgeführt");
+    expect(p.status.text).toContain("Die Liste der Rücknahmen ist aktualisiert.");
+    expect(p.status.text).not.toContain("Bitte wieder zu");
+    expect(a.akt.planerRueckgaengigListe).toHaveBeenCalledWith(DEZ);
+    expect(p.liste.eintraege.map((e) => e.uebernahme)).toEqual([UD]);
+  });
+
   it("eine späte Liste des alten Monats überschreibt die Liste des neuen nicht", async () => {
     const alt = aufschub();
     const a = aufbau({ planerRueckgaengigListe: vi.fn((ym) => (ym === DEZ ? alt.p : Promise.resolve(listeVon(ym)))) });
@@ -240,7 +275,14 @@ describe("1b. Hinweistext (rein)", () => {
     expect(andererMonatHinweis("uebernahme", DEZ, { ok: false, text: "Text X." })).toEqual({ ok: false, text: "Zur Übernahme für 12/2026: Text X." });
     expect(andererMonatHinweis("uebernahme", DEZ, null).ok).toBe(false);
     expect(andererMonatHinweis("uebernahme", DEZ, { ok: false }).text).toContain("nicht eindeutig");
-    expect(andererMonatHinweis("uebernahme", "kaputt", { ok: true, daten: {} }).text).toContain("dem vorigen Monat");
+    const kaputt = andererMonatHinweis("uebernahme", "kaputt", { ok: true, daten: {} }).text;
+    expect(kaputt).toContain("Die Übernahme für den vorigen Monat wurde ausgeführt");   // Akkusativ nach „für“
+    expect(kaputt).toContain("Bitte wieder zu dem vorigen Monat wechseln");               // Dativ nach „zu“
+    expect(kaputt).not.toContain("für dem");
+    expect(andererMonatHinweis("uebernahme", "kaputt", { ok: false, text: "T." }).text).toBe("Zur Übernahme für den vorigen Monat: T.");
+    const hier = andererMonatHinweis("uebernahme", DEZ, { ok: true, daten: {} }, true).text;   // wieder im selben Monat
+    expect(hier).toContain("Die Liste der Rücknahmen ist aktualisiert.");
+    expect(hier).not.toContain("Bitte wieder zu");
     expect(andererMonatHinweis("uebernahme", DEZ, { ok: "ja" }).ok).toBe(false);   // nur ausdrücklich true
   });
 });
@@ -301,7 +343,8 @@ describe("3. Eine Ansage-Region je Fläche", () => {
     await p.onBestaetigen(); p = await a.sicht();
     const s = html(p);
     expect(anzahlStatus(s)).toBe(1);
-    expect(region(s)).toContain("Übernahme gespeichert: 1 Einteilung (Do 03.12.).");
+    expect(region(s)).not.toContain("Übernahme gespeichert");      // die Überschrift bekommt den Fokus und wird dort gelesen: nicht doppelt ansagen
+    expect(s).toContain("Übernahme gespeichert: 1 Einteilung (Do 03.12.).");   // sichtbar (als Überschrift) bleibt sie
     expect(region(s)).toContain("Zurücknehmen ist möglich bis 07.01.2027.");
     expect(region(s)).toContain("keine Benachrichtigung an Beschäftigte versendet");
   });
@@ -318,7 +361,8 @@ describe("3. Eine Ansage-Region je Fläche", () => {
     expect(region(html(p))).toContain("Prüfung der Rücknahme: 1 Einteilung");
     expect(region(html(p))).toContain("keine Besetzungslücke");
     await p.onRueckBestaetigen(); p = await a.sicht();
-    expect(region(html(p))).toContain("Rücknahme gespeichert: 1 Einteilung (Do 10.12.).");
+    expect(region(html(p))).not.toContain("Rücknahme gespeichert");
+    expect(html(p)).toContain("Rücknahme gespeichert: 1 Einteilung (Do 10.12.).");
     expect(region(html(p))).toContain("nicht benachrichtigt");
     expect(anzahlStatus(html(p))).toBe(1);
     const b = aufbau({ planerVorschlagErzeugen: vi.fn(async () => ({ ok: true, text: "", daten: { ok: true, vorschlag: null, eintraege: [], offen: 2 } })) });

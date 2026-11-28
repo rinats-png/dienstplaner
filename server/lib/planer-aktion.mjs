@@ -50,10 +50,14 @@ export const PLANER_WEGE = Object.freeze(["planer-vorschlag", "planer-uebernahme
 export const VORSCHLAG_FRIST = Object.freeze({ hoechstMs: 24 * 60 * 60 * 1000 });
 /** Grenzen der gehaltenen Vorschläge (Arbeitsspeicher). Je Besitzer (Raum, Betrieb, Person bzw. Rolle ohne Person): höchstens jeBesitzer;
     ein neuer Vorschlag verdrängt bei Überschreitung den ÄLTESTEN desselben Besitzers (nie einen laufenden, nie einen fremden). Je Person und Monat
-    ersetzt ein neuer ohnehin den alten. Die übrigen Grenzen schützen nur den Speicher und sind so hoch, dass kein Betrieb den anderen sperrt:
-    jeRaum (mehrere Planende desselben Raums), gesamt (Zahl) und gesamtEintraege (Summe der Einteilungen aller Vorschläge, rund 250 Byte je
-    Einteilung, also etwa 25 MB). Diese Grenzen weisen ab (429), sie verdrängen nie über Besitzer hinweg. */
-export const VORSCHLAG_HOECHST = Object.freeze({ jeBesitzer: 5, jeRaum: 30, gesamt: 2000, gesamtEintraege: 100000 });
+    ersetzt ein neuer ohnehin den alten. Alle übrigen Grenzen weisen nur ab (429) und verdrängen nie über Besitzer hinweg; sie schützen den Speicher
+    (rund 250 Byte je Einteilung):
+    - jeRaum: Zahl der Vorschläge je (Raum, Betrieb); jeRaumEintraege: Summe ihrer Einteilungen (10000, also etwa 2,5 MB). Ein Vorschlag darf bis
+      UEBERNAHME_GRENZE.eintraege (2000) Einteilungen haben; die Größengrenze je Raum verhindert, dass wenige große Vorschläge eines Raums die
+      globale Grenze füllen und andere Betriebe sperren.
+    - gesamtEintraege: Summe aller Einteilungen (100000, etwa 25 MB) — das ist die engere globale Grenze; gesamt (2000 Vorschläge) greift erst bei
+      sehr kleinen Vorschlägen (im Mittel höchstens 50 Einteilungen). Bei 10000 je Raum füllen erst zehn Räume mit Höchstlast die globale Grenze. */
+export const VORSCHLAG_HOECHST = Object.freeze({ jeBesitzer: 5, jeRaum: 30, jeRaumEintraege: 10000, gesamt: 2000, gesamtEintraege: 100000 });
 
 /** Nur für Prüfungen (Fehler- und Konfliktinjektion). Wirkt ausschließlich unter vitest (process.env.VITEST); im Betrieb wird es nie
     gelesen, auch wenn jemand es setzt. `freigabe` gibt es bewusst nicht. */
@@ -232,7 +236,7 @@ export async function vorschlagErzeugen({ store, sitzung, rumpf, jetzt }) {
   vorschlaegeAufraeumen(jetztMs);
   const ersetzt = [...VORSCHLAEGE.values()].find((v) => gleicherBesitz(v.besitz, besitz) && v.ym === ym && !v.laeuft);
   /* Grenzen (alles bis zum Eintragen unten läuft ohne await, also ohne Wettlauf): je Besitzer verdrängt der älteste eigene, nie ein laufender;
-     Raum, Zahl und Größe weisen nur ab. Verdrängt wird erst beim Eintragen (ein misslungener Planlauf verwirft nichts). */
+     Raum (Zahl, Größe), Gesamtzahl und Gesamtgröße weisen nur ab. Verdrängt wird erst beim Eintragen (ein misslungener Planlauf verwirft nichts). */
   const G = grenzen();
   const offen = [...VORSCHLAEGE.values()].filter((v) => v !== ersetzt);
   const eigene = offen.filter((v) => gleicherBesitz(v.besitz, besitz));
@@ -241,7 +245,8 @@ export async function vorschlagErzeugen({ store, sitzung, rumpf, jetzt }) {
   if (zuViele > verdraengbar.length) return nein("zu-viele-vorschlaege");   // nur laufende übrig: nie einen laufenden verdrängen
   const weg = verdraengbar.slice(0, zuViele);
   const bleibt = offen.filter((v) => !weg.includes(v));
-  if (bleibt.length >= G.gesamt || bleibt.filter((v) => v.besitz.raum === besitz.raum).length >= G.jeRaum) return nein("zu-viele-vorschlaege");
+  const imRaum = bleibt.filter((v) => v.besitz.raum === besitz.raum && v.besitz.mandantId === besitz.mandantId);   // der eigene Raum samt Betrieb, nie ein fremder
+  if (bleibt.length >= G.gesamt || imRaum.length >= G.jeRaum) return nein("zu-viele-vorschlaege");
   const basis = vorschlagBasis(m, ym);
   if (!basis) return nein("betrieb-ungueltig");
   /** @type {any} */
@@ -261,6 +266,7 @@ export async function vorschlagErzeugen({ store, sitzung, rumpf, jetzt }) {
   }
   const gesetzt = (Array.isArray(r.gesetzt) ? r.gesetzt : []).map((g) => Object.freeze({ personId: g.personId, datum: g.datum, dienstId: g.dienstId, art: g.art }));
   if (gesetzt.length > UEBERNAHME_GRENZE.eintraege) return nein("vorschlag-zu-gross");
+  if (imRaum.reduce((s, v) => s + groesse(v), 0) + gesetzt.length > G.jeRaumEintraege) return nein("zu-viele-vorschlaege");   // Größe je Raum
   if (bleibt.reduce((s, v) => s + groesse(v), 0) + gesetzt.length > G.gesamtEintraege) return nein("zu-viele-vorschlaege");
   const offenAnzahl = Array.isArray(r.offen) ? r.offen.length : 0;
   if (ersetzt) VORSCHLAEGE.delete(ersetzt.id);

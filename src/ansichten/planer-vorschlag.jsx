@@ -132,9 +132,9 @@ export function PlanerVorschlagAnsicht({ m, ym, offen = false, onOffen = () => {
   const fristSatz = ergebnis && ergebnis.rueckgaengigBis ? `Zurücknehmen ist möglich bis ${datumLang(ergebnis.rueckgaengigBis)}.` : "";
   const rueckPSatz = rueck ? `${T.rueckPruefung}: ${einteilungen(rueck.anzahl)} werden auf den Stand vor der Übernahme zurückgesetzt. Bisher wurde nichts geändert.` : "";
   const rueckESatz = rueckErgebnis ? `${T.rueckErgebnisTitel}: ${einteilungen(rueckErgebnis.anzahl)}${zeitraumText(rueckErgebnis.zeitraum) ? ` (${zeitraumText(rueckErgebnis.zeitraum)})` : ""}.` : "";
-  const ansage = ({ vorschlag: `${vorSatz} ${offenSatz}`, geprueft: gepSatz, ergebnis: `${ergSatz} ${fristSatz} ${mitteilung}`, status: status && status.ok ? status.text : "",
+  const ansage = ({ vorschlag: `${vorSatz} ${offenSatz}`, geprueft: gepSatz, ergebnis: `${fristSatz} ${mitteilung}`, status: status && status.ok ? status.text : "",
     rueckPruefung: `${rueckPSatz} ${rueck ? besetzungSatz(rueck.unterbesetzt, m) : ""}`,
-    rueckErgebnis: `${rueckESatz} Beschäftigte wurden dabei nicht benachrichtigt. ${rueckErgebnis ? besetzungSatz(rueckErgebnis.unterbesetzt, m) : ""}` })[ansageArt] || "";
+    rueckErgebnis: `Beschäftigte wurden dabei nicht benachrichtigt. ${rueckErgebnis ? besetzungSatz(rueckErgebnis.unterbesetzt, m) : ""}` })[ansageArt] || "";
   return (
     <Card still data-testid="planer-vorschlag" role="region" aria-label={`${T.titel}, ${monat}`}>
       <h2 className="abschnitt-titel" id="planer-vorschlag-titel">{T.titel}</h2>
@@ -245,6 +245,7 @@ export function PlanerVorschlag({ m, ym, sitz, akt, startOffen = false, freigege
   aktRef.current = akt;
   const ymRef = useRef(ym);            // der Monat, der jetzt angezeigt wird: nach jedem await prüfen, ob die Anfrage noch zu ihm gehört
   ymRef.current = ym;
+  const epoche = useRef(0);            // zählt jeden Monatswechsel: Dez → Jan → Dez während einer Anfrage ist nicht derselbe Stand wie davor
   const ergebnisKopf = useRef(null);   // Fokus nach der Bestätigung: der Bestätigungsknopf verschwindet
   const rueckKopf = useRef(null);
   const demo = !!sitz && (sitz.demo === true || (SP.zugangsdaten() || {}).demo === true);
@@ -254,7 +255,7 @@ export function PlanerVorschlag({ m, ym, sitz, akt, startOffen = false, freigege
 
   const alleZurueck = () => { setVorschlag(null); setAuswahl([]); setGeprueft(null); setAbgelehnt([]); setErgebnis(null); setRueckErgebnis(null); setRueck(null); setStatus(null); setAnsageArt(null);
     setListe({ zustand: "laden", eintraege: [], text: "" }); };
-  useEffect(() => { alleZurueck(); }, [ym]);   // ein Vorschlag gilt für genau einen Monat
+  useEffect(() => { epoche.current += 1; alleZurueck(); }, [ym]);   // ein Vorschlag gilt für genau einen Monat
   useEffect(() => { if (ergebnis && ergebnisKopf.current) ergebnisKopf.current.focus(); }, [ergebnis]);
   useEffect(() => { if (rueckErgebnis && rueckKopf.current) rueckKopf.current.focus(); }, [rueckErgebnis]);
 
@@ -276,15 +277,19 @@ export function PlanerVorschlag({ m, ym, sitz, akt, startOffen = false, freigege
   const sortiert = [...auswahl].sort((a, b) => a - b);
   const schluessel = sortiert.join(",");
 
-  /** `fn(monat, gilt)`: `monat` ist der Monat beim Klick, `gilt()` sagt, ob er noch angezeigt wird (sonst das Ergebnis nicht in diese Fläche schreiben). */
+  /** `fn(monat, gilt)`: `monat` ist der Monat beim Klick, `gilt()` sagt, ob er noch angezeigt wird und seitdem nicht gewechselt wurde (sonst das Ergebnis nicht in diese Fläche schreiben). */
   const ausfuehren = async (fn) => {
     if (sperre.current) return;
     sperre.current = true; setBeschaeftigt(true); setStatus(null); setAnsageArt(null);
-    const monat = ym, gilt = () => ymRef.current === monat;
+    const monat = ym, ep = epoche.current, gilt = () => ymRef.current === monat && epoche.current === ep;
     try { await fn(monat, gilt); } catch { if (gilt()) setStatus({ ok: false, text: VORSCHLAG_TEXTE.fehlerAllgemein }); } finally { sperre.current = false; setBeschaeftigt(false); }
   };
   /** Eine bestätigte Übernahme oder Rücknahme antwortet erst nach dem Monatswechsel: ehrlich melden, nichts in die neue Fläche eintragen. */
-  const fremderMonat = (art, monat, r) => { const h = andererMonatHinweis(art, monat, r); setStatus(h); setAnsageArt(h.ok ? "status" : null); };
+  const fremderMonat = (art, monat, r) => {
+    const hier = ymRef.current === monat;   // Rückkehr in denselben Monat: der Stand und die Liste sind inzwischen neu, die Liste wurde vor dem Ergebnis gelesen
+    const h = andererMonatHinweis(art, monat, r, hier); setStatus(h); setAnsageArt(h.ok ? "status" : null);
+    if (hier) ladeListe(monat);
+  };
   const planerAktion = () => aktRef.current;
 
   const erstellen = () => ausfuehren(async (monat, gilt) => {

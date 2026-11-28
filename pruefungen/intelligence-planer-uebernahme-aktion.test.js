@@ -726,7 +726,8 @@ describe("9. Vor Freigabe von PLANER_AN: Grenze der Vorschläge je Besitzer stat
   afterEach(() => { S.A._pruefhaken.hoechst = null; });
 
   it("Grenzen: je Besitzer 5, je Raum 30, gesamt 2000 Vorschläge und 100000 Einteilungen — nicht mehr 5 je Raum und 50 gesamt", () => {
-    expect(S.A.VORSCHLAG_HOECHST).toEqual({ jeBesitzer: 5, jeRaum: 30, gesamt: 2000, gesamtEintraege: 100000 });
+    expect(S.A.VORSCHLAG_HOECHST).toEqual({ jeBesitzer: 5, jeRaum: 30, jeRaumEintraege: 10000, gesamt: 2000, gesamtEintraege: 100000 });
+    expect(S.A.VORSCHLAG_HOECHST.jeRaumEintraege * 10).toBeLessThanOrEqual(S.A.VORSCHLAG_HOECHST.gesamtEintraege);   // Raum höchstens ein Zehntel der Gesamtgröße
     expect(Object.isFrozen(S.A.VORSCHLAG_HOECHST)).toBe(true);
   });
   it("zwei Besitzer (Leitung, Planung) im selben Raum und ein zweiter Raum blockieren sich nicht", async () => {
@@ -832,5 +833,50 @@ describe("9. Vor Freigabe von PLANER_AN: Grenze der Vorschläge je Besitzer stat
     expect([x.status, x.code]).toEqual([429, "zu-viele-vorschlaege"]);
     const r2 = await raum();
     expect((await vorschlag(r2, r2.t.LT, MONATE[0])).status).toBe(201);
+  });
+  it("Größe je Raum (Review #616 B-1): ein Raum an der Grenze sperrt nur sich selbst, ein anderer Raum bleibt frei; kein fremder Vorschlag wird verdrängt", async () => {
+    const r = await vorbereiten();
+    const r2 = await raum();
+    const erst = await vorschlag(r, r.t.LT, MONATE[0]);
+    expect(erst.status).toBe(201);
+    frischeGrenzen({ jeRaumEintraege: erst.eintraege.length });   // der Raum ist damit voll
+    const voll = await vorschlag(r, r.t.LT2, MONATE[1]);          // anderer Besitzer im selben Raum: nur abweisen, nie den fremden verdrängen
+    expect([voll.status, voll.code]).toEqual([429, "zu-viele-vorschlaege"]);
+    expect(roh(erst.vorschlag)).not.toBeNull();
+    const frei2 = await vorschlag(r2, r2.t.LT, MONATE[0]);        // der andere Raum ist nicht betroffen
+    expect(frei2.status).toBe(201);
+    expect(S.A._vorschlaege.anzahl()).toBe(2);
+    const ersatz = await vorschlag(r, r.t.LT, MONATE[0]);         // der eigene Ersatz im selben Monat passt in den Platz des alten
+    expect(ersatz.status).toBe(201);
+    expect(roh(erst.vorschlag)).toBeNull();
+    expect(roh(frei2.vorschlag)).not.toBeNull();
+  });
+  it("Raumgrenze gilt je Raum UND Betrieb (Review #616 C-1): ein zweiter Betrieb desselben Raums wird vom ersten nicht gesperrt", async () => {
+    S.A._vorschlaege.leeren();
+    frei(true);
+    const g = bestandFuer("m-a");
+    g.mandanten.push(bestandFuer("m-b").mandanten[0]);
+    const r = await raum({ bestand: g });
+    const tB = (await S.sitzungAnlegen({ bestand: r.name, name: "Stab l1", rolle: "leitung", person: "l1", betrieb: 1, mandantId: "m-b", einheit: null }, 30 * 24 * 3600 * 1000)).token;
+    frischeGrenzen({ jeRaum: 1 });
+    expect((await vorschlag(r, r.t.LT, MONATE[0])).status).toBe(201);
+    const zwei = await vorschlag(r, r.t.LT2, MONATE[0]);          // gleicher Betrieb: voll
+    expect([zwei.status, zwei.code]).toEqual([429, "zu-viele-vorschlaege"]);
+    const b = await vorschlag(r, tB, MONATE[0]);                  // anderer Betrieb im selben Raum: frei
+    expect(b.status, JSON.stringify(b).slice(0, 200)).toBe(201);
+  });
+  it("Gleichstand der Entstehungszeit (Review #616 D-2): bei gleicher Zeit fällt der zuerst angelegte eigene Vorschlag weg", async () => {
+    const r = await vorbereiten();
+    const ids = [];
+    for (const ym of MONATE.slice(0, 5)) {                         // ohne tick(): alle fünf mit derselben Serveruhr
+      const v = await vorschlag(r, r.t.LT, ym);
+      expect(v.status).toBe(201);
+      ids.push(v.vorschlag);
+    }
+    expect(new Set(ids.map((id) => roh(id).angelegt)).size).toBe(1);
+    const sechs = await vorschlag(r, r.t.LT, MONATE[5]);
+    expect(sechs.status).toBe(201);
+    expect(roh(ids[0])).toBeNull();
+    for (const id of [...ids.slice(1), sechs.vorschlag]) expect(roh(id), id).not.toBeNull();
   });
 });
