@@ -62,9 +62,12 @@ const ABLAUF = "src/ansichten/testablauf.jsx";
  *  Zweite bewusste Abweichung (Planungsassistent, Gründe offener Stellen): die abweichende Kopie von planeMonat
  *  (53 Zeilen) entfällt, der Selbsttest nutzt planeMonat aus src/lib/fachlogik.js; +3 Zeilen (zwei Imports, eine
  *  Zusicherung): 7805 → 7755 Zeilen, zeilenMehr 32 → -18.
- *  Die Datei bleibt byte-genau festgelegt: Prüfsumme der Datei mit dieser einen Änderung. Jede weitere
+ *  Dritte bewusste Abweichung (Selbsttest vom Kalendertag unabhängig, 2026-11-28): vier Zusicherungen in selbsttest()
+ *  wurden datumsfest gemacht (vier Zeilen ersetzt, Zeilenzahl unverändert 7755, zeilenMehr -18 bleibt); Prüfsumme
+ *  a028bb17… → a2508984… (Nachweis: docs/acc45/QS-ZEITABHAENGIGKEIT.md, Abschnitt 1.4).
+ *  Die Datei bleibt byte-genau festgelegt: Prüfsumme der Datei mit diesen Änderungen. Jede weitere
  *  Änderung an der Datei macht die Prüfung rot, wie zuvor gegen die Basis. */
-const NACHTRAG_QS2 = { [PRUEF]: { sha256: "a028bb1745b3760f8839f30e8d1e1b3a7fab62d5f51952cb38a5ac3dc54ce385", zeilenMehr: -18 } };
+const NACHTRAG_QS2 = { [PRUEF]: { sha256: "a25089844bccb215b54eec3607125736910ea6c3e4bc83712ae53e3570178bf3", zeilenMehr: -18 } };
 const erwartetSha = (fx, d) => (NACHTRAG_QS2[d] ? NACHTRAG_QS2[d].sha256 : fx.dateien[d].sha256);
 
 /** Feste Zuordnung je Stelle (Quelltextreihenfolge). alt = Radius vorher (px); keine feste Kante (Höhe aus Inhalt). */

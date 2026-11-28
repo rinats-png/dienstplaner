@@ -60,6 +60,40 @@ nicht abgeschwächt; nur nachgewiesene Ausfälle werden behoben, alles Übrige b
   `qs-b8-zeitbasis.test.js` zusätzlich: Gegenprobe an allen 40 Basistagen gesperrt, Bestand unverändert. Nur die Browserschritte
   prüft die CI (Playwright lokal nicht gelaufen).
 
+### 1.4 `selbsttest()` in `src/pruefung.jsx` (CI-Check `pruefen-c`, Priorität 1, Stand 2026-11-28)
+
+- **Befund:** Ab 2026-11-28 schlug `pruefungen/selbsttest.test.js` auf jedem Zweig fehl: „Freischicht senkt das Stundenkonto:
+  erwartet true, ist false“ (auch an der Basis 24205864, nicht durch einen PR verursacht). Kein Produktfehler, keine Fachlogik
+  betroffen; der Selbsttest rechnet gegen die Wanduhr (`heute()`).
+- **Ursache (belegt, kein Flake):** `ausgleichTage(m, pA, heute(), 5)[0]` nahm den ersten Diensttag AB heute(); das Konto wird für
+  `ym` = Monat von heute() geprüft. `stundenkonto(m, p, ym)` summiert Januar bis `ym` desselben Jahres. Hat `pA` ab heute bis
+  Monatsende keinen Diensttag, liegt der Ausgleichstag im Folgemonat und senkt das Konto von `ym` nicht (342,9 vorher = nachher).
+  Messung je Uhr (TZ=UTC, `vi.setSystemTime`, nur `Date`; erster Ausgleichstag, Konto vorher → nachher):
+  11-26 → 11-26 (342,9 → 333,2) grün; 11-27 → 11-27 (342,9 → 333,2) grün; 11-28 → 12-01 (342,9 → 342,9) ROT;
+  11-29 → 12-01 ROT; 11-30 → 12-01 ROT; 12-01 → 12-01 (387,3 → 377,6) grün; 12-02 → 12-02 grün; 10-31 → 11-03 (321,3 → 321,3) ROT.
+  Betroffen ist also das Monatsende (letzte ein bis drei Tage, je nach Schichtfolge der Person mit dem höchsten Konto).
+- **Weitere Fehler gleicher Klasse (gleiche Messreihe, vor der Behebung rot):** (a) „Teilzeit trifft das Sollkonto über ein Quartal“
+  bildete das Quartal mit Monat modulo 12, aber ohne Jahreswechsel (Dezember 2026 + Januar + Februar 2026): ab 2026-12-01 rot.
+  (b) „Voller Monat wird voll berechnet“: der Prüfmandant beginnt `seit` = Februar des Jahres → im Januar 0 statt 295,74: ab 2027-01-01 rot.
+  (c) „Erster Aufbau: Zahl der Berechnungen begrenzt“: `nachtJahr(mm, p, 2026)` mit festem Jahr 2026, die Schranke geht von
+  gemeinsamen Zwischenspeicher-Einträgen mit `ym` aus; ab 2027-06 rot (06-30, 07-31, 08-31, 09-30, 11-30 rot; Januar bis Mai grün).
+- **Behebung (nur Test/Selbsttest, vier Zeilen ersetzt, Zeilenzahl 7755 unverändert):** (1) Ausgleichstag ab `${ym}-01` statt
+  heute(): immer im geprüften Monat; (2) Quartal mit Jahresübertrag; (3) „Voller Monat“ rechnet mit Vertragsbeginn am Vortag des
+  Monats; (4) `nachtJahr` für das Jahr von `ym`. Keine Zusicherung entfernt oder gelockert, Fachlogik unverändert.
+- **Pin V4-3b:** `pruefungen/v4-3b-selbsttest.test.js` legt `src/pruefung.jsx` byte-genau fest. Vorher 7755 Zeilen, SHA-256
+  a028bb1745b3760f8839f30e8d1e1b3a7fab62d5f51952cb38a5ac3dc54ce385; nachher 7755 Zeilen, SHA-256
+  a25089844bccb215b54eec3607125736910ea6c3e4bc83712ae53e3570178bf3 (zeilenMehr -18 unverändert). Der Pin ist nur um die Prüfsumme
+  nachgezogen; die Änderung an `src/pruefung.jsx` ist ausschließlich die oben genannten vier Zeilen.
+- **Regression:** `pruefungen/selbsttest-datumsstabil.test.js` lässt den ganzen Selbsttest unter festen Uhren laufen
+  (2026-11-28, 2026-11-30, 2026-12-01, 2026-12-31; nur `Date`, lokale Zeit). Gegen die Basis 24205864 alle vier Tage rot (11-28, 11-30 Freischicht;
+  12-01, 12-31 Quartal), mit der Behebung alle grün; Mutation (Zeile (1) zurück auf `heute()`) macht 11-28 und 11-30 rot.
+- **Verdrahtung:** `npm run pruefung:selbst` (vom Workflow `pruefung.yml` aufgerufen, Workflow unverändert) führt `selbsttest.test.js` und `selbsttest-datumsstabil.test.js` mit `--testTimeout=300000` aus; `verdrahtung-pruefen`, `ci-abdeckung` und `prozess-wachen` ok. Laufzeit lokal (Celeron): 137 s für beide Dateien.
+- **Messreihe nach der Behebung (TZ=UTC, 549 Zusicherungen, alle ok):** 2026-10-31, 11-28, 11-30, 12-01, 12-31; 2027-01-01, 01-31,
+  02-28, 03-31, 04-30, 05-31, 06-30, 09-30, 11-30, 12-31; 2028-02-29. Zonenprobe: `selbsttest-datumsstabil` und `selbsttest` unter
+  TZ=America/Los_Angeles und TZ=Pacific/Kiritimati je 6/6 grün.
+- **Grenzen (ehrlich):** Gemessen sind Stichtage (Monatsenden, Jahreswechsel, Schaltjahr), nicht alle 365 Tage. Ein Selbsttestlauf
+  dauert auf dem Entwicklungsrechner etwa 45 s.
+
 ## 2. Liste der übrigen zeitabhängigen Tests (nicht geändert)
 
 Suche über `e2e/*.spec.mjs`, `e2e/global-setup.mjs`, `pruefungen/**` nach `new Date()`, `Date.now()`, `heute()`,
